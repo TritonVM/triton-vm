@@ -10,32 +10,30 @@ A number of tables are used to show that certain values are in the range $[0;2^{
 
 ### Fixed
 
-The Fixed 16-Bit Table contains all elements from 0 to 2^16 - 1, in that order. Every proof ships with it. Since it is preprocessed, the Merkle root of this table is trusted by the verifier. However, there is an efficient AIR that allows the verifier to check this value nonetheless. Let $F_{p16}$ be the polynomial that interpolates the table over $\{\omicron^i \, \vert \, 0 \leq i < 2^{16}\}$ for a primitive ${2^{16}}$ th root of unity. The AIR constraints are:
- - boundary constraints: $F_{p16}(\omicron^0) = 0$ and $F_{p16}(\omicron^{2^{16}-1}) = 2^{16}-1$ (in fact, either one suffices)
- - transition constraints: $F_{p16}(\omicron \cdot X) - F_{p16}(X) - 1 = 0$ over $X \in \{\omicron^i \, \vert \, 0 \leq i < 2^{16}-1 \}$.
+The Fixed 16-Bit Table contains all elements from 0 to 2^16 - 1, in that order. Every proof ships with it.
 
- The Fixed 16-Bit Table has 1 dynamic mask, $M_{p16}(X)$, which takes values from $\{0,1\}$ on $X \in \{ \omicron^i \, \vert \, 0 \leq i < 2^{16}\}$. The set bits of $M_{p16}(X)$ indicate elements that exist in the (the last column of the) 4-Wide 16-Bit Table also, only in another order.
+The Fixed 16-Bit Table comes with another column, whose purpose is to map the uniformly distributed 16-bit integer to a discrete Gaussian, with parameters suitable for lattice-based crypto operations.
 
-### 4-Wide
+| $F_{p16}$ | $F_{pg}$ |
+|---------------|-------------|
 
-The 4-Wide 16-Bit Table consists of 4 variables, indexed 0 through 3. Every row shifts the elements to the right by one position, and puts a new unconstrained element in the left-most position. For example:
+The table is preprocessed, so no AIR is necessary. The table is used to verify copy-constraints; so there will be dynamic masks.
 
-| 0 | 1 | 2 | 3 |
-|-|-|-|-|
-| a | b | c | d |
-| e | a | b | c |
-| f | e | a | b |
-| g | f | e | a |
-| - | g | f | e |
-| - | - | g | f |
-| - | - | - | g |
+### Dynamic
 
-Let $F_{4w16,i}(X)$ with $i \in \{0, 1, 2, 3\}$ denote the polynomials that interpolate these four columns over the span of some $\omicron$ with large enough order $2^k$. Then the AIR constraints are:
- - transition constraints: $\forall i$ in $\{0, 1, 2\}$, $F_{4w16,i}(X) - F_{4w16,i+1}(\omicron \cdot X) = 0$ over $X \in \{ \omicron^j \, | \, 0 \leq j < 2^k\}$.
+The Dynamic 16-Bit Table consists of 2 variables. It contains all the values arising in the course of an execution whose correct format must be verified -- namely, it must be verified that these values consist of 16 bits or that their resampling to the Gaussian distribution was correct.
 
-The fourth column of the 4-Wide 16-Bit table comes with a sorted counterpart. The purpose of this sorted column is to establish a copy-constraint with the Fixed 16-Bit Table. Put together, the AIRs and this copy-constraint establish that all elements in the 4-Wide 16-Bit Table are 16-bit values.
+| $F_{d16}$ | $F_{dg}$ |
+|-----------|----------|
+| d | h |
+| c | i |
+| b | j |
+| a | k |
+| e | l |
+| f | m |
+| g | n |
 
-Furthermore, the 4-Wide 16-Bit table has 5 masks. The first establishes a copy-constraint with respect to the 4 helper registers of the stack register trace. The remaining 4 establish copy-constraints with respect to the SIMD register trace. 
+A copy-constraint establishes that all the rows of the Dynamic 16-Bit Table are contained in the Fixed 16-Bit Table.
 
 ## Memory Tables
 
@@ -56,14 +54,15 @@ However, the specific memory tables used in Triton VM differ from this pattern i
 Program Memory is read only, so the Old Value column can be dropped and the New Value column can be renamed to simple Value. Furthermore, since the value of the program memory does not change with time, there is nevery any need to store different values at the same address. So the address column contains simply $0$ through $\ell-1$, where $\ell$ is the program length. What's more, there already is a column in another table that counts the integers starting from 0, namely the cycle column in the Stack Register Trace. Furthermore, the Instruction and Cycle columns are not relevant any more. We are left with two columns.
 
 | Address $P_a$ | Value $P_v$ |
-|---------|-------|
+|---------------|-------------|
 | - | - |
 
 The polynomials interpolate these two columns over a trace domain $\{ \omicron^i \, \vert \, 0 \leq i < 2^k \}$. The AIR constraints for this table are as follows:
- - boundary constraint: $P_a(1) = 0$;
- - transition constraint: $P_a(\omicron \cdot X) - P_a(X) = 0$ for $X \in \{\omicron^i \, \vert \, 0 \leq i < 2^k-1\}$.
-
-The Program Memory Table comes with one mask column, which takes values from $\{0,1\}$ on the same domain. The set bits indicates instructions that are read by the VM in the course of an execution, and this reading is established by a copy-constraint to (some columns of) the Stack Register Trace Table.
+ - boundary constraints:
+     - address initialized to 0: $P_a(1) = 0$
+     - first instruction is defined as 0: $P_v(1) = 0$;
+ - transition constraints, for $X \in \{ \omicron^i \, | \, 0 \leq i < 2^k - 1\}$:
+     - monotonicity of address increase $P_a(\omicron \cdot X) - P_a(X) - 1 = 0$
 
 ### Stack
 
@@ -84,7 +83,7 @@ The polynomials interpolate these columns over a trace domain $\{\omicron^i \, \
     - initial values of new memory cells: $(S_a(\omicron \cdot X) - S_a(X)) \cdot S_{ov}(\omicron \cdot X) = 0$
     - evolution of value in same-address cells: $(S_a(\omicron \cdot X) - S_a(X) - 1) \cdot f(\mathbf{X}) \cdot (S_{nv}(X) - S_{ov}(X)) = 0$
 
-All columns except Old Value are involved in a copy-constraint with the Stack Register Trace.
+All columns except Old Value are involved in a copy-constraint with the Register Trace.
 
 ### RAM
 
@@ -114,6 +113,8 @@ The trace consists of 37 registers, whose names and functions are defined in the
 | `cir` $T_{cir}$ | `pir` $T_{pir}$ | `clk` $T_{clk}$ | `ib0` $T_{ib0}$ | ... | `ib5` $T_{ib5}$ | `ip` $T_{ip}$ | `rp` $T_{rp}$ | `sp` $T_{sp}$ | `st0` $T_{st0}$ | ... | `st3` $T_{st3}$ | `hv0` $T_{hv0}$ | ... | `hv4` $T_{hv4}$ | `sc0` $T_{sc0}$ | ... | `sc15` $T_{sc15}$ |
 |-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
 
+### Register Trace AIR
+
 The columns are interpolated over the trace domain $\{\omicron^i \, | \, 0 \leq i < 2^k\}$. The AIR constraints are:
  - boundary constraints:
    - zero initial values: $T_*(1) = 0$ for all polynomials. (This implies that the first instruction is zero and that the stack initially contains four zero elements.)
@@ -133,21 +134,56 @@ The columns are interpolated over the trace domain $\{\omicron^i \, | \, 0 \leq 
    - control flow, with indicator functions $f_{skiz}(\mathbf{X})$, $f_{jumpa}(X)$, and $f_{jumpr}(X)$
      - regular flow: $(1 - f_{skiz}(X) - f_{jumpa}(X) - f_{jumpr}(X)) \cdot (T_{ip}(\omicron \cdot X) - T_{ip}(X) - 1) = 0$
 
+### Register Trace Copy-Constraints
+
 Columns from the Register Trace are involved in the following copy-constraints:
  - For each cycle: $(T_{ip}(X), T_{cir}(X))$ with $(P_a(X), P_v(X))$ from the Program Memory Table.
- - For each of `lte`, `and`, `or`, `xor`, `reverse`: $(T_{st1}(\omicron \cdot X), T_{st2}(\omicron \cdot X), T_{st3}(\omicron \cdot X))$ with matching rows and columns of the Uint32 Operations Table.
- - For each `gauss`: $(T_{st3}(X), T_{st3}(\omicron \cdot X))$ with matching rows in the Gauss Table.
+ - For each of `lt`, `eq`, `and`, `or`, `xor`, `reverse`: $(T_{st1}(\omicron \cdot X), T_{st2}(\omicron \cdot X), T_{st3}(\omicron \cdot X))$ with matching rows and columns of the Uint32 Operations Table.
  - For each `div`:
    1. $(T_{st2}(X), T_{st2}(\omicron \cdot X))$ with matching rows in the Uint32 Operations Table, and the simulated column corresponding to `lt` + `eq`.
    2. $(T_{st3}(X), T_{st3}(\omicron \cdot X))$ with matching rows in the Uint32 Operations Table, and the column corresponding to `lt`.
- - For each `read` or `write`: 
- - For each `split`: $(T_{hv0}(X), T_{hv1}(X), T_{hv2}(X), T_{hv3}(X))$ with matching rows in the 4-Wide 16-Bit Table.
+ - For each or `read` and `write`: $(T_{clk}(X), T_{cir}(X), T_{ib0}(X), \ldots, T_{ib5}(X), T_{rp}(X), T_{st3}(X))$ with matching rows in the RAM Table.
+ - For each `vread` and `vwrite`: $(T_{clk}(X), T_{pir}(X), T_{ib0}(X), \ldots, T_{ib5}(X), T_{rp}(X), T_{scj}(X), \ldots, T_{scj+3}(X))$ (where $j$ takes the value $0, 4, 8, 12$ depending on the immediate argument) with the matching rows in the RAM Table.
+ - For each `split`, a batch-copy-constraint establishes that $(T_{hv0}(X), T_{hv1}(X), T_{hv2}(X), T_{hv3}(X))$ have matching rows in the Dynamic 16-Bit Table.
+ - For each `vsplit`, a batch-copy-constraint establishes that $(T_{sc0}(X), T_{sc15}(X))$ have matching rows in the Dynamic 16-Bit Table.
+ - For each `gauss`: $(T_{st3}(X), T_{st3}(\omicron \cdot X))$ with matching rows in the 16-Bit/Gauss Table.
+ - For each `vgauss`, a batch-copy-constraint establishes that $(T_{sc0}(X),\ldots,T_{sc15}(X),T_{sc0}(\omicron \cdot X),\ldots,T_{sc15}(\omicron \cdot X))$ are in one-to-one correspondence with 16 consecutive rows of the 16-Bit/Gauss table $(G_i(X), G_o(X))$.
+ - For each `vsplit`, and for each $j \in \{0, 4, 8, 12\}$: $(T_{scj}(X), \ldots, T_{scj+3}(X))$ with matching rows in the 4-Wide 32-Bit Table.
  - For each `xlix`: consecutive rows of $(T_{sc0}(X), \ldots T_{sc15}(X))$ with rows apart by 8 in the Rescue-XLIX Table.
- - 
 
 ## Auxiliary Tables
 
 ### Rescue-XLIX
+
+The Rescue-XLIX table applies the Rescue-XLIX permutation to 16 variables, one round at a time.
+
+|  | H0 $H_0$ | ... | H15 $H_{15}$ |
+|--|----------|-----|--------------|
+|0.| -        | ... | - |
+|1.| -        | ... | - |
+|2.| -        | ... | - |
+|3.| -        | ... | - |
+|4.| -        | ... | - |
+|5.| -        | ... | - |
+|6.| -        | ... | - |
+|7.| -        | ... | - |
+
+The AIR makes no requirements for rows that are multiples of 8. Other rows apply one round of Rescue-XLIX, with the parameters determined by the row index modulo 8.
+
+A copy-constraint establishes that, whenever the `xlix` instruction is executed, the old and new 16-tuples in the SIMD cache correspond to rows $8k$ and $8k+7$ in the XLIX Table for some integer $k$.
+
 ### Uint32 Operations
 
-### Gauss
+The Uint32 Operations Table is a lookup table for 'difficult' 32-bit unsigned integer operations.
+
+|     | LHS      | RHS      | EQ     | LT    | AND       | OR       | XOR       | REV |
+|-----|----------|----------|--------|-------|-----------|----------|-----------|-----|
+| 1.  | `a`      | `b`      | `a==b` | `a<b` | `a and b` | `a or b` | `a xor b` | `rev(a)` |
+| 2.  | `a >> 1` | `b >> 1` | - | - | - | - | - | - |
+| ... | - | - | - | - | - | - | - | - | - | - |
+| 32. | `0` | `0` | `1` | `0` | `0` | `0` | `0` | `0` |
+| 33. | `c` | `d` | - | - | - | - | - | - |
+
+The AIR verifies the correct update of each consecutive pair of rows. In every row one bit is eliminated. Only when the previous row is all zeros (with a 1 in the column for `EQ`) can a new row be inserted.
+
+The AIR constraints establish that the entire table is consistent. Copy-constraints establish that logical and bitwise operations were computed correctly.
