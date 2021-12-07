@@ -27,7 +27,7 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 | Register | Name | Purpose |
 |----------|------|---------|
 | `cir` | current instruction register | contains the full instruction |
-| `piv` | previous instruction register | contains the full instruction of the last cycle; to be used for immediate instructions |
+| `pir` | previous instruction register | contains the full instruction of the last cycle; to be used for immediate instructions |
 | `clk` | clock register | counts the number of cycles the program has been running for |
 | `ib0` through `ib5` | instruction bit | contains the ith bit of the instruction |
 | `ip` | instruction pointer | contains the memory address (in instruction memory) of the instruction |
@@ -109,14 +109,14 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 | `add` | ? | `stack a b  -->  stack c` | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field. | 
 | `neg` | ? | `stack a  -->  stack b` | Computes the negation (over the field) of the top element of the stack. |
 | `mul` | ? | `stack a b  -->  stack c` | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field. |
-| `inv` | ? | `stack a  -->  stack b` | Computes the multiplicative inverse (over the field) of the top of the stack. If the argument `a` is zero, the result `b` will be zero as well. ||
+| `inv` | ? | `stack a  -->  stack b` | Computes the multiplicative inverse (over the field) of the top of the stack. If the argument `a` is zero, the result `b` will be zero as well. |
 | `split` | ? | `stack a  -->  stack lo hi` | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits, without making any assumptions about the top stack element. |
 | `eq` | ? | `stack a b  -->  stack (a == b)` | Tests the top two stack elements for equality. |
-| `lte` | ? | `stack a b  -->  stack (a <= b)` | Tests if the one-from top element is less than or equal the top element on the stack, assuming both are 32-bit integers. |
+| `lt` | ? | `stack a b  -->  stack (a < b)` | Tests if the one-from top element is less than or equal the top element on the stack, assuming both are 32-bit integers. |
 | `assert` | ? | identity | Fails if top of stack is zero. |
 | `and` | ? | `stack a b  -->  stack (a and b)` | Computes the bitwise-and of the top two stack elements, assuming both are 32-bit integers. |
 | `or` | ? | `stack a b  -->  stack (a or b)` | Computes the bitwise-or of the top two stack elements, assuming both are 32-bit integers. |
 | `xor` | ? | `stack a b  -->  stack (a xor b)` | Computes the bitwise-xor of the top two stack elements, assuming both are 32-bit integers. |
 | `reverse` | ? | `stack a  -->  stack b` | Flips the bit expansion of the top stack element, assuming it is a 32-bit integer. |
-| `div` | ? | `stack a b  -->  stack c d` | Computes division with remainder of the top two stack elements, assuming the arguments are positive 32-bit integers. The result satisfies `a == c * b + d` and `d < b`. |
+| `div` | ? | `stack a b  -->  stack c d` | Computes division with remainder of the top two stack elements, assuming the arguments are positive 32-bit integers. The result satisfies `a == c * b + d` and `d < b` and `c <= a`. |
 | `gauss` | ? | `stack a  -->  stack b` | Computes a uniform-to-gaussian resampling of the top stack element, assuming it is a uniform 16-bit integer. |

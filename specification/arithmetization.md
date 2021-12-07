@@ -55,11 +55,11 @@ However, the specific memory tables used in Triton VM differ from this pattern i
 
 Program Memory is read only, so the Old Value column can be dropped and the New Value column can be renamed to simple Value. Furthermore, since the value of the program memory does not change with time, there is nevery any need to store different values at the same address. So the address column contains simply $0$ through $\ell-1$, where $\ell$ is the program length. What's more, there already is a column in another table that counts the integers starting from 0, namely the cycle column in the Stack Register Trace. Furthermore, the Instruction and Cycle columns are not relevant any more. We are left with two columns.
 
-| Address | Value |
+| Address $P_a$ | Value $P_v$ |
 |---------|-------|
 | - | - |
 
-Let $P_a(X)$ and $P_v(X)$ denote the polynomials that interpolate these two columns over a trace domain $\{ \omicron^i \, \vert \, 0 \leq i < 2^k \}$. The AIR for this table are as follows:
+The polynomials interpolate these two columns over a trace domain $\{ \omicron^i \, \vert \, 0 \leq i < 2^k \}$. The AIR constraints for this table are as follows:
  - boundary constraint: $P_a(1) = 0$;
  - transition constraint: $P_a(\omicron \cdot X) - P_a(X) = 0$ for $X \in \{\omicron^i \, \vert \, 0 \leq i < 2^k-1\}$.
 
@@ -69,30 +69,85 @@ The Program Memory Table comes with one mask column, which takes values from $\{
 
 The Stack Memory contains the underflow from the stack registers, i.e., the entire stack except for the top 4 elements. The difference with respect to the general format is that the instruction needs to indicate whether the stack is growing or shrinking. (When it stays the same size, there is no need to modify memory.) To this end, the table also includes the instruction bit registers. There is a low degree polynomial $f(\mathbf{X})$ that, as a function of these registers' values, indicates whether the stack grows or shrinks, by taking the zero or a nonzero value, respectively.
 
-| Cycle | Instruction | Instr Bit 0 | . . . | Instr Bit 5 | Address | New Value | Old Value |
+| Cycl $S_c$ | Instruction $S_i$ | Instr Bit 0 $S_{i0}$ | . . . | Instr Bit 5 $S_{i5}$ | Address $S_a$ | New Value $S_{nv}$ | Old Value $S_{ov}$ |
 |-------|-------------|-------------|--------|-------------|---------|-----------|------|
-| - | - | - |  | - | - | - |  - |
+| - | - | - |  | - | - | - |  - | - |
 
-Let $S_c(X)$, $S_i(X)$, $S_{i0}(X)$, ..., $S_{i5}(X)$, $S_a(X)$, S_{nv}(X)$, $S_{ov}(X)$ be the polynomials that interpolate these columns over a trace domain $\{\omicron^i \, \vert \, 0 \leq i < 2^k-1 \}$. Then the AIR constraints for this table are:
+The polynomials interpolate these columns over a trace domain $\{\omicron^i \, \vert \, 0 \leq i < 2^k-1 \}$. The AIR constraints for this table are:
  - boundary constraints
     - boundary address: $S_a(1) = 0$
     - boundary cycle: $S_c(1) = 0$
+    - initial value: $S_{ov}(1) = 0$
  - transition constraints, for $X \in \{\omicron^i \, \vert \, 0 \leq i < 2^k-1\}$
     - monotonicity of addresses: $(S_a(\omicron \cdot X) - S_a(X)) \cdot (S_a(\omicron \cdot X) - S_a(X) - 1) = 0$ 
     - conditional monotonicity of cycles: $(S_a(\omicron \cdot X) - S_a(X) - 1) \cdot (S_c(\omicron \cdot X) - S_c(X) - 1) = 0$
-    - initial values of new memory cells: $(S_a(\omicron \cdot X) - S_a(X)) \cdot S_{ov}(X) = 0$
+    - initial values of new memory cells: $(S_a(\omicron \cdot X) - S_a(X)) \cdot S_{ov}(\omicron \cdot X) = 0$
     - evolution of value in same-address cells: $(S_a(\omicron \cdot X) - S_a(X) - 1) \cdot f(\mathbf{X}) \cdot (S_{nv}(X) - S_{ov}(X)) = 0$
 
 All columns except Old Value are involved in a copy-constraint with the Stack Register Trace.
 
 ### RAM
 
-## Register Table
+The RAM is accessible in two ways: first, individual memory elements can be read to and written from the stack; second, chunks of four elements (words) can be written to and read from the SIMD register. To enable this, the address is split into the high part (everything but the least significant two bits), and low bart (least significant two bits).
+
+| Cycl $R_c$ | Instr $R_i$ | IB0 $R_{i0}$ | ... | IB5 $R_{i5}$ | Addr $R_a$ | AddrHi $R_{ahi}$ | AddrLo $R_{alo}$ | NV0 $R_{nv0}$ | ... | NV3 $R_{nv3}$ | OV0 $R_{ov0}$ | ... | OV3 $R_{ov}$ | Val $R_{val}$ |
+|------------|-------------------|----------------------|--------|---------------|------|-----|----|---------------|-------|----------------|-------|--------------|-|
+| - | - | - |  | - | - | - | - | - |  | - | - |  | - | - |
+
+The polynomials interpolate the columns of this table over the trace domain $\{\omicron^i \, \vert \, 0 \leq i < 2^k\}$. Let $f_s(\mathbf{X})$ and $f_v(\mathbf{X})$ be the low degree polynomials that indicate write instructions from stack and SIMD registers, respectively. The AIR constraints are:
+ - boundary constraints: 
+    - initial values: $\forall j \in \{0, \ldots, 3\} \, . \, R_{ovj}(1) = 0$
+ - consistency constraints, over $X \in \{\omicron^i \, \vert \, 0 \leq i < 2^k\}$:
+    - valid decomposition of address: $4 \cdot R_{ahi}(X) + R_{alo}(X) - R_a(X) = 0$
+    - valid least-significant two bits: $R_{alo}(X) \cdot ( 1 - R_{alo(X)} ) \cdot ( 2 - R_{alo}(X)) \cdot (3 - R_{alo}(X)) = 0$
+ - transition constraints, for $X \in \{\omicron^i \vert \, 0 \leq i < 2^k-1\}$:
+   - monotonicity of addresses: $R_a(\omicron \cdot X) - R_a(X) - 1 = 0$
+   - conditional monotonicity of cycles: $(R_a(\omicron \cdot X) - R_a(X)) \cdot (R_c(\omicron \cdot X) - R_c(X)) = 0$
+   - initial values of new memory cells: $\forall j \in \{0,\ldots,3\} \, . \, (R_a(\omicron \cdot X) - R_a(X)) \cdot R_{ovj}(\omicron \cdot X) = 0$
+   - no changes unless instructed: $\forall j \in \{0, \ldots, 3\} \, . \, (R_{ovj}(X) - R_{nvj}(X)) \cdot ( f_s(\mathbf{X}) + f_v(\mathbf{X}) - 1 ) = 0$
+   - when writing from stack, just the one register may change: $\forall j \in \{0, \ldots, 3\} \, . \, f_s(\mathbf{X}) \cdot (\prod_{j' \neq j} (R_{alo}(X) - j')) \cdot (R_{ovj}(X) - R_{nvj}(X)) = 0$
+
+## Register Trace
+
+The trace consists of 37 registers, whose names and functions are defined in the [instruction set architecture](isa.md).
+
+| `cir` $T_{cir}$ | `pir` $T_{pir}$ | `clk` $T_{clk}$ | `ib0` $T_{ib0}$ | ... | `ib5` $T_{ib5}$ | `ip` $T_{ip}$ | `rp` $T_{rp}$ | `sp` $T_{sp}$ | `st0` $T_{st0}$ | ... | `st3` $T_{st3}$ | `hv0` $T_{hv0}$ | ... | `hv4` $T_{hv4}$ | `sc0` $T_{sc0}$ | ... | `sc15` $T_{sc15}$ |
+|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
+
+The columns are interpolated over the trace domain $\{\omicron^i \, | \, 0 \leq i < 2^k\}$. The AIR constraints are:
+ - boundary constraints:
+   - zero initial values: $T_*(1) = 0$ for all polynomials. (This implies that the first instruction is zero and that the stack initially contains four zero elements.)
+ - consistency constraints, for $X \in \{\omicron^i \, | \, 0 \leq i < 2^k\}$:
+   - binary instruction bits: $\forall j \in \{0, \ldots, 5\} \, . \, T_{ibj}(X) \cdot ( 1 - T_{ibj}(X) ) = 0$
+   - valid instruction decomposition: $T_{cir}(X) - \sum_{j=0}^{5} 2^j \cdot T_{ibj}(X) = 0$
+   - correct decomposition of stack top: $T_{st3}(X)) - \sum_{j=0}^{3} 2^{16 \cdot j} \cdot T_{hvj}(X) = 0$
+   - unique decomposition of stack top: $\big(T_{hv3}(X) \cdot (2^{16} \cdot T_{hv3}(X) + T_{hv2}(X)) - 1\big) \cdot (2^{16} \cdot T_{hv1}(X) + T_{hv0}(X)) = 0$
+ - transition constraints, for $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$:
+   - monotonicity of cycle: $T_{clk}(\omicron \cdot X) - T_{clk}(X) = 0$
+   - correct movement of instructions: $T_{pir}(\omicron \cdot X) - T_{cir}(X) = 0$
+   - stack
+     - growth
+     - shrinkage
+     - manipulation
+   - native arithmetic operations TODO
+   - control flow, with indicator functions $f_{skiz}(\mathbf{X})$, $f_{jumpa}(X)$, and $f_{jumpr}(X)$
+     - regular flow: $(1 - f_{skiz}(X) - f_{jumpa}(X) - f_{jumpr}(X)) \cdot (T_{ip}(\omicron \cdot X) - T_{ip}(X) - 1) = 0$
+
+Columns from the Register Trace are involved in the following copy-constraints:
+ - For each cycle: $(T_{ip}(X), T_{cir}(X))$ with $(P_a(X), P_v(X))$ from the Program Memory Table.
+ - For each of `lte`, `and`, `or`, `xor`, `reverse`: $(T_{st1}(\omicron \cdot X), T_{st2}(\omicron \cdot X), T_{st3}(\omicron \cdot X))$ with matching rows and columns of the Uint32 Operations Table.
+ - For each `gauss`: $(T_{st3}(X), T_{st3}(\omicron \cdot X))$ with matching rows in the Gauss Table.
+ - For each `div`:
+   1. $(T_{st2}(X), T_{st2}(\omicron \cdot X))$ with matching rows in the Uint32 Operations Table, and the simulated column corresponding to `lt` + `eq`.
+   2. $(T_{st3}(X), T_{st3}(\omicron \cdot X))$ with matching rows in the Uint32 Operations Table, and the column corresponding to `lt`.
+ - For each `read` or `write`: 
+ - For each `split`: $(T_{hv0}(X), T_{hv1}(X), T_{hv2}(X), T_{hv3}(X))$ with matching rows in the 4-Wide 16-Bit Table.
+ - For each `xlix`: consecutive rows of $(T_{sc0}(X), \ldots T_{sc15}(X))$ with rows apart by 8 in the Rescue-XLIX Table.
+ - 
 
 ## Auxiliary Tables
 
 ### Rescue-XLIX
-
-### 32-bit Operations
+### Uint32 Operations
 
 ### Gauss
