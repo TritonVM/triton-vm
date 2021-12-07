@@ -69,7 +69,7 @@ The Program Memory Table comes with one mask column, which takes values from $\{
 
 The Stack Memory contains the underflow from the stack registers, i.e., the entire stack except for the top 4 elements. The difference with respect to the general format is that the instruction needs to indicate whether the stack is growing or shrinking. (When it stays the same size, there is no need to modify memory.) To this end, the table also includes the instruction bit registers. There is a low degree polynomial $f(\mathbf{X})$ that, as a function of these registers' values, indicates whether the stack grows or shrinks, by taking the zero or a nonzero value, respectively.
 
-| Cycl $S_c$ | Instruction $S_i$ | Instr Bit 0 $S_{i0}$ | . . . | Instr Bit 5 $S_{i5}$ | Address $S_a$ | New Value $S_{nv}$ | Old Value $S_{ov}$ |
+| Cycle $S_c$ | Instruction $S_i$ | Instr Bit 0 $S_{i0}$ | . . . | Instr Bit 5 $S_{i5}$ | Address $S_a$ | New Value $S_{nv}$ | Old Value $S_{ov}$ |
 |-------|-------------|-------------|--------|-------------|---------|-----------|------|
 | - | - | - |  | - | - | - |  - | - |
 
@@ -90,9 +90,9 @@ All columns except Old Value are involved in a copy-constraint with the Stack Re
 
 The RAM is accessible in two ways: first, individual memory elements can be read to and written from the stack; second, chunks of four elements (words) can be written to and read from the SIMD register. To enable this, the address is split into the high part (everything but the least significant two bits), and low bart (least significant two bits).
 
-| Cycl $R_c$ | Instr $R_i$ | IB0 $R_{i0}$ | ... | IB5 $R_{i5}$ | Addr $R_a$ | AddrHi $R_{ahi}$ | AddrLo $R_{alo}$ | NV0 $R_{nv0}$ | ... | NV3 $R_{nv3}$ | OV0 $R_{ov0}$ | ... | OV3 $R_{ov}$ | Val $R_{val}$ |
-|------------|-------------------|----------------------|--------|---------------|------|-----|----|---------------|-------|----------------|-------|--------------|-|
-| - | - | - |  | - | - | - | - | - |  | - | - |  | - | - |
+| Cycle $R_c$ | Instr $R_i$ | IB0 $R_{i0}$ | ... | IB5 $R_{i5}$ | Addr $R_a$ | AddrHi $R_{ahi}$ | AddrLo $R_{alo}$ | NV0 $R_{nv0}$ | ... | NV3 $R_{nv3}$ | OV0 $R_{ov0}$ | ... | OV3 $R_{ov}$ | Val $R_{val}$ |
+|------------|-------------------|----------------------|--------|---------------|------|-----|----|---------------|-------|----------------|-------|--------------|-|-|
+| - | - | - |  | - | - | - | - | - |  | - | - |  | - | 
 
 The polynomials interpolate the columns of this table over the trace domain $\{\omicron^i \, \vert \, 0 \leq i < 2^k\}$. Let $f_s(\mathbf{X})$ and $f_v(\mathbf{X})$ be the low degree polynomials that indicate write instructions from stack and SIMD registers, respectively. The AIR constraints are:
  - boundary constraints: 
