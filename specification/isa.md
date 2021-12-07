@@ -70,9 +70,12 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 
 | Instruction | Value | Effect on Stack | Description |
 |-|-|-|-|
+| `nop` | 0 | identity | Do nothing, just continue to next instruction. |
 | `skiz` | ? | `stack top  -->  stack top` | Skip next instruction if `top` is zero. |
 | `jumpa` + `mem` | ? | `stack  -->  stack mem` | Set the instruction pointer `ip` to the immediate argument `mem` for jumping to an absolute instruction address. |
 | `jumpr` + `mem` | ? | `stack  -->  stack mem` | Set the instruction pointer `ip` to `ip + mem` for jumping to a relative instruction address. |
+| `assert` | ? | `stack a  -->  stack` | Halts and fails if not `a == 1`. |
+| `halt` | ? | identity | Solves the halting problem (if the instruction is reached). |
 
 **Memory Access**
 
@@ -91,6 +94,7 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 | `shift` + `shamt` | ? | identity | Shifts the values of the SIMD registers up or down by immediate argument `shamt` |
 | `zero` + `arg` | ? | identity | Sets the lowest `arg`-many SIMD registers to zero. |
 | `vpad` + `arg` | ? | identity | Sets the top `arg`-many SIMD registers to nondeterministic values. |
+| `vswap` + `arg` | ? | identity | Switches the top `arg`-many SIMD registers with the second `arg`-many SIMD registers. |
 | `vsplit` | ? | identity | Splits the top 4 registers into 16 values of 16 bits, using all registers. |
 | `vadd` | ? | identity | Sets the top 8 registers to the sum of the top 8 registers plus the bottom 8 registers. |
 | `vmul` | ? | identity | Sets the top 8 registers to the element-wise product of the top 8 registers plus the bottom 8 registers. |
