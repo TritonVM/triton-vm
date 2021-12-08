@@ -108,31 +108,53 @@ The polynomials interpolate the columns of this table over the trace domain $\{\
 
 ## Register Trace
 
-The trace consists of 37 registers, whose names and functions are defined in the [instruction set architecture](isa.md).
+The trace consists of 38 registers, Many of the names and functions are defined in the [instruction set architecture](isa.md). The remaining ones are:
+ - `ibj` for `j` ranging from 0 to 5; these are the instruction bit registers. Each `ibj` should contain exactly one bit of the current instruction.
+ - `if` immediate flag. The current instruction is not executed if this flag is set; instead, the previous is.
 
-| `cir` $T_{cir}$ | `pir` $T_{pir}$ | `clk` $T_{clk}$ | `ib0` $T_{ib0}$ | ... | `ib5` $T_{ib5}$ | `ip` $T_{ip}$ | `rp` $T_{rp}$ | `sp` $T_{sp}$ | `st0` $T_{st0}$ | ... | `st3` $T_{st3}$ | `hv0` $T_{hv0}$ | ... | `hv4` $T_{hv4}$ | `sc0` $T_{sc0}$ | ... | `sc15` $T_{sc15}$ |
-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
+| `cir` $T_{cir}$ | `pir` $T_{pir}$ | `clk` $T_{clk}$ | `if` $T_{if}$ | `ib0` $T_{ib0}$ | ... | `ib5` $T_{ib5}$ | `ip` $T_{ip}$ | `rp` $T_{rp}$ | `sp` $T_{sp}$ | `st0` $T_{st0}$ | ... | `st3` $T_{st3}$ | `hv0` $T_{hv0}$ | ... | `hv4` $T_{hv4}$ | `sc0` $T_{sc0}$ | ... | `sc15` $T_{sc15}$ |
+|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
 
 ### Register Trace AIR
 
-The columns are interpolated over the trace domain $\{\omicron^i \, | \, 0 \leq i < 2^k\}$. The AIR constraints are:
- - boundary constraints:
-   - zero initial values: $T_*(1) = 0$ for all polynomials. (This implies that the first instruction is zero and that the stack initially contains four zero elements.)
- - consistency constraints, for $X \in \{\omicron^i \, | \, 0 \leq i < 2^k\}$:
-   - binary instruction bits: $\forall j \in \{0, \ldots, 5\} \, . \, T_{ibj}(X) \cdot ( 1 - T_{ibj}(X) ) = 0$
-   - valid instruction decomposition: $T_{cir}(X) - \sum_{j=0}^{5} 2^j \cdot T_{ibj}(X) = 0$
-   - correct decomposition of stack top: $T_{st3}(X)) - \sum_{j=0}^{3} 2^{16 \cdot j} \cdot T_{hvj}(X) = 0$
-   - unique decomposition of stack top: $\big(T_{hv3}(X) \cdot (2^{16} \cdot T_{hv3}(X) + T_{hv2}(X)) - 1\big) \cdot (2^{16} \cdot T_{hv1}(X) + T_{hv0}(X)) = 0$
- - transition constraints, for $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$:
+The columns are interpolated over the trace domain $\{\omicron^i \, | \, 0 \leq i < 2^k\}$. The AIR constraints follow.
+
+#### Boundary constraints
+
+Zero initial values: $T_*(1) = 0$ for all polynomials. This implies that the first instruction is zero and that the stack initially contains four zero elements.
+
+#### Consistency constraints
+
+The consistency constraints hold for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k\}$.
+- binary instruction bits: $\forall j \in \{0, \ldots, 5\} \, . \, T_{ibj}(X) \cdot ( 1 - T_{ibj}(X) ) = 0$
+- valid instruction decomposition: $T_{cir}(X) - \sum_{j=0}^{5} 2^j \cdot T_{ibj}(X) = 0$
+- correct decomposition of stack top: $T_{st3}(X)) - \sum_{j=0}^{3} 2^{16 \cdot j} \cdot T_{hvj}(X) = 0$
+- unique decomposition of stack top: $\big(T_{hv3}(X) \cdot (2^{16} \cdot T_{hv3}(X) + T_{hv2}(X)) - 1\big) \cdot (2^{16} \cdot T_{hv1}(X) + T_{hv0}(X)) = 0$
+
+#### Transition Constraints Instruction Fetching and Control Flow
+
+The transition constraints are valid for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$.
+
    - monotonicity of cycle: $T_{clk}(\omicron \cdot X) - T_{clk}(X) = 0$
    - correct movement of instructions: $T_{pir}(\omicron \cdot X) - T_{cir}(X) = 0$
+   - control flow, with indicator functions $f_{skiz}(\mathbf{X})$, $f_{jumpa}(X)$, and $f_{jumpr}(X)$
+     - regular flow: $(1 - f_{skiz}(X) - f_{jumpa}(X) - f_{jumpr}(X)) \cdot (T_{ip}(\omicron \cdot X) - T_{ip}(X) - 1) = 0$
+
+#### Transition Constraints for Stack
+
+The transition constraints are valid for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$.
+
    - stack
      - growth
      - shrinkage
      - manipulation
+
+#### Transition Constraints for Native Arithmetic
+
+The transition constraints are valid for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$.
+
    - native arithmetic operations TODO
-   - control flow, with indicator functions $f_{skiz}(\mathbf{X})$, $f_{jumpa}(X)$, and $f_{jumpr}(X)$
-     - regular flow: $(1 - f_{skiz}(X) - f_{jumpa}(X) - f_{jumpr}(X)) \cdot (T_{ip}(\omicron \cdot X) - T_{ip}(X) - 1) = 0$
+  
 
 ### Register Trace Copy-Constraints
 
