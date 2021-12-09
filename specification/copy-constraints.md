@@ -64,3 +64,6 @@ Likewise, we can re-write the AIR for the running product to avoid accumulating 
 
 The protocol can be extended quite naturally to the case where only a subset of the rows of $T$ are shown to be contained in $S$. This adaptation requires a second mask to indicate which rows of $T$ should be considered in this subset claim.
 
+## Batch-Subset
+
+What if we have a table $T$ consisting of 
