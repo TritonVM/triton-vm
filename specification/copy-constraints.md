@@ -54,7 +54,7 @@ Nevertheless, we can use $M$ write an AIR that avoids accumulating a factor $S_{
 Likewise, we can re-write the AIR for the running product to avoid accumulating a factor $R_{[i]}$ when $R_{[i]} = R_{[i-1]}$. The resulting running *square-free* product also corresponds to an evaluation of $\prod_i \left( a_i - X \right)$ in $\beta$.
 
 **Protocol Subset**
- - Prover computes $R \leftarrow \mathsf{sort}(T)$ and $M \leftarrow \{[[S_{[i]} \in \mathsf{set}(R)]] \, \vert \, i \in \{0, \ldots, 2^k-1\}\}$ and commits to them.
+ - Prover computes $R \leftarrow \mathsf{sort}(T)$ and $M \leftarrow \{[ [ S_{[i]} \in \mathsf{set}(R) ] ] \, \vert \, i \in \{0, \ldots, 2^k-1\}\}$ and commits to them.
  - Prover and Verifier run a Permutation subprotocol on $(T,R)$.
  - Verifier samples $\beta \xleftarrow{\$} \mathbb{F}$ and sends it to Prover.
  - Prover computes the running square-free product table $R_ p$ of $R$, and the running masked product table of $S_ p$ of $S$ masked by $M$.
