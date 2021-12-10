@@ -66,4 +66,47 @@ The protocol can be extended quite naturally to the case where only a subset of 
 
 ## Batch-Subset
 
-What if we have a table $T$ consisting of 
+What if we have a table $T$ consisting of $r$ columns and a mask $M_ T$, and we want to show that all *cells* of all indicated rows of this table are contained in the single column of another table $S$? There are two solutions. The first uses $r+1$ additional columns to compute the running product. The second uses an intermediate table of $r$ columns.
+
+### Batch-Subset with Additional Columns
+
+The Verifier supplies $\beta$. Then the prover concatenates to $T$ a column $T_{[:,r]}$ whose elements satisfy
+ - if $M_{[0]} = 1$ then $T_{[0, r]} = (T_{[0,0]} - \beta) \cdot (T_{[0,1]} - \beta)$, and otherwise $T_{[0,r]} = 1$;
+ - for $i > 1: T_{[i,r]} = T_{[i-1,r]} \cdot (T_{[i, 0]} - \beta) \cdot (T_{[i, 1]} - \beta)$.
+
+After concatenating $r$ such columns, the last column of $T$ satisfies $T_{[i,2r-1]} = \prod_{j=0}^{r-1} (T_{[i,j]} - \beta)$ for all $i$. One more column computes the running product.
+
+Unfortunately, this construction cannot filter out duplicates, so it cannot be linked via Permutation Argument to a duplicate-free lookup table directly. However, it *can* be linked via Permutation Argument to an intermediate table whose column contains all values sorted. This intermediate table admits a square-free running product, which can be used to complete the link to the duplicate-free lookup table $S$.
+
+### Batch-Subset with an Intermediate Table with Linear AIR
+
+Let $R$ be a table of $r$ columns such that
+ - every next row is the same as the previous row, except for a shift to the right by one along with a new element on the left;
+ - every indicated row of $T$ is present in $R$;
+ - there are enough rows so that every indicated cell in $T$ appears in the rightmost column of $R$.
+
+Then one Subset Argument establishes that all indicated rows of $T$ are present in $R$, and another Subset Argument establishes that all elements of the last column of $R$ are present in $S$.
+
+**Example.** Let T be the table below, along with a mask.
+
+| MT | T[:,0] | T[:,1] | T[:,2] |
+|----|--------|--------|--------|
+| 0  |        |        |        |
+| 1  |   a    |    b   |    c   |
+| 0  |        |        |        |
+| 0  |        |        |        |
+| 0  |        |        |        |
+| 1  |   d    |    e   |   f    |
+
+Then the intermediate table could be constructed as below.
+
+| R[:,0] | R[:,1] | R[:,2] |
+|--------|--------|--------|
+| a | b | c |
+| f | a | b |
+| e | f | a |
+| d | e | f |
+| - | d | e |
+| - | - | d |
+
+Note that the indicated rows of T are present in R, and all elements from those rows are present in the last column of R.
