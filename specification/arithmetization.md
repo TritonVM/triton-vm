@@ -1,6 +1,6 @@
 # Triton VM Arithmetization
 
-This document describes the arithmetization of Triton VM, whose instruction set architecture is defined [here](isa.md). An arithmetization defines two things: a algebraic execution tables (AETs) and arithmetic intermediate representation (AIR) constraints. The nature of Triton VM is that the execution trace is spread out over multiple tables; we treat each table separately.
+This document describes the arithmetization of Triton VM, whose instruction set architecture is defined [here](isa.md). An arithmetization defines two things: a algebraic execution tables (AETs) and arithmetic intermediate representation (AIR) constraints. The nature of Triton VM is that the execution trace is spread out over multiple tables, but linked through permutation arguments.
 
 Elsewhere, the acronym AET stands for algebraic execution *trace*. In the nomenclature of this note, a trace is a special kind of table that tracks the values of a set of registers across time.
 
@@ -8,32 +8,12 @@ Elsewhere, the acronym AET stands for algebraic execution *trace*. In the nomenc
 
 A number of tables are used to show that certain values are in the range $[0;2^{16})$. The symbol $F$ is used to indicate an issue of *format*.
 
-### Fixed
-
-The Fixed 16-Bit Table contains all elements from 0 to 2^16 - 1, in that order. Every proof ships with it.
-
-The Fixed 16-Bit Table comes with another column, whose purpose is to map the uniformly distributed 16-bit integer to a discrete Gaussian, with parameters suitable for lattice-based crypto operations.
+The 16-Bit/Gauss Table has two columns. The first contains all elements from 0 to 2^16 - 1, in that order. The purpose of the second column is to map the uniformly distributed 16-bit integer to a discrete Gaussian, with parameters suitable for lattice-based crypto operations.
 
 | $F_{p16}$ | $F_{pg}$ |
-|---------------|-------------|
-
-The table is preprocessed, so no AIR is necessary. The table is used to verify copy-constraints; so there will be dynamic masks.
-
-### Dynamic
-
-The Dynamic 16-Bit Table consists of 2 variables. It contains all the values arising in the course of an execution whose correct format must be verified -- namely, it must be verified that these values consist of 16 bits or that their resampling to the Gaussian distribution was correct.
-
-| $F_{d16}$ | $F_{dg}$ |
 |-----------|----------|
-| d | h |
-| c | i |
-| b | j |
-| a | k |
-| e | l |
-| f | m |
-| g | n |
 
-A copy-constraint establishes that all the rows of the Dynamic 16-Bit Table are contained in the Fixed 16-Bit Table.
+The table is preprocessed, so no AIR is necessary. However, the table is used for table lookups, achieved through copy-constraints; so there will be dynamic masks.
 
 ## Memory Tables
 
@@ -51,18 +31,92 @@ However, the specific memory tables used in Triton VM differ from this pattern i
 
 ### Program
 
-Program Memory is read only, so the Old Value column can be dropped and the New Value column can be renamed to simple Value. Furthermore, since the value of the program memory does not change with time, there is nevery any need to store different values at the same address. So the address column contains simply $0$ through $\ell-1$, where $\ell$ is the program length. What's more, there already is a column in another table that counts the integers starting from 0, namely the cycle column in the Stack Register Trace. Furthermore, the Instruction and Cycle columns are not relevant any more. We are left with two columns.
+Program Memory is read only, so the Old Value column can be dropped and the New Value column can be renamed to simply *Value*. Furthermore, since the value of the program memory does not change with time, there is never any need to store different values at the same address. So the address column contains simply $0$ through $\ell-1$, where $\ell$ is the program length. What's more, there already is a column in another table that counts the integers starting from 0, namely the cycle counter column in the Stack Register Trace. Furthermore, the Instruction and Cycle Counter columns are not relevant any more. We are left with two columns.
 
 | Address $P_a$ | Value $P_v$ |
 |---------------|-------------|
 | - | - |
 
-The polynomials interpolate these two columns over a trace domain $\{ \omicron^i \, \vert \, 0 \leq i < 2^k \}$. The AIR constraints for this table are as follows:
- - boundary constraints:
-     - address initialized to 0: $P_a(1) = 0$
-     - first instruction is defined as 0: $P_v(1) = 0$;
- - transition constraints, for $X \in \{ \omicron^i \, | \, 0 \leq i < 2^k - 1\}$:
-     - monotonicity of address increase $P_a(\omicron \cdot X) - P_a(X) - 1 = 0$
+**Boundary Constraints**
+
+ 1. The first address is zero: ${P_a}_{[0]} = 0$.
+ 2. The first instruction is zero: ${P_v}_{[0]} = 0$.
+
+**Transition Constraints**
+
+ 1. The addresses increase monotonically for all $i$: ${P_a}_{[i+1]} = {P_a}_{[i]} + 1$.
+
+### Operational Stack
+
+### Return Address Stack
+
+The Return Address Memory contains the underflow from the Return Address Stack. The virtual machine defines two registers to deal with the Return Address Stack: `rasp`, the return address stack pointer, which points to a location in Return Address Stack Memory; and `ra`, the return address value, which points to a location in Program Memory.
+
+The Return Address Stack Memory is a table whose columns are a subset of those of the Register Trace, and whose rows are sorted by return address stack pointer, then by cycle counter.
+
+The AIR for this table guarantees that the return address of a single cell of return address memory can change only if there was a `call` instruction.
+
+In every cycle, `ra` is the address that control would jump to if the instruction is `return`. An example execution trace and matching memory table are shown below.
+
+Execution trace:
+
+| `clk` | `ip` | `pir` | `cir` | `ra` | `rasp` | return address stack |
+|-------|------|-------|-------|------|--------|----------------------|
+| 0 | `0x00` | 0 | 0 | `0x00` | 0 | [] |
+| 1 | `0x01` | 0 | `foo` | `0x00` | 0 | [] |
+| 2 | `0x02` | `foo` | `bar` | `0x00` | 0 | [] |
+| 3 | `0x03` | `bar` | `call` | `0x00` | 0 | [] |
+| 4 | `0x04` | `call` | `0xA0` | `0x05` | 1 | [`0x05`] |
+| 5 | `0xA0` | `0xA0` | `foo` | `0x05` | 1 | [`0x05`] |
+| 6 | `0xA1` |`foo` | `bar` | `0x05` | 1 | [`0x05`] |
+| 7 | `0xA2` | `bar` | `return` | `0x05` | 1 | [`0x05`] |
+| 8 | `0x05` | `return` | `foo` | `0x00` | 0 | [] |
+| 9 | `0x06` | `foo` | `bar` | `0x00` | 0 | [] |
+| 10| `0x07` | `bar` | `call` | `0x00` | 0 | [] |
+| 11| `0x08` | `call` | `0xB0` | `0x08` | 1 | [`0x08`] |
+| 12| `0xB0` | `0xB0` | `call` | `0x08` | 1 | [`0x08`] |
+| 13| `0xB1` | `call` | `0xC0` | `0xB2` | 2 | [`0x08`, `0xB2`] |
+| 14| `0xC0` | `0xC0` | `foo` | `0xB2` | 2 | [`0x08`, `0xB2`] |
+| 15| `0xC1` | `foo` | `bar` | `0xB2` | 2 | [`0x08`, `0xB2`] |
+| 16| `0xC2` | `bar` | `return` | `0xB2` | 2 | [`0x08`, `0xB2`] |
+| 17| `0xB2` | `return` | `return` | `0x08` | 1 | [`0x08`] |
+| 18| `0x08` | `return` | `foo` | `0x00` | 0 | [] |
+
+Memory table:
+
+
+| `clk` | `cir` | `ra` | `rasp` |
+|-------|-------|------|--------|
+| 0 | 0 | `0x00` | 0 |
+| 1 | `foo` | `0x00` | 0 |
+| 2 | `bar` | `0x00` | 0 |
+| 3 | `call` | `0x00` | 0 |
+| 8 | `foo` | `0x00` | 0 |
+| 9 | `bar` | `0x00` | 0 |
+| 10| `call` | `0x00` | 0 |
+| 18 | `foo` | `0x00` | 0 |
+| 4 | `0xA0` | `0x05` | 1 |
+| 5 | `foo` | `0x05` | 1 |
+| 6 | `bar` | `0x05` | 1 |
+| 7 | `return` | `0x05` | 1 |
+| 11| `0xB0` | `0x08` | 1 |
+| 12| `call` | `0x08` | 1 |
+| 17| `return` | `0x08` | 1 |
+| 13| `0xC0` | `0xB2` | 2 |
+| 14| `foo` | `0xB2` | 2 |
+| 15| `bar` | `0xB2` | 2 |
+| 16| `return` | `0xB2` | 2 |
+
+**Boundary Constraints**
+
+ 1. All registers are initially zero.
+
+**Transition Constraints**
+
+ 1. The return address stack pointer increases by one, *or*
+ 2. The cycle counter increases by one and the remaining registers remain the same, *or*
+ 3. the instruction is `call`, so the return address can change; *or*
+    2.3. the instruction is `return`, 
 
 ### Stack
 
