@@ -46,8 +46,6 @@ Program Memory is read only, so the Old Value column can be dropped and the New 
 
  1. The addresses increase monotonically for all $i$: ${P_a}_{[i+1]} = {P_a}_{[i]} + 1$.
 
-### Operational Stack
-
 ### Return Address Stack
 
 The Return Address Memory contains the underflow from the Return Address Stack. The virtual machine defines two registers to deal with the Return Address Stack: `rasp`, the return address stack pointer, which points to a location in Return Address Stack Memory; and `ra`, the return address value, which points to a location in Program Memory.
@@ -118,29 +116,69 @@ Memory table:
  3. the old instruction is `call` and the next return address is the same; *or*
  4. the old instruction is `return`.
 
+### Operational Stack
 
-### Stack
+The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects. There are four registers that the program can access directly; these registers correspond to the top of the stack. The rest of the operational stack is stored in a dedicated memory object called Operational Stack Memory.
 
-The Stack Memory contains the underflow from the stack registers, i.e., the entire stack except for the top 4 elements. The difference with respect to the general format is that the instruction needs to indicate whether the stack is growing or shrinking. (When it stays the same size, there is no need to modify memory.) To this end, the table also includes the instruction bit registers. There is a low degree polynomial $f(\mathbf{X})$ that, as a function of these registers' values, indicates whether the stack grows or shrinks, by taking the zero or a nonzero value, respectively.
+The operational stack memory table contains a subset of the rows of the Register Trace and *two* columns for the stored value -- the old value and the new value. In exchange, the Operational Stack Memory Table stores fewer rows. In fact, it only stores rows associated with a stack growth or shrinkage. A copy-constraint establishes that the stack reads and writes are correct.
 
-| Cycle $S_c$ | Instruction $S_i$ | Instr Bit 0 $S_{i0}$ | . . . | Instr Bit 5 $S_{i5}$ | Address $S_a$ | New Value $S_{nv}$ | Old Value $S_{ov}$ |
-|-------|-------------|-------------|--------|-------------|---------|-----------|------|
-| - | - | - |  | - | - | - |  - | - |
+The mechanics are best illustrated by an example.
 
-The polynomials interpolate these columns over a trace domain $\{\omicron^i \, \vert \, 0 \leq i < 2^k-1 \}$. The AIR constraints for this table are:
- - boundary constraints
-    - boundary address: $S_a(1) = 0$
-    - boundary cycle: $S_c(1) = 0$
-    - initial value: $S_{ov}(1) = 0$
- - transition constraints, for $X \in \{\omicron^i \, \vert \, 0 \leq i < 2^k-1\}$
-    - monotonicity of addresses: $(S_a(\omicron \cdot X) - S_a(X)) \cdot (S_a(\omicron \cdot X) - S_a(X) - 1) = 0$ 
-    - conditional monotonicity of cycles: $(S_a(\omicron \cdot X) - S_a(X) - 1) \cdot (S_c(\omicron \cdot X) - S_c(X) - 1) = 0$
-    - initial values of new memory cells: $(S_a(\omicron \cdot X) - S_a(X)) \cdot S_{ov}(\omicron \cdot X) = 0$
-    - evolution of value in same-address cells: $(S_a(\omicron \cdot X) - S_a(X) - 1) \cdot f(\mathbf{X}) \cdot (S_{nv}(X) - S_{ov}(X)) = 0$
+Execution trace:
 
-All columns except Old Value are involved in a copy-constraint with the Register Trace.
+| `clk` | `pir` | `cir` | `os0` | `osp` | operational stack |
+|-------|-------|-------|-------|-------|-------------------|
+| 0 | 0 | 0 | 0 | 0 | [0;0,0,0] |
+| 1 | 0 | `push` | 0 | 1 | [0,0;0,0,0] |
+| 2 | `push` | 0x0A | 0 | 1 | [0,0;0,0,0x0A] |
+| 3 | 0x0A | `push` | 0 | 2 | [0,0,0;0,0x0A,0] |
+| 4 | `push` | 0x0B | 0 | 2 | [0,0,0;0,0x0A,0x0B] |
+| 5 | 0x0B | `push` | 0 | 3 | [0,0,00;0x0A,0x0B,0] |
+| 6 | `push` | 0x0C | 0 | 3 | [0,0,0,0;0x0A,0x0B,0x0C] |
+| 7 | 0x0C | `push` | 0x0A | 4 | [0,0,0,0,0x0A;,0x0B,0x0C,0] |
+| 8 | `push` | 0x0D | 0x0A | 4 | [0,0,0,0,0x0A;0x0B,0x0C,0x0D] |
+| 9 | 0x0D | `push` | 0x0B | 5 | [0,0,0,0,0x0A,0x0B;0x0C,0x0D,0] |
+| 10| `push` | 0x0E | 0x0B | 5 | [0,0,0,0,0x0A,0x0B;0x0C,0x0D,0x0E] |
+| 11| 0x0E | `add` | 0x0A | 4 | [0,0,0,0,0x0A;0x0B,0x0C,0x1C] |
+| 12| `add` | `add` | 0 | 3 | [0,0,0,0;0x0A,0x0B,0x28] |
+| 13| `add` | `add` | 0 | 2 | [0,0,0;0,0x0A,0x31] |
+| 14| `add` | `add` | 0 | 1 | [0,0;0,0,0x3B] |
+| 15| `add` | `pop` | 0 | 0 | [0;0,0,0] |
 
-### RAM
+Memory table:
+
+| `clk`* | `cir` | `os0` old | `os0` new | `osp` |
+|-------|-------|-----------|-----------|-------|
+| 0*| 0 | 0 | 0 | 0 |
+| 15| `pop` | 0 | 0 | 0 |
+| 1 | `push` | 0 | 0 | 1 |
+| 2*| 0x0A | 0 | 0 | 1 |
+| 14| `add` | 0 | 0 | 1 |
+| 3 | `push` | 0 | 0 | 2 |
+| 4*| 0x0B | 0 | 0 | 2 |
+| 13| `add` | 0 | 0 | 2 |
+| 5 | `push` | 0 | 0 | 3 |
+| 6*| 0x0C | 0 | 0 | 3 |
+| 12| `add` | 0 | 0 | 3 |
+| 7 | `push` | 0 | 0x0A | 4 |
+| 8*| 0x0D | 0x0A | 0x0A | 4 |
+| 11| `add` | 0x0A | 0x0A | 4 |
+| 9 | `push` | 0 | 0x0B | 5 |
+|10*| 0x0E | 0x0B | 0x0B | 5 |
+
+The rows marked with asterisks are included for the sake of completeness in this explication. In practice they will be omitted because they neither shrink nor grow the stack. Additionally, there is no need to include the cycle counter column.
+
+**Boundary Conditions**
+
+ 1. The old value, new value, and operational stack pointer, all start out at 0.
+
+**Transition Constraints**
+
+ 1. The operatoinal stack pointer increases by 1, *or*
+ 2. The instruction is one that grows the stack by 1, *or*
+ 3. The new value is the same as the old value.
+
+### Random Access Memory
 
 The RAM is accessible in two ways: first, individual memory elements can be read to and written from the stack; second, chunks of four elements (words) can be written to and read from the SIMD register. To enable this, the address is split into the high part (everything but the least significant two bits), and low bart (least significant two bits).
 
