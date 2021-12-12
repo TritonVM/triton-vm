@@ -4,12 +4,15 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 
 ## Data Structures
 
-**Memory** The term *memory* refers to a data structure that gives read access (and possibly write access, too) to elements indicated by an *address*. The address lives in the same field. There are three separate notions of memory:
+**Memory** The term *memory* refers to a data structure that gives read access (and possibly write access, too) to elements indicated by an *address*. The address lives in the same field. There are four separate notions of memory:
  1. *RAM*, to which the VM can read and write field elements.
  2. *Instruction Memory*, from which the VM reads instructions.
- 3. *Stack Memory*, which stores the part of the stack that is not represented by the stack registers.
+ 3. *Operational Stack Memory*, which stores the part of the operational stack that is not represented by the operational stack registers.
+ 4. *Return Address Stack Memory*, which stores the entire return address stack.
 
-**Stack** The stack is a first-in;first-out data structure that allows the program to store intermediate variables and keep track of the location in the concrete syntax tree.
+**Operational Stack** The stack is a first-in;first-out data structure that allows the program to store intermediate variables, pass arguments, and keep pointers to objects held in RAM.
+
+**Return Address Stack** Another first-in;first-out data structure that keeps track of return addresses only. This stack changes only when control follows a `call` or `return` instruction.
 
 **SIMD Cache** The SIMD cache is a list of 16 variables designated for performing vectorized instructions. It supports the following operations and access mechanisms.
  - Vectorized addition and multiplication over the B-field.
@@ -28,16 +31,18 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 |----------|------|---------|
 | `cir` | current instruction register | contains the full instruction |
 | `pir` | previous instruction register | contains the full instruction of the last cycle; to be used for immediate instructions |
-| `clk` | clock register | counts the number of cycles the program has been running for |
+| `clk` | cycle counter | counts the number of cycles the program has been running for |
 | `ib0` through `ib5` | instruction bit | contains the ith bit of the instruction |
 | `ip` | instruction pointer | contains the memory address (in instruction memory) of the instruction |
 | `rp` | RAM pointer | contains an address (in RAM memory) for reading or writing |
-| `sp` | stack pointer | contains the memory address (in stack memory) of the top of the stack minus 4 |
-| `st0` through `st3` | stack registers | contain explicit stack values |
+| `rasp` | return address stack pointer | contains the memory address (in return address stack memory) of the top of the return address stack |
+| `ra` | return address | contains the value of the top of the return address stack |
+| `osp` | operational stack pointer | contains the memory address (in stack memory) of the top of the operational stack minus 4 |
+| `os0` through `os3` | operational stack registers | contain explicit operational stack values |
 | `hv0` through `hv4` | helper variable registers | helper variables for some arithmetic operations |
 | `sc0` through `sc15` | SIMD cache registers | data structure dedicated to vector instructions |
 | | | |
-| 37 in total | | |
+| 39 in total | | |
 
 **Instruction** The instruction is represented by one register called the *current instruction register* `cir`. This value then decomposed into its 6 constituent bits, giving rise to 6 *instruction bit registers*, labeled `ib0` through `ib5`. Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in instruction memory. Also, there is the *previous instruction register* that contains the previous instruction. For immediate instructions, this register takes the value of the previous instruction; for non-immedate instructions, this register takes the value 0.
 
@@ -51,7 +56,9 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 
 ## Instructions
 
-**Stack Manipulation.**
+**Operational Stack Manipulation.**
+
+In this section *stack* is short for *operational stack*.
 
 | Instruction | Value | Effect on Stack | Description |
 |-|-|-|-|
@@ -71,9 +78,11 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 | Instruction | Value | Effect on Stack | Description |
 |-|-|-|-|
 | `nop` | 0 | identity | Do nothing, just continue to next instruction. |
-| `skiz` | ? | `stack top  -->  stack top` | Skip next instruction if `top` is zero. |
+| `skiz` | ? | `stack top  -->  stack` | Skip next instruction if `top` is zero. |
 | `jumpa` + `mem` | ? | `stack  -->  stack mem` | Set the instruction pointer `ip` to the immediate argument `mem` for jumping to an absolute instruction address. |
 | `jumpr` + `mem` | ? | `stack  -->  stack mem` | Set the instruction pointer `ip` to `ip + mem` for jumping to a relative instruction address. |
+| `call` + `addr` | ? | identity | Push current instruction pointer plus one to the return address stack, and jump to absolute immediate address `addr` |
+| `return` | ? | identity | Pop one element off the return address stack and jump there. |
 | `assert` | ? | `stack a  -->  stack` | Halts and fails if not `a == 1`. |
 | `halt` | ? | identity | Solves the halting problem (if the instruction is reached). |
 
@@ -117,7 +126,6 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 | `split` | ? | `stack a  -->  stack lo hi` | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits, without making any assumptions about the top stack element. |
 | `eq` | ? | `stack a b  -->  stack (a == b)` | Tests the top two stack elements for equality. |
 | `lt` | ? | `stack a b  -->  stack (a < b)` | Tests if the one-from top element is less than or equal the top element on the stack, assuming both are 32-bit integers. |
-| `assert` | ? | identity | Fails if top of stack is zero. |
 | `and` | ? | `stack a b  -->  stack (a and b)` | Computes the bitwise-and of the top two stack elements, assuming both are 32-bit integers. |
 | `or` | ? | `stack a b  -->  stack (a or b)` | Computes the bitwise-or of the top two stack elements, assuming both are 32-bit integers. |
 | `xor` | ? | `stack a b  -->  stack (a xor b)` | Computes the bitwise-xor of the top two stack elements, assuming both are 32-bit integers. |
