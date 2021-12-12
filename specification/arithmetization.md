@@ -114,9 +114,10 @@ Memory table:
 **Transition Constraints**
 
  1. The return address stack pointer increases by one, *or*
- 2. The cycle counter increases by one and the remaining registers remain the same, *or*
- 3. the instruction is `call`, so the return address can change; *or*
-    2.3. the instruction is `return`, 
+ 2. The cycle counter increases by one and the return address remains the same, *or*
+ 3. the old instruction is `call` and the next return address is the same; *or*
+ 4. the old instruction is `return`.
+
 
 ### Stack
 
