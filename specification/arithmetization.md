@@ -4,19 +4,59 @@ This document describes the arithmetization of Triton VM, whose instruction set 
 
 Elsewhere, the acronym AET stands for algebraic execution *trace*. In the nomenclature of this note, a trace is a special kind of table that tracks the values of a set of registers across time.
 
-## General Memory Tables
+## Processor Table
 
-The *general format* of memory tables is as follows.
+The processor consists of 52 registers, each of which is assigned a column in the corresponding table.
 
-| Cycle | Instruction | Address | New Value | Old Value |
-|-------|-------------|---------|-----------|-----------|
-| - | - | - | - | - |
-| - | - | - | - | - |
-| - | - | - | - | - |
+ - `clk` cycle counter
+ - `ip` instruction pointer
+ - `ci` current instruction
+ - `ib0`-`ib5` instruction bits
+ - `if0`-`if9` instruction flags (used to keep the AIR low degree)
+ - `ni` next instruction
+ - `jsp` jump address stack pointer
+ - `jsv` jump address stack value
+ - `st0`-`st3` operational stack elements
+ - `iszero` one if top of stack is zero
+ - `osp` operational stack pointer
+ - `osv` operational stack value
+ - `hv0`-`hv4` helper variables
+ - `ramp` RAM pointer
+ - `ramv` RAM value
+ - `aux0`-`aux15` auxiliary registers
 
-The rows are sorted by address, then by cycle. Consecutive rows with the same address can be verified to have consistent memory values, i.e., changing value only when the instruction is set to "write". Consecutive rows with distinct addresses represent distinct memory cells. The second row of such a pair is the first time the new memory cell is referenced, and so the Old Value of this row must be set to zero. A copy-constraint establishes that memory accesses of the register table are consistent with this table.
+**Consistency Constraints**
 
-However, the specific memory tables used in Triton VM differ from this pattern in important ways. For instance, the cycle counter or the distinction between old and new values can be dropped.
+ 1. The instruction bits `ib0`-`ib5` are binary and correspond to the binary expansion of the current instruction `ci`.
+ 2. The instruction flags `if0`-`if10` are binary and match with the instruction bits through their defining predicates.
+ 3. The zero indicator `iszero` is binary and set iff the top of the stack `st0` is zero.
+
+**Boundary Constraints**
+
+ 1. The cycle counter `clk` is zero.
+ 2. The instruction pointer `ip` is zero.
+ 3. The jump address stack pointer and value `jsp` and `jsv` are zero.
+ 4. The operational stack elements `st0`-`st3` are zero.
+ 5. The zero indicator `iszero` is one.
+ 6. The operational stack pointer and value `osp` and `osv` are zero
+ 7. The RAM pointer and value `ramp` and `ramv` are zero.
+ 8. The auxiliary registers `aux0`-`aux15` are zero.
+
+**Transition Constraints**
+
+Instruction-specific constraints are defined by the instructions. The following constraints apply to every cycle.
+
+ 1. The cycle counter `clk` increases by one.
+
+**Relations to Other Tables**
+
+ 1. A Permutation Argument with the Instruction Table.
+ 2. A pair of Evaluation Arguments with the Input and Output Tables.
+ 3. A Permutation Argument with the Jump Stack Table.
+ 4. A Permutation Argument with the Opstack Table.
+ 5. A Permutation Argument with the Memory Table.
+ 6. A Permutation Argument with the Hash Table.
+ 7. A Permutation Argument with the Uint32 Table.
 
 ## Program Table
 
@@ -38,7 +78,7 @@ The Program Table is static in the sense that it is fixed before the VM runs. Mo
 
 **Relations to other Tables**
 
- 1. A Program Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the Instruction Table.
+ 1. A Program-Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the Instruction Table.
 
 ## Instruction Table
 
@@ -49,13 +89,13 @@ The Instruction Table establishes the link between the program and the instructi
 *** Relations to Other Tables**
 
  1. A Program Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the Program Table.
- 2. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`instruction_address, current_instruction, next_instruction`) of the Processor Table.
+ 2. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the Processor Table.
 
 ## Jump Stack Table
 
-The Jump Stack Memory contains the underflow from the Jump Stack. The virtual machine defines two registers to deal with the Jump Stack: `rap`, the return address pointer, which points to a location in Return Address Stack Memory; and `rav`, the return address value, which points to a location in Program Memory.
+The Jump Stack Memory contains the underflow from the Jump Stack. The virtual machine defines two registers to deal with the Jump Stack: `jsp`, the return address pointer, which points to a location in jump address stack Memory; and `jsv`, the return address value, which points to a location in Program Memory.
 
-The Jump Stack Table is a table whose columns are a subset of those of the Processor Table with one addition: the destination address `dest`. The rows are sorted by return address pointer (`rap`), then by cycle counter (`clk`). The column `dest` contains the destination of stack-extending jump (`call`) as well as of the no-stack-change jump (`recurse`); the column `rav` contains the source of the stack-extending jump (`call`) or equivalently the destination of the stack-shrinking jump (`return`).
+The Jump Stack Table is a table whose columns are a subset of those of the Processor Table with one addition: the destination address `dest`. The rows are sorted by return address pointer (`jsp`), then by cycle counter (`clk`). The column `dest` contains the destination of stack-extending jump (`call`) as well as of the no-stack-change jump (`recurse`); the column `jsv` contains the source of the stack-extending jump (`call`) or equivalently the destination of the stack-shrinking jump (`return`).
 
 The AIR for this table guarantees that the return address of a single cell of return address memory can change only if there was a `call` instruction.
 
@@ -96,7 +136,7 @@ Program:
 
 Execution trace:
 
-| `clk` | `ip`   | `ci`     | `ni`     | `rav`  | `rap`  | return address stack | destination address stack |
+| `clk` | `ip`   | `ci`     | `ni`     | `jsv`  | `jsp`  | jump address stack | destination address stack |
 |-------|--------|----------|----------|--------|--------|----------------------|---------------------------|
 | 0     | `0x00` | `foo`    | `bar`    | `0x00` | 0      | []                   | []
 | 1     | `0x01` | `bar`    | `call`   | `0x00` | 0      | []                   | []
@@ -119,7 +159,7 @@ Execution trace:
 
 Memory table (i.e., actual jump stack table):
 
-| `clk` | `ci`     | `rap`  | `rav`  | `dest` |
+| `clk` | `ci`     | `jsp`  | `jsv`  | `dest` |
 |-------|----------|--------|--------|--------|
 | 0     | `foo`    | 0      | `0x00` | `0x00`
 | 1     | `bar`    | 0      | `0x00` | `0x00`
@@ -146,10 +186,10 @@ Memory table (i.e., actual jump stack table):
 
 **Transition Constraints**
 
- 1. The return address stack pointer `rap` increases by one, *or*
- 2. (`rap`, `rav` and `dest` remain the same and) the cycle counter `clk` increases by one, *or*
- 3. (`rap`, `rav` and `dest` remain the same and) the current instruction `ci` is `call`, *or*
- 4. (`rap` remains the same and) the current instruction `ci` is `return`.
+ 1. The jump address stack pointer `jsp` increases by one, *or*
+ 2. (`jsp`, `jsv` and `dest` remain the same and) the cycle counter `clk` increases by one, *or*
+ 3. (`jsp`, `jsv` and `dest` remain the same and) the current instruction `ci` is `call`, *or*
+ 4. (`jsp` remains the same and) the current instruction `ci` is `return`.
 
 **Relations to Other Tables**
 
@@ -216,7 +256,7 @@ None.
 
 ## Random Access Memory
 
-The RAM is accessible through `read` and `write` commands. The RAM Table has three columns: the cycle counter `clk`, RAM address `memory_address`, and the value of the memory at that address `memory_value`. The columns are identical to the columns of the same name in the Processor Table, up to the order of the rows. The rows are sorted by memory address first, then by cycle counter.
+The RAM is accessible through `load` and `save` commands. The RAM Table has three columns: the cycle counter `clk`, RAM address `memory_address`, and the value of the memory at that address `memory_value`. The columns are identical to the columns of the same name in the Processor Table, up to the order of the rows. The rows are sorted by memory address first, then by cycle counter.
 
 **Boundary Constraints**
 
@@ -227,106 +267,74 @@ None.
  1. If the `memory_address` changes, then the new `memory_value` must be zero
  2. If the `memory_address` does not change and the `memory_value` does change, then the cycle counter `clk` must increase by one.
 
-## Register Trace
+**Relations to Other Tables**
 
-The trace consists of 38 registers, Many of the names and functions are defined in the [instruction set architecture](isa.md). The remaining ones are:
- - `ibj` for `j` ranging from 0 to 5; these are the instruction bit registers. Each `ibj` should contain exactly one bit of the current instruction.
- - `if` immediate flag. The current instruction is not executed if this flag is set; instead, the previous is.
+ 1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the Processor Table.
 
-| `cir` $T_{cir}$ | `pir` $T_{pir}$ | `clk` $T_{clk}$ | `if` $T_{if}$ | `ib0` $T_{ib0}$ | ... | `ib5` $T_{ib5}$ | `ip` $T_{ip}$ | `rp` $T_{rp}$ | `sp` $T_{sp}$ | `st0` $T_{st0}$ | ... | `st3` $T_{st3}$ | `hv0` $T_{hv0}$ | ... | `hv4` $T_{hv4}$ | `sc0` $T_{sc0}$ | ... | `sc15` $T_{sc15}$ |
-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|
+## I/O Tables
 
-### Register Trace AIR
+There are two I/O Tables: one for the input, and one for the output. Both consist of a single column. The input and output can be committed to in the form of the FRI codeword Merkle roots associated with their interpolants (which may or may not integrate randomness).
 
-The columns are interpolated over the trace domain $\{\omicron^i \, | \, 0 \leq i < 2^k\}$. The AIR constraints follow.
+**Boundary Constraints**
 
-#### Boundary constraints
+None.
 
-Zero initial values: $T_*(1) = 0$ for all polynomials. This implies that the first instruction is zero and that the stack initially contains four zero elements.
+**Transition Constraints**
 
-#### Consistency constraints
+None.
 
-The consistency constraints hold for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k\}$.
-- binary instruction bits: $\forall j \in \{0, \ldots, 5\} \, . \, T_{ibj}(X) \cdot ( 1 - T_{ibj}(X) ) = 0$
-- valid instruction decomposition: $T_{cir}(X) - \sum_{j=0}^{5} 2^j \cdot T_{ibj}(X) = 0$
-- correct decomposition of stack top: $T_{st3}(X)) - \sum_{j=0}^{3} 2^{16 \cdot j} \cdot T_{hvj}(X) = 0$
-- unique decomposition of stack top: $\big(T_{hv3}(X) \cdot (2^{16} \cdot T_{hv3}(X) + T_{hv2}(X)) - 1\big) \cdot (2^{16} \cdot T_{hv1}(X) + T_{hv0}(X)) = 0$
+**Relations to Other Tables**
 
-#### Transition Constraints Instruction Fetching and Control Flow
+ 1. A pair of evaluation arguments establishe that the symbols read by the processor as input, or written as output, correspond with the symbols listed in the corresponding I/O Table.
 
-The transition constraints are valid for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$.
+## Hash Coprocessor
 
-   - monotonicity of cycle: $T_{clk}(\omicron \cdot X) - T_{clk}(X) = 0$
-   - correct movement of instructions: $T_{pir}(\omicron \cdot X) - T_{cir}(X) = 0$
-   - control flow, with indicator functions $f_{skiz}(\mathbf{X})$, $f_{jumpa}(X)$, and $f_{jumpr}(X)$
-     - regular flow: $(1 - f_{skiz}(X) - f_{jumpa}(X) - f_{jumpr}(X)) \cdot (T_{ip}(\omicron \cdot X) - T_{ip}(X) - 1) = 0$
+The processor has 16 auxiliary registers. The instruction `xlix` applies the Rescue-XLIX permutation to them in one cycle. What happens in the background is that the auxiliary registers are copied to the hash coprocessor, which then runs 7 the rounds of the Rescue-XLIX, and then copies the 16 values back. This single-cycle hashing instruction is enabled by a Hash Table of 17 columns -- one extra to indicate round index.
 
-#### Transition Constraints for Stack
+**Boundary Constraints**
 
-The transition constraints are valid for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$.
+ 1. The round index starts at 0.
 
-   - stack
-     - growth
-     - shrinkage
-     - manipulation
+**Transition Constraints**
 
-#### Transition Constraints for Native Arithmetic
+ 1. The round index increases by 1 modulo 8.
+ 2. On multiples of 8 there is no other constraint.
+ 3. For all other rows, the $i$th round of Rescue-XLIX is applied, where $i$ is the round index.
 
-The transition constraints are valid for all $X \in \{\omicron^i \, | \, 0 \leq i < 2^k-1\}$.
+**Relations to Other Tables**
 
-   - native arithmetic operations TODO
-  
+ 1. A Permutation Argument establishes that whenever the processor executes an `xlix` instruction, the values of auxiliary registers correspond to some row in the Hash Table with index 0 mod 8 and the values of the auxiliary registers in the next cycle correspond to the values of the Hash Table 7 rows layer.
 
-### Register Trace Copy-Constraints
-
-Columns from the Register Trace are involved in the following copy-constraints:
- - For each cycle: $(T_{ip}(X), T_{cir}(X))$ with $(P_a(X), P_v(X))$ from the Program Memory Table.
- - For each of `lt`, `eq`, `and`, `or`, `xor`, `reverse`: $(T_{st1}(\omicron \cdot X), T_{st2}(\omicron \cdot X), T_{st3}(\omicron \cdot X))$ with matching rows and columns of the Uint32 Operations Table.
- - For each `div`:
-   1. $(T_{st2}(X), T_{st2}(\omicron \cdot X))$ with matching rows in the Uint32 Operations Table, and the simulated column corresponding to `lt` + `eq`.
-   2. $(T_{st3}(X), T_{st3}(\omicron \cdot X))$ with matching rows in the Uint32 Operations Table, and the column corresponding to `lt`.
- - For each or `read` and `write`: $(T_{clk}(X), T_{cir}(X), T_{ib0}(X), \ldots, T_{ib5}(X), T_{rp}(X), T_{st3}(X))$ with matching rows in the RAM Table.
- - For each `vread` and `vwrite`: $(T_{clk}(X), T_{pir}(X), T_{ib0}(X), \ldots, T_{ib5}(X), T_{rp}(X), T_{scj}(X), \ldots, T_{scj+3}(X))$ (where $j$ takes the value $0, 4, 8, 12$ depending on the immediate argument) with the matching rows in the RAM Table.
- - For each `split`, a batch-copy-constraint establishes that $(T_{hv0}(X), T_{hv1}(X), T_{hv2}(X), T_{hv3}(X))$ have matching rows in the Dynamic 16-Bit Table.
- - For each `vsplit`, a batch-copy-constraint establishes that $(T_{sc0}(X), T_{sc15}(X))$ have matching rows in the Dynamic 16-Bit Table.
- - For each `gauss`: $(T_{st3}(X), T_{st3}(\omicron \cdot X))$ with matching rows in the 16-Bit/Gauss Table.
- - For each `vgauss`, a batch-copy-constraint establishes that $(T_{sc0}(X),\ldots,T_{sc15}(X),T_{sc0}(\omicron \cdot X),\ldots,T_{sc15}(\omicron \cdot X))$ are in one-to-one correspondence with 16 consecutive rows of the 16-Bit/Gauss table $(G_i(X), G_o(X))$.
- - For each `vsplit`, and for each $j \in \{0, 4, 8, 12\}$: $(T_{scj}(X), \ldots, T_{scj+3}(X))$ with matching rows in the 4-Wide 32-Bit Table.
- - For each `xlix`: consecutive rows of $(T_{sc0}(X), \ldots T_{sc15}(X))$ with rows apart by 8 in the Rescue-XLIX Table.
-
-## Auxiliary Tables
-
-### Rescue-XLIX
-
-The Rescue-XLIX table applies the Rescue-XLIX permutation to 16 variables, one round at a time.
-
-|  | H0 $H_0$ | ... | H15 $H_{15}$ |
-|--|----------|-----|--------------|
-|0.| -        | ... | - |
-|1.| -        | ... | - |
-|2.| -        | ... | - |
-|3.| -        | ... | - |
-|4.| -        | ... | - |
-|5.| -        | ... | - |
-|6.| -        | ... | - |
-|7.| -        | ... | - |
-
-The AIR makes no requirements for rows that are multiples of 8. Other rows apply one round of Rescue-XLIX, with the parameters determined by the row index modulo 8.
-
-A copy-constraint establishes that, whenever the `xlix` instruction is executed, the old and new 16-tuples in the SIMD cache correspond to rows $8k$ and $8k+7$ in the XLIX Table for some integer $k$.
-
-### Uint32 Operations
+## Uint32 Operations
 
 The Uint32 Operations Table is a lookup table for 'difficult' 32-bit unsigned integer operations.
 
-|     | LHS      | RHS      | EQ     | LT    | AND       | OR       | XOR       | REV |
+| `idc` | LHS      | RHS      | EQ     | LT    | AND       | OR       | XOR       | REV |
 |-----|----------|----------|--------|-------|-----------|----------|-----------|-----|
-| 1.  | `a`      | `b`      | `a==b` | `a<b` | `a and b` | `a or b` | `a xor b` | `rev(a)` |
-| 2.  | `a >> 1` | `b >> 1` | - | - | - | - | - | - |
+| 1  | `a`      | `b`      | `a==b` | `a<b` | `a and b` | `a or b` | `a xor b` | `rev(a)` |
+| 1  | `a >> 1` | `b >> 1` | - | - | - | - | - | - |
 | ... | - | - | - | - | - | - | - | - | - | - |
-| 32. | `0` | `0` | `1` | `0` | `0` | `0` | `0` | `0` |
-| 33. | `c` | `d` | - | - | - | - | - | - |
+| 0 | `0` | `0` | `1` | `0` | `0` | `0` | `0` | `0` |
+| 1 | `c` | `d` | - | - | - | - | - | - |
 
 The AIR verifies the correct update of each consecutive pair of rows. In every row one bit is eliminated. Only when the previous row is all zeros (with a 1 in the column for `EQ`) can a new row be inserted.
 
 The AIR constraints establish that the entire table is consistent. Copy-constraints establish that logical and bitwise operations were computed correctly.
+
+**Boundary Constrants**
+
+None.
+
+**Transition Constraints**
+
+ 1. The indicator `idc` is binary.
+ 2. If the indicator `idc` is zero, so are LHS, RHS, LT, AND, OR, XOR, REV and 1-EQ.
+ 3. If the indicator `idc` is nonzero across two rows, the current and next row follow the one-bit update rules.
+
+**Terminal Constraints**
+
+ 1. The indicator `idc` in the last row is zero.
+
+**Relations to Other Tables**
+
+ 1. A Permutation Argument establishes that whenever the processor executes a uint32 operation, the operands and result exist as a row in this table.
