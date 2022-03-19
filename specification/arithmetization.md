@@ -159,63 +159,56 @@ Memory table (i.e., actual jump stack table):
 
 The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects. There are four registers that the program can access directly; these registers correspond to the top of the stack. The rest of the operational stack is stored in a dedicated memory object called Operational Stack Memory.
 
-The operational stack memory table contains a subset of the rows of the Register Trace and *two* columns for the stored value -- the old value and the new value. In exchange, the Operational Stack Memory Table stores fewer rows. In fact, it only stores rows associated with a stack growth or shrinkage. A copy-constraint establishes that the stack reads and writes are correct.
+The operational stack always contains at least 4 elements. Instructions that reduce the number of stack elements to less than four are illegal.
+
+The operational stack table contains a subset of the rows of the processor table -- specifically, the cycle counter `clk`, the current instruction `current_instruction`, the operation stack value `osv` and pointer `osp`. The rows of the operational stack table are sorted by operational stack pointer `osp` first, cycle `clk` second.
 
 The mechanics are best illustrated by an example.
 
 Execution trace:
 
-| `clk` | `pir` | `cir` | `os0` | `osp` | operational stack |
-|-------|-------|-------|-------|-------|-------------------|
-| 0 | 0 | 0 | 0 | 0 | [0;0,0,0] |
-| 1 | 0 | `push` | 0 | 1 | [0,0;0,0,0] |
-| 2 | `push` | 0x0A | 0 | 1 | [0,0;0,0,0x0A] |
-| 3 | 0x0A | `push` | 0 | 2 | [0,0,0;0,0x0A,0] |
-| 4 | `push` | 0x0B | 0 | 2 | [0,0,0;0,0x0A,0x0B] |
-| 5 | 0x0B | `push` | 0 | 3 | [0,0,00;0x0A,0x0B,0] |
-| 6 | `push` | 0x0C | 0 | 3 | [0,0,0,0;0x0A,0x0B,0x0C] |
-| 7 | 0x0C | `push` | 0x0A | 4 | [0,0,0,0,0x0A;,0x0B,0x0C,0] |
-| 8 | `push` | 0x0D | 0x0A | 4 | [0,0,0,0,0x0A;0x0B,0x0C,0x0D] |
-| 9 | 0x0D | `push` | 0x0B | 5 | [0,0,0,0,0x0A,0x0B;0x0C,0x0D,0] |
-| 10| `push` | 0x0E | 0x0B | 5 | [0,0,0,0,0x0A,0x0B;0x0C,0x0D,0x0E] |
-| 11| 0x0E | `add` | 0x0A | 4 | [0,0,0,0,0x0A;0x0B,0x0C,0x1C] |
-| 12| `add` | `add` | 0 | 3 | [0,0,0,0;0x0A,0x0B,0x28] |
-| 13| `add` | `add` | 0 | 2 | [0,0,0;0,0x0A,0x31] |
-| 14| `add` | `add` | 0 | 1 | [0,0;0,0,0x3B] |
-| 15| `add` | `pop` | 0 | 0 | [0;0,0,0] |
+| `clk` | `current_instruction` | `next_instruction` | `osv` | `osp` | operational stack |
+|-------|-----------------------|--------------------|-------|-------|-------------------|
+| 0     | `push`                | 0x01               | 0     | 0     | [0,0,0,0] |
+| 1     | `push`                | 0x02               | 0     | 1     | [0;0,0,0,0x01] |
+| 2     | `push`                | 0x03               | 0     | 2     | [0,0;0,0,0x01,0x02] |
+| 3     | `push`                | 0x04               | 0     | 3     | [0,0,0;0,0x01,0x02,0x03] |
+| 4     | `push`                | 0x05               | 0     | 4     | [0,0,0,0;0x01,0x02,0x03,0x04] |
+| 5     | `foo`                 | `add`              | 0x01  | 5     | [0,0,0,0,0x01;0x02,0x03,0x04,0x05] |
+| 6     | `add`                 | `pop`              | 0x01  | 5     | [0,0,0,0,0x01;0x02,0x03,0x04,0x05] |
+| 7     | `pop`                 | `add`              | 0     | 4     | [0,0,0,0;0x01,0x02,0x03,0x09] |
+| 8     | `add`                 | `add`              | 0     | 3     | [0,0,0;0,0x01,0x02,0x03] |
+| 9     | `add`                 | `pop`              | 0     | 2     | [0,0;0,0,0x01,0x05] |
+| 10    | `pop`                 | `foo`              | 0     | 1     | [0;0,0,0,0x06] |
+| 11    | `foo`                 | `pop`              | 0     | 0     | [0,0,0,0] |
+| 12    | `pop`                 | -                  | 0     | 0     | **illegal command** |
 
-Memory table:
+Memory table (i.e., the actual operational stack table):
 
-| `clk`* | `cir` | `os0` old | `os0` new | `osp` |
-|-------|-------|-----------|-----------|-------|
-| 0*| 0 | 0 | 0 | 0 |
-| 15| `pop` | 0 | 0 | 0 |
-| 1 | `push` | 0 | 0 | 1 |
-| 2*| 0x0A | 0 | 0 | 1 |
-| 14| `add` | 0 | 0 | 1 |
-| 3 | `push` | 0 | 0 | 2 |
-| 4*| 0x0B | 0 | 0 | 2 |
-| 13| `add` | 0 | 0 | 2 |
-| 5 | `push` | 0 | 0 | 3 |
-| 6*| 0x0C | 0 | 0 | 3 |
-| 12| `add` | 0 | 0 | 3 |
-| 7 | `push` | 0 | 0x0A | 4 |
-| 8*| 0x0D | 0x0A | 0x0A | 4 |
-| 11| `add` | 0x0A | 0x0A | 4 |
-| 9 | `push` | 0 | 0x0B | 5 |
-|10*| 0x0E | 0x0B | 0x0B | 5 |
-
-The rows marked with asterisks are included for the sake of completeness in this explication. In practice they will be omitted because they neither shrink nor grow the stack. Additionally, there is no need to include the cycle counter column.
+| `clk`  | `current_instruction` | `osv` | `osp` |
+|--------|-----------------------|-------|-------|
+| 0      | `push`                | 0     | 0     |
+| 11     | `foo`                 | 0     | 0     |
+| 1      | `push`                | 0     | 1     |
+| 10     | `pop`                 | 0     | 1     |
+| 2      | `push`                | 0     | 2     |
+| 9      | `add`                 | 0     | 2     |
+| 3      | `push`                | 0     | 3     |
+| 8      | `add`                 | 0     | 3     |
+| 4      | `push`                | 0     | 4     |
+| 7      | `pop`                 | 0x01  | 4     |
+| 5      | `foo`                 | 0x01  | 5     |
+| 6      | `add`                 | 0x01  | 5     |
 
 **Boundary Conditions**
 
- 1. The old value, new value, and operational stack pointer, all start out at 0.
+ 1. All values except the current instruction start out at zero.
 
 **Transition Constraints**
 
- 1. The operatoinal stack pointer increases by 1, *or*
- 2. The instruction is one that grows the stack by 1, *or*
- 3. The new value is the same as the old value.
+ 1. The operational stack pointer `osp` increases by 1, *or*
+ 2. The `current_instruction` is `push`-like, *or*
+ 3. There is no change in operational stack value `osv`.
 
 ### Random Access Memory
 
