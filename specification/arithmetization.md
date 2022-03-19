@@ -210,6 +210,10 @@ Memory table (i.e., the actual operational stack table):
  2. The `current_instruction` is `push`-like, *or*
  3. There is no change in operational stack value `osv`.
 
+**Relations to Other Tables**
+
+ 1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the Processor Table.
+
 ### Random Access Memory
 
 The RAM is accessible in two ways: first, individual memory elements can be read to and written from the stack; second, chunks of four elements (words) can be written to and read from the SIMD register. To enable this, the address is split into the high part (everything but the least significant two bits), and low bart (least significant two bits).
