@@ -4,7 +4,7 @@ This document describes the arithmetization of Triton VM, whose instruction set 
 
 Elsewhere, the acronym AET stands for algebraic execution *trace*. In the nomenclature of this note, a trace is a special kind of table that tracks the values of a set of registers across time.
 
-## Memory Tables
+## General Memory Tables
 
 The *general format* of memory tables is as follows.
 
@@ -18,29 +18,40 @@ The rows are sorted by address, then by cycle. Consecutive rows with the same ad
 
 However, the specific memory tables used in Triton VM differ from this pattern in important ways. For instance, the cycle counter or the distinction between old and new values can be dropped.
 
-### Program Table
+## Program Table
 
 The Virtual Machine's Program Memory is read-only. The corresponding Program Table consists of two columns, `address` and `instruction`. The latter variable does not correspond to the processor's state but to the value of the memory at the given location.
 
-| Address $P_a$ | Instruction $P_i$ |
-|---------------|-------------------|
+| Address | Instruction |
+|---------|-------------|
 | - | - |
 
 The Program Table is static in the sense that it is fixed before the VM runs. Moreover, the user can commit to the program by providing the Merkle root of the zipped FRI codeword. This commitment assumes that the FRI domain is fixed, which implies an upper bound on program size.
 
 **Boundary Constraints**
 
- 1. The first address is zero: ${P_a}_{[0]} = 0$.
+ 1. The first address is zero.
 
 **Transition Constraints**
 
- 1. The addresses increase monotonically for all $i$: ${P_a}_{[i+1]} = {P_a}_{[i]} + 1$.
+ 1. The addresses increase monotonically for, by one in each row.
 
 **Relations to other Tables**
 
  1. A Program Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the Instruction Table.
 
-### Jump Stack Table
+## Instruction Table
+
+The Instruction Table establishes the link between the program and the instructions that are being executed by the processor. The table consists of three columns, the instruction `address`, the `current_instruction` and the `next_instruction`. It contains
+ - one row for every instruction in the program (padding with zero where needed), and
+ - one row for every cycle in the execution trace.
+
+*** Relations to Other Tables**
+
+ 1. A Program Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the Program Table.
+ 2. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`instruction_address, current_instruction, next_instruction`) of the Processor Table.
+
+## Jump Stack Table
 
 The Jump Stack Memory contains the underflow from the Jump Stack. The virtual machine defines two registers to deal with the Jump Stack: `rap`, the return address pointer, which points to a location in Return Address Stack Memory; and `rav`, the return address value, which points to a location in Program Memory.
 
@@ -139,6 +150,10 @@ Memory table (i.e., actual jump stack table):
  2. (`rap`, `rav` and `dest` remain the same and) the cycle counter `clk` increases by one, *or*
  3. (`rap`, `rav` and `dest` remain the same and) the current instruction `ci` is `call`, *or*
  4. (`rap` remains the same and) the current instruction `ci` is `return`.
+
+**Relations to Other Tables**
+
+ 1. A Permutation Argument establishes that the rows match with the rows in the Processor Table.
 
 ### Operational Stack
 
