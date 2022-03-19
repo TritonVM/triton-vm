@@ -16,22 +16,21 @@ The *general format* of memory tables is as follows.
 
 The rows are sorted by address, then by cycle. Consecutive rows with the same address can be verified to have consistent memory values, i.e., changing value only when the instruction is set to "write". Consecutive rows with distinct addresses represent distinct memory cells. The second row of such a pair is the first time the new memory cell is referenced, and so the Old Value of this row must be set to zero. A copy-constraint establishes that memory accesses of the register table are consistent with this table.
 
-However, the specific memory tables used in Triton VM differ from this pattern in subtle but important ways.
+However, the specific memory tables used in Triton VM differ from this pattern in important ways. For instance, the cycle counter or the distinction between old and new values can be dropped.
 
 ### Program Table
 
-Program Memory is *read-only*, so the Old Value column can be dropped and the New Value column can be renamed to simply *Value*. Furthermore, since the value of the program memory does not change with time, there is never any need to store different values at the same address. So the address column contains simply $0$ through $\ell-1$, where $\ell$ is the program length. What's more, there already is a column in another table that counts the integers starting from 0, namely the cycle counter column in the Stack Register Trace. Furthermore, the Instruction and Cycle Counter columns are not relevant any more. We are left with two columns.
+The Virtual Machine's Program Memory is read-only. The corresponding Program Table consists of two columns, `address` and `instruction`. The latter variable does not correspond to the processor's state but to the value of the memory at the given location.
 
-| Address $P_a$ | Value $P_v$ |
-|---------------|-------------|
+| Address $P_a$ | Instruction $P_i$ |
+|---------------|-------------------|
 | - | - |
 
-The Program Table is static in the sense that it is fixed before the VM runs. Moreover, the user can commit to the program by providing the Merkle root of the zipped FRI codeword. This commitment assumes that the FRI domain is fixed, which implies an upper bound on running time.
+The Program Table is static in the sense that it is fixed before the VM runs. Moreover, the user can commit to the program by providing the Merkle root of the zipped FRI codeword. This commitment assumes that the FRI domain is fixed, which implies an upper bound on program size.
 
 **Boundary Constraints**
 
  1. The first address is zero: ${P_a}_{[0]} = 0$.
- 2. The last instruction is zero: ${P_v}_{[-1]} = 0$.
 
 **Transition Constraints**
 
@@ -39,65 +38,96 @@ The Program Table is static in the sense that it is fixed before the VM runs. Mo
 
 **Relations to other Tables**
 
- 1. A randomized evaluation argument establishes that the rows of the Program Table match with the unique rows of the Instruction Table.
+ 1. A Program Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the Instruction Table.
 
 ### Jump Stack Table
 
 The Jump Stack Memory contains the underflow from the Jump Stack. The virtual machine defines two registers to deal with the Jump Stack: `rap`, the return address pointer, which points to a location in Return Address Stack Memory; and `rav`, the return address value, which points to a location in Program Memory.
 
-The Jump Stack Table is a table whose columns are a subset of those of the Register Trace with one addition: the destination address `dest`. The rows are sorted by return address stack pointer, then by cycle counter. The column `dest` contains the destination of stack-extending jump (`call`) as well as of the no-stack-change jump (`recurse`); the column `rav` contains the source of the stack-extending jump or equivalently the destination of the stack-shrinking jump (`return`).
+The Jump Stack Table is a table whose columns are a subset of those of the Processor Table with one addition: the destination address `dest`. The rows are sorted by return address pointer (`rap`), then by cycle counter (`clk`). The column `dest` contains the destination of stack-extending jump (`call`) as well as of the no-stack-change jump (`recurse`); the column `rav` contains the source of the stack-extending jump (`call`) or equivalently the destination of the stack-shrinking jump (`return`).
 
 The AIR for this table guarantees that the return address of a single cell of return address memory can change only if there was a `call` instruction.
 
-An example execution trace and matching memory table are shown below.
+An example program, execution trace, and jump stack table are shown below.
+
+Program:
+
+| `address` | `instruction` |
+|-----------|---------------|
+| `0x00`    | `foo` |
+| `0x01`    | `bar` |
+| `0x02`    | `call` |
+| `0x03`    | `0xA0` |
+| `0x04`    | `buzz` |
+| `0x05`    | `bar` |
+| `0x06`    | `call` |
+| `0x07`    | `0xB0` |
+| `0x08`    | `foo` |
+| `0x09`    | `bar` |
+| ... | ... |
+| `0xA0`    | `buzz` |
+| `0xA1`    | `foo`  |
+| `0xA2`    | `bar`  |
+| `0xA3`    | `return` |
+| `0xA4`    | `foo` |
+| ... | ... |
+| `0xB0`    | `foo` |
+| `0xB1`    | `call` |
+| `0xB2`    | `0xC0` |
+| `0xB3`    | `return` |
+| `0xB4`    | `bazz` |
+| ... | ... |
+| `0xC0` | `buzz` |
+| `0xC1` | `foo` |
+| `0xC2` | `bar` |
+| `0xC3` | `return` |
+| `0xC4` | `buzz` |
 
 Execution trace:
 
 | `clk` | `ip`   | `ci`     | `ni`     | `rav`  | `rap`  | return address stack | destination address stack |
 |-------|--------|----------|----------|--------|--------|----------------------|---------------------------|
-| 0     | `0x00` | `foo`    | `bar`    | `0x00` | 0      | []                   |
-| 1     | `0x01` | `bar`    | `call`   | `0x00` | 0      | []                   |
-| 2     | `0x02` | `call`   | `0xA0`   | `0x05` | 1      | [`0x05`]             |
-| 3     | `0xA0` | `0xA0`   | `foo`    | `0x05` | 1      | [`0x05`]             |
-| 4     | `0xA1` | `foo`    | `bar`    | `0x05` | 1      | [`0x05`]             |
-| 5     | `0xA2` | `bar`    | `return` | `0x05` | 1      | [`0x05`]             |
-| 6     | `0x03` | `return` | `foo`    | `0x00` | 0      | []                   |
-| 7     | `0x04` | `foo`    | `bar`    | `0x00` | 0      | []                   |
-| 8     | `0x05` | `bar`    | `call`   | `0x00` | 0      | []                   |
-| 9     | `0x06` | `call`   | `0xB0`   | `0x08` | 1      | [`0x08`]             |
-| 10    | `0xB0` | `0xB0`   | `call`   | `0x08` | 1      | [`0x08`]             |
-| 11    | `0xB1` | `call`   | `0xC0`   | `0xB2` | 2      | [`0x08`, `0xB2`]     |
-| 12    | `0xC0` | `0xC0`   | `foo`    | `0xB2` | 2      | [`0x08`, `0xB2`]     |
-| 13    | `0xC1` | `foo`    | `bar`    | `0xB2` | 2      | [`0x08`, `0xB2`]     |
-| 14    | `0xC2` | `bar`    | `return` | `0xB2` | 2      | [`0x08`, `0xB2`]     |
-| 15    | `0xB2` | `return` | `return` | `0x08` | 1      | [`0x08`]             |
-| 16    | `0x07` | `return` | `foo`    | `0x00` | 0      | []                   |
+| 0     | `0x00` | `foo`    | `bar`    | `0x00` | 0      | []                   | []
+| 1     | `0x01` | `bar`    | `call`   | `0x00` | 0      | []                   | []
+| 2     | `0x02` | `call`   | `0xA0`   | `0x00` | 0      | []                   | []
+| 3     | `0xA0` | `buzz`   | `foo`    | `0x04` | 1      | [`0x04`]             | [`0xA0`]
+| 4     | `0xA1` | `foo`    | `bar`    | `0x04` | 1      | [`0x04`]             | [`0xA0`]
+| 5     | `0xA2` | `bar`    | `return` | `0x04` | 1      | [`0x04`]             | [`0xA0`]
+| 6     | `0xA3` | `return` | `foo`    | `0x04` | 1      | [`0x04`]             | [`0xA0`]
+| 7     | `0x04` | `buzz`   | `bar`    | `0x00` | 0      | []                   | []
+| 8     | `0x05` | `bar`    | `call`   | `0x00` | 0      | []                   | []
+| 9     | `0x06` | `call`   | `0xB0`   | `0x00` | 0      | []                   | []
+| 10    | `0xB0` | `foo`    | `call`   | `0x08` | 1      | [`0x08`]             | [`0xB0`]
+| 11    | `0xB1` | `call`   | `0xC0`   | `0x08` | 1      | [`0x08`]             | [`0xB0`]
+| 12    | `0xC0` | `buzz`   | `foo`    | `0xB3` | 2      | [`0x08`, `0xB3`]     | [`0xB0`, `0xC0`]
+| 13    | `0xC1` | `foo`    | `bar`    | `0xB3` | 2      | [`0x08`, `0xB3`]     | [`0xB0`, `0xC0`]
+| 14    | `0xC2` | `bar`    | `return` | `0xB3` | 2      | [`0x08`, `0xB3`]     | [`0xB0`, `0xC0`]
+| 15    | `0xC3` | `return` | `buzz`   | `0xB3` | 2      | [`0x08`, `0xB3`]     | [`0xB0`, `0xC0`]
+| 16    | `0xB3` | `return` | `bazz`   | `0x08` | 1      | [`0x08`]             | [`0xB0`]
+| 17    | `0x08` | `foo`    | `bar`    | `0x00` | 0      | []                   | []
 
-Memory table:
+Memory table (i.e., actual jump stack table):
 
-TODO: revisit this table
-
-| `clk` | `cir` | `rav` | `rap` | `dest` |
-|-------|-------|------|--------|--------|
-| 0 | 0 | `0x00` | 0 |
-| 1 | `foo` | `0x00` | 0 |
-| 2 | `bar` | `0x00` | 0 |
-| 3 | `call` | `0x00` | 0 |
-| 8 | `foo` | `0x00` | 0 |
-| 9 | `bar` | `0x00` | 0 |
-| 10| `call` | `0x00` | 0 |
-| 18 | `foo` | `0x00` | 0 |
-| 4 | `0xA0` | `0x05` | 1 |
-| 5 | `foo` | `0x05` | 1 |
-| 6 | `bar` | `0x05` | 1 |
-| 7 | `return` | `0x05` | 1 |
-| 11| `0xB0` | `0x08` | 1 |
-| 12| `call` | `0x08` | 1 |
-| 17| `return` | `0x08` | 1 |
-| 13| `0xC0` | `0xB2` | 2 |
-| 14| `foo` | `0xB2` | 2 |
-| 15| `bar` | `0xB2` | 2 |
-| 16| `return` | `0xB2` | 2 |
+| `clk` | `ci`     | `rap`  | `rav`  | `dest` |
+|-------|----------|--------|--------|--------|
+| 0     | `foo`    | 0      | `0x00` | `0x00`
+| 1     | `bar`    | 0      | `0x00` | `0x00`
+| 2     | `call`   | 0      | `0x00` | `0x00`
+| 7     | `buz`    | 0      | `0x00` | `0x00`
+| 8     | `bar`    | 0      | `0x00` | `0x00`
+| 9     | `call`   | 0      | `0x00` | `0x00`
+| 17    | `foo`    | 0      | `0x00` | `0x00`
+| 3     | `buz`    | 1      | `0x04` | `0xA0`
+| 4     | `foo`    | 1      | `0x04` | `0xA0`
+| 5     | `bar`    | 1      | `0x04` | `0xA0`
+| 6     | `return` | 1      | `0x04` | `0xA0`
+| 10    | `foo`    | 1      | `0x08` | `0xB0`
+| 11    | `call`   | 1      | `0x08` | `0xB0`
+| 16    | `return` | 1      | `0x08` | `0xB0`
+| 12    | `buzz`   | 2      | `0xB3` | `0xC0`
+| 13    | `foo`    | 2      | `0xB3` | `0xC0`
+| 14    | `bar`    | 2      | `0xB3` | `0xC0`
+| 15    | `return` | 2      | `0xB3` | `0xC0`
 
 **Boundary Constraints**
 
@@ -105,10 +135,10 @@ TODO: revisit this table
 
 **Transition Constraints**
 
- 1. The return address stack pointer increases by one, *or*
- 2. The cycle counter increases by one and the return address remains the same, *or*
- 3. the old instruction is `call` and the next return address is the same; *or*
- 4. the old instruction is `return`.
+ 1. The return address stack pointer `rap` increases by one, *or*
+ 2. (`rap`, `rav` and `dest` remain the same and) the cycle counter `clk` increases by one, *or*
+ 3. (`rap`, `rav` and `dest` remain the same and) the current instruction `ci` is `call`, *or*
+ 4. (`rap` remains the same and) the current instruction `ci` is `return`.
 
 ### Operational Stack
 
