@@ -202,7 +202,7 @@ Memory table (i.e., the actual operational stack table):
 
 **Boundary Conditions**
 
- 1. All values except the current instruction start out at zero.
+None.
 
 **Transition Constraints**
 
@@ -214,26 +214,18 @@ Memory table (i.e., the actual operational stack table):
 
  1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the Processor Table.
 
-### Random Access Memory
+## Random Access Memory
 
-The RAM is accessible in two ways: first, individual memory elements can be read to and written from the stack; second, chunks of four elements (words) can be written to and read from the SIMD register. To enable this, the address is split into the high part (everything but the least significant two bits), and low bart (least significant two bits).
+The RAM is accessible through `read` and `write` commands. The RAM Table has three columns: the cycle counter `clk`, RAM address `memory_address`, and the value of the memory at that address `memory_value`. The columns are identical to the columns of the same name in the Processor Table, up to the order of the rows. The rows are sorted by memory address first, then by cycle counter.
 
-| Cycle $R_c$ | Instr $R_i$ | IB0 $R_{i0}$ | ... | IB5 $R_{i5}$ | Addr $R_a$ | AddrHi $R_{ahi}$ | AddrLo $R_{alo}$ | NV0 $R_{nv0}$ | ... | NV3 $R_{nv3}$ | OV0 $R_{ov0}$ | ... | OV3 $R_{ov}$ | Val $R_{val}$ |
-|------------|-------------------|----------------------|--------|---------------|------|-----|----|---------------|-------|----------------|-------|--------------|-|-|
-| - | - | - |  | - | - | - | - | - |  | - | - |  | - | 
+**Boundary Constraints**
 
-The polynomials interpolate the columns of this table over the trace domain $\{\omicron^i \, \vert \, 0 \leq i < 2^k\}$. Let $f_s(\mathbf{X})$ and $f_v(\mathbf{X})$ be the low degree polynomials that indicate write instructions from stack and SIMD registers, respectively. The AIR constraints are:
- - boundary constraints: 
-    - initial values: $\forall j \in \{0, \ldots, 3\} \, . \, R_{ovj}(1) = 0$
- - consistency constraints, over $X \in \{\omicron^i \, \vert \, 0 \leq i < 2^k\}$:
-    - valid decomposition of address: $4 \cdot R_{ahi}(X) + R_{alo}(X) - R_a(X) = 0$
-    - valid least-significant two bits: $R_{alo}(X) \cdot ( 1 - R_{alo(X)} ) \cdot ( 2 - R_{alo}(X)) \cdot (3 - R_{alo}(X)) = 0$
- - transition constraints, for $X \in \{\omicron^i \vert \, 0 \leq i < 2^k-1\}$:
-   - monotonicity of addresses: $R_a(\omicron \cdot X) - R_a(X) - 1 = 0$
-   - conditional monotonicity of cycles: $(R_a(\omicron \cdot X) - R_a(X)) \cdot (R_c(\omicron \cdot X) - R_c(X)) = 0$
-   - initial values of new memory cells: $\forall j \in \{0,\ldots,3\} \, . \, (R_a(\omicron \cdot X) - R_a(X)) \cdot R_{ovj}(\omicron \cdot X) = 0$
-   - no changes unless instructed: $\forall j \in \{0, \ldots, 3\} \, . \, (R_{ovj}(X) - R_{nvj}(X)) \cdot ( f_s(\mathbf{X}) + f_v(\mathbf{X}) - 1 ) = 0$
-   - when writing from stack, just the one register may change: $\forall j \in \{0, \ldots, 3\} \, . \, f_s(\mathbf{X}) \cdot (\prod_{j' \neq j} (R_{alo}(X) - j')) \cdot (R_{ovj}(X) - R_{nvj}(X)) = 0$
+None.
+
+**Transition Constraints**
+
+ 1. If the `memory_address` changes, then the new `memory_value` must be zero
+ 2. If the `memory_address` does not change and the `memory_value` does change, then the cycle counter `clk` must increase by one.
 
 ## Register Trace
 
