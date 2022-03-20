@@ -6,7 +6,7 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 
 **Memory** The term *memory* refers to a data structure that gives read access (and possibly write access, too) to elements indicated by an *address*. The address lives in the same field. There are four separate notions of memory:
  1. *RAM*, to which the VM can read and write field elements.
- 2. *Instruction Memory*, from which the VM reads instructions.
+ 2. *Program Memory*, from which the VM reads instructions.
  3. *OpStack Memory*, which stores the part of the operational stack that is not represented explicitly by the operational stack registers.
  4. *Jump Stack Memory*, which stores the entire jump stack.
 
@@ -16,22 +16,28 @@ Triton VM is a stack machine with RAM, with a second data structure for evaluati
 
 ## Registers
 
+This section covers all columns in the Protocol Table. Only a subset of these registers relate to the instruction set; the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk.
+
 | Register | Name | Purpose |
 |----------|------|---------|
-| `cir` | current instruction register | contains the full instruction |
-| `pir` | previous instruction register | contains the full instruction of the last cycle; to be used for immediate instructions |
-| `clk` | cycle counter | counts the number of cycles the program has been running for |
-| `ib0` through `ib5` | instruction bit | contains the ith bit of the instruction |
-| `ip` | instruction pointer | contains the memory address (in instruction memory) of the instruction |
-| `rp` | RAM pointer | contains an address (in RAM memory) for reading or writing |
+| *`clk` | cycle counter | counts the number of cycles the program has been running for |
+| `ip` | instruction pointer | contains the memory address (in Program Memory) of the instruction |
+| `ci` | current instruction register | contains the full instruction |
+| `ni` | next instruction register | contains the full instruction of the next cycle; to be used for immediate instructions |
+| *`ib0` through `ib5` | instruction bit | contains the ith bit of the instruction |
+| *`if0` through `if9` | instruction flags | used as intermediate values to keep the AIR degree low |
 | `jsp` | jump stack pointer | contains the memory address (in jump stack memory) of the top of the jump stack |
 | `jsv` | return address | contains the value of the top of the jump stack |
-| `osp` | operational stack pointer | contains the memory address (in stack memory) of the top of the operational stack minus 4 |
-| `os0` through `os3` | operational stack registers | contain explicit operational stack values |
-| `hv0` through `hv4` | helper variable registers | helper variables for some arithmetic operations |
-| `sc0` through `sc15` | SIMD cache registers | data structure dedicated to vector instructions |
+| `st0` through `st3` | operational stack registers | contain explicit operational stack values |
+| *`iszero` | zero indicator | assumes the value one when the top of the stack is zero |
+| *`osp` | operational stack pointer | contains the memory address (in stack memory) of the top of the operational stack minus 4 |
+| *`osv` | operational stack value | contains the (stack) memory value at the given address |
+| *`hv0` through `hv4` | helper variable registers | helper variables for some arithmetic operations |
+| *`ramp` | RAM pointer | contains an address (in RAM memory) for reading or writing |
+| *`ramv` | RAM value | contains the value of the RAM memory element at the given adress |
+| `aux0` through `aux15` | auxiliary registers | data structure dedicated to hashing instructions |
 | | | |
-| 39 in total | | |
+| 52 in total | | |
 
 **Instruction** The instruction is represented by one register called the *current instruction register* `ci`. This value then decomposed into its 6 constituent bits, giving rise to 6 *instruction bit registers*, labeled `ib0` through `ib5`. Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in instruction memory. Also, there is the *next instruction register* that contains the next instruction. For immediate instructions, this register takes the value of the next instruction.
 
@@ -50,12 +56,9 @@ In this section *stack* is short for *operational stack*.
 | Instruction | Value | Effect on Stack | Description |
 |-|-|-|-|
 | `pop` | ? | `stack t  -->  stack` | Pops top element from stack. |
-| `push` + `arg` | ? | `stack  -->  stack arg` | Pushes a `0` onto the stack, and in the next cycle the indicated element from instruction memory is added to the top element. |
+| `push` + `arg` | ? | `stack  -->  stack arg` | Pushes `arg` onto the stack. |
 | `pad` | ? | `stack --> stack a` | Pushes a nondeterministic element `a` to the stack. |
-| `dup0` | ? | `stack a  -->  stack a a` | Duplicates the top stack element. |
-| `dup1` | ? | `stack a b  -->  stack a b a` | Duplicates the element 1 position away from the top. |
-| `dup2` | ? | `stack a b c  -->  stack a b c a` | Duplicates the element 2 positions away from the top. |
-| `dup3` | ? | `stack a b c d  -->  stack a b c d a` | Duplicates the element 3 positions away from the top. |
+| `dup` + `arg` | ? | e.g., `stack a b c d  -->  stack a b c d a` | Duplicates the element `arg` positions away from the top, assuming `0 <= arg < 4`. |
 | `swap` | ? | `stack a b  -->  stack b a` | Swaps the top two stack elements. |
 | `pull2` | ? | `stack a b c  -->  stack b c a` | Moves the stack element located at 2 positions from the top, to the top. |
 | `pull3` | ? | `stack a b c d  -->  stack b c d a` | Moves the stack element located at 2 positions from the top, to the top. |
@@ -66,9 +69,9 @@ In this section *stack* is short for *operational stack*.
 |-|-|-|-|
 | `nop` | 0 | identity | Do nothing, just continue to next instruction. |
 | `skiz` | ? | `stack top  -->  stack` | Skip next instruction if `top` is zero. |
-| `call` + `addr` | ? | identity | Push current instruction pointer plus one to the jump stack, and jump to absolute immediate address `addr` |
-| `return` | ? | identity | Pop one element off the jump stack and jump there. |
-| `recurse` | ? | identity | Go back to the destination address at the top of the jump stack. |
+| `call` + `addr` | ? | identity | Push `(ci+2,addr)` to the jump stack, and jump to absolute immediate address `addr` |
+| `return` | ? | identity | Pop one pair off the jump stack and jump to that pair's return address (which is the first element). |
+| `recurse` | ? | identity | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element). |
 | `assert` | ? | `stack a  -->  stack` | Halts and fails if not `a == 1`. |
 | `halt` | ? | identity | Solves the halting problem (if the instruction is reached). |
 
@@ -76,30 +79,24 @@ In this section *stack* is short for *operational stack*.
 
 | Instruction | Value | Effect on Stack | Description |
 |-|-|-|-|
-| `read` | ? | `stack mem  -->  stack mem val` | Reads a value `val` from RAM at the location pointed to by the top of the stack `mem`, and pushes the read element to the stack. |
-| `write` | ? | `stack mem val  -->  stack mem` | Writes value `val` to RAM at the location pointed to `mem`, and pops the top. |
+| `load` | ? | `stack mem  -->  stack mem val` | Reads a value `val` from RAM at the location pointed to by the top of the stack `ramp`, and pushes the read element to the opstack. |
+| `loadinc` | ? | `stack mem --> stack mem val` | Same as above but additionally increases register `ramp` by one. |
+| `save` | ? | `stack mem val  -->  stack mem` | Writes value `val` to RAM at the location pointed to `ramp`, and pops the top of the opstack. |
+| `saveinc` | ? | `stack mem val  -->  stack mem` | Same as above but additionally increases register `ramp` by one. |
+| `ramp` | ? | `stack mem --> stack` | Pops the top of the opstack and sets the `ramp` register to this value. |
 
-**SIMD Instructions**
+**Auxiliary Register Instructions**
 
 | Instruction | Value | Effect on Stack | Description |
 |-|-|-|-|
-| `xlix` | ? | identity | Applies the Rescue-XLIX permutation to the SIMD cache. |
-| `ntt` | ? | identity | Applies the NTT to the SIMD cache. |
-| `intt` | ? | identity | Applies the inverse NTT to the SIMD cache. |
-| `shift` + `shamt` | ? | identity | Shifts the values of the SIMD registers up or down by immediate argument `shamt` |
-| `zero` + `arg` | ? | identity | Sets the lowest `arg`-many SIMD registers to zero. |
-| `vpad` + `arg` | ? | identity | Sets the top `arg`-many SIMD registers to nondeterministic values. |
-| `vswap` + `arg` | ? | identity | Switches the top `arg`-many SIMD registers with the second `arg`-many SIMD registers. |
-| `vsplit` | ? | identity | Splits the top 4 registers into 16 values of 16 bits, using all registers. |
-| `vadd` | ? | identity | Sets the top 8 registers to the sum of the top 8 registers plus the bottom 8 registers. |
-| `vmul` | ? | identity | Sets the top 8 registers to the element-wise product of the top 8 registers plus the bottom 8 registers. |
-| `sum` | ? | `stack  -->  stack sum` | Pushes to the stack the sum of all SIMD register values. |
-| `vread` + `idx` | ? | `stack mem  -->  stack mem` | Reads a word from RAM whose first element has address `(mem >> 2) << 2`, and puts it into the top 4 elements (if `idx == 0`), second-from-top 4 elements (if `idx == 1`), third-from-top 4 elements (if `idx == 2`), or bottom-most 4 elements (if `idx == 3`). |
-| `vwrite` + `idx` | ? | `stack mem  -->  stack mem` | Wites a word, defined by the top 4 elements (if `idx == 0`), second-from-top 4 elements (if `idx == 1`), third-from-top 4 elements (if `idx == 2`), or bottom-most 4 elements (if `idx == 3`), to RAM at address `(mem >> 2) << 2`. |
-| `get` + `idx` | ? | `stack  -->  stack val` | Pushes the value of SIMD register `idx` to the stack. |
-| `set` + `idx` | ? | `stack val  -->  stack` | Pops the top of the stack and sets the SIMD register `idx` to this value. |
-| `addinto` + `idx` | ? | `stack val  -->  stack val` | Reads the top of the stack and adds it into the SIMD register `idx`. |
-| `vgauss` | ? | identity | Computes a uniform-to-gaussian resampling of SIMD registers, assuming they are uniform 16-bit integers. |
+| `xlix` | ? | identity | Applies the Rescue-XLIX permutation to the auxiliary registers. |
+| `ntt` | ? | identity | Applies the NTT to the auxiliary registers. |
+| `intt` | ? | identity | Applies the inverse NTT to the auxiliary registers. |
+| `clearall` | ? | identity | Sets all auxiliary registers to zero. |
+| `squeeze` + `arg` | ? | `stack --> stack a` | Pushes to the stack the `arg`th auxiliary register. |
+| `absorb` + `arg` | ? | `stack a --> stack` | Pops the top off the opstack and adds it into the `arg`th auxiliary regiser. |
+| `clear` + `arg` | ? | identity | Sets the `arg`th auxiliary register to zero. |
+| `rotate` + `arg` | ? | identity | Rotate the auxiliary registers by `arg` positions. |
 
 **Arithmetic on Stack**
 
@@ -117,4 +114,3 @@ In this section *stack* is short for *operational stack*.
 | `xor` | ? | `stack a b  -->  stack (a xor b)` | Computes the bitwise-xor of the top two stack elements, assuming both are 32-bit integers. |
 | `reverse` | ? | `stack a  -->  stack b` | Flips the bit expansion of the top stack element, assuming it is a 32-bit integer. |
 | `div` | ? | `stack a b  -->  stack c d` | Computes division with remainder of the top two stack elements, assuming the arguments are positive 32-bit integers. The result satisfies `a == c * b + d` and `d < b` and `c <= a`. |
-| `gauss` | ? | `stack a  -->  stack b` | Computes a uniform-to-gaussian resampling of the top stack element, assuming it is a uniform 16-bit integer. |
