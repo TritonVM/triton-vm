@@ -106,6 +106,7 @@ In this section *stack* is short for *operational stack*.
 | `neg` | ? | `stack a  -->  stack b` | Computes the negation (over the field) of the top element of the stack. |
 | `mul` | ? | `stack a b  -->  stack c` | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field. |
 | `inv` | ? | `stack a  -->  stack b` | Computes the multiplicative inverse (over the field) of the top of the stack. If the argument `a` is zero, the result `b` will be zero as well. |
+| `lnot` | ? | `stack a  -->  stack  (1-a)` | Computes the logical negation of the top stack element, assuming it is 0 or 1 |
 | `split` | ? | `stack a  -->  stack lo hi` | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits, without making any assumptions about the top stack element. |
 | `eq` | ? | `stack a b  -->  stack (a == b)` | Tests the top two stack elements for equality. |
 | `lt` | ? | `stack a b  -->  stack (a < b)` | Tests if the one-from top element is less than or equal the top element on the stack, assuming both are 32-bit integers. |
