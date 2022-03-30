@@ -53,7 +53,7 @@ This section covers all columns in the Protocol Table. Only a subset of these re
 
 In this section *stack* is short for *operational stack*.
 
-| Instruction | Value | Effect on Stack | Description |
+| Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
 | `pop` | ? | `stack t  -->  stack` | Pops top element from stack. |
 | `push` + `arg` | ? | `stack  -->  stack arg` | Pushes `arg` onto the stack. |
@@ -65,7 +65,7 @@ In this section *stack* is short for *operational stack*.
 
 **Control Flow**
 
-| Instruction | Value | Effect on Stack | Description |
+| Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
 | `nop` | 0 | identity | Do nothing, just continue to next instruction. |
 | `skiz` | ? | `stack top  -->  stack` | Skip next instruction if `top` is zero. |
@@ -77,17 +77,20 @@ In this section *stack* is short for *operational stack*.
 
 **Memory Access**
 
-| Instruction | Value | Effect on Stack | Description |
+| Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
-| `load` | ? | `stack mem  -->  stack mem val` | Reads a value `val` from RAM at the location pointed to by the top of the stack `ramp`, and pushes the read element to the opstack. |
+| `load` | ? | `stack mem  -->  stack mem val` | Reads a value `val` from RAM at the location pointed to by the register `ramp`, and pushes the read element to the opstack. |
 | `loadinc` | ? | `stack mem --> stack mem val` | Same as above but additionally increases register `ramp` by one. |
+| `loaddec` | ? | `stack mem --> stack mem val` | Same as above bug decrementing instead of incrementing. |
 | `save` | ? | `stack mem val  -->  stack mem` | Writes value `val` to RAM at the location pointed to `ramp`, and pops the top of the opstack. |
 | `saveinc` | ? | `stack mem val  -->  stack mem` | Same as above but additionally increases register `ramp` by one. |
-| `ramp` | ? | `stack mem --> stack` | Pops the top of the opstack and sets the `ramp` register to this value. |
+| `savedec` | ? | `stack mem val  -->  stack mem` | Same as above but decrementing instead of incrementing. |
+| `setramp` | ? | `stack mem --> stack` | Pops the top of the opstack and sets the `ramp` register to this value. |
+| `getramp` | ? | `stack --> stack mem` | Pushes the value of the `ramp` register to the stack. |
 
 **Auxiliary Register Instructions**
 
-| Instruction | Value | Effect on Stack | Description |
+| Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
 | `xlix` | ? | identity | Applies the Rescue-XLIX permutation to the auxiliary registers. |
 | `ntt` | ? | identity | Applies the NTT to the auxiliary registers. |
@@ -100,7 +103,7 @@ In this section *stack* is short for *operational stack*.
 
 **Arithmetic on Stack**
 
-| Instruction | Value | Effect on Stack | Description |
+| Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
 | `add` | ? | `stack a b  -->  stack c` | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field. | 
 | `neg` | ? | `stack a  -->  stack b` | Computes the negation (over the field) of the top element of the stack. |
