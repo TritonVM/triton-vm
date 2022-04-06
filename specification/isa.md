@@ -118,3 +118,10 @@ In this section *stack* is short for *operational stack*.
 | `xor` | ? | `stack a b  -->  stack (a xor b)` | Computes the bitwise-xor of the top two stack elements, assuming both are 32-bit integers. |
 | `reverse` | ? | `stack a  -->  stack b` | Flips the bit expansion of the top stack element, assuming it is a 32-bit integer. |
 | `div` | ? | `stack a b  -->  stack c d` | Computes division with remainder of the top two stack elements, assuming the arguments are positive 32-bit integers. The result satisfies `a == c * b + d` and `d < b` and `c <= a`. |
+
+**Input/Output**
+
+| Instruction | Value | Effect on OpStack | Description |
+| - | - | - | - |
+| `print` | ? | `stack a  -->  stack` | Writes character `a` to standard output. |
+| `scan` | ? | `stack  -->  stack a` | Reads a character from standard input and pushes it to the stack. |
