@@ -29,7 +29,7 @@ This section covers all columns in the Protocol Table. Only a subset of these re
 | `jsp` | jump stack pointer | contains the memory address (in jump stack memory) of the top of the jump stack |
 | `jsv` | return address | contains the value of the top of the jump stack |
 | `st0` through `st3` | operational stack registers | contain explicit operational stack values |
-| *`iszero` | zero indicator | assumes the value one when the top of the stack is zero |
+| *`inv` | zero indicator | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise |
 | *`osp` | operational stack pointer | contains the memory address (in stack memory) of the top of the operational stack minus 4 |
 | *`osv` | operational stack value | contains the (stack) memory value at the given address |
 | *`hv0` through `hv4` | helper variable registers | helper variables for some arithmetic operations |

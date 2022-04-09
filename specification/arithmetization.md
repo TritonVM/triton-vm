@@ -17,7 +17,7 @@ The processor consists of 52 registers, each of which is assigned a column in th
  - `jsp` jump address stack pointer
  - `jsv` jump address stack value
  - `st0`-`st3` operational stack elements
- - `iszero` one if top of stack is zero
+ - `inv` inverse of top of stack if nonzero, and zero otherwise
  - `osp` operational stack pointer
  - `osv` operational stack value
  - `hv0`-`hv4` helper variables
@@ -29,7 +29,7 @@ The processor consists of 52 registers, each of which is assigned a column in th
 
  1. The instruction bits `ib0`-`ib5` are binary and correspond to the binary expansion of the current instruction `ci`.
  2. The instruction flags `if0`-`if10` are binary and match with the instruction bits through their defining predicates.
- 3. The zero indicator `iszero` is binary and set iff the top of the stack `st0` is zero.
+ 3. The inverse register `inv` is contains the inverse of `st0` if it is nonzero and zero otherwise.
 
 **Boundary Constraints**
 
@@ -37,7 +37,7 @@ The processor consists of 52 registers, each of which is assigned a column in th
  2. The instruction pointer `ip` is zero.
  3. The jump address stack pointer and value `jsp` and `jsv` are zero.
  4. The operational stack elements `st0`-`st3` are zero.
- 5. The zero indicator `iszero` is one.
+ 5. The inverse register `inv` is zero.
  6. The operational stack pointer and value `osp` and `osv` are zero
  7. The RAM pointer and value `ramp` and `ramv` are zero.
  8. The auxiliary registers `aux0`-`aux15` are zero.
