@@ -49,7 +49,7 @@ This section covers all columns in the Protocol Table. Only a subset of these re
 
 ## Instructions
 
-**OpStack Manipulation.**
+### OpStack Manipulation
 
 In this section *stack* is short for *operational stack*.
 
@@ -61,7 +61,7 @@ In this section *stack* is short for *operational stack*.
 | `dup` + `arg` | ? | e.g., `stack a b c d  -->  stack a b c d a` | Duplicates the element `arg` positions away from the top. |
 | `pull` + `arg` | ? | e.g., `stack a b c d --> stack a c d b` | Moves the element `arg` positions away from the top, to the top. |
 
-**Control Flow**
+### Control Flow
 
 | Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
@@ -73,7 +73,7 @@ In this section *stack* is short for *operational stack*.
 | `assert` | ? | `stack a  -->  stack` | Halts and fails if not `a == 1`. |
 | `halt` | ? | identity | Solves the halting problem (if the instruction is reached). |
 
-**Memory Access**
+### Memory Access
 
 | Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
@@ -86,7 +86,7 @@ In this section *stack* is short for *operational stack*.
 | `setramp` | ? | `stack mem --> stack` | Pops the top of the opstack and sets the `ramp` register to this value. |
 | `getramp` | ? | `stack --> stack mem` | Pushes the value of the `ramp` register to the stack. |
 
-**Auxiliary Register Instructions**
+### Auxiliary Register Instructions
 
 | Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
@@ -97,7 +97,7 @@ In this section *stack* is short for *operational stack*.
 | `clear` + `arg` | ? | identity | Sets the `arg`th auxiliary register to zero. |
 | `rotate` + `arg` | ? | identity | Rotate the auxiliary registers by `arg` positions. |
 
-**Arithmetic on Stack**
+### Arithmetic on Stack
 
 | Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
@@ -115,7 +115,7 @@ In this section *stack* is short for *operational stack*.
 | `reverse` | ? | `stack a  -->  stack b` | Flips the bit expansion of the top stack element, assuming it is a 32-bit integer. |
 | `div` | ? | `stack a b  -->  stack c d` | Computes division with remainder of the top two stack elements, assuming the arguments are positive 32-bit integers. The result satisfies `a == c * b + d` and `d < b` and `c <= a`. |
 
-**Input/Output**
+### Input/Output
 
 | Instruction | Value | Effect on OpStack | Description |
 | - | - | - | - |
