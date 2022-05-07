@@ -58,10 +58,8 @@ In this section *stack* is short for *operational stack*.
 | `pop` | ? | `stack t  -->  stack` | Pops top element from stack. |
 | `push` + `arg` | ? | `stack  -->  stack arg` | Pushes `arg` onto the stack. |
 | `pad` | ? | `stack --> stack a` | Pushes a nondeterministic element `a` to the stack. |
-| `dup` + `arg` | ? | e.g., `stack a b c d  -->  stack a b c d a` | Duplicates the element `arg` positions away from the top, assuming `0 <= arg < 4`. |
-| `swap` | ? | `stack a b  -->  stack b a` | Swaps the top two stack elements. |
-| `pull2` | ? | `stack a b c  -->  stack b c a` | Moves the stack element located at 2 positions from the top, to the top. |
-| `pull3` | ? | `stack a b c d  -->  stack b c d a` | Moves the stack element located at 2 positions from the top, to the top. |
+| `dup` + `arg` | ? | e.g., `stack a b c d  -->  stack a b c d a` | Duplicates the element `arg` positions away from the top. |
+| `pull` + `arg` | ? | e.g., `stack a b c d --> stack a c d b` | Moves the element `arg` positions away from the top, to the top. |
 
 **Control Flow**
 
