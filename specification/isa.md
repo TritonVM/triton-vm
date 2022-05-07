@@ -93,8 +93,6 @@ In this section *stack* is short for *operational stack*.
 | Instruction | Value | Effect on OpStack | Description |
 |-|-|-|-|
 | `xlix` | ? | identity | Applies the Rescue-XLIX permutation to the auxiliary registers. |
-| `ntt` | ? | identity | Applies the NTT to the auxiliary registers. |
-| `intt` | ? | identity | Applies the inverse NTT to the auxiliary registers. |
 | `clearall` | ? | identity | Sets all auxiliary registers to zero. |
 | `squeeze` + `arg` | ? | `stack --> stack a` | Pushes to the stack the `arg`th auxiliary register. |
 | `absorb` + `arg` | ? | `stack a --> stack` | Pops the top off the opstack and adds it into the `arg`th auxiliary regiser. |
