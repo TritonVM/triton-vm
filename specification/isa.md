@@ -74,66 +74,66 @@ These registers are part of the arithmetization of the architecture, but not nee
 
 In this section *stack* is short for *operational stack*.
 
-| Instruction    | Value | Effect on OpStack                           | Description                                                                        |
-| ---            | ---   | ---                                         | ---                                                                                |
-| `pop`          | ?     | `stack a  -->  stack`                       | Pops top element from stack.                                                       |
-| `push` + `arg` | ?     | `stack  -->  stack arg`                     | Pushes `arg` onto the stack.                                                       |
-| `pad`          | ?     | `stack --> stack a`                         | Pushes a nondeterministic element `a` to the stack.                                |
-| `dup`  + `arg` | ?     | e.g., `stack a b c d  -->  stack a b c d a` | Duplicates the element `arg` positions away from the top, assuming `0 <= arg < ?`. |
-| `swap` + `arg` | ?     | `stack p o … b a  -->  stack p a … b o`     | Swaps the `arg`th stack element with the top of the stack, assuming `0 < arg < ?`. |
+| Instruction    | Value | old OpStack         | new OpStack           | Description                                                                    |
+| ---            | ---   | ---                 | ---                   | ---                                                                            |
+| `pop`          | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                   |
+| `push` + `a`   | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                     |
+| `pad`          | ?     | `_`                 | `_ a`                 | Pushes a nondeterministic element `a` to the stack.                            |
+| `dup`  + `i`   | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`. |
+| `swap` + `i`   | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`. |
 
 ### Control Flow
 
-| Instruction     | Value | Effect on OpStack     | Effect on `ip` | Effect on JumpStack             | Description                                                                                                       |
-| ---             | ---   | ---                   | ---            | ---                             | ---                                                                                                               |
-| `skiz`          | ?     | `stack a  -->  stack` | `+(2-a·inv)`   | identity                        | Skip next instruction if `top` is zero.                                                                           |
-| `call` + `addr` | ?     | identity              | `= addr`       | `stack --> stack (ip+2, addr)`  | Push `(ip+2,addr)` to the jump stack, and jump to absolute immediate address `addr`                               |
-| `return`        | ?     | identity              | `= o`          | `stack (o, d) --> stack`        | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).              |
-| `recurse`       | ?     | identity              | `= d`          | `stack (o, d) --> stack (o, d)` | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element). |
-| `assert`        | ?     | `stack a  -->  stack` | `+1 + 💥(a-1)` | identity                        | Pops `a` if `a == 1`, else crashes the virtual machine.                                                           |
-| `halt`          | ?     | identity              | `+1`           | identity                        | Solves the halting problem (if the instruction is reached).                                                       |
+| Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`          | old JumpStack | new JumpStack  | Description                                                                                                       |
+| ---          | ---   | ---         | ---         | ---      | ---               | ---           | ---            | ---                                                                                                               |
+| `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + 2 - a·inv`   | `_`           | `_`            | Skip next instruction if `a` is zero.                                                                             |
+| `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`               | `_`           | `_ (o+2, d)`   | Push `(o+2,d)` to the jump stack, and jump to absolute immediate address `d`                                      |
+| `return`     | ?     | `_`         | `_`         | `_`      | `o`               | `_ (o, d)`    | `_`            | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).              |
+| `recurse`    | ?     | `_`         | `_`         | `_`      | `d`               | `_ (o, d)`    | `_ (o, d)`     | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element). |
+| `assert`     | ?     | `_ a`       | `_`         | `_`      | `_ + 1 + 💥(a-1)` | `_`           | `_`            | Pops `a` if `a == 1`, else crashes the virtual machine.                                                           |
+| `halt`       | ?     | `_`         | `_`         | `_`      | `_ + 1`           | `_`           | `_`            | Solves the halting problem (if the instruction is reached).                                                       |
 
 ### Memory Access
 
-| Instruction | Value | Effect on OpStack     | Effect on `ramv` | Description                                                                                                 |
-| ---         | ---   | ---                   | ---              | ---                                                                                                         |
-| `read`      | ?     | `stack  -->  stack v` | identity         | Reads a value `v` from RAM at the location pointed to by `st0`, and pushes the read element to the opstack. |
-| `write`     | ?     | `stack v  -->  stack` | `= v`            | Writes value `v` to RAM at the location pointed to by `st0`, and pops the top of the opstack.               |
+| Instruction | Value | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                          |
+| ---         | ---   | ---         | ---         | ---        | ---        | ---                                                                                  |
+| `read`      | ?     | `_ p`       | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
+| `write`     | ?     | `_ p v`     | `_ p`       | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
 
 ### Auxiliary Register Instructions
 
-| Instruction       | Value | Effect on OpStack   | Effect on `aux`   | Description                                                                                                                                  |
-| ---               | ---   | ---                 | ---               | ---                                                                                                                                          |
-| `xlix`            | ?     | identity            | `xlix(_)`         | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                                              |
-| `clearall`        | ?     | identity            | `0…0`             | Sets all auxiliary registers to zero.                                                                                                        |
-| `squeeze` + `arg` | ?     | `stack --> stack a` | identity          | Pushes to the stack the `arg`th auxiliary register.                                                                                          |
-| `absorb`  + `arg` | ?     | `stack a --> stack` | `…(v+a)…`         | Pops the top off the opstack and adds it into the `arg`th auxiliary regiser.                                                                 |
-| `merkle_left`     | ?     | identity            | `xlix(l…lm…m0…0)` | Helps traversing a Merkle tree. Non-deterministically guesses the corresponding right digest `m…m`, sets capacity to 0, and computes `xlix`. |
-| `merkle_right`    | ?     | identity            | `xlix(m…mr…r0…0)` | Helps traversing a Merkle tree. Non-deterministically guesses the corresponding left digest `m…m`, sets capacity to 0, and computes `xlix`.  |
-| `compare_digest`  | ?     | `stack --> stack a` | identity          | Compare `aux0` through `aux5` to `st0` through `st5` and put the comparison's result `a ∈ {0, 1}` on the stack.                              |
+| Instruction      | Value | old OpStack | new OpStack | old `aux`   | new `aux`                | Description                                                                                                                                     |
+| ---              | ---   | ---         | ---         | ---         | ---                      | ---                                                                                                                                             |
+| `xlix`           | ?     | `_`         | `_`         | `_`         | `xlix(_)`                | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                                                 |
+| `clearall`       | ?     | `_`         | `_`         | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                                           |
+| `squeeze` + `i`  | ?     | `_`         | `_ v`       | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                                        |
+| `absorb`  + `i`  | ?     | `_ a`       | `_`         | `…v…`       | `…(v+a)…`                | Pops the top off the stack and adds it into the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                |
+| `merkle_left`    | ?     | `_`         | `_`         | `fedcba__…` | `xlix(fedcbazyxwvu0000)` | Helps traversing a Merkle tree. Non-deterministically guesses the corresponding right digest `zyxwvu`, sets capacity to 0, and computes `xlix`. |
+| `merkle_right`   | ?     | `_`         | `_`         | `fedcba__…` | `xlix(zyxwvufedcba0000)` | Helps traversing a Merkle tree. Non-deterministically guesses the corresponding left digest `zyxwvu`, sets capacity to 0, and computes `xlix`.  |
+| `compare_digest` | ?     | `_`         | `_ a`       | `fedcba__…` | `fedcba__…`              | Compare `aux0` through `aux5` (i.e., `fedcba`) to `st0` through `st5` and put the comparison's result `a ∈ {0, 1}` on the stack.                |
 
 ### Arithmetic on Stack
 
-| Instruction | Value | Effect on OpStack                         | Description                                                                                                                                                                      |
-| ---         | ---   | ---                                       | ---                                                                                                                                                                              |
-| `add`       | ?     | `stack a b  -->  stack c`                 | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                        |
-| `mul`       | ?     | `stack a b  -->  stack c`                 | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                    |
-| `inv`       | ?     | `stack a  -->  stack b`                   | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                       |
-| `split`     | ?     | `stack a  -->  stack lo hi`               | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                                    |
-| `eq`        | ?     | `stack a b  -->  stack (a == b)`          | Tests the top two stack elements for equality.                                                                                                                                   |
-| `lt`        | ?     | `stack a b  -->  stack (a < b)`           | Tests if the one-from top element is less than or equal the top element on the stack, assuming both are 32-bit integers.                                                         |
-| `and`       | ?     | `stack a b  -->  stack (a and b)`         | Computes the bitwise-and of the top two stack elements, assuming both are 32-bit integers.                                                                                       |
-| `xor`       | ?     | `stack a b  -->  stack (a xor b)`         | Computes the bitwise-xor of the top two stack elements, assuming both are 32-bit integers.                                                                                       |
-| `reverse`   | ?     | `stack a  -->  stack b`                   | Flips the bit expansion of the top stack element, assuming it is a 32-bit integer.                                                                                               |
-| `div`       | ?     | `stack a b  -->  stack c d`               | Computes division with remainder of the top two stack elements, assuming the arguments are both 32-bit integers. The result satisfies `a == c * b + d` and `d < b` and `c <= a`. |
-| `xxadd`     | ?     | `stack z y x b c a --> stack z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                           |
-| `xxmul`     | ?     | `stack z y x b c a --> stack z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                     |
-| `xinv`      | ?     | `stack z y x --> stack w v u`             | Inverts the extension field element encoded by field elements `z y x` in-place.                                                                                                  |
-| `xbmul`     | ?     | `stack z y x a --> stack w v u`           | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.                               |
+| Instruction | Value | old OpStack     | new OpStack     | Description                                                                                                                                                                      |
+| ---         | ---   | ---             | ---             | ---                                                                                                                                                                              |
+| `add`       | ?     | `_ b a`         | `_ c`           | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                        |
+| `mul`       | ?     | `_ b a`         | `_ c`           | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                    |
+| `inv`       | ?     | `_ a`           | `_ b`           | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                       |
+| `split`     | ?     | `_ a`           | `_ lo hi`       | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                                    |
+| `eq`        | ?     | `_ b a`         | `_ (b == a)`    | Tests the top two stack elements for equality.                                                                                                                                   |
+| `lt`        | ?     | `_ b a`         | `_ (b < a)`     | Tests if the one-from top element is less than or equal the top element on the stack, assuming both are 32-bit integers.                                                         |
+| `and`       | ?     | `_ b a`         | `_ (b and a)`   | Computes the bitwise-and of the top two stack elements, assuming both are 32-bit integers.                                                                                       |
+| `xor`       | ?     | `_ b a`         | `_ (b xor a)`   | Computes the bitwise-xor of the top two stack elements, assuming both are 32-bit integers.                                                                                       |
+| `reverse`   | ?     | `_ a`           | `_ b`           | Reverses the bit expansion of the top stack element, assuming it is a 32-bit integer.                                                                                            |
+| `div`       | ?     | `_ n d`         | `_ q r`         | Computes division with remainder of the top two stack elements, assuming the arguments are both 32-bit integers. The result satisfies `n == q * d + r` and `r < d` and `q <= n`. |
+| `xxadd`     | ?     | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                           |
+| `xxmul`     | ?     | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                     |
+| `xinv`      | ?     | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                              |
+| `xbmul`     | ?     | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.                               |
 
 ### Input/Output
 
-| Instruction | Value | Effect on OpStack     | Description                                                       |
-| ---         | ---   | ---                   | ---                                                               |
-| `print`     | ?     | `stack a  -->  stack` | Writes character `a` to standard output.                          |
-| `scan`      | ?     | `stack  -->  stack a` | Reads a character from standard input and pushes it to the stack. |
+| Instruction | Value | old OpStack | new OpStack | Description                                                       |
+| ---         | ---   | ---         | ---         | ---                                                               |
+| `print`     | ?     | `_ a`       | `_`         | Writes character `a` to standard output.                          |
+| `scan`      | ?     | `_`         | `_ a`       | Reads a character from standard input and pushes it to the stack. |
