@@ -29,7 +29,7 @@ Only a subset of these registers relate to the instruction set;
 the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk.
 
 | Register               | Name                         | Purpose                                                                                   |
-| ---------              | -----                        | -------                                                                                   |
+|:-----------------------|:-----------------------------|:------------------------------------------------------------------------------------------|
 | *`clk`                 | cycle counter                | counts the number of cycles the program has been running for                              |
 | `ip`                   | instruction pointer          | contains the memory address (in Program Memory) of the instruction                        |
 | `ci`                   | current instruction register | contains the full instruction                                                             |
@@ -74,36 +74,36 @@ These registers are part of the arithmetization of the architecture, but not nee
 
 In this section *stack* is short for *operational stack*.
 
-| Instruction    | Value | old OpStack         | new OpStack           | Description                                                                    |
-| ---            | ---   | ---                 | ---                   | ---                                                                            |
-| `pop`          | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                   |
-| `push` + `a`   | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                     |
-| `pad`          | ?     | `_`                 | `_ a`                 | Pushes a nondeterministic element `a` to the stack.                            |
-| `dup`  + `i`   | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`. |
-| `swap` + `i`   | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`. |
+| Instruction  | Value | old OpStack         | new OpStack           | Description                                                                    |
+|:-------------|:------|:--------------------|:----------------------|:-------------------------------------------------------------------------------|
+| `pop`        | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                   |
+| `push` + `a` | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                     |
+| `pad`        | ?     | `_`                 | `_ a`                 | Pushes a nondeterministic element `a` to the stack.                            |
+| `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`. |
+| `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`. |
 
 ### Control Flow
 
-| Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`          | old JumpStack | new JumpStack  | Description                                                                                                       |
-| ---          | ---   | ---         | ---         | ---      | ---               | ---           | ---            | ---                                                                                                               |
-| `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + 2 - a·inv`   | `_`           | `_`            | Skip next instruction if `a` is zero.                                                                             |
-| `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`               | `_`           | `_ (o+2, d)`   | Push `(o+2,d)` to the jump stack, and jump to absolute immediate address `d`                                      |
-| `return`     | ?     | `_`         | `_`         | `_`      | `o`               | `_ (o, d)`    | `_`            | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).              |
-| `recurse`    | ?     | `_`         | `_`         | `_`      | `d`               | `_ (o, d)`    | `_ (o, d)`     | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element). |
-| `assert`     | ?     | `_ a`       | `_`         | `_`      | `_ + 1 + 💥(a-1)` | `_`           | `_`            | Pops `a` if `a == 1`, else crashes the virtual machine.                                                           |
-| `halt`       | ?     | `_`         | `_`         | `_`      | `_ + 1`           | `_`           | `_`            | Solves the halting problem (if the instruction is reached).                                                       |
+| Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`         | old JumpStack | new JumpStack | Description                                                                                                       |
+|:-------------|:------|:------------|:------------|:---------|:-----------------|:--------------|:--------------|:------------------------------------------------------------------------------------------------------------------|
+| `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + 2 - a·inv`  | `_`           | `_`           | Skip next instruction if `a` is zero.                                                                             |
+| `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`              | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute immediate address `d`                                      |
+| `return`     | ?     | `_`         | `_`         | `_`      | `o`              | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).              |
+| `recurse`    | ?     | `_`         | `_`         | `_`      | `d`              | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element). |
+| `assert`     | ?     | `_ a`       | `_`         | `_`      | `_ + 1 + 💥(a-1)` | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                           |
+| `halt`       | ?     | `_`         | `_`         | `_`      | `_ + 1`          | `_`           | `_`           | Solves the halting problem (if the instruction is reached).                                                       |
 
 ### Memory Access
 
 | Instruction | Value | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                          |
-| ---         | ---   | ---         | ---         | ---        | ---        | ---                                                                                  |
+|:------------|:------|:------------|:------------|:-----------|:-----------|:-------------------------------------------------------------------------------------|
 | `read`      | ?     | `_ p`       | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
 | `write`     | ?     | `_ p v`     | `_ p`       | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
 
 ### Auxiliary Register Instructions
 
 | Instruction      | Value | old OpStack | new OpStack | old `aux`   | new `aux`                | Description                                                                                                                                     |
-| ---              | ---   | ---         | ---         | ---         | ---                      | ---                                                                                                                                             |
+|:-----------------|:------|:------------|:------------|:------------|:-------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------|
 | `xlix`           | ?     | `_`         | `_`         | `_`         | `xlix(_)`                | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                                                 |
 | `clearall`       | ?     | `_`         | `_`         | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                                           |
 | `squeeze` + `i`  | ?     | `_`         | `_ v`       | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                                        |
@@ -115,7 +115,7 @@ In this section *stack* is short for *operational stack*.
 ### Arithmetic on Stack
 
 | Instruction | Value | old OpStack     | new OpStack     | Description                                                                                                                                                                      |
-| ---         | ---   | ---             | ---             | ---                                                                                                                                                                              |
+|:------------|:------|:----------------|:----------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `add`       | ?     | `_ b a`         | `_ c`           | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                        |
 | `mul`       | ?     | `_ b a`         | `_ c`           | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                    |
 | `inv`       | ?     | `_ a`           | `_ b`           | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                       |
@@ -134,6 +134,6 @@ In this section *stack* is short for *operational stack*.
 ### Input/Output
 
 | Instruction | Value | old OpStack | new OpStack | Description                                                       |
-| ---         | ---   | ---         | ---         | ---                                                               |
+|:------------|:------|:------------|:------------|:------------------------------------------------------------------|
 | `print`     | ?     | `_ a`       | `_`         | Writes character `a` to standard output.                          |
 | `scan`      | ?     | `_`         | `_ a`       | Reads a character from standard input and pushes it to the stack. |
