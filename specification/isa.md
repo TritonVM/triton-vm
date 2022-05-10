@@ -78,7 +78,7 @@ In this section *stack* is short for *operational stack*.
 |:-------------|:------|:--------------------|:----------------------|:-------------------------------------------------------------------------------|
 | `pop`        | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                   |
 | `push` + `a` | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                     |
-| `pad`        | ?     | `_`                 | `_ a`                 | Pushes a nondeterministic element `a` to the stack.                            |
+| `guess`      | ?     | `_`                 | `_ a`                 | Pushes a nondeterministic element `a` to the stack.                            |
 | `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`. |
 | `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`. |
 
