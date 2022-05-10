@@ -102,15 +102,25 @@ In this section *stack* is short for *operational stack*.
 
 ### Auxiliary Register Instructions
 
-| Instruction      | Value | old OpStack | new OpStack | old `aux`   | new `aux`                | Description                                                                                                                                     |
-|:-----------------|:------|:------------|:------------|:------------|:-------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------|
-| `xlix`           | ?     | `_`         | `_`         | `_`         | `xlix(_)`                | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                                                 |
-| `clearall`       | ?     | `_`         | `_`         | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                                           |
-| `squeeze` + `i`  | ?     | `_`         | `_ v`       | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                                        |
-| `absorb`  + `i`  | ?     | `_ a`       | `_`         | `…v…`       | `…(v+a)…`                | Pops the top off the stack and adds it into the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                |
-| `merkle_left`    | ?     | `_`         | `_`         | `fedcba__…` | `xlix(fedcbazyxwvu0000)` | Helps traversing a Merkle tree. Non-deterministically guesses the corresponding right digest `zyxwvu`, sets capacity to 0, and computes `xlix`. |
-| `merkle_right`   | ?     | `_`         | `_`         | `fedcba__…` | `xlix(zyxwvufedcba0000)` | Helps traversing a Merkle tree. Non-deterministically guesses the corresponding left digest `zyxwvu`, sets capacity to 0, and computes `xlix`.  |
-| `compare_digest` | ?     | `_`         | `_ a`       | `fedcba__…` | `fedcba__…`              | Compare `aux0` through `aux5` (i.e., `fedcba`) to `st0` through `st5` and put the comparison's result `a ∈ {0, 1}` on the stack.                |
+| Instruction      | Value | old OpStack | new OpStack   | old `aux`   | new `aux`                | Description                                                                                                                      |
+|:-----------------|:------|:------------|:--------------|:------------|:-------------------------|:---------------------------------------------------------------------------------------------------------------------------------|
+| `xlix`           | ?     | `_`         | `_`           | `_`         | `xlix(_)`                | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                                  |
+| `clearall`       | ?     | `_`         | `_`           | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                            |
+| `squeeze` + `i`  | ?     | `_`         | `_ v`         | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                         |
+| `absorb`  + `i`  | ?     | `_ a`       | `_`           | `…v…`       | `…(v+a)…`                | Pops the top off the stack and adds it into the `i`th auxiliary register. Assumes `0 <= i < 16`.                                 |
+| `guess_sibling`  | ?     | `_ i`       | `_ (i div 2)` | `fedcba__…` | e.g., `zyxwvufedcba0000` | Helps traversing a Merkle tree during authentication path verification. See extended description below.                          |
+| `compare_digest` | ?     | `_`         | `_ a`         | `fedcba__…` | `fedcba__…`              | Compare `aux0` through `aux5` (i.e., `fedcba`) to `st0` through `st5` and put the comparison's result `a ∈ {0, 1}` on the stack. |
+
+The instruction `guess_sibling` works as follows.
+The value at the top of the stack `i` is taken as the leaf index for a Merkle tree that is claimed to include data whose digest is the content of auxiliary registers `aux0` through `aux5`, i.e., `fedcba`.
+The sibling digest of `fedcba` is `zyxwvu` and is guessed non-deterministically, i.e., filled in by the VM's execution environment.
+The least-significant bit of `i` indicates whether `fedcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
+Depending on this least-significant bit of `i`, `guess_sibling` either
+1. does not change registers `aux0` through `aux5` and moves `zyxwvu` into registers `aux6` through `aux11`, or
+2. moves `fedcba` into registers `aux6` through `aux11` and moves `zyxwvu` into registers `aux0` through `aux5`.
+In both cases, auxiliary registers `aux12` through `aux15` are set to 0.
+The top of the operational stack is modified by shifting `i` by 1 bit to the right, i.e., dropping the least-significant bit.
+In conjunction with instruction `xlix` and `compare_digest`, the instruction `guess_sibling` allows to efficiently verify a Merkle authentication path.
 
 ### Arithmetic on Stack
 
