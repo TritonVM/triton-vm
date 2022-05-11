@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.23">
-<info created="D:20200729150742" modified="D:20220511113450"/>
+<info created="D:20200729150742" modified="D:20220511154229"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -318,15 +318,15 @@ h
 <layer name="table_names"/>
 <layer name="eval_args"/>
 <layer name="perm_args"/>
-<view layers="table_names eval_args perm_args" active="bg"/>
-<path layer="bg" fill="white">
-104 216 m
-104 40 l
-280 40 l
-280 216 l
+<view layers="bg table_names eval_args perm_args" active="bg"/>
+<path layer="bg" matrix="1 0 0 1 0 12" fill="white">
+108 204 m
+108 32 l
+280 32 l
+280 204 l
 h
 </path>
-<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
 192 138 m
 192 154 l
 </path>
@@ -340,21 +340,21 @@ h
 <text transformations="translations" pos="256 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
 <text transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
 <text transformations="translations" pos="224 64" stroke="black" type="label" width="15.11" height="6.531" depth="0" halign="center" valign="baseline">u32</text>
-<path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
 128 184 m
 128 132 l
 128 128
 132 128 c
 168 128 l
 </path>
-<path matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
 256 184 m
 256 132 l
 256 128
 252 128 c
 216 128 l
 </path>
-<path matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
 192 184 m
 192 168 l
 </path>
@@ -362,7 +362,7 @@ h
 192 184 m
 192 168 l
 </path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
 200 124 m
 200 120 l
 200 116
@@ -372,7 +372,7 @@ h
 256 112 c
 256 108 l
 </path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path stroke="darkblue" pen="heavier" cap="1" join="1">
 196 124 m
 196 112 l
 196 108
@@ -382,7 +382,7 @@ h
 224 104 c
 224 76 l
 </path>
-<path matrix="-1 0 0 1 384 0" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path matrix="-1 0 0 1 384 0" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
 200 124 m
 200 120 l
 200 116
@@ -392,7 +392,7 @@ h
 256 112 c
 256 108 l
 </path>
-<path matrix="-1 0 0 1 384 0" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small">
+<path matrix="-1 0 0 1 384 0" stroke="darkblue" pen="heavier" cap="1" join="1">
 196 124 m
 196 112 l
 196 108
