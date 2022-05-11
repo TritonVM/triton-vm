@@ -9,7 +9,16 @@ The nature of Triton VM is that the execution trace is spread out over multiple 
 Elsewhere, the acronym AET stands for algebraic execution *trace*.
 In the nomenclature of this note, a trace is a special kind of table that tracks the values of a set of registers across time.
 
-## Processor Table
+## Algebraic Execution Tables
+
+There are 10 tables in TritonVM.
+Their relation is described by below figure.
+
+![](img/aet-relations.png)
+
+A red arrow indicates an Evaluation Argument, a blue line indicates a Permutation Argument.
+
+### Processor Table
 
 The processor consists of 52 registers, each of which is assigned a column in the corresponding table.
 
@@ -64,7 +73,7 @@ The following constraints apply to every cycle.
 1. A Permutation Argument with the Hash Table.
 1. A Permutation Argument with the Uint32 Table.
 
-## Program Table
+### Program Table
 
 The Virtual Machine's Program Memory is read-only.
 The corresponding Program Table consists of two columns, `address` and `instruction`.
@@ -90,7 +99,7 @@ This commitment assumes that the FRI domain is fixed, which implies an upper bou
 
 1. A Program-Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the Instruction Table.
 
-## Instruction Table
+### Instruction Table
 
 The Instruction Table establishes the link between the program and the instructions that are being executed by the processor.
 The table consists of three columns, the instruction `address`, the `current_instruction` and the `next_instruction`.
@@ -103,7 +112,7 @@ It contains
 1. A Program Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the Program Table.
 1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the Processor Table.
 
-## Jump Stack Table
+### Jump Stack Table
 
 The Jump Stack Memory contains the underflow from the Jump Stack.
 The virtual machine defines two registers to deal with the Jump Stack:
@@ -214,7 +223,7 @@ Memory table (i.e., actual jump stack table):
 
 1. A Permutation Argument establishes that the rows match with the rows in the Processor Table.
 
-### Operational Stack
+### Operational Stack Table
 
 The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects.
 There are four registers that the program can access directly;
@@ -278,7 +287,7 @@ None.
 
 1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the Processor Table.
 
-## Random Access Memory
+### Random Access Memory Table
 
 The RAM is accessible through `load` and `save` commands.
 The RAM Table has three columns:
@@ -299,7 +308,7 @@ None.
 
 1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the Processor Table.
 
-## I/O Tables
+### I/O Tables
 
 There are two I/O Tables:
 one for the input, and one for the output.
@@ -318,7 +327,7 @@ None.
 
 1. A pair of evaluation arguments establishe that the symbols read by the processor as input, or written as output, correspond with the symbols listed in the corresponding I/O Table.
 
-## Hash Coprocessor
+### Hash Coprocessor Table
 
 The processor has 16 auxiliary registers.
 The instruction `xlix` applies the Rescue-XLIX permutation to them in one cycle.
@@ -339,7 +348,7 @@ This single-cycle hashing instruction is enabled by a Hash Table of 17 columns -
 
 1. A Permutation Argument establishes that whenever the processor executes an `xlix` instruction, the values of auxiliary registers correspond to some row in the Hash Table with index 0 mod 8 and the values of the auxiliary registers in the next cycle correspond to the values of the Hash Table 7 rows layer.
 
-## Uint32 Operations
+### Uint32 Operations Table
 
 The Uint32 Operations Table is a lookup table for 'difficult' 32-bit unsigned integer operations.
 
