@@ -384,3 +384,33 @@ None.
 **Relations to Other Tables**
 
 1. A Permutation Argument establishes that whenever the processor executes a uint32 operation, the operands and result exist as a row in this table.
+
+## Arithmetic Intermediate Representation
+
+
+### Instruction Groups
+
+To keep the degrees of the AIR polynomials low, instructions are grouped based on their effect.
+
+| group name      | description                                                                                          |
+|:----------------|:-----------------------------------------------------------------------------------------------------|
+| `decompose_arg` | instruction's immediate argument `ni` is binary decomposed into helper registers `hv0` through `hv4` |
+| `step_1`        | instruction pointer `ip` increases by 1                                                              |
+| `step_2`        | instruction pointer `ip` increases by 2                                                              |
+| `no_ram_access` | no modification to registers concerning RAM                                                          |
+| `no_aux_use`    | no modification to `aux` registers                                                                   |
+| `u32_op`        | instruction is a 32-bit unsigned integer instruction                                                 |
+| `grow_stack`    | a new element is put onto the stack, rest of the stack remains unchanged                             |
+| `keep_stack`    | stack remains unchanged                                                                              |
+| `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged                             |
+| `unop`          | stack's top-most element is modified, rest of stack remains unchanged                                |
+| `binop`         | stack's two top-most elements are modified, rest of stack remains unchanged                          |
+
+As an example, consider instruction `dup` with immediate argument `i`.
+It falls into group `decompose_arg` because `i` points to one of `st0` through `st?`.
+Arithmatizing the transition of the opStack requires polynomials of lower degree when `i` is decomposed into bits.
+Instruction `dup` falls into group `step_2` because it takes an immediate argument.
+`dup` does not change RAM, so it is in group `no_ram_access`.
+The instruction does not change the auxiliary registers, so it's in `no_aux_use`.
+The element duplicated by the instruction is pushed to the stack, so `dup` is in group `grow_stack`.
+Additionally, the polynomials for the actual duplication of the stack element at position `i` must be defined, but these polynomials do not fall into any group.
