@@ -85,14 +85,14 @@ In this section *stack* is short for *operational stack*.
 
 ### Control Flow
 
-| Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`         | old JumpStack | new JumpStack | Description                                                                                                       |
-|:-------------|:------|:------------|:------------|:---------|:-----------------|:--------------|:--------------|:------------------------------------------------------------------------------------------------------------------|
-| `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + 2 - a·inv`  | `_`           | `_`           | Skip next instruction if `a` is zero.                                                                             |
-| `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`              | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute immediate address `d`                                      |
-| `return`     | ?     | `_`         | `_`         | `_`      | `o`              | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).              |
-| `recurse`    | ?     | `_`         | `_`         | `_`      | `d`              | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element). |
-| `assert`     | ?     | `_ a`       | `_`         | `_`      | `_ + 1 + 💥(a-1)` | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                           |
-| `halt`       | ?     | `_`         | `_`         | `_`      | `_ + 1`          | `_`           | `_`           | Solves the halting problem (if the instruction is reached).                                                       |
+| Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`         | old JumpStack | new JumpStack | Description                                                                                                                                                     |
+|:-------------|:------|:------------|:------------|:---------|:-----------------|:--------------|:--------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + s`          | `_`           | `_`           | Skip next instruction if `a` is zero. Next instruction has to be either `call`, or `recurse`, or `return`. `s` ∈ {1, 2, 3} depends on `a` and next instruction. |
+| `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`              | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute immediate address `d`                                                                                    |
+| `return`     | ?     | `_`         | `_`         | `_`      | `o`              | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                                                            |
+| `recurse`    | ?     | `_`         | `_`         | `_`      | `d`              | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).                                               |
+| `assert`     | ?     | `_ a`       | `_`         | `_`      | `_ + 1 + 💥(a-1)` | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                                                         |
+| `halt`       | ?     | `_`         | `_`         | `_`      | `_ + 1`          | `_`           | `_`           | Solves the halting problem (if the instruction is reached).                                                                                                     |
 
 ### Memory Access
 
