@@ -98,8 +98,8 @@ In this section *stack* is short for *operational stack*.
 
 | Instruction | Value | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                          |
 |:------------|:------|:------------|:------------|:-----------|:-----------|:-------------------------------------------------------------------------------------|
-| `read`      | ?     | `_ p`       | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
-| `write`     | ?     | `_ p v`     | `_ p`       | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
+| `read_mem`  | ?     | `_ p`       | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
+| `write_mem` | ?     | `_ p v`     | `_ p`       | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
 
 ### Auxiliary Register Instructions
 
@@ -146,5 +146,5 @@ In conjunction with instruction `xlix` and `compare_digest`, the instruction `gu
 
 | Instruction | Value | old OpStack | new OpStack | Description                                                       |
 |:------------|:------|:------------|:------------|:------------------------------------------------------------------|
-| `print`     | ?     | `_ a`       | `_`         | Writes character `a` to standard output.                          |
-| `scan`      | ?     | `_`         | `_ a`       | Reads a character from standard input and pushes it to the stack. |
+| `read_io`   | ?     | `_`         | `_ a`       | Reads a character from standard input and pushes it to the stack. |
+| `write_io`  | ?     | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.         |
