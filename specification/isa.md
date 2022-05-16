@@ -5,6 +5,11 @@ It is a [Harvard architecture](https://en.wikipedia.org/wiki/Harvard_architectur
 The arithmetization of the VM is defined over the *B-field* $\mathbb{F}_p$ where $p=2^{64}-2^{32}+1$.
 This means the registers and memory elements take values from $\mathbb{F}_p$, and the transition function gives rise to low-degree transition verification polynomials from the ring of multivariate polynomials over $\mathbb{F}_p$.
 
+Instructions have variable width:
+they either consist of one word, i.e., one B-Field element, or of two words, i.e., two B-Field elements.
+An example for a single-word instruction is `pop`, removing the top of the stack.
+An example for a double-word instruction is `push` + `arg`, pushing `arg` to the stack.
+
 ## Data Structures
 
 **Memory**
