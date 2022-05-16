@@ -126,10 +126,10 @@ In this section *stack* is short for *operational stack*.
 
 ### Memory Access
 
-| Instruction | Value | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                          |
-|:------------|:------|:------------|:------------|:-----------|:-----------|:-------------------------------------------------------------------------------------|
-| `read_mem`  | ?     | `_ p`       | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
-| `write_mem` | ?     | `_ p v`     | `_ p`       | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
+| Instruction | Value | old OpStack | new OpStack | old `ramp` | new `ramp` | old `ramv` | new `ramv` | Description                                                                          |
+|:------------|:------|:------------|:------------|:-----------|:-----------|:-----------|:-----------|:-------------------------------------------------------------------------------------|
+| `read_mem`  | ?     | `_ p`       | `_ p v`     | `_`        | `p`        | `_`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
+| `write_mem` | ?     | `_ p v`     | `_ p`       | `_`        | `p`        | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
 
 ### Auxiliary Register Instructions
 
