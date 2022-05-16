@@ -71,6 +71,10 @@ These registers are part of the arithmetization of the architecture, but not nee
 
 ## Instructions
 
+Most instructions are contained within a single, parameterless machine word.
+
+Some instructions take a machine word as argument and are so considered double-word instructions. They are recognised by the form "`instr` + `arg`".
+
 ### OpStack Manipulation
 
 In this section *stack* is short for *operational stack*.
