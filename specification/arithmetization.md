@@ -295,7 +295,7 @@ Operational Stack Table:
 
 The RAM is accessible through `read_mem` and `write_mem` commands.
 The RAM Table has three columns:
-the cycle counter `clk`, RAM address `memory_address`, and the value of the memory at that address `memory_value`.
+the cycle counter `clk`, RAM address pointer `ramp`, and the value of the memory at that address `ramv`.
 The columns are identical to the columns of the same name in the Processor Table, up to the order of the rows.
 The rows are sorted by memory address first, then by cycle counter.
 
@@ -305,8 +305,8 @@ None.
 
 **Transition Constraints**
 
-1. If the `memory_address` changes, then the new `memory_value` must be zero
-1. If the `memory_address` does not change and the `memory_value` does change, then the cycle counter `clk` must increase by one.
+1. If the `ramp` changes, then the new `ramv` must be zero
+1. If the `ramp` does not change and the `ramv` does change, then the cycle counter `clk` must increase by one.
 
 **Relations to Other Tables**
 
