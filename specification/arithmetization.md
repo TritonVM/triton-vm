@@ -9,69 +9,65 @@ The nature of Triton VM is that the execution trace is spread out over multiple 
 Elsewhere, the acronym AET stands for algebraic execution *trace*.
 In the nomenclature of this note, a trace is a special kind of table that tracks the values of a set of registers across time.
 
+The values of all registers, and consequently the elements on the stack, in memory, and so on, are elements of the _B-field_, i.e., $\mathbb{F}_p$ where $p=2^{64}-2^{32}+1$.
+All values of columns corresponding to one such register are elements of the B-Field as well.
+The entries of a table's columns corresponding to Evaluation or Permutation Arguments are elements from the _X-Field_ $\mathbb{F}_{p^3}$.
+
+For each table, up to three lists containing constraints of different type are given:
+1. Consistency Constraints, establishing consistency within any given row,
+1. Boundary Constraints, defining values in a table's first row and, in one case, also the last, and
+1. Transition Constraints, establishing the consistency of two consecutive rows in relation to each other.
+
+Together, all these constraints constitute the AIR constraints.
+
 ## Algebraic Execution Tables
 
 There are 10 tables in TritonVM.
 Their relation is described by below figure.
+A red arrow indicates an Evaluation Argument, a blue line indicates a Permutation Argument.
 
 ![](img/aet-relations.png)
 
-A red arrow indicates an Evaluation Argument, a blue line indicates a Permutation Argument.
 
 ### Processor Table
 
-The processor consists of 52 registers, each of which is assigned a column in the corresponding table.
-
-- `clk` cycle counter
-- `ip` instruction pointer
-- `ci` current instruction
-- `ib0`-`ib5` instruction bits
-- `if0`-`if9` instruction flags (used to keep the AIR low degree)
-- `ni` next instruction
-- `jsp` jump address stack pointer
-- `jsv` jump address stack value
-- `st0`-`st3` operational stack elements
-- `inv` inverse of top of stack if nonzero, and zero otherwise
-- `osp` operational stack pointer
-- `osv` operational stack value
-- `hv0`-`hv4` helper variables
-- `ramp` RAM pointer
-- `ramv` RAM value
-- `aux0`-`aux15` auxiliary registers
+The processor consists of all registers defined in the [Instruction Set Architecture](isa.md).
+Each register is assigned a column in the processor table.
 
 **Consistency Constraints**
 
-1. The instruction bits `ib0`-`ib5` are binary and correspond to the binary expansion of the current instruction `ci`.
-1. The instruction flags `if0`-`if10` are binary and match with the instruction bits through their defining predicates.
-1. The inverse register `inv` is contains the inverse of `st0` if it is nonzero and zero otherwise.
+1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
+1. The inverse register `inv` contains the inverse of `st0` if it is nonzero and zero otherwise.
 
 **Boundary Constraints**
 
 1. The cycle counter `clk` is zero.
 1. The instruction pointer `ip` is zero.
 1. The jump address stack pointer and value `jsp` and `jsv` are zero.
-1. The operational stack elements `st0`-`st3` are zero.
+1. The operational stack elements `st0`-`st?` are zero.
 1. The inverse register `inv` is zero.
-1. The operational stack pointer and value `osp` and `osv` are zero
+1. The operational stack pointer `osp` is `?`
+1. The operational stack value `osv` is zero
 1. The RAM pointer and value `ramp` and `ramv` are zero.
 1. The auxiliary registers `aux0`-`aux15` are zero.
+1. In the last row, `ci` is zero, corresponding to instruction `halt`.
 
 **Transition Constraints**
 
-Instruction-specific constraints are defined by the instructions.
+Due to their complexity, instruction-specific constraints are defined [in their own section further below](#instruction-specific-transition-constraints).
 The following constraints apply to every cycle.
 
 1. The cycle counter `clk` increases by one.
 
 **Relations to Other Tables**
 
-1. A Permutation Argument with the Instruction Table.
-1. A pair of Evaluation Arguments with the Input and Output Tables.
-1. A Permutation Argument with the Jump Stack Table.
-1. A Permutation Argument with the Opstack Table.
-1. A Permutation Argument with the Memory Table.
-1. A Permutation Argument with the Hash Table.
-1. A Permutation Argument with the Uint32 Table.
+1. A Permutation Argument with the [Instruction Table](#instruction-table).
+1. A pair of Evaluation Arguments with the [Input and Output Tables](#io-tables).
+1. A Permutation Argument with the [Jump Stack Table](#jump-stack-table).
+1. A Permutation Argument with the [Opstack Table](#operational-stack-table).
+1. A Permutation Argument with the [RAM Table](#random-access-memory-table).
+1. A Permutation Argument with the [Hash Table](#hash-coprocessor-table).
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table).
 
 ### Program Table
 
@@ -93,37 +89,43 @@ This commitment assumes that the FRI domain is fixed, which implies an upper bou
 
 **Transition Constraints**
 
-1. The addresses increase monotonically for, by one in each row.
+1. The address increases by one.
 
 **Relations to other Tables**
 
-1. A Program-Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the Instruction Table.
+1. An Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the [Instruction Table](#instruction-table).
 
 ### Instruction Table
 
 The Instruction Table establishes the link between the program and the instructions that are being executed by the processor.
-The table consists of three columns, the instruction `address`, the `current_instruction` and the `next_instruction`.
+The table consists of three columns:
+1. the instruction's `address`,
+1. the `current_instruction`, and
+1. the `next_instruction`.
+
 It contains
- - one row for every instruction in the program (padding with zero where needed), and
- - one row for every cycle in the execution trace.
+- one row for every instruction in the [Program Table](#program-table), i.e., one row for every available instruction, and
+- one row for every cycle `clk` in the [Processor Table](#processor-table), i.e., one row for every executed instruction.
+The rows are sorted by `address`.
+ 
 
 *** Relations to Other Tables**
 
-1. A Program Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the Program Table.
-1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the Processor Table.
+1. An Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the [Program Table](#program-table).
+1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the [Processor Table](#processor-table).
 
 ### Jump Stack Table
 
 The Jump Stack Memory contains the underflow from the Jump Stack.
-The virtual machine defines two registers to deal with the Jump Stack:
-1. `jsp`, the return address pointer, which points to a location in jump address stack Memory
-1. `jsv`, the return address value, which points to a location in Program Memory.
+TritonVM defines three registers to deal with the Jump Stack:
+1. `jsp`, the jump stack pointer, which points to a location in Jump Stack Memory
+1. `jso`, the last jump's origin, which points to a location in Program Memory, and
+1. `jsd`, the last jump's destination, which also points to a location in Program Memory.
 
-The Jump Stack Table is a table whose columns are a subset of those of the Processor Table with one addition:
-the destination address `dest`.
-The rows are sorted by return address pointer (`jsp`), then by cycle counter (`clk`).
-The column `dest` contains the destination of stack-extending jump (`call`) as well as of the no-stack-change jump (`recurse`);
-the column `jsv` contains the source of the stack-extending jump (`call`) or equivalently the destination of the stack-shrinking jump (`return`).
+The Jump Stack Table is a table whose columns are a subset of those of the Processor Table.
+The rows are sorted by jump stack pointer (`jsp`), then by cycle counter (`clk`).
+The column `jsd` contains the destination of stack-extending jump (`call`) as well as of the no-stack-change jump (`recurse`);
+the column `jso` contains the source of the stack-extending jump (`call`) or equivalently the destination of the stack-shrinking jump (`return`).
 
 The AIR for this table guarantees that the return address of a single cell of return address memory can change only if there was a `call` instruction.
 
@@ -164,39 +166,40 @@ Program:
 
 Execution trace:
 
-| `clk` | `ip`   | `ci`     | `ni`     | `jsv`  | `jsp` | jump address stack | destination address stack |
-|:------|:-------|:---------|:---------|:-------|:------|:-------------------|:--------------------------|
-| 0     | `0x00` | `foo`    | `bar`    | `0x00` | 0     | []                 | []                        |
-| 1     | `0x01` | `bar`    | `call`   | `0x00` | 0     | []                 | []                        |
-| 2     | `0x02` | `call`   | `0xA0`   | `0x00` | 0     | []                 | []                        |
-| 3     | `0xA0` | `buzz`   | `foo`    | `0x04` | 1     | [`0x04`]           | [`0xA0`]                  |
-| 4     | `0xA1` | `foo`    | `bar`    | `0x04` | 1     | [`0x04`]           | [`0xA0`]                  |
-| 5     | `0xA2` | `bar`    | `return` | `0x04` | 1     | [`0x04`]           | [`0xA0`]                  |
-| 6     | `0xA3` | `return` | `foo`    | `0x04` | 1     | [`0x04`]           | [`0xA0`]                  |
-| 7     | `0x04` | `buzz`   | `bar`    | `0x00` | 0     | []                 | []                        |
-| 8     | `0x05` | `bar`    | `call`   | `0x00` | 0     | []                 | []                        |
-| 9     | `0x06` | `call`   | `0xB0`   | `0x00` | 0     | []                 | []                        |
-| 10    | `0xB0` | `foo`    | `call`   | `0x08` | 1     | [`0x08`]           | [`0xB0`]                  |
-| 11    | `0xB1` | `call`   | `0xC0`   | `0x08` | 1     | [`0x08`]           | [`0xB0`]                  |
-| 12    | `0xC0` | `buzz`   | `foo`    | `0xB3` | 2     | [`0x08`, `0xB3`]   | [`0xB0`, `0xC0`]          |
-| 13    | `0xC1` | `foo`    | `bar`    | `0xB3` | 2     | [`0x08`, `0xB3`]   | [`0xB0`, `0xC0`]          |
-| 14    | `0xC2` | `bar`    | `return` | `0xB3` | 2     | [`0x08`, `0xB3`]   | [`0xB0`, `0xC0`]          |
-| 15    | `0xC3` | `return` | `buzz`   | `0xB3` | 2     | [`0x08`, `0xB3`]   | [`0xB0`, `0xC0`]          |
-| 16    | `0xB3` | `return` | `bazz`   | `0x08` | 1     | [`0x08`]           | [`0xB0`]                  |
-| 17    | `0x08` | `foo`    | `bar`    | `0x00` | 0     | []                 | []                        |
+| `clk` | `ip`   | `ci`     | `ni`     | `jsp` | `jso`  | `jsd`  | jump stack                           |
+|:------|:-------|:---------|:---------|:------|:-------|:-------|:-------------------------------------|
+| 0     | `0x00` | `foo`    | `bar`    | 0     | `0x00` | `0x00` | [ ]                                  |
+| 1     | `0x01` | `bar`    | `call`   | 0     | `0x00` | `0x00` | [ ]                                  |
+| 2     | `0x02` | `call`   | `0xA0`   | 0     | `0x00` | `0x00` | [ ]                                  |
+| 3     | `0xA0` | `buzz`   | `foo`    | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 4     | `0xA1` | `foo`    | `bar`    | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 5     | `0xA2` | `bar`    | `return` | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 6     | `0xA3` | `return` | `foo`    | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 7     | `0x04` | `buzz`   | `bar`    | 0     | `0x00` | `0x00` | [ ]                                  |
+| 8     | `0x05` | `bar`    | `call`   | 0     | `0x00` | `0x00` | [ ]                                  |
+| 9     | `0x06` | `call`   | `0xB0`   | 0     | `0x00` | `0x00` | [ ]                                  |
+| 10    | `0xB0` | `foo`    | `call`   | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
+| 11    | `0xB1` | `call`   | `0xC0`   | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
+| 12    | `0xC0` | `buzz`   | `foo`    | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 13    | `0xC1` | `foo`    | `bar`    | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 14    | `0xC2` | `bar`    | `return` | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 15    | `0xC3` | `return` | `buzz`   | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 16    | `0xB3` | `return` | `bazz`   | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
+| 17    | `0x08` | `foo`    | `bar`    | 0     | `0x00` | `0x00` | [ ]                                  |
 
-Memory table (i.e., actual jump stack table):
+Jump Stack Table:
 
-| `clk` | `ci`     | `jsp` | `jsv`  | `dest` |
+
+| `clk` | `ci`     | `jsp` | `jso`  | `jsd`  |
 |:------|:---------|:------|:-------|:-------|
 | 0     | `foo`    | 0     | `0x00` | `0x00` |
 | 1     | `bar`    | 0     | `0x00` | `0x00` |
 | 2     | `call`   | 0     | `0x00` | `0x00` |
-| 7     | `buz`    | 0     | `0x00` | `0x00` |
+| 7     | `buzz`   | 0     | `0x00` | `0x00` |
 | 8     | `bar`    | 0     | `0x00` | `0x00` |
 | 9     | `call`   | 0     | `0x00` | `0x00` |
 | 17    | `foo`    | 0     | `0x00` | `0x00` |
-| 3     | `buz`    | 1     | `0x04` | `0xA0` |
+| 3     | `buzz`   | 1     | `0x04` | `0xA0` |
 | 4     | `foo`    | 1     | `0x04` | `0xA0` |
 | 5     | `bar`    | 1     | `0x04` | `0xA0` |
 | 6     | `return` | 1     | `0x04` | `0xA0` |
@@ -214,68 +217,69 @@ Memory table (i.e., actual jump stack table):
 
 **Transition Constraints**
 
-1. The jump address stack pointer `jsp` increases by one, *or*
-1. (`jsp`, `jsv` and `dest` remain the same and) the cycle counter `clk` increases by one, *or*
-1. (`jsp`, `jsv` and `dest` remain the same and) the current instruction `ci` is `call`, *or*
-1. (`jsp` remains the same and) the current instruction `ci` is `return`.
+1. The jump stack pointer `jsp` increases by one, *or*
+1. (`jsp`, `jso` and `jsd` remain the same and the cycle counter `clk` increases by one), *or*
+1. (`jsp`, `jso` and `jsd` remain the same and the current instruction `ci` is `call`), *or*
+1. (`jsp` remains the same and the current instruction `ci` is `return`).
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that the rows match with the rows in the Processor Table.
+1. A Permutation Argument establishes that the rows match with the rows in the [Processor Table](#processor-table).
 
 ### Operational Stack Table
 
 The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects.
-There are four registers that the program can access directly;
-these registers correspond to the top of the stack.
+There are ?-many registers (`st0` through `st?`) that the program can access directly.
+These registers correspond to the top of the stack.
 The rest of the operational stack is stored in a dedicated memory object called Operational Stack Memory.
 
-The operational stack always contains at least 4 elements.
-Instructions that reduce the number of stack elements to less than four are illegal.
-
-The operational stack table contains a subset of the rows of the processor table -- specifically, the cycle counter `clk`, the current instruction `current_instruction`, the operation stack value `osv` and pointer `osp`.
-The rows of the operational stack table are sorted by operational stack pointer `osp` first, cycle `clk` second.
+The operational stack table contains a subset of the columns of the processor table –
+specifically, the cycle counter `clk`, the current instruction `ci`, the operation stack value `osv` and pointer `osp`.
+The rows of the operational stack table are sorted by operational stack pointer `osp` first, cycle count `clk` second.
 
 The mechanics are best illustrated by an example.
+For illustrative purposes only, we use four stack registers `st0` through `st3` in the example.
+TritonVM has ?-many stack registers, `st0` through `st?`.
 
 Execution trace:
 
-| `clk` | `current_instruction` | `next_instruction` | `osv` | `osp` | operational stack                  |
-|:------|:----------------------|:-------------------|:------|:------|:-----------------------------------|
-| 0     | `push`                | 0x01               | 0     | 0     | [0,0,0,0]                          |
-| 1     | `push`                | 0x02               | 0     | 1     | [0;0,0,0,0x01]                     |
-| 2     | `push`                | 0x03               | 0     | 2     | [0,0;0,0,0x01,0x02]                |
-| 3     | `push`                | 0x04               | 0     | 3     | [0,0,0;0,0x01,0x02,0x03]           |
-| 4     | `push`                | 0x05               | 0     | 4     | [0,0,0,0;0x01,0x02,0x03,0x04]      |
-| 5     | `foo`                 | `add`              | 0x01  | 5     | [0,0,0,0,0x01;0x02,0x03,0x04,0x05] |
-| 6     | `add`                 | `pop`              | 0x01  | 5     | [0,0,0,0,0x01;0x02,0x03,0x04,0x05] |
-| 7     | `pop`                 | `add`              | 0     | 4     | [0,0,0,0;0x01,0x02,0x03,0x09]      |
-| 8     | `add`                 | `add`              | 0     | 3     | [0,0,0;0,0x01,0x02,0x03]           |
-| 9     | `add`                 | `pop`              | 0     | 2     | [0,0;0,0,0x01,0x05]                |
-| 10    | `pop`                 | `foo`              | 0     | 1     | [0;0,0,0,0x06]                     |
-| 11    | `foo`                 | `pop`              | 0     | 0     | [0,0,0,0]                          |
-| 12    | `pop`                 | -                  | 0     | 0     | **illegal command**                |
+| `clk` | `ci`   | `ni`  | `osv` | `osp` | OpStack Memory | `st3` | `st2` | `st1` | `st0` |
+|:------|:-------|:------|:------|:------|:---------------|:------|:------|:------|:------|
+| 0     | `push` | 42    | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
+| 1     | `push` | 43    | 0     | 5     | [0]            | 0     | 0     | 0     | 42    |
+| 2     | `push` | 44    | 0     | 6     | [0,0]          | 0     | 0     | 42    | 43    |
+| 3     | `push` | 45    | 0     | 7     | [0,0,0]        | 0     | 42    | 43    | 44    |
+| 4     | `push` | 46    | 0     | 8     | [0,0,0,0]      | 42    | 43    | 44    | 45    |
+| 5     | `foo`  | `add` | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
+| 6     | `add`  | `pop` | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
+| 7     | `pop`  | `add` | 0     | 8     | [0,0,0,0]      | 42    | 43    | 44    | 91    |
+| 8     | `add`  | `add` | 0     | 7     | [0,0,0]        | 0     | 42    | 43    | 44    |
+| 9     | `add`  | `pop` | 0     | 6     | [0,0]          | 0     | 0     | 42    | 87    |
+| 10    | `pop`  | `foo` | 0     | 5     | [0]            | 0     | 0     | 0     | 129   |
+| 11    | `foo`  | `pop` | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
+| 12    | `pop`  | `bar` | 0     | 3     | 💥              | 0     | 0     | 0     | 0     |
 
-Memory table (i.e., the actual operational stack table):
+Operational Stack Table:
 
-| `clk` | `current_instruction` | `osv` | `osp` |
-|:------|:----------------------|:------|:------|
-| 0     | `push`                | 0     | 0     |
-| 11    | `foo`                 | 0     | 0     |
-| 1     | `push`                | 0     | 1     |
-| 10    | `pop`                 | 0     | 1     |
-| 2     | `push`                | 0     | 2     |
-| 9     | `add`                 | 0     | 2     |
-| 3     | `push`                | 0     | 3     |
-| 8     | `add`                 | 0     | 3     |
-| 4     | `push`                | 0     | 4     |
-| 7     | `pop`                 | 0x01  | 4     |
-| 5     | `foo`                 | 0x01  | 5     |
-| 6     | `add`                 | 0x01  | 5     |
+| `clk` | `ci`   | `osv` | `osp` |
+|:------|:-------|:------|:------|
+| 0     | `push` | 0     | 4     |
+| 11    | `foo`  | 0     | 4     |
+| 1     | `push` | 0     | 5     |
+| 10    | `pop`  | 0     | 5     |
+| 2     | `push` | 0     | 6     |
+| 9     | `add`  | 0     | 6     |
+| 3     | `push` | 0     | 7     |
+| 8     | `add`  | 0     | 7     |
+| 4     | `push` | 0     | 8     |
+| 7     | `pop`  | 0     | 8     |
+| 5     | `foo`  | 42    | 9     |
+| 6     | `add`  | 42    | 9     |
 
 **Boundary Conditions**
 
-None.
+1. `osv` is zero.
+1. `osp` is the number of available stack registers, i.e., ?.
 
 **Transition Constraints**
 
@@ -285,11 +289,11 @@ None.
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the Processor Table.
+1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the [Processor Table](#processor-table).
 
 ### Random Access Memory Table
 
-The RAM is accessible through `load` and `save` commands.
+The RAM is accessible through `read_mem` and `write_mem` commands.
 The RAM Table has three columns:
 the cycle counter `clk`, RAM address `memory_address`, and the value of the memory at that address `memory_value`.
 The columns are identical to the columns of the same name in the Processor Table, up to the order of the rows.
@@ -306,7 +310,7 @@ None.
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the Processor Table.
+1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the [Processor Table](#processor-table).
 
 ### I/O Tables
 
@@ -325,14 +329,14 @@ None.
 
 **Relations to Other Tables**
 
-1. A pair of evaluation arguments establishe that the symbols read by the processor as input, or written as output, correspond with the symbols listed in the corresponding I/O Table.
+1. A pair of evaluation arguments establish that the symbols read by the [processor](#processor-table) as input, or written as output, correspond with the symbols listed in the corresponding I/O Table.
 
 ### Hash Coprocessor Table
 
 The processor has 16 auxiliary registers.
 The instruction `xlix` applies the Rescue-XLIX permutation to them in one cycle.
 What happens in the background is that the auxiliary registers are copied to the hash coprocessor, which then runs 7 the rounds of the Rescue-XLIX, and then copies the 16 values back.
-This single-cycle hashing instruction is enabled by a Hash Table of 17 columns -- one extra to indicate round index.
+This single-cycle hashing instruction is enabled by a Hash Table of 17 columns – one extra to indicate round index.
 
 **Boundary Constraints**
 
@@ -346,47 +350,52 @@ This single-cycle hashing instruction is enabled by a Hash Table of 17 columns -
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that whenever the processor executes an `xlix` instruction, the values of auxiliary registers correspond to some row in the Hash Table with index 0 mod 8 and the values of the auxiliary registers in the next cycle correspond to the values of the Hash Table 7 rows layer.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes an `xlix` instruction, the values of auxiliary registers correspond to some row in the Hash Table with index 0 mod 8 and the values of the auxiliary registers in the next cycle correspond to the values of the Hash Table 7 rows layer.
 
 ### Uint32 Operations Table
 
 The Uint32 Operations Table is a lookup table for 'difficult' 32-bit unsigned integer operations.
 
-| `idc` | LHS      | RHS      | EQ     | LT    | AND       | OR       | XOR       | REV      |
-|:------|:---------|:---------|:-------|:------|:----------|:---------|:----------|:---------|
-| 1     | `a`      | `b`      | `a==b` | `a<b` | `a and b` | `a or b` | `a xor b` | `rev(a)` |
-| 1     | `a >> 1` | `b >> 1` | -      | -     | -         | -        | -         | -        |
-| …     | -        | -        | -      | -     | -         | -        | -         | -        |
-| 0     | `0`      | `0`      | `1`    | `0`   | `0`       | `0`      | `0`       | `0`      |
-| 1     | `c`      | `d`      | -      | -     | -         | -        | -         | -        |
+| `idc` | LHS      | RHS      | LT                  | AND                     | XOR                     | REV           |
+|:------|:---------|:---------|:--------------------|:------------------------|:------------------------|:--------------|
+| 1     | `a`      | `b`      | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      |
+| 0     | `a >> 1` | `b >> 1` | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` |
+| 0     | `a >> 2` | `b >> 2` | …                   | …                       | …                       | …             |
+| …     | …        | …        | …                   | …                       | …                       | …             |
+| 0     | `0`      | `0`      | `0`                 | `0`                     | `0`                     | `0`           |
+| 1     | `c`      | `d`      | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      |
+| 0     | `c >> 1` | `d >> 1` | …                   | …                       | …                       | …             |
+| …     | …        | …        | …                   | …                       | …                       | …             |
+| 0     | `0`      | `0`      | `0`                 | `0`                     | `0`                     | `0`           |
 
 The AIR verifies the correct update of each consecutive pair of rows.
 In every row one bit is eliminated.
-Only when the previous row is all zeros (with a 1 in the column for `EQ`) can a new row be inserted.
+Only when the previous row is all zeros can a new row be inserted.
 
 The AIR constraints establish that the entire table is consistent.
 Copy-constraints establish that logical and bitwise operations were computed correctly.
 
+**Consistency Constraints**
+
+1. The indicator `idc` is binary.
+
 **Boundary Constrants**
 
-None.
+1. The indicator `idc` in the first row is one.
+1. The indicator `idc` in the last row is zero.
 
 **Transition Constraints**
 
-1. The indicator `idc` is binary.
-1. If the indicator `idc` is zero, so are LHS, RHS, LT, AND, OR, XOR, REV and 1-EQ.
+1. If the indicator `idc` is zero, so are LHS, RHS, LT, AND, XOR, and REV.
 1. If the indicator `idc` is nonzero across two rows, the current and next row follow the one-bit update rules.
-
-**Terminal Constraints**
-
-1. The indicator `idc` in the last row is zero.
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that whenever the processor executes a uint32 operation, the operands and result exist as a row in this table.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes a uint32 operation, the operands and result exist as a row in the uint32 table.
 
-## Arithmetic Intermediate Representation
+## Instruction-Specific Transition Constraints
 
+Due to their complexity, the transition constraints for the [Processor Table](#Processor-Table) are listed and explained in this section.
 
 ### Instruction Groups
 
