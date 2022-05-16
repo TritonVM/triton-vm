@@ -12,7 +12,7 @@ An example for a double-word instruction is `push` + `arg`, pushing `arg` to the
 
 ## Data Structures
 
-**Memory**
+### Memory
 The term *memory* refers to a data structure that gives read access (and possibly write access, too) to elements indicated by an *address*.
 The address lives in the same field.
 There are four separate notions of memory:
@@ -21,10 +21,10 @@ There are four separate notions of memory:
 3. *OpStack Memory*, which stores the part of the operational stack that is not represented explicitly by the operational stack registers.
 4. *Jump Stack Memory*, which stores the entire jump stack.
 
-**OpStack**
+### OpStack
 The stack is a last-in;first-out data structure that allows the program to store intermediate variables, pass arguments, and keep pointers to objects held in RAM.
 
-**Jump Stack**
+### Jump Stack
 Another last-in;first-out data structure that keeps track of return and destination addresses.
 This stack changes only when control follows a `call` or `return` instruction.
 
@@ -54,7 +54,8 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | *`ramv`                | RAM value                    | contains the value of the RAM element at the given address                                |
 | `aux0` through `aux15` | auxiliary registers          | data structure dedicated to hashing instructions                                          |
 
-**Instruction**
+### Instruction
+
 The instruction is represented by one register called the *current instruction register* `ci`.
 This value then decomposed into its 6 constituent bits, giving rise to 6 *instruction bit registers*, labeled `ib0` through `ib5`.
 Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in instruction memory.
@@ -62,7 +63,8 @@ Also, there is the *next instruction register* `ni` that contains the next instr
 For immediate instructions, `ni` takes the value of the next instruction.
 Otherwise, `ni` holds the argument for current instruction `ci`.
 
-**Stack**
+### Stack
+
 The stack is represented by ?-many registers called *stack registers* (`st0` – `st?`) plus the OpStack Memory.
 The top ?-many elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Memory, is not.
 In order to access elements of the OpStack held in OpStack Memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
@@ -76,7 +78,7 @@ For example, if `osp` is ?, the OpStack is empty.
 If `osp` is (?+2), the OpStack contains 2 elements.
 The register `osv` holds the top-most value of the OpStack Memory, or zero if no such value exists.
 
-**RAM**
+### RAM
 
 TritonVM has dedicated Random-Access Memory.
 Programs can read from and write to RAM using instructions `read_mem` and `write_mem`.
@@ -87,7 +89,8 @@ They primarily exist to allow efficient [arithmetization](arithmetization.md).
 For any of the two RAM instructions, register `ramp` is set to the RAM address pointed to, i.e., either `st0` or `st1`, depending on the instruction.
 Likewise, `ramv` is set to the value being read or written.
 
-**Helper Variables**
+### Helper Variables
+
 Some instructions require helper variables in order to generate an efficient arithmetization.
 To this end, there are 5 helper registers, labeled `hv0` through `hv4`.
 These registers are part of the arithmetization of the architecture, but not needed to define the instruction set.
