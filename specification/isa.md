@@ -66,13 +66,26 @@ Otherwise, `ni` holds the argument for current instruction `ci`.
 The stack is represented by ?-many registers called *stack registers* (`st0` – `st?`) plus the OpStack Memory.
 The top ?-many elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Memory, is not.
 In order to access elements of the OpStack held in OpStack Memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
-The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset ?.
-For example, if `osp` is ?, the OpStack is empty.
-If `osp` is (?+2), the OpStack contains 2 elements.
 
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
+The registers `osp` and `osv` are not directly accessible by the program running in TritonVM.
+They primarily exist to allow efficient [arithmetization](arithmetization.md).
+The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset ?.
+For example, if `osp` is ?, the OpStack is empty.
+If `osp` is (?+2), the OpStack contains 2 elements.
+The register `osv` holds the top-most value of the OpStack Memory, or zero if no such value exists.
+
 **RAM**
+
+TritonVM has dedicated Random-Access Memory.
+Programs can read from and write to RAM using instructions `read_mem` and `write_mem`.
+The address to read from – respectively, to write to – is one of the two top-most OpStack elements, depending on the instruction.
+
+The registers `ramp` and `ramv` are not directly accessible by the program running in TritonVM.
+They primarily exist to allow efficient [arithmetization](arithmetization.md).
+For any of the two RAM instructions, register `ramp` is set to the RAM address pointed to, i.e., either `st0` or `st1`, depending on the instruction.
+Likewise, `ramv` is set to the value being read or written.
 
 **Helper Variables**
 Some instructions require helper variables in order to generate an efficient arithmetization.
