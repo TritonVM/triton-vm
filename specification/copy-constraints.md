@@ -1,6 +1,6 @@
 # Copy-Constraints
 
-Triton VM, possibly in addition to other VMs, uses several different tables. Each table has its own AIR. However, the tables a *not* independent. There are constraints that require that some pairs of tables have some identical rows. This note explains how to realize these copy-constraints at the Polynomial IOP level.
+Triton VM, possibly in addition to other VMs, uses several different tables. Each table has its own AIR. However, the tables are *not* independent. There are constraints that require that some pairs of tables have some identical rows. This note explains how to realize these copy-constraints at the Polynomial IOP level.
 
 ## Permutation Argument
 
@@ -22,7 +22,7 @@ To establish that the product is correctly computed, the Prover needs to supply 
 **Protocol Permutation**
  - Verifier is already in possession of polynomial oracles $[t(X)]$ and $[s(X)]$ that agree with $T$ and $S$ on a subgroup $H$ of order $2^k$.
  - Verifier samples $\beta \xleftarrow{\$} \mathbb{F}$ and sends it to Prover.
- - Prover computes running product polynomials, $t_ p(X)$ and $s_ p(X)$ of degree at most $|H|-1$ and sends them to Verifier.
+ - Prover computes *running product polynomials*, $t_ p(X)$ and $s_ p(X)$ of degree at most $|H|-1$ and sends them to Verifier.
  - Prover and Verifier run an AIR sub-protocol to establish that the AIR is satisfied for $(t(X), s(X), t_ p(X), s_ p(X))$.
 
 What if $T$ and $S$ have multiple columns, say $r$-many? In this case the verifier simply supplies $r$ weights $\alpha_0, \ldots, \alpha_{r-1} \xleftarrow{\$} \mathbb{F}$. The protocol is then applied to the weighted sum of columns.
