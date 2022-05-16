@@ -63,8 +63,13 @@ For immediate instructions, `ni` takes the value of the next instruction.
 Otherwise, `ni` holds the argument for current instruction `ci`.
 
 **Stack**
-The stack is represented by ?-many registers called *stack registers* (`st0` – `st?`), which take the values of the top ?-many stack elements.
-In addition to these registers, there is the *operational stack pointer* register `osp` whose value is the length of the operational stack minus ?.
+The stack is represented by ?-many registers called *stack registers* (`st0` – `st?`) plus the OpStack Memory.
+The top ?-many elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Memory, is not.
+In order to access elements of the OpStack held in OpStack Memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
+The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset ?.
+For example, if `osp` is ?, the OpStack is empty.
+If `osp` is (?+2), the OpStack contains 2 elements.
+
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
 **RAM**
