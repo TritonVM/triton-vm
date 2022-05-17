@@ -34,34 +34,32 @@ This section covers all columns in the Protocol Table.
 Only a subset of these registers relate to the instruction set;
 the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk.
 
-| Register               | Name                         | Purpose                                                                                   |
-|:-----------------------|:-----------------------------|:------------------------------------------------------------------------------------------|
-| *`clk`                 | cycle counter                | counts the number of cycles the program has been running for                              |
-| `ip`                   | instruction pointer          | contains the memory address (in Program Memory) of the instruction                        |
-| `ci`                   | current instruction register | contains the full instruction                                                             |
-| `ni`                   | next instruction register    | contains the full instruction of the next cycle; to be used for immediate instructions    |
-| *`ib0` through `ib5`   | instruction bucket           | contains the ith bit of the instruction                                                   |
-| *`if0` through `if9`   | instruction flags            | used as intermediate values to keep the AIR degree low                                    |
-| `jsp`                  | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack           |
-| `jso`                  | jump stack origin            | contains the value of the instruction pointer of the last `call`                          |
-| `jsd`                  | jump stack destination       | contains the immediate argument of the last `call`                                        |
-| `st0` through `st?`    | operational stack registers  | contain explicit operational stack values                                                 |
-| *`inv`                 | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise    |
-| *`osp`                 | operational stack pointer    | contains the memory address (in stack memory) of the top of the operational stack minus ? |
-| *`osv`                 | operational stack value      | contains the (stack) memory value at the given address                                    |
-| *`hv0` through `hv4`   | helper variable registers    | helper variables for some arithmetic operations                                           |
-| *`ramp`                | RAM pointer                  | contains an address (in RAM) for reading or writing                                       |
-| *`ramv`                | RAM value                    | contains the value of the RAM element at the given address                                |
-| `aux0` through `aux15` | auxiliary registers          | data structure dedicated to hashing instructions                                          |
+| Register               | Name                         | Purpose                                                                                                            |
+|:-----------------------|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------|
+| *`clk`                 | cycle counter                | counts the number of cycles the program has been running for                                                       |
+| `ip`                   | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
+| `ci`                   | current instruction register | contains the current instruction                                                                                   |
+| `nia`                  | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |
+| *`ib0` through `ib5`   | instruction bucket           | contains the ith bit of the instruction                                                                            |
+| *`if0` through `if9`   | instruction flags            | used as intermediate values to keep the AIR degree low                                                             |
+| `jsp`                  | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
+| `jso`                  | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
+| `jsd`                  | jump stack destination       | contains the argument of the last `call`                                                                           |
+| `st0` through `st?`    | operational stack registers  | contain explicit operational stack values                                                                          |
+| *`inv`                 | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise                             |
+| *`osp`                 | operational stack pointer    | contains the memory address (in stack memory) of the top of the operational stack minus ?                          |
+| *`osv`                 | operational stack value      | contains the (stack) memory value at the given address                                                             |
+| *`hv0` through `hv4`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
+| *`ramp`                | RAM pointer                  | contains an address (in RAM) for reading or writing                                                                |
+| *`ramv`                | RAM value                    | contains the value of the RAM element at the given address                                                         |
+| `aux0` through `aux15` | auxiliary registers          | data structure dedicated to hashing instructions                                                                   |
 
 ### Instruction
 
 The instruction is represented by one register called the *current instruction register* `ci`.
 This value then decomposed into its 6 constituent bits, giving rise to 6 *instruction bit registers*, labeled `ib0` through `ib5`.
 Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in instruction memory.
-Also, there is the *next instruction register* `ni` that contains the next instruction.
-For immediate instructions, `ni` takes the value of the next instruction.
-Otherwise, `ni` holds the argument for current instruction `ci`.
+Also, there is the *next instruction (or argument) register* `nia` that either contains the next instruction or the argument for the instruction in `ci`.
 
 ### Stack
 
@@ -99,7 +97,8 @@ These registers are part of the arithmetization of the architecture, but not nee
 
 Most instructions are contained within a single, parameterless machine word.
 
-Some instructions take a machine word as argument and are so considered double-word instructions. They are recognised by the form "`instr` + `arg`".
+Some instructions take a machine word as argument and are so considered double-word instructions.
+They are recognized by the form "`instr` + `arg`".
 
 ### OpStack Manipulation
 
@@ -115,14 +114,14 @@ In this section *stack* is short for *operational stack*.
 
 ### Control Flow
 
-| Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`     | old JumpStack | new JumpStack | Description                                                                                                                         |
-|:-------------|:------|:------------|:------------|:---------|:-------------|:--------------|:--------------|:------------------------------------------------------------------------------------------------------------------------------------|
-| `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + s`      | `_`           | `_`           | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether or not next instruction has an immediate argument. |
-| `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`          | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute immediate address `d`                                                        |
-| `return`     | ?     | `_`         | `_`         | `_`      | `o`          | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                                |
-| `recurse`    | ?     | `_`         | `_`         | `_`      | `d`          | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).                   |
-| `assert`     | ?     | `_ a`       | `_`         | `_`      | `_ + 1` or 💥 | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                             |
-| `halt`       | 0     | `_`         | `_`         | `_`      | `_ + 1`      | `_`           | `_`           | Solves the halting problem (if the instruction is reached).                                                                         |
+| Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`     | old JumpStack | new JumpStack | Description                                                                                                                 |
+|:-------------|:------|:------------|:------------|:---------|:-------------|:--------------|:--------------|:----------------------------------------------------------------------------------------------------------------------------|
+| `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + s`      | `_`           | `_`           | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether or not next instruction takes an argument. |
+| `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`          | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                          |
+| `return`     | ?     | `_`         | `_`         | `_`      | `o`          | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                        |
+| `recurse`    | ?     | `_`         | `_`         | `_`      | `d`          | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).           |
+| `assert`     | ?     | `_ a`       | `_`         | `_`      | `_ + 1` or 💥 | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                     |
+| `halt`       | 0     | `_`         | `_`         | `_`      | `_ + 1`      | `_`           | `_`           | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                          |
 
 ### Memory Access
 

@@ -166,7 +166,7 @@ Program:
 
 Execution trace:
 
-| `clk` | `ip`   | `ci`     | `ni`     | `jsp` | `jso`  | `jsd`  | jump stack                           |
+| `clk` | `ip`   | `ci`     | `nia`    | `jsp` | `jso`  | `jsd`  | jump stack                           |
 |:------|:-------|:---------|:---------|:------|:-------|:-------|:-------------------------------------|
 | 0     | `0x00` | `foo`    | `bar`    | 0     | `0x00` | `0x00` | [ ]                                  |
 | 1     | `0x01` | `bar`    | `call`   | 0     | `0x00` | `0x00` | [ ]                                  |
@@ -243,7 +243,7 @@ TritonVM has ?-many stack registers, `st0` through `st?`.
 
 Execution trace:
 
-| `clk` | `ci`   | `ni`  | `osv` | `osp` | OpStack Memory | `st3` | `st2` | `st1` | `st0` |
+| `clk` | `ci`   | `nia` | `osv` | `osp` | OpStack Memory | `st3` | `st2` | `st1` | `st0` |
 |:------|:-------|:------|:------|:------|:---------------|:------|:------|:------|:------|
 | 0     | `push` | 42    | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
 | 1     | `push` | 43    | 0     | 5     | [0]            | 0     | 0     | 0     | 42    |
@@ -402,19 +402,19 @@ Due to their complexity, the transition constraints for the [Processor Table](#P
 To keep the degrees of the AIR polynomials low, instructions are grouped based on their effect.
 An instruction's effect not captured by the groups it is part of needs to be arithmetized separately and is described in the next sections.
 
-| group name      | description                                                                                          |
-|:----------------|:-----------------------------------------------------------------------------------------------------|
-| `decompose_arg` | instruction's immediate argument `ni` is binary decomposed into helper registers `hv0` through `hv4` |
-| `step_1`        | instruction pointer `ip` increases by 1                                                              |
-| `step_2`        | instruction pointer `ip` increases by 2                                                              |
-| `no_ram_access` | no modification of registers concerning RAM, i.e., `ramp` and `ramv`                                 |
-| `no_aux_change` | no modification of `aux` registers                                                                   |
-| `u32_op`        | instruction is a 32-bit unsigned integer instruction                                                 |
-| `grow_stack`    | a new element is put onto the stack, rest of the stack remains unchanged                             |
-| `keep_stack`    | stack remains unchanged                                                                              |
-| `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged                             |
-| `unop`          | stack's top-most element is modified, rest of stack remains unchanged                                |
-| `binop`         | stack's two top-most elements are modified, rest of stack remains unchanged                          |
+| group name      | description                                                                                         |
+|:----------------|:----------------------------------------------------------------------------------------------------|
+| `decompose_arg` | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv4` |
+| `step_1`        | instruction pointer `ip` increases by 1                                                             |
+| `step_2`        | instruction pointer `ip` increases by 2                                                             |
+| `no_ram_access` | no modification of registers concerning RAM, i.e., `ramp` and `ramv`                                |
+| `no_aux_change` | no modification of `aux` registers                                                                  |
+| `u32_op`        | instruction is a 32-bit unsigned integer instruction                                                |
+| `grow_stack`    | a new element is put onto the stack, rest of the stack remains unchanged                            |
+| `keep_stack`    | stack remains unchanged                                                                             |
+| `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged                            |
+| `unop`          | stack's top-most element is modified, rest of stack remains unchanged                               |
+| `binop`         | stack's two top-most elements are modified, rest of stack remains unchanged                         |
 
 A summary of all instructions and which groups they are part of is given in the following table.
 
