@@ -38,6 +38,7 @@ Each register is assigned a column in the processor table.
 
 1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
 1. The inverse register `inv` contains the inverse of `st0` if it is nonzero and zero otherwise.
+1. The value of register `arg` is less than 2^32.
 
 **Boundary Constraints**
 
