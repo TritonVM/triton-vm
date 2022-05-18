@@ -469,6 +469,38 @@ In the following sections, a register marked with a `'` refers to the next state
 For example, `st0' = st0 + 2` means that stack register `st0` is incremented by 2.
 An alternative view for the same concept is that registers marked with `'` are those of the next row in the table.
 
+#### Indicator Polynomials `ind_i(hv3, hv2, hv1, hv0)`
+
+For instructions [`dup`](#instruction-dup-i), [`swap`](#instruction-swap-i), [`squeeze`](#instruction-squeeze-i), and [`absorb`](#instruction-absorb-i), it is beneficial to have polynomials that evaluate to 1 if the instruction's argument `i` is a specific value, and to 0 otherwise.
+This allows indicating which registers are constraint, and in which way they are, depending on `i`.
+This is the purpose of the _indicator polynomials_ `ind_i`.
+Evaluated on the binary decomposition of `i`, they show the behavior described above.
+
+For example, take `i = 13`.
+The corresponding binary decomposition is `(hv3, hv2, hv1, hv0) = (1, 1, 0, 1)`.
+Indicator polynomial `ind_13(hv3, hv2, hv1, hv0)` is `hv3·hv2·(1 - hv1)·hv0`.
+It evaluates to 1 on `(1, 1, 0, 1)`, i.e., `ind_13(1, 1, 0, 1) = 1`.
+Any other indicator polynomial, like `ind_7`, evaluates to 0 on `(1, 1, 0, 1)`.
+
+Below, you can find a list of all 16 indicator polynomials.
+
+1.  `ind_0(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·(1 - hv1)·(1 - hv0)`
+1.  `ind_1(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·(1 - hv1)·hv0`
+1.  `ind_2(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·hv1·(1 - hv0)`
+1.  `ind_3(hv3, hv2, hv1, hv0) = (1 - hv3)·(1 - hv2)·hv1·hv0`
+1.  `ind_4(hv3, hv2, hv1, hv0) = (1 - hv3)·hv2·(1 - hv1)·(1 - hv0)`
+1.  `ind_5(hv3, hv2, hv1, hv0) = (1 - hv3)·hv2·(1 - hv1)·hv0`
+1.  `ind_6(hv3, hv2, hv1, hv0) = (1 - hv3)·hv2·hv1·(1 - hv0)`
+1.  `ind_7(hv3, hv2, hv1, hv0) = (1 - hv3)·hv2·hv1·hv0`
+1.  `ind_8(hv3, hv2, hv1, hv0) = hv3·(1 - hv2)·(1 - hv1)·(1 - hv0)`
+1.  `ind_9(hv3, hv2, hv1, hv0) = hv3·(1 - hv2)·(1 - hv1)·hv0`
+1. `ind_10(hv3, hv2, hv1, hv0) = hv3·(1 - hv2)·hv1·(1 - hv0)`
+1. `ind_11(hv3, hv2, hv1, hv0) = hv3·(1 - hv2)·hv1·hv0`
+1. `ind_12(hv3, hv2, hv1, hv0) = hv3·hv2·(1 - hv1)·(1 - hv0)`
+1. `ind_13(hv3, hv2, hv1, hv0) = hv3·hv2·(1 - hv1)·hv0`
+1. `ind_14(hv3, hv2, hv1, hv0) = hv3·hv2·hv1·(1 - hv0)`
+1. `ind_15(hv3, hv2, hv1, hv0) = hv3·hv2·hv1·hv0`
+
 #### Group `decompose_arg`
 
 ##### Description
