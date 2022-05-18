@@ -101,7 +101,7 @@ The Instruction Table establishes the link between the program and the instructi
 The table consists of three columns:
 1. the instruction's `address`,
 1. the `current_instruction`, and
-1. the `next_instruction`.
+1. the instruction's `argument`.
 
 It contains
 - one row for every instruction in the [Program Table](#program-table), i.e., one row for every available instruction, and
@@ -112,7 +112,7 @@ The rows are sorted by `address`.
 *** Relations to Other Tables**
 
 1. An Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the [Program Table](#program-table).
-1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the [Processor Table](#processor-table).
+1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, arg`) of the [Processor Table](#processor-table).
 
 ### Jump Stack Table
 
@@ -166,26 +166,26 @@ Program:
 
 Execution trace:
 
-| `clk` | `ip`   | `ci`     | `nia`    | `jsp` | `jso`  | `jsd`  | jump stack                           |
-|:------|:-------|:---------|:---------|:------|:-------|:-------|:-------------------------------------|
-| 0     | `0x00` | `foo`    | `bar`    | 0     | `0x00` | `0x00` | [ ]                                  |
-| 1     | `0x01` | `bar`    | `call`   | 0     | `0x00` | `0x00` | [ ]                                  |
-| 2     | `0x02` | `call`   | `0xA0`   | 0     | `0x00` | `0x00` | [ ]                                  |
-| 3     | `0xA0` | `buzz`   | `foo`    | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
-| 4     | `0xA1` | `foo`    | `bar`    | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
-| 5     | `0xA2` | `bar`    | `return` | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
-| 6     | `0xA3` | `return` | `foo`    | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
-| 7     | `0x04` | `buzz`   | `bar`    | 0     | `0x00` | `0x00` | [ ]                                  |
-| 8     | `0x05` | `bar`    | `call`   | 0     | `0x00` | `0x00` | [ ]                                  |
-| 9     | `0x06` | `call`   | `0xB0`   | 0     | `0x00` | `0x00` | [ ]                                  |
-| 10    | `0xB0` | `foo`    | `call`   | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
-| 11    | `0xB1` | `call`   | `0xC0`   | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
-| 12    | `0xC0` | `buzz`   | `foo`    | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
-| 13    | `0xC1` | `foo`    | `bar`    | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
-| 14    | `0xC2` | `bar`    | `return` | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
-| 15    | `0xC3` | `return` | `buzz`   | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
-| 16    | `0xB3` | `return` | `bazz`   | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
-| 17    | `0x08` | `foo`    | `bar`    | 0     | `0x00` | `0x00` | [ ]                                  |
+| `clk` | `ip`   | `ci`     | `arg`  | `jsp` | `jso`  | `jsd`  | jump stack                           |
+|:------|:-------|:---------|:-------|:------|:-------|:-------|:-------------------------------------|
+| 0     | `0x00` | `foo`    | 0      | 0     | `0x00` | `0x00` | [ ]                                  |
+| 1     | `0x01` | `bar`    | 0      | 0     | `0x00` | `0x00` | [ ]                                  |
+| 2     | `0x02` | `call`   | `0xA0` | 0     | `0x00` | `0x00` | [ ]                                  |
+| 3     | `0xA0` | `buzz`   | 0      | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 4     | `0xA1` | `foo`    | 0      | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 5     | `0xA2` | `bar`    | 0      | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 6     | `0xA3` | `return` | 0      | 1     | `0x04` | `0xA0` | [(`0x04`, `0xA0`)]                   |
+| 7     | `0x04` | `buzz`   | 0      | 0     | `0x00` | `0x00` | [ ]                                  |
+| 8     | `0x05` | `bar`    | 0      | 0     | `0x00` | `0x00` | [ ]                                  |
+| 9     | `0x06` | `call`   | `0xB0` | 0     | `0x00` | `0x00` | [ ]                                  |
+| 10    | `0xB0` | `foo`    | 0      | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
+| 11    | `0xB1` | `call`   | `0xC0` | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
+| 12    | `0xC0` | `buzz`   | 0      | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 13    | `0xC1` | `foo`    | 0      | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 14    | `0xC2` | `bar`    | 0      | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 15    | `0xC3` | `return` | 0      | 2     | `0xB3` | `0xC0` | [(`0x08`, `0xB0`), (`0xB3`, `0xC0`)] |
+| 16    | `0xB3` | `return` | 0      | 1     | `0x08` | `0xB0` | [(`0x08`, `0xB0`)]                   |
+| 17    | `0x08` | `foo`    | 0      | 0     | `0x00` | `0x00` | [ ]                                  |
 
 Jump Stack Table:
 
@@ -243,21 +243,21 @@ TritonVM has ?-many stack registers, `st0` through `st?`.
 
 Execution trace:
 
-| `clk` | `ci`   | `nia` | `osv` | `osp` | OpStack Memory | `st3` | `st2` | `st1` | `st0` |
+| `clk` | `ci`   | `arg` | `osv` | `osp` | OpStack Memory | `st3` | `st2` | `st1` | `st0` |
 |:------|:-------|:------|:------|:------|:---------------|:------|:------|:------|:------|
 | 0     | `push` | 42    | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
 | 1     | `push` | 43    | 0     | 5     | [0]            | 0     | 0     | 0     | 42    |
 | 2     | `push` | 44    | 0     | 6     | [0,0]          | 0     | 0     | 42    | 43    |
 | 3     | `push` | 45    | 0     | 7     | [0,0,0]        | 0     | 42    | 43    | 44    |
 | 4     | `push` | 46    | 0     | 8     | [0,0,0,0]      | 42    | 43    | 44    | 45    |
-| 5     | `foo`  | `add` | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
-| 6     | `add`  | `pop` | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
-| 7     | `pop`  | `add` | 0     | 8     | [0,0,0,0]      | 42    | 43    | 44    | 91    |
-| 8     | `add`  | `add` | 0     | 7     | [0,0,0]        | 0     | 42    | 43    | 44    |
-| 9     | `add`  | `pop` | 0     | 6     | [0,0]          | 0     | 0     | 42    | 87    |
-| 10    | `pop`  | `foo` | 0     | 5     | [0]            | 0     | 0     | 0     | 129   |
-| 11    | `foo`  | `pop` | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
-| 12    | `pop`  | `bar` | 0     | 3     | 💥              | 0     | 0     | 0     | 0     |
+| 5     | `foo`  | 0     | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
+| 6     | `add`  | 0     | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
+| 7     | `pop`  | 0     | 0     | 8     | [0,0,0,0]      | 42    | 43    | 44    | 91    |
+| 8     | `add`  | 0     | 0     | 7     | [0,0,0]        | 0     | 42    | 43    | 44    |
+| 9     | `add`  | 0     | 0     | 6     | [0,0]          | 0     | 0     | 42    | 87    |
+| 10    | `pop`  | 0     | 0     | 5     | [0]            | 0     | 0     | 0     | 129   |
+| 11    | `foo`  | 0     | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
+| 12    | `pop`  | 0     | 0     | 3     | 💥              | 0     | 0     | 0     | 0     |
 
 Operational Stack Table:
 
@@ -402,68 +402,60 @@ Due to their complexity, the transition constraints for the [Processor Table](#P
 To keep the degrees of the AIR polynomials low, instructions are grouped based on their effect.
 An instruction's effect not captured by the groups it is part of needs to be arithmetized separately and is described in the next sections.
 
-| group name      | description                                                                                         |
-|:----------------|:----------------------------------------------------------------------------------------------------|
-| `decompose_arg` | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv4` |
-| `step_1`        | instruction pointer `ip` increases by 1                                                             |
-| `step_2`        | instruction pointer `ip` increases by 2                                                             |
-| `no_ram_access` | no modification of registers concerning RAM, i.e., `ramp` and `ramv`                                |
-| `no_aux_change` | no modification of `aux` registers                                                                  |
-| `u32_op`        | instruction is a 32-bit unsigned integer instruction                                                |
-| `grow_stack`    | a new element is put onto the stack, rest of the stack remains unchanged                            |
-| `keep_stack`    | stack remains unchanged                                                                             |
-| `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged                            |
-| `unop`          | stack's top-most element is modified, rest of stack remains unchanged                               |
-| `binop`         | stack's two top-most elements are modified, rest of stack remains unchanged                         |
+| group name      | description                                                                 |
+|:----------------|:----------------------------------------------------------------------------|
+| `decompose_arg` | register `arg` is decomposed into helper registers `hv0` through `hv4`      |
+| `step_1`        | instruction pointer `ip` increases by 1                                     |
+| `step_2`        | instruction pointer `ip` increases by 2                                     |
+| `no_ram_access` | no modification of registers concerning RAM, i.e., `ramp` and `ramv`        |
+| `no_aux_change` | no modification of `aux` registers                                          |
+| `u32_op`        | instruction is a 32-bit unsigned integer instruction                        |
+| `grow_stack`    | a new element is put onto the stack, rest of the stack remains unchanged    |
+| `keep_stack`    | stack remains unchanged                                                     |
+| `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged    |
+| `unop`          | stack's top-most element is modified, rest of stack remains unchanged       |
+| `binop`         | stack's two top-most elements are modified, rest of stack remains unchanged |
 
 A summary of all instructions and which groups they are part of is given in the following table.
 
-| instruction      | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `no_ram_access` | `no_aux_change` | `u32_op` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
-|:-----------------|:-----------|:----------------|:---------|:---------|:----------------|:----------------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
-| `pop`            |            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
-| `push` + `a`     | x          |                 |          | x        | x               | x               |          | x            |              |                |        |         |
-| `guess`          |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `dup` + `i`      | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
-| `swap` + `i`     | x          | x               |          | x        | x               | x               |          |              |              |                |        |         |
-| `skiz`           |            |                 |          |          | x               | x               |          |              |              | x              |        |         |
-| `call` + `d`     | x          |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `return`         |            |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `recurse`        |            |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `assert`         |            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
-| `halt`           |            |                 | x        |          | x               | x               |          |              | x            |                |        |         |
-| `read_mem`       |            |                 | x        |          |                 | x               |          | x            |              |                |        |         |
-| `write_mem`      |            |                 | x        |          |                 | x               |          |              |              | x              |        |         |
-| `xlix`           |            |                 | x        |          | x               |                 |          |              | x            |                |        |         |
-| `clearall`       |            |                 | x        |          | x               |                 |          |              | x            |                |        |         |
-| `squeeze` + `i`  | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
-| `absorb` + `i`   | x          | x               |          | x        | x               |                 |          |              |              | x              |        |         |
-| `guess_sibling`  |            |                 | x        |          | x               |                 |          |              |              |                | x      |         |
-| `compare_digest` |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `add`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `mul`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `invert`         |            |                 | x        |          | x               | x               |          |              |              |                | x      |         |
-| `split`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `eq`             |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `lt`             |            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `and`            |            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `xor`            |            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `reverse`        |            |                 | x        |          | x               | x               | x        |              |              |                | x      |         |
-| `div`            |            |                 | x        |          | x               | x               | x        |              |              |                |        |         |
-| `xxadd`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xxmul`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xinv`           |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xbmul`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `read_io`        |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `write_io`       |            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
-
-\*
-Instruction Group `has_arg` is a _virtual_ instruction group.
-That is, this instruction group is not represented by the instruction bucket registers `ib`.
-The virtual instruction group `has_arg` is required for correct behavior of instruction `skiz`, for which the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
-The concrete value depends on the top of the stack `st0` and the next instruction, held in `nia`.
-If (and only if) the current instruction `ci` is instruction `skiz`, then the opcode held in register `nia` is deconstructed into helper variable registers `hv`.
-This is similar to how `ci` is (always) deconstructed into instruction bucket registers `ib`.
-The virtual instruction bucket `has_arg` helps in identifying optimal opcodes for all instructions during development of TritonVM.
+| instruction      | `decompose_arg` | `step_1` | `step_2` | `no_ram_access` | `no_aux_change` | `u32_op` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
+|:-----------------|:----------------|:---------|:---------|:----------------|:----------------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
+| `pop`            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
+| `push` + `a`     |                 |          | x        | x               | x               |          | x            |              |                |        |         |
+| `guess`          |                 | x        |          | x               | x               |          | x            |              |                |        |         |
+| `dup` + `i`      | x               |          | x        | x               | x               |          | x            |              |                |        |         |
+| `swap` + `i`     | x               |          | x        | x               | x               |          |              |              |                |        |         |
+| `skiz`           |                 |          |          | x               | x               |          |              |              | x              |        |         |
+| `call` + `d`     |                 |          |          | x               | x               |          |              | x            |                |        |         |
+| `return`         |                 |          |          | x               | x               |          |              | x            |                |        |         |
+| `recurse`        |                 |          |          | x               | x               |          |              | x            |                |        |         |
+| `assert`         |                 | x        |          | x               | x               |          |              |              | x              |        |         |
+| `halt`           |                 | x        |          | x               | x               |          |              | x            |                |        |         |
+| `read_mem`       |                 | x        |          |                 | x               |          | x            |              |                |        |         |
+| `write_mem`      |                 | x        |          |                 | x               |          |              |              | x              |        |         |
+| `xlix`           |                 | x        |          | x               |                 |          |              | x            |                |        |         |
+| `clearall`       |                 | x        |          | x               |                 |          |              | x            |                |        |         |
+| `squeeze` + `i`  | x               |          | x        | x               | x               |          | x            |              |                |        |         |
+| `absorb` + `i`   | x               |          | x        | x               |                 |          |              |              | x              |        |         |
+| `guess_sibling`  |                 | x        |          | x               |                 |          |              |              |                | x      |         |
+| `compare_digest` |                 | x        |          | x               | x               |          | x            |              |                |        |         |
+| `add`            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
+| `mul`            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
+| `invert`         |                 | x        |          | x               | x               |          |              |              |                | x      |         |
+| `split`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
+| `unsplit`        |                 | x        |          | x               | x               |          |              |              |                |        |         |
+| `eq`             |                 | x        |          | x               | x               |          |              |              |                |        | x       |
+| `lt`             |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
+| `and`            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
+| `xor`            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
+| `reverse`        |                 | x        |          | x               | x               | x        |              |              |                | x      |         |
+| `div`            |                 | x        |          | x               | x               | x        |              |              |                |        |         |
+| `xxadd`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
+| `xxmul`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
+| `xinv`           |                 | x        |          | x               | x               |          |              |              |                |        |         |
+| `xbmul`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
+| `read_io`        |                 | x        |          | x               | x               |          | x            |              |                |        |         |
+| `write_io`       |                 | x        |          | x               | x               |          |              |              | x              |        |         |
 
 In the following sections, a register marked with a `'` refers to the next state of that register.
 For example, `st0' = st0 + 2` means that stack register `st0` is incremented by 2.
@@ -505,25 +497,17 @@ An alternative view for the same concept is that registers marked with `'` are t
 
 ##### Description
 
-Note:
-The concrete decomposition of `nia` into helper variables `hv` as well as the concretely relevant `hv` determining whether `nia` takes an argument (currently `hv0`) are to be determined.
-
 1. The jump stack pointer `jsp` does not change.
 1. The last jump's origin `jso` does not change.
 1. The last jump's destination `jsd` does not change.
-1. The next instruction `nia` is decomposed into helper variables `hv`.
-1. The relevant helper variable `hv0` is either 0 or 1.
-    Here, `hv0 == 1` means that `nia` takes an argument.
-1. Register `ip` increments by (1 if `st0` is non-zero else (2 if `nia` takes no argument else 3)).
+1. Register `ip` increments by (1 if `st0` is non-zero else 2).
 
 ##### Polynomials
 
 1. `jsp' - jsp`
 1. `jso' - jso`
 1. `jsd' - jsd`
-1. `nia - (hv0 + 2·hv1)`
-1. `hv0·(hv0 - 1)`
-1. `ip' - (ip + 1 + st0·inv·(1 + hv0))`
+1. `ip' - (ip + (2 - st0·inv))`
 
 #### Instruction `call` + `d`
 
