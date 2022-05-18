@@ -405,8 +405,7 @@ An instruction's effect not captured by the groups it is part of needs to be ari
 | group name      | description                                                                 |
 |:----------------|:----------------------------------------------------------------------------|
 | `decompose_arg` | register `arg` is decomposed into helper registers `hv0` through `hv4`      |
-| `step_1`        | instruction pointer `ip` increases by 1                                     |
-| `step_2`        | instruction pointer `ip` increases by 2                                     |
+| `no_jump`       | instruction pointer `ip` increases by 1                                     |
 | `no_ram_access` | no modification of registers concerning RAM, i.e., `ramp` and `ramv`        |
 | `no_aux_change` | no modification of `aux` registers                                          |
 | `u32_op`        | instruction is a 32-bit unsigned integer instruction                        |
@@ -418,44 +417,44 @@ An instruction's effect not captured by the groups it is part of needs to be ari
 
 A summary of all instructions and which groups they are part of is given in the following table.
 
-| instruction      | `decompose_arg` | `step_1` | `step_2` | `no_ram_access` | `no_aux_change` | `u32_op` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
-|:-----------------|:----------------|:---------|:---------|:----------------|:----------------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
-| `pop`            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
-| `push` + `a`     |                 |          | x        | x               | x               |          | x            |              |                |        |         |
-| `guess`          |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `dup` + `i`      | x               |          | x        | x               | x               |          | x            |              |                |        |         |
-| `swap` + `i`     | x               |          | x        | x               | x               |          |              |              |                |        |         |
-| `skiz`           |                 |          |          | x               | x               |          |              |              | x              |        |         |
-| `call` + `d`     |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `return`         |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `recurse`        |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `assert`         |                 | x        |          | x               | x               |          |              |              | x              |        |         |
-| `halt`           |                 | x        |          | x               | x               |          |              | x            |                |        |         |
-| `read_mem`       |                 | x        |          |                 | x               |          | x            |              |                |        |         |
-| `write_mem`      |                 | x        |          |                 | x               |          |              |              | x              |        |         |
-| `xlix`           |                 | x        |          | x               |                 |          |              | x            |                |        |         |
-| `clearall`       |                 | x        |          | x               |                 |          |              | x            |                |        |         |
-| `squeeze` + `i`  | x               |          | x        | x               | x               |          | x            |              |                |        |         |
-| `absorb` + `i`   | x               |          | x        | x               |                 |          |              |              | x              |        |         |
-| `guess_sibling`  |                 | x        |          | x               |                 |          |              |              |                | x      |         |
-| `compare_digest` |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `add`            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `mul`            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `invert`         |                 | x        |          | x               | x               |          |              |              |                | x      |         |
-| `split`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `unsplit`        |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `eq`             |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `lt`             |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `and`            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `xor`            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `reverse`        |                 | x        |          | x               | x               | x        |              |              |                | x      |         |
-| `div`            |                 | x        |          | x               | x               | x        |              |              |                |        |         |
-| `xxadd`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xxmul`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xinv`           |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xbmul`          |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `read_io`        |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `write_io`       |                 | x        |          | x               | x               |          |              |              | x              |        |         |
+| instruction      | `decompose_arg` | `no_jump` | `no_ram_access` | `no_aux_change` | `u32_op` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
+|:-----------------|:----------------|:----------|:----------------|:----------------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
+| `pop`            |                 | x         | x               | x               |          |              |              | x              |        |         |
+| `push` + `a`     |                 | x         | x               | x               |          | x            |              |                |        |         |
+| `guess`          |                 | x         | x               | x               |          | x            |              |                |        |         |
+| `dup` + `i`      | x               | x         | x               | x               |          | x            |              |                |        |         |
+| `swap` + `i`     | x               | x         | x               | x               |          |              |              |                |        |         |
+| `skiz`           |                 |           | x               | x               |          |              |              | x              |        |         |
+| `call` + `d`     |                 |           | x               | x               |          |              | x            |                |        |         |
+| `return`         |                 |           | x               | x               |          |              | x            |                |        |         |
+| `recurse`        |                 |           | x               | x               |          |              | x            |                |        |         |
+| `assert`         |                 | x         | x               | x               |          |              |              | x              |        |         |
+| `halt`           |                 | x         | x               | x               |          |              | x            |                |        |         |
+| `read_mem`       |                 | x         |                 | x               |          | x            |              |                |        |         |
+| `write_mem`      |                 | x         |                 | x               |          |              |              | x              |        |         |
+| `xlix`           |                 | x         | x               |                 |          |              | x            |                |        |         |
+| `clearall`       |                 | x         | x               |                 |          |              | x            |                |        |         |
+| `squeeze` + `i`  | x               | x         | x               | x               |          | x            |              |                |        |         |
+| `absorb` + `i`   | x               | x         | x               |                 |          |              |              | x              |        |         |
+| `guess_sibling`  |                 | x         | x               |                 |          |              |              |                | x      |         |
+| `compare_digest` |                 | x         | x               | x               |          | x            |              |                |        |         |
+| `add`            |                 | x         | x               | x               |          |              |              |                |        | x       |
+| `mul`            |                 | x         | x               | x               |          |              |              |                |        | x       |
+| `invert`         |                 | x         | x               | x               |          |              |              |                | x      |         |
+| `split`          |                 | x         | x               | x               |          |              |              |                |        |         |
+| `unsplit`        |                 | x         | x               | x               |          |              |              |                |        |         |
+| `eq`             |                 | x         | x               | x               |          |              |              |                |        | x       |
+| `lt`             |                 | x         | x               | x               | x        |              |              |                |        | x       |
+| `and`            |                 | x         | x               | x               | x        |              |              |                |        | x       |
+| `xor`            |                 | x         | x               | x               | x        |              |              |                |        | x       |
+| `reverse`        |                 | x         | x               | x               | x        |              |              |                | x      |         |
+| `div`            |                 | x         | x               | x               | x        |              |              |                |        |         |
+| `xxadd`          |                 | x         | x               | x               |          |              |              |                |        |         |
+| `xxmul`          |                 | x         | x               | x               |          |              |              |                |        |         |
+| `xinv`           |                 | x         | x               | x               |          |              |              |                |        |         |
+| `xbmul`          |                 | x         | x               | x               |          |              |              |                |        |         |
+| `read_io`        |                 | x         | x               | x               |          | x            |              |                |        |         |
+| `write_io`       |                 | x         | x               | x               |          |              |              | x              |        |         |
 
 In the following sections, a register marked with a `'` refers to the next state of that register.
 For example, `st0' = st0 + 2` means that stack register `st0` is incremented by 2.
@@ -463,9 +462,7 @@ An alternative view for the same concept is that registers marked with `'` are t
 
 #### Group `decompose_arg`
 
-#### Group `step_1`
-
-#### Group `step_2`
+#### Group `no_jump`
 
 #### Group `no_ram_access`
 
