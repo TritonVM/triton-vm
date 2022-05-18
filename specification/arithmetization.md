@@ -471,25 +471,238 @@ An alternative view for the same concept is that registers marked with `'` are t
 
 #### Group `decompose_arg`
 
+##### Description
+
+1. The helper variables are the decomposition of the instruction's argument, which is held in register `nia`.
+1. The helper variable `hv0` is either 0 or 1.
+1. The helper variable `hv1` is either 0 or 1.
+1. The helper variable `hv2` is either 0 or 1.
+1. The helper variable `hv3` is either 0 or 1.
+
+##### Polynomials
+
+1. `nia - (8·hv3 + 4·hv2 + 2·hv1 + hv0)`
+1. `hv0·(hv0 - 1)`
+1. `hv1·(hv1 - 1)`
+1. `hv2·(hv2 - 1)`
+1. `hv3·(hv3 - 1)`
+
 #### Group `step_1`
+
+##### Description
+
+1. The instruction pointer increments by 1.
+
+##### Polynomials
+
+1. `ip' - (ip + 1)`
 
 #### Group `step_2`
 
+##### Description
+
+1. The instruction pointer increments by 2.
+
+##### Polynomials
+
+1. `ip' - (ip + 2)`
+
 #### Group `no_ram_access`
+
+##### Description
+
+1. RAM pointer register `ramp` does not change.
+1. RAM value register `ramv` does not change.
+
+##### Polynomials
+
+1. `ramp' - ramp`
+1. `ramv' - ramv`
 
 #### Group `no_aux_change`
 
+##### Description
+
+1. Auxiliary register `aux0` does not change.
+1. Auxiliary register `aux1` does not change.
+1. Auxiliary register `aux2` does not change.
+1. Auxiliary register `aux3` does not change.
+1. Auxiliary register `aux4` does not change.
+1. Auxiliary register `aux5` does not change.
+1. Auxiliary register `aux6` does not change.
+1. Auxiliary register `aux7` does not change.
+1. Auxiliary register `aux8` does not change.
+1. Auxiliary register `aux9` does not change.
+1. Auxiliary register `aux10` does not change.
+1. Auxiliary register `aux11` does not change.
+1. Auxiliary register `aux12` does not change.
+1. Auxiliary register `aux13` does not change.
+1. Auxiliary register `aux14` does not change.
+1. Auxiliary register `aux15` does not change.
+
+##### Polynomials
+
+1. `aux0' - aux0`
+1. `aux1' - aux1`
+1. `aux2' - aux2`
+1. `aux3' - aux3`
+1. `aux4' - aux4`
+1. `aux5' - aux5`
+1. `aux6' - aux6`
+1. `aux7' - aux7`
+1. `aux8' - aux8`
+1. `aux9' - aux9`
+1. `aux10' - aux10`
+1. `aux11' - aux11`
+1. `aux12' - aux12`
+1. `aux13' - aux13`
+1. `aux14' - aux14`
+1. `aux15' - aux15`
+
 #### Group `u32_op`
+
+This group has no constraints.
+It is used for the Permutation Argument with the uint32 table.
 
 #### Group `grow_stack`
 
+##### Description
+
+1. The stack element in `st0` is moved into `st1`.
+1. The stack element in `st1` is moved into `st2`.
+1. The stack element in `st2` is moved into `st3`.
+1. The stack element in `st3` is moved into `st4`.
+1. The stack element in `st4` is moved into `st5`.
+1. The stack element in `st5` is moved into `st6`.
+1. The stack element in `st6` is moved into `st7`.
+1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
+1. The stack element in `st?` is moved to the top of OpStack underflow, i.e., `osv`.
+1. The OpStack pointer is incremented by 1.
+
+##### Polynomials
+
+1. `st1' - st0`
+1. `st2' - st1`
+1. `st3' - st2`
+1. `st4' - st3`
+1. `st5' - st4`
+1. `st6' - st5`
+1. `st7' - st6`
+1. Maybe more of the same.
+1. `osv' - st?`
+1. `osp' - (osp + 1)`
+
 #### Group `keep_stack`
+
+##### Description
+
+1. The stack element in `st0` does not change.
+1. The stack element in `st1` does not change.
+1. The stack element in `st2` does not change.
+1. The stack element in `st3` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
+
+##### Polynomials
+
+1. `st0' - st0`
+1. `st1' - st1`
+1. `st2' - st2`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
+1. Maybe more of the same.
+1. `osv' - osv`
+1. `osp' - osp`
 
 #### Group `shrink_stack`
 
+##### Description
+
+1. The stack element in `st1` is moved into `st0`.
+1. The stack element in `st2` is moved into `st1`.
+1. The stack element in `st3` is moved into `st2`.
+1. The stack element in `st4` is moved into `st3`.
+1. The stack element in `st5` is moved into `st4`.
+1. The stack element in `st6` is moved into `st5`.
+1. The stack element in `st7` is moved into `st6`.
+1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
+1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st?`.
+1. The OpStack pointer is decremented by 1.
+
+##### Polynomials
+
+1. `st0' - st1`
+1. `st1' - st2`
+1. `st2' - st3`
+1. `st3' - st4`
+1. `st4' - st5`
+1. `st5' - st6`
+1. `st6' - st7`
+1. Maybe more of the same.
+1. `st?' - osv`
+1. `osp' - (osp - 1)`
+
 #### Group `unop`
 
+##### Description
+
+1. The stack element in `st1` does not change.
+1. The stack element in `st2` does not change.
+1. The stack element in `st3` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
+
+##### Polynomials
+
+1. `st1' - st1`
+1. `st2' - st2`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
+1. Maybe more of the same.
+1. `osv' - osv`
+1. `osp' - osp`
+
 #### Group `binop`
+
+##### Description
+
+1. The stack element in `st2` does not change.
+1. The stack element in `st3` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
+
+##### Polynomials
+
+1. `st2' - st2`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
+1. Maybe more of the same.
+1. `osv' - osv`
+1. `osp' - osp`
 
 #### Instruction `pop`
 
