@@ -941,9 +941,33 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 #### Instruction `add`
 
+##### Description
+
+1. The sum of the top two stack elements is moved into the top of the stack.
+
+##### Polynomials
+
+1. `st0' - (st0 + st1)`
+
 #### Instruction `mul`
 
+##### Description
+
+1. The product of the top two stack elements is moved into the top of the stack.
+
+##### Polynomials
+
+1. `st0' - st0·st1`
+
 #### Instruction `invert`
+
+##### Description
+
+1. The top of the stack's inverse is moved into the top of the stack.
+
+##### Polynomials
+
+1. `st0'·st0 - 1`
 
 #### Instruction `split`
 
