@@ -173,7 +173,7 @@ In conjunction with instruction `xlix` and `compare_digest`, the instruction `gu
 
 ### Input/Output
 
-| Instruction | Value | old OpStack | new OpStack | Description                                                       |
-|:------------|:------|:------------|:------------|:------------------------------------------------------------------|
-| `read_io`   | ?     | `_`         | `_ a`       | Reads a character from standard input and pushes it to the stack. |
-| `write_io`  | ?     | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.         |
+| Instruction | Value | old OpStack | new OpStack | Description                                                             |
+|:------------|:------|:------------|:------------|:------------------------------------------------------------------------|
+| `read_io`   | ?     | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
+| `write_io`  | ?     | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |
