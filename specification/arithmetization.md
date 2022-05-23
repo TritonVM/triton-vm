@@ -367,6 +367,7 @@ The Uint32 Operations Table is a lookup table for 'difficult' 32-bit unsigned in
 | 0     | `c >> 1` | `d >> 1` | …                   | …                       | …                       | …             |
 | …     | …        | …        | …                   | …                       | …                       | …             |
 | 0     | `0`      | `0`      | `0`                 | `0`                     | `0`                     | `0`           |
+| …     | …        | …        | …                   | …                       | …                       | …             |
 
 The AIR verifies the correct update of each consecutive pair of rows.
 In every row one bit is eliminated.
@@ -374,6 +375,8 @@ Only when the previous row is all zeros can a new row be inserted.
 
 The AIR constraints establish that the entire table is consistent.
 Copy-constraints establish that logical and bitwise operations were computed correctly.
+
+For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `reverse`, `div`), there is a dedicated Permutation Argument with the [Processor Table](#processor-table).
 
 **Consistency Constraints**
 
@@ -982,6 +985,30 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 #### Instruction `reverse`
 
 #### Instruction `div`
+
+A Permutation Argument guarantees `r < d`.
+
+##### Description
+
+1. Denominator `d` is not zero.
+1. Result of division, i.e., quotient `q` and remainder `r`, are moved into `st1` and `st0` respectively, and match with numerator `n` and denominator `d`.
+1. The stack element in `st2` does not change.
+1. The stack element in `st3` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+
+##### Polynomials
+
+1. `st0·inv - 1`
+1. `st1 - st0·st1' - st0'`
+1. `st2' - st2`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
 
 #### Instruction `xxadd`
 
