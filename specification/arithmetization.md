@@ -231,7 +231,7 @@ Jump Stack Table:
 The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects.
 There are ?-many registers (`st0` through `st?`) that the program can access directly.
 These registers correspond to the top of the stack.
-The rest of the operational stack is stored in a dedicated memory object called Operational Stack Memory.
+The rest of the operational stack is stored in a dedicated memory object called Operational Stack Underflow Memory.
 
 The operational stack table contains a subset of the columns of the processor table –
 specifically, the cycle counter `clk`, the current instruction `ci`, the operation stack value `osv` and pointer `osp`.
@@ -243,21 +243,21 @@ TritonVM has ?-many stack registers, `st0` through `st?`.
 
 Execution trace:
 
-| `clk` | `ci`   | `nia` | `osv` | `osp` | OpStack Memory | `st3` | `st2` | `st1` | `st0` |
-|:------|:-------|:------|:------|:------|:---------------|:------|:------|:------|:------|
-| 0     | `push` | 42    | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
-| 1     | `push` | 43    | 0     | 5     | [0]            | 0     | 0     | 0     | 42    |
-| 2     | `push` | 44    | 0     | 6     | [0,0]          | 0     | 0     | 42    | 43    |
-| 3     | `push` | 45    | 0     | 7     | [0,0,0]        | 0     | 42    | 43    | 44    |
-| 4     | `push` | 46    | 0     | 8     | [0,0,0,0]      | 42    | 43    | 44    | 45    |
-| 5     | `foo`  | `add` | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
-| 6     | `add`  | `pop` | 42    | 9     | [0,0,0,0,42]   | 43    | 44    | 45    | 46    |
-| 7     | `pop`  | `add` | 0     | 8     | [0,0,0,0]      | 42    | 43    | 44    | 91    |
-| 8     | `add`  | `add` | 0     | 7     | [0,0,0]        | 0     | 42    | 43    | 44    |
-| 9     | `add`  | `pop` | 0     | 6     | [0,0]          | 0     | 0     | 42    | 87    |
-| 10    | `pop`  | `foo` | 0     | 5     | [0]            | 0     | 0     | 0     | 129   |
-| 11    | `foo`  | `pop` | 0     | 4     | [ ]            | 0     | 0     | 0     | 0     |
-| 12    | `pop`  | `bar` | 0     | 3     | 💥              | 0     | 0     | 0     | 0     |
+| `clk` | `ci`   | `nia` | `osv` | `osp` | OpStack Underflow Memory | `st3` | `st2` | `st1` | `st0` |
+|:------|:-------|:------|:------|:------|:-------------------------|:------|:------|:------|:------|
+| 0     | `push` | 42    | 0     | 4     | [ ]                      | 0     | 0     | 0     | 0     |
+| 1     | `push` | 43    | 0     | 5     | [0]                      | 0     | 0     | 0     | 42    |
+| 2     | `push` | 44    | 0     | 6     | [0,0]                    | 0     | 0     | 42    | 43    |
+| 3     | `push` | 45    | 0     | 7     | [0,0,0]                  | 0     | 42    | 43    | 44    |
+| 4     | `push` | 46    | 0     | 8     | [0,0,0,0]                | 42    | 43    | 44    | 45    |
+| 5     | `foo`  | `add` | 42    | 9     | [0,0,0,0,42]             | 43    | 44    | 45    | 46    |
+| 6     | `add`  | `pop` | 42    | 9     | [0,0,0,0,42]             | 43    | 44    | 45    | 46    |
+| 7     | `pop`  | `add` | 0     | 8     | [0,0,0,0]                | 42    | 43    | 44    | 91    |
+| 8     | `add`  | `add` | 0     | 7     | [0,0,0]                  | 0     | 42    | 43    | 44    |
+| 9     | `add`  | `pop` | 0     | 6     | [0,0]                    | 0     | 0     | 42    | 87    |
+| 10    | `pop`  | `foo` | 0     | 5     | [0]                      | 0     | 0     | 0     | 129   |
+| 11    | `foo`  | `pop` | 0     | 4     | [ ]                      | 0     | 0     | 0     | 0     |
+| 12    | `pop`  | `bar` | 0     | 3     | 💥                        | 0     | 0     | 0     | 0     |
 
 Operational Stack Table:
 

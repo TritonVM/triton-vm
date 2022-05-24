@@ -18,11 +18,21 @@ The address lives in the same field.
 There are four separate notions of memory:
 1. *RAM*, to which the VM can read and write field elements.
 2. *Program Memory*, from which the VM reads instructions.
-3. *OpStack Memory*, which stores the part of the operational stack that is not represented explicitly by the operational stack registers.
+3. *OpStack Memory*, which stores the operational stack.
 4. *Jump Stack Memory*, which stores the entire jump stack.
 
-### OpStack
+### Operational Stack
 The stack is a last-in;first-out data structure that allows the program to store intermediate variables, pass arguments, and keep pointers to objects held in RAM.
+In this document, the operational stack is either referred to as just “stack” or, if more clarity is desired, “OpStack.”
+
+From the Virtual Machine's point of view, the stack is a single, continuous object.
+The first ?-many elements of the stack can be accessed very conveniently.
+Elements deeper in the stack require removing some of the higher elements, possibly after storing them in RAM.
+
+For reasons of arithmetization, the stack is actually split into two distinct parts:
+1. the _operational stack registers_ `st0` through `st?`, and
+1. the _OpStack Underflow Memory_.
+The split is further motivated and the interplay between the two parts is further described and exemplified in the document on [arithmetization](#arithmetization.md#operational-stack-table).
 
 ### Jump Stack
 Another last-in;first-out data structure that keeps track of return and destination addresses.
@@ -101,8 +111,6 @@ Some instructions take a machine word as argument and are so considered double-w
 They are recognized by the form "`instr` + `arg`".
 
 ### OpStack Manipulation
-
-In this section *stack* is short for *operational stack*.
 
 | Instruction  | Value | old OpStack         | new OpStack           | Description                                                                    |
 |:-------------|:------|:--------------------|:----------------------|:-------------------------------------------------------------------------------|
