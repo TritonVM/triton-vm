@@ -793,6 +793,7 @@ For their definition, please refer to the corresponding section.
 
 ##### Description
 
+1. Argument `i` is not 0.
 1. If `i` is 1, then `st1` is moved into `st0`.
 1. If `i` is 1, then `st0` is moved into `st1`.
 1. If `i` is not 1, then `st1` does not change.
@@ -817,6 +818,7 @@ For their definition, please refer to the corresponding section.
 
 ##### Polynomials
 
+1. `ind_0(hv3, hv2, hv1, hv0)`
 1. `ind_1(hv3, hv2, hv1, hv0)·(st0' - st1)`
 1. `ind_1(hv3, hv2, hv1, hv0)·(st1' - st0)`
 1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(st1' - st1)`
