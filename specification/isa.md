@@ -137,6 +137,7 @@ the value of `a` was supplied as a secret input.
 
 | Instruction  | Value | old OpStack | new OpStack | old `ip` | new `ip`     | old JumpStack | new JumpStack | Description                                                                                                                 |
 |:-------------|:------|:------------|:------------|:---------|:-------------|:--------------|:--------------|:----------------------------------------------------------------------------------------------------------------------------|
+| `nop`        | ?     | `_`         | `_`         | `_`      | `_ + 1`      | `_`           | `_`           | Do nothing                                                                                                                  |
 | `skiz`       | ?     | `_ a`       | `_`         | `_`      | `_ + s`      | `_`           | `_`           | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether or not next instruction takes an argument. |
 | `call` + `d` | ?     | `_`         | `_`         | `o`      | `d`          | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                          |
 | `return`     | ?     | `_`         | `_`         | `_`      | `o`          | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                        |

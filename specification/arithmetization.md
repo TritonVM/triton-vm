@@ -428,6 +428,7 @@ A summary of all instructions and which groups they are part of is given in the 
 | `guess`          |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
 | `dup` + `i`      | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
 | `swap` + `i`     | x          | x               |          | x        | x               | x               |          |              |              |                |        |         |
+| `nop`            |            |                 | x        |          | x               | x               |          |              | x            |                |        |         |
 | `skiz`           |            |                 |          |          | x               | x               |          |              |              | x              |        |         |
 | `call` + `d`     | x          |                 |          |          | x               | x               |          |              | x            |                |        |         |
 | `return`         |            |                 |          |          | x               | x               |          |              | x            |                |        |         |
@@ -837,6 +838,10 @@ For their definition, please refer to the corresponding section.
 1. `ind_7(hv3, hv2, hv1, hv0)·(st0' - st7)`
 1. `ind_7(hv3, hv2, hv1, hv0)·(st7' - st0)`
 1. `(1 - ind_7(hv3, hv2, hv1, hv0))·(st7' - st7)`
+
+### Instruction `nop`
+
+This instruction has no additional transition constraints.
 
 #### Instruction `skiz`
 
