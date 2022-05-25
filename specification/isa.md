@@ -53,8 +53,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `ip`                   | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
 | `ci`                   | current instruction register | contains the current instruction                                                                                   |
 | `nia`                  | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |
-| *`ib0` through `ib5`   | instruction bucket           | contains the ith bit of the instruction                                                                            |
-| *`if0` through `if9`   | instruction flags            | used as intermediate values to keep the AIR degree low                                                             |
+| *`ib0` through `ib?`   | instruction bucket           | decomposition of the instruction's opcode used to keep the AIR degree low                                          |
 | `jsp`                  | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
 | `jso`                  | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
 | `jsd`                  | jump stack destination       | contains the argument of the last `call`                                                                           |
@@ -70,7 +69,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 ### Instruction
 
 The instruction is represented by one register called the *current instruction register* `ci`.
-This value then decomposed into its 6 constituent bits, giving rise to 6 *instruction bit registers*, labeled `ib0` through `ib5`.
+This value is then decomposed, giving rise to the *instruction bucket registers*, labeled `ib0` through `ib?`.
 Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in instruction memory.
 Also, there is the *next instruction (or argument) register* `nia` that either contains the next instruction or the argument for the instruction in `ci`.
 
