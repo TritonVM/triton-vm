@@ -10,6 +10,9 @@ they either consist of one word, i.e., one B-Field element, or of two words, i.e
 An example for a single-word instruction is `pop`, removing the top of the stack.
 An example for a double-word instruction is `push` + `arg`, pushing `arg` to the stack.
 
+Triton VM has two interfaces for data input, one for public and one for secret data, and one interface for data output, whose data is always public.
+The public interfaces differ from the private one, especially regarding their [arithmetization](#arithmetization.md#operational-stack-table).
+
 ## Data Structures
 
 ### Memory
@@ -112,13 +115,23 @@ They are recognized by the form "`instr` + `arg`".
 
 ### OpStack Manipulation
 
-| Instruction  | Value | old OpStack         | new OpStack           | Description                                                                    |
-|:-------------|:------|:--------------------|:----------------------|:-------------------------------------------------------------------------------|
-| `pop`        | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                   |
-| `push` + `a` | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                     |
-| `guess`      | ?     | `_`                 | `_ a`                 | Pushes a nondeterministic element `a` to the stack.                            |
-| `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`. |
-| `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`. |
+| Instruction  | Value | old OpStack         | new OpStack           | Description                                                                      |
+|:-------------|:------|:--------------------|:----------------------|:---------------------------------------------------------------------------------|
+| `pop`        | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                     |
+| `push` + `a` | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                       |
+| `guess`      | ?     | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
+| `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`.   |
+| `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`.   |
+
+Instruction `guess` (together with [`guess_sibling`](#auxiliary-register-instructions)) make TritonVM a virtual machine that can execute non-deterministic programs.
+As programs go, this concept is somewhat unusual and benefits from additional explanation.
+
+From the perspective of the program, the instruction `guess` makes some element `a` magically appear on the stack.
+It is not at all specified what `a` is, but generally speaking, `a` has to be exactly correct, else execution fails.
+Hence, from the perspective of the program, it just non-deterministically guesses the correct value of `a` in a moment of divine clarity.
+
+Looking at the entire system, consisting of the VM, the program, and all inputs – both public and secret – execution _is_ deterministic:
+the value of `a` was supplied as a secret input.
 
 ### Control Flow
 
@@ -151,7 +164,7 @@ They are recognized by the form "`instr` + `arg`".
 
 The instruction `guess_sibling` works as follows.
 The value at the top of the stack `i` is taken as the leaf index for a Merkle tree that is claimed to include data whose digest is the content of auxiliary registers `aux0` through `aux5`, i.e., `fedcba`.
-The sibling digest of `fedcba` is `zyxwvu` and is guessed non-deterministically, i.e., filled in by the VM's execution environment.
+The sibling digest of `fedcba` is `zyxwvu` and is read from the input interface of secret data.
 The least-significant bit of `i` indicates whether `fedcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
 Depending on this least-significant bit of `i`, `guess_sibling` either
 1. does not change registers `aux0` through `aux5` and moves `zyxwvu` into registers `aux6` through `aux11`, or
