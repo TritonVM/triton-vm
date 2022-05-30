@@ -425,7 +425,7 @@ A summary of all instructions and which groups they are part of is given in the 
 |:-----------------|:-----------|:----------------|:---------|:---------|:----------------|:----------------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
 | `pop`            |            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
 | `push` + `a`     | x          |                 |          | x        | x               | x               |          | x            |              |                |        |         |
-| `guess`          |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
+| `divine`         |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
 | `dup` + `i`      | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
 | `swap` + `i`     | x          | x               |          | x        | x               | x               |          |              |              |                |        |         |
 | `nop`            |            |                 | x        |          | x               | x               |          |              | x            |                |        |         |
@@ -441,7 +441,7 @@ A summary of all instructions and which groups they are part of is given in the 
 | `clearall`       |            |                 | x        |          | x               |                 |          |              | x            |                |        |         |
 | `squeeze` + `i`  | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
 | `absorb` + `i`   | x          | x               |          | x        | x               |                 |          |              |              | x              |        |         |
-| `guess_sibling`  |            |                 | x        |          | x               |                 |          |              |              |                | x      |         |
+| `divine_sibling` |            |                 | x        |          | x               |                 |          |              |              |                | x      |         |
 | `compare_digest` |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
 | `add`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
 | `mul`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
@@ -754,7 +754,7 @@ This instruction has no additional transition constraints.
 
 1. `st0' - nia`
 
-#### Instruction `guess`
+#### Instruction `divine`
 
 This instruction has no additional transition constraints.
 
@@ -945,7 +945,7 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 #### Instruction `absorb` + `i`
 
-#### Instruction `guess_sibling`
+#### Instruction `divine_sibling`
 
 #### Instruction `compare_digest`
 

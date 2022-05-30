@@ -118,14 +118,15 @@ They are recognized by the form "`instr` + `arg`".
 |:-------------|:------|:--------------------|:----------------------|:---------------------------------------------------------------------------------|
 | `pop`        | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                     |
 | `push` + `a` | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                       |
-| `guess`      | ?     | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
+| `divine`     | ?     | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
 | `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`.   |
 | `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`.   |
 
-Instruction `guess` (together with [`guess_sibling`](#auxiliary-register-instructions)) make TritonVM a virtual machine that can execute non-deterministic programs.
+Instruction `divine` (together with [`divine_sibling`](#auxiliary-register-instructions)) make TritonVM a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.
+The name of the instruction is the verb (not the adjective) meaning “to discover by intuition or insight.”
 
-From the perspective of the program, the instruction `guess` makes some element `a` magically appear on the stack.
+From the perspective of the program, the instruction `divine` makes some element `a` magically appear on the stack.
 It is not at all specified what `a` is, but generally speaking, `a` has to be exactly correct, else execution fails.
 Hence, from the perspective of the program, it just non-deterministically guesses the correct value of `a` in a moment of divine clarity.
 
@@ -159,19 +160,19 @@ the value of `a` was supplied as a secret input.
 | `clearall`       | ?     | `_`         | `_`           | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                            |
 | `squeeze` + `i`  | ?     | `_`         | `_ v`         | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                         |
 | `absorb`  + `i`  | ?     | `_ a`       | `_`           | `…v…`       | `…(v+a)…`                | Pops the top off the stack and adds it into the `i`th auxiliary register. Assumes `0 <= i < 16`.                                 |
-| `guess_sibling`  | ?     | `_ i`       | `_ (i div 2)` | `fedcba__…` | e.g., `zyxwvufedcba0000` | Helps traversing a Merkle tree during authentication path verification. See extended description below.                          |
+| `divine_sibling` | ?     | `_ i`       | `_ (i div 2)` | `fedcba__…` | e.g., `zyxwvufedcba0000` | Helps traversing a Merkle tree during authentication path verification. See extended description below.                          |
 | `compare_digest` | ?     | `_`         | `_ a`         | `fedcba__…` | `fedcba__…`              | Compare `aux0` through `aux5` (i.e., `fedcba`) to `st0` through `st5` and put the comparison's result `a ∈ {0, 1}` on the stack. |
 
-The instruction `guess_sibling` works as follows.
+The instruction `divine_sibling` works as follows.
 The value at the top of the stack `i` is taken as the leaf index for a Merkle tree that is claimed to include data whose digest is the content of auxiliary registers `aux0` through `aux5`, i.e., `fedcba`.
 The sibling digest of `fedcba` is `zyxwvu` and is read from the input interface of secret data.
 The least-significant bit of `i` indicates whether `fedcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
-Depending on this least-significant bit of `i`, `guess_sibling` either
+Depending on this least-significant bit of `i`, `divine_sibling` either
 1. does not change registers `aux0` through `aux5` and moves `zyxwvu` into registers `aux6` through `aux11`, or
 2. moves `fedcba` into registers `aux6` through `aux11` and moves `zyxwvu` into registers `aux0` through `aux5`.
 In both cases, auxiliary registers `aux12` through `aux15` are set to 0.
 The top of the operational stack is modified by shifting `i` by 1 bit to the right, i.e., dropping the least-significant bit.
-In conjunction with instruction `xlix` and `compare_digest`, the instruction `guess_sibling` allows to efficiently verify a Merkle authentication path.
+In conjunction with instruction `xlix` and `compare_digest`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
 
 ### Arithmetic on Stack
 
