@@ -407,7 +407,7 @@ An instruction's effect not captured by the groups it is part of needs to be ari
 
 | group name      | description                                                                                         |
 |:----------------|:----------------------------------------------------------------------------------------------------|
-| `decompose_arg` | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv4` |
+| `decompose_arg` | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv3` |
 | `step_1`        | instruction pointer `ip` increases by 1                                                             |
 | `step_2`        | instruction pointer `ip` increases by 2                                                             |
 | `no_ram_access` | no modification of registers concerning RAM, i.e., `ramp` and `ramv`                                |
@@ -415,7 +415,7 @@ An instruction's effect not captured by the groups it is part of needs to be ari
 | `u32_op`        | instruction is a 32-bit unsigned integer instruction                                                |
 | `grow_stack`    | a new element is put onto the stack, rest of the stack remains unchanged                            |
 | `keep_stack`    | stack remains unchanged                                                                             |
-| `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged                            |
+| `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged. Needs `hv4`               |
 | `unop`          | stack's top-most element is modified, rest of stack remains unchanged                               |
 | `binop`         | stack's two top-most elements are modified, rest of stack remains unchanged                         |
 
@@ -660,6 +660,10 @@ It is used for the Permutation Argument with the uint32 table.
 
 #### Group `shrink_stack`
 
+This instruction group requires helper variable `hv4` to hold the multiplicative inverse of `(osp' - 7)`.
+In effect, this means that the OpStack pointer can never be 7, which would indicate a stack of size -1.
+Since the stack can only change by one element at a time, this prevents stack underflow.
+
 ##### Description
 
 1. The stack element in `st1` is moved into `st0`.
@@ -672,6 +676,7 @@ It is used for the Permutation Argument with the uint32 table.
 1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
 1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st?`.
 1. The OpStack pointer is decremented by 1.
+1. The helper variable register `hv4` holds the inverse of `(osp' - 7)`.
 
 ##### Polynomials
 
@@ -685,6 +690,7 @@ It is used for the Permutation Argument with the uint32 table.
 1. Maybe more of the same.
 1. `st?' - osv`
 1. `osp' - (osp - 1)`
+1. `(osp' - 7)·hv4 - 1`
 
 #### Group `unop`
 
