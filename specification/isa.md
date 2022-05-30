@@ -29,11 +29,11 @@ The stack is a last-in;first-out data structure that allows the program to store
 In this document, the operational stack is either referred to as just “stack” or, if more clarity is desired, “OpStack.”
 
 From the Virtual Machine's point of view, the stack is a single, continuous object.
-The first ?-many elements of the stack can be accessed very conveniently.
+The first eight elements of the stack can be accessed very conveniently.
 Elements deeper in the stack require removing some of the higher elements, possibly after storing them in RAM.
 
 For reasons of arithmetization, the stack is actually split into two distinct parts:
-1. the _operational stack registers_ `st0` through `st?`, and
+1. the _operational stack registers_ `st0` through `st7`, and
 1. the _OpStack Underflow Memory_.
 The split is further motivated and the interplay between the two parts is further described and exemplified in the document on [arithmetization](#arithmetization.md#operational-stack-table).
 
@@ -57,9 +57,9 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `jsp`                  | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
 | `jso`                  | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
 | `jsd`                  | jump stack destination       | contains the argument of the last `call`                                                                           |
-| `st0` through `st?`    | operational stack registers  | contain explicit operational stack values                                                                          |
+| `st0` through `st7`    | operational stack registers  | contain explicit operational stack values                                                                          |
 | *`inv`                 | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise                             |
-| *`osp`                 | operational stack pointer    | contains the memory address (in stack memory) of the top of the operational stack minus ?                          |
+| *`osp`                 | operational stack pointer    | contains the OpStack address of the top of the operational stack plus the number of stack registers, i.e., plus 8. |
 | *`osv`                 | operational stack value      | contains the (stack) memory value at the given address                                                             |
 | *`hv0` through `hv4`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
 | *`ramp`                | RAM pointer                  | contains an address (in RAM) for reading or writing                                                                |
@@ -75,17 +75,17 @@ Also, there is the *next instruction (or argument) register* `nia` that either c
 
 ### Stack
 
-The stack is represented by ?-many registers called *stack registers* (`st0` – `st?`) plus the OpStack Memory.
-The top ?-many elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Memory, is not.
+The stack is represented by eight registers called *stack registers* (`st0` – `st7`) plus the OpStack Memory.
+The top eight elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Memory, is not.
 In order to access elements of the OpStack held in OpStack Memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
 
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
 The registers `osp` and `osv` are not directly accessible by the program running in TritonVM.
 They primarily exist to allow efficient [arithmetization](arithmetization.md).
-The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset ?.
-For example, if `osp` is ?, the OpStack is empty.
-If `osp` is (?+2), the OpStack contains 2 elements.
+The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset 8.
+For example, if `osp` is 8, the OpStack is empty.
+If `osp` is 10, the OpStack contains 2 elements.
 The register `osv` holds the top-most value of the OpStack Memory, or zero if no such value exists.
 
 ### RAM
@@ -119,8 +119,8 @@ They are recognized by the form "`instr` + `arg`".
 | `pop`        | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                     |
 | `push` + `a` | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                       |
 | `divine`     | ?     | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
-| `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < ?`.   |
-| `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < ?`.   |
+| `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < 8`.   |
+| `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < 8`.   |
 
 Instruction `divine` (together with [`divine_sibling`](#auxiliary-register-instructions)) make TritonVM a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.

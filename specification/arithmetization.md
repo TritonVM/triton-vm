@@ -44,9 +44,9 @@ Each register is assigned a column in the processor table.
 1. The cycle counter `clk` is zero.
 1. The instruction pointer `ip` is zero.
 1. The jump address stack pointer and value `jsp` and `jsv` are zero.
-1. The operational stack elements `st0`-`st?` are zero.
+1. The operational stack elements `st0`-`st7` are zero.
 1. The inverse register `inv` is zero.
-1. The operational stack pointer `osp` is `?`
+1. The operational stack pointer `osp` is `8`
 1. The operational stack value `osv` is zero
 1. The RAM pointer and value `ramp` and `ramv` are zero.
 1. The auxiliary registers `aux0`-`aux15` are zero.
@@ -229,7 +229,7 @@ Jump Stack Table:
 ### Operational Stack Table
 
 The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects.
-There are ?-many registers (`st0` through `st?`) that the program can access directly.
+There are eight registers (`st0` through `st7`) that the program can access directly.
 These registers correspond to the top of the stack.
 The rest of the operational stack is stored in a dedicated memory object called Operational Stack Underflow Memory.
 
@@ -239,7 +239,7 @@ The rows of the operational stack table are sorted by operational stack pointer 
 
 The mechanics are best illustrated by an example.
 For illustrative purposes only, we use four stack registers `st0` through `st3` in the example.
-TritonVM has ?-many stack registers, `st0` through `st?`.
+TritonVM has eight stack registers, `st0` through `st7`.
 
 Execution trace:
 
@@ -279,7 +279,7 @@ Operational Stack Table:
 **Boundary Conditions**
 
 1. `osv` is zero.
-1. `osp` is the number of available stack registers, i.e., ?.
+1. `osp` is the number of available stack registers, i.e., 8.
 
 **Transition Constraints**
 
@@ -611,8 +611,7 @@ It is used for the Permutation Argument with the uint32 table.
 1. The stack element in `st4` is moved into `st5`.
 1. The stack element in `st5` is moved into `st6`.
 1. The stack element in `st6` is moved into `st7`.
-1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
-1. The stack element in `st?` is moved to the top of OpStack underflow, i.e., `osv`.
+1. The stack element in `st7` is moved to the top of OpStack underflow, i.e., `osv`.
 1. The OpStack pointer is incremented by 1.
 
 ##### Polynomials
@@ -624,8 +623,7 @@ It is used for the Permutation Argument with the uint32 table.
 1. `st5' - st4`
 1. `st6' - st5`
 1. `st7' - st6`
-1. Maybe more of the same.
-1. `osv' - st?`
+1. `osv' - st7`
 1. `osp' - (osp + 1)`
 
 #### Group `keep_stack`
@@ -640,7 +638,6 @@ It is used for the Permutation Argument with the uint32 table.
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
 1. The stack element in `st7` does not change.
-1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
 
@@ -654,7 +651,6 @@ It is used for the Permutation Argument with the uint32 table.
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
-1. Maybe more of the same.
 1. `osv' - osv`
 1. `osp' - osp`
 
@@ -673,8 +669,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st5` is moved into `st4`.
 1. The stack element in `st6` is moved into `st5`.
 1. The stack element in `st7` is moved into `st6`.
-1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
-1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st?`.
+1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st7`.
 1. The OpStack pointer is decremented by 1.
 1. The helper variable register `hv4` holds the inverse of `(osp' - 7)`.
 
@@ -687,8 +682,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st4' - st5`
 1. `st5' - st6`
 1. `st6' - st7`
-1. Maybe more of the same.
-1. `st?' - osv`
+1. `st7' - osv`
 1. `osp' - (osp - 1)`
 1. `(osp' - 7)·hv4 - 1`
 
@@ -703,7 +697,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
 1. The stack element in `st7` does not change.
-1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
 
@@ -716,7 +709,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
-1. Maybe more of the same.
 1. `osv' - osv`
 1. `osp' - osp`
 
@@ -730,7 +722,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
 1. The stack element in `st7` does not change.
-1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
 
@@ -742,7 +733,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
-1. Maybe more of the same.
 1. `osv' - osv`
 1. `osp' - osp`
 
@@ -779,7 +769,6 @@ For their definition, please refer to the corresponding section.
 1. If `i` is 5, then `st5` is put on top of the stack.
 1. If `i` is 6, then `st6` is put on top of the stack.
 1. If `i` is 7, then `st7` is put on top of the stack.
-1. Depending on the number of stack registers, this line will either be deleted or replaced by more, similar constraints.
 
 ##### Polynomials
 
@@ -790,7 +779,6 @@ For their definition, please refer to the corresponding section.
 1. `ind_4(hv3, hv2, hv1, hv0)·(st0' - st4)`
 1. `ind_5(hv3, hv2, hv1, hv0)·(st0' - st5)`
 1. `ind_7(hv3, hv2, hv1, hv0)·(st0' - st7)`
-1. Maybe more of the same.
 
 #### Instruction `swap` + `i`
 
