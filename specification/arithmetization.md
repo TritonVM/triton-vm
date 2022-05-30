@@ -929,7 +929,27 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 #### Instruction `read_mem`
 
+##### Description
+
+1. The RAM pointer is equal to the top of the stack.
+1. The RAM value is pushed onto the stack.
+
+##### Polynomials
+
+1. `st0 - ramp`
+1. `st0' - ramv`
+
 #### Instruction `write_mem`
+
+##### Description
+
+1. The RAM pointer is equal to the stack's second-from-top element.
+1. The RAM value is read from the top of the stack.
+
+##### Polynomials
+
+1. `st1 - ramp`
+1. `st0 - ramv`
 
 #### Instruction `xlix`
 
