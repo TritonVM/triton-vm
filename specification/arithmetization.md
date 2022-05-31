@@ -1304,11 +1304,103 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 
 #### Instruction `xxadd`
 
+##### Description
+
+1. The result of adding `st0` to `st3` is moved into `st0`.
+1. The result of adding `st1` to `st4` is moved into `st1`.
+1. The result of adding `st2` to `st5` is moved into `st2`.
+1. Register `st3` does not change.
+1. Register `st4` does not change.
+1. Register `st5` does not change.
+1. Register `st6` does not change.
+1. Register `st7` does not change.
+
+##### Polynomials
+
+1. `st0' - (st0 + st3)`
+1. `st1' - (st1 + st4)`
+1. `st2' - (st2 + st5)`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
+
 #### Instruction `xxmul`
+
+##### Description
+
+1. The coefficient of x^0 of multiplying the two X-Field elements on the stack is moved into `st0`.
+1. The coefficient of x^1 of multiplying the two X-Field elements on the stack is moved into `st1`.
+1. The coefficient of x^2 of multiplying the two X-Field elements on the stack is moved into `st2`.
+1. Register `st3` does not change.
+1. Register `st4` does not change.
+1. Register `st5` does not change.
+1. Register `st6` does not change.
+1. Register `st7` does not change.
+
+##### Polynomials
+
+1. `st0' - (st0·st3 - st2·st4 - st1·st5)`
+1. `st1' - (st1·st3 + st0·st4 - st2·st5 + st2·st4 + st1·st5)`
+1. `st2' - (st2·st3 + st1·st4 + st0·st5 + st2·st5)`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
 
 #### Instruction `xinv`
 
+##### Description
+
+1. The coefficient of x^0 of multiplying X-Field element on top of the current stack and on top of the next stack is 1.
+1. The coefficient of x^1 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
+1. The coefficient of x^2 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
+1. Register `st3` does not change.
+1. Register `st4` does not change.
+1. Register `st5` does not change.
+1. Register `st6` does not change.
+1. Register `st7` does not change.
+
+##### Polynomials
+
+1. `st0·st0' - st2·st1' - st1·st2' - 1`
+1. `st1·st0' + st0·st1' - st2·st2' + st2·st1' + st1·st2'`
+1. `st2·st0' + st1·st1' + st0·st2' + st2·st2'`
+1. `st3' - st3`
+1. `st4' - st4`
+1. `st5' - st5`
+1. `st6' - st6`
+1. `st7' - st7`
+
 #### Instruction `xbmul`
+
+##### Description
+
+1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^0 is moved into `st0`.
+1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^1 is moved into `st1`.
+1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^2 is moved into `st2`.
+1. The stack element in `st4` is moved into `st3`.
+1. The stack element in `st5` is moved into `st4`.
+1. The stack element in `st6` is moved into `st5`.
+1. The stack element in `st7` is moved into `st6`.
+1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st7`.
+1. The OpStack pointer is decremented by 1.
+1. The helper variable register `hv4` holds the inverse of `(osp' - 7)`.
+
+##### Polynomials
+
+1. `st0' - st0·st1`
+1. `st1' - st0·st2`
+1. `st2' - st0·st3`
+1. `st3' - st4`
+1. `st4' - st5`
+1. `st5' - st6`
+1. `st6' - st7`
+1. `st7' - osv`
+1. `osp' - (osp - 1)`
+1. `(osp' - 7)·hv4 - 1`
 
 #### Instruction `read_io`
 
