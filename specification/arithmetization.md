@@ -953,15 +953,262 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 #### Instruction `xlix`
 
+This instruction has no additional transition constraints.
+A Permutation Argument with the [Hash Table](#hash-coprocessor-table) guarantees the XLIX permutation being applied to the auxiliary registers.
+
 #### Instruction `clearall`
+
+##### Description
+
+1. Auxiliary register `aux0` is 0.
+1. Auxiliary register `aux1` is 0.
+1. Auxiliary register `aux2` is 0.
+1. Auxiliary register `aux3` is 0.
+1. Auxiliary register `aux4` is 0.
+1. Auxiliary register `aux5` is 0.
+1. Auxiliary register `aux6` is 0.
+1. Auxiliary register `aux7` is 0.
+1. Auxiliary register `aux8` is 0.
+1. Auxiliary register `aux9` is 0.
+1. Auxiliary register `aux10` is 0.
+1. Auxiliary register `aux11` is 0.
+1. Auxiliary register `aux12` is 0.
+1. Auxiliary register `aux13` is 0.
+1. Auxiliary register `aux14` is 0.
+1. Auxiliary register `aux15` is 0.
+
+##### Polynomials
+
+1. `aux0`
+1. `aux1`
+1. `aux2`
+1. `aux3`
+1. `aux4`
+1. `aux5`
+1. `aux6`
+1. `aux7`
+1. `aux8`
+1. `aux9`
+1. `aux10`
+1. `aux11`
+1. `aux12`
+1. `aux13`
+1. `aux14`
+1. `aux15`
 
 #### Instruction `squeeze` + `i`
 
+This instruction makes use of [indicator polynomials](#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
+For their definition, please refer to the corresponding section.
+
+##### Description
+
+1. If `i` is 0, then `aux0` is pushed onto the stack.
+1. If `i` is 1, then `aux1` is pushed onto the stack.
+1. If `i` is 2, then `aux2` is pushed onto the stack.
+1. If `i` is 3, then `aux3` is pushed onto the stack.
+1. If `i` is 4, then `aux4` is pushed onto the stack.
+1. If `i` is 5, then `aux5` is pushed onto the stack.
+1. If `i` is 6, then `aux6` is pushed onto the stack.
+1. If `i` is 7, then `aux7` is pushed onto the stack.
+1. If `i` is 8, then `aux8` is pushed onto the stack.
+1. If `i` is 9, then `aux9` is pushed onto the stack.
+1. If `i` is 10, then `aux10` is pushed onto the stack.
+1. If `i` is 11, then `aux11` is pushed onto the stack.
+1. If `i` is 12, then `aux12` is pushed onto the stack.
+1. If `i` is 13, then `aux13` is pushed onto the stack.
+1. If `i` is 14, then `aux14` is pushed onto the stack.
+1. If `i` is 15, then `aux15` is pushed onto the stack.
+
+##### Polynomials
+
+1.  `ind_0(hv3, hv2, hv1, hv0)·(st0' - aux0)`
+1.  `ind_1(hv3, hv2, hv1, hv0)·(st0' - aux1)`
+1.  `ind_2(hv3, hv2, hv1, hv0)·(st0' - aux2)`
+1.  `ind_3(hv3, hv2, hv1, hv0)·(st0' - aux3)`
+1.  `ind_4(hv3, hv2, hv1, hv0)·(st0' - aux4)`
+1.  `ind_5(hv3, hv2, hv1, hv0)·(st0' - aux5)`
+1.  `ind_6(hv3, hv2, hv1, hv0)·(st0' - aux6)`
+1.  `ind_7(hv3, hv2, hv1, hv0)·(st0' - aux7)`
+1.  `ind_8(hv3, hv2, hv1, hv0)·(st0' - aux8)`
+1.  `ind_9(hv3, hv2, hv1, hv0)·(st0' - aux9)`
+1. `ind_10(hv3, hv2, hv1, hv0)·(st0' - aux10)`
+1. `ind_11(hv3, hv2, hv1, hv0)·(st0' - aux11)`
+1. `ind_12(hv3, hv2, hv1, hv0)·(st0' - aux12)`
+1. `ind_13(hv3, hv2, hv1, hv0)·(st0' - aux13)`
+1. `ind_14(hv3, hv2, hv1, hv0)·(st0' - aux14)`
+1. `ind_15(hv3, hv2, hv1, hv0)·(st0' - aux15)`
+
 #### Instruction `absorb` + `i`
+
+This instruction makes use of [indicator polynomials](#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
+For their definition, please refer to the corresponding section.
+
+##### Description
+
+1. If `i` is 0, then the top of the stack is added to `aux0`.
+1. If `i` is 1, then the top of the stack is added to `aux1`.
+1. If `i` is 2, then the top of the stack is added to `aux2`.
+1. If `i` is 3, then the top of the stack is added to `aux3`.
+1. If `i` is 4, then the top of the stack is added to `aux4`.
+1. If `i` is 5, then the top of the stack is added to `aux5`.
+1. If `i` is 6, then the top of the stack is added to `aux6`.
+1. If `i` is 7, then the top of the stack is added to `aux7`.
+1. If `i` is 8, then the top of the stack is added to `aux8`.
+1. If `i` is 9, then the top of the stack is added to `aux9`.
+1. If `i` is 10, then the top of the stack is added to `aux10`.
+1. If `i` is 11, then the top of the stack is added to `aux11`.
+1. If `i` is 12, then the top of the stack is added to `aux12`.
+1. If `i` is 13, then the top of the stack is added to `aux13`.
+1. If `i` is 14, then the top of the stack is added to `aux14`.
+1. If `i` is 15, then the top of the stack is added to `aux15`.
+1. If `i` is not 0, then `aux0` does not change.
+1. If `i` is not 1, then `aux1` does not change.
+1. If `i` is not 2, then `aux2` does not change.
+1. If `i` is not 3, then `aux3` does not change.
+1. If `i` is not 4, then `aux4` does not change.
+1. If `i` is not 5, then `aux5` does not change.
+1. If `i` is not 6, then `aux6` does not change.
+1. If `i` is not 7, then `aux7` does not change.
+1. If `i` is not 8, then `aux8` does not change.
+1. If `i` is not 9, then `aux9` does not change.
+1. If `i` is not 10, then `aux10` does not change.
+1. If `i` is not 11, then `aux11` does not change.
+1. If `i` is not 12, then `aux12` does not change.
+1. If `i` is not 13, then `aux13` does not change.
+1. If `i` is not 14, then `aux14` does not change.
+1. If `i` is not 15, then `aux15` does not change.
+
+##### Polynomials
+
+1.  `ind_0(hv3, hv2, hv1, hv0)·(aux0' - (aux0 + st0))`
+1.  `ind_1(hv3, hv2, hv1, hv0)·(aux1' - (aux1 + st0))`
+1.  `ind_2(hv3, hv2, hv1, hv0)·(aux2' - (aux2 + st0))`
+1.  `ind_3(hv3, hv2, hv1, hv0)·(aux3' - (aux3 + st0))`
+1.  `ind_4(hv3, hv2, hv1, hv0)·(aux4' - (aux4 + st0))`
+1.  `ind_5(hv3, hv2, hv1, hv0)·(aux5' - (aux5 + st0))`
+1.  `ind_6(hv3, hv2, hv1, hv0)·(aux6' - (aux6 + st0))`
+1.  `ind_7(hv3, hv2, hv1, hv0)·(aux7' - (aux7 + st0))`
+1.  `ind_8(hv3, hv2, hv1, hv0)·(aux8' - (aux8 + st0))`
+1.  `ind_9(hv3, hv2, hv1, hv0)·(aux9' - (aux9 + st0))`
+1. `ind_10(hv3, hv2, hv1, hv0)·(aux10' - (aux10 + st0))`
+1. `ind_11(hv3, hv2, hv1, hv0)·(aux11' - (aux11 + st0))`
+1. `ind_12(hv3, hv2, hv1, hv0)·(aux12' - (aux12 + st0))`
+1. `ind_13(hv3, hv2, hv1, hv0)·(aux13' - (aux13 + st0))`
+1. `ind_14(hv3, hv2, hv1, hv0)·(aux14' - (aux14 + st0))`
+1. `ind_15(hv3, hv2, hv1, hv0)·(aux15' - (aux15 + st0))`
+1.  `(1 - ind_0(hv3, hv2, hv1, hv0))·(aux0' - aux0)`
+1.  `(1 - ind_1(hv3, hv2, hv1, hv0))·(aux1' - aux1)`
+1.  `(1 - ind_2(hv3, hv2, hv1, hv0))·(aux2' - aux2)`
+1.  `(1 - ind_3(hv3, hv2, hv1, hv0))·(aux3' - aux3)`
+1.  `(1 - ind_4(hv3, hv2, hv1, hv0))·(aux4' - aux4)`
+1.  `(1 - ind_5(hv3, hv2, hv1, hv0))·(aux5' - aux5)`
+1.  `(1 - ind_6(hv3, hv2, hv1, hv0))·(aux6' - aux6)`
+1.  `(1 - ind_7(hv3, hv2, hv1, hv0))·(aux7' - aux7)`
+1.  `(1 - ind_8(hv3, hv2, hv1, hv0))·(aux8' - aux8)`
+1.  `(1 - ind_9(hv3, hv2, hv1, hv0))·(aux9' - aux9)`
+1. `(1 - ind_10(hv3, hv2, hv1, hv0))·(aux10' - aux10)`
+1. `(1 - ind_11(hv3, hv2, hv1, hv0))·(aux11' - aux11)`
+1. `(1 - ind_12(hv3, hv2, hv1, hv0))·(aux12' - aux12)`
+1. `(1 - ind_13(hv3, hv2, hv1, hv0))·(aux13' - aux13)`
+1. `(1 - ind_14(hv3, hv2, hv1, hv0))·(aux14' - aux14)`
+1. `(1 - ind_15(hv3, hv2, hv1, hv0))·(aux15' - aux15)`
 
 #### Instruction `divine_sibling`
 
+Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0 (respectively 1) as their least significant bit.
+The first two polynomials achieve that helper variable `hv0` holds the result of `st0 mod 2`.
+The third polynomial sets the new top of the stack to `st0 div 2`.
+
+##### Description
+
+1. Helper variable `hv0` is either 0 or 1.
+1. The top of the stack decomposes into helper variables `hv1` and `hv0`.
+1. The top of the stack is shifted by 1 bit to the right.
+1. If `hv0` is 0, then `aux0` does not change.
+1. If `hv0` is 0, then `aux1` does not change.
+1. If `hv0` is 0, then `aux2` does not change.
+1. If `hv0` is 0, then `aux3` does not change.
+1. If `hv0` is 0, then `aux4` does not change.
+1. If `hv0` is 0, then `aux5` does not change.
+1. If `hv0` is 1, then `aux0` is copied to `aux6`.
+1. If `hv0` is 1, then `aux1` is copied to `aux7`.
+1. If `hv0` is 1, then `aux2` is copied to `aux8`.
+1. If `hv0` is 1, then `aux3` is copied to `aux9`.
+1. If `hv0` is 1, then `aux4` is copied to `aux10`.
+1. If `hv0` is 1, then `aux5` is copied to `aux11`.
+1. Register `aux12` is set to 0.
+1. Register `aux13` is set to 0.
+1. Register `aux14` is set to 0.
+1. Register `aux15` is set to 0.
+
+##### Polynomials
+
+1. `hv0·(hv0 - 1)`
+1. `st0 - (hv1 + 2·hv0)`
+1. `st0' - hv1`
+1. `(1 - hv0)·(aux0' - aux0)`
+1. `(1 - hv0)·(aux1' - aux1)`
+1. `(1 - hv0)·(aux2' - aux2)`
+1. `(1 - hv0)·(aux3' - aux3)`
+1. `(1 - hv0)·(aux4' - aux4)`
+1. `(1 - hv0)·(aux5' - aux5)`
+1. `hv0·(aux6' - aux0)`
+1. `hv0·(aux7' - aux1)`
+1. `hv0·(aux8' - aux2)`
+1. `hv0·(aux9' - aux3)`
+1. `hv0·(aux10' - aux4)`
+1. `hv0·(aux11' - aux5)`
+1. `aux12'`
+1. `aux13'`
+1. `aux14'`
+1. `aux15'`
+
 #### Instruction `compare_digest`
+
+##### Description
+
+1. Register `st0` is equal to `aux0` or the comparison's result is 0.
+1. Register `st1` is equal to `aux1` or the comparison's result is 0.
+1. Register `st2` is equal to `aux2` or the comparison's result is 0.
+1. Register `st3` is equal to `aux3` or the comparison's result is 0.
+1. Register `st4` is equal to `aux4` or the comparison's result is 0.
+1. Register `st5` is equal to `aux5` or the comparison's result is 0.
+1. Helper variable `hv0` is the inverse of the difference between `aux0` and `st0` or 0.
+1. Helper variable `hv1` is the inverse of the difference between `aux1` and `st1` or 0.
+1. Helper variable `hv2` is the inverse of the difference between `aux2` and `st2` or 0.
+1. Helper variable `hv3` is the inverse of the difference between `aux3` and `st3` or 0.
+1. Helper variable `hv4` is the inverse of the difference between `aux4` and `st4` or 0.
+1. Helper variable `hv5` is the inverse of the difference between `aux5` and `st5` or 0.
+1. Helper variable `hv0` is the inverse of the difference between `aux0` and `st0` or the difference is 0.
+1. Helper variable `hv1` is the inverse of the difference between `aux1` and `st1` or the difference is 0.
+1. Helper variable `hv2` is the inverse of the difference between `aux2` and `st2` or the difference is 0.
+1. Helper variable `hv3` is the inverse of the difference between `aux3` and `st3` or the difference is 0.
+1. Helper variable `hv4` is the inverse of the difference between `aux4` and `st4` or the difference is 0.
+1. Helper variable `hv5` is the inverse of the difference between `aux5` and `st5` or the difference is 0.
+1. Register `sti` is unequal to `auxi` for some `0 <= i < 6` or the comparison's result is 1.
+
+##### Polynomials
+
+1. `st0'·(aux0 - st0)`
+1. `st0'·(aux1 - st1)`
+1. `st0'·(aux2 - st2)`
+1. `st0'·(aux3 - st3)`
+1. `st0'·(aux4 - st4)`
+1. `st0'·(aux5 - st5)`
+1. `hv0·(hv0·(aux0 - st0) - 1)`
+1. `hv1·(hv1·(aux1 - st1) - 1)`
+1. `hv2·(hv2·(aux2 - st2) - 1)`
+1. `hv3·(hv3·(aux3 - st3) - 1)`
+1. `hv4·(hv4·(aux4 - st4) - 1)`
+1. `hv5·(hv5·(aux5 - st5) - 1)`
+1. `(aux0 - st0)·(hv0·(aux0 - st0) - 1)`
+1. `(aux1 - st1)·(hv1·(aux1 - st1) - 1)`
+1. `(aux2 - st2)·(hv2·(aux2 - st2) - 1)`
+1. `(aux3 - st3)·(hv3·(aux3 - st3) - 1)`
+1. `(aux4 - st4)·(hv4·(aux4 - st4) - 1)`
+1. `(aux5 - st5)·(hv5·(aux5 - st5) - 1)`
+1. `(1 - st0')·(hv0·(aux0 - st0) - 1)·(hv1·(aux1 - st1) - 1)·(hv2·(aux2 - st2) - 1)·(hv3·(aux3 - st3) - 1)·(hv4·(aux4 - st4) - 1)·(hv5·(aux5 - st5) - 1)`
 
 #### Instruction `add`
 

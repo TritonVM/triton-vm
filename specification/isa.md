@@ -61,7 +61,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | *`inv`                 | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise                             |
 | *`osp`                 | operational stack pointer    | contains the OpStack address of the top of the operational stack plus the number of stack registers, i.e., plus 8. |
 | *`osv`                 | operational stack value      | contains the (stack) memory value at the given address                                                             |
-| *`hv0` through `hv4`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
+| *`hv0` through `hv5`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
 | *`ramp`                | RAM pointer                  | contains an address (in RAM) for reading or writing                                                                |
 | *`ramv`                | RAM value                    | contains the value of the RAM element at the given address                                                         |
 | `aux0` through `aux15` | auxiliary registers          | data structure dedicated to hashing instructions                                                                   |
@@ -102,7 +102,7 @@ Likewise, `ramv` is set to the value being read or written.
 ### Helper Variables
 
 Some instructions require helper variables in order to generate an efficient arithmetization.
-To this end, there are 5 helper registers, labeled `hv0` through `hv4`.
+To this end, there are 6 helper registers, labeled `hv0` through `hv5`.
 These registers are part of the arithmetization of the architecture, but not needed to define the instruction set.
 
 ## Instructions
