@@ -15,7 +15,7 @@ The entries of a table's columns corresponding to Evaluation or Permutation Argu
 
 For each table, up to three lists containing constraints of different type are given:
 1. Consistency Constraints, establishing consistency within any given row,
-1. Boundary Constraints, defining values in a table's first row and, in one case, also the last, and
+1. Boundary Constraints, defining values in a table's first row and, in some cases, also the last, and
 1. Transition Constraints, establishing the consistency of two consecutive rows in relation to each other.
 
 Together, all these constraints constitute the AIR constraints.
@@ -835,7 +835,7 @@ For their definition, please refer to the corresponding section.
 1. `ind_7(hv3, hv2, hv1, hv0)·(st7' - st0)`
 1. `(1 - ind_7(hv3, hv2, hv1, hv0))·(st7' - st7)`
 
-### Instruction `nop`
+#### Instruction `nop`
 
 This instruction has no additional transition constraints.
 
@@ -1254,7 +1254,7 @@ The third polynomial sets the new top of the stack to `st0 div 2`.
 
 #### Instruction `div`
 
-A Permutation Argument guarantees `r < d`.
+A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees `r < d`.
 
 ##### Description
 
