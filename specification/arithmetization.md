@@ -1216,15 +1216,65 @@ The third polynomial sets the new top of the stack to `st0 div 2`.
 
 #### Instruction `split`
 
+##### Description
+
+1. The top of the stack is decomposed as 32-bit chunks into the stack's top-most two elements.
+1. Helper variable `hv0` holds the inverse of (2^32 - 1) subtracted from the high 32 bits or the low 32 bits are 0.
+1. Stack register `st1` is moved into `st2`
+1. Stack register `st2` is moved into `st3`
+1. Stack register `st3` is moved into `st4`
+1. Stack register `st4` is moved into `st5`
+1. Stack register `st5` is moved into `st6`
+1. Stack register `st6` is moved into `st7`
+1. Stack register `st7` is moved into `osv`
+1. The stack pointer increases by 1.
+
+##### Polynomials
+
+1. `st0 - (2^32·st0' + st1')`
+1. `st1'·(hv0·(st0' - (2^32 - 1)) - 1)`
+1. `st2' - st1`
+1. `st3' - st2`
+1. `st4' - st3`
+1. `st5' - st4`
+1. `st6' - st5`
+1. `st7' - st6`
+1. `osv' - st7`
+1. `osp' - (osp + 1)`
+
 #### Instruction `eq`
+
+##### Description
+
+1. Helper variable `hv0` is the inverse of the difference of the stack's two top-most elements or 0.
+1. Helper variable `hv0` is the inverse of the difference of the stack's two top-most elements or the difference is 0.
+1. The new top of the stack is 1 if the difference between the stack's two top-most elements is not invertible, 0 otherwise.
+
+##### Polynomials
+
+1. `hv0·(hv0·(st1 - st0) - 1)`
+1. `(st1 - st0)·(hv0·(st1 - st0) - 1)`
+1. `st0' - (hv0·(st1 - st0) - 1)`
 
 #### Instruction `lt`
 
+This instruction has no additional transition constraints.
+A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
+
 #### Instruction `and`
+
+This instruction has no additional transition constraints.
+A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
 
 #### Instruction `xor`
 
+This instruction has no additional transition constraints.
+A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
+
 #### Instruction `reverse`
+
+This instruction has no additional transition constraints.
+A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
 
 #### Instruction `div`
 
