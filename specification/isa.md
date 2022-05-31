@@ -61,7 +61,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | *`inv`                 | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise                             |
 | *`osp`                 | operational stack pointer    | contains the OpStack address of the top of the operational stack plus the number of stack registers, i.e., plus 8. |
 | *`osv`                 | operational stack value      | contains the (stack) memory value at the given address                                                             |
-| *`hv0` through `hv5`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
+| *`hv0` through `hv4`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
 | *`ramp`                | RAM pointer                  | contains an address (in RAM) for reading or writing                                                                |
 | *`ramv`                | RAM value                    | contains the value of the RAM element at the given address                                                         |
 | `aux0` through `aux15` | auxiliary registers          | data structure dedicated to hashing instructions                                                                   |
@@ -102,7 +102,7 @@ Likewise, `ramv` is set to the value being read or written.
 ### Helper Variables
 
 Some instructions require helper variables in order to generate an efficient arithmetization.
-To this end, there are 6 helper registers, labeled `hv0` through `hv5`.
+To this end, there are 5 helper registers, labeled `hv0` through `hv4`.
 These registers are part of the arithmetization of the architecture, but not needed to define the instruction set.
 
 ## Instructions
@@ -154,14 +154,14 @@ the value of `a` was supplied as a secret input.
 
 ### Auxiliary Register Instructions
 
-| Instruction      | Value | old OpStack | new OpStack   | old `aux`   | new `aux`                | Description                                                                                                                      |
-|:-----------------|:------|:------------|:--------------|:------------|:-------------------------|:---------------------------------------------------------------------------------------------------------------------------------|
-| `xlix`           | ?     | `_`         | `_`           | `_`         | `xlix(_)`                | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                                  |
-| `clearall`       | ?     | `_`         | `_`           | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                            |
-| `squeeze` + `i`  | ?     | `_`         | `_ v`         | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                         |
-| `absorb`  + `i`  | ?     | `_ a`       | `_`           | `…v…`       | `…(v+a)…`                | Pops the top off the stack and adds it into the `i`th auxiliary register. Assumes `0 <= i < 16`.                                 |
-| `divine_sibling` | ?     | `_ i`       | `_ (i div 2)` | `fedcba__…` | e.g., `zyxwvufedcba0000` | Helps traversing a Merkle tree during authentication path verification. See extended description below.                          |
-| `compare_digest` | ?     | `_`         | `_ a`         | `fedcba__…` | `fedcba__…`              | Compare `aux0` through `aux5` (i.e., `fedcba`) to `st0` through `st5` and put the comparison's result `a ∈ {0, 1}` on the stack. |
+| Instruction      | Value | old OpStack | new OpStack   | old `aux`   | new `aux`                | Description                                                                                                              |
+|:-----------------|:------|:------------|:--------------|:------------|:-------------------------|:-------------------------------------------------------------------------------------------------------------------------|
+| `xlix`           | ?     | `_`         | `_`           | `_`         | `xlix(_)`                | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                          |
+| `clearall`       | ?     | `_`         | `_`           | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                    |
+| `squeeze` + `i`  | ?     | `_`         | `_ v`         | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                 |
+| `absorb`  + `i`  | ?     | `_ a`       | `_`           | `…v…`       | `…(v+a)…`                | Pops the top off the stack and adds it into the `i`th auxiliary register. Assumes `0 <= i < 16`.                         |
+| `divine_sibling` | ?     | `_ i`       | `_ (i div 2)` | `fedcba__…` | e.g., `zyxwvufedcba0000` | Helps traversing a Merkle tree during authentication path verification. See extended description below.                  |
+| `assert_digest`  | ?     | `_`         | `_`           | `fedcba__…` | `fedcba__…`              | Assert equality of `aux0` through `aux5` (i.e., `fedcba`) to `st0` through `st5`. Crashes the VM if any pair is unequal. |
 
 The instruction `divine_sibling` works as follows.
 The value at the top of the stack `i` is taken as the leaf index for a Merkle tree that is claimed to include data whose digest is the content of auxiliary registers `aux0` through `aux5`, i.e., `fedcba`.

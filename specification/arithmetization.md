@@ -442,7 +442,7 @@ A summary of all instructions and which groups they are part of is given in the 
 | `squeeze` + `i`  | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
 | `absorb` + `i`   | x          | x               |          | x        | x               |                 |          |              |              | x              |        |         |
 | `divine_sibling` |            |                 | x        |          | x               |                 |          |              |              |                | x      |         |
-| `compare_digest` |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
+| `assert_digest`  |            |                 | x        |          | x               | x               |          |              | x            |                |        |         |
 | `add`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
 | `mul`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
 | `invert`         |            |                 | x        |          | x               | x               |          |              |              |                | x      |         |
@@ -1164,51 +1164,25 @@ The third polynomial sets the new top of the stack to `st0 div 2`.
 1. `aux14'`
 1. `aux15'`
 
-#### Instruction `compare_digest`
+#### Instruction `assert_digest`
 
 ##### Description
 
-1. Register `st0` is equal to `aux0` or the comparison's result is 0.
-1. Register `st1` is equal to `aux1` or the comparison's result is 0.
-1. Register `st2` is equal to `aux2` or the comparison's result is 0.
-1. Register `st3` is equal to `aux3` or the comparison's result is 0.
-1. Register `st4` is equal to `aux4` or the comparison's result is 0.
-1. Register `st5` is equal to `aux5` or the comparison's result is 0.
-1. Helper variable `hv0` is the inverse of the difference between `aux0` and `st0` or 0.
-1. Helper variable `hv1` is the inverse of the difference between `aux1` and `st1` or 0.
-1. Helper variable `hv2` is the inverse of the difference between `aux2` and `st2` or 0.
-1. Helper variable `hv3` is the inverse of the difference between `aux3` and `st3` or 0.
-1. Helper variable `hv4` is the inverse of the difference between `aux4` and `st4` or 0.
-1. Helper variable `hv5` is the inverse of the difference between `aux5` and `st5` or 0.
-1. Helper variable `hv0` is the inverse of the difference between `aux0` and `st0` or the difference is 0.
-1. Helper variable `hv1` is the inverse of the difference between `aux1` and `st1` or the difference is 0.
-1. Helper variable `hv2` is the inverse of the difference between `aux2` and `st2` or the difference is 0.
-1. Helper variable `hv3` is the inverse of the difference between `aux3` and `st3` or the difference is 0.
-1. Helper variable `hv4` is the inverse of the difference between `aux4` and `st4` or the difference is 0.
-1. Helper variable `hv5` is the inverse of the difference between `aux5` and `st5` or the difference is 0.
-1. Register `sti` is unequal to `auxi` for some `0 <= i < 6` or the comparison's result is 1.
+1. Register `st0` is equal to `aux0`.
+1. Register `st1` is equal to `aux1`.
+1. Register `st2` is equal to `aux2`.
+1. Register `st3` is equal to `aux3`.
+1. Register `st4` is equal to `aux4`.
+1. Register `st5` is equal to `aux5`.
 
 ##### Polynomials
 
-1. `st0'·(aux0 - st0)`
-1. `st0'·(aux1 - st1)`
-1. `st0'·(aux2 - st2)`
-1. `st0'·(aux3 - st3)`
-1. `st0'·(aux4 - st4)`
-1. `st0'·(aux5 - st5)`
-1. `hv0·(hv0·(aux0 - st0) - 1)`
-1. `hv1·(hv1·(aux1 - st1) - 1)`
-1. `hv2·(hv2·(aux2 - st2) - 1)`
-1. `hv3·(hv3·(aux3 - st3) - 1)`
-1. `hv4·(hv4·(aux4 - st4) - 1)`
-1. `hv5·(hv5·(aux5 - st5) - 1)`
-1. `(aux0 - st0)·(hv0·(aux0 - st0) - 1)`
-1. `(aux1 - st1)·(hv1·(aux1 - st1) - 1)`
-1. `(aux2 - st2)·(hv2·(aux2 - st2) - 1)`
-1. `(aux3 - st3)·(hv3·(aux3 - st3) - 1)`
-1. `(aux4 - st4)·(hv4·(aux4 - st4) - 1)`
-1. `(aux5 - st5)·(hv5·(aux5 - st5) - 1)`
-1. `(1 - st0')·(hv0·(aux0 - st0) - 1)·(hv1·(aux1 - st1) - 1)·(hv2·(aux2 - st2) - 1)·(hv3·(aux3 - st3) - 1)·(hv4·(aux4 - st4) - 1)·(hv5·(aux5 - st5) - 1)`
+1. `aux0 - st0`
+1. `aux1 - st1`
+1. `aux2 - st2`
+1. `aux3 - st3`
+1. `aux4 - st4`
+1. `aux5 - st5`
 
 #### Instruction `add`
 
