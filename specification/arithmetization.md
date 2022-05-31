@@ -788,51 +788,51 @@ For their definition, please refer to the corresponding section.
 ##### Description
 
 1. Argument `i` is not 0.
-1. If `i` is 1, then `st1` is moved into `st0`.
 1. If `i` is 1, then `st0` is moved into `st1`.
-1. If `i` is not 1, then `st1` does not change.
-1. If `i` is 2, then `st2` is moved into `st0`.
 1. If `i` is 2, then `st0` is moved into `st2`.
-1. If `i` is not 2, then `st2` does not change.
-1. If `i` is 3, then `st3` is moved into `st0`.
 1. If `i` is 3, then `st0` is moved into `st3`.
-1. If `i` is not 3, then `st3` does not change.
-1. If `i` is 4, then `st4` is moved into `st0`.
 1. If `i` is 4, then `st0` is moved into `st4`.
-1. If `i` is not 4, then `st4` does not change.
-1. If `i` is 5, then `st5` is moved into `st0`.
 1. If `i` is 5, then `st0` is moved into `st5`.
-1. If `i` is not 5, then `st5` does not change.
-1. If `i` is 6, then `st6` is moved into `st0`.
 1. If `i` is 6, then `st0` is moved into `st6`.
-1. If `i` is not 6, then `st6` does not change.
-1. If `i` is 7, then `st7` is moved into `st0`.
 1. If `i` is 7, then `st0` is moved into `st7`.
+1. If `i` is 1, then `st1` is moved into `st0`.
+1. If `i` is 2, then `st2` is moved into `st0`.
+1. If `i` is 3, then `st3` is moved into `st0`.
+1. If `i` is 4, then `st4` is moved into `st0`.
+1. If `i` is 5, then `st5` is moved into `st0`.
+1. If `i` is 6, then `st6` is moved into `st0`.
+1. If `i` is 7, then `st7` is moved into `st0`.
+1. If `i` is not 1, then `st1` does not change.
+1. If `i` is not 2, then `st2` does not change.
+1. If `i` is not 3, then `st3` does not change.
+1. If `i` is not 4, then `st4` does not change.
+1. If `i` is not 5, then `st5` does not change.
+1. If `i` is not 6, then `st6` does not change.
 1. If `i` is not 7, then `st7` does not change.
 
 ##### Polynomials
 
 1. `ind_0(hv3, hv2, hv1, hv0)`
-1. `ind_1(hv3, hv2, hv1, hv0)·(st0' - st1)`
 1. `ind_1(hv3, hv2, hv1, hv0)·(st1' - st0)`
-1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(st1' - st1)`
-1. `ind_2(hv3, hv2, hv1, hv0)·(st0' - st2)`
 1. `ind_2(hv3, hv2, hv1, hv0)·(st2' - st0)`
-1. `(1 - ind_2(hv3, hv2, hv1, hv0))·(st2' - st2)`
-1. `ind_3(hv3, hv2, hv1, hv0)·(st0' - st3)`
 1. `ind_3(hv3, hv2, hv1, hv0)·(st3' - st0)`
-1. `(1 - ind_3(hv3, hv2, hv1, hv0))·(st3' - st3)`
-1. `ind_4(hv3, hv2, hv1, hv0)·(st0' - st4)`
 1. `ind_4(hv3, hv2, hv1, hv0)·(st4' - st0)`
-1. `(1 - ind_4(hv3, hv2, hv1, hv0))·(st4' - st4)`
-1. `ind_5(hv3, hv2, hv1, hv0)·(st0' - st5)`
 1. `ind_5(hv3, hv2, hv1, hv0)·(st5' - st0)`
-1. `(1 - ind_5(hv3, hv2, hv1, hv0))·(st5' - st5)`
-1. `ind_6(hv3, hv2, hv1, hv0)·(st0' - st6)`
 1. `ind_6(hv3, hv2, hv1, hv0)·(st6' - st0)`
-1. `(1 - ind_6(hv3, hv2, hv1, hv0))·(st6' - st6)`
-1. `ind_7(hv3, hv2, hv1, hv0)·(st0' - st7)`
 1. `ind_7(hv3, hv2, hv1, hv0)·(st7' - st0)`
+1. `ind_1(hv3, hv2, hv1, hv0)·(st0' - st1)`
+1. `ind_2(hv3, hv2, hv1, hv0)·(st0' - st2)`
+1. `ind_3(hv3, hv2, hv1, hv0)·(st0' - st3)`
+1. `ind_4(hv3, hv2, hv1, hv0)·(st0' - st4)`
+1. `ind_5(hv3, hv2, hv1, hv0)·(st0' - st5)`
+1. `ind_6(hv3, hv2, hv1, hv0)·(st0' - st6)`
+1. `ind_7(hv3, hv2, hv1, hv0)·(st0' - st7)`
+1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(st1' - st1)`
+1. `(1 - ind_2(hv3, hv2, hv1, hv0))·(st2' - st2)`
+1. `(1 - ind_3(hv3, hv2, hv1, hv0))·(st3' - st3)`
+1. `(1 - ind_4(hv3, hv2, hv1, hv0))·(st4' - st4)`
+1. `(1 - ind_5(hv3, hv2, hv1, hv0))·(st5' - st5)`
+1. `(1 - ind_6(hv3, hv2, hv1, hv0))·(st6' - st6)`
 1. `(1 - ind_7(hv3, hv2, hv1, hv0))·(st7' - st7)`
 
 #### Instruction `nop`
