@@ -1404,4 +1404,10 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 
 #### Instruction `read_io`
 
+This instruction has no additional transition constraints.
+An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) guarantees correct transition.
+
 #### Instruction `write_io`
+
+This instruction has no additional transition constraints.
+An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) guarantees correct transition.
