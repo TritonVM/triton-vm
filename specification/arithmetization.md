@@ -62,12 +62,17 @@ The following constraints apply to every cycle.
 **Relations to Other Tables**
 
 1. A Permutation Argument with the [Instruction Table](#instruction-table).
-1. A pair of Evaluation Arguments with the [Input and Output Tables](#io-tables).
+1. An Evaluation Argument with the [Input Table](#io-tables).
+1. An Evaluation Argument with the [Output Table](#io-tables).
 1. A Permutation Argument with the [Jump Stack Table](#jump-stack-table).
 1. A Permutation Argument with the [Opstack Table](#operational-stack-table).
 1. A Permutation Argument with the [RAM Table](#random-access-memory-table).
 1. A Permutation Argument with the [Hash Table](#hash-coprocessor-table).
-1. A Permutation Argument with the [uint32 Table](#uint32-operations-table).
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `div`.
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `lt`.
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `and`.
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `xor`.
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `rev`.
 
 ### Program Table
 
@@ -394,7 +399,11 @@ For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `re
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes a uint32 operation, the operands and result exist as a row in the uint32 table.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `div`, the operands and result exist as a row in the uint32 table.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `lt`, the operands and result exist as a row in the uint32 table.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `and`, the operands and result exist as a row in the uint32 table.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `xor`, the operands and result exist as a row in the uint32 table.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `rev`, the operands and result exist as a row in the uint32 table.
 
 ## Instruction-Specific Transition Constraints
 
