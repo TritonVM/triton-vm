@@ -1154,7 +1154,7 @@ The third polynomial sets the new top of the stack to `st0 div 2`.
 ##### Polynomials
 
 1. `hv0·(hv0 - 1)`
-1. `st0 - (hv1 + 2·hv0)`
+1. `st0 - (2·hv1 + hv0)`
 1. `st0' - hv1`
 1. `(1 - hv0)·(aux0' - aux0)`
 1. `(1 - hv0)·(aux1' - aux1)`
