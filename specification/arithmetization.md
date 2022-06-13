@@ -66,7 +66,8 @@ The following constraints apply to every cycle.
 1. A Permutation Argument with the [Jump Stack Table](#jump-stack-table).
 1. A Permutation Argument with the [Opstack Table](#operational-stack-table).
 1. A Permutation Argument with the [RAM Table](#random-access-memory-table).
-1. A Permutation Argument with the [Hash Table](#hash-coprocessor-table).
+1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the input to the hash function from the processor to the hash coprocessor.
+1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the hash digest from the hash coprocessor to the processor.
 1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `div`.
 1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `lt`.
 1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `and`.
@@ -349,12 +350,13 @@ This single-cycle hashing instruction is enabled by a Hash Table of 17 columns �
 **Transition Constraints**
 
 1. The round index increases by 1 modulo 8.
-1. On multiples of 8 there is no other constraint.
+1. On multiples of 8, the last four registers are 0.
 1. For all other rows, the $i$th round of Rescue-XLIX is applied, where $i$ is the round index.
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes a `hash` instruction, the values of the stack's 12 top-most registers correspond to some row in the Hash Table with index 0 mod 8 and that the values of the stack's 6 top-most elements in the next cycle correspond to the first six values of the Hash Table's row with index 7 mod 8.
+1. An Evaluation Argument establishes that whenever the [processor](#processor-table) executes a `hash` instruction, the values of the stack's 12 top-most registers correspond to some row in the Hash Table with index 0 mod 8
+1. An Evaluation Argument establishes that after having executed a `hash` instruction, the top 6 stack registers in the [processor](#processor-table) correspond to the digest computed in the Hash Coprocessor, i.e., the first six values of the Hash Table's row with index 7 mod 8.
 
 ### Uint32 Operations Table
 
@@ -444,7 +446,7 @@ A summary of all instructions and which groups they are part of is given in the 
 | `halt`           |            |                 | x        |          | x               |          |              | x            |                |        |         |
 | `read_mem`       |            |                 | x        |          |                 |          | x            |              |                |        |         |
 | `write_mem`      |            |                 | x        |          |                 |          |              |              | x              |        |         |
-| `hash`           |            |                 | x        |          | x               |          |              | x            |                |        |         |
+| `hash`           |            |                 | x        |          | x               |          |              |              |                |        |         |
 | `divine_sibling` |            |                 | x        |          | x               |          |              |              |                |        |         |
 | `assert_vector`  |            |                 | x        |          | x               |          |              | x            |                |        |         |
 | `add`            |            |                 | x        |          | x               |          |              |              |                |        | x       |
@@ -489,6 +491,7 @@ The corresponding binary decomposition is `(hv3, hv2, hv1, hv0) = (1, 1, 0, 1)`.
 Indicator polynomial `ind_13(hv3, hv2, hv1, hv0)` is `hv3·hv2·(1 - hv1)·hv0`.
 It evaluates to 1 on `(1, 1, 0, 1)`, i.e., `ind_13(1, 1, 0, 1) = 1`.
 Any other indicator polynomial, like `ind_7`, evaluates to 0 on `(1, 1, 0, 1)`.
+Likewise, the indicator polynomial for 13 evaluates to 0 for any other argument.
 
 Below, you can find a list of all 16 indicator polynomials.
 
@@ -1063,7 +1066,7 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 #### Instruction `hash`
 
 This instruction has no additional transition constraints.
-A Permutation Argument with the [Hash Table](#hash-coprocessor-table) guarantees correct transition.
+Two Evaluation Arguments with the [Hash Table](#hash-coprocessor-table) guarantee correct transition.
 
 #### Instruction `divine_sibling`
 

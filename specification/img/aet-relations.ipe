@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.23">
-<info created="D:20200729150742" modified="D:20220531160324"/>
+<info created="D:20200729150742" modified="D:20220613195145"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -363,44 +363,44 @@ h
 192 168 l
 </path>
 <path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
-200 124 m
-200 120 l
-200 116
-204 116 c
+208 124 m
+208 120 l
+208 116
+212 116 c
 252 116 l
 256 116
 256 112 c
 256 108 l
 </path>
 <path stroke="darkblue" pen="heavier" cap="1" join="1">
-196 124 m
-196 112 l
-196 108
-200 108 c
-220 108 l
-224 108
-224 104 c
-224 76 l
-</path>
-<path matrix="-1 0 0 1 384 0" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
 200 124 m
-200 120 l
-200 116
-204 116 c
-252 116 l
-256 116
-256 112 c
-256 108 l
-</path>
-<path matrix="-1 0 0 1 384 0" stroke="darkblue" pen="heavier" cap="1" join="1">
-196 124 m
-196 112 l
-196 108
-200 108 c
+200 112 l
+200 108
+204 108 c
 220 108 l
 224 108
 224 104 c
 224 76 l
+</path>
+<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+176 124 m
+176 120 l
+176 116
+172 116 c
+132 116 l
+128 116
+128 112 c
+128 108 l
+</path>
+<path stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small" rarrow="fnormal/small">
+184 124 m
+184 112 l
+184 108
+180 108 c
+164 108 l
+160 108
+160 104 c
+160 76 l
 </path>
 </page>
 </ipe>
