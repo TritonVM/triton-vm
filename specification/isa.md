@@ -1,6 +1,6 @@
 # Triton VM Instruction Set Architecture
 
-Triton VM is a stack machine with RAM, with a second data structure for evaluating a sponge permutation.
+Triton VM is a stack machine with RAM.
 It is a [Harvard architecture](https://en.wikipedia.org/wiki/Harvard_architecture) with read-only memory for the program.
 The arithmetization of the VM is defined over the *B-field* $\mathbb{F}_p$ where $p=2^{64}-2^{32}+1$.
 This means the registers and memory elements take values from $\mathbb{F}_p$, and the transition function gives rise to low-degree transition verification polynomials from the ring of multivariate polynomials over $\mathbb{F}_p$.
@@ -29,11 +29,11 @@ The stack is a last-in;first-out data structure that allows the program to store
 In this document, the operational stack is either referred to as just “stack” or, if more clarity is desired, “OpStack.”
 
 From the Virtual Machine's point of view, the stack is a single, continuous object.
-The first eight elements of the stack can be accessed very conveniently.
+The first 16 elements of the stack can be accessed very conveniently.
 Elements deeper in the stack require removing some of the higher elements, possibly after storing them in RAM.
 
 For reasons of arithmetization, the stack is actually split into two distinct parts:
-1. the _operational stack registers_ `st0` through `st7`, and
+1. the _operational stack registers_ `st0` through `st15`, and
 1. the _OpStack Underflow Memory_.
 The split is further motivated and the interplay between the two parts is further described and exemplified in the document on [arithmetization](#arithmetization.md#operational-stack-table).
 
@@ -47,24 +47,23 @@ This section covers all columns in the Protocol Table.
 Only a subset of these registers relate to the instruction set;
 the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk.
 
-| Register               | Name                         | Purpose                                                                                                            |
-|:-----------------------|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------|
-| *`clk`                 | cycle counter                | counts the number of cycles the program has been running for                                                       |
-| `ip`                   | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
-| `ci`                   | current instruction register | contains the current instruction                                                                                   |
-| `nia`                  | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |
-| *`ib0` through `ib?`   | instruction bucket           | decomposition of the instruction's opcode used to keep the AIR degree low                                          |
-| `jsp`                  | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
-| `jso`                  | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
-| `jsd`                  | jump stack destination       | contains the argument of the last `call`                                                                           |
-| `st0` through `st7`    | operational stack registers  | contain explicit operational stack values                                                                          |
-| *`inv`                 | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise                             |
-| *`osp`                 | operational stack pointer    | contains the OpStack address of the top of the operational stack plus the number of stack registers, i.e., plus 8. |
-| *`osv`                 | operational stack value      | contains the (stack) memory value at the given address                                                             |
-| *`hv0` through `hv4`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
-| *`ramp`                | RAM pointer                  | contains an address (in RAM) for reading or writing                                                                |
-| *`ramv`                | RAM value                    | contains the value of the RAM element at the given address                                                         |
-| `aux0` through `aux15` | auxiliary registers          | data structure dedicated to hashing instructions                                                                   |
+| Register             | Name                         | Purpose                                                                                                            |
+|:---------------------|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------|
+| *`clk`               | cycle counter                | counts the number of cycles the program has been running for                                                       |
+| `ip`                 | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
+| `ci`                 | current instruction register | contains the current instruction                                                                                   |
+| `nia`                | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |
+| *`ib0` through `ib?` | instruction bucket           | decomposition of the instruction's opcode used to keep the AIR degree low                                          |
+| `jsp`                | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
+| `jso`                | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
+| `jsd`                | jump stack destination       | contains the argument of the last `call`                                                                           |
+| `st0` through `st15` | operational stack registers  | contain explicit operational stack values                                                                          |
+| *`inv`               | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise                             |
+| *`osp`               | operational stack pointer    | contains the OpStack address of the top of the operational stack plus the number of stack registers, i.e., plus 8. |
+| *`osv`               | operational stack value      | contains the (stack) memory value at the given address                                                             |
+| *`hv0` through `hv4` | helper variable registers    | helper variables for some arithmetic operations                                                                    |
+| *`ramp`              | RAM pointer                  | contains an address (in RAM) for reading or writing                                                                |
+| *`ramv`              | RAM value                    | contains the value of the RAM element at the given address                                                         |
 
 ### Instruction
 
@@ -75,17 +74,17 @@ Also, there is the *next instruction (or argument) register* `nia` that either c
 
 ### Stack
 
-The stack is represented by eight registers called *stack registers* (`st0` – `st7`) plus the OpStack Memory.
-The top eight elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Memory, is not.
-In order to access elements of the OpStack held in OpStack Memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
+The stack is represented by 16 registers called *stack registers* (`st0` – `st15`) plus the OpStack Underflow Memory.
+The top 16 elements of the OpStack are directly accessible, the remainder of the OpStack, i.e, the part held in OpStack Underflow Memory, is not.
+In order to access elements of the OpStack held in OpStack Underflow Memory, the stack has to shrink by discarding elements from the top – potentially after writing them to RAM – thus moving lower elements into the stack registers.
 
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
 The registers `osp` and `osv` are not directly accessible by the program running in TritonVM.
 They primarily exist to allow efficient [arithmetization](arithmetization.md).
-The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset 8.
-For example, if `osp` is 8, the OpStack is empty.
-If `osp` is 10, the OpStack contains 2 elements.
+The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset 16.
+For example, if `osp` is 16, the OpStack is empty.
+If `osp` is 18, the OpStack contains 2 elements.
 The register `osv` holds the top-most value of the OpStack Memory, or zero if no such value exists.
 
 ### RAM
@@ -119,10 +118,10 @@ They are recognized by the form "`instr` + `arg`".
 | `pop`        | ?     | `_ a`               | `_`                   | Pops top element from stack.                                                     |
 | `push` + `a` | ?     | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                       |
 | `divine`     | ?     | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
-| `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < 8`.   |
-| `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < 8`.   |
+| `dup`  + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < 16`.  |
+| `swap` + `i` | ?     | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < 16`.  |
 
-Instruction `divine` (together with [`divine_sibling`](#auxiliary-register-instructions)) make TritonVM a virtual machine that can execute non-deterministic programs.
+Instruction `divine` (together with [`divine_sibling`](#hashing)) make TritonVM a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.
 The name of the instruction is the verb (not the adjective) meaning “to discover by intuition or insight.”
 
@@ -152,27 +151,29 @@ the value of `a` was supplied as a secret input.
 | `read_mem`  | ?     | `_ p`       | `_ p v`     | `_`        | `p`        | `_`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
 | `write_mem` | ?     | `_ p v`     | `_ p`       | `_`        | `p`        | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
 
-### Auxiliary Register Instructions
+### Hashing
 
-| Instruction      | Value | old OpStack | new OpStack   | old `aux`   | new `aux`                | Description                                                                                                              |
-|:-----------------|:------|:------------|:--------------|:------------|:-------------------------|:-------------------------------------------------------------------------------------------------------------------------|
-| `xlix`           | ?     | `_`         | `_`           | `_`         | `xlix(_)`                | Applies the Rescue-XLIX permutation to the auxiliary registers.                                                          |
-| `clearall`       | ?     | `_`         | `_`           | `_`         | `0000000000000000`       | Sets all auxiliary registers to zero.                                                                                    |
-| `squeeze` + `i`  | ?     | `_`         | `_ v`         | `…v…`       | `…v…`                    | Pushes to the stack the `i`th auxiliary register. Assumes `0 <= i < 16`.                                                 |
-| `absorb`  + `i`  | ?     | `_ a`       | `_`           | `…v…`       | `…(v+a)…`                | Pops the top off the stack and adds it into the `i`th auxiliary register. Assumes `0 <= i < 16`.                         |
-| `divine_sibling` | ?     | `_ i`       | `_ (i div 2)` | `fedcba__…` | e.g., `zyxwvufedcba0000` | Helps traversing a Merkle tree during authentication path verification. See extended description below.                  |
-| `assert_digest`  | ?     | `_`         | `_`           | `fedcba__…` | `fedcba__…`              | Assert equality of `aux0` through `aux5` (i.e., `fedcba`) to `st0` through `st5`. Crashes the VM if any pair is unequal. |
+| Instruction      | Value | old OpStack       | new OpStack                     | Description                                                                                             |
+|:-----------------|:------|:------------------|:--------------------------------|:--------------------------------------------------------------------------------------------------------|
+| `hash`           | ?     | `_lkjihgfedcba`   | `_000000zyxwvu`                 | Overwrites the stack's 12 top-most elements with their hash digest (length 6) and 6 zeros.              |
+| `divine_sibling` | ?     | `_ i******fedcba` | e.g., `_ (i div 2)fedcbazyxwvu` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
+| `assert_vector`  | ?     | `_`               | `_`                             | Assert equality of `st(i)` to `st(i+6)` for `0 <= i < 6`. Crashes the VM if any pair is unequal.        |
+
+The instruction `hash` works as follows.
+The stack's 12 top-most elements (`lkjihgfedcba`) are concatenated to four zeros, resulting in `0000lkjihgfedcba`.
+The permutation `xlix` is applied to `0000lkjihgfedcba`, resulting in `zyxwvuκιθηζεδγβα`.
+The first six elements of this result, i.e., `zyxwvu`, are written to the stack, overwriting `st0` through `st5`, i.e., `fedcba`.
+The next six elements of the stack `st6` through `st11`, i.e,`lkjihg`, are set to zero.
 
 The instruction `divine_sibling` works as follows.
-The value at the top of the stack `i` is taken as the leaf index for a Merkle tree that is claimed to include data whose digest is the content of auxiliary registers `aux0` through `aux5`, i.e., `fedcba`.
+The 13th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st0` through `st5`, i.e., `fedcba`.
 The sibling digest of `fedcba` is `zyxwvu` and is read from the input interface of secret data.
 The least-significant bit of `i` indicates whether `fedcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
 Depending on this least-significant bit of `i`, `divine_sibling` either
-1. does not change registers `aux0` through `aux5` and moves `zyxwvu` into registers `aux6` through `aux11`, or
-2. moves `fedcba` into registers `aux6` through `aux11` and moves `zyxwvu` into registers `aux0` through `aux5`.
-In both cases, auxiliary registers `aux12` through `aux15` are set to 0.
-The top of the operational stack is modified by shifting `i` by 1 bit to the right, i.e., dropping the least-significant bit.
-In conjunction with instruction `xlix` and `compare_digest`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
+1. does not change registers `st0` through `st5` and moves `zyxwvu` into registers `st6` through `st11`, or
+2. moves `fedcba` into registers `st6` through `st11` and moves `zyxwvu` into registers `st0` through `st5`.
+The 13th element of the operational stack is modified by shifting `i` by 1 bit to the right, i.e., dropping the least-significant bit.
+In conjunction with instruction `hash` and `assert_vector`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
 
 ### Arithmetic on Stack
 

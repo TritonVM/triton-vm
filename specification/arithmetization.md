@@ -44,12 +44,11 @@ Each register is assigned a column in the processor table.
 1. The cycle counter `clk` is zero.
 1. The instruction pointer `ip` is zero.
 1. The jump address stack pointer and value `jsp` and `jsv` are zero.
-1. The operational stack elements `st0`-`st7` are zero.
+1. The operational stack elements `st0`-`st15` are zero.
 1. The inverse register `inv` is zero.
-1. The operational stack pointer `osp` is `8`
+1. The operational stack pointer `osp` is `16`
 1. The operational stack value `osv` is zero
 1. The RAM pointer and value `ramp` and `ramv` are zero.
-1. The auxiliary registers `aux0`-`aux15` are zero.
 1. In the last row, `ci` is zero, corresponding to instruction `halt`.
 
 **Transition Constraints**
@@ -234,7 +233,7 @@ Jump Stack Table:
 ### Operational Stack Table
 
 The operational stack is where the program stores simple elementary operations, function arguments, and pointers to important objects.
-There are eight registers (`st0` through `st7`) that the program can access directly.
+There are 16 registers (`st0` through `st15`) that the program can access directly.
 These registers correspond to the top of the stack.
 The rest of the operational stack is stored in a dedicated memory object called Operational Stack Underflow Memory.
 
@@ -244,7 +243,7 @@ The rows of the operational stack table are sorted by operational stack pointer 
 
 The mechanics are best illustrated by an example.
 For illustrative purposes only, we use four stack registers `st0` through `st3` in the example.
-TritonVM has eight stack registers, `st0` through `st7`.
+TritonVM has 16 stack registers, `st0` through `st15`.
 
 Execution trace:
 
@@ -284,7 +283,7 @@ Operational Stack Table:
 **Boundary Conditions**
 
 1. `osv` is zero.
-1. `osp` is the number of available stack registers, i.e., 8.
+1. `osp` is the number of available stack registers, i.e., 16.
 
 **Transition Constraints**
 
@@ -338,9 +337,9 @@ None.
 
 ### Hash Coprocessor Table
 
-The processor has 16 auxiliary registers.
-The instruction `xlix` applies the Rescue-XLIX permutation to them in one cycle.
-What happens in the background is that the auxiliary registers are copied to the hash coprocessor, which then runs 7 the rounds of the Rescue-XLIX, and then copies the 16 values back.
+The instruction `hash` hashes the OpStack's 12 top-most elements in one cycle.
+What happens in the background is that the registers `st0` through `st11` are copied to the hash coprocessor and are padded with four zeros.
+Then, the Coprocessor runs the 7 rounds of Rescue-XLIX, and copies the result's first 6 values back to the OpStack.
 This single-cycle hashing instruction is enabled by a Hash Table of 17 columns – one extra to indicate round index.
 
 **Boundary Constraints**
@@ -355,7 +354,7 @@ This single-cycle hashing instruction is enabled by a Hash Table of 17 columns �
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes an `xlix` instruction, the values of auxiliary registers correspond to some row in the Hash Table with index 0 mod 8 and the values of the auxiliary registers in the next cycle correspond to the values of the Hash Table 7 rows layer.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes a `hash` instruction, the values of the stack's 12 top-most registers correspond to some row in the Hash Table with index 0 mod 8 and that the values of the stack's 6 top-most elements in the next cycle correspond to the first six values of the Hash Table's row with index 7 mod 8.
 
 ### Uint32 Operations Table
 
@@ -420,7 +419,6 @@ An instruction's effect not captured by the groups it is part of needs to be ari
 | `step_1`        | instruction pointer `ip` increases by 1                                                             |
 | `step_2`        | instruction pointer `ip` increases by 2                                                             |
 | `no_ram_access` | no modification of registers concerning RAM, i.e., `ramp` and `ramv`                                |
-| `no_aux_change` | no modification of `aux` registers                                                                  |
 | `u32_op`        | instruction is a 32-bit unsigned integer instruction                                                |
 | `grow_stack`    | a new element is put onto the stack, rest of the stack remains unchanged                            |
 | `keep_stack`    | stack remains unchanged                                                                             |
@@ -430,44 +428,41 @@ An instruction's effect not captured by the groups it is part of needs to be ari
 
 A summary of all instructions and which groups they are part of is given in the following table.
 
-| instruction      | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `no_ram_access` | `no_aux_change` | `u32_op` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
-|:-----------------|:-----------|:----------------|:---------|:---------|:----------------|:----------------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
-| `pop`            |            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
-| `push` + `a`     | x          |                 |          | x        | x               | x               |          | x            |              |                |        |         |
-| `divine`         |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `dup` + `i`      | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
-| `swap` + `i`     | x          | x               |          | x        | x               | x               |          |              |              |                |        |         |
-| `nop`            |            |                 | x        |          | x               | x               |          |              | x            |                |        |         |
-| `skiz`           |            |                 |          |          | x               | x               |          |              |              | x              |        |         |
-| `call` + `d`     | x          |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `return`         |            |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `recurse`        |            |                 |          |          | x               | x               |          |              | x            |                |        |         |
-| `assert`         |            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
-| `halt`           |            |                 | x        |          | x               | x               |          |              | x            |                |        |         |
-| `read_mem`       |            |                 | x        |          |                 | x               |          | x            |              |                |        |         |
-| `write_mem`      |            |                 | x        |          |                 | x               |          |              |              | x              |        |         |
-| `xlix`           |            |                 | x        |          | x               |                 |          |              | x            |                |        |         |
-| `clearall`       |            |                 | x        |          | x               |                 |          |              | x            |                |        |         |
-| `squeeze` + `i`  | x          | x               |          | x        | x               | x               |          | x            |              |                |        |         |
-| `absorb` + `i`   | x          | x               |          | x        | x               |                 |          |              |              | x              |        |         |
-| `divine_sibling` |            |                 | x        |          | x               |                 |          |              |              |                | x      |         |
-| `assert_digest`  |            |                 | x        |          | x               | x               |          |              | x            |                |        |         |
-| `add`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `mul`            |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `invert`         |            |                 | x        |          | x               | x               |          |              |              |                | x      |         |
-| `split`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `eq`             |            |                 | x        |          | x               | x               |          |              |              |                |        | x       |
-| `lt`             |            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `and`            |            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `xor`            |            |                 | x        |          | x               | x               | x        |              |              |                |        | x       |
-| `reverse`        |            |                 | x        |          | x               | x               | x        |              |              |                | x      |         |
-| `div`            |            |                 | x        |          | x               | x               | x        |              |              |                |        |         |
-| `xxadd`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xxmul`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xinv`           |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `xbmul`          |            |                 | x        |          | x               | x               |          |              |              |                |        |         |
-| `read_io`        |            |                 | x        |          | x               | x               |          | x            |              |                |        |         |
-| `write_io`       |            |                 | x        |          | x               | x               |          |              |              | x              |        |         |
+| instruction      | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `no_ram_access` | `u32_op` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
+|:-----------------|:-----------|:----------------|:---------|:---------|:----------------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
+| `pop`            |            |                 | x        |          | x               |          |              |              | x              |        |         |
+| `push` + `a`     | x          |                 |          | x        | x               |          | x            |              |                |        |         |
+| `divine`         |            |                 | x        |          | x               |          | x            |              |                |        |         |
+| `dup` + `i`      | x          | x               |          | x        | x               |          | x            |              |                |        |         |
+| `swap` + `i`     | x          | x               |          | x        | x               |          |              |              |                |        |         |
+| `nop`            |            |                 | x        |          | x               |          |              | x            |                |        |         |
+| `skiz`           |            |                 |          |          | x               |          |              |              | x              |        |         |
+| `call` + `d`     | x          |                 |          |          | x               |          |              | x            |                |        |         |
+| `return`         |            |                 |          |          | x               |          |              | x            |                |        |         |
+| `recurse`        |            |                 |          |          | x               |          |              | x            |                |        |         |
+| `assert`         |            |                 | x        |          | x               |          |              |              | x              |        |         |
+| `halt`           |            |                 | x        |          | x               |          |              | x            |                |        |         |
+| `read_mem`       |            |                 | x        |          |                 |          | x            |              |                |        |         |
+| `write_mem`      |            |                 | x        |          |                 |          |              |              | x              |        |         |
+| `hash`           |            |                 | x        |          | x               |          |              | x            |                |        |         |
+| `divine_sibling` |            |                 | x        |          | x               |          |              |              |                |        |         |
+| `assert_vector`  |            |                 | x        |          | x               |          |              | x            |                |        |         |
+| `add`            |            |                 | x        |          | x               |          |              |              |                |        | x       |
+| `mul`            |            |                 | x        |          | x               |          |              |              |                |        | x       |
+| `invert`         |            |                 | x        |          | x               |          |              |              |                | x      |         |
+| `split`          |            |                 | x        |          | x               |          |              |              |                |        |         |
+| `eq`             |            |                 | x        |          | x               |          |              |              |                |        | x       |
+| `lt`             |            |                 | x        |          | x               | x        |              |              |                |        | x       |
+| `and`            |            |                 | x        |          | x               | x        |              |              |                |        | x       |
+| `xor`            |            |                 | x        |          | x               | x        |              |              |                |        | x       |
+| `reverse`        |            |                 | x        |          | x               | x        |              |              |                | x      |         |
+| `div`            |            |                 | x        |          | x               | x        |              |              |                |        |         |
+| `xxadd`          |            |                 | x        |          | x               |          |              |              |                |        |         |
+| `xxmul`          |            |                 | x        |          | x               |          |              |              |                |        |         |
+| `xinv`           |            |                 | x        |          | x               |          |              |              |                |        |         |
+| `xbmul`          |            |                 | x        |          | x               |          |              |              |                |        |         |
+| `read_io`        |            |                 | x        |          | x               |          | x            |              |                |        |         |
+| `write_io`       |            |                 | x        |          | x               |          |              |              | x              |        |         |
 
 \*
 Instruction Group `has_arg` is a _virtual_ instruction group.
@@ -484,7 +479,7 @@ An alternative view for the same concept is that registers marked with `'` are t
 
 #### Indicator Polynomials `ind_i(hv3, hv2, hv1, hv0)`
 
-For instructions [`dup`](#instruction-dup-i), [`swap`](#instruction-swap-i), [`squeeze`](#instruction-squeeze-i), and [`absorb`](#instruction-absorb-i), it is beneficial to have polynomials that evaluate to 1 if the instruction's argument `i` is a specific value, and to 0 otherwise.
+For instructions [`dup`](#instruction-dup-i) and [`swap`](#instruction-swap-i), it is beneficial to have polynomials that evaluate to 1 if the instruction's argument `i` is a specific value, and to 0 otherwise.
 This allows indicating which registers are constraint, and in which way they are, depending on `i`.
 This is the purpose of the _indicator polynomials_ `ind_i`.
 Evaluated on the binary decomposition of `i`, they show the behavior described above.
@@ -564,46 +559,6 @@ Below, you can find a list of all 16 indicator polynomials.
 1. `ramp' - ramp`
 1. `ramv' - ramv`
 
-#### Group `no_aux_change`
-
-##### Description
-
-1. Auxiliary register `aux0` does not change.
-1. Auxiliary register `aux1` does not change.
-1. Auxiliary register `aux2` does not change.
-1. Auxiliary register `aux3` does not change.
-1. Auxiliary register `aux4` does not change.
-1. Auxiliary register `aux5` does not change.
-1. Auxiliary register `aux6` does not change.
-1. Auxiliary register `aux7` does not change.
-1. Auxiliary register `aux8` does not change.
-1. Auxiliary register `aux9` does not change.
-1. Auxiliary register `aux10` does not change.
-1. Auxiliary register `aux11` does not change.
-1. Auxiliary register `aux12` does not change.
-1. Auxiliary register `aux13` does not change.
-1. Auxiliary register `aux14` does not change.
-1. Auxiliary register `aux15` does not change.
-
-##### Polynomials
-
-1. `aux0' - aux0`
-1. `aux1' - aux1`
-1. `aux2' - aux2`
-1. `aux3' - aux3`
-1. `aux4' - aux4`
-1. `aux5' - aux5`
-1. `aux6' - aux6`
-1. `aux7' - aux7`
-1. `aux8' - aux8`
-1. `aux9' - aux9`
-1. `aux10' - aux10`
-1. `aux11' - aux11`
-1. `aux12' - aux12`
-1. `aux13' - aux13`
-1. `aux14' - aux14`
-1. `aux15' - aux15`
-
 #### Group `u32_op`
 
 This group has no constraints.
@@ -620,7 +575,15 @@ It is used for the Permutation Argument with the uint32 table.
 1. The stack element in `st4` is moved into `st5`.
 1. The stack element in `st5` is moved into `st6`.
 1. The stack element in `st6` is moved into `st7`.
-1. The stack element in `st7` is moved to the top of OpStack underflow, i.e., `osv`.
+1. The stack element in `st7` is moved into `st8`.
+1. The stack element in `st8` is moved into `st9`.
+1. The stack element in `st9` is moved into `st10`.
+1. The stack element in `st10` is moved into `st11`.
+1. The stack element in `st11` is moved into `st12`.
+1. The stack element in `st12` is moved into `st13`.
+1. The stack element in `st13` is moved into `st14`.
+1. The stack element in `st14` is moved into `st15`.
+1. The stack element in `st15` is moved to the top of OpStack underflow, i.e., `osv`.
 1. The OpStack pointer is incremented by 1.
 
 ##### Polynomials
@@ -632,7 +595,15 @@ It is used for the Permutation Argument with the uint32 table.
 1. `st5' - st4`
 1. `st6' - st5`
 1. `st7' - st6`
-1. `osv' - st7`
+1. `st8' - st7`
+1. `st9' - st8`
+1. `st10' - st9`
+1. `st11' - st10`
+1. `st12' - st11`
+1. `st13' - st12`
+1. `st14' - st13`
+1. `st15' - st14`
+1. `osv' - st15`
 1. `osp' - (osp + 1)`
 
 #### Group `keep_stack`
@@ -647,6 +618,14 @@ It is used for the Permutation Argument with the uint32 table.
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
 1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
 
@@ -660,13 +639,21 @@ It is used for the Permutation Argument with the uint32 table.
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
+1. `st11' - st11`
+1. `st12' - st12`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
 1. `osv' - osv`
 1. `osp' - osp`
 
 #### Group `shrink_stack`
 
-This instruction group requires helper variable `hv4` to hold the multiplicative inverse of `(osp' - 7)`.
-In effect, this means that the OpStack pointer can never be 7, which would indicate a stack of size -1.
+This instruction group requires helper variable `hv4` to hold the multiplicative inverse of `(osp' - 15)`.
+In effect, this means that the OpStack pointer can never be 15, which would indicate a stack of size -1.
 Since the stack can only change by one element at a time, this prevents stack underflow.
 
 ##### Description
@@ -678,9 +665,17 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st5` is moved into `st4`.
 1. The stack element in `st6` is moved into `st5`.
 1. The stack element in `st7` is moved into `st6`.
-1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st7`.
+1. The stack element in `st8` is moved into `st7`.
+1. The stack element in `st9` is moved into `st8`.
+1. The stack element in `st10` is moved into `st9`.
+1. The stack element in `st11` is moved into `st10`.
+1. The stack element in `st12` is moved into `st11`.
+1. The stack element in `st13` is moved into `st12`.
+1. The stack element in `st14` is moved into `st13`.
+1. The stack element in `st15` is moved into `st14`.
+1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
 1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv4` holds the inverse of `(osp' - 7)`.
+1. The helper variable register `hv4` holds the inverse of `(osp' - 15)`.
 
 ##### Polynomials
 
@@ -691,9 +686,17 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st4' - st5`
 1. `st5' - st6`
 1. `st6' - st7`
-1. `st7' - osv`
+1. `st7' - st8`
+1. `st8' - st9`
+1. `st9' - st10`
+1. `st10' - st11`
+1. `st11' - st12`
+1. `st12' - st13`
+1. `st13' - st14`
+1. `st14' - st15`
+1. `st15' - osv`
 1. `osp' - (osp - 1)`
-1. `(osp' - 7)·hv4 - 1`
+1. `(osp' - 15)·hv4 - 1`
 
 #### Group `unop`
 
@@ -706,6 +709,14 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
 1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
 
@@ -718,6 +729,14 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
+1. `st11' - st11`
+1. `st12' - st12`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
 1. `osv' - osv`
 1. `osp' - osp`
 
@@ -731,6 +750,14 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
 1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
 
@@ -742,6 +769,14 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
+1. `st11' - st11`
+1. `st12' - st12`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
 1. `osv' - osv`
 1. `osp' - osp`
 
@@ -778,6 +813,14 @@ For their definition, please refer to the corresponding section.
 1. If `i` is 5, then `st5` is put on top of the stack.
 1. If `i` is 6, then `st6` is put on top of the stack.
 1. If `i` is 7, then `st7` is put on top of the stack.
+1. If `i` is 8, then `st8` is put on top of the stack.
+1. If `i` is 9, then `st9` is put on top of the stack.
+1. If `i` is 10, then `st10` is put on top of the stack.
+1. If `i` is 11, then `st11` is put on top of the stack.
+1. If `i` is 12, then `st12` is put on top of the stack.
+1. If `i` is 13, then `st13` is put on top of the stack.
+1. If `i` is 14, then `st14` is put on top of the stack.
+1. If `i` is 15, then `st15` is put on top of the stack.
 
 ##### Polynomials
 
@@ -787,7 +830,16 @@ For their definition, please refer to the corresponding section.
 1. `ind_3(hv3, hv2, hv1, hv0)·(st0' - st3)`
 1. `ind_4(hv3, hv2, hv1, hv0)·(st0' - st4)`
 1. `ind_5(hv3, hv2, hv1, hv0)·(st0' - st5)`
+1. `ind_6(hv3, hv2, hv1, hv0)·(st0' - st6)`
 1. `ind_7(hv3, hv2, hv1, hv0)·(st0' - st7)`
+1. `ind_8(hv3, hv2, hv1, hv0)·(st0' - st8)`
+1. `ind_9(hv3, hv2, hv1, hv0)·(st0' - st9)`
+1. `ind_10(hv3, hv2, hv1, hv0)·(st0' - st10)`
+1. `ind_11(hv3, hv2, hv1, hv0)·(st0' - st11)`
+1. `ind_12(hv3, hv2, hv1, hv0)·(st0' - st12)`
+1. `ind_13(hv3, hv2, hv1, hv0)·(st0' - st13)`
+1. `ind_14(hv3, hv2, hv1, hv0)·(st0' - st14)`
+1. `ind_15(hv3, hv2, hv1, hv0)·(st0' - st15)`
 
 #### Instruction `swap` + `i`
 
@@ -804,6 +856,14 @@ For their definition, please refer to the corresponding section.
 1. If `i` is 5, then `st0` is moved into `st5`.
 1. If `i` is 6, then `st0` is moved into `st6`.
 1. If `i` is 7, then `st0` is moved into `st7`.
+1. If `i` is 8, then `st0` is moved into `st8`.
+1. If `i` is 9, then `st0` is moved into `st9`.
+1. If `i` is 10, then `st0` is moved into `st10`.
+1. If `i` is 11, then `st0` is moved into `st11`.
+1. If `i` is 12, then `st0` is moved into `st12`.
+1. If `i` is 13, then `st0` is moved into `st13`.
+1. If `i` is 14, then `st0` is moved into `st14`.
+1. If `i` is 15, then `st0` is moved into `st15`.
 1. If `i` is 1, then `st1` is moved into `st0`.
 1. If `i` is 2, then `st2` is moved into `st0`.
 1. If `i` is 3, then `st3` is moved into `st0`.
@@ -811,6 +871,14 @@ For their definition, please refer to the corresponding section.
 1. If `i` is 5, then `st5` is moved into `st0`.
 1. If `i` is 6, then `st6` is moved into `st0`.
 1. If `i` is 7, then `st7` is moved into `st0`.
+1. If `i` is 8, then `st8` is moved into `st0`.
+1. If `i` is 9, then `st9` is moved into `st0`.
+1. If `i` is 10, then `st10` is moved into `st0`.
+1. If `i` is 11, then `st11` is moved into `st0`.
+1. If `i` is 12, then `st12` is moved into `st0`.
+1. If `i` is 13, then `st13` is moved into `st0`.
+1. If `i` is 14, then `st14` is moved into `st0`.
+1. If `i` is 15, then `st15` is moved into `st0`.
 1. If `i` is not 1, then `st1` does not change.
 1. If `i` is not 2, then `st2` does not change.
 1. If `i` is not 3, then `st3` does not change.
@@ -818,6 +886,14 @@ For their definition, please refer to the corresponding section.
 1. If `i` is not 5, then `st5` does not change.
 1. If `i` is not 6, then `st6` does not change.
 1. If `i` is not 7, then `st7` does not change.
+1. If `i` is not 8, then `st8` does not change.
+1. If `i` is not 9, then `st9` does not change.
+1. If `i` is not 10, then `st10` does not change.
+1. If `i` is not 11, then `st11` does not change.
+1. If `i` is not 12, then `st12` does not change.
+1. If `i` is not 13, then `st13` does not change.
+1. If `i` is not 14, then `st14` does not change.
+1. If `i` is not 15, then `st15` does not change.
 
 ##### Polynomials
 
@@ -829,6 +905,14 @@ For their definition, please refer to the corresponding section.
 1. `ind_5(hv3, hv2, hv1, hv0)·(st5' - st0)`
 1. `ind_6(hv3, hv2, hv1, hv0)·(st6' - st0)`
 1. `ind_7(hv3, hv2, hv1, hv0)·(st7' - st0)`
+1. `ind_8(hv3, hv2, hv1, hv0)·(st8' - st0)`
+1. `ind_9(hv3, hv2, hv1, hv0)·(st9' - st0)`
+1. `ind_10(hv3, hv2, hv1, hv0)·(st10' - st0)`
+1. `ind_11(hv3, hv2, hv1, hv0)·(st11' - st0)`
+1. `ind_12(hv3, hv2, hv1, hv0)·(st12' - st0)`
+1. `ind_13(hv3, hv2, hv1, hv0)·(st13' - st0)`
+1. `ind_14(hv3, hv2, hv1, hv0)·(st14' - st0)`
+1. `ind_15(hv3, hv2, hv1, hv0)·(st15' - st0)`
 1. `ind_1(hv3, hv2, hv1, hv0)·(st0' - st1)`
 1. `ind_2(hv3, hv2, hv1, hv0)·(st0' - st2)`
 1. `ind_3(hv3, hv2, hv1, hv0)·(st0' - st3)`
@@ -836,6 +920,14 @@ For their definition, please refer to the corresponding section.
 1. `ind_5(hv3, hv2, hv1, hv0)·(st0' - st5)`
 1. `ind_6(hv3, hv2, hv1, hv0)·(st0' - st6)`
 1. `ind_7(hv3, hv2, hv1, hv0)·(st0' - st7)`
+1. `ind_8(hv3, hv2, hv1, hv0)·(st0' - st8)`
+1. `ind_9(hv3, hv2, hv1, hv0)·(st0' - st9)`
+1. `ind_10(hv3, hv2, hv1, hv0)·(st0' - st10)`
+1. `ind_11(hv3, hv2, hv1, hv0)·(st0' - st11)`
+1. `ind_12(hv3, hv2, hv1, hv0)·(st0' - st12)`
+1. `ind_13(hv3, hv2, hv1, hv0)·(st0' - st13)`
+1. `ind_14(hv3, hv2, hv1, hv0)·(st0' - st14)`
+1. `ind_15(hv3, hv2, hv1, hv0)·(st0' - st15)`
 1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(st1' - st1)`
 1. `(1 - ind_2(hv3, hv2, hv1, hv0))·(st2' - st2)`
 1. `(1 - ind_3(hv3, hv2, hv1, hv0))·(st3' - st3)`
@@ -843,6 +935,14 @@ For their definition, please refer to the corresponding section.
 1. `(1 - ind_5(hv3, hv2, hv1, hv0))·(st5' - st5)`
 1. `(1 - ind_6(hv3, hv2, hv1, hv0))·(st6' - st6)`
 1. `(1 - ind_7(hv3, hv2, hv1, hv0))·(st7' - st7)`
+1. `(1 - ind_8(hv3, hv2, hv1, hv0))·(st8' - st8)`
+1. `(1 - ind_9(hv3, hv2, hv1, hv0))·(st9' - st9)`
+1. `(1 - ind_10(hv3, hv2, hv1, hv0))·(st10' - st10)`
+1. `(1 - ind_11(hv3, hv2, hv1, hv0))·(st11' - st11)`
+1. `(1 - ind_12(hv3, hv2, hv1, hv0))·(st12' - st12)`
+1. `(1 - ind_13(hv3, hv2, hv1, hv0))·(st13' - st13)`
+1. `(1 - ind_14(hv3, hv2, hv1, hv0))·(st14' - st14)`
+1. `(1 - ind_15(hv3, hv2, hv1, hv0))·(st15' - st15)`
 
 #### Instruction `nop`
 
@@ -960,238 +1060,82 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. `st1 - ramp`
 1. `st0 - ramv`
 
-#### Instruction `xlix`
+#### Instruction `hash`
 
 This instruction has no additional transition constraints.
-A Permutation Argument with the [Hash Table](#hash-coprocessor-table) guarantees the XLIX permutation being applied to the auxiliary registers.
-
-#### Instruction `clearall`
-
-##### Description
-
-1. Auxiliary register `aux0` is 0.
-1. Auxiliary register `aux1` is 0.
-1. Auxiliary register `aux2` is 0.
-1. Auxiliary register `aux3` is 0.
-1. Auxiliary register `aux4` is 0.
-1. Auxiliary register `aux5` is 0.
-1. Auxiliary register `aux6` is 0.
-1. Auxiliary register `aux7` is 0.
-1. Auxiliary register `aux8` is 0.
-1. Auxiliary register `aux9` is 0.
-1. Auxiliary register `aux10` is 0.
-1. Auxiliary register `aux11` is 0.
-1. Auxiliary register `aux12` is 0.
-1. Auxiliary register `aux13` is 0.
-1. Auxiliary register `aux14` is 0.
-1. Auxiliary register `aux15` is 0.
-
-##### Polynomials
-
-1. `aux0`
-1. `aux1`
-1. `aux2`
-1. `aux3`
-1. `aux4`
-1. `aux5`
-1. `aux6`
-1. `aux7`
-1. `aux8`
-1. `aux9`
-1. `aux10`
-1. `aux11`
-1. `aux12`
-1. `aux13`
-1. `aux14`
-1. `aux15`
-
-#### Instruction `squeeze` + `i`
-
-This instruction makes use of [indicator polynomials](#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
-For their definition, please refer to the corresponding section.
-
-##### Description
-
-1. If `i` is 0, then `aux0` is pushed onto the stack.
-1. If `i` is 1, then `aux1` is pushed onto the stack.
-1. If `i` is 2, then `aux2` is pushed onto the stack.
-1. If `i` is 3, then `aux3` is pushed onto the stack.
-1. If `i` is 4, then `aux4` is pushed onto the stack.
-1. If `i` is 5, then `aux5` is pushed onto the stack.
-1. If `i` is 6, then `aux6` is pushed onto the stack.
-1. If `i` is 7, then `aux7` is pushed onto the stack.
-1. If `i` is 8, then `aux8` is pushed onto the stack.
-1. If `i` is 9, then `aux9` is pushed onto the stack.
-1. If `i` is 10, then `aux10` is pushed onto the stack.
-1. If `i` is 11, then `aux11` is pushed onto the stack.
-1. If `i` is 12, then `aux12` is pushed onto the stack.
-1. If `i` is 13, then `aux13` is pushed onto the stack.
-1. If `i` is 14, then `aux14` is pushed onto the stack.
-1. If `i` is 15, then `aux15` is pushed onto the stack.
-
-##### Polynomials
-
-1.  `ind_0(hv3, hv2, hv1, hv0)·(st0' - aux0)`
-1.  `ind_1(hv3, hv2, hv1, hv0)·(st0' - aux1)`
-1.  `ind_2(hv3, hv2, hv1, hv0)·(st0' - aux2)`
-1.  `ind_3(hv3, hv2, hv1, hv0)·(st0' - aux3)`
-1.  `ind_4(hv3, hv2, hv1, hv0)·(st0' - aux4)`
-1.  `ind_5(hv3, hv2, hv1, hv0)·(st0' - aux5)`
-1.  `ind_6(hv3, hv2, hv1, hv0)·(st0' - aux6)`
-1.  `ind_7(hv3, hv2, hv1, hv0)·(st0' - aux7)`
-1.  `ind_8(hv3, hv2, hv1, hv0)·(st0' - aux8)`
-1.  `ind_9(hv3, hv2, hv1, hv0)·(st0' - aux9)`
-1. `ind_10(hv3, hv2, hv1, hv0)·(st0' - aux10)`
-1. `ind_11(hv3, hv2, hv1, hv0)·(st0' - aux11)`
-1. `ind_12(hv3, hv2, hv1, hv0)·(st0' - aux12)`
-1. `ind_13(hv3, hv2, hv1, hv0)·(st0' - aux13)`
-1. `ind_14(hv3, hv2, hv1, hv0)·(st0' - aux14)`
-1. `ind_15(hv3, hv2, hv1, hv0)·(st0' - aux15)`
-
-#### Instruction `absorb` + `i`
-
-This instruction makes use of [indicator polynomials](#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
-For their definition, please refer to the corresponding section.
-
-##### Description
-
-1. If `i` is 0, then the top of the stack is added to `aux0`.
-1. If `i` is 1, then the top of the stack is added to `aux1`.
-1. If `i` is 2, then the top of the stack is added to `aux2`.
-1. If `i` is 3, then the top of the stack is added to `aux3`.
-1. If `i` is 4, then the top of the stack is added to `aux4`.
-1. If `i` is 5, then the top of the stack is added to `aux5`.
-1. If `i` is 6, then the top of the stack is added to `aux6`.
-1. If `i` is 7, then the top of the stack is added to `aux7`.
-1. If `i` is 8, then the top of the stack is added to `aux8`.
-1. If `i` is 9, then the top of the stack is added to `aux9`.
-1. If `i` is 10, then the top of the stack is added to `aux10`.
-1. If `i` is 11, then the top of the stack is added to `aux11`.
-1. If `i` is 12, then the top of the stack is added to `aux12`.
-1. If `i` is 13, then the top of the stack is added to `aux13`.
-1. If `i` is 14, then the top of the stack is added to `aux14`.
-1. If `i` is 15, then the top of the stack is added to `aux15`.
-1. If `i` is not 0, then `aux0` does not change.
-1. If `i` is not 1, then `aux1` does not change.
-1. If `i` is not 2, then `aux2` does not change.
-1. If `i` is not 3, then `aux3` does not change.
-1. If `i` is not 4, then `aux4` does not change.
-1. If `i` is not 5, then `aux5` does not change.
-1. If `i` is not 6, then `aux6` does not change.
-1. If `i` is not 7, then `aux7` does not change.
-1. If `i` is not 8, then `aux8` does not change.
-1. If `i` is not 9, then `aux9` does not change.
-1. If `i` is not 10, then `aux10` does not change.
-1. If `i` is not 11, then `aux11` does not change.
-1. If `i` is not 12, then `aux12` does not change.
-1. If `i` is not 13, then `aux13` does not change.
-1. If `i` is not 14, then `aux14` does not change.
-1. If `i` is not 15, then `aux15` does not change.
-
-##### Polynomials
-
-1.  `ind_0(hv3, hv2, hv1, hv0)·(aux0' - (aux0 + st0))`
-1.  `ind_1(hv3, hv2, hv1, hv0)·(aux1' - (aux1 + st0))`
-1.  `ind_2(hv3, hv2, hv1, hv0)·(aux2' - (aux2 + st0))`
-1.  `ind_3(hv3, hv2, hv1, hv0)·(aux3' - (aux3 + st0))`
-1.  `ind_4(hv3, hv2, hv1, hv0)·(aux4' - (aux4 + st0))`
-1.  `ind_5(hv3, hv2, hv1, hv0)·(aux5' - (aux5 + st0))`
-1.  `ind_6(hv3, hv2, hv1, hv0)·(aux6' - (aux6 + st0))`
-1.  `ind_7(hv3, hv2, hv1, hv0)·(aux7' - (aux7 + st0))`
-1.  `ind_8(hv3, hv2, hv1, hv0)·(aux8' - (aux8 + st0))`
-1.  `ind_9(hv3, hv2, hv1, hv0)·(aux9' - (aux9 + st0))`
-1. `ind_10(hv3, hv2, hv1, hv0)·(aux10' - (aux10 + st0))`
-1. `ind_11(hv3, hv2, hv1, hv0)·(aux11' - (aux11 + st0))`
-1. `ind_12(hv3, hv2, hv1, hv0)·(aux12' - (aux12 + st0))`
-1. `ind_13(hv3, hv2, hv1, hv0)·(aux13' - (aux13 + st0))`
-1. `ind_14(hv3, hv2, hv1, hv0)·(aux14' - (aux14 + st0))`
-1. `ind_15(hv3, hv2, hv1, hv0)·(aux15' - (aux15 + st0))`
-1.  `(1 - ind_0(hv3, hv2, hv1, hv0))·(aux0' - aux0)`
-1.  `(1 - ind_1(hv3, hv2, hv1, hv0))·(aux1' - aux1)`
-1.  `(1 - ind_2(hv3, hv2, hv1, hv0))·(aux2' - aux2)`
-1.  `(1 - ind_3(hv3, hv2, hv1, hv0))·(aux3' - aux3)`
-1.  `(1 - ind_4(hv3, hv2, hv1, hv0))·(aux4' - aux4)`
-1.  `(1 - ind_5(hv3, hv2, hv1, hv0))·(aux5' - aux5)`
-1.  `(1 - ind_6(hv3, hv2, hv1, hv0))·(aux6' - aux6)`
-1.  `(1 - ind_7(hv3, hv2, hv1, hv0))·(aux7' - aux7)`
-1.  `(1 - ind_8(hv3, hv2, hv1, hv0))·(aux8' - aux8)`
-1.  `(1 - ind_9(hv3, hv2, hv1, hv0))·(aux9' - aux9)`
-1. `(1 - ind_10(hv3, hv2, hv1, hv0))·(aux10' - aux10)`
-1. `(1 - ind_11(hv3, hv2, hv1, hv0))·(aux11' - aux11)`
-1. `(1 - ind_12(hv3, hv2, hv1, hv0))·(aux12' - aux12)`
-1. `(1 - ind_13(hv3, hv2, hv1, hv0))·(aux13' - aux13)`
-1. `(1 - ind_14(hv3, hv2, hv1, hv0))·(aux14' - aux14)`
-1. `(1 - ind_15(hv3, hv2, hv1, hv0))·(aux15' - aux15)`
+A Permutation Argument with the [Hash Table](#hash-coprocessor-table) guarantees correct transition.
 
 #### Instruction `divine_sibling`
 
 Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0 (respectively 1) as their least significant bit.
-The first two polynomials achieve that helper variable `hv0` holds the result of `st0 mod 2`.
-The third polynomial sets the new top of the stack to `st0 div 2`.
+The first two polynomials achieve that helper variable `hv0` holds the result of `st12 mod 2`.
+The third polynomial sets the new value of `st12` to `st12 div 2`.
 
 ##### Description
 
 1. Helper variable `hv0` is either 0 or 1.
-1. The top of the stack decomposes into helper variables `hv1` and `hv0`.
-1. The top of the stack is shifted by 1 bit to the right.
-1. If `hv0` is 0, then `aux0` does not change.
-1. If `hv0` is 0, then `aux1` does not change.
-1. If `hv0` is 0, then `aux2` does not change.
-1. If `hv0` is 0, then `aux3` does not change.
-1. If `hv0` is 0, then `aux4` does not change.
-1. If `hv0` is 0, then `aux5` does not change.
-1. If `hv0` is 1, then `aux0` is copied to `aux6`.
-1. If `hv0` is 1, then `aux1` is copied to `aux7`.
-1. If `hv0` is 1, then `aux2` is copied to `aux8`.
-1. If `hv0` is 1, then `aux3` is copied to `aux9`.
-1. If `hv0` is 1, then `aux4` is copied to `aux10`.
-1. If `hv0` is 1, then `aux5` is copied to `aux11`.
-1. Register `aux12` is set to 0.
-1. Register `aux13` is set to 0.
-1. Register `aux14` is set to 0.
-1. Register `aux15` is set to 0.
+1. The 13th stack element decomposes into helper variables `hv1` and `hv0`.
+1. The 13th stack register is shifted by 1 bit to the right.
+1. If `hv0` is 0, then `st0` does not change.
+1. If `hv0` is 0, then `st1` does not change.
+1. If `hv0` is 0, then `st2` does not change.
+1. If `hv0` is 0, then `st3` does not change.
+1. If `hv0` is 0, then `st4` does not change.
+1. If `hv0` is 0, then `st5` does not change.
+1. If `hv0` is 1, then `st0` is copied to `st6`.
+1. If `hv0` is 1, then `st1` is copied to `st7`.
+1. If `hv0` is 1, then `st2` is copied to `st8`.
+1. If `hv0` is 1, then `st3` is copied to `st9`.
+1. If `hv0` is 1, then `st4` is copied to `st10`.
+1. If `hv0` is 1, then `st5` is copied to `st11`.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
 
 ##### Polynomials
 
 1. `hv0·(hv0 - 1)`
-1. `st0 - (2·hv1 + hv0)`
-1. `st0' - hv1`
-1. `(1 - hv0)·(aux0' - aux0)`
-1. `(1 - hv0)·(aux1' - aux1)`
-1. `(1 - hv0)·(aux2' - aux2)`
-1. `(1 - hv0)·(aux3' - aux3)`
-1. `(1 - hv0)·(aux4' - aux4)`
-1. `(1 - hv0)·(aux5' - aux5)`
-1. `hv0·(aux6' - aux0)`
-1. `hv0·(aux7' - aux1)`
-1. `hv0·(aux8' - aux2)`
-1. `hv0·(aux9' - aux3)`
-1. `hv0·(aux10' - aux4)`
-1. `hv0·(aux11' - aux5)`
-1. `aux12'`
-1. `aux13'`
-1. `aux14'`
-1. `aux15'`
+1. `st12 - (2·hv1 + hv0)`
+1. `st12' - hv1`
+1. `(1 - hv0)·(st0' - st0)`
+1. `(1 - hv0)·(st1' - st1)`
+1. `(1 - hv0)·(st2' - st2)`
+1. `(1 - hv0)·(st3' - st3)`
+1. `(1 - hv0)·(st4' - st4)`
+1. `(1 - hv0)·(st5' - st5)`
+1. `hv0·(st6' - st0)`
+1. `hv0·(st7' - st1)`
+1. `hv0·(st8' - st2)`
+1. `hv0·(st9' - st3)`
+1. `hv0·(st10' - st4)`
+1. `hv0·(st11' - st5)`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
+1. `osv' - osv`
+1. `osp' - osp`
 
-#### Instruction `assert_digest`
+#### Instruction `assert_vector`
 
 ##### Description
 
-1. Register `st0` is equal to `aux0`.
-1. Register `st1` is equal to `aux1`.
-1. Register `st2` is equal to `aux2`.
-1. Register `st3` is equal to `aux3`.
-1. Register `st4` is equal to `aux4`.
-1. Register `st5` is equal to `aux5`.
+1. Register `st0` is equal to `st6`.
+1. Register `st1` is equal to `st7`.
+1. Register `st2` is equal to `st8`.
+1. Register `st3` is equal to `st9`.
+1. Register `st4` is equal to `st10`.
+1. Register `st5` is equal to `st11`.
 
 ##### Polynomials
 
-1. `aux0 - st0`
-1. `aux1 - st1`
-1. `aux2 - st2`
-1. `aux3 - st3`
-1. `aux4 - st4`
-1. `aux5 - st5`
+1. `st6 - st0`
+1. `st7 - st1`
+1. `st8 - st2`
+1. `st9 - st3`
+1. `st10 - st4`
+1. `st11 - st5`
 
 #### Instruction `add`
 
@@ -1299,6 +1243,16 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
 1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
 
 ##### Polynomials
 
@@ -1310,6 +1264,16 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
+1. `st11' - st11`
+1. `st12' - st12`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
+1. `osv' - osv`
+1. `osp' - osp`
 
 #### Instruction `xxadd`
 
