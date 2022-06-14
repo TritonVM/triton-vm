@@ -747,41 +747,43 @@ Since the stack can only change by one element at a time, this prevents stack un
 
 ##### Description
 
-1. The stack element in `st2` does not change.
-1. The stack element in `st3` does not change.
-1. The stack element in `st4` does not change.
-1. The stack element in `st5` does not change.
-1. The stack element in `st6` does not change.
-1. The stack element in `st7` does not change.
-1. The stack element in `st8` does not change.
-1. The stack element in `st9` does not change.
-1. The stack element in `st10` does not change.
-1. The stack element in `st11` does not change.
-1. The stack element in `st12` does not change.
-1. The stack element in `st13` does not change.
-1. The stack element in `st14` does not change.
-1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
+1. The stack element in `st2` is moved into `st1`.
+1. The stack element in `st3` is moved into `st2`.
+1. The stack element in `st4` is moved into `st3`.
+1. The stack element in `st5` is moved into `st4`.
+1. The stack element in `st6` is moved into `st5`.
+1. The stack element in `st7` is moved into `st6`.
+1. The stack element in `st8` is moved into `st7`.
+1. The stack element in `st9` is moved into `st8`.
+1. The stack element in `st10` is moved into `st9`.
+1. The stack element in `st11` is moved into `st10`.
+1. The stack element in `st12` is moved into `st11`.
+1. The stack element in `st13` is moved into `st12`.
+1. The stack element in `st14` is moved into `st13`.
+1. The stack element in `st15` is moved into `st14`.
+1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
+1. The OpStack pointer is decremented by 1.
+1. The helper variable register `hv4` holds the inverse of `(osp' - 15)`.
 
 ##### Polynomials
 
-1. `st2' - st2`
-1. `st3' - st3`
-1. `st4' - st4`
-1. `st5' - st5`
-1. `st6' - st6`
-1. `st7' - st7`
-1. `st8' - st8`
-1. `st9' - st9`
-1. `st10' - st10`
-1. `st11' - st11`
-1. `st12' - st12`
-1. `st13' - st13`
-1. `st14' - st14`
-1. `st15' - st15`
-1. `osv' - osv`
-1. `osp' - osp`
+1. `st1' - st2`
+1. `st2' - st3`
+1. `st3' - st4`
+1. `st4' - st5`
+1. `st5' - st6`
+1. `st6' - st7`
+1. `st7' - st8`
+1. `st8' - st9`
+1. `st9' - st10`
+1. `st10' - st11`
+1. `st11' - st12`
+1. `st12' - st13`
+1. `st13' - st14`
+1. `st14' - st15`
+1. `st15' - osv`
+1. `osp' - (osp - 1)`
+1. `(osp' - 15)·hv4 - 1`
 
 #### Instruction `pop`
 
