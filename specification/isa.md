@@ -69,7 +69,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 
 The instruction is represented by one register called the *current instruction register* `ci`.
 This value is then decomposed, giving rise to the *instruction bucket registers*, labeled `ib0` through `ib?`.
-Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in instruction memory.
+Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in Program Memory.
 Also, there is the *next instruction (or argument) register* `nia` that either contains the next instruction or the argument for the instruction in `ci`.
 
 ### Stack
