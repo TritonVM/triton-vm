@@ -66,13 +66,13 @@ The following constraints apply to every cycle.
 1. A Permutation Argument with the [Jump Stack Table](#jump-stack-table).
 1. A Permutation Argument with the [Opstack Table](#operational-stack-table).
 1. A Permutation Argument with the [RAM Table](#random-access-memory-table).
-1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the input to the hash function from the processor to the hash coprocessor.
-1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the hash digest from the hash coprocessor to the processor.
-1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `div`.
+1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the input to the hash function from the Processor to the Hash Coprocessor.
+1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the hash digest from the Hash Coprocessor to the Processor.
 1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `lt`.
 1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `and`.
 1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `xor`.
 1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `rev`.
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `div`.
 
 ### Program Table
 
@@ -114,7 +114,7 @@ It contains
 The rows are sorted by `address`.
  
 
-*** Relations to Other Tables**
+** Relations to Other Tables**
 
 1. An Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the [Program Table](#program-table).
 1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the [Processor Table](#processor-table).
@@ -400,11 +400,11 @@ For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `re
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `div`, the operands and result exist as a row in the uint32 table.
 1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `lt`, the operands and result exist as a row in the uint32 table.
 1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `and`, the operands and result exist as a row in the uint32 table.
 1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `xor`, the operands and result exist as a row in the uint32 table.
 1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `rev`, the operands and result exist as a row in the uint32 table.
+1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `div`, the operands and result exist as a row in the uint32 table.
 
 ## Instruction-Specific Transition Constraints
 
@@ -1236,7 +1236,9 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 
 #### Instruction `div`
 
-A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees `r < d`.
+For correct division, it is required that the remainder `r` is smaller than the divisor `d`.
+The result of comparing `r` to `d` is stored in helper variable `hv0`.
+A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees that `hv0 = (r < d)`.
 
 ##### Description
 
@@ -1258,6 +1260,7 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The stack element in `st15` does not change.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
+1. Helper variable `hv0` is 1, indicating that `r < d`.
 
 ##### Polynomials
 
@@ -1279,6 +1282,7 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. `st15' - st15`
 1. `osv' - osv`
 1. `osp' - osp`
+1. `hv0 - 1`
 
 #### Instruction `xxadd`
 
