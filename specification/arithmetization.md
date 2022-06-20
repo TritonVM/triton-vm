@@ -345,18 +345,20 @@ This single-cycle hashing instruction is enabled by a Hash Table of 17 columns â
 
 **Boundary Constraints**
 
-1. The round index starts at 0.
+1. If the table contains at least one row, the round index starts at 1.
 
 **Transition Constraints**
 
-1. The round index increases by 1 modulo 8.
-1. On multiples of 8, the last four registers are 0.
-1. For all other rows, the $i$th round of Rescue-XLIX is applied, where $i$ is the round index.
+1. If the round index is 0, the next round index is 0.
+1. If the round index is 8, the next round index is either 0 or 1.
+1. If the round index is non-zero and less than 8, the round index increases by 1.
+1. If the round index is 1, registers `aux12` through `aux15` are 0.
+1. If the round index is $1 < i \leqslant 8$, the aux registers adhere to the rules of applying the $i$th round of Rescue-XLIX.
 
 **Relations to Other Tables**
 
-1. An Evaluation Argument establishes that whenever the [processor](#processor-table) executes a `hash` instruction, the values of the stack's 12 top-most registers correspond to some row in the Hash Table with index 0 mod 8
-1. An Evaluation Argument establishes that after having executed a `hash` instruction, the top 6 stack registers in the [processor](#processor-table) correspond to the digest computed in the Hash Coprocessor, i.e., the first six values of the Hash Table's row with index 7 mod 8.
+1. An Evaluation Argument establishes that whenever the [processor](#processor-table) executes a `hash` instruction, the values of the stack's 12 top-most registers correspond to some row in the Hash Table with round index equal to 1.
+1. An Evaluation Argument establishes that after having executed a `hash` instruction, the top 6 stack registers in the [processor](#processor-table) correspond to the digest computed in the Hash Coprocessor, i.e., the first six values of the Hash Table's row with round index equal to 8.
 
 ### Uint32 Operations Table
 
