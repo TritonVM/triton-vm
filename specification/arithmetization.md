@@ -34,6 +34,10 @@ A red arrow indicates an Evaluation Argument, a blue line indicates a Permutatio
 The processor consists of all registers defined in the [Instruction Set Architecture](isa.md).
 Each register is assigned a column in the processor table.
 
+**Padding**
+
+_TODO_
+
 **Consistency Constraints**
 
 1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
@@ -88,6 +92,10 @@ The Program Table is static in the sense that it is fixed before the VM runs.
 Moreover, the user can commit to the program by providing the Merkle root of the zipped FRI codeword.
 This commitment assumes that the FRI domain is fixed, which implies an upper bound on program size.
 
+**Padding**
+
+_TODO_
+
 **Boundary Constraints**
 
 1. The first address is zero.
@@ -112,9 +120,20 @@ It contains
 - one row for every instruction in the [Program Table](#program-table), i.e., one row for every available instruction, and
 - one row for every cycle `clk` in the [Processor Table](#processor-table), i.e., one row for every executed instruction.
 The rows are sorted by `address`.
- 
 
-** Relations to Other Tables**
+**Padding**
+
+_TODO_
+
+**Boundary Constraints**
+
+_TODO_
+
+**Transition Constraints**
+
+_TODO_
+
+**Relations to Other Tables**
 
 1. An Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the [Program Table](#program-table).
 1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the [Processor Table](#processor-table).
@@ -216,6 +235,10 @@ Jump Stack Table:
 | 14    | `bar`    | 2     | `0xB3` | `0xC0` |
 | 15    | `return` | 2     | `0xB3` | `0xC0` |
 
+**Padding**
+
+_TODO_
+
 **Boundary Constraints**
 
 1. All registers are initially zero.
@@ -281,6 +304,10 @@ Operational Stack Table:
 | 5     | `foo`  | 42    | 9     |
 | 6     | `add`  | 42    | 9     |
 
+**Padding**
+
+_TODO_
+
 **Boundary Conditions**
 
 1. `osv` is zero.
@@ -304,6 +331,10 @@ the cycle counter `clk`, RAM address pointer `ramp`, and the value of the memory
 The columns are identical to the columns of the same name in the Processor Table, up to the order of the rows.
 The rows are sorted by memory address first, then by cycle counter.
 
+**Padding**
+
+_TODO_
+
 **Boundary Constraints**
 
 None.
@@ -324,6 +355,10 @@ one for the input, and one for the output.
 Both consist of a single column.
 The input and output can be committed to in the form of the FRI codeword Merkle roots associated with their interpolants (which may or may not integrate randomness).
 
+**Padding**
+
+_TODO_
+
 **Boundary Constraints**
 
 None.
@@ -342,6 +377,10 @@ The instruction `hash` hashes the OpStack's 12 top-most elements in one cycle.
 What happens in the background is that the registers `st0` through `st11` are copied to the hash coprocessor and are padded with four zeros.
 Then, the Coprocessor runs the 7 rounds of Rescue-XLIX, and copies the result's first 6 values back to the OpStack.
 This single-cycle hashing instruction is enabled by a Hash Table of 17 columns – one extra to indicate round index.
+
+**Padding**
+
+_TODO_
 
 **Boundary Constraints**
 
@@ -385,6 +424,10 @@ The AIR constraints establish that the entire table is consistent.
 Copy-constraints establish that logical and bitwise operations were computed correctly.
 
 For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `reverse`, `div`), there is a dedicated Permutation Argument with the [Processor Table](#processor-table).
+
+**Padding**
+
+_TODO_
 
 **Consistency Constraints**
 
