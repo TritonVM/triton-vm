@@ -329,13 +329,11 @@ _TODO_
 **Boundary Constraints**
 
 1. Cycle count `clk` is 0.
-1. Current instruction `ci` is 0.
 1. Jump Stack Pointer `jsp` is 0.
 1. Jump Stack Origin `jso` is 0.
 1. Jump Stack Destination `jsd` is 0.
 
 1. `clk`
-1. `ci`
 1. `jsp`
 1. `jso`
 1. `jsd`
