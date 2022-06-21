@@ -41,26 +41,77 @@ _TODO_
 **Consistency Constraints**
 
 1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
-1. The inverse register `inv` contains the inverse of `st0` if it is nonzero and zero otherwise.
+1. Register `st0` is 0 or `inv` is the inverse of `st0`.
+1. Register `inv` is 0 or `inv` is the inverse of `st0`.
+
+1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
+1. `st0·(st0·inv - 1)`
+1. `inv·(st0·inv - 1)`
 
 **Boundary Constraints**
 
-1. The cycle counter `clk` is zero.
-1. The instruction pointer `ip` is zero.
-1. The jump address stack pointer and value `jsp` and `jsv` are zero.
-1. The operational stack elements `st0`-`st15` are zero.
-1. The inverse register `inv` is zero.
-1. The operational stack pointer `osp` is `16`
-1. The operational stack value `osv` is zero
-1. The RAM pointer and value `ramp` and `ramv` are zero.
-1. In the last row, `ci` is zero, corresponding to instruction `halt`.
+1. The cycle counter `clk` is 0.
+1. The instruction pointer `ip` is 0.
+1. The jump address stack pointer `jsp` is 0.
+1. The jump address origin `jso` is 0.
+1. The jump address destination `jsd` is 0.
+1. The operational stack element `st0` is 0.
+1. The operational stack element `st1` is 0.
+1. The operational stack element `st2` is 0.
+1. The operational stack element `st3` is 0.
+1. The operational stack element `st4` is 0.
+1. The operational stack element `st5` is 0.
+1. The operational stack element `st6` is 0.
+1. The operational stack element `st7` is 0.
+1. The operational stack element `st8` is 0.
+1. The operational stack element `st9` is 0.
+1. The operational stack element `st10` is 0.
+1. The operational stack element `st11` is 0.
+1. The operational stack element `st12` is 0.
+1. The operational stack element `st13` is 0.
+1. The operational stack element `st14` is 0.
+1. The operational stack element `st15` is 0.
+1. The operational stack pointer `osp` is 16.
+1. The operational stack value `osv` is 0.
+1. The RAM pointer `ramp` is 0.
+1. The RAM value `ramv` is 0.
+1. In the last row, current instruction register `ci` is 0, corresponding to instruction `halt`.
+
+1. `clk`
+1. `ip`
+1. `jsp`
+1. `jso`
+1. `jsd`
+1. `st0`
+1. `st1`
+1. `st2`
+1. `st3`
+1. `st4`
+1. `st5`
+1. `st6`
+1. `st7`
+1. `st8`
+1. `st9`
+1. `st10`
+1. `st11`
+1. `st12`
+1. `st13`
+1. `st14`
+1. `st15`
+1. `osp`
+1. `osv`
+1. `ramp`
+1. `ramv`
+1. `ci`
 
 **Transition Constraints**
 
 Due to their complexity, instruction-specific constraints are defined [in their own section further below](#instruction-specific-transition-constraints).
-The following constraints apply to every cycle.
+The following constraint applies to every cycle.
 
-1. The cycle counter `clk` increases by one.
+1. The cycle counter `clk` increases by 1.
+
+1. `clk' - (clk + 1)`
 
 **Relations to Other Tables**
 
@@ -98,11 +149,15 @@ _TODO_
 
 **Boundary Constraints**
 
-1. The first address is zero.
+1. The first address is 0.
+
+1. `addr`
 
 **Transition Constraints**
 
-1. The address increases by one.
+1. The address increases by 1.
+
+1. `addr' - (addr + 1)`
 
 **Relations to other Tables**
 
@@ -114,12 +169,40 @@ The Instruction Table establishes the link between the program and the instructi
 The table consists of three columns:
 1. the instruction's `address`,
 1. the `current_instruction`, and
-1. the `next_instruction`.
+1. the `next_instruction_or_arg`.
 
 It contains
 - one row for every instruction in the [Program Table](#program-table), i.e., one row for every available instruction, and
 - one row for every cycle `clk` in the [Processor Table](#processor-table), i.e., one row for every executed instruction.
+
 The rows are sorted by `address`.
+
+When copying the [Program Table](#program-table) with its two columns into the Instruction Table with its three columns, the value in `next_instruction_or_arg` is the value from the Program Table's _next_ row's `instruction` column (or 0 if no next row exists).
+For an example, see below.
+
+Program Table:
+
+| Address | Instruction |
+|--------:|:------------|
+|       0 | push        |
+|       1 | 10          |
+|       2 | push        |
+|       3 | 5           |
+|       4 | add         |
+|       … | …           |
+
+Instruction Table:
+
+| `address` | `current_instruction` | `next_instruction_or_arg` | (comment)              |
+|----------:|:----------------------|:--------------------------|:-----------------------|
+|         0 | push                  | 10                        | (from Program Table)   |
+|         0 | push                  | 10                        | (from Processor Table) |
+|         1 | 10                    | push                      | (from Program Table)   |
+|         2 | push                  | 5                         | (from Program Table)   |
+|         2 | push                  | 5                         | (from Processor Table) |
+|         3 | 5                     | add                       | (from Program Table)   |
+|         4 | add                   | …                         | (from Program Table)   |
+|         … | …                     | …                         | …                      |
 
 **Padding**
 
@@ -127,16 +210,20 @@ _TODO_
 
 **Boundary Constraints**
 
-_TODO_
+None
 
 **Transition Constraints**
 
-_TODO_
+1. The address increases by 1 or `current_instruction` does not change.
+1. The address increases by 1 or `next_instruction_or_arg` does not change.
+
+1. `(address' - address + 1)·(current_instruction' - current_instruction)`
+1. `(address' - address + 1)·(next_instruction_or_arg' - next_instruction_or_arg)`
 
 **Relations to Other Tables**
 
-1. An Evaluation Argument establishes that the set of rows corresponds to the instructions as given by the [Program Table](#program-table).
-1. A Permutation Argument establishes that the set of remaining rows corresponds to the values of the registers (`ip, ci, ni`) of the [Processor Table](#processor-table).
+1. An Evaluation Argument establishes that the set of unique rows corresponds to the instructions as given by the [Program Table](#program-table).
+1. A Permutation Argument establishes that the rows not included in above Evaluation Argument correspond to the values of the registers (`ip, ci, nia`) of the [Processor Table](#processor-table).
 
 ### Jump Stack Table
 
