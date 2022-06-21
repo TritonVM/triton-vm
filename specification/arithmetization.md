@@ -328,15 +328,36 @@ _TODO_
 
 **Boundary Constraints**
 
-1. All registers are initially zero.
+1. Cycle count `clk` is 0.
+1. Current instruction `ci` is 0.
+1. Jump Stack Pointer `jsp` is 0.
+1. Jump Stack Origin `jso` is 0.
+1. Jump Stack Destination `jsd` is 0.
+
+1. `clk`
+1. `ci`
+1. `jsp`
+1. `jso`
+1. `jsd`
 
 **Transition Constraints**
 
-1. The jump stack pointer `jsp` increases by one, *or*
-1. (`jsp`, `jso` and `jsd` remain the same and the cycle counter `clk` increases by one), *or*
-1. (`jsp`, `jso` and `jsd` remain the same and the current instruction `ci` is `call`), *or*
-1. (`jsp` remains the same and the current instruction `ci` is `return`).
+1. The jump stack pointer `jsp` increases by 1, *or*
+1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the cycle counter `clk` increases by 1), *or*
+1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the current instruction `ci` is `call`), *or*
+1. (`jsp` does not change and the current instruction `ci` is `return`).
 
+Written as Conjunctive Normal Form, the same constraints can be expressed as:
+1. The jump stack pointer `jsp` increases by 1 or the jump stack pointer `jsp` does not change
+1. The jump stack pointer `jsp` increases by 1 or the jump stack origin `jso` does not change or current instruction `ci` is `return`
+1. The jump stack pointer `jsp` increases by 1 or the jump stack destination `jsd` does not change or current instruction `ci` is `return`
+1. The jump stack pointer `jsp` increases by 1 or the cycle count `clk` increases by 1 or current instruction `ci` is `call` or current instruction `ci` is `return`
+
+1. `(jsp' - (jsp + 1))·(jsp' - jsp)`
+1. `(jsp' - (jsp + 1))·(jso' - jso)·(ci - op_code(return))`
+1. `(jsp' - (jsp + 1))·(jsd' - jsd)·(ci - op_code(return))`
+1. `(jsp' - (jsp + 1))·(clk' - (clk + 1))·(ci - op_code(call))·(ci - op_code(return))`
+ 
 **Relations to Other Tables**
 
 1. A Permutation Argument establishes that the rows match with the rows in the [Processor Table](#processor-table).
