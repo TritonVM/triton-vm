@@ -79,12 +79,12 @@ In order to access elements of the OpStack held in OpStack Underflow Memory, the
 
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
+For reasons or [arithmetization](arithmetization.md), the stack always contains a minimum of 16 elements.
+All these elements are initially 0.
+Trying to run an instruction which would result in a stack of smaller total length than 16 crashes the VM.
+
 The registers `osp` and `osv` are not directly accessible by the program running in TritonVM.
-They primarily exist to allow efficient [arithmetization](arithmetization.md).
-The register _operational stack pointer_ `osp` stores the length of the operational stack plus constant offset 16.
-For example, if `osp` is 16, the OpStack is empty.
-If `osp` is 18, the OpStack contains 2 elements.
-The register `osv` holds the top-most value of the OpStack Memory, or zero if no such value exists.
+They exist only to allow efficient [arithmetization](arithmetization.md).
 
 ### RAM
 
