@@ -17,7 +17,7 @@ The public interfaces differ from the private one, especially regarding their [a
 
 ### Memory
 The term *memory* refers to a data structure that gives read access (and possibly write access, too) to elements indicated by an *address*.
-The address lives in the same field.
+Regardless of the data structure, the address lives in the B-field.
 There are four separate notions of memory:
 1. *RAM*, to which the VM can read and write field elements.
 2. *Program Memory*, from which the VM reads instructions.
@@ -66,10 +66,10 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 
 ### Instruction
 
-The instruction is represented by one register called the *current instruction register* `ci`.
-This value is then decomposed, giving rise to the *instruction bucket registers*, labeled `ib0` through `ib?`.
-Additionally, there is a register called the *instruction pointer* (`ip`), which contains the address of the current instruction in Program Memory.
-Also, there is the *next instruction (or argument) register* `nia` that either contains the next instruction or the argument for the instruction in `ci`.
+Register `ip`, the *instruction pointer*, contains the address of the current instruction in Program Memory.
+The instruction is contained in the register *current instruction*, or `ci`.
+Register *next instruction (or argument)*, or `nia`, either contains the next instruction or the argument for the current instruction in `ci`.
+For reasons of [arithmetization](arithmetization.md), `ci` is decomposed, giving rise to the *instruction bucket registers*, labeled `ib0` through `ib?`.
 
 ### Stack
 
@@ -99,7 +99,7 @@ It exists only to allow efficient [arithmetization](arithmetization.md).
 
 Some instructions require helper variables in order to generate an efficient arithmetization.
 To this end, there are 5 helper registers, labeled `hv0` through `hv4`.
-These registers are part of the arithmetization of the architecture, but not needed to define the instruction set.
+These registers are part of the [arithmetization](arithmetization.md) of the architecture, but not needed to define the instruction set.
 
 ## Instructions
 
@@ -127,7 +127,7 @@ It is not at all specified what `a` is, but generally speaking, `a` has to be ex
 Hence, from the perspective of the program, it just non-deterministically guesses the correct value of `a` in a moment of divine clarity.
 
 Looking at the entire system, consisting of the VM, the program, and all inputs – both public and secret – execution _is_ deterministic:
-the value of `a` was supplied as a secret input.
+the value `a` was supplied as a secret input.
 
 ### Control Flow
 
