@@ -62,8 +62,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | *`osp`               | operational stack pointer    | contains the OpStack address of the top of the operational stack plus the number of stack registers, i.e., plus 8. |
 | *`osv`               | operational stack value      | contains the (stack) memory value at the given address                                                             |
 | *`hv0` through `hv4` | helper variable registers    | helper variables for some arithmetic operations                                                                    |
-| *`ramp`              | RAM pointer                  | contains an address (in RAM) for reading or writing                                                                |
-| *`ramv`              | RAM value                    | contains the value of the RAM element at the given address                                                         |
+| *`ramv`              | RAM value                    | contains the value of the RAM element at the address currently held in `st1`                                       |
 
 ### Instruction
 
@@ -91,12 +90,10 @@ The register `osv` holds the top-most value of the OpStack Memory, or zero if no
 
 TritonVM has dedicated Random-Access Memory.
 Programs can read from and write to RAM using instructions `read_mem` and `write_mem`.
-The address to read from – respectively, to write to – is one of the two top-most OpStack elements, depending on the instruction.
+The address to read from – respectively, to write to – is the stack's second-to-top-most OpStack element, i.e, `st1`.
 
-The registers `ramp` and `ramv` are not directly accessible by the program running in TritonVM.
-They primarily exist to allow efficient [arithmetization](arithmetization.md).
-For any of the two RAM instructions, register `ramp` is set to the RAM address pointed to, i.e., either `st0` or `st1`, depending on the instruction.
-Likewise, `ramv` is set to the value being read or written.
+The register `ramv` is not directly accessible by the program running in TritonVM.
+It exists only to allow efficient [arithmetization](arithmetization.md).
 
 ### Helper Variables
 
@@ -146,10 +143,10 @@ the value of `a` was supplied as a secret input.
 
 ### Memory Access
 
-| Instruction | Value | old OpStack | new OpStack | old `ramp` | new `ramp` | old `ramv` | new `ramv` | Description                                                                          |
-|:------------|:------|:------------|:------------|:-----------|:-----------|:-----------|:-----------|:-------------------------------------------------------------------------------------|
-| `read_mem`  | ?     | `_ p`       | `_ p v`     | `_`        | `p`        | `_`        | `v`        | Reads value `v` from RAM at location `p` and pushes the read element to the opstack. |
-| `write_mem` | ?     | `_ p v`     | `_ p`       | `_`        | `p`        | `_`        | `v`        | Writes value `v` to RAM at the location `p` and pops the top of the opstack.         |
+| Instruction | Value | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                             |
+|:------------|:------|:------------|:------------|:-----------|:-----------|:----------------------------------------------------------------------------------------|
+| `read_mem`  | ?     | `_ p a`     | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and overwrites the top of the OpStack with `v`. |
+| `write_mem` | ?     | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
 
 ### Hashing
 
