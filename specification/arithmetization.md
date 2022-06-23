@@ -117,7 +117,7 @@ The following constraint applies to every cycle.
 1. An Evaluation Argument with the [Input Table](#io-tables).
 1. An Evaluation Argument with the [Output Table](#io-tables).
 1. A Permutation Argument with the [Jump Stack Table](#jump-stack-table).
-1. A Permutation Argument with the [Opstack Table](#operational-stack-table).
+1. A Permutation Argument with the [OpStack Table](#operational-stack-table).
 1. A Permutation Argument with the [RAM Table](#random-access-memory-table).
 1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the input to the hash function from the Processor to the Hash Coprocessor.
 1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the hash digest from the Hash Coprocessor to the Processor.
@@ -364,49 +364,80 @@ The operational stack is where the program stores simple elementary operations, 
 There are 16 registers (`st0` through `st15`) that the program can access directly.
 These registers correspond to the top of the stack.
 The rest of the operational stack is stored in a dedicated memory object called Operational Stack Underflow Memory.
+It is initially empty.
 
 The operational stack table contains a subset of the columns of the processor table –
 specifically, the cycle counter `clk`, the current instruction `ci`, the operation stack value `osv` and pointer `osp`.
 The rows of the operational stack table are sorted by operational stack pointer `osp` first, cycle count `clk` second.
 
 The mechanics are best illustrated by an example.
+Observe how the malicious manipulation of the OpStack Underflow Memory, the change of “42” into “99” in cycle 8, is detected:
+The transition constraints of the OpStack Table stipulate that if `osp` does not change, then `osv` can only change if current instruction `ci` shrinks the OpStack.
+Instruction `push` does _not_ shrink the OpStack.
+Consequently, row `[5, push, 9, 42]` being followed by row `[_, _, 9, 99]` violates the constraints.
+
 For illustrative purposes only, we use four stack registers `st0` through `st3` in the example.
 TritonVM has 16 stack registers, `st0` through `st15`.
 
 Execution trace:
 
-| `clk` | `ci`   | `nia` | `osv` | `osp` | OpStack Underflow Memory | `st3` | `st2` | `st1` | `st0` |
-|:------|:-------|:------|:------|:------|:-------------------------|:------|:------|:------|:------|
-| 0     | `push` | 42    | 0     | 4     | [ ]                      | 0     | 0     | 0     | 0     |
-| 1     | `push` | 43    | 0     | 5     | [0]                      | 0     | 0     | 0     | 42    |
-| 2     | `push` | 44    | 0     | 6     | [0,0]                    | 0     | 0     | 42    | 43    |
-| 3     | `push` | 45    | 0     | 7     | [0,0,0]                  | 0     | 42    | 43    | 44    |
-| 4     | `push` | 46    | 0     | 8     | [0,0,0,0]                | 42    | 43    | 44    | 45    |
-| 5     | `foo`  | `add` | 42    | 9     | [0,0,0,0,42]             | 43    | 44    | 45    | 46    |
-| 6     | `add`  | `pop` | 42    | 9     | [0,0,0,0,42]             | 43    | 44    | 45    | 46    |
-| 7     | `pop`  | `add` | 0     | 8     | [0,0,0,0]                | 42    | 43    | 44    | 91    |
-| 8     | `add`  | `add` | 0     | 7     | [0,0,0]                  | 0     | 42    | 43    | 44    |
-| 9     | `add`  | `pop` | 0     | 6     | [0,0]                    | 0     | 0     | 42    | 87    |
-| 10    | `pop`  | `foo` | 0     | 5     | [0]                      | 0     | 0     | 0     | 129   |
-| 11    | `foo`  | `pop` | 0     | 4     | [ ]                      | 0     | 0     | 0     | 0     |
-| 12    | `pop`  | `bar` | 0     | 3     | 💥                        | 0     | 0     | 0     | 0     |
+| `clk` | `ci`   | `nia` | `st0` | `st1` | `st2` | `st3` | OpStack Underflow Memory | `osp` | `osv` |
+|------:|:-------|:------|------:|------:|------:|------:|:-------------------------|------:|------:|
+|     0 | `push` | 42    |     0 |     0 |     0 |     0 | [ ]                      |     4 |     0 |
+|     1 | `push` | 43    |    42 |     0 |     0 |     0 | [0]                      |     5 |     0 |
+|     2 | `push` | 44    |    43 |    42 |     0 |     0 | [0,0]                    |     6 |     0 |
+|     3 | `push` | 45    |    44 |    43 |    42 |     0 | [0,0,0]                  |     7 |     0 |
+|     4 | `push` | 46    |    45 |    44 |    43 |    42 | [0,0,0,0]                |     8 |     0 |
+|     5 | `push` | 47    |    46 |    45 |    44 |    43 | [42,0,0,0,0]             |     9 |    42 |
+|     6 | `push` | 48    |    47 |    46 |    45 |    44 | [43,42,0,0,0,0]          |    10 |    43 |
+|     7 | `nop`  |       |    48 |    47 |    46 |    45 | [44,43,42,0,0,0,0]       |    11 |    44 |
+|     8 | `pop`  |       |    48 |    47 |    46 |    45 | [44,43,99,0,0,0,0]       |    11 |    44 |
+|     9 | `pop`  |       |    47 |    46 |    45 |    44 | [43,99,0,0,0,0]          |    10 |    43 |
+|    10 | `pop`  |       |    46 |    45 |    44 |    43 | [99,0,0,0,0]             |     9 |    99 |
+|    11 | `pop`  |       |    45 |    44 |    43 |    99 | [0,0,0,0]                |     8 |     0 |
+|    12 | `push` | 77    |    44 |    43 |    99 |     0 | [0,0,0]                  |     7 |     0 |
+|    13 | `swap` | 4     |    77 |    44 |    43 |    99 | [0,0,0,0]                |     8 |     0 |
+|    14 | `push` | 78    |    99 |    44 |    43 |    77 | [0,0,0,0]                |     8 |     0 |
+|    15 | `swap` | 4     |    78 |    99 |    44 |    43 | [77,0,0,0,0]             |     9 |    77 |
+|    16 | `push` | 79    |    43 |    99 |    44 |    78 | [77,0,0,0,0]             |     9 |    77 |
+|    17 | `pop`  |       |    79 |    43 |    99 |    44 | [78,77,0,0,0,0]          |    10 |    78 |
+|    18 | `pop`  |       |    43 |    99 |    44 |    78 | [77,0,0,0,0]             |     9 |    77 |
+|    19 | `pop`  |       |    99 |    44 |    78 |    77 | [0,0,0,0]                |     8 |     0 |
+|    20 | `pop`  |       |    44 |    78 |    77 |     0 | [0,0,0]                  |     7 |     0 |
+|    21 | `pop`  |       |    78 |    77 |     0 |     0 | [0,0]                    |     6 |     0 |
+|    22 | `pop`  |       |    77 |     0 |     0 |     0 | [0]                      |     5 |     0 |
+|    23 | `pop`  |       |     0 |     0 |     0 |     0 | [ ]                      |     4 |     0 |
+|    24 | `pop`  |       |     0 |     0 |     0 |     0 | 💥                        |     3 |     0 |
 
 Operational Stack Table:
 
-| `clk` | `ci`   | `osv` | `osp` |
-|:------|:-------|:------|:------|
-| 0     | `push` | 0     | 4     |
-| 11    | `foo`  | 0     | 4     |
-| 1     | `push` | 0     | 5     |
-| 10    | `pop`  | 0     | 5     |
-| 2     | `push` | 0     | 6     |
-| 9     | `add`  | 0     | 6     |
-| 3     | `push` | 0     | 7     |
-| 8     | `add`  | 0     | 7     |
-| 4     | `push` | 0     | 8     |
-| 7     | `pop`  | 0     | 8     |
-| 5     | `foo`  | 42    | 9     |
-| 6     | `add`  | 42    | 9     |
+| `clk` | `ci`   | `osp` | `osv` |
+|------:|:-------|------:|------:|
+|     0 | `push` |     4 |     0 |
+|    23 | `pop`  |     4 |     0 |
+|     1 | `push` |     5 |     0 |
+|    22 | `pop`  |     5 |     0 |
+|     2 | `push` |     6 |     0 |
+|    21 | `pop`  |     6 |     0 |
+|     3 | `push` |     7 |     0 |
+|    12 | `push` |     7 |     0 |
+|    20 | `pop`  |     7 |     0 |
+|     4 | `push` |     8 |     0 |
+|    11 | `pop`  |     8 |     0 |
+|    13 | `swap` |     8 |     0 |
+|    14 | `push` |     8 |     0 |
+|    19 | `pop`  |     8 |     0 |
+|     5 | `push` |     9 |    42 |
+|    10 | `pop`  |     9 |    99 |
+|    15 | `swap` |     9 |    77 |
+|    16 | `push` |     9 |    77 |
+|    18 | `pop`  |     9 |    77 |
+|     6 | `push` |    10 |    43 |
+|     9 | `pop`  |    10 |    43 |
+|    17 | `pop`  |    10 |    78 |
+|     7 | `nop`  |    11 |    44 |
+|     8 | `pop`  |    11 |    44 |
+
 
 **Padding**
 
@@ -414,14 +445,19 @@ _TODO_
 
 **Boundary Conditions**
 
-1. `osv` is zero.
+1. `clk` is 0
+1. `osv` is 0.
 1. `osp` is the number of available stack registers, i.e., 16.
+
+1. `clk`
+1. `osv`
+1. `osp - 16`
 
 **Transition Constraints**
 
-1. The operational stack pointer `osp` increases by 1, *or*
-1. The `current_instruction` is `push`-like, *or*
-1. There is no change in operational stack value `osv`.
+1. `osp` increases by 1, *or*
+1. the `osp` does not change AND the `osv` does not change, *or*
+1. the `osp` does not change AND the `ci` is `pop`-like.
 
 **Relations to Other Tables**
 
