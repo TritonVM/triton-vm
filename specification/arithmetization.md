@@ -455,9 +455,22 @@ _TODO_
 
 **Transition Constraints**
 
-1. `osp` increases by 1, *or*
+1. the `osp` increases by 1, *or*
 1. the `osp` does not change AND the `osv` does not change, *or*
-1. the `osp` does not change AND the `ci` is `pop`-like.
+1. the `osp` does not change AND the `ci` shrinks the OpStack.
+
+Written as Conjunctive Normal Form, the same constraints can be expressed as:
+1. the `osp` increases by 1 or the `osp` does not change
+1. the `osp` increases by 1 or the `osv` does not change or the `ci` shrinks the OpStack
+
+An instruction is OpStack-shrinking if it is
+- in instruction group `shrink_stack`, or
+- in instruction group `binop`, or
+- `xbmul`.
+
+1. `(osp' - (osp + 1))·(osp' - osp)`
+1. `(osp' - (osp + 1))·(osv' - osv)·(ci - op_code(pop))·(ci - op_code(skiz))·(ci - op_code(assert))·(ci - op_code(add))·(ci - op_code(mul))·(ci - op_code(eq))·(ci - op_code(lt))·(ci - op_code(and))·(ci - op_code(xor))·(ci - op_code(xbmul))·(ci - op_code(write_io))`
+
 
 **Relations to Other Tables**
 
