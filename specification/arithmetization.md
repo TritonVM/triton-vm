@@ -618,25 +618,90 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 ### Hash Coprocessor Table
 
 The instruction `hash` hashes the OpStack's 12 top-most elements in one cycle.
-What happens in the background is that the registers `st0` through `st11` are copied to the hash coprocessor and are padded with four zeros.
-Then, the Coprocessor runs the 7 rounds of Rescue-XLIX, and copies the result's first 6 values back to the OpStack.
-This single-cycle hashing instruction is enabled by a Hash Table of 17 columns – one extra to indicate round index.
+What happens in the background is that the registers `st0` through `st11` are copied to the Hash Coprocessor's registers `state0` through `state11`.
+The Hash Coprocessor's remaining four registers, `state12` through `state15`, are set to 0.
+Then, the Coprocessor runs the 7 rounds of Rescue-XLIX on its `state` registers.
+Finally, the hash digest, i.e., the 6 values from `state0` through `state5`, are copied back to the OpStack.
+This allows the (main) Processor to perform the hashing instruction in a single cycle.
+
+The Hash Table has 17 columns:
+- one column `rnd_nmbr` to indicate the round number, and
+- 16 state registers `state0` through `state15` to which the Rescue-XLIX rounds are applied.
 
 **Padding**
 
 _TODO_
 
+**Consistency Constraints**
+
+1. If the round number is 1, register `state12` is 0.
+1. If the round number is 1, register `state13` is 0.
+1. If the round number is 1, register `state14` is 0.
+1. If the round number is 1, register `state15` is 0.
+
+Written as Conjunctive Normal Form, the same constraints can be expressed as:
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state12` is 0.
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state13` is 0.
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state14` is 0.
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state15` is 0.
+
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state12`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state13`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state14`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state15`
+
 **Boundary Constraints**
 
-1. If the table contains at least one row, the round index starts at 1.
+1. The round number `rnd_nmbr` starts at 1.
 
 **Transition Constraints**
 
-1. If the round index is 0, the next round index is 0.
-1. If the round index is 8, the next round index is either 0 or 1.
-1. If the round index is non-zero and less than 8, the round index increases by 1.
-1. If the round index is 1, registers `aux12` through `aux15` are 0.
-1. If the round index is $1 < i \leqslant 8$, the aux registers adhere to the rules of applying the $i$th round of Rescue-XLIX.
+1. If the round number is 0, the next round number is 0.
+1. If the round number is 1, the next round number is 2.
+1. If the round number is 2, the next round number is 3.
+1. If the round number is 3, the next round number is 4.
+1. If the round number is 4, the next round number is 5.
+1. If the round number is 5, the next round number is 6.
+1. If the round number is 6, the next round number is 7.
+1. If the round number is 7, the next round number is 8.
+1. If the round number is 8, the next round number is either 0 or 1.
+1. If the round number is 1, the `state` registers adhere to the rules of applying Rescue-XLIX round 1.
+1. If the round number is 2, the `state` registers adhere to the rules of applying Rescue-XLIX round 2.
+1. If the round number is 3, the `state` registers adhere to the rules of applying Rescue-XLIX round 3.
+1. If the round number is 4, the `state` registers adhere to the rules of applying Rescue-XLIX round 4.
+1. If the round number is 5, the `state` registers adhere to the rules of applying Rescue-XLIX round 5.
+1. If the round number is 6, the `state` registers adhere to the rules of applying Rescue-XLIX round 6.
+1. If the round number is 7, the `state` registers adhere to the rules of applying Rescue-XLIX round 7.
+
+Written as Conjunctive Normal Form, the same constraints can be expressed as:
+1. The round number is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or the next round number is 0.
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or the next round number is 2.
+1. The round number is 0 or 1 or 3 or 4 or 5 or 6 or 7 or 8 or the next round number is 3.
+1. The round number is 0 or 1 or 2 or 4 or 5 or 6 or 7 or 8 or the next round number is 4.
+1. The round number is 0 or 1 or 2 or 3 or 5 or 6 or 7 or 8 or the next round number is 5.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 6 or 7 or 8 or the next round number is 6.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 7 or 8 or the next round number is 7.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 8 or the next round number is 8.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or the next round number is 0 or 1.
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 1.
+1. The round number is 0 or 1 or 3 or 4 or 5 or 6 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 2.
+1. The round number is 0 or 1 or 2 or 4 or 5 or 6 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 3.
+1. The round number is 0 or 1 or 2 or 3 or 5 or 6 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 4.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 6 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 5.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 6.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 7.
+
+
+1. `(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  0)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  2)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  3)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  4)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  5)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  6)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  7)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 8)·(rnd_nmbr' -  8)`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr' -  0)·(rnd_nmbr' -  1)`
+1. The remaining 7·16 = 112 constraints are left as an exercise to the reader.
 
 **Relations to Other Tables**
 
