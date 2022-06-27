@@ -22,9 +22,16 @@ Together, all these constraints constitute the AIR constraints.
 
 ## Algebraic Execution Tables
 
-There are 10 tables in TritonVM.
+There are 8 Arithmetic Execution Tables in TritonVM.
 Their relation is described by below figure.
 A red arrow indicates an Evaluation Argument, a blue line indicates a Permutation Argument.
+
+Public (but not secret!) input and output are given to the Verifier explicitly.
+As a consequence, neither the input nor the output symbols are recorded in a table.
+Correct use of public input (respectively, output) in the Processor is achieved by an Evaluation Argument.
+Given the list of input (or output) symbols, the verifier can compute the Evaluation Argument's terminal explicitly, and consequently compare it to the corresponding terminal in the Processor Table.
+
+Despite the fact that neither public input nor output have a dedicated table, them having Evaluation Arguments with the Processor Table justifies their appearance in below figure.
 
 ![](img/aet-relations.png)
 
@@ -114,8 +121,8 @@ The following constraint applies to every cycle.
 **Relations to Other Tables**
 
 1. A Permutation Argument with the [Instruction Table](#instruction-table).
-1. An Evaluation Argument with the [Input Table](#io-tables).
-1. An Evaluation Argument with the [Output Table](#io-tables).
+1. An Evaluation Argument with the input symbols.
+1. An Evaluation Argument with the output symbols.
 1. A Permutation Argument with the [Jump Stack Table](#jump-stack-table).
 1. A Permutation Argument with the [OpStack Table](#operational-stack-table).
 1. A Permutation Argument with the [RAM Table](#random-access-memory-table).
@@ -607,29 +614,6 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 **Relations to Other Tables**
 
 1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the [Processor Table](#processor-table).
-
-### I/O Tables
-
-There are two I/O Tables:
-one for the input, and one for the output.
-Both consist of a single column.
-The input and output can be committed to in the form of the FRI codeword Merkle roots associated with their interpolants (which may or may not integrate randomness).
-
-**Padding**
-
-_TODO_
-
-**Boundary Constraints**
-
-None.
-
-**Transition Constraints**
-
-None.
-
-**Relations to Other Tables**
-
-1. A pair of evaluation arguments establish that the symbols read by the [processor](#processor-table) as input, or written as output, correspond with the symbols listed in the corresponding I/O Table.
 
 ### Hash Coprocessor Table
 
@@ -1683,9 +1667,9 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 #### Instruction `read_io`
 
 This instruction has no additional transition constraints.
-An Evaluation Argument with the [Input Table](#io-tables) guarantees correct transition.
+An Evaluation Argument with the list of input symbols guarantees correct transition.
 
 #### Instruction `write_io`
 
 This instruction has no additional transition constraints.
-An Evaluation Argument with the [Output Table](#io-tables) guarantees correct transition.
+An Evaluation Argument with the list of output symbols guarantees correct transition.
