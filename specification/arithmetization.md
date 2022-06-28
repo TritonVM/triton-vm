@@ -1711,6 +1711,7 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The result of adding `st0` to `st3` is moved into `st0`.
 1. The result of adding `st1` to `st4` is moved into `st1`.
 1. The result of adding `st2` to `st5` is moved into `st2`.
+1. The stack element in `st3` does not change.
 1. The stack element in `st4` does not change.
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
@@ -1754,6 +1755,7 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The coefficient of x^0 of multiplying the two X-Field elements on the stack is moved into `st0`.
 1. The coefficient of x^1 of multiplying the two X-Field elements on the stack is moved into `st1`.
 1. The coefficient of x^2 of multiplying the two X-Field elements on the stack is moved into `st2`.
+1. The stack element in `st3` does not change.
 1. The stack element in `st4` does not change.
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.
@@ -1797,6 +1799,7 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The coefficient of x^0 of multiplying X-Field element on top of the current stack and on top of the next stack is 1.
 1. The coefficient of x^1 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
 1. The coefficient of x^2 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
+1. The stack element in `st3` does not change.
 1. The stack element in `st4` does not change.
 1. The stack element in `st5` does not change.
 1. The stack element in `st6` does not change.

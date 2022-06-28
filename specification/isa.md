@@ -11,7 +11,7 @@ An example for a single-word instruction is `pop`, removing the top of the stack
 An example for a double-word instruction is `push` + `arg`, pushing `arg` to the stack.
 
 Triton VM has two interfaces for data input, one for public and one for secret data, and one interface for data output, whose data is always public.
-The public interfaces differ from the private one, especially regarding their [arithmetization](#arithmetization.md#operational-stack-table).
+The public interfaces differ from the private one, especially regarding their [arithmetization](#arithmetization.md).
 
 ## Data Structures
 
