@@ -51,6 +51,8 @@ _TODO_
 1. Register `st0` is 0 or `inv` is the inverse of `st0`.
 1. Register `inv` is 0 or `inv` is the inverse of `st0`.
 
+**Consistency Constraints as Polynomials**
+
 1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
 1. `st0·(st0·inv - 1)`
 1. `inv·(st0·inv - 1)`
@@ -82,6 +84,8 @@ _TODO_
 1. The operational stack value `osv` is 0.
 1. The RAM value `ramv` is 0.
 1. In the last row, current instruction register `ci` is 0, corresponding to instruction `halt`.
+
+**Boundary Constraints as Polynomials**
 
 1. `clk`
 1. `ip`
@@ -115,6 +119,8 @@ Due to their complexity, instruction-specific constraints are defined [in their 
 The following constraint applies to every cycle.
 
 1. The cycle counter `clk` increases by 1.
+
+**Transition Constraints as Polynomials**
 
 1. `clk' - (clk + 1)`
 
@@ -156,11 +162,15 @@ _TODO_
 
 1. The first address is 0.
 
+**Boundary Constraints as Polynomials**
+
 1. `addr`
 
 **Transition Constraints**
 
 1. The address increases by 1.
+
+**Transition Constraints as Polynomials**
 
 1. `addr' - (addr + 1)`
 
@@ -221,6 +231,8 @@ None
 
 1. The address increases by 1 or `current_instruction` does not change.
 1. The address increases by 1 or `next_instruction_or_arg` does not change.
+
+**Transition Constraints as Polynomials**
 
 1. `(address' - address + 1)·(current_instruction' - current_instruction)`
 1. `(address' - address + 1)·(next_instruction_or_arg' - next_instruction_or_arg)`
@@ -338,6 +350,8 @@ _TODO_
 1. Jump Stack Origin `jso` is 0.
 1. Jump Stack Destination `jsd` is 0.
 
+**Boundary Constraints as Polynomials**
+
 1. `clk`
 1. `jsp`
 1. `jso`
@@ -355,6 +369,8 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 1. The jump stack pointer `jsp` increases by 1 or the jump stack origin `jso` does not change or current instruction `ci` is `return`
 1. The jump stack pointer `jsp` increases by 1 or the jump stack destination `jsd` does not change or current instruction `ci` is `return`
 1. The jump stack pointer `jsp` increases by 1 or the cycle count `clk` increases by 1 or current instruction `ci` is `call` or current instruction `ci` is `return`
+
+**Transition Constraints as Polynomials**
 
 1. `(jsp' - (jsp + 1))·(jsp' - jsp)`
 1. `(jsp' - (jsp + 1))·(jso' - jso)·(ci - op_code(return))`
@@ -456,6 +472,8 @@ _TODO_
 1. `osv` is 0.
 1. `osp` is the number of available stack registers, i.e., 16.
 
+**Boundary Constraints as Polynomials**
+
 1. `clk`
 1. `osv`
 1. `osp - 16`
@@ -474,6 +492,8 @@ An instruction is OpStack-shrinking if it is
 - in instruction group `shrink_stack`, or
 - in instruction group `binop`, or
 - `xbmul`.
+
+**Transition Constraints as Polynomials**
 
 1. `(osp' - (osp + 1))·(osp' - osp)`
 1. `(osp' - (osp + 1))·(osv' - osv)·(ci - op_code(pop))·(ci - op_code(skiz))·(ci - op_code(assert))·(ci - op_code(add))·(ci - op_code(mul))·(ci - op_code(eq))·(ci - op_code(lt))·(ci - op_code(and))·(ci - op_code(xor))·(ci - op_code(xbmul))·(ci - op_code(write_io))`
@@ -590,6 +610,8 @@ _TODO_
 1. RAM pointer `ramp` is 0.
 1. RAM value `ramv` is 0.
 
+**Boundary Constraints as Polynomials**
+
 1. `clk`
 1. `ramp`
 1. `ramv`
@@ -605,6 +627,8 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 1. `(ramp' - ramp)` is zero or `hv6` is the inverse of `(ramp' - ramp)`.
 1. The `ramp` does not change or the new `ramv` is 0.
 1. The `ramp` does change or the `ramv` does not change or the `clk` increases by 1.
+
+**Transition Constraints as Polynomials**
 
 1. `hv6·(hv6·(ramp' - ramp) - 1)`
 1. `(ramp' - ramp)·(hv6·(ramp' - ramp) - 1)`
@@ -645,6 +669,8 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state14` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state15` is 0.
 
+**Consistency Constraints as Polynomials**
+
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state12`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state13`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state14`
@@ -653,6 +679,10 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 **Boundary Constraints**
 
 1. The round number `rnd_nmbr` starts at 1.
+
+**Boundary Constraints as Polynomials**
+
+1. `rnd_nmbr - 1`
 
 **Transition Constraints**
 
@@ -691,6 +721,7 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 6.
 1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 7.
 
+**Transition Constraints as Polynomials**
 
 1. `(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  0)`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  2)`
