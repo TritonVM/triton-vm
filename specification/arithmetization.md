@@ -741,47 +741,75 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 
 ### Uint32 Operations Table
 
-The Uint32 Operations Table is a lookup table for 'difficult' 32-bit unsigned integer operations.
+The Uint32 Operations Table is a lookup table for “difficult” 32-bit unsigned integer operations.
+The two inputs to the Uint32 Operations Table are left-hand side (LHS) and right-hand side (RHS).
 
-| `idc` | LHS      | RHS      | LT                  | AND                     | XOR                     | REV           |
-|:------|:---------|:---------|:--------------------|:------------------------|:------------------------|:--------------|
-| 1     | `a`      | `b`      | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      |
-| 0     | `a >> 1` | `b >> 1` | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` |
-| 0     | `a >> 2` | `b >> 2` | …                   | …                       | …                       | …             |
-| …     | …        | …        | …                   | …                       | …                       | …             |
-| 0     | `0`      | `0`      | `0`                 | `0`                     | `0`                     | `0`           |
-| 1     | `c`      | `d`      | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      |
-| 0     | `c >> 1` | `d >> 1` | …                   | …                       | …                       | …             |
-| …     | …        | …        | …                   | …                       | …                       | …             |
-| 0     | `0`      | `0`      | `0`                 | `0`                     | `0`                     | `0`           |
-| …     | …        | …        | …                   | …                       | …                       | …             |
+
+| `idc` | LHS      | RHS      | LT                  | AND                     | XOR                     | REV           |                   `hv7` | LHS_inv             | RHS_inv             |
+|------:|:---------|:---------|:--------------------|:------------------------|:------------------------|:--------------|------------------------:|:--------------------|:--------------------|
+|     1 | `a`      | `b`      | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      | $2^{\texttt{len}(a)-1}$ | `a`${}^{-1}$        | `a`${}^{-1}$        |
+|     0 | `a >> 1` | `b >> 1` | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` | $2^{\texttt{len}(a)-2}$ | `(a >> 1)`${}^{-1}$ | `(a >> 1)`${}^{-1}$ |
+|     0 | `a >> 2` | `b >> 2` | …                   | …                       | …                       | …             |                       … | …                   | …                   |
+|     … | …        | …        | …                   | …                       | …                       | …             |                       1 | …                   | …                   |
+|     0 | 0        | 0        | 2                   | 0                       | 0                       | 0             |                       ½ | 0                   | 0                   |
+|     1 | `c`      | `d`      | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      | $2^{\texttt{len}(c)-1}$ | `c`${}^{-1}$        | `c`${}^{-1}$        |
+|     0 | `c >> 1` | `d >> 1` | …                   | …                       | …                       | …             |                       … | …                   | …                   |
+|     … | …        | …        | …                   | …                       | …                       | …             |                       1 | …                   | …                   |
+|     0 | 0        | 0        | 2                   | 0                       | 0                       | 0             |                       ½ | 0                   | 0                   |
+|     … | …        | …        | …                   | …                       | …                       | …             |                       … |                     |                     |
+
+The semantics of columns LT and `hv7` benefit from some additional explanation.
+LT can take three possible values: 0 indicates LHS is definitely not less than RHS, 1 indicates LHS is definitely less than RHS, and 2 indicates that the verdict is not yet conclusive.
+Helper variable `hv7` is used to compute REV.
+It's value is 
 
 The AIR verifies the correct update of each consecutive pair of rows.
-In every row one bit is eliminated.
-Only when the previous row is all zeros can a new row be inserted.
+In every row one bit – the current least significant bit of both LHS and RHS – is eliminated.
+Only when the current row equals the padding row given below can a new row with `idc = 1` be inserted.
 
 The AIR constraints establish that the entire table is consistent.
-Copy-constraints establish that logical and bitwise operations were computed correctly.
+Copy-constraints, i.e., Permutation Arguments, establish that the result of the logical and bitwise operations are correctly transferred to the Processor.
 
 For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `reverse`, `div`), there is a dedicated Permutation Argument with the [Processor Table](#processor-table).
 
 **Padding**
 
-_TODO_
+The Uint32 Operations Table is padded with the following row.
+
+| `idc` | LHS | RHS | LT | AND | XOR | REV | `hv7`               | LHS_inv |
+|:------|:----|:----|:---|:----|:----|:----|:--------------------|--------:|
+| 0     | 0   | 0   | 2  | 0   | 0   | 0   | 9223372034707292161 |       0 |
 
 **Consistency Constraints**
 
-1. The indicator `idc` is binary.
+1. The indicator `idc` is either 0 or 1.
+1. LHS_inv is the inverse of LHS if LHS is not 0, and 0 otherwise.
+1. If `idc` is 0 and LHS is 0 and RHS is 0, then LT is 2.
+1. If LHS is 0, then `hv` is ½ = 9223372034707292161.
 
-**Boundary Constrants**
+**Boundary Constraints**
 
-1. The indicator `idc` in the first row is one.
-1. The indicator `idc` in the last row is zero.
+1. In the first row, the indicator `idc` is 1.
+1. In the last row, the indicator `idc` is 0.
+1. In the last row, LHS is 0.
+1. In the last row, RHS is 0.
 
 **Transition Constraints**
 
-1. If the indicator `idc` is zero, so are LHS, RHS, LT, AND, XOR, and REV.
-1. If the indicator `idc` is nonzero across two rows, the current and next row follow the one-bit update rules.
+1. If either LHS or RHS are non-zero in the current row, then the indicator in the next row is 0.
+1. If `idc` in the next row is 0 and the lsb of LHS is 0 and the lsb of RHS is 0, then LT in the next row is 2, indicating inconclusiveness.
+1. If the indicator `idc` is 0 in the next row, then the least significant bit (lsb) of LHS, i.e., the difference between LHS in the current row and twice LHS in the next row, is either 0 or 1.
+1. If the indicator `idc` is 0 in the next row, then the least significant bit (lsb) of RHS, i.e., the difference between RHS in the current row and twice RHS in the next row, is either 0 or 1.
+1. If the indicator `idc` is 0 in the next row and LT in the next row is 0, then LT in the current row is 0.
+1. If the indicator `idc` is 0 in the next row and LT in the next row is 1, then LT in the current row is 1.
+1. If the indicator `idc` is 0 in the next row and LT in the next row is 2 and lsb of LHS is 0 and lsb of RHS is 1, then LT in the current row is 1.
+1. If the indicator `idc` is 0 in the next row and LT in the next row is 2 and lsb of LHS is 1 and lsb of RHS is 0, then LT in the current row is 0.
+1. If the indicator `idc` is 0 in the next row and LT in the next row is 2 and (lsb of LHS equals lsb of RHS) and the indicator `idc` in the current row is 0, then LT in the current row is 2.
+1. If the indicator `idc` is 0 in the next row and LT in the next row is 2 and (lsb of LHS equals lsb of RHS) and the indicator `idc` in the current row is 1, then LT in the current row is 0.
+1. If the indicator `idc` is 0 in the next row, then AND in the current row equals twice AND in the next row plus (the product of the lsb of LHS and the lsb of the RHS).
+1. If the indicator `idc` is 0 in the next row, then XOR in the current row equals twice XOR in the next row plus the lsb of LHS plus the lsb of RHS minus (twice the product of the lsb of LHS and the lsb of the RHS).
+1. If the indicator `idc` is 0 in the next row, then REV in the current row is REV in the next row plus (`hv7` times the lsb of LHS).
+1. If the indicator `idc` is 0 in the next row and LHS is not 0, then `hv7` in the current row is twice `hv7` in the next row.
 
 **Relations to Other Tables**
 
