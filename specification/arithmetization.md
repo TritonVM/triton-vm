@@ -776,15 +776,19 @@ For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `re
 
 The Uint32 Operations Table is padded with the following row.
 
-| `idc` | LHS | RHS | LT | AND | XOR | REV | `hv7`               | LHS_inv |
-|:------|:----|:----|:---|:----|:----|:----|:--------------------|--------:|
-| 0     | 0   | 0   | 2  | 0   | 0   | 0   | 9223372034707292161 |       0 |
+| `idc` | LHS | RHS | LT | AND | XOR | REV | `hv7`               | LHS_inv | RHS_inv |
+|:------|:----|:----|:---|:----|:----|:----|:--------------------|--------:|--------:|
+| 0     | 0   | 0   | 2  | 0   | 0   | 0   | 9223372034707292161 |       0 |       0 |
 
 **Consistency Constraints**
 
 1. The indicator `idc` is either 0 or 1.
 1. LHS_inv is the inverse of LHS if LHS is not 0, and 0 otherwise.
+1. RHS_inv is the inverse of RHS if RHS is not 0, and 0 otherwise.
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then LT is 2.
+1. If `idc` is 0 and LHS is 0 and RHS is 0, then AND is 0.
+1. If `idc` is 0 and LHS is 0 and RHS is 0, then XOR is 0.
+1. If `idc` is 0 and LHS is 0 and RHS is 0, then REV is 0.
 1. If LHS is 0, then `hv` is ½ = 9223372034707292161.
 
 **Boundary Constraints**
