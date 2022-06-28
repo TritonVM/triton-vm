@@ -1525,12 +1525,20 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 1. Helper variable `hv0` holds the inverse of (2^32 - 1) subtracted from the high 32 bits or the low 32 bits are 0.
 1. Stack register `st1` is moved into `st2`
 1. Stack register `st2` is moved into `st3`
-1. Stack register `st3` is moved into `st4`
-1. Stack register `st4` is moved into `st5`
-1. Stack register `st5` is moved into `st6`
-1. Stack register `st6` is moved into `st7`
-1. Stack register `st7` is moved into `osv`
-1. The stack pointer increases by 1.
+1. The stack element in `st3` is moved into `st4`.
+1. The stack element in `st4` is moved into `st5`.
+1. The stack element in `st5` is moved into `st6`.
+1. The stack element in `st6` is moved into `st7`.
+1. The stack element in `st7` is moved into `st8`.
+1. The stack element in `st8` is moved into `st9`.
+1. The stack element in `st9` is moved into `st10`.
+1. The stack element in `st10` is moved into `st11`.
+1. The stack element in `st11` is moved into `st12`.
+1. The stack element in `st12` is moved into `st13`.
+1. The stack element in `st13` is moved into `st14`.
+1. The stack element in `st14` is moved into `st15`.
+1. The stack element in `st15` is moved to the top of OpStack underflow, i.e., `osv`.
+1. The OpStack pointer is incremented by 1.
 
 ##### Polynomials
 
@@ -1542,7 +1550,15 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 1. `st5' - st4`
 1. `st6' - st5`
 1. `st7' - st6`
-1. `osv' - st7`
+1. `st8' - st7`
+1. `st9' - st8`
+1. `st10' - st9`
+1. `st11' - st10`
+1. `st12' - st11`
+1. `st13' - st12`
+1. `st14' - st13`
+1. `st15' - st14`
+1. `osv' - st15`
 1. `osp' - (osp + 1)`
 
 #### Instruction `eq`
@@ -1636,11 +1652,20 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The result of adding `st0` to `st3` is moved into `st0`.
 1. The result of adding `st1` to `st4` is moved into `st1`.
 1. The result of adding `st2` to `st5` is moved into `st2`.
-1. Register `st3` does not change.
-1. Register `st4` does not change.
-1. Register `st5` does not change.
-1. Register `st6` does not change.
-1. Register `st7` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
 
 ##### Polynomials
 
@@ -1652,6 +1677,16 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
+1. `st11' - st11`
+1. `st12' - st12`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
+1. `osv' - osv`
+1. `osp' - osp`
 
 #### Instruction `xxmul`
 
@@ -1660,11 +1695,20 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The coefficient of x^0 of multiplying the two X-Field elements on the stack is moved into `st0`.
 1. The coefficient of x^1 of multiplying the two X-Field elements on the stack is moved into `st1`.
 1. The coefficient of x^2 of multiplying the two X-Field elements on the stack is moved into `st2`.
-1. Register `st3` does not change.
-1. Register `st4` does not change.
-1. Register `st5` does not change.
-1. Register `st6` does not change.
-1. Register `st7` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
 
 ##### Polynomials
 
@@ -1676,6 +1720,16 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
+1. `st11' - st11`
+1. `st12' - st12`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
+1. `osv' - osv`
+1. `osp' - osp`
 
 #### Instruction `xinv`
 
@@ -1684,11 +1738,20 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The coefficient of x^0 of multiplying X-Field element on top of the current stack and on top of the next stack is 1.
 1. The coefficient of x^1 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
 1. The coefficient of x^2 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
-1. Register `st3` does not change.
-1. Register `st4` does not change.
-1. Register `st5` does not change.
-1. Register `st6` does not change.
-1. Register `st7` does not change.
+1. The stack element in `st4` does not change.
+1. The stack element in `st5` does not change.
+1. The stack element in `st6` does not change.
+1. The stack element in `st7` does not change.
+1. The stack element in `st8` does not change.
+1. The stack element in `st9` does not change.
+1. The stack element in `st10` does not change.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
+1. The stack element in `st13` does not change.
+1. The stack element in `st14` does not change.
+1. The stack element in `st15` does not change.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
 
 ##### Polynomials
 
@@ -1700,6 +1763,16 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. `st5' - st5`
 1. `st6' - st6`
 1. `st7' - st7`
+1. `st8' - st8`
+1. `st9' - st9`
+1. `st10' - st10`
+1. `st11' - st11`
+1. `st12' - st12`
+1. `st13' - st13`
+1. `st14' - st14`
+1. `st15' - st15`
+1. `osv' - osv`
+1. `osp' - osp`
 
 #### Instruction `xbmul`
 
@@ -1712,9 +1785,17 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. The stack element in `st5` is moved into `st4`.
 1. The stack element in `st6` is moved into `st5`.
 1. The stack element in `st7` is moved into `st6`.
-1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st7`.
+1. The stack element in `st8` is moved into `st7`.
+1. The stack element in `st9` is moved into `st8`.
+1. The stack element in `st10` is moved into `st9`.
+1. The stack element in `st11` is moved into `st10`.
+1. The stack element in `st12` is moved into `st11`.
+1. The stack element in `st13` is moved into `st12`.
+1. The stack element in `st14` is moved into `st13`.
+1. The stack element in `st15` is moved into `st14`.
+1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
 1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv4` holds the inverse of `(osp' - 7)`.
+1. The helper variable register `hv4` holds the inverse of `(osp' - 15)`.
 
 ##### Polynomials
 
@@ -1725,9 +1806,17 @@ A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-tab
 1. `st4' - st5`
 1. `st5' - st6`
 1. `st6' - st7`
-1. `st7' - osv`
+1. `st7' - st8`
+1. `st8' - st9`
+1. `st9' - st10`
+1. `st10' - st11`
+1. `st11' - st12`
+1. `st12' - st13`
+1. `st13' - st14`
+1. `st14' - st15`
+1. `st15' - osv`
 1. `osp' - (osp - 1)`
-1. `(osp' - 7)·hv4 - 1`
+1. `(osp' - 15)·hv4 - 1`
 
 #### Instruction `read_io`
 
