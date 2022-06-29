@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.23">
-<info created="D:20200729150742" modified="D:20220613195145"/>
+<info created="D:20200729150742" modified="D:20220629134345"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -333,8 +333,8 @@ h
 <text layer="table_names" matrix="1 0 0 1 -16 -32" transformations="translations" pos="208 160" stroke="black" type="label" width="38.135" height="4.407" depth="1.93" halign="center" valign="baseline">processor</text>
 <text matrix="1 0 0 1 -16 -32" transformations="translations" pos="208 192" stroke="black" type="label" width="44.029" height="6.531" depth="0" halign="center" valign="baseline">instruction</text>
 <text matrix="1 0 0 1 -16 -32" transformations="translations" pos="208 224" stroke="black" type="label" width="34.343" height="4.407" depth="1.93" halign="center" valign="baseline">program</text>
-<text matrix="1 0 0 1 -16 -32" transformations="translations" pos="272 224" stroke="black" type="label" width="27.618" height="5.756" depth="1.93" halign="center" valign="baseline">output</text>
-<text transformations="translations" pos="128 192" stroke="black" type="label" width="21.42" height="6.538" depth="1.93" halign="center" valign="baseline">input</text>
+<text matrix="1 0 0 1 -16 -32" transformations="translations" pos="272 224" stroke="darkgray" type="label" width="27.618" height="5.756" depth="1.93" halign="center" valign="baseline">output</text>
+<text transformations="translations" pos="128 192" stroke="darkgray" type="label" width="21.42" height="6.538" depth="1.93" halign="center" valign="baseline">input</text>
 <text transformations="translations" pos="128 96" stroke="black" type="label" width="33.347" height="6.926" depth="1.93" halign="center" valign="baseline">opStack</text>
 <text transformations="translations" pos="192 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
 <text transformations="translations" pos="256 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
