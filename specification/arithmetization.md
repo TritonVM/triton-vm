@@ -164,7 +164,7 @@ Column `address` increases by 1 between any two consecutive rows, even padding r
 
 **Consistency Constraints**
 
-_TODO_
+None.
 
 **Boundary Constraints**
 
@@ -235,7 +235,7 @@ Column `address` increases by 1 between any two consecutive rows if at least one
 
 **Consistency Constraints**
 
-_TODO_
+None.
 
 **Boundary Constraints**
 
@@ -362,7 +362,7 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 
 **Consistency Constraints**
 
-_TODO_
+None.
 
 **Boundary Constraints**
 
@@ -492,7 +492,7 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 
 **Consistency Constraints**
 
-_TODO_
+None.
 
 **Boundary Conditions**
 
@@ -637,7 +637,7 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 
 **Consistency Constraints**
 
-_TODO_
+None.
 
 **Boundary Constraints**
 
