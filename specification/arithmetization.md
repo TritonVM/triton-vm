@@ -43,7 +43,9 @@ Each register is assigned a column in the processor table.
 
 **Padding**
 
-_TODO_
+After the Processor Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is a direct copy of the Processor Table's last row, with the exception of the cycle count column `clk`.
+Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 
 **Consistency Constraints**
 
@@ -156,7 +158,9 @@ This commitment assumes that the FRI domain is fixed, which implies an upper bou
 
 **Padding**
 
-_TODO_
+After the Program Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is a direct copy of the Program Table's last row, with the exception of the column `address`.
+Column `address` increases by 1 between any two consecutive rows, even padding rows.
 
 **Consistency Constraints**
 
@@ -225,7 +229,9 @@ Instruction Table:
 
 **Padding**
 
-_TODO_
+After the Instruction Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is a direct copy of the Instruction Table's last row, with the exception of the column `address`.
+Column `address` increases by 1 between any two consecutive rows if at least one of the two rows is a padding row.
 
 **Consistency Constraints**
 
@@ -349,7 +355,10 @@ Jump Stack Table:
 
 **Padding**
 
-_TODO_
+After the Jump Stack Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is a direct copy of the Jump Stack Table's last row, with the exception of the cycle count column `clk`.
+In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
+This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the Jump Stack Table's `clk` column.
 
 **Consistency Constraints**
 
@@ -476,7 +485,10 @@ Operational Stack Table:
 
 **Padding**
 
-_TODO_
+After the Op Stack Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is a direct copy of the Op Stack Table's last row, with the exception of the cycle count column `clk`.
+In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
+This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the Op Stack Table's `clk` column.
 
 **Consistency Constraints**
 
@@ -618,7 +630,10 @@ RAM Table:
 
 **Padding**
 
-_TODO_
+After the RAM Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is a direct copy of the RAM Table's last row, with the exception of the cycle count column `clk`.
+In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
+This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the RAM Table's `clk` column.
 
 **Consistency Constraints**
 
@@ -674,7 +689,8 @@ The Hash Table has 17 columns:
 
 **Padding**
 
-_TODO_
+After the Hash Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is the all-zero row.
 
 **Consistency Constraints**
 
@@ -794,7 +810,8 @@ For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `re
 
 **Padding**
 
-The Uint32 Operations Table is padded with the following row.
+After the Uint32 Operations Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
+Each padding row is the following row:
 
 | `idc` | LHS | RHS | LT | AND | XOR | REV | `hv7`               | LHS_inv | RHS_inv |
 |:------|:----|:----|:---|:----|:----|:----|:--------------------|--------:|--------:|
