@@ -241,6 +241,10 @@ None.
 
 None
 
+**Terminal Constraints**
+
+None
+
 **Transition Constraints**
 
 1. The address increases by 1 or `current_instruction` does not change.
