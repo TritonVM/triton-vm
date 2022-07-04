@@ -364,7 +364,7 @@ _TODO_
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the current instruction `ci` is `call`), *or*
 1. (`jsp` does not change and the current instruction `ci` is `return`).
 
-Written as Conjunctive Normal Form, the same constraints can be expressed as:
+Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The jump stack pointer `jsp` increases by 1 or the jump stack pointer `jsp` does not change
 1. The jump stack pointer `jsp` increases by 1 or the jump stack origin `jso` does not change or current instruction `ci` is `return`
 1. The jump stack pointer `jsp` increases by 1 or the jump stack destination `jsd` does not change or current instruction `ci` is `return`
@@ -484,7 +484,7 @@ _TODO_
 1. the `osp` does not change AND the `osv` does not change, *or*
 1. the `osp` does not change AND the `ci` shrinks the OpStack.
 
-Written as Conjunctive Normal Form, the same constraints can be expressed as:
+Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. the `osp` increases by 1 or the `osp` does not change
 1. the `osp` increases by 1 or the `osv` does not change or the `ci` shrinks the OpStack
 
@@ -622,7 +622,7 @@ _TODO_
 1. If the `ramp` changes, then the new `ramv` must be 0.
 1. If the `ramp` does not change and the `ramv` does change, then the cycle counter `clk` must increase by 1.
 
-Written as Conjunctive Normal Form, the same constraints can be expressed as:
+Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `hv6` is 0 or `hv6` is the inverse of `(ramp' - ramp)`.
 1. `(ramp' - ramp)` is zero or `hv6` is the inverse of `(ramp' - ramp)`.
 1. The `ramp` does not change or the new `ramv` is 0.
@@ -663,7 +663,7 @@ _TODO_
 1. If the round number is 1, register `state14` is 0.
 1. If the round number is 1, register `state15` is 0.
 
-Written as Conjunctive Normal Form, the same constraints can be expressed as:
+Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state12` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state13` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state14` is 0.
@@ -703,7 +703,7 @@ Written as Conjunctive Normal Form, the same constraints can be expressed as:
 1. If the round number is 6, the `state` registers adhere to the rules of applying Rescue-XLIX round 6.
 1. If the round number is 7, the `state` registers adhere to the rules of applying Rescue-XLIX round 7.
 
-Written as Conjunctive Normal Form, the same constraints can be expressed as:
+Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The round number is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or the next round number is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or the next round number is 2.
 1. The round number is 0 or 1 or 3 or 4 or 5 or 6 or 7 or 8 or the next round number is 3.
