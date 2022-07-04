@@ -158,6 +158,10 @@ This commitment assumes that the FRI domain is fixed, which implies an upper bou
 
 _TODO_
 
+**Consistency Constraints**
+
+_TODO_
+
 **Boundary Constraints**
 
 1. The first address is 0.
@@ -220,6 +224,10 @@ Instruction Table:
 |         … | …                     | …                         | …                      |
 
 **Padding**
+
+_TODO_
+
+**Consistency Constraints**
 
 _TODO_
 
@@ -343,6 +351,10 @@ Jump Stack Table:
 
 _TODO_
 
+**Consistency Constraints**
+
+_TODO_
+
 **Boundary Constraints**
 
 1. Cycle count `clk` is 0.
@@ -463,6 +475,10 @@ Operational Stack Table:
 
 
 **Padding**
+
+_TODO_
+
+**Consistency Constraints**
 
 _TODO_
 
@@ -601,6 +617,10 @@ RAM Table:
 
 
 **Padding**
+
+_TODO_
+
+**Consistency Constraints**
 
 _TODO_
 
