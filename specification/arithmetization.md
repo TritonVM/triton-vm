@@ -1349,6 +1349,8 @@ For their definition, please refer to the corresponding section.
 1. If `i` is not 13, then `st13` does not change.
 1. If `i` is not 14, then `st14` does not change.
 1. If `i` is not 15, then `st15` does not change.
+1. The top of the OpStack underflow, i.e., `osv`, does not change.
+1. The OpStack pointer does not change.
 1. If `i` is not 1, then the RAM value `ramv` does not change.
 
 ##### Polynomials
@@ -1399,6 +1401,8 @@ For their definition, please refer to the corresponding section.
 1. `(1 - ind_13(hv3, hv2, hv1, hv0))·(st13' - st13)`
 1. `(1 - ind_14(hv3, hv2, hv1, hv0))·(st14' - st14)`
 1. `(1 - ind_15(hv3, hv2, hv1, hv0))·(st15' - st15)`
+1. `osv' - osv`
+1. `osp' - osp`
 1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(ramv' - ramv)`
 
 #### Instruction `nop`
