@@ -1687,28 +1687,30 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 #### Instruction `lt`
 
 This instruction has no additional transition constraints.
-A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
+A Permutation Argument between [Processor Table](#processor-table)'s `st0`, `st1`, `st0'` and [Uint32 Operations Table](#uint32-operations-table)'s `LHS`, `RHS`, `LT` guarantees correct transition.
 
 #### Instruction `and`
 
 This instruction has no additional transition constraints.
 A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
+A Permutation Argument between [Processor Table](#processor-table)'s `st0`, `st1`, `st0'` and [Uint32 Operations Table](#uint32-operations-table)'s `LHS`, `RHS`, `AND` guarantees correct transition.
 
 #### Instruction `xor`
 
 This instruction has no additional transition constraints.
-A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
+A Permutation Argument between [Processor Table](#processor-table)'s `st0`, `st1`, `st0'` and [Uint32 Operations Table](#uint32-operations-table)'s `LHS`, `RHS`, `XOR` guarantees correct transition.
 
 #### Instruction `reverse`
 
 This instruction has no additional transition constraints.
-A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees correct transition.
+A Permutation Argument between [Processor Table](#processor-table)'s `st0`, `hv0`, `st0'` and [Uint32 Operations Table](#uint32-operations-table)'s `LHS`, `RHS`, `REV` guarantees correct transition.
 
 #### Instruction `div`
 
 For correct division, it is required that the remainder `r` is smaller than the divisor `d`.
 The result of comparing `r` to `d` is stored in helper variable `hv0`.
-A Permutation Argument with the [Uint32 Operations Table](#uint32-operations-table) guarantees that `hv0 = (r < d)`.
+
+A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st0`, `hv0'` and [Uint32 Operations Table](#uint32-operations-table)'s `LHS`, `RHS`, `LT` guarantees that `hv0 = (r < d)`.
 
 ##### Description
 
