@@ -831,7 +831,7 @@ Each padding row is the following row:
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then AND is 0.
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then XOR is 0.
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then REV is 0.
-1. If LHS is 0, then `hv` is ½ = 9223372034707292161.
+1. If LHS is 0, then `hv7` is ½ = 9223372034707292161.
 
 **Boundary Constraints**
 
@@ -1420,8 +1420,8 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. The last jump's origin `jso` does not change.
 1. The last jump's destination `jsd` does not change.
 1. The next instruction `nia` is decomposed into helper variables `hv`.
-1. The relevant helper variable `hv0` is either 0 or 1.
-    Here, `hv0 == 1` means that `nia` takes an argument.
+1. The relevant helper variable `hv1` is either 0 or 1.
+    Here, `hv1 == 1` means that `nia` takes an argument.
 1. Register `ip` increments by (1 if `st0` is non-zero else (2 if `nia` takes no argument else 3)).
 
 ##### Polynomials
@@ -1429,9 +1429,9 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. `jsp' - jsp`
 1. `jso' - jso`
 1. `jsd' - jsd`
-1. `nia - (hv0 + 2·hv1)`
-1. `hv0·(hv0 - 1)`
-1. `ip' - (ip + 1 + st0·inv·(1 + hv0))`
+1. `nia - (hv0 + 4·hv1 + 8·hv2)`
+1. `hv1·(hv1 - 1)`
+1. `ip' - (ip + 1 + st0·inv·(1 + hv1))`
 
 #### Instruction `call` + `d`
 
