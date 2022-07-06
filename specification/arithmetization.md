@@ -1703,7 +1703,8 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0`, `st1
 #### Instruction `reverse`
 
 This instruction has no additional transition constraints.
-A Permutation Argument between [Processor Table](#processor-table)'s `st0`, `hv0`, `st0'` and [Uint32 Operations Table](#uint32-operations-table)'s `LHS`, `RHS`, `REV` guarantees correct transition.
+In contrast to all other 32-bit unsigned integer instructions, `reverse` only operates on the stack's top-most element, `st0`.
+A Permutation Argument between [Processor Table](#processor-table)'s `st0`, `st0'` and [Uint32 Operations Table](#uint32-operations-table)'s `LHS`, `REV` guarantees correct transition.
 
 #### Instruction `div`
 
