@@ -1422,7 +1422,16 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. The next instruction `nia` is decomposed into helper variables `hv`.
 1. The relevant helper variable `hv1` is either 0 or 1.
     Here, `hv1 == 1` means that `nia` takes an argument.
-1. Register `ip` increments by (1 if `st0` is non-zero else (2 if `nia` takes no argument else 3)).
+1. If `st0` is non-zero, register `ip` is incremented by 1.
+If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
+If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
+
+Written as Disjunctive Normal Form, the last constraint can be expressed as:
+6. (Register `st0` is 0 or `ip` is incremented by 1), and
+(`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
+(`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
+
+Since the three cases are mutually exclusive, the three respective polynomials can be summed up into one.
 
 ##### Polynomials
 
@@ -1431,7 +1440,7 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. `jsd' - jsd`
 1. `nia - (hv0 + 4·hv1 + 8·hv2)`
 1. `hv1·(hv1 - 1)`
-1. `ip' - (ip + 1 + st0·inv·(1 + hv1))`
+1. `(ip' - (ip + 1)·st0) + ((ip' - (ip + 2))·(st0·inv - 1)·(hv0 - 1)) + ((ip' - (ip + 3))·(st0·inv - 1)·hv0)`
 
 #### Instruction `call` + `d`
 
