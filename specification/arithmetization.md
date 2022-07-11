@@ -1691,7 +1691,7 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 
 1. `hv0·(hv0·(st1 - st0) - 1)`
 1. `(st1 - st0)·(hv0·(st1 - st0) - 1)`
-1. `st0' - (hv0·(st1 - st0) - 1)`
+1. `st0' - (1 - hv0·(st1 - st0))`
 
 #### Instruction `lt`
 
