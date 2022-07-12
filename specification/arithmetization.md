@@ -252,8 +252,8 @@ None
 
 **Transition Constraints as Polynomials**
 
-1. `(address' - address + 1)·(current_instruction' - current_instruction)`
-1. `(address' - address + 1)·(next_instruction_or_arg' - next_instruction_or_arg)`
+1. `(address' - (address + 1))·(current_instruction' - current_instruction)`
+1. `(address' - (address + 1))·(next_instruction_or_arg' - next_instruction_or_arg)`
 
 **Relations to Other Tables**
 
@@ -884,7 +884,7 @@ An instruction's effect not captured by the groups it is part of needs to be ari
 | `keep_stack`    | stack remains unchanged                                                                             |
 | `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged. Needs `hv4`               |
 | `unop`          | stack's top-most element is modified, rest of stack remains unchanged                               |
-| `binop`         | stack's two top-most elements are modified, rest of stack remains unchanged                         |
+| `binop`         | stack shrinks by one element, new top of the stack is modified. Needs `hv4`                         |
 
 A summary of all instructions and which groups they are part of is given in the following table.
 
