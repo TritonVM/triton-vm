@@ -58,7 +58,6 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `jso`                | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
 | `jsd`                | jump stack destination       | contains the argument of the last `call`                                                                           |
 | `st0` through `st15` | operational stack registers  | contain explicit operational stack values                                                                          |
-| *`inv`               | zero indicator               | assumes the inverse of the the top of the stack when it is nonzero, and zero otherwise                             |
 | *`osp`               | operational stack pointer    | contains the OpStack address of the top of the operational stack                                                   |
 | *`osv`               | operational stack value      | contains the (stack) memory value at the given address                                                             |
 | *`hv0` through `hv4` | helper variable registers    | helper variables for some arithmetic operations                                                                    |

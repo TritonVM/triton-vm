@@ -50,14 +50,10 @@ Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 **Consistency Constraints**
 
 1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
-1. Register `st0` is 0 or `inv` is the inverse of `st0`.
-1. Register `inv` is 0 or `inv` is the inverse of `st0`.
 
 **Consistency Constraints as Polynomials**
 
 1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
-1. `st0·(st0·inv - 1)`
-1. `inv·(st0·inv - 1)`
 
 **Boundary Constraints**
 
@@ -1428,7 +1424,7 @@ If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
 
 Written as Disjunctive Normal Form, the last constraint can be expressed as:
 6. (Register `st0` is 0 or `ip` is incremented by 1), and
-(`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
+(`st0` has a multiplicative inverse or `hv0` is 1 or `ip` is incremented by 2), and
 (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
 
 Since the three cases are mutually exclusive, the three respective polynomials can be summed up into one.
@@ -1440,7 +1436,7 @@ Since the three cases are mutually exclusive, the three respective polynomials c
 1. `jsd' - jsd`
 1. `nia - (hv0 + 4·hv1 + 8·hv2)`
 1. `hv1·(hv1 - 1)`
-1. `(ip' - (ip + 1)·st0) + ((ip' - (ip + 2))·(st0·inv - 1)·(hv0 - 1)) + ((ip' - (ip + 3))·(st0·inv - 1)·hv0)`
+1. `(ip' - (ip + 1)·st0) + ((ip' - (ip + 2))·(st0·hv2 - 1)·(hv0 - 1)) + ((ip' - (ip + 3))·(st0·hv2 - 1)·hv0)`
 
 #### Instruction `call` + `d`
 
@@ -1746,7 +1742,7 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st
 
 ##### Polynomials
 
-1. `st0·inv - 1`
+1. `st0·hv2 - 1`
 1. `st1 - st0·st1' - st0'`
 1. `st2' - st2`
 1. `st3' - st3`
