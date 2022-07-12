@@ -60,7 +60,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `st0` through `st15` | operational stack registers  | contain explicit operational stack values                                                                          |
 | *`osp`               | operational stack pointer    | contains the OpStack address of the top of the operational stack                                                   |
 | *`osv`               | operational stack value      | contains the (stack) memory value at the given address                                                             |
-| *`hv0` through `hv4` | helper variable registers    | helper variables for some arithmetic operations                                                                    |
+| *`hv0` through `hv3` | helper variable registers    | helper variables for some arithmetic operations                                                                    |
 | *`ramv`              | RAM value                    | contains the value of the RAM element at the address currently held in `st1`                                       |
 
 ### Instruction
@@ -97,7 +97,7 @@ It exists only to allow efficient [arithmetization](arithmetization.md).
 ### Helper Variables
 
 Some instructions require helper variables in order to generate an efficient arithmetization.
-To this end, there are 5 helper registers, labeled `hv0` through `hv4`.
+To this end, there are 4 helper registers, labeled `hv0` through `hv3`.
 These registers are part of the [arithmetization](arithmetization.md) of the architecture, but not needed to define the instruction set.
 
 ## Instructions
