@@ -1103,8 +1103,8 @@ It is used for the Permutation Argument with the uint32 table.
 
 #### Group `shrink_stack`
 
-This instruction group requires helper variable `hv4` to hold the multiplicative inverse of `(osp' - 15)`.
-In effect, this means that the OpStack pointer can never be 15, which would indicate a stack of size -1.
+This instruction group requires helper variable `hv4` to hold the multiplicative inverse of `(osp - 16)`.
+In effect, this means that the OpStack pointer can only be decremented if it is not 16, i.e., if OpStack Underflow Memory is not empty.
 Since the stack can only change by one element at a time, this prevents stack underflow.
 
 ##### Description
@@ -1126,7 +1126,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st15` is moved into `st14`.
 1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
 1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv4` holds the inverse of `(osp' - 15)`.
+1. The helper variable register `hv4` holds the inverse of `(osp - 16)`.
 
 ##### Polynomials
 
@@ -1147,7 +1147,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st14' - st15`
 1. `st15' - osv`
 1. `osp' - (osp - 1)`
-1. `(osp' - 15)·hv4 - 1`
+1. `(osp - 16)·hv4 - 1`
 
 #### Group `unop`
 
@@ -1213,7 +1213,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st15` is moved into `st14`.
 1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
 1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv4` holds the inverse of `(osp' - 15)`.
+1. The helper variable register `hv4` holds the inverse of `(osp - 16)`.
 
 ##### Polynomials
 
@@ -1233,7 +1233,7 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st14' - st15`
 1. `st15' - osv`
 1. `osp' - (osp - 1)`
-1. `(osp' - 15)·hv4 - 1`
+1. `(osp - 16)·hv4 - 1`
 
 #### Instruction `pop`
 
@@ -1919,7 +1919,7 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st
 1. The stack element in `st15` is moved into `st14`.
 1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
 1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv4` holds the inverse of `(osp' - 15)`.
+1. The helper variable register `hv4` holds the inverse of `(osp - 16)`.
 
 ##### Polynomials
 
@@ -1940,7 +1940,7 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st
 1. `st14' - st15`
 1. `st15' - osv`
 1. `osp' - (osp - 1)`
-1. `(osp' - 15)·hv4 - 1`
+1. `(osp - 16)·hv4 - 1`
 
 #### Instruction `read_io`
 
