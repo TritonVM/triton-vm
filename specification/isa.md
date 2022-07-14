@@ -187,7 +187,7 @@ In conjunction with instruction `hash` and `assert_vector`, the instruction `div
 | `div`       | ?     | `_ n d`         | `_ q r`         | Computes division with remainder of the top two stack elements, assuming both arguments are unsigned 32-bit integers. The result satisfies `n == d·q + r`and `r < d`. |
 | `xxadd`     | ?     | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                |
 | `xxmul`     | ?     | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.          |
-| `xinv`      | ?     | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                   |
+| `xinvert`   | ?     | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                   |
 | `xbmul`     | ?     | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.                    |
 
 ### Input/Output

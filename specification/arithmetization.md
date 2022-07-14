@@ -913,7 +913,7 @@ A summary of all instructions and which groups they are part of is given in the 
 | `div`            |            |                 | x        |          | x        |              |              |                |        |         |
 | `xxadd`          |            |                 | x        |          |          |              |              |                |        |         |
 | `xxmul`          |            |                 | x        |          |          |              |              |                |        |         |
-| `xinv`           |            |                 | x        |          |          |              |              |                |        |         |
+| `xinvert`        |            |                 | x        |          |          |              |              |                |        |         |
 | `xbmul`          |            |                 | x        |          |          |              |              |                |        |         |
 | `read_io`        |            |                 | x        |          |          | x            |              |                |        |         |
 | `write_io`       |            |                 | x        |          |          |              |              | x              |        |         |
@@ -1848,7 +1848,7 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st
 1. `osv' - osv`
 1. `osp' - osp`
 
-#### Instruction `xinv`
+#### Instruction `xinvert`
 
 ##### Description
 
