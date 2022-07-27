@@ -784,19 +784,19 @@ The two inputs to the Uint32 Operations Table are left-hand side (LHS) and right
 
 | `idc` | LHS      | RHS      | LT                  | AND                     | XOR                     | REV           | LHS_inv             | RHS_inv             |
 |------:|:---------|:---------|:--------------------|:------------------------|:------------------------|:--------------|:--------------------|:--------------------|
-|     1 | `a`      | `b`      | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      | `a`${}^{-1}$        | `a`${}^{-1}$        |
-|     0 | `a >> 1` | `b >> 1` | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` | `(a >> 1)`${}^{-1}$ | `(a >> 1)`${}^{-1}$ |
+|     1 | `a`      | `b`      | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      | `a`${}^{-1}$        | `b`${}^{-1}$        |
+|     0 | `a >> 1` | `b >> 1` | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` | `(a >> 1)`${}^{-1}$ | `(b >> 1)`${}^{-1}$ |
 |     0 | `a >> 2` | `b >> 2` | …                   | …                       | …                       | …             | …                   | …                   |
 |     … | …        | …        | …                   | …                       | …                       | …             | …                   | …                   |
 |     0 | 0        | 0        | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
-|     1 | `c`      | `d`      | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      | `c`${}^{-1}$        | `c`${}^{-1}$        |
+|     1 | `c`      | `d`      | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      | `c`${}^{-1}$        | `d`${}^{-1}$        |
 |     0 | `c >> 1` | `d >> 1` | …                   | …                       | …                       | …             | …                   | …                   |
 |     … | …        | …        | …                   | …                       | …                       | …             | …                   | …                   |
 |     0 | 0        | 0        | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
 |     … | …        | …        | …                   | …                       | …                       | …             |                     |                     |
 
 LT can take three possible values:
-- 0 indicates LHS is definitely not less than RHS,
+- 0 indicates LHS is definitely greater than or equal to RHS,
 - 1 indicates LHS is definitely less than RHS, and
 - 2 indicates that the verdict is not yet conclusive.
 
