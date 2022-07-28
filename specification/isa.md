@@ -6,12 +6,12 @@ The arithmetization of the VM is defined over the *B-field* $\mathbb{F}_p$ where
 This means the registers and memory elements take values from $\mathbb{F}_p$, and the transition function gives rise to low-degree transition verification polynomials from the ring of multivariate polynomials over $\mathbb{F}_p$.
 
 Instructions have variable width:
-they either consist of one word, i.e., one B-Field element, or of two words, i.e., two B-Field elements.
+they either consist of one word, i.e., one B-field element, or of two words, i.e., two B-field elements.
 An example for a single-word instruction is `pop`, removing the top of the stack.
 An example for a double-word instruction is `push` + `arg`, pushing `arg` to the stack.
 
 Triton VM has two interfaces for data input, one for public and one for secret data, and one interface for data output, whose data is always public.
-The public interfaces differ from the private one, especially regarding their [arithmetization](#arithmetization.md).
+The public interfaces differ from the private one, especially regarding their arithmetization.
 
 ## Data Structures
 
@@ -35,7 +35,8 @@ Elements deeper in the stack require removing some of the higher elements, possi
 For reasons of arithmetization, the stack is actually split into two distinct parts:
 1. the _operational stack registers_ `st0` through `st15`, and
 1. the _OpStack Underflow Memory_.
-The split is further motivated and the interplay between the two parts is further described and exemplified in the document on [arithmetization](#arithmetization.md#operational-stack-table).
+
+The motivation and the interplay between the two parts is described and exemplified in [arithmetization of the OpStack table](arithmetization.md#operational-stack-table).
 
 ### Jump Stack
 Another last-in;first-out data structure that keeps track of return and destination addresses.
@@ -68,7 +69,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 Register `ip`, the *instruction pointer*, contains the address of the current instruction in Program Memory.
 The instruction is contained in the register *current instruction*, or `ci`.
 Register *next instruction (or argument)*, or `nia`, either contains the next instruction or the argument for the current instruction in `ci`.
-For reasons of [arithmetization](arithmetization.md), `ci` is decomposed, giving rise to the *instruction bucket registers*, labeled `ib0` through `ib?`.
+For reasons of arithmetization, `ci` is decomposed, giving rise to the *instruction bucket registers*, labeled `ib0` through `ib?`.
 
 ### Stack
 
@@ -78,12 +79,12 @@ In order to access elements of the OpStack held in OpStack Underflow Memory, the
 
 The stack grows upwards, in line with the metaphor that justifies the name "stack".
 
-For reasons or [arithmetization](arithmetization.md), the stack always contains a minimum of 16 elements.
+For reasons of arithmetization, the stack always contains a minimum of 16 elements.
 All these elements are initially 0.
 Trying to run an instruction which would result in a stack of smaller total length than 16 crashes the VM.
 
 The registers `osp` and `osv` are not directly accessible by the program running in TritonVM.
-They exist only to allow efficient [arithmetization](arithmetization.md).
+They exist only to allow efficient arithmetization.
 
 ### RAM
 
@@ -92,13 +93,13 @@ Programs can read from and write to RAM using instructions `read_mem` and `write
 The address to read from – respectively, to write to – is the stack's second-to-top-most OpStack element, i.e, `st1`.
 
 The register `ramv` is not directly accessible by the program running in TritonVM.
-It exists only to allow efficient [arithmetization](arithmetization.md).
+It exists only to allow efficient arithmetization.
 
 ### Helper Variables
 
 Some instructions require helper variables in order to generate an efficient arithmetization.
 To this end, there are 4 helper registers, labeled `hv0` through `hv3`.
-These registers are part of the [arithmetization](arithmetization.md) of the architecture, but not needed to define the instruction set.
+These registers are part of the arithmetization of the architecture, but not needed to define the instruction set.
 
 ## Instructions
 
