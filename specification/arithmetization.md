@@ -1290,6 +1290,15 @@ For their definition, please refer to the corresponding section.
 1. `ind_14(hv3, hv2, hv1, hv0)·(st0' - st14)`
 1. `ind_15(hv3, hv2, hv1, hv0)·(st0' - st15)`
 
+##### Helper variable definitions for `dup` + `i`
+
+For `dup` + `i`, helper variables contain the binary decomposition of `i`:
+
+1. `hv0 = i % 2`
+1. `hv1 = (i >> 1) % 2`
+1. `hv2 = (i >> 2) % 2`
+1. `hv3 = (i >> 3) % 2`
+
 #### Instruction `swap` + `i`
 
 This instruction makes use of [indicator polynomials](#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
@@ -1399,6 +1408,15 @@ For their definition, please refer to the corresponding section.
 1. `osp' - osp`
 1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(ramv' - ramv)`
 
+##### Helper variable definitions for `swap` + `i`
+
+For `swap` + `i`, helper variables contain the binary decomposition of `i`:
+
+1. `hv0 = i % 2`
+1. `hv1 = (i >> 1) % 2`
+1. `hv2 = (i >> 2) % 2`
+1. `hv3 = (i >> 3) % 2`
+
 #### Instruction `nop`
 
 This instruction has no additional transition constraints.
@@ -1406,9 +1424,6 @@ This instruction has no additional transition constraints.
 #### Instruction `skiz`
 
 ##### Description
-
-Note:
-The concrete decomposition of `nia` into helper variables `hv` as well as the concretely relevant `hv` determining whether `nia` takes an argument (currently `hv0`) are to be determined.
 
 1. The jump stack pointer `jsp` does not change.
 1. The last jump's origin `jso` does not change.
@@ -1435,6 +1450,15 @@ Since the three cases are mutually exclusive, the three respective polynomials c
 1. `nia - (hv0 + 4·hv1 + 8·hv2)`
 1. `hv1·(hv1 - 1)`
 1. `(ip' - (ip + 1)·st0) + ((ip' - (ip + 2))·(st0·hv2 - 1)·(hv0 - 1)) + ((ip' - (ip + 3))·(st0·hv2 - 1)·hv0)`
+
+##### Helper variable definitions for `skiz`
+
+Note:
+The concrete decomposition of `nia` into helper variables `hv` as well as the concretely relevant `hv` determining whether `nia` takes an argument (currently `hv0`) are subject to change.
+
+1. `hv0 = nia % 2`
+1. `hv1 = nia / 2`
+1. `hv2 = inverse(st0)` (if `st0 ≠ 0`)
 
 #### Instruction `call` + `d`
 
@@ -1579,6 +1603,13 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 1. `osp' - osp`
 1. `(1 - hv0)·(ramv' - ramv)`
 
+##### Helper variable definitions for `divine_sibling`
+
+Since `st12` contains the Merkle tree node index,
+
+1. `hv0` holds the result of `st12 % 2` (the node index'es least significant bit, indicating whether it is a left/right node).
+1. `hv1` holds the result of `st12 / 2` (the node index'es remaining bits, indicating the left/right location of parents).
+
 #### Instruction `assert_vector`
 
 ##### Description
@@ -1634,7 +1665,7 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 ##### Description
 
 1. The top of the stack is decomposed as 32-bit chunks into the stack's top-most two elements.
-1. Helper variable `hv0` holds the inverse of (2^32 - 1) subtracted from the high 32 bits or the low 32 bits are 0.
+1. Helper variable `hv0` holds the inverse of $2^{32} - 1$ subtracted from the high 32 bits or the low 32 bits are 0.
 1. Stack register `st1` is moved into `st2`
 1. Stack register `st2` is moved into `st3`
 1. The stack element in `st3` is moved into `st4`.
@@ -1673,6 +1704,13 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 1. `osv' - st15`
 1. `osp' - (osp + 1)`
 
+##### Helper variable definitions for `split`
+
+Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0` as `lo = st0 & 0xffff_ffff`,
+
+1. `hv0 = (hi - (2^32 - 1))` if `lo ≠ 0`.
+1. `hv0 = 0` if `lo = 0`.
+
 #### Instruction `eq`
 
 ##### Description
@@ -1686,6 +1724,11 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 1. `hv0·(hv0·(st1 - st0) - 1)`
 1. `(st1 - st0)·(hv0·(st1 - st0) - 1)`
 1. `st0' - (1 - hv0·(st1 - st0))`
+
+##### Helper variable definitions for `eq`
+
+1. `hv0 = inverse(rhs - lhs)` if `rhs - lhs ≠ 0`.
+1. `hv0 = 0` if `rhs - lhs = 0`.
 
 #### Instruction `lt`
 
@@ -1759,6 +1802,18 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st
 1. `osv' - osv`
 1. `osp' - osp`
 1. `hv0 - 1`
+
+##### Helper variable definitions for `div`
+
+TODO: Fill this section when `hv0` has been removed for `div`.
+
+```rust
+hvs[0] = 1.into();
+let st1 = self.op_stack.safe_peek(ST1);
+if !st1.is_zero() {
+    hvs[2] = st1.inverse();
+}
+```
 
 #### Instruction `xxadd`
 
