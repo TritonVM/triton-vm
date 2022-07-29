@@ -1719,7 +1719,7 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st
 ##### Description
 
 1. Denominator `d` is not zero.
-1. Result of division, i.e., quotient `q` and remainder `r`, are moved into `st1` and `st0` respectively, and match with numerator `n` and denominator `d`.
+1. Result of division, i.e., quotient `q` and remainder `r`, are moved into `st1` and `st0` respectively, and match with denominator `d` and numerator `n`.
 1. The stack element in `st2` does not change.
 1. The stack element in `st3` does not change.
 1. The stack element in `st4` does not change.
@@ -1740,8 +1740,8 @@ A Permutation Argument between [Processor Table](#processor-table)'s `st0'`, `st
 
 ##### Polynomials
 
-1. `st0·hv2 - 1`
-1. `st1 - st0·st1' - st0'`
+1. `st1·hv2 - 1` (i.e. `q·hv2 - 1`)
+1. `st0 - st1·st1' - st0'` (i.e. `n - q·d - r`)
 1. `st2' - st2`
 1. `st3' - st3`
 1. `st4' - st4`
