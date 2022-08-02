@@ -4,6 +4,7 @@
 \usepackage[most]{tcolorbox}
 \usepackage{mathabx}
 \usepackage{booktabs}
+\usepackage{nicefrac}
 
 % https://tex.stackexchange.com/questions/198658/
 \makeatletter
@@ -76,6 +77,18 @@
 \begin{minipage}[][0.84\textheight][s]{0.6\textwidth}
     \hfill
     \includegraphics[keepaspectratio,width=0.9\textwidth]{img/aet-relations.pdf}
+    \vfill
+
+    \hfill
+    \begin{tabular}{lrr}
+        \multicolumn{3}{l}{\small $p = 18446744069414584321$} \\ \toprule
+        $i$ & $\nicefrac{1}{i}$ &          $\nicefrac{-1}{i}$ \\ \midrule
+        2   &     092\dots\!161 &               922\dots\!160 \\
+        3   &     122\dots\!881 &               614\dots\!440 \\
+        4   &     138\dots\!241 &               461\dots\!080 \\
+        5   &     147\dots\!457 &               368\dots\!864 \\
+        6   &     153\dots\!601 &               307\dots\!720 \\ \bottomrule
+    \end{tabular}
     \vfill
 
     \hfill
