@@ -1,13 +1,14 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.23">
-<info created="D:20200729150742" modified="D:20220802135722" title="Recursive STARK Verifier" author="Jan Ferdinand Sauer" subject="Triton VM"/>
+<info created="D:20200729150742" modified="D:20220802214922" title="Recursive STARK Verifier" author="Jan Ferdinand Sauer" subject="Triton VM"/>
 <preamble>
 \usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}
 \usepackage{nicefrac}
-\usepackage{pifont}</preamble>
+\usepackage{pifont}
+\usepackage{bm}</preamble>
 <ipestyle name="basic">
 <symbol name="arrow/arc(spx)">
 <path stroke="sym-stroke" fill="sym-stroke" pen="sym-pen">
@@ -327,18 +328,17 @@ h
 <view layers="bg VM stark_engine" active="stark_engine"/>
 <view layers="bg VM stark_engine verifier" active="verifier"/>
 <view layers="bg VM stark_engine verifier recursion" active="recursion"/>
-<view layers="bg VM stark_engine verifier recursion TVM" active="TVM"/>
-<path layer="bg" fill="white">
+<path layer="bg" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" fill="white">
 44 196 m
-44 20 l
-244 20 l
+44 44 l
+244 44 l
 244 196 l
 h
 </path>
-<path layer="TVM" stroke="0.118 0.675 0.847" pen="fat" cap="1" join="1">
+<path layer="TVM" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.118 0.675 0.847" pen="fat" cap="1" join="1">
 40.5 0 0 40.5 128 80 e
 </path>
-<path layer="stark_engine" stroke="orange" pen="heavier" cap="1" join="1">
+<path layer="stark_engine" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.118 0.675 0.847" pen="ultrafat" cap="1" join="1">
 104 88 m
 104 56 l
 104 48
@@ -348,105 +348,105 @@ h
 152 56 c
 152 88 l
 </path>
-<path layer="TVM" matrix="0 1 -1 0 224 28.75" stroke="white" pen="ultrafat" cap="1" join="1">
+<path layer="TVM" matrix="0 1.48719 -1.48719 0 311.694 31.0642" stroke="white" pen="ultrafat" cap="1" join="1">
 88 96 m
 95.5 96 l
 </path>
-<path matrix="1 0 0 1 73.4555 -32" stroke="white" pen="ultrafat" cap="1" join="1">
+<path matrix="1.48719 0 0 1.48719 87.8059 -59.2827" stroke="white" pen="ultrafat" cap="1" join="1">
 88 96 m
 95.5 96 l
 </path>
-<path matrix="1 0 0 1 73.4555 0" stroke="white" pen="ultrafat" cap="1" join="1">
+<path matrix="1.48719 0 0 1.48719 87.8059 -11.6926" stroke="white" pen="ultrafat" cap="1" join="1">
 88 96 m
 95.5 96 l
 </path>
-<path layer="VM" stroke="white" pen="ultrafat" cap="1" join="1">
+<path layer="VM" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="white" pen="ultrafat" cap="1" join="1">
 88 96 m
 95.5 96 l
 </path>
-<text matrix="1 0 0 1 16 -24" transformations="translations" pos="64 160" stroke="0.098" type="label" width="21.42" height="6.538" depth="1.93" halign="center" valign="baseline">input</text>
-<text matrix="1 0 0 1 0 -24" transformations="translations" pos="128 160" stroke="0.098" type="label" width="34.343" height="4.407" depth="1.93" halign="center" valign="baseline">program</text>
-<text matrix="1 0 0 1 -16 -24" transformations="translations" pos="192 160" stroke="0.098" type="label" width="27.618" height="5.756" depth="1.93" halign="center" valign="baseline">output</text>
-<text matrix="1 0 0 1 0 2" transformations="translations" pos="128 96" stroke="0.098" type="label" width="28.339" height="6.919" depth="0" halign="center" valign="baseline">Virtual</text>
-<path stroke="0.098" pen="heavier" cap="1" join="1" arrow="normal/small">
-80 128 m
-80 104 l
-80 96
-88 96 c
-103 96 l
+<text matrix="1.48719 0 0 1.48719 2.35867 -47.3851" transformations="translations" pos="64 160" stroke="0.098" type="label" width="29.997" height="9.397" depth="2.79" halign="center" valign="baseline" size="Large">input</text>
+<text matrix="1.48719 0 0 1.48719 -21.4364 -47.3851" transformations="translations" pos="128 160" stroke="0.098" type="label" width="48.244" height="6.409" depth="2.79" halign="center" valign="baseline" size="Large">program</text>
+<text matrix="1.48719 0 0 1.48719 -45.2314 -47.3851" transformations="translations" pos="192 160" stroke="0.098" type="label" width="38.788" height="8.127" depth="2.79" halign="center" valign="baseline" size="Large">output</text>
+<text matrix="1.48719 0 0 1.48719 -21.4364 -8.71819" transformations="translations" pos="128 96" stroke="0.098" type="label" width="39.668" height="9.962" depth="0" halign="center" valign="baseline" size="Large">Virtual</text>
+<path stroke="0.098" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
+97.5389 178.668 m
+97.5389 142.975 l
+97.5389 131.078
+109.436 131.078 c
+130.744 131.078 l
 </path>
-<path stroke="0.098" pen="heavier" cap="1" join="1" arrow="normal/small">
+<path matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.098" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
 152 96 m
 168 96 l
 176 96
 176 104 c
 176 128 l
 </path>
-<path stroke="0.098" pen="heavier" cap="1" join="1" arrow="normal/small">
-128 128 m
-128 113 l
+<path stroke="0.098" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
+168.924 178.668 m
+168.924 157.36 l
 </path>
-<text transformations="translations" pos="128 88" stroke="0.098" type="label" width="35.035" height="6.919" depth="0" halign="center" valign="baseline">Machine</text>
-<text layer="stark_engine" matrix="1 0 0 1 0 -30" transformations="translations" pos="128 96" stroke="orange" type="label" width="31.479" height="6.919" depth="0" halign="center" valign="baseline">STARK</text>
-<text matrix="1 0 0 1 0 -32" transformations="translations" pos="128 88" stroke="orange" type="label" width="28.034" height="6.926" depth="1.93" halign="center" valign="baseline">Engine</text>
-<text matrix="1 0 0 1 32 -24" transformations="translations" pos="192 160" stroke="orange" type="label" width="21.558" height="6.926" depth="1.93" halign="center" valign="baseline">proof</text>
-<path stroke="orange" pen="heavier" cap="1" join="1" arrow="normal/small">
+<text matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" transformations="translations" pos="128 88" stroke="0.098" type="label" width="49.115" height="9.962" depth="0" halign="center" valign="baseline" size="Large">Machine</text>
+<text layer="stark_engine" matrix="1.48719 0 0 1.48719 -21.4364 -56.3083" transformations="translations" pos="128 96" stroke="0.118 0.675 0.847" type="label" width="51.064" height="12.132" depth="0" halign="center" valign="baseline" size="LARGE">STARK</text>
+<text matrix="1.48719 0 0 1.48719 -21.4364 -59.2827" transformations="translations" pos="128 88" stroke="0.118 0.675 0.847" type="label" width="45.44" height="12.13" depth="3.35" halign="center" valign="baseline" size="LARGE">Engine</text>
+<text matrix="1.48719 0 0 1.48719 26.1537 -47.3851" transformations="translations" pos="192 160" stroke="0.118 0.675 0.847" type="label" width="34.98" height="12.13" depth="3.35" halign="center" valign="baseline" size="LARGE">proof</text>
+<path matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.118 0.675 0.847" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
 152 64 m
 216 64 l
 224 64
 224 72 c
 224 128 l
 </path>
-<text layer="verifier" transformations="translations" pos="64 136" stroke="0.333 0.62 0.98" type="label" width="4.552" height="8.965" depth="2.99" halign="center" valign="baseline" size="large" style="math">(</text>
-<text transformations="translations" pos="104 136" stroke="0.333 0.62 0.98" type="label" width="3.252" height="1.167" depth="2.32" halign="center" valign="baseline" size="large" style="math">,</text>
-<text matrix="1 0 0 1 48 0" transformations="translations" pos="104 136" stroke="0.333 0.62 0.98" type="label" width="3.252" height="1.167" depth="2.32" halign="center" valign="baseline" size="large" style="math">,</text>
-<text matrix="1 0 0 1 96 0" transformations="translations" pos="104 136" stroke="0.333 0.62 0.98" type="label" width="3.252" height="1.167" depth="2.32" halign="center" valign="baseline" size="large" style="math">,</text>
-<text transformations="translations" pos="240 136" stroke="0.333 0.62 0.98" type="label" width="4.552" height="8.965" depth="2.99" halign="center" valign="baseline" size="large" style="math">)</text>
-<text transformations="translations" pos="128 184" stroke="0.333 0.62 0.98" type="label" width="29.75" height="6.919" depth="0" halign="center" valign="baseline">Verifier</text>
-<text transformations="translations" pos="176 184" stroke="0.333 0.62 0.98" type="label" width="12.568" height="7.338" depth="2.49" halign="center" valign="baseline">\nicefrac{\color{seagreen}\ding{51}}{\color{red}\ding{55}}</text>
-<path matrix="1 0 0 1 0 -1" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1">
+<text layer="verifier" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" transformations="translations" pos="64 136" stroke="0.333 0.62 0.98" type="label" width="6.276" height="10.756" depth="3.59" halign="center" valign="baseline" size="Large" style="math">\bm (</text>
+<text matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" transformations="translations" pos="104 136" stroke="0.333 0.62 0.98" type="label" width="4.583" height="2.231" depth="2.79" halign="center" valign="baseline" size="Large" style="math">\bm ,</text>
+<text matrix="1.48719 0 0 1.48719 49.9488 -11.6926" transformations="translations" pos="104 136" stroke="0.333 0.62 0.98" type="label" width="3.819" height="1.864" depth="2.32" halign="center" valign="baseline" size="large" style="math">\bm ,</text>
+<text matrix="1.48719 0 0 1.48719 121.334 -11.6926" transformations="translations" pos="104 136" stroke="0.333 0.62 0.98" type="label" width="3.819" height="1.864" depth="2.32" halign="center" valign="baseline" size="large" style="math">\bm ,</text>
+<text matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" transformations="translations" pos="240 136" stroke="0.333 0.62 0.98" type="label" width="6.276" height="10.756" depth="3.59" halign="center" valign="baseline" size="Large" style="math">\bm )</text>
+<text matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" transformations="translations" pos="128 184" stroke="0.333 0.62 0.98" type="label" width="41.734" height="9.962" depth="0" halign="center" valign="baseline" size="Large">Verifier</text>
+<text matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" transformations="translations" pos="176 184" stroke="0.333 0.62 0.98" type="label" width="17.843" height="10.756" depth="3.59" halign="center" valign="baseline" size="Large">\nicefrac{\color{seagreen}\ding{51}}{\color{red}\ding{55}}</text>
+<path matrix="1.48719 0 0 1.48719 -21.4364 -13.1798" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1">
 48 148 m
 48 140
 56 140 c
 </path>
-<path matrix="1 0 0 1 0 -5" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1">
+<path matrix="1.48719 0 0 1.48719 -21.4364 -19.1285" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1">
 56 144 m
 60 144 l
 </path>
-<path matrix="1 0 0 1 0 -1" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1" rarrow="normal/small">
+<path matrix="1.48719 0 0 1.48719 -21.4364 -13.1798" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1" rarrow="normal/normal">
 108 188 m
 56 188 l
 48 188
 48 180 c
 48 156 l
 </path>
-<path layer="recursion" matrix="1 0 0 1 0 -1" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1">
+<path layer="recursion" matrix="1.48719 0 0 1.48719 -21.4364 -13.1798" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1">
 72 188 m
 80 188
 80 180 c
 </path>
-<path layer="verifier" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1">
+<path layer="verifier" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1">
 48 155 m
 48 147 l
 </path>
-<path layer="recursion" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1" arrow="normal/small">
+<path layer="recursion" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
 80 179 m
 80 148 l
 </path>
-<path layer="verifier" matrix="1 0 0 1 0 -1" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1" arrow="normal/small">
+<path layer="verifier" matrix="1.48719 0 0 1.48719 -21.4364 -13.1798" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
 148 188 m
 164 188 l
 </path>
-<path layer="recursion" stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1" arrow="normal/small">
+<path layer="recursion" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
 128 176 m
 128 148 l
 </path>
-<path stroke="0.333 0.62 0.98" pen="heavier" cap="1" join="1" arrow="normal/small">
+<path matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.333 0.62 0.98" pen="ultrafat" cap="1" join="1" arrow="normal/normal">
 176 148 m
 176 176 l
 </path>
-<text layer="TVM" transformations="translations" pos="128 24" stroke="0.118 0.675 0.847" type="label" width="44.14" height="6.919" depth="0" halign="center" valign="baseline">Triton VM</text>
-<path layer="VM" stroke="0.098" pen="heavier" cap="1" join="1">
+<text layer="TVM" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" transformations="translations" pos="128 24" stroke="0.118 0.675 0.847" type="label" width="61.943" height="9.962" depth="0" halign="center" valign="baseline" size="Large">Triton VM</text>
+<path layer="VM" matrix="1.48719 0 0 1.48719 -21.4364 -11.6926" stroke="0.098" pen="ultrafat" cap="1" join="1">
 104 104 m
 104 112
 112 112 c
@@ -461,29 +461,29 @@ h
 104 88 c
 104 104 l
 </path>
-<path layer="recursion" matrix="1 0 0 1 0 -2" fill="white">
+<path layer="recursion" matrix="1.48719 0 0 1.48719 -21.4364 -14.667" fill="white">
 76 168 m
 76 160 l
 84 160 l
 84 168 l
 h
 </path>
-<text matrix="1 0 0 1 0 -2" transformations="translations" pos="80 163.5" stroke="0.333 0.62 0.98" type="label" width="7.749" height="3.796" depth="0" halign="center" valign="center" style="math">=</text>
-<path matrix="1 0 0 1 48 -2" fill="white">
+<text matrix="1.48719 0 0 1.48719 -21.4364 -14.667" transformations="translations" pos="80 163.5" stroke="0.333 0.62 0.98" type="label" width="12.553" height="5.652" depth="0" halign="center" valign="center" size="Large" style="math">\bm =</text>
+<path matrix="1.48719 0 0 1.48719 49.9488 -14.667" fill="white">
 76 168 m
 76 160 l
 84 160 l
 84 168 l
 h
 </path>
-<text matrix="1 0 0 1 48 -2" transformations="translations" pos="80 163.5" stroke="0.333 0.62 0.98" type="label" width="7.749" height="3.796" depth="0" halign="center" valign="center" style="math">=</text>
-<path matrix="1 0 0 1 96 -2" fill="white">
+<text matrix="1.48719 0 0 1.48719 49.9488 -14.667" transformations="translations" pos="80 163.5" stroke="0.333 0.62 0.98" type="label" width="12.553" height="5.652" depth="0" halign="center" valign="center" size="Large" style="math">\bm =</text>
+<path matrix="1.48719 0 0 1.48719 121.334 -14.667" fill="white">
 76 168 m
 76 160 l
 84 160 l
 84 168 l
 h
 </path>
-<text matrix="1 0 0 1 96 -2" transformations="translations" pos="80 163.5" stroke="0.333 0.62 0.98" type="label" width="7.749" height="3.796" depth="0" halign="center" valign="center" style="math">=</text>
+<text matrix="1.48719 0 0 1.48719 121.334 -14.667" transformations="translations" pos="80 163.5" stroke="0.333 0.62 0.98" type="label" width="12.553" height="5.652" depth="0" halign="center" valign="center" size="Large" style="math">\bm =</text>
 </page>
 </ipe>
