@@ -1,6 +1,6 @@
-use crate::shared_math::b_field_element::BFieldElement;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use InstructionError::*;
 
 #[derive(Debug, Clone)]

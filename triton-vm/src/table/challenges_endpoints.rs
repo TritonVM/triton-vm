@@ -1,5 +1,3 @@
-use itertools::Itertools;
-
 use super::hash_table::{HashTableChallenges, HashTableEndpoints};
 use super::instruction_table::{InstructionTableChallenges, InstructionTableEndpoints};
 use super::jump_stack_table::{JumpStackTableChallenges, JumpStackTableEndpoints};
@@ -9,9 +7,10 @@ use super::processor_table::{ProcessorTableChallenges, ProcessorTableEndpoints};
 use super::program_table::{ProgramTableChallenges, ProgramTableEndpoints};
 use super::ram_table::{RamTableChallenges, RamTableEndpoints};
 use super::u32_op_table::{U32OpTableChallenges, U32OpTableEndpoints};
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::stark::triton::state::DIGEST_LEN;
-use crate::shared_math::x_field_element::XFieldElement;
+use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::stark::triton::state::DIGEST_LEN;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
@@ -350,8 +349,8 @@ impl IntoIterator for AllEndpoints {
 
 #[cfg(test)]
 mod challenges_endpoints_tests {
-    use crate::shared_math::stark::triton::table::processor_table;
-    use crate::shared_math::stark::triton::table::program_table;
+    use crate::table::processor_table;
+    use crate::table::program_table;
 
     use super::*;
 

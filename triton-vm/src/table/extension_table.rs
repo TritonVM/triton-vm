@@ -1,14 +1,14 @@
 use super::base_table::Table;
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use crate::shared_math::mpolynomial::{Degree, MPolynomial};
-use crate::shared_math::polynomial::Polynomial;
-use crate::shared_math::stark::triton::fri_domain::FriDomain;
-use crate::shared_math::traits::{Inverse, ModPowU32, PrimeField};
-use crate::shared_math::x_field_element::XFieldElement;
-use crate::timing_reporter::TimingReporter;
+use crate::fri_domain::FriDomain;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::traits::{Inverse, ModPowU32, PrimeField};
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::timing_reporter::TimingReporter;
 
 // Generic methods specifically for tables that have been extended
 

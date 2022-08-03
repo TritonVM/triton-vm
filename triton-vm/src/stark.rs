@@ -1,37 +1,34 @@
-use std::collections::HashMap;
-use std::error::Error;
-
-use super::super::triton;
 use super::table::base_matrix::BaseMatrices;
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::mpolynomial::Degree;
-use crate::shared_math::other;
-use crate::shared_math::polynomial::Polynomial;
-use crate::shared_math::rescue_prime_xlix::{
-    self, RescuePrimeXlix, RP_DEFAULT_OUTPUT_SIZE, RP_DEFAULT_WIDTH,
-};
-use crate::shared_math::stark::stark_verify_error::StarkVerifyError;
-use crate::shared_math::stark::triton::arguments::evaluation_argument::verify_evaluation_argument;
-use crate::shared_math::stark::triton::arguments::permutation_argument::PermArg;
-use crate::shared_math::stark::triton::proof_item::{Item, StarkProofStream};
-use crate::shared_math::stark::triton::state::DIGEST_LEN;
-use crate::shared_math::stark::triton::table::challenges_endpoints::{AllChallenges, AllEndpoints};
-use crate::shared_math::stark::triton::table::table_collection::{
-    BaseTableCollection, ExtTableCollection, NUM_TABLES,
-};
-use crate::shared_math::stark::triton::triton_xfri;
-use crate::shared_math::traits::{
-    GetPrimitiveRootOfUnity, GetRandomElements, Inverse, ModPowU32, PrimeField,
-};
-use crate::shared_math::x_field_element::XFieldElement;
-use crate::timing_reporter::TimingReporter;
-use crate::util_types::merkle_tree::MerkleTree;
-use crate::util_types::simple_hasher::{Hasher, ToDigest};
+use crate::arguments::evaluation_argument::verify_evaluation_argument;
+use crate::arguments::permutation_argument::PermArg;
+use crate::fri_domain::FriDomain;
+use crate::proof_item::{Item, StarkProofStream};
+use crate::state::DIGEST_LEN;
+use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
+use crate::triton_xfri::{self, Fri};
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use std::collections::HashMap;
+use std::error::Error;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::other;
+use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::rescue_prime_xlix::{
+    self, RescuePrimeXlix, RP_DEFAULT_OUTPUT_SIZE, RP_DEFAULT_WIDTH,
+};
+use twenty_first::shared_math::stark::stark_verify_error::StarkVerifyError;
+use twenty_first::shared_math::traits::{
+    GetPrimitiveRootOfUnity, GetRandomElements, Inverse, ModPowU32, PrimeField,
+};
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::timing_reporter::TimingReporter;
+use twenty_first::util_types::merkle_tree::MerkleTree;
+use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -43,8 +40,8 @@ pub struct Stark {
     num_randomizer_polynomials: usize,
     security_level: usize,
     max_degree: Degree,
-    bfri_domain: triton::fri_domain::FriDomain<BWord>,
-    xfri: triton_xfri::Fri<StarkHasher>,
+    bfri_domain: FriDomain<BWord>,
+    xfri: Fri<StarkHasher>,
     input_symbols: Vec<BWord>,
     output_symbols: Vec<BWord>,
 }
@@ -94,7 +91,7 @@ impl Stark {
             .0
             .unwrap();
 
-        let bfri_domain = triton::fri_domain::FriDomain {
+        let bfri_domain = FriDomain {
             offset: co_set_fri_offset,
             omega,
             length: fri_domain_length as usize,
@@ -996,16 +993,16 @@ impl Stark {
 #[cfg(test)]
 pub(crate) mod triton_stark_tests {
     use super::*;
-    use crate::shared_math::mpolynomial::MPolynomial;
-    use crate::shared_math::ntt::ntt;
-    use crate::shared_math::other::log_2_floor;
-    use crate::shared_math::stark::triton::arguments::evaluation_argument;
-    use crate::shared_math::stark::triton::instruction::sample_programs;
-    use crate::shared_math::stark::triton::stdio::VecStream;
-    use crate::shared_math::stark::triton::table::base_table;
-    use crate::shared_math::stark::triton::vm::Program;
-    use crate::shared_math::traits::PrimeField;
-    use crate::util_types::proof_stream_typed::ProofStream;
+    use crate::arguments::evaluation_argument;
+    use crate::instruction::sample_programs;
+    use crate::stdio::VecStream;
+    use crate::table::base_table;
+    use crate::vm::Program;
+    use twenty_first::shared_math::mpolynomial::MPolynomial;
+    use twenty_first::shared_math::ntt::ntt;
+    use twenty_first::shared_math::other::log_2_floor;
+    use twenty_first::shared_math::traits::PrimeField;
+    use twenty_first::util_types::proof_stream_typed::ProofStream;
 
     pub(crate) fn dummy_challenges_initials() -> (AllChallenges, AllEndpoints) {
         let hasher = StarkHasher::new();

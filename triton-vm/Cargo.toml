@@ -1,0 +1,105 @@
+[package]
+name = "triton-vm"
+version = "0.1.0"
+edition = "2021"
+authors = ["Triton Software AG"]
+
+license = "Apache-2.0"
+description = "A virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR) for use in combination with a STARK proof system to allow proving correct execution of arbitrary programs in zero-knowledge."
+homepage = "https://triton-vm.org/"
+documentation = "https://github.com/TritonVM/triton-vm/tree/master/specification"
+repository = "https://github.com/TritonVM/triton-vm"
+readme = "README.md"
+
+keywords = ["zero-knowledge", "STARK", "virtual-machine", "recursive"]
+categories = ["cryptography", "mathematics"]
+
+[dev-dependencies]
+proptest = "1.0"
+
+[dev-dependencies.criterion]
+version = "0.3"
+features = ["html_reports"]
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+
+[dependencies]
+# twenty-first = { git = "ssh://git@neptune.builders:2222/core-team/twenty-first.git", rev = "af2754ea8d911f13967ca935939190ae25a4085c", package = "twenty-first" }
+twenty-first = { path = "../../twenty-first/twenty-first" }
+anyhow = "1.0"
+bincode = "1.3"
+blake3 = "1.2"
+byteorder = "1.4"
+console = "0"
+colored = "2.0"
+hashbrown = "0.12"
+itertools = "0.10"
+nom = "7.1"
+num-bigint = { version = "0.4", features = ["serde"] }
+num-traits = "0.2"
+parity-scale-codec = "3"
+paw = "1.0"
+phf = { version = "0.10", features = ["macros"] }
+primitive-types = { version = "0.11", features = ["serde"] }
+rand = "0.8"
+rand_chacha = "0"
+rand_core = "0"
+rand_distr = "0.4"
+rand_pcg = "0.3"
+rayon = "1.5"
+ring = "0.16"
+rusty-leveldb = "1"
+serde = { version = "1.0", features = ["derive"] }
+serde-big-array = "0"
+serde_derive = "1"
+serde_json = "1.0"
+serde_with = "1"
+structopt = { version = "0.3", features = ["paw"] }
+
+[profile.dev]
+opt-level = 0
+debug = true
+#split-debuginfo = '...'
+debug-assertions = true
+overflow-checks = true
+lto = false
+panic = 'unwind'
+incremental = true
+codegen-units = 256
+rpath = false
+
+[profile.release]
+opt-level = 3
+debug = false
+#split-debuginfo = '...'
+debug-assertions = false
+overflow-checks = false
+lto = false
+panic = 'unwind'
+incremental = false
+codegen-units = 16
+rpath = false
+
+[profile.test]
+opt-level = 3
+debug = true
+#split-debuginfo = '...'
+debug-assertions = true
+overflow-checks = false
+lto = false
+incremental = true
+codegen-units = 256
+rpath = false
+
+[profile.bench]
+opt-level = 3
+debug = false
+#split-debuginfo = '...'
+debug-assertions = false
+overflow-checks = false
+lto = false
+incremental = false
+codegen-units = 16
+rpath = false

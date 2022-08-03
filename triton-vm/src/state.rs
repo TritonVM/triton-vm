@@ -6,17 +6,17 @@ use super::stdio::InputStream;
 use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table, u32_op_table};
 use super::table::{processor_table, ram_table};
 use super::vm::Program;
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::other;
-use crate::shared_math::rescue_prime_xlix::RescuePrimeXlix;
-use crate::shared_math::stark::triton::error::vm_err;
-use crate::shared_math::stark::triton::table::base_matrix::ProcessorMatrixRow;
-use crate::shared_math::traits::{IdentityValues, Inverse};
-use crate::shared_math::x_field_element::XFieldElement;
+use crate::error::vm_err;
+use crate::table::base_matrix::ProcessorMatrixRow;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::Display;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::other;
+use twenty_first::shared_math::rescue_prime_xlix::RescuePrimeXlix;
+use twenty_first::shared_math::traits::{IdentityValues, Inverse};
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -799,9 +799,9 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 mod vm_state_tests {
-    use super::super::op_stack::OP_STACK_REG_COUNT;
     use super::*;
-    use crate::shared_math::stark::triton::instruction::sample_programs;
+    use crate::instruction::sample_programs;
+    use crate::op_stack::OP_STACK_REG_COUNT;
 
     // Property: All instructions increase the cycle count by 1.
     // Property: Most instructions increase the instruction pointer by 1.

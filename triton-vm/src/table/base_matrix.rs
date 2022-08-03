@@ -6,20 +6,18 @@ use super::{
     hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
     program_table, ram_table, u32_op_table,
 };
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::stark::triton::instruction::AnInstruction::*;
-use crate::shared_math::stark::triton::instruction::Instruction;
-use crate::shared_math::stark::triton::state::{VMOutput, VMState};
-use crate::shared_math::stark::triton::table::table_column::ExtProcessorTableColumn::*;
-use crate::shared_math::stark::triton::table::table_column::RamTableColumn::{
-    InverseOfRampDifference, RAMP,
-};
-use crate::shared_math::stark::triton::vm::Program;
-use crate::shared_math::traits::IdentityValues;
-use crate::shared_math::traits::Inverse;
-use crate::shared_math::x_field_element::XFieldElement;
+use crate::instruction::AnInstruction::*;
+use crate::instruction::Instruction;
+use crate::state::{VMOutput, VMState};
+use crate::table::table_column::ExtProcessorTableColumn::*;
+use crate::table::table_column::RamTableColumn::{InverseOfRampDifference, RAMP};
+use crate::vm::Program;
 use itertools::Itertools;
 use std::fmt::{Display, Formatter};
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::traits::IdentityValues;
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone, Default)]
 pub struct BaseMatrices {

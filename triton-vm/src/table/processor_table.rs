@@ -1,18 +1,16 @@
-use super::base_table::{self, BaseTable, HasBaseTable, Table};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
-use super::table_column::ProcessorTableColumn::{self, *};
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::mpolynomial::MPolynomial;
-use crate::shared_math::stark::triton::fri_domain::FriDomain;
-use crate::shared_math::stark::triton::instruction::{
-    all_instructions_without_args, AnInstruction::*, Instruction,
-};
-use crate::shared_math::stark::triton::ord_n::Ord6;
-use crate::shared_math::stark::triton::state::DIGEST_LEN;
-use crate::shared_math::x_field_element::XFieldElement;
+use crate::fri_domain::FriDomain;
+use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
+use crate::ord_n::Ord6;
+use crate::state::DIGEST_LEN;
+use crate::table::base_table::{self, BaseTable, HasBaseTable, Table};
+use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+use crate::table::extension_table::ExtensionTable;
+use crate::table::table_column::ProcessorTableColumn::{self, *};
 use itertools::Itertools;
 use std::collections::HashMap;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub const PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 9;
 pub const PROCESSOR_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 4;
@@ -2450,11 +2448,11 @@ impl InstructionDeselectors {
 #[cfg(test)]
 mod constraint_polynomial_tests {
     use super::*;
-    use crate::shared_math::stark::triton::ord_n::Ord16;
-    use crate::shared_math::stark::triton::table::base_matrix::ProcessorMatrixRow;
-    use crate::shared_math::stark::triton::table::processor_table;
-    use crate::shared_math::stark::triton::vm::Program;
-    use crate::shared_math::traits::IdentityValues;
+    use crate::ord_n::Ord16;
+    use crate::table::base_matrix::ProcessorMatrixRow;
+    use crate::table::processor_table;
+    use crate::vm::Program;
+    use twenty_first::shared_math::traits::IdentityValues;
 
     #[test]
     /// helps identifying whether the printing causes an infinite loop

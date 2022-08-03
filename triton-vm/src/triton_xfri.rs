@@ -1,14 +1,4 @@
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::ntt::intt;
-use crate::shared_math::other::{log_2_ceil, log_2_floor};
-use crate::shared_math::polynomial::Polynomial;
-use crate::shared_math::stark::triton::proof_item::{Item, StarkProofStream};
-use crate::shared_math::traits::{CyclicGroupGenerator, ModPowU32};
-use crate::shared_math::traits::{IdentityValues, PrimeField};
-use crate::shared_math::x_field_element::XFieldElement;
-use crate::timing_reporter::TimingReporter;
-use crate::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
-use crate::util_types::simple_hasher::{Hasher, ToDigest};
+use crate::proof_item::{Item, StarkProofStream};
 use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -16,6 +6,16 @@ use rayon::iter::{
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::ntt::intt;
+use twenty_first::shared_math::other::{log_2_ceil, log_2_floor};
+use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::traits::{CyclicGroupGenerator, ModPowU32};
+use twenty_first::shared_math::traits::{IdentityValues, PrimeField};
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::timing_reporter::TimingReporter;
+use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
+use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
 
 use super::fri_domain::FriDomain;
 
@@ -495,17 +495,17 @@ where
 #[cfg(test)]
 mod triton_xfri_tests {
     use super::*;
-    use crate::shared_math::b_field_element::BFieldElement;
-    use crate::shared_math::rescue_prime_xlix::{
-        RescuePrimeXlix, RP_DEFAULT_OUTPUT_SIZE, RP_DEFAULT_WIDTH,
-    };
-    use crate::shared_math::traits::GetPrimitiveRootOfUnity;
-    use crate::shared_math::traits::{CyclicGroupGenerator, ModPowU32};
-    use crate::shared_math::x_field_element::XFieldElement;
-    use crate::util_types::simple_hasher::{RescuePrimeProduction, ToDigest};
-    use crate::utils::has_unique_elements;
     use itertools::Itertools;
     use rand::{thread_rng, RngCore};
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::rescue_prime_xlix::{
+        RescuePrimeXlix, RP_DEFAULT_OUTPUT_SIZE, RP_DEFAULT_WIDTH,
+    };
+    use twenty_first::shared_math::traits::GetPrimitiveRootOfUnity;
+    use twenty_first::shared_math::traits::{CyclicGroupGenerator, ModPowU32};
+    use twenty_first::shared_math::x_field_element::XFieldElement;
+    use twenty_first::util_types::simple_hasher::{RescuePrimeProduction, ToDigest};
+    use twenty_first::utils::has_unique_elements;
 
     #[test]
     fn sample_indices_test() {

@@ -2,12 +2,12 @@ use super::base_table::{self, BaseTable, HasBaseTable, Table};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
 use super::table_column::OpStackTableColumn;
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::mpolynomial::MPolynomial;
-use crate::shared_math::stark::triton::fri_domain::FriDomain;
-use crate::shared_math::stark::triton::instruction::{AnInstruction, Instruction};
-use crate::shared_math::x_field_element::XFieldElement;
+use crate::fri_domain::FriDomain;
+use crate::instruction::{AnInstruction, Instruction};
 use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub const OP_STACK_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
 pub const OP_STACK_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;

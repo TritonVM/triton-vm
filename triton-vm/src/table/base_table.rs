@@ -1,14 +1,14 @@
 use super::super::fri_domain::FriDomain;
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::mpolynomial::Degree;
-use crate::shared_math::other::{is_power_of_two, roundup_npo2};
-use crate::shared_math::polynomial::Polynomial;
-use crate::shared_math::traits::{GetRandomElements, PrimeField};
-use crate::shared_math::x_field_element::XFieldElement;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::cmp::max;
 use std::ops::Range;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
+use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::traits::{GetRandomElements, PrimeField};
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -268,8 +268,8 @@ where
 
 #[cfg(test)]
 mod test_base_table {
-    use crate::shared_math::other;
-    use crate::shared_math::stark::triton::table::base_table::pad_height;
+    use crate::table::base_table::pad_height;
+    use twenty_first::shared_math::other;
 
     #[ignore]
     #[test]

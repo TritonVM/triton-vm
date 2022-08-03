@@ -10,13 +10,13 @@ use super::processor_table::{ExtProcessorTable, ProcessorTable};
 use super::program_table::{ExtProgramTable, ProgramTable};
 use super::ram_table::{ExtRamTable, RamTable};
 use super::u32_op_table::{ExtU32OpTable, U32OpTable};
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::mpolynomial::Degree;
-use crate::shared_math::stark::triton::fri_domain::FriDomain;
-use crate::shared_math::stark::triton::table::base_table::HasBaseTable;
-use crate::shared_math::x_field_element::XFieldElement;
-use crate::timing_reporter::TimingReporter;
+use crate::fri_domain::FriDomain;
+use crate::table::base_table::HasBaseTable;
 use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::timing_reporter::TimingReporter;
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -473,8 +473,8 @@ impl<'a> IntoIterator for &'a ExtTableCollection {
 #[cfg(test)]
 mod table_collection_tests {
     use super::*;
-    use crate::shared_math::stark::triton::stark;
-    use crate::shared_math::stark::triton::table::{
+    use crate::stark;
+    use crate::table::{
         hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
         program_table, ram_table, u32_op_table,
     };

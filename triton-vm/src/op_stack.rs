@@ -1,8 +1,8 @@
 use super::error::{vm_fail, InstructionError::*};
 use super::ord_n::{Ord16, Ord16::*};
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::x_field_element::XFieldElement;
 use std::error::Error;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;

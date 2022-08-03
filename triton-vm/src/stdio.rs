@@ -1,8 +1,8 @@
-use crate::shared_math::b_field_element::BFieldElement;
 use byteorder::{BigEndian, ReadBytesExt};
 use itertools::Itertools;
 use std::io::{Cursor, Error, Write};
 use std::io::{Stdin, Stdout};
+use twenty_first::shared_math::b_field_element::BFieldElement;
 
 pub trait InputStream {
     fn read_elem(&mut self) -> Result<BFieldElement, Error>;

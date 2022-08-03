@@ -1,14 +1,14 @@
-use crate::shared_math::mpolynomial::Degree;
-use crate::shared_math::stark::triton::fri_domain::FriDomain;
-use crate::shared_math::stark::triton::table::processor_table::PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
-use crate::shared_math::stark::triton::table::table_collection::{ExtTableCollection, TableId};
-use crate::shared_math::stark::triton::table::table_column::{
+use crate::fri_domain::FriDomain;
+use crate::table::processor_table::PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
+use crate::table::table_collection::{ExtTableCollection, TableId};
+use crate::table::table_column::{
     ExtInstructionTableColumn, ExtJumpStackTableColumn, ExtOpStackTableColumn,
     ExtProcessorTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
 };
-use crate::shared_math::traits::PrimeField;
-use crate::shared_math::x_field_element::XFieldElement;
 use itertools::{izip, Itertools};
+use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::traits::PrimeField;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub struct PermArg {
     from_table: TableId,

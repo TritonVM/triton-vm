@@ -1,10 +1,10 @@
 use super::ord_n::{Ord16, Ord16::*, Ord6};
-use crate::shared_math::b_field_element::BFieldElement;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::ops::Neg;
 use std::str::SplitWhitespace;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use AnInstruction::*;
 use TokenError::*;
 
@@ -1069,12 +1069,11 @@ terminate: pop
 
 #[cfg(test)]
 mod instruction_tests {
-    use super::super::vm::Program;
-    use super::sample_programs;
-    use super::{all_instructions_without_args, parse};
-    use crate::shared_math::stark::triton::instruction::all_labelled_instructions_with_args;
-    use crate::shared_math::stark::triton::ord_n::Ord6;
-    use crate::shared_math::traits::IdentityValues;
+    use super::{all_instructions_without_args, parse, sample_programs};
+    use crate::instruction::all_labelled_instructions_with_args;
+    use crate::ord_n::Ord6;
+    use crate::vm::Program;
+    use twenty_first::shared_math::traits::IdentityValues;
 
     #[test]
     fn parse_display_push_pop_test() {

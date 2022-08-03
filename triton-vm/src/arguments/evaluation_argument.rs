@@ -1,5 +1,5 @@
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub fn verify_evaluation_argument(
     symbols: &[BFieldElement],

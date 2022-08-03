@@ -1,10 +1,10 @@
 use super::table::challenges_endpoints::AllEndpoints;
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::rescue_prime_xlix::{RescuePrimeXlix, RP_DEFAULT_WIDTH};
-use crate::shared_math::x_field_element::XFieldElement;
-use crate::util_types::merkle_tree::PartialAuthenticationPath;
-use crate::util_types::proof_stream_typed::{ProofStream, ProofStreamError};
 use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_xlix::{RescuePrimeXlix, RP_DEFAULT_WIDTH};
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
+use twenty_first::util_types::proof_stream_typed::{ProofStream, ProofStreamError};
 
 pub type StarkProofStream = ProofStream<Item, RescuePrimeXlix<RP_DEFAULT_WIDTH>>;
 

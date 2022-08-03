@@ -745,7 +745,7 @@ impl Bounded for ExtU32OpTableColumn {
 
 #[cfg(test)]
 mod table_column_tests {
-    use crate::shared_math::stark::triton::table::{
+    use crate::table::{
         hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
         program_table, ram_table, u32_op_table,
     };

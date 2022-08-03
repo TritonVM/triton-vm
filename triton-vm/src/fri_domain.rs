@@ -1,7 +1,7 @@
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::polynomial::Polynomial;
-use crate::shared_math::traits::PrimeField;
-use crate::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::traits::PrimeField;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct FriDomain<PF>
@@ -53,10 +53,9 @@ pub fn lift_domain(domain: &FriDomain<BFieldElement>) -> FriDomain<XFieldElement
 #[cfg(test)]
 mod fri_domain_tests {
     use super::*;
-    use crate::shared_math::{
-        b_field_element::BFieldElement, stark::triton::fri_domain::lift_domain,
-        traits::GetPrimitiveRootOfUnity, x_field_element::XFieldElement,
-    };
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::traits::GetPrimitiveRootOfUnity;
+    use twenty_first::shared_math::x_field_element::XFieldElement;
 
     #[test]
     fn x_values_test() {

@@ -1,14 +1,14 @@
-use super::instruction;
-use super::instruction::{parse, Instruction, LabelledInstruction};
-use super::state::{VMOutput, VMState, STATE_REGISTER_COUNT};
-use super::stdio::{InputStream, OutputStream, VecStream};
-use super::table::base_matrix::BaseMatrices;
-use crate::shared_math::b_field_element::BFieldElement;
-use crate::shared_math::rescue_prime_xlix::{neptune_params, RescuePrimeXlix};
+use crate::instruction;
+use crate::instruction::{parse, Instruction, LabelledInstruction};
+use crate::state::{VMOutput, VMState, STATE_REGISTER_COUNT};
+use crate::stdio::{InputStream, OutputStream, VecStream};
+use crate::table::base_matrix::BaseMatrices;
 use itertools::Itertools;
 use std::error::Error;
 use std::fmt::Display;
 use std::io::Cursor;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_xlix::{neptune_params, RescuePrimeXlix};
 
 type BWord = BFieldElement;
 
@@ -245,20 +245,18 @@ mod triton_vm_tests {
     use std::iter::zip;
 
     use super::*;
-    use crate::shared_math::mpolynomial::MPolynomial;
-    use crate::shared_math::other;
-    use crate::shared_math::rescue_prime_xlix::RP_DEFAULT_WIDTH;
-    use crate::shared_math::stark::triton::instruction::sample_programs;
-    use crate::shared_math::stark::triton::table::base_matrix::ProcessorMatrixRow;
-    use crate::shared_math::stark::triton::table::base_table::{HasBaseTable, Table};
-    use crate::shared_math::stark::triton::table::challenges_endpoints::{
-        AllChallenges, AllEndpoints,
-    };
-    use crate::shared_math::stark::triton::table::extension_table::ExtensionTable;
-    use crate::shared_math::stark::triton::table::processor_table::ProcessorTable;
-    use crate::shared_math::traits::IdentityValues;
-    use crate::shared_math::x_field_element::XFieldElement;
-    use crate::util_types::simple_hasher::{Hasher, ToDigest};
+    use crate::instruction::sample_programs;
+    use crate::table::base_matrix::ProcessorMatrixRow;
+    use crate::table::base_table::{HasBaseTable, Table};
+    use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+    use crate::table::extension_table::ExtensionTable;
+    use crate::table::processor_table::ProcessorTable;
+    use twenty_first::shared_math::mpolynomial::MPolynomial;
+    use twenty_first::shared_math::other;
+    use twenty_first::shared_math::rescue_prime_xlix::RP_DEFAULT_WIDTH;
+    use twenty_first::shared_math::traits::IdentityValues;
+    use twenty_first::shared_math::x_field_element::XFieldElement;
+    use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
 
     #[test]
     fn initialise_table_test() {
