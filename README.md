@@ -34,14 +34,12 @@ Triton VM is specifically designed to allow fast recursive verification.
 
 ## Project Status
 
-Triton VM is currently (2022-08-02) in active development.
-The code implementing the specification contained in this repository is not yet publicly available, a matter that we foresee changing in the next few days.
-The implementation is written in rust.
-It will be published in this repository, and subject to the same [license](./LICENSE) as the specification.
+Triton VM is still under construction.
+We currently don't recommend using it in production.
 
 Please note that the [Instruction Set Architecture](./specification/isa.md) is not to be considered final.
 However, we don't currently foresee big changes.
 
 For the time being, issues are only being tracked internally.
-This will also change once the code is published.
+This will change within the next few days.
 In the meantime, please feel free to [contact the authors](mailto:ferdinand@neptune.cash).
