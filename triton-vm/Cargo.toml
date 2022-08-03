@@ -27,7 +27,8 @@ default-features = false
 
 [dependencies]
 # twenty-first = { git = "ssh://git@neptune.builders:2222/core-team/twenty-first.git", rev = "af2754ea8d911f13967ca935939190ae25a4085c", package = "twenty-first" }
-twenty-first = { path = "../../twenty-first/twenty-first" }
+twenty-first = { git = "ssh://git@github.com:22/Neptune-Crypto/twenty-first.git", rev = "3ca19430a77835229c7e64c8a293358671725457", package = "twenty-first" }
+# twenty-first = { path = "../../twenty-first/twenty-first" }
 anyhow = "1.0"
 bincode = "1.3"
 blake3 = "1.2"
