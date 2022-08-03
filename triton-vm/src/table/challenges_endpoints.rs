@@ -7,9 +7,9 @@ use super::processor_table::{ProcessorTableChallenges, ProcessorTableEndpoints};
 use super::program_table::{ProgramTableChallenges, ProgramTableEndpoints};
 use super::ram_table::{RamTableChallenges, RamTableEndpoints};
 use super::u32_op_table::{U32OpTableChallenges, U32OpTableEndpoints};
+use crate::state::DIGEST_LEN;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::stark::triton::state::DIGEST_LEN;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone)]
