@@ -183,10 +183,10 @@ impl Stark {
         proof_stream.enqueue(&Item::Terminals(all_terminals.clone()));
         timer.elapsed("extension_tree");
 
-        let base_degree_bounds = base_tables.get_base_column_degree_bounds();
+        let base_degree_bounds = base_tables.get_base_degree_bounds();
         timer.elapsed("Calculated base degree bounds");
 
-        let extension_degree_bounds = ext_tables.get_extension_column_degree_bounds();
+        let extension_degree_bounds = ext_tables.get_extension_degree_bounds();
         timer.elapsed("Calculated extension degree bounds");
 
         let mut quotient_codewords = ext_codeword_tables.get_all_quotients(
@@ -637,7 +637,7 @@ impl Stark {
         let base_degree_bounds: Vec<Degree> = ext_table_collection.get_all_base_degree_bounds();
         timer.elapsed("Calculated base degree bounds");
 
-        let extension_degree_bounds = ext_table_collection.get_extension_column_degree_bounds();
+        let extension_degree_bounds = ext_table_collection.get_extension_degree_bounds();
         timer.elapsed("Calculated extension degree bounds");
 
         let quotient_degree_bounds = ext_table_collection

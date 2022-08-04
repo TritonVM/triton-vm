@@ -142,7 +142,7 @@ impl BaseTableCollection {
             .concat()
     }
 
-    pub fn get_base_column_degree_bounds(&self) -> Vec<Degree> {
+    pub fn get_base_degree_bounds(&self) -> Vec<Degree> {
         self.into_iter()
             .map(|table| vec![table.interpolant_degree(); table.base_width()])
             .concat()
@@ -400,7 +400,7 @@ impl ExtTableCollection {
             .concat()
     }
 
-    pub fn get_extension_column_degree_bounds(&self) -> Vec<i64> {
+    pub fn get_extension_degree_bounds(&self) -> Vec<i64> {
         self.into_iter()
             .map(|ext_table| {
                 vec![
