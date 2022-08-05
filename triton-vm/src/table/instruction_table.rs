@@ -1,5 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
 use super::table_collection::TableId;
 use super::table_column::InstructionTableColumn::{self, *};
@@ -119,6 +120,40 @@ impl ExtInstructionTable {
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
+    }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> Self {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let base = BaseTable::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtInstructionTable".to_string(),
+            TableId::InstructionTable,
+        );
+        let table = BaseTable::extension(
+            base,
+            ExtInstructionTable::ext_boundary_constraints(
+                &all_challenges.instruction_table_challenges,
+            ),
+            ExtInstructionTable::ext_transition_constraints(
+                &all_challenges.instruction_table_challenges,
+            ),
+            ExtInstructionTable::ext_terminal_constraints(
+                &all_challenges.instruction_table_challenges,
+                &all_terminals.instruction_table_endpoints,
+            ),
+        );
+
+        ExtInstructionTable { base: table }
     }
 }
 

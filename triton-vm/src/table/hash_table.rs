@@ -353,6 +353,36 @@ impl ExtHashTable {
         let base = self.base.with_data(all_codewords);
         ExtHashTable { base }
     }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> Self {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let base = BaseTable::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtHashTable".to_string(),
+            TableId::HashTable,
+        );
+        let table = BaseTable::extension(
+            base,
+            ExtHashTable::ext_boundary_constraints(&all_challenges.hash_table_challenges),
+            ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
+            ExtHashTable::ext_terminal_constraints(
+                &all_challenges.hash_table_challenges,
+                &all_terminals.hash_table_endpoints,
+            ),
+        );
+
+        ExtHashTable { base: table }
+    }
 }
 
 #[derive(Debug, Clone)]

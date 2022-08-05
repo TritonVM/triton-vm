@@ -633,7 +633,7 @@ impl Stark {
 
         let ext_table_collection =
             // ExtTableCollection::with_padded_heights(self.num_trace_randomizers, &padded_heights);
-            ExtTableCollection::for_verifier(self.num_trace_randomizers, &padded_heights, extension_challenges, all_terminals);
+            ExtTableCollection::for_verifier(self.num_trace_randomizers, &padded_heights, &extension_challenges, &all_terminals);
 
         let base_degree_bounds: Vec<Degree> = ext_table_collection.get_all_base_degree_bounds();
         timer.elapsed("Calculated base degree bounds");
@@ -968,9 +968,13 @@ impl Stark {
         if !verify_evaluation_argument(
             &self.input_symbols,
             extension_challenges
+                .clone()
                 .processor_table_challenges
                 .input_table_eval_row_weight,
-            all_terminals.processor_table_endpoints.input_table_eval_sum,
+            all_terminals
+                .clone()
+                .processor_table_endpoints
+                .input_table_eval_sum,
         ) {
             return Err(Box::new(StarkVerifyError::EvaluationArgument(0)));
         }
@@ -978,9 +982,11 @@ impl Stark {
         if !verify_evaluation_argument(
             &self.output_symbols,
             extension_challenges
+                .clone()
                 .processor_table_challenges
                 .output_table_eval_row_weight,
             all_terminals
+                .clone()
                 .processor_table_endpoints
                 .output_table_eval_sum,
         ) {

@@ -293,6 +293,40 @@ impl ExtJumpStackTable {
         let base = self.base.with_data(all_codewords);
         ExtJumpStackTable { base }
     }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> Self {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let base = BaseTable::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtJumpStackTable".to_string(),
+            TableId::JumpStackTable,
+        );
+        let table = BaseTable::extension(
+            base,
+            ExtJumpStackTable::ext_boundary_constraints(
+                &all_challenges.jump_stack_table_challenges,
+            ),
+            ExtJumpStackTable::ext_transition_constraints(
+                &all_challenges.jump_stack_table_challenges,
+            ),
+            ExtJumpStackTable::ext_terminal_constraints(
+                &all_challenges.jump_stack_table_challenges,
+                &all_terminals.jump_stack_table_endpoints,
+            ),
+        );
+
+        ExtJumpStackTable { base: table }
+    }
 }
 
 #[derive(Debug, Clone)]

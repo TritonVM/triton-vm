@@ -223,34 +223,66 @@ impl ExtTableCollection {
     pub fn for_verifier(
         num_trace_randomizers: usize,
         padded_heights: &[usize],
-        challenges: AllChallenges,
-        terminals: AllEndpoints,
+        challenges: &AllChallenges,
+        terminals: &AllEndpoints,
     ) -> Self {
         // TODO: integrate challenges and terminals
 
-        let ext_program_table =
-            ExtProgramTable::with_padded_height(num_trace_randomizers, padded_heights[0]);
+        let ext_program_table = ExtProgramTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[0],
+            &challenges,
+            &terminals,
+        );
 
-        let ext_instruction_table =
-            ExtInstructionTable::with_padded_height(num_trace_randomizers, padded_heights[1]);
+        let ext_instruction_table = ExtInstructionTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[1],
+            &challenges,
+            &terminals,
+        );
 
-        let ext_processor_table =
-            ExtProcessorTable::with_padded_height(num_trace_randomizers, padded_heights[2]);
+        let ext_processor_table = ExtProcessorTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[2],
+            &challenges,
+            &terminals,
+        );
 
-        let ext_op_stack_table =
-            ExtOpStackTable::with_padded_height(num_trace_randomizers, padded_heights[3]);
+        let ext_op_stack_table = ExtOpStackTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[3],
+            &challenges,
+            &terminals,
+        );
 
-        let ext_ram_table =
-            ExtRamTable::with_padded_height(num_trace_randomizers, padded_heights[4]);
+        let ext_ram_table = ExtRamTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[4],
+            &challenges,
+            &terminals,
+        );
 
-        let ext_jump_stack_table =
-            ExtJumpStackTable::with_padded_height(num_trace_randomizers, padded_heights[5]);
+        let ext_jump_stack_table = ExtJumpStackTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[5],
+            &challenges,
+            &terminals,
+        );
 
-        let ext_hash_table =
-            ExtHashTable::with_padded_height(num_trace_randomizers, padded_heights[6]);
+        let ext_hash_table = ExtHashTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[6],
+            &challenges,
+            &terminals,
+        );
 
-        let ext_u32_op_table =
-            ExtU32OpTable::with_padded_height(num_trace_randomizers, padded_heights[7]);
+        let ext_u32_op_table = ExtU32OpTable::for_verifier(
+            num_trace_randomizers,
+            padded_heights[7],
+            &challenges,
+            &terminals,
+        );
 
         ExtTableCollection {
             program_table: ext_program_table,

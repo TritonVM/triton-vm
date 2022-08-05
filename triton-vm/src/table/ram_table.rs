@@ -274,6 +274,36 @@ impl ExtRamTable {
         // no further constraints
         vec![]
     }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> Self {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let base = BaseTable::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtRamTable".to_string(),
+            TableId::RamTable,
+        );
+        let table = BaseTable::extension(
+            base,
+            ExtRamTable::ext_boundary_constraints(&all_challenges.ram_table_challenges),
+            ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
+            ExtRamTable::ext_terminal_constraints(
+                &all_challenges.ram_table_challenges,
+                &all_terminals.ram_table_endpoints,
+            ),
+        );
+
+        ExtRamTable { base: table }
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -806,6 +806,38 @@ impl ExtProcessorTable {
 
         vec![last_ci_is_halt]
     }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> Self {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let base = BaseTable::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtProcessorTable".to_string(),
+            TableId::ProcessorTable,
+        );
+        let table = BaseTable::extension(
+            base,
+            ExtProcessorTable::ext_boundary_constraints(&all_challenges.processor_table_challenges),
+            ExtProcessorTable::ext_transition_constraints(
+                &all_challenges.processor_table_challenges,
+            ),
+            ExtProcessorTable::ext_terminal_constraints(
+                &all_challenges.processor_table_challenges,
+                &all_terminals.processor_table_endpoints,
+            ),
+        );
+
+        ExtProcessorTable { base: table }
+    }
 }
 
 #[derive(Debug, Clone)]

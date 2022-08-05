@@ -1,4 +1,5 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
 use super::table_collection::TableId;
 use super::table_column::OpStackTableColumn;
@@ -283,6 +284,36 @@ impl ExtOpStackTable {
 
         let base = self.base.with_data(all_codewords);
         ExtOpStackTable { base }
+    }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> Self {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let base = BaseTable::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtOpStackTable".to_string(),
+            TableId::OpStackTable,
+        );
+        let table = BaseTable::extension(
+            base,
+            ExtOpStackTable::ext_boundary_constraints(&all_challenges.op_stack_table_challenges),
+            ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
+            ExtOpStackTable::ext_terminal_constraints(
+                &all_challenges.op_stack_table_challenges,
+                &all_terminals.op_stack_table_endpoints,
+            ),
+        );
+
+        ExtOpStackTable { base: table }
     }
 }
 

@@ -1,4 +1,5 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
 use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
@@ -254,6 +255,36 @@ impl ExtU32OpTable {
 
         let base = self.base.with_data(all_codewords);
         ExtU32OpTable { base }
+    }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> Self {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let base = BaseTable::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtU32OpTable".to_string(),
+            TableId::U32OpTable,
+        );
+        let table = BaseTable::extension(
+            base,
+            ExtU32OpTable::ext_boundary_constraints(&all_challenges.u32_op_table_challenges),
+            ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
+            ExtU32OpTable::ext_terminal_constraints(
+                &all_challenges.u32_op_table_challenges,
+                &all_terminals.u32_op_table_endpoints,
+            ),
+        );
+
+        ExtU32OpTable { base: table }
     }
 }
 
