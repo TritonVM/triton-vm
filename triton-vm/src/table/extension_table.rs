@@ -1,4 +1,4 @@
-use super::base_table::Table;
+use super::base_table::{BaseTable, BaseTableTrait};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::fri_domain::FriDomain;
 use rayon::iter::{
@@ -14,26 +14,70 @@ use twenty_first::timing_reporter::TimingReporter;
 
 type XWord = XFieldElement;
 
-pub trait ExtensionTable: Table<XWord> + Sync {
-    fn ext_boundary_constraints(&self, challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
+pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
+    /// get boundary constraints if they are set; otherwise compute them, set them, and return them
+    fn get_boundary_constraints(&self) -> Vec<MPolynomial<XWord>> {
+        if let Some(bc) = &self.to_base().boundary_constraints {
+            bc.to_owned()
+        } else {
+            panic!("Do not have boundary constraints! {}", &self.name());
+        }
+    }
 
-    fn ext_consistency_constraints(&self, challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
+    /// get transition constraints if they are set; otherwise compute them, set them, and return them
+    fn get_transition_constraints(&self) -> Vec<MPolynomial<XWord>> {
+        if let Some(tc) = &self.to_base().transition_constraints {
+            tc.to_owned()
+        } else {
+            panic!("Do not have transition constraints! {}", &self.name());
+        }
+    }
 
-    fn ext_transition_constraints(&self, challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
+    fn get_consistency_constraints(&self) -> Vec<MPolynomial<XWord>> {
+        if let Some(cc) = &self.to_base().consistency_constraints {
+            cc.to_owned()
+        } else {
+            panic!("Do not have consistency constraints! {} ", &self.name());
+        }
+    }
 
-    fn ext_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-        terminals: &AllEndpoints,
-    ) -> Vec<MPolynomial<XWord>>;
+    /// get terminal constraints if they are set; otherwise compute them, set them, and return them
+    fn get_terminal_constraints(&self) -> Vec<MPolynomial<XWord>> {
+        if let Some(tc) = &self.to_base().terminal_constraints {
+            tc.to_owned()
+        } else {
+            panic!("Do not have terminal constraints! {}", &self.name());
+        }
+    }
 
+    // /// calculate boundary constraints
+    // fn ext_boundary_constraints(challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
+
+    // /// calculate consistency constraints
+    // fn ext_consistency_constraints(challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
+
+    // /// calculate transition constraints
+    // fn ext_transition_constraints(challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
+
+    // /// calculate terminal constraints
+    // fn ext_terminal_constraints(
+    //     &self,
+    //     challenges: &AllChallenges,
+    //     terminals: &AllEndpoints,
+    // ) -> Vec<MPolynomial<XWord>>;
+
+    /// max_degree
+    /// Compute the degree of the largest-degree quotient from all
+    /// AIR constraints that apply to the table.
+    /// TODO: cover other constraints beyond just transitions
+    /// TODO: work with unset/general terminals
     fn max_degree(&self) -> Degree {
         let degree_bounds: Vec<Degree> = vec![self.interpolant_degree(); self.full_width() * 2];
 
         // 1. Insert dummy challenges
         // 2. Refactor so we can calculate max_degree without specifying challenges
-        //    (and possibly without even calling ext_transition_constraints).
-        self.ext_transition_constraints(&AllChallenges::dummy())
+        //    (and possibly without even calling get_transition_constraints).
+        self.dynamic_transition_constraints(&AllChallenges::dummy())
             .iter()
             .map(|air| {
                 let symbolic_degree_bound: Degree = air.symbolic_degree_bound(&degree_bounds);
@@ -43,7 +87,13 @@ pub trait ExtensionTable: Table<XWord> + Sync {
             })
             .max()
             .unwrap_or(-1)
+        // 12
     }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>>;
 
     fn all_quotient_degree_bounds(
         &self,
@@ -62,7 +112,7 @@ pub trait ExtensionTable: Table<XWord> + Sync {
         let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
 
         let degree_bounds: Vec<Degree> = self
-            .ext_boundary_constraints(challenges)
+            .get_boundary_constraints()
             .iter()
             .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - 1)
             .collect();
@@ -71,17 +121,26 @@ pub trait ExtensionTable: Table<XWord> + Sync {
     }
 
     fn transition_quotient_degree_bounds(&self, challenges: &AllChallenges) -> Vec<Degree> {
-        let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); 2 * self.full_width()];
+        println!("{}", self.name());
+        let mut tr = TimingReporter::start();
 
-        let transition_constraints = self.ext_transition_constraints(challenges);
+        let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); 2 * self.full_width()];
+        tr.elapsed("Got max degrees.");
+
+        let transition_constraints = self.get_transition_constraints();
+        tr.elapsed("Got extension constraints");
 
         // Safe because padded height is at most 2^30.
         let padded_height: Degree = self.padded_height().try_into().unwrap();
+        tr.elapsed("Got padded height");
 
-        transition_constraints
+        let degree_bounds = transition_constraints
             .iter()
             .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - padded_height + 1)
-            .collect::<Vec<Degree>>()
+            .collect::<Vec<Degree>>();
+        tr.elapsed("Got degree bounds");
+        println!("{}", tr.finish());
+        degree_bounds
     }
 
     fn terminal_quotient_degree_bounds(
@@ -90,7 +149,7 @@ pub trait ExtensionTable: Table<XWord> + Sync {
         terminals: &AllEndpoints,
     ) -> Vec<Degree> {
         let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
-        self.ext_terminal_constraints(challenges, terminals)
+        self.get_terminal_constraints()
             .iter()
             .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - 1)
             .collect::<Vec<Degree>>()
@@ -160,7 +219,7 @@ pub trait ExtensionTable: Table<XWord> + Sync {
             .map(|(i, x)| subgroup_zerofier_inverse[i] * (x - omicron_inverse))
             .collect();
         timer.elapsed("Zerofier Inverse");
-        let transition_constraints = self.ext_transition_constraints(challenges);
+        let transition_constraints = self.get_transition_constraints();
         timer.elapsed("Transition Constraints");
 
         let mut quotients: Vec<Vec<XWord>> = vec![];
@@ -230,7 +289,7 @@ pub trait ExtensionTable: Table<XWord> + Sync {
             .collect();
 
         let zerofier_inverse = XWord::batch_inversion(zerofier_codeword);
-        let terminal_constraints = self.ext_terminal_constraints(challenges, terminals);
+        let terminal_constraints = self.get_terminal_constraints();
         let mut quotient_codewords: Vec<Vec<XWord>> = vec![];
         for termc in terminal_constraints.iter() {
             let quotient_codeword: Vec<XWord> = (0..fri_domain.length)
@@ -284,8 +343,7 @@ pub trait ExtensionTable: Table<XWord> + Sync {
 
         let mut quotient_codewords: Vec<Vec<XWord>> = vec![];
 
-        let boundary_constraints: Vec<MPolynomial<XWord>> =
-            self.ext_boundary_constraints(challenges);
+        let boundary_constraints: Vec<MPolynomial<XWord>> = self.get_boundary_constraints();
         let one = XWord::ring_one();
         let zerofier: Vec<XWord> = (0..fri_domain.length)
             .map(|i| fri_domain.domain_value(i as u32) - one)

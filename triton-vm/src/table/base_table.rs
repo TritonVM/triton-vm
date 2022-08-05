@@ -5,7 +5,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::cmp::max;
 use std::ops::Range;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{GetRandomElements, PrimeField};
@@ -14,8 +14,8 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 type BWord = BFieldElement;
 type XWord = XFieldElement;
 
-#[derive(Debug, Clone)]
-pub struct BaseTable<DataPF> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaseTable<FieldElement: PrimeField> {
     /// The width of each `data` row in the base version of the table
     base_width: usize,
 
@@ -29,16 +29,22 @@ pub struct BaseTable<DataPF> {
     num_trace_randomizers: usize,
 
     /// The generator of the ο-domain, which is used to interpolate the trace data.
-    omicron: DataPF,
+    omicron: FieldElement,
 
     /// The table data (trace data). Represents every intermediate
-    matrix: Vec<Vec<DataPF>>,
+    matrix: Vec<Vec<FieldElement>>,
 
     /// The name of the table. Mostly for debugging purpose.
-    name: String,
+    pub(crate) name: String,
 
     /// Table id, for dynamic specializations of statically abtract types
     id: TableId,
+
+    /// AIR constraints, to be populated upon extension
+    pub(crate) boundary_constraints: Option<Vec<MPolynomial<FieldElement>>>,
+    pub(crate) transition_constraints: Option<Vec<MPolynomial<FieldElement>>>,
+    pub(crate) consistency_constraints: Option<Vec<MPolynomial<FieldElement>>>,
+    pub(crate) terminal_constraints: Option<Vec<MPolynomial<FieldElement>>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -62,21 +68,43 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
             matrix,
             name,
             id,
+            boundary_constraints: None,
+            transition_constraints: None,
+            consistency_constraints: None,
+            terminal_constraints: None,
+        }
+    }
+    pub fn extension(
+        base_table: BaseTable<DataPF>,
+        boundary_constraints: Vec<MPolynomial<DataPF>>,
+        transition_constraints: Vec<MPolynomial<DataPF>>,
+        terminal_constraints: Vec<MPolynomial<DataPF>>,
+    ) -> Self {
+        BaseTable {
+            boundary_constraints: Some(boundary_constraints),
+            transition_constraints: Some(transition_constraints),
+            terminal_constraints: Some(terminal_constraints),
+            ..base_table
         }
     }
 
     /// Create a `BaseTable<DataPF>` with the same parameters, but new `matrix` data.
     pub fn with_data(&self, matrix: Vec<Vec<DataPF>>) -> Self {
-        BaseTable::new(
-            self.base_width,
-            self.full_width,
-            self.padded_height,
-            self.num_trace_randomizers,
-            self.omicron,
+        // BaseTable::new(
+        //     self.base_width,
+        //     self.full_width,
+        //     self.padded_height,
+        //     self.num_trace_randomizers,
+        //     self.omicron,
+        //     matrix,
+        //     format!("{} with data", self.name),
+        //     self.id,
+        // )
+        BaseTable {
             matrix,
-            format!("{} with data", self.name),
-            self.id,
-        )
+            name: format!("{} with data", self.name),
+            ..self.to_owned()
+        }
     }
 }
 
@@ -154,7 +182,7 @@ pub fn pad_height(height: usize, num_trace_randomizers: usize) -> usize {
     }
 }
 
-pub trait Table<DataPF>: HasBaseTable<DataPF>
+pub trait BaseTableTrait<DataPF>: HasBaseTable<DataPF>
 where
     // Self: Sized,
     DataPF: PrimeField + GetRandomElements,

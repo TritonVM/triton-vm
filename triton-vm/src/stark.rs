@@ -5,7 +5,6 @@ use crate::fri_domain::FriDomain;
 use crate::proof_item::{Item, StarkProofStream};
 use crate::state::DIGEST_LEN;
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
-use crate::table::extension_table::ExtensionTable;
 use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
 use crate::triton_xfri::{self, Fri};
 use itertools::Itertools;
@@ -13,11 +12,10 @@ use rand::{thread_rng, Rng};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_xlix::{
@@ -634,7 +632,8 @@ impl Stark {
         timer.elapsed("Get extension tree's root & terminals from proof stream");
 
         let ext_table_collection =
-            ExtTableCollection::with_padded_heights(self.num_trace_randomizers, &padded_heights);
+            // ExtTableCollection::with_padded_heights(self.num_trace_randomizers, &padded_heights);
+            ExtTableCollection::for_verifier(self.num_trace_randomizers, &padded_heights, extension_challenges, all_terminals);
 
         let base_degree_bounds: Vec<Degree> = ext_table_collection.get_all_base_degree_bounds();
         timer.elapsed("Calculated base degree bounds");
@@ -784,23 +783,24 @@ impl Stark {
         // ==== verify non-linear combination ====
         // =======================================
 
-        let mut table_boundary_constraints = HashMap::new();
-        let mut table_transition_constraints = HashMap::new();
-        let mut table_terminal_constraints = HashMap::new();
-        for table in ext_table_collection.into_iter() {
-            table_boundary_constraints.insert(
-                table.id(),
-                table.ext_boundary_constraints(&extension_challenges),
-            );
-            table_transition_constraints.insert(
-                table.id(),
-                table.ext_transition_constraints(&extension_challenges),
-            );
-            table_terminal_constraints.insert(
-                table.id(),
-                table.ext_terminal_constraints(&extension_challenges, &all_terminals),
-            );
-        }
+        // let mut table_boundary_constraints = HashMap::new();
+        // let mut table_transition_constraints = HashMap::new();
+        // let mut table_terminal_constraints = HashMap::new();
+        // let mut table_boundary_degree_bounds = HashMap::new();
+        // let mut table_transition_degree_bounds = HashMap::new();
+        // let mut table_terminal_degree_bounds = HashMap::new();
+        // for table in ext_table_collection.into_iter() {
+        //     let constraints = table.get_boundary_constraints(&extension_challenges);
+        //     table_boundary_constraints.insert(table.id(), constraints);
+        //     table_transition_constraints.insert(
+        //         table.id(),
+        //         table.get_transition_constraints(&extension_challenges),
+        //     );
+        //     table_terminal_constraints.insert(
+        //         table.id(),
+        //         table.get_terminal_constraints(&extension_challenges, &all_terminals),
+        //     );
+        // }
 
         let base_offset = self.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
@@ -877,7 +877,8 @@ impl Stark {
 
                 let boundary_degree_bounds =
                     table.boundary_quotient_degree_bounds(&extension_challenges);
-                for (boundary_constraint, degree_bound) in table_boundary_constraints[&table.id()]
+                for (boundary_constraint, degree_bound) in table
+                    .get_boundary_constraints()
                     .iter()
                     .zip_eq(boundary_degree_bounds.iter())
                 {
@@ -890,12 +891,12 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
-                let transition_constraints =
-                    table.ext_transition_constraints(&extension_challenges);
                 let trnstn_deg_bnds =
                     table.transition_quotient_degree_bounds(&extension_challenges);
-                for (transition_constraint, degree_bound) in
-                    transition_constraints.iter().zip_eq(trnstn_deg_bnds.iter())
+                for (transition_constraint, degree_bound) in table
+                    .get_transition_constraints()
+                    .iter()
+                    .zip_eq(trnstn_deg_bnds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = if table_height == 0 {
@@ -915,12 +916,14 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
-                let terminal_constraints =
-                    table.ext_terminal_constraints(&extension_challenges, &all_terminals);
+                // let terminal_constraints =
+                //     table.ext_terminal_constraints(&extension_challenges, &all_terminals);
                 let trmnl_deg_bnds =
                     table.terminal_quotient_degree_bounds(&extension_challenges, &all_terminals);
-                for (terminal_constraint, degree_bound) in
-                    terminal_constraints.iter().zip_eq(trmnl_deg_bnds.iter())
+                for (terminal_constraint, degree_bound) in table
+                    .get_terminal_constraints()
+                    .iter()
+                    .zip_eq(trmnl_deg_bnds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = terminal_constraint.evaluate(table_row)
@@ -1274,16 +1277,15 @@ pub(crate) mod triton_stark_tests {
         ) = parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[], &[]);
 
         for ext_table in (&ext_tables).into_iter() {
-            let ext_transition_constraints = ext_table.ext_transition_constraints(&all_challenges);
-            let message_1 = format!("ext_transition_constraints on {}", &ext_table.name());
+            let ext_transition_constraints = ext_table.get_transition_constraints();
+            let message_1 = format!("get_transition_constraints on {}", &ext_table.name());
             assert_transition_constraints_on_table(
                 ext_table.data(),
                 &ext_transition_constraints,
                 &message_1,
             );
 
-            let ext_consistency_constraints =
-                ext_table.ext_consistency_constraints(&all_challenges);
+            let ext_consistency_constraints = ext_table.get_consistency_constraints();
             let message_2 = format!("ext_consistency_constraints on {}", &ext_table.name());
             assert_consistency_boundary_constraints_on_table(
                 ext_table.data(),
@@ -1292,17 +1294,16 @@ pub(crate) mod triton_stark_tests {
             );
 
             if ext_table.data().len() > 0 {
-                let ext_boundary_constraints = ext_table.ext_boundary_constraints(&all_challenges);
-                let message_3 = format!("ext_boundary_constraints on {}", &ext_table.name());
+                let ext_boundary_constraints = ext_table.get_boundary_constraints();
+                let message_3 = format!("get_boundary_constraints on {}", &ext_table.name());
                 assert_consistency_boundary_constraints_on_table(
                     &[ext_table.data()[0].clone()],
                     &ext_boundary_constraints,
                     &message_3,
                 );
 
-                let ext_terminal_constraints =
-                    ext_table.ext_terminal_constraints(&all_challenges, &all_terminals);
-                let message_4 = format!("ext_terminal_constraints on {}", &ext_table.name());
+                let ext_terminal_constraints = ext_table.get_terminal_constraints();
+                let message_4 = format!("get_terminal_constraints on {}", &ext_table.name());
                 assert_consistency_boundary_constraints_on_table(
                     &[ext_table.data().last().unwrap().to_vec()],
                     &ext_terminal_constraints,

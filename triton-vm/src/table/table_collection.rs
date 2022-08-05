@@ -1,5 +1,5 @@
 use super::base_matrix::BaseMatrices;
-use super::base_table::Table;
+use super::base_table::{BaseTable, BaseTableTrait};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
 use super::hash_table::{ExtHashTable, HashTable};
@@ -161,20 +161,20 @@ impl BaseTableCollection {
 }
 
 impl<'a> IntoIterator for &'a BaseTableCollection {
-    type Item = &'a dyn Table<BWord>;
+    type Item = &'a dyn BaseTableTrait<BWord>;
 
-    type IntoIter = std::array::IntoIter<&'a dyn Table<BWord>, NUM_TABLES>;
+    type IntoIter = std::array::IntoIter<&'a dyn BaseTableTrait<BWord>, NUM_TABLES>;
 
     fn into_iter(self) -> Self::IntoIter {
         [
-            &self.program_table as &'a dyn Table<BWord>,
-            &self.instruction_table as &'a dyn Table<BWord>,
-            &self.processor_table as &'a dyn Table<BWord>,
-            &self.op_stack_table as &'a dyn Table<BWord>,
-            &self.ram_table as &'a dyn Table<BWord>,
-            &self.jump_stack_table as &'a dyn Table<BWord>,
-            &self.hash_table as &'a dyn Table<BWord>,
-            &self.u32_op_table as &'a dyn Table<BWord>,
+            &self.program_table as &'a dyn BaseTableTrait<BWord>,
+            &self.instruction_table as &'a dyn BaseTableTrait<BWord>,
+            &self.processor_table as &'a dyn BaseTableTrait<BWord>,
+            &self.op_stack_table as &'a dyn BaseTableTrait<BWord>,
+            &self.ram_table as &'a dyn BaseTableTrait<BWord>,
+            &self.jump_stack_table as &'a dyn BaseTableTrait<BWord>,
+            &self.hash_table as &'a dyn BaseTableTrait<BWord>,
+            &self.u32_op_table as &'a dyn BaseTableTrait<BWord>,
         ]
         .into_iter()
     }
@@ -219,11 +219,57 @@ impl ExtTableCollection {
         }
     }
 
+    // similar to extend_tables? No!
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_heights: &[usize],
+        challenges: AllChallenges,
+        terminals: AllEndpoints,
+    ) -> Self {
+        // TODO: integrate challenges and terminals
+
+        let ext_program_table =
+            ExtProgramTable::with_padded_height(num_trace_randomizers, padded_heights[0]);
+
+        let ext_instruction_table =
+            ExtInstructionTable::with_padded_height(num_trace_randomizers, padded_heights[1]);
+
+        let ext_processor_table =
+            ExtProcessorTable::with_padded_height(num_trace_randomizers, padded_heights[2]);
+
+        let ext_op_stack_table =
+            ExtOpStackTable::with_padded_height(num_trace_randomizers, padded_heights[3]);
+
+        let ext_ram_table =
+            ExtRamTable::with_padded_height(num_trace_randomizers, padded_heights[4]);
+
+        let ext_jump_stack_table =
+            ExtJumpStackTable::with_padded_height(num_trace_randomizers, padded_heights[5]);
+
+        let ext_hash_table =
+            ExtHashTable::with_padded_height(num_trace_randomizers, padded_heights[6]);
+
+        let ext_u32_op_table =
+            ExtU32OpTable::with_padded_height(num_trace_randomizers, padded_heights[7]);
+
+        ExtTableCollection {
+            program_table: ext_program_table,
+            instruction_table: ext_instruction_table,
+            processor_table: ext_processor_table,
+            op_stack_table: ext_op_stack_table,
+            ram_table: ext_ram_table,
+            jump_stack_table: ext_jump_stack_table,
+            hash_table: ext_hash_table,
+            u32_op_table: ext_u32_op_table,
+        }
+    }
+
     pub fn max_degree(&self) -> Degree {
         self.into_iter()
             .map(|ext_table| ext_table.max_degree())
             .max()
             .unwrap_or(1)
+        // return 63;
     }
 
     /// Create an ExtTableCollection from a BaseTableCollection by
@@ -306,7 +352,7 @@ impl ExtTableCollection {
 
     pub fn codeword_index_to_table_name(&self, idx: usize) -> String {
         self.into_iter()
-            .flat_map(|ext_table| vec![ext_table.name(); ext_table.full_width()])
+            .flat_map(|ext_table| vec![ext_table.to_base().name.clone(); ext_table.full_width()])
             .collect_vec()[idx]
             .clone()
     }
@@ -396,7 +442,7 @@ impl ExtTableCollection {
 
     pub fn get_all_base_degree_bounds(&self) -> Vec<i64> {
         self.into_iter()
-            .map(|ext_table| vec![ext_table.interpolant_degree(); ext_table.base_width()])
+            .map(|table| vec![table.interpolant_degree(); table.base_width()])
             .concat()
     }
 
@@ -562,7 +608,7 @@ mod table_collection_tests {
         let (all_challenges, all_initials) = stark::triton_stark_tests::dummy_challenges_initials();
 
         for ext_table in ext_tables.into_iter() {
-            let boundary_constraints = ext_table.ext_boundary_constraints(&all_challenges);
+            let boundary_constraints = ext_table.get_boundary_constraints();
             for (i, poly) in boundary_constraints.iter().enumerate() {
                 assert_eq!(
                     ext_table.full_width(),
@@ -575,7 +621,7 @@ mod table_collection_tests {
                 );
             }
 
-            let consistency_constraints = ext_table.ext_consistency_constraints(&all_challenges);
+            let consistency_constraints = ext_table.get_consistency_constraints();
             for (i, poly) in consistency_constraints.iter().enumerate() {
                 assert_eq!(
                     ext_table.full_width(),
@@ -588,7 +634,7 @@ mod table_collection_tests {
                 );
             }
 
-            let transition_constraints = ext_table.ext_transition_constraints(&all_challenges);
+            let transition_constraints = ext_table.get_transition_constraints();
             for (i, poly) in transition_constraints.iter().enumerate() {
                 assert_eq!(
                     2 * ext_table.full_width(),
@@ -601,8 +647,7 @@ mod table_collection_tests {
                 );
             }
 
-            let terminal_constraints =
-                ext_table.ext_terminal_constraints(&all_challenges, &all_initials);
+            let terminal_constraints = ext_table.get_terminal_constraints();
             for (i, poly) in terminal_constraints.iter().enumerate() {
                 assert_eq!(
                     ext_table.full_width(),

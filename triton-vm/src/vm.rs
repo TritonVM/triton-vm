@@ -247,7 +247,7 @@ mod triton_vm_tests {
     use super::*;
     use crate::instruction::sample_programs;
     use crate::table::base_matrix::ProcessorMatrixRow;
-    use crate::table::base_table::{HasBaseTable, Table};
+    use crate::table::base_table::{BaseTable, BaseTableTrait, HasBaseTable};
     use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
     use crate::table::extension_table::ExtensionTable;
     use crate::table::processor_table::ProcessorTable;
@@ -587,7 +587,7 @@ mod triton_vm_tests {
                 &challenges.processor_table_challenges,
                 &initials.processor_table_endpoints,
             );
-            let x_air_constraints = ext_processor_table.ext_transition_constraints(&challenges);
+            let x_air_constraints = ext_processor_table.get_transition_constraints();
 
             for (row_idx, (row, next_row)) in ext_processor_table
                 .data()

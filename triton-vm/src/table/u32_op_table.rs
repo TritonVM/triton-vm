@@ -1,5 +1,4 @@
-use super::base_table::{self, BaseTable, HasBaseTable, Table};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::extension_table::ExtensionTable;
 use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
@@ -53,35 +52,34 @@ impl HasBaseTable<XFieldElement> for ExtU32OpTable {
     }
 }
 
-impl Table<BWord> for U32OpTable {
+impl BaseTableTrait<BWord> for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         vec![0.into(); BASE_WIDTH]
     }
 }
 
-impl Table<XFieldElement> for ExtU32OpTable {
+impl BaseTableTrait<XFieldElement> for ExtU32OpTable {
     fn get_padding_row(&self) -> Vec<XFieldElement> {
         panic!("Extension tables don't get padded");
     }
 }
 
-impl ExtensionTable for ExtU32OpTable {
-    fn ext_boundary_constraints(&self, _challenges: &AllChallenges) -> Vec<MPolynomial<XWord>> {
+impl ExtU32OpTable {
+    fn ext_boundary_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
         vec![]
     }
 
-    fn ext_consistency_constraints(&self, _challenges: &AllChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
         vec![]
     }
 
-    fn ext_transition_constraints(&self, _challenges: &AllChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_transition_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
         vec![]
     }
 
     fn ext_terminal_constraints(
-        &self,
-        _challenges: &AllChallenges,
-        _terminals: &AllEndpoints,
+        _challenges: &U32OpTableChallenges,
+        _terminals: &U32OpTableEndpoints,
     ) -> Vec<MPolynomial<XWord>> {
         vec![]
     }
@@ -197,8 +195,6 @@ impl U32OpTable {
             extension_matrix.push(extension_row);
         }
 
-        let base = self.base.with_lifted_data(extension_matrix);
-        let table = ExtU32OpTable { base };
         let terminals = U32OpTableEndpoints {
             processor_lt_perm_product: lt_running_product,
             processor_and_perm_product: and_running_product,
@@ -207,7 +203,15 @@ impl U32OpTable {
             processor_div_perm_product: div_running_product,
         };
 
-        (table, terminals)
+        let base = self.base.with_lifted_data(extension_matrix);
+        let table = BaseTable::extension(
+            base,
+            ExtU32OpTable::ext_boundary_constraints(challenges),
+            ExtU32OpTable::ext_transition_constraints(&challenges),
+            ExtU32OpTable::ext_terminal_constraints(&challenges, &terminals),
+        );
+
+        (ExtU32OpTable { base: table }, terminals)
     }
 }
 
@@ -292,4 +296,13 @@ pub struct U32OpTableEndpoints {
     pub processor_xor_perm_product: XFieldElement,
     pub processor_reverse_perm_product: XFieldElement,
     pub processor_div_perm_product: XFieldElement,
+}
+
+impl ExtensionTable for ExtU32OpTable {
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_transition_constraints(&challenges.u32_op_table_challenges)
+    }
 }

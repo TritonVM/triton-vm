@@ -2,7 +2,7 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord6;
 use crate::state::DIGEST_LEN;
-use crate::table::base_table::{self, BaseTable, HasBaseTable, Table};
+use crate::table::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::extension_table::ExtensionTable;
 use crate::table::table_column::ProcessorTableColumn::{self, *};
@@ -343,8 +343,6 @@ impl ProcessorTable {
             extension_matrix.push(extension_row);
         }
 
-        let base = self.base.with_lifted_data(extension_matrix);
-        let table = ExtProcessorTable::new(base);
         let terminals = ProcessorTableEndpoints {
             input_table_eval_sum: input_table_running_sum,
             output_table_eval_sum: output_table_running_sum,
@@ -360,8 +358,15 @@ impl ProcessorTable {
             u32_table_reverse_perm_product: u32_table_reverse_running_product,
             u32_table_div_perm_product: u32_table_div_running_product,
         };
+        let base = self.base.with_lifted_data(extension_matrix);
+        let table = BaseTable::extension(
+            base,
+            ExtProcessorTable::ext_boundary_constraints(challenges),
+            ExtProcessorTable::ext_transition_constraints(&challenges),
+            ExtProcessorTable::ext_terminal_constraints(&challenges, &terminals),
+        );
 
-        (table, terminals)
+        (ExtProcessorTable { base: table }, terminals)
     }
 }
 
@@ -407,12 +412,7 @@ impl ExtProcessorTable {
     }
 
     pub fn new(base: BaseTable<XFieldElement>) -> ExtProcessorTable {
-        Self {
-            base,
-            transition_constraints: TransitionConstraints::default(),
-            consistency_boundary_constraints: ConsistencyBoundaryConstraints::default(),
-            instruction_deselectors: InstructionDeselectors::default(),
-        }
+        Self { base }
     }
 
     /// Transition constraints are combined with deselectors in such a way
@@ -431,15 +431,16 @@ impl ExtProcessorTable {
     /// transition constraints among all instructions, the deselector is multiplied with a zero,
     /// causing no additional terms in the final sets of combined transition constraint polynomials.
     fn combine_transition_constraints_with_deselectors(
-        &self,
         instr_tc_polys_tuples: Vec<(Instruction, Vec<MPolynomial<XWord>>)>,
     ) -> Vec<MPolynomial<XWord>> {
         let (all_instructions, all_tc_polys_for_all_instructions): (Vec<_>, Vec<Vec<_>>) =
             instr_tc_polys_tuples.into_iter().unzip();
 
+        let instruction_deselectors = InstructionDeselectors::default();
+
         let all_instruction_deselectors = all_instructions
             .into_iter()
-            .map(|instr| self.instruction_deselectors.get(instr))
+            .map(|instr| instruction_deselectors.get(instr))
             .collect_vec();
 
         let max_number_of_constraints = all_tc_polys_for_all_instructions
@@ -447,7 +448,7 @@ impl ExtProcessorTable {
             .map(|tc_polys_for_instr| tc_polys_for_instr.len())
             .max()
             .unwrap();
-        let zero_poly = self.transition_constraints.zero();
+        let zero_poly = RowPairConstraints::default().zero();
 
         let all_tc_polys_for_all_instructions_transposed = (0..max_number_of_constraints)
             .map(|idx| {
@@ -564,9 +565,6 @@ pub struct IOChallenges {
 #[derive(Debug, Clone)]
 pub struct ExtProcessorTable {
     base: BaseTable<XFieldElement>,
-    transition_constraints: TransitionConstraints,
-    consistency_boundary_constraints: ConsistencyBoundaryConstraints,
-    instruction_deselectors: InstructionDeselectors,
 }
 
 impl HasBaseTable<XFieldElement> for ExtProcessorTable {
@@ -579,7 +577,7 @@ impl HasBaseTable<XFieldElement> for ExtProcessorTable {
     }
 }
 
-impl Table<BWord> for ProcessorTable {
+impl BaseTableTrait<BWord> for ProcessorTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         let mut padding_row = self.data().last().unwrap().clone();
         padding_row[ProcessorTableColumn::CLK as usize] += 1.into();
@@ -587,15 +585,16 @@ impl Table<BWord> for ProcessorTable {
     }
 }
 
-impl Table<XFieldElement> for ExtProcessorTable {
+impl BaseTableTrait<XFieldElement> for ExtProcessorTable {
     fn get_padding_row(&self) -> Vec<XFieldElement> {
         panic!("Extension tables don't get padded");
     }
 }
 
-impl ExtensionTable for ExtProcessorTable {
-    fn ext_boundary_constraints(&self, _challenges: &AllChallenges) -> Vec<MPolynomial<XWord>> {
-        let factory = &self.consistency_boundary_constraints;
+impl ExtProcessorTable {
+    fn ext_boundary_constraints(_challenges: &ProcessorTableChallenges) -> Vec<MPolynomial<XWord>> {
+        // let factory = &self.consistency_boundary_constraints;
+        let factory = SingleRowConstraints::default();
 
         // The cycle counter `clk` is 0.
         //
@@ -724,8 +723,10 @@ impl ExtensionTable for ExtProcessorTable {
         ]
     }
 
-    fn ext_consistency_constraints(&self, _challenges: &AllChallenges) -> Vec<MPolynomial<XWord>> {
-        let factory = &self.consistency_boundary_constraints;
+    fn ext_consistency_constraints(
+        _challenges: &ProcessorTableChallenges,
+    ) -> Vec<MPolynomial<XWord>> {
+        let factory = SingleRowConstraints::default();
 
         // The composition of instruction buckets ib0-ib5 corresponds the current instruction ci.
         //
@@ -744,8 +745,10 @@ impl ExtensionTable for ExtProcessorTable {
         vec![ci_corresponds_to_ib0_thru_ib5]
     }
 
-    fn ext_transition_constraints(&self, _challenges: &AllChallenges) -> Vec<MPolynomial<XWord>> {
-        let factory = &self.transition_constraints;
+    fn ext_transition_constraints(
+        _challenges: &ProcessorTableChallenges,
+    ) -> Vec<MPolynomial<XWord>> {
+        let factory = RowPairConstraints::default();
 
         let all_instruction_transition_constraints = vec![
             (Pop, factory.instruction_pop()),
@@ -783,7 +786,7 @@ impl ExtensionTable for ExtProcessorTable {
             (WriteIo, factory.instruction_write_io()),
         ];
 
-        let mut transition_constraints = self.combine_transition_constraints_with_deselectors(
+        let mut transition_constraints = Self::combine_transition_constraints_with_deselectors(
             all_instruction_transition_constraints,
         );
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
@@ -791,11 +794,10 @@ impl ExtensionTable for ExtProcessorTable {
     }
 
     fn ext_terminal_constraints(
-        &self,
-        _challenges: &AllChallenges,
-        _terminals: &AllEndpoints,
+        _challenges: &ProcessorTableChallenges,
+        _terminals: &ProcessorTableEndpoints,
     ) -> Vec<MPolynomial<XWord>> {
-        let factory = ConsistencyBoundaryConstraints::default();
+        let factory = SingleRowConstraints::default();
 
         // In the last row, current instruction register ci is 0, corresponding to instruction halt.
         //
@@ -807,11 +809,11 @@ impl ExtensionTable for ExtProcessorTable {
 }
 
 #[derive(Debug, Clone)]
-pub struct ConsistencyBoundaryConstraints {
+pub struct SingleRowConstraints {
     variables: [MPolynomial<XWord>; FULL_WIDTH],
 }
 
-impl Default for ConsistencyBoundaryConstraints {
+impl Default for SingleRowConstraints {
     fn default() -> Self {
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into())
             .try_into()
@@ -821,7 +823,7 @@ impl Default for ConsistencyBoundaryConstraints {
     }
 }
 
-impl ConsistencyBoundaryConstraints {
+impl SingleRowConstraints {
     // FIXME: This does not need a self reference.
     pub fn constant(&self, constant: u32) -> MPolynomial<XWord> {
         MPolynomial::from_constant(constant.into(), FULL_WIDTH)
@@ -981,11 +983,11 @@ impl ConsistencyBoundaryConstraints {
 }
 
 #[derive(Debug, Clone)]
-pub struct TransitionConstraints {
+pub struct RowPairConstraints {
     variables: [MPolynomial<XWord>; 2 * FULL_WIDTH],
 }
 
-impl Default for TransitionConstraints {
+impl Default for RowPairConstraints {
     fn default() -> Self {
         let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into())
             .try_into()
@@ -995,7 +997,7 @@ impl Default for TransitionConstraints {
     }
 }
 
-impl TransitionConstraints {
+impl RowPairConstraints {
     /// ## The cycle counter (`clk`) always increases by one
     ///
     /// $$
@@ -2392,7 +2394,7 @@ pub struct InstructionDeselectors {
 
 impl Default for InstructionDeselectors {
     fn default() -> Self {
-        let factory = TransitionConstraints::default();
+        let factory = RowPairConstraints::default();
         let deselectors = Self::create(&factory);
 
         Self { deselectors }
@@ -2415,7 +2417,7 @@ impl InstructionDeselectors {
 
     /// A polynomial that has no solutions when ci is 'instruction'
     pub fn instruction_deselector(
-        factory: &TransitionConstraints,
+        factory: &RowPairConstraints,
         instruction: Instruction,
     ) -> MPolynomial<XWord> {
         let one = XWord::ring_one();
@@ -2441,11 +2443,20 @@ impl InstructionDeselectors {
             * (factory.ib5() - deselect_ib5)
     }
 
-    pub fn create(factory: &TransitionConstraints) -> HashMap<Instruction, MPolynomial<XWord>> {
+    pub fn create(factory: &RowPairConstraints) -> HashMap<Instruction, MPolynomial<XWord>> {
         all_instructions_without_args()
             .into_iter()
             .map(|instrctn| (instrctn, Self::instruction_deselector(factory, instrctn)))
             .collect()
+    }
+}
+
+impl ExtensionTable for ExtProcessorTable {
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_transition_constraints(&challenges.processor_table_challenges)
     }
 }
 
@@ -2490,7 +2501,7 @@ mod constraint_polynomial_tests {
     }
 
     fn get_constraints_for_instruction(instruction: Instruction) -> Vec<MPolynomial<XWord>> {
-        let tc = TransitionConstraints::default();
+        let tc = RowPairConstraints::default();
         match instruction {
             Pop => tc.instruction_pop(),
             Push(_) => tc.instruction_push(),
