@@ -1,6 +1,7 @@
 use super::base_table::{self, BaseTable, HasBaseTable, Table};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
+use super::table_collection::TableId;
 use super::table_column::InstructionTableColumn::{self, *};
 use crate::fri_domain::FriDomain;
 use itertools::Itertools;
@@ -130,6 +131,7 @@ impl InstructionTable {
             omicron,
             matrix,
             "InstructionTable".to_string(),
+            TableId::InstructionTable,
         );
 
         Self { base }
@@ -237,6 +239,7 @@ impl ExtInstructionTable {
             omicron,
             matrix,
             "ExtInstructionTable".to_string(),
+            TableId::InstructionTable,
         );
 
         Self { base }

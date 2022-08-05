@@ -1,6 +1,7 @@
 use super::base_table::{self, BaseTable, HasBaseTable, Table};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
+use super::table_collection::TableId;
 use super::table_column::RamTableColumn::{self, *};
 use crate::fri_domain::FriDomain;
 use itertools::Itertools;
@@ -66,6 +67,7 @@ impl RamTable {
             omicron,
             matrix,
             "RamTable".to_string(),
+            TableId::RamTable,
         );
 
         Self { base }
@@ -141,6 +143,7 @@ impl ExtRamTable {
             omicron,
             matrix,
             "ExtRamTable".to_string(),
+            TableId::RamTable,
         );
 
         Self { base }

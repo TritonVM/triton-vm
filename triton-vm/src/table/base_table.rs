@@ -1,4 +1,5 @@
 use super::super::fri_domain::FriDomain;
+use super::table_collection::TableId;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::cmp::max;
@@ -35,6 +36,9 @@ pub struct BaseTable<DataPF> {
 
     /// The name of the table. Mostly for debugging purpose.
     name: String,
+
+    /// Table id, for dynamic specializations of statically abtract types
+    id: TableId,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -47,6 +51,7 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
         omicron: DataPF,
         matrix: Vec<Vec<DataPF>>,
         name: String,
+        id: TableId,
     ) -> Self {
         BaseTable {
             base_width,
@@ -56,6 +61,7 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
             omicron,
             matrix,
             name,
+            id,
         }
     }
 
@@ -69,6 +75,7 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
             self.omicron,
             matrix,
             format!("{} with data", self.name),
+            self.id,
         )
     }
 }
@@ -85,6 +92,7 @@ impl BaseTable<BWord> {
             self.omicron.lift(),
             matrix,
             format!("{} with lifted data", self.name),
+            self.id,
         )
     }
 }
@@ -119,6 +127,10 @@ pub trait HasBaseTable<DataPF: PrimeField> {
 
     fn mut_data(&mut self) -> &mut Vec<Vec<DataPF>> {
         &mut self.to_mut_base().matrix
+    }
+
+    fn id(&self) -> TableId {
+        self.to_base().id
     }
 }
 

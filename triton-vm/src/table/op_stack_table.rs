@@ -1,6 +1,7 @@
 use super::base_table::{self, BaseTable, HasBaseTable, Table};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
+use super::table_collection::TableId;
 use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::instruction::{AnInstruction, Instruction};
@@ -172,6 +173,7 @@ impl OpStackTable {
             omicron,
             matrix,
             "OpStackTable".to_string(),
+            TableId::OpStackTable,
         );
 
         Self { base }
@@ -249,6 +251,7 @@ impl ExtOpStackTable {
             omicron,
             matrix,
             "ExtOpStackTable".to_string(),
+            TableId::OpStackTable,
         );
 
         Self { base }

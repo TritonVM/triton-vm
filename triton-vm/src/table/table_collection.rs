@@ -444,7 +444,7 @@ impl ExtTableCollection {
         all_challenges: &AllChallenges,
         all_terminals: &AllEndpoints,
     ) -> Vec<Degree> {
-        self.into_iter()
+        self.into_iter() // Can we parallelize this? -> implement into_par_iter for TableCollection
             .map(|ext_table| ext_table.all_quotient_degree_bounds(all_challenges, all_terminals))
             .concat()
     }

@@ -12,6 +12,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use super::table_collection::TableId;
+
 pub const PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 9;
 pub const PROCESSOR_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 4;
 pub const PROCESSOR_TABLE_INITIALS_COUNT: usize =
@@ -56,6 +58,7 @@ impl ProcessorTable {
             omicron,
             matrix,
             "ProcessorTable".to_string(),
+            TableId::ProcessorTable,
         );
 
         Self { base }
@@ -375,6 +378,7 @@ impl ExtProcessorTable {
             omicron,
             matrix,
             "ExtProcessorTable".to_string(),
+            TableId::ProcessorTable,
         );
 
         Self::new(base)

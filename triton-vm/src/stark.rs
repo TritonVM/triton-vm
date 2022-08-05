@@ -5,6 +5,7 @@ use crate::fri_domain::FriDomain;
 use crate::proof_item::{Item, StarkProofStream};
 use crate::state::DIGEST_LEN;
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+use crate::table::extension_table::ExtensionTable;
 use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
 use crate::triton_xfri::{self, Fri};
 use itertools::Itertools;
@@ -12,10 +13,11 @@ use rand::{thread_rng, Rng};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_xlix::{
@@ -666,9 +668,9 @@ impl Stark {
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
 
         let indices_seed = proof_stream.verifier_fiat_shamir();
-        let cross_codeword_slice_indices =
+        let combination_check_indices =
             hasher.sample_indices(self.security_level, &indices_seed, self.xfri.domain.length);
-        let num_idxs = cross_codeword_slice_indices.len();
+        let num_idxs = combination_check_indices.len();
         timer.elapsed("Got indices");
 
         // Verify low degree of combination polynomial
@@ -680,7 +682,7 @@ impl Stark {
 
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
-            self.get_revealed_indices(&unit_distances, &cross_codeword_slice_indices);
+            self.get_revealed_indices(&unit_distances, &combination_check_indices);
         timer.elapsed("Calculated revealed indices");
 
         // TODO: in the following ~80 lines, we (conceptually) do the same thing three times. DRY.
@@ -745,9 +747,9 @@ impl Stark {
         timer.elapsed(&format!("Verified auth paths for {num_idxs} ext elements"));
 
         // Verify Merkle authentication path for combination elements
-        let revealed_combination_elements =
+        let revealed_combination_leafs =
             proof_stream.dequeue()?.as_revealed_combination_elements()?;
-        let revealed_combination_digests: Vec<_> = revealed_combination_elements
+        let revealed_combination_digests: Vec<_> = revealed_combination_leafs
             .par_iter()
             .map(|xfe| {
                 let b_elements: Vec<BFieldElement> = xfe.to_digest();
@@ -759,7 +761,7 @@ impl Stark {
             .as_compressed_authentication_paths()?;
         if !MerkleTree::<StarkHasher>::verify_multi_proof_from_leaves(
             combination_root.clone(),
-            &cross_codeword_slice_indices,
+            &combination_check_indices,
             &revealed_combination_digests,
             &revealed_combination_auth_paths,
         ) {
@@ -781,17 +783,42 @@ impl Stark {
         // =======================================
         // ==== verify non-linear combination ====
         // =======================================
+
+        let mut table_boundary_constraints = HashMap::new();
+        let mut table_transition_constraints = HashMap::new();
+        let mut table_terminal_constraints = HashMap::new();
+        for table in ext_table_collection.into_iter() {
+            table_boundary_constraints.insert(
+                table.id(),
+                table.ext_boundary_constraints(&extension_challenges),
+            );
+            table_transition_constraints.insert(
+                table.id(),
+                table.ext_transition_constraints(&extension_challenges),
+            );
+            table_terminal_constraints.insert(
+                table.id(),
+                table.ext_terminal_constraints(&extension_challenges, &all_terminals),
+            );
+        }
+
         let base_offset = self.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
-        for (cross_slice_index, revealed_combination_element) in cross_codeword_slice_indices
+        for (combination_check_index, revealed_combination_leaf) in combination_check_indices
             .into_iter()
-            .zip_eq(revealed_combination_elements)
+            .zip_eq(revealed_combination_leafs)
         {
-            let curr_fri_domain_value = self.xfri.domain.domain_value(cross_slice_index as u32);
-            let cross_slice = &index_map_of_revealed_elems[&cross_slice_index];
+            let current_fri_domain_value = self
+                .xfri
+                .domain
+                .domain_value(combination_check_index as u32);
+            let cross_slice = &index_map_of_revealed_elems[&combination_check_index];
+
+            // populate summands with a cross-slice from the randomizer codewords
             let mut summands = cross_slice[0..base_offset].to_vec();
 
+            // populate summands with a cross-slice of (base,ext) codewords and their shifts
             for (index_range, degree_bounds) in [
                 (base_offset..ext_offset, base_degree_bounds.iter()),
                 (ext_offset..final_offset, extension_degree_bounds.iter()),
@@ -800,7 +827,7 @@ impl Stark {
                     let shift = self.max_degree - degree_bound;
                     let curr_codeword_elem = cross_slice[codeword_index];
                     let curr_codeword_elem_shifted =
-                        curr_codeword_elem * curr_fri_domain_value.mod_pow_u32(shift as u32);
+                        curr_codeword_elem * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(curr_codeword_elem);
                     summands.push(curr_codeword_elem_shifted);
                 }
@@ -824,7 +851,7 @@ impl Stark {
 
                 let curr_unit_distance = table.unit_distance(self.xfri.domain.length);
                 let next_cross_slice_index =
-                    (cross_slice_index + curr_unit_distance) % self.xfri.domain.length;
+                    (combination_check_index + curr_unit_distance) % self.xfri.domain.length;
                 let next_cross_slice = &index_map_of_revealed_elems[&next_cross_slice_index];
 
                 let next_base_col_slice =
@@ -848,16 +875,17 @@ impl Stark {
             {
                 let table_height = table.padded_height() as u32;
 
-                let boundary_constraints = table.ext_boundary_constraints(&extension_challenges);
-                let bndry_deg_bnds = table.boundary_quotient_degree_bounds(&extension_challenges);
-                for (boundary_constraint, degree_bound) in
-                    boundary_constraints.iter().zip_eq(bndry_deg_bnds.iter())
+                let boundary_degree_bounds =
+                    table.boundary_quotient_degree_bounds(&extension_challenges);
+                for (boundary_constraint, degree_bound) in table_boundary_constraints[&table.id()]
+                    .iter()
+                    .zip_eq(boundary_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = boundary_constraint.evaluate(table_row)
-                        / (curr_fri_domain_value - 1.into());
+                        / (current_fri_domain_value - 1.into());
                     let quotient_shifted =
-                        quotient * curr_fri_domain_value.mod_pow_u32(shift as u32);
+                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
@@ -876,13 +904,13 @@ impl Stark {
                     } else {
                         let evaluated_transition_constraint = transition_constraint
                             .evaluate(&vec![table_row.to_owned(), next_table_row.clone()].concat());
-                        let numerator = curr_fri_domain_value - table.omicron().inverse();
+                        let numerator = current_fri_domain_value - table.omicron().inverse();
                         let denominator =
-                            curr_fri_domain_value.mod_pow_u32(table_height) - 1.into();
+                            current_fri_domain_value.mod_pow_u32(table_height) - 1.into();
                         evaluated_transition_constraint * numerator / denominator
                     };
                     let quotient_shifted =
-                        quotient * curr_fri_domain_value.mod_pow_u32(shift as u32);
+                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
@@ -896,9 +924,9 @@ impl Stark {
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = terminal_constraint.evaluate(table_row)
-                        / (curr_fri_domain_value - table.omicron().inverse());
+                        / (current_fri_domain_value - table.omicron().inverse());
                     let quotient_shifted =
-                        quotient * curr_fri_domain_value.mod_pow_u32(shift as u32);
+                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
@@ -908,8 +936,9 @@ impl Stark {
                 let perm_arg_deg_bound = arg.quotient_degree_bound(&ext_table_collection);
                 let shift = self.max_degree - perm_arg_deg_bound;
                 let quotient = arg.evaluate_difference(&cross_slice_by_table)
-                    / (curr_fri_domain_value - 1.into());
-                let quotient_shifted = quotient * curr_fri_domain_value.mod_pow_u32(shift as u32);
+                    / (current_fri_domain_value - 1.into());
+                let quotient_shifted =
+                    quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                 summands.push(quotient);
                 summands.push(quotient_shifted);
             }
@@ -923,7 +952,7 @@ impl Stark {
             // FIXME: This assert looks like it's for development, but it's the actual integrity
             //  check. Change to `if (…) { return Ok(false) }` or whatever is suitable.
             assert_eq!(
-                revealed_combination_element, inner_product,
+                revealed_combination_leaf, inner_product,
                 "The combination leaf must equal the inner product"
             );
         }

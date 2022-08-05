@@ -1,6 +1,7 @@
 use super::base_table::{self, BaseTable, HasBaseTable, Table};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
+use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
 use itertools::Itertools;
@@ -100,6 +101,7 @@ impl U32OpTable {
             omicron,
             matrix,
             "U32OpTable".to_string(),
+            TableId::U32OpTable,
         );
 
         Self { base }
@@ -222,6 +224,7 @@ impl ExtU32OpTable {
             omicron,
             matrix,
             "ExtU32OpTable".to_string(),
+            TableId::U32OpTable,
         );
 
         Self { base }
