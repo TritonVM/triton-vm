@@ -45,6 +45,12 @@ pub struct BaseTable<FieldElement: PrimeField> {
     pub(crate) transition_constraints: Option<Vec<MPolynomial<FieldElement>>>,
     pub(crate) consistency_constraints: Option<Vec<MPolynomial<FieldElement>>>,
     pub(crate) terminal_constraints: Option<Vec<MPolynomial<FieldElement>>>,
+
+    /// quotient degrees, to be populated upon extension
+    pub(crate) boundary_quotient_degree_bounds: Option<Vec<i64>>,
+    pub(crate) transition_quotient_degree_bounds: Option<Vec<i64>>,
+    pub(crate) consistency_quotient_degree_bounds: Option<Vec<i64>>,
+    pub(crate) terminal_quotient_degree_bounds: Option<Vec<i64>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -72,6 +78,10 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
             transition_constraints: None,
             consistency_constraints: None,
             terminal_constraints: None,
+            boundary_quotient_degree_bounds: None,
+            transition_quotient_degree_bounds: None,
+            consistency_quotient_degree_bounds: None,
+            terminal_quotient_degree_bounds: None,
         }
     }
     pub fn extension(
