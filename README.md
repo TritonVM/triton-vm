@@ -39,7 +39,3 @@ We currently don't recommend using it in production.
 
 Please note that the [Instruction Set Architecture](./specification/isa.md) is not to be considered final.
 However, we don't currently foresee big changes.
-
-For the time being, issues are only being tracked internally.
-This will change within the next few days.
-In the meantime, please feel free to [contact the authors](mailto:ferdinand@neptune.cash).
