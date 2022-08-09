@@ -104,26 +104,14 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
     }
 
     fn transition_quotient_degree_bounds(&self, challenges: &AllChallenges) -> Vec<Degree> {
-        println!("{}", self.name());
-        let mut tr = TimingReporter::start();
-
         let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); 2 * self.full_width()];
-        tr.elapsed("Got max degrees.");
-
         let transition_constraints = self.get_transition_constraints();
-        tr.elapsed("Got extension constraints");
-
         // Safe because padded height is at most 2^30.
         let padded_height: Degree = self.padded_height().try_into().unwrap();
-        tr.elapsed("Got padded height");
-
-        let degree_bounds = transition_constraints
+        transition_constraints
             .iter()
             .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - padded_height + 1)
-            .collect::<Vec<Degree>>();
-        tr.elapsed("Got degree bounds");
-        println!("{}", tr.finish());
-        degree_bounds
+            .collect()
     }
 
     fn terminal_quotient_degree_bounds(
