@@ -50,22 +50,6 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         }
     }
 
-    // /// calculate boundary constraints
-    // fn ext_boundary_constraints(challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
-
-    // /// calculate consistency constraints
-    // fn ext_consistency_constraints(challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
-
-    // /// calculate transition constraints
-    // fn ext_transition_constraints(challenges: &AllChallenges) -> Vec<MPolynomial<XWord>>;
-
-    // /// calculate terminal constraints
-    // fn ext_terminal_constraints(
-    //     &self,
-    //     challenges: &AllChallenges,
-    //     terminals: &AllEndpoints,
-    // ) -> Vec<MPolynomial<XWord>>;
-
     /// max_degree
     /// Compute the degree of the largest-degree quotient from all
     /// AIR constraints that apply to the table.
@@ -87,7 +71,6 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             })
             .max()
             .unwrap_or(-1)
-        // 12
     }
 
     fn dynamic_transition_constraints(

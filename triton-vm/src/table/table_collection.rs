@@ -219,7 +219,6 @@ impl ExtTableCollection {
         }
     }
 
-    // similar to extend_tables? No!
     pub fn for_verifier(
         num_trace_randomizers: usize,
         padded_heights: &[usize],
@@ -301,7 +300,6 @@ impl ExtTableCollection {
             .map(|ext_table| ext_table.max_degree())
             .max()
             .unwrap_or(1)
-        // return 63;
     }
 
     /// Create an ExtTableCollection from a BaseTableCollection by

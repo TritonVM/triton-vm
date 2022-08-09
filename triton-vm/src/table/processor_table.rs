@@ -593,7 +593,6 @@ impl BaseTableTrait<XFieldElement> for ExtProcessorTable {
 
 impl ExtProcessorTable {
     fn ext_boundary_constraints(_challenges: &ProcessorTableChallenges) -> Vec<MPolynomial<XWord>> {
-        // let factory = &self.consistency_boundary_constraints;
         let factory = SingleRowConstraints::default();
 
         // The cycle counter `clk` is 0.

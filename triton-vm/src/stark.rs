@@ -782,26 +782,6 @@ impl Stark {
         // =======================================
         // ==== verify non-linear combination ====
         // =======================================
-
-        // let mut table_boundary_constraints = HashMap::new();
-        // let mut table_transition_constraints = HashMap::new();
-        // let mut table_terminal_constraints = HashMap::new();
-        // let mut table_boundary_degree_bounds = HashMap::new();
-        // let mut table_transition_degree_bounds = HashMap::new();
-        // let mut table_terminal_degree_bounds = HashMap::new();
-        // for table in ext_table_collection.into_iter() {
-        //     let constraints = table.get_boundary_constraints(&extension_challenges);
-        //     table_boundary_constraints.insert(table.id(), constraints);
-        //     table_transition_constraints.insert(
-        //         table.id(),
-        //         table.get_transition_constraints(&extension_challenges),
-        //     );
-        //     table_terminal_constraints.insert(
-        //         table.id(),
-        //         table.get_terminal_constraints(&extension_challenges, &all_terminals),
-        //     );
-        // }
-
         let base_offset = self.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;

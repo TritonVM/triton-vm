@@ -100,16 +100,6 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
 
     /// Create a `BaseTable<DataPF>` with the same parameters, but new `matrix` data.
     pub fn with_data(&self, matrix: Vec<Vec<DataPF>>) -> Self {
-        // BaseTable::new(
-        //     self.base_width,
-        //     self.full_width,
-        //     self.padded_height,
-        //     self.num_trace_randomizers,
-        //     self.omicron,
-        //     matrix,
-        //     format!("{} with data", self.name),
-        //     self.id,
-        // )
         BaseTable {
             matrix,
             name: format!("{} with data", self.name),
