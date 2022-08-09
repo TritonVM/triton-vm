@@ -88,7 +88,8 @@ impl ExtJumpStackTable {
         vec![clk, jsp, jso, jsd]
     }
 
-    fn ext_consistency_constraints(
+    // TODO actually use consistency constraints
+    fn _ext_consistency_constraints(
         _challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints

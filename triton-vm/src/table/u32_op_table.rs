@@ -70,7 +70,8 @@ impl ExtU32OpTable {
         vec![]
     }
 
-    fn ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
+    // TODO actually use consistency constraints
+    fn _ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
         vec![]
     }
 

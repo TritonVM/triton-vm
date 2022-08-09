@@ -91,7 +91,8 @@ impl ExtOpStackTable {
         vec![clk_is_0, osv_is_0, osp_is_16]
     }
 
-    fn ext_consistency_constraints(
+    // TODO actually use consistency constraints
+    fn _ext_consistency_constraints(
         _challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints

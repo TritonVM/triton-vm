@@ -722,7 +722,8 @@ impl ExtProcessorTable {
         ]
     }
 
-    fn ext_consistency_constraints(
+    // TODO actually use consistency constraints
+    fn _ext_consistency_constraints(
         _challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         let factory = SingleRowConstraints::default();

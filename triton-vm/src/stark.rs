@@ -189,15 +189,10 @@ impl Stark {
         let extension_degree_bounds = ext_tables.get_extension_degree_bounds();
         timer.elapsed("Calculated extension degree bounds");
 
-        let mut quotient_codewords = ext_codeword_tables.get_all_quotients(
-            &self.xfri.domain,
-            &extension_challenges,
-            &all_terminals,
-        );
+        let mut quotient_codewords = ext_codeword_tables.get_all_quotients(&self.xfri.domain);
         timer.elapsed("Calculated quotient codewords");
 
-        let mut quotient_degree_bounds = ext_codeword_tables
-            .get_all_quotient_degree_bounds(&extension_challenges, &all_terminals);
+        let mut quotient_degree_bounds = ext_codeword_tables.get_all_quotient_degree_bounds();
         timer.elapsed("Calculated quotient degree bounds");
 
         // Prove equal initial values for the permutation-extension column pairs
@@ -641,8 +636,7 @@ impl Stark {
         let extension_degree_bounds = ext_table_collection.get_extension_degree_bounds();
         timer.elapsed("Calculated extension degree bounds");
 
-        let quotient_degree_bounds = ext_table_collection
-            .get_all_quotient_degree_bounds(&extension_challenges, &all_terminals);
+        let quotient_degree_bounds = ext_table_collection.get_all_quotient_degree_bounds();
         timer.elapsed("Calculated quotient degree bounds");
 
         let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
@@ -855,8 +849,7 @@ impl Stark {
             {
                 let table_height = table.padded_height() as u32;
 
-                let boundary_degree_bounds =
-                    table.boundary_quotient_degree_bounds(&extension_challenges);
+                let boundary_degree_bounds = table.boundary_quotient_degree_bounds();
                 for (boundary_constraint, degree_bound) in table
                     .get_boundary_constraints()
                     .iter()
@@ -871,8 +864,7 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
-                let trnstn_deg_bnds =
-                    table.transition_quotient_degree_bounds(&extension_challenges);
+                let trnstn_deg_bnds = table.transition_quotient_degree_bounds();
                 for (transition_constraint, degree_bound) in table
                     .get_transition_constraints()
                     .iter()
@@ -898,8 +890,7 @@ impl Stark {
 
                 // let terminal_constraints =
                 //     table.ext_terminal_constraints(&extension_challenges, &all_terminals);
-                let trmnl_deg_bnds =
-                    table.terminal_quotient_degree_bounds(&extension_challenges, &all_terminals);
+                let trmnl_deg_bnds = table.terminal_quotient_degree_bounds();
                 for (terminal_constraint, degree_bound) in table
                     .get_terminal_constraints()
                     .iter()
@@ -1259,7 +1250,7 @@ pub(crate) mod triton_stark_tests {
             ext_tables,
             all_challenges,
             _all_initials,
-            all_terminals,
+            _all_terminals,
         ) = parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[], &[]);
 
         for ext_table in (&ext_tables).into_iter() {

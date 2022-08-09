@@ -81,7 +81,9 @@ impl ExtHashTable {
         vec![]
     }
 
-    fn ext_consistency_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
+    // TODO actually use consistency constraints
+    fn _ext_consistency_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
+        #[allow(dead_code)] // TODO remove this once consistency constraints are actually used
         fn constant(constant: u32) -> MPolynomial<XWord> {
             MPolynomial::from_constant(constant.into(), FULL_WIDTH)
         }
@@ -93,18 +95,6 @@ impl ExtHashTable {
         let state13 = variables[usize::from(HashTableColumn::STATE13)].clone();
         let state14 = variables[usize::from(HashTableColumn::STATE14)].clone();
         let state15 = variables[usize::from(HashTableColumn::STATE15)].clone();
-
-        // Common factor:
-        /*
-            (rnd_nmbr.clone() - constant(0))
-            * (rnd_nmbr.clone() - constant(2))
-            * (rnd_nmbr.clone() - constant(3))
-            * (rnd_nmbr.clone() - constant(4))
-            * (rnd_nmbr.clone() - constant(5))
-            * (rnd_nmbr.clone() - constant(6))
-            * (rnd_nmbr.clone() - constant(7))
-            * (rnd_nmbr.clone() - constant(8));
-        */
 
         let common_factor = (0..=0)
             .chain(2..=8)

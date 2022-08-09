@@ -82,7 +82,8 @@ impl ExtInstructionTable {
         vec![fst_addr_is_zero]
     }
 
-    fn ext_consistency_constraints(
+    // TODO actually use consistency constraints
+    fn _ext_consistency_constraints(
         _challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints

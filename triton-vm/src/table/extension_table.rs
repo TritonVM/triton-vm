@@ -1,5 +1,5 @@
-use super::base_table::{BaseTable, BaseTableTrait};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::base_table::BaseTableTrait;
+use super::challenges_endpoints::AllChallenges;
 use crate::fri_domain::FriDomain;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -78,20 +78,16 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>>;
 
-    fn all_quotient_degree_bounds(
-        &self,
-        challenges: &AllChallenges,
-        terminals: &AllEndpoints,
-    ) -> Vec<Degree> {
+    fn all_quotient_degree_bounds(&self) -> Vec<Degree> {
         vec![
-            self.boundary_quotient_degree_bounds(challenges),
-            self.transition_quotient_degree_bounds(challenges),
-            self.terminal_quotient_degree_bounds(challenges, terminals),
+            self.boundary_quotient_degree_bounds(),
+            self.transition_quotient_degree_bounds(),
+            self.terminal_quotient_degree_bounds(),
         ]
         .concat()
     }
 
-    fn boundary_quotient_degree_bounds(&self, challenges: &AllChallenges) -> Vec<Degree> {
+    fn boundary_quotient_degree_bounds(&self) -> Vec<Degree> {
         let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
 
         let degree_bounds: Vec<Degree> = self
@@ -103,7 +99,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         degree_bounds
     }
 
-    fn transition_quotient_degree_bounds(&self, challenges: &AllChallenges) -> Vec<Degree> {
+    fn transition_quotient_degree_bounds(&self) -> Vec<Degree> {
         let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); 2 * self.full_width()];
         let transition_constraints = self.get_transition_constraints();
         // Safe because padded height is at most 2^30.
@@ -114,11 +110,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             .collect()
     }
 
-    fn terminal_quotient_degree_bounds(
-        &self,
-        challenges: &AllChallenges,
-        terminals: &AllEndpoints,
-    ) -> Vec<Degree> {
+    fn terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
         let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
         self.get_terminal_constraints()
             .iter()
@@ -130,24 +122,21 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         &self,
         fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
-        challenges: &AllChallenges,
-        terminals: &AllEndpoints,
     ) -> Vec<Vec<XWord>> {
         let mut timer = TimingReporter::start();
         timer.elapsed(&format!("Table name: {}", self.name()));
 
-        let boundary_quotients = self.boundary_quotients(fri_domain, codewords, challenges);
+        let boundary_quotients = self.boundary_quotients(fri_domain, codewords);
         timer.elapsed("boundary quotients");
 
         // TODO take consistency quotients into account
         // let consistency_quotients = self.consistency_quotients(fri_domain, codewords, challenges);
         // timer.elapsed("Done calculating consistency quotients");
 
-        let transition_quotients = self.transition_quotients(fri_domain, codewords, challenges);
+        let transition_quotients = self.transition_quotients(fri_domain, codewords);
         timer.elapsed("transition quotients");
 
-        let terminal_quotients =
-            self.terminal_quotients(fri_domain, codewords, challenges, terminals);
+        let terminal_quotients = self.terminal_quotients(fri_domain, codewords);
         timer.elapsed("terminal quotients");
 
         println!("{}", timer.finish());
@@ -164,7 +153,6 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         &self,
         fri_domain: &FriDomain<XWord>,
         codewords_transposed: &[Vec<XWord>],
-        challenges: &AllChallenges,
     ) -> Vec<Vec<XWord>> {
         let mut timer = TimingReporter::start();
         timer.elapsed("Start transition quotients");
@@ -246,8 +234,6 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         &self,
         fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
-        challenges: &AllChallenges,
-        terminals: &AllEndpoints,
     ) -> Vec<Vec<XWord>> {
         let omicron_inverse = self.omicron().inverse();
 
@@ -299,7 +285,6 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         &self,
         fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
-        challenges: &AllChallenges,
     ) -> Vec<Vec<XWord>> {
         assert!(!codewords.is_empty(), "Codewords must be non-empty");
         for row in codewords.iter() {

@@ -214,7 +214,8 @@ impl ExtRamTable {
         vec![clk_is_0, ramp_is_0, ramv_is_0]
     }
 
-    fn ext_consistency_constraints(_challenges: &RamTableChallenges) -> Vec<MPolynomial<XWord>> {
+    // TODO actually use consistency constraints
+    fn _ext_consistency_constraints(_challenges: &RamTableChallenges) -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
     }

@@ -1,5 +1,5 @@
 use super::base_matrix::BaseMatrices;
-use super::base_table::{BaseTable, BaseTableTrait};
+use super::base_table::BaseTableTrait;
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::ExtensionTable;
 use super::hash_table::{ExtHashTable, HashTable};
@@ -487,12 +487,7 @@ impl ExtTableCollection {
             .concat()
     }
 
-    pub fn get_all_quotients(
-        &self,
-        fri_domain: &FriDomain<XWord>,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Vec<Vec<XWord>> {
+    pub fn get_all_quotients(&self, fri_domain: &FriDomain<XWord>) -> Vec<Vec<XWord>> {
         let mut timer = TimingReporter::start();
         self.into_iter()
             .map(|ext_codeword_table| {
@@ -500,12 +495,7 @@ impl ExtTableCollection {
                     "Start calculating quotient: {}",
                     ext_codeword_table.name()
                 ));
-                let res = ext_codeword_table.all_quotients(
-                    fri_domain,
-                    ext_codeword_table.data(),
-                    all_challenges,
-                    all_terminals,
-                );
+                let res = ext_codeword_table.all_quotients(fri_domain, ext_codeword_table.data());
                 timer.elapsed(&format!(
                     "Ended calculating quotient: {}",
                     ext_codeword_table.name()
@@ -515,13 +505,9 @@ impl ExtTableCollection {
             .concat()
     }
 
-    pub fn get_all_quotient_degree_bounds(
-        &self,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Vec<Degree> {
+    pub fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
         self.into_iter() // Can we parallelize this? -> implement into_par_iter for TableCollection
-            .map(|ext_table| ext_table.all_quotient_degree_bounds(all_challenges, all_terminals))
+            .map(|ext_table| ext_table.all_quotient_degree_bounds())
             .concat()
     }
 }
