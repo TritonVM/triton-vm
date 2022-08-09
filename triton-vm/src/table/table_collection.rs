@@ -535,7 +535,6 @@ impl<'a> IntoIterator for &'a ExtTableCollection {
 #[cfg(test)]
 mod table_collection_tests {
     use super::*;
-    use crate::stark;
     use crate::table::{
         hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
         program_table, ram_table, u32_op_table,
@@ -616,65 +615,5 @@ mod table_collection_tests {
             u32_op_table::FULL_WIDTH,
             ext_tables.u32_op_table.full_width()
         );
-    }
-
-    #[test]
-    fn constraint_polynomials_use_right_variable_count_test() {
-        let ext_tables = dummy_ext_table_collection();
-        let (all_challenges, all_initials) = stark::triton_stark_tests::dummy_challenges_initials();
-
-        for ext_table in ext_tables.into_iter() {
-            let boundary_constraints = ext_table.get_boundary_constraints();
-            for (i, poly) in boundary_constraints.iter().enumerate() {
-                assert_eq!(
-                    ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th boundary constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
-
-            let consistency_constraints = ext_table.get_consistency_constraints();
-            for (i, poly) in consistency_constraints.iter().enumerate() {
-                assert_eq!(
-                    ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th consistency constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
-
-            let transition_constraints = ext_table.get_transition_constraints();
-            for (i, poly) in transition_constraints.iter().enumerate() {
-                assert_eq!(
-                    2 * ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th transition constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
-
-            let terminal_constraints = ext_table.get_terminal_constraints();
-            for (i, poly) in terminal_constraints.iter().enumerate() {
-                assert_eq!(
-                    ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th terminal constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
-        }
     }
 }

@@ -1240,6 +1240,65 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
     }
 
+    #[test]
+    fn constraint_polynomials_use_right_variable_count_test() {
+        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[], &[]);
+
+        for ext_table in ext_tables.into_iter() {
+            let boundary_constraints = ext_table.get_boundary_constraints();
+            for (i, poly) in boundary_constraints.iter().enumerate() {
+                assert_eq!(
+                    ext_table.full_width(),
+                    poly.variable_count,
+                    "{}: The {}'th boundary constraint should have {} variables, has {} variables.",
+                    ext_table.name(),
+                    i,
+                    ext_table.full_width(),
+                    poly.variable_count,
+                );
+            }
+
+            let consistency_constraints = ext_table.get_consistency_constraints();
+            for (i, poly) in consistency_constraints.iter().enumerate() {
+                assert_eq!(
+                    ext_table.full_width(),
+                    poly.variable_count,
+                    "{}: The {}'th consistency constraint should have {} variables, has {} variables.",
+                    ext_table.name(),
+                    i,
+                    ext_table.full_width(),
+                    poly.variable_count,
+                );
+            }
+
+            let transition_constraints = ext_table.get_transition_constraints();
+            for (i, poly) in transition_constraints.iter().enumerate() {
+                assert_eq!(
+                    2 * ext_table.full_width(),
+                    poly.variable_count,
+                    "{}: The {}'th transition constraint should have {} variables, has {} variables.",
+                    ext_table.name(),
+                    i,
+                    ext_table.full_width(),
+                    poly.variable_count,
+                );
+            }
+
+            let terminal_constraints = ext_table.get_terminal_constraints();
+            for (i, poly) in terminal_constraints.iter().enumerate() {
+                assert_eq!(
+                    ext_table.full_width(),
+                    poly.variable_count,
+                    "{}: The {}'th terminal constraint should have {} variables, has {} variables.",
+                    ext_table.name(),
+                    i,
+                    ext_table.full_width(),
+                    poly.variable_count,
+                );
+            }
+        }
+    }
+
     // 2. simulate(), test constraints
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
@@ -1248,7 +1307,7 @@ pub(crate) mod triton_stark_tests {
             _unpadded_base_tables,
             _padded_base_tables,
             ext_tables,
-            all_challenges,
+            _all_challenges,
             _all_initials,
             _all_terminals,
         ) = parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[], &[]);

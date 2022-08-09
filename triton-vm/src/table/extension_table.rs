@@ -37,7 +37,9 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         if let Some(cc) = &self.to_base().consistency_constraints {
             cc.to_owned()
         } else {
-            panic!("Do not have consistency constraints! {} ", &self.name());
+            vec![]
+            // TODO: panic! once consistency constraints exist
+            // panic!("Do not have consistency constraints! {} ", &self.name());
         }
     }
 
