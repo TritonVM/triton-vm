@@ -81,9 +81,7 @@ impl ExtHashTable {
         vec![]
     }
 
-    // TODO actually use consistency constraints
-    fn _ext_consistency_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
-        #[allow(dead_code)] // TODO remove this once consistency constraints are actually used
+    fn ext_consistency_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
         fn constant(constant: u32) -> MPolynomial<XWord> {
             MPolynomial::from_constant(constant.into(), FULL_WIDTH)
         }
@@ -296,6 +294,7 @@ impl HashTable {
             base,
             ExtHashTable::ext_boundary_constraints(challenges),
             ExtHashTable::ext_transition_constraints(&challenges),
+            ExtHashTable::ext_consistency_constraints(&challenges),
             ExtHashTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -365,6 +364,7 @@ impl ExtHashTable {
             base,
             ExtHashTable::ext_boundary_constraints(&all_challenges.hash_table_challenges),
             ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
+            ExtHashTable::ext_consistency_constraints(&all_challenges.hash_table_challenges),
             ExtHashTable::ext_terminal_constraints(
                 &all_challenges.hash_table_challenges,
                 &all_terminals.hash_table_endpoints,

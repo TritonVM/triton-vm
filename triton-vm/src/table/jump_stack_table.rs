@@ -89,7 +89,7 @@ impl ExtJumpStackTable {
     }
 
     // TODO actually use consistency constraints
-    fn _ext_consistency_constraints(
+    fn ext_consistency_constraints(
         _challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints
@@ -247,6 +247,7 @@ impl JumpStackTable {
             base,
             ExtJumpStackTable::ext_boundary_constraints(challenges),
             ExtJumpStackTable::ext_transition_constraints(&challenges),
+            ExtJumpStackTable::ext_consistency_constraints(&challenges),
             ExtJumpStackTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -318,6 +319,9 @@ impl ExtJumpStackTable {
                 &all_challenges.jump_stack_table_challenges,
             ),
             ExtJumpStackTable::ext_transition_constraints(
+                &all_challenges.jump_stack_table_challenges,
+            ),
+            ExtJumpStackTable::ext_consistency_constraints(
                 &all_challenges.jump_stack_table_challenges,
             ),
             ExtJumpStackTable::ext_terminal_constraints(

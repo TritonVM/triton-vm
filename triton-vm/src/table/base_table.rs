@@ -88,11 +88,13 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
         base_table: BaseTable<DataPF>,
         boundary_constraints: Vec<MPolynomial<DataPF>>,
         transition_constraints: Vec<MPolynomial<DataPF>>,
+        consistency_constraints: Vec<MPolynomial<DataPF>>,
         terminal_constraints: Vec<MPolynomial<DataPF>>,
     ) -> Self {
         BaseTable {
             boundary_constraints: Some(boundary_constraints),
             transition_constraints: Some(transition_constraints),
+            consistency_constraints: Some(consistency_constraints),
             terminal_constraints: Some(terminal_constraints),
             ..base_table
         }

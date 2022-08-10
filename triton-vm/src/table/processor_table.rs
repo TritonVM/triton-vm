@@ -363,6 +363,7 @@ impl ProcessorTable {
             base,
             ExtProcessorTable::ext_boundary_constraints(challenges),
             ExtProcessorTable::ext_transition_constraints(&challenges),
+            ExtProcessorTable::ext_consistency_constraints(&challenges),
             ExtProcessorTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -723,7 +724,7 @@ impl ExtProcessorTable {
     }
 
     // TODO actually use consistency constraints
-    fn _ext_consistency_constraints(
+    fn ext_consistency_constraints(
         _challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         let factory = SingleRowConstraints::default();
@@ -828,6 +829,9 @@ impl ExtProcessorTable {
             base,
             ExtProcessorTable::ext_boundary_constraints(&all_challenges.processor_table_challenges),
             ExtProcessorTable::ext_transition_constraints(
+                &all_challenges.processor_table_challenges,
+            ),
+            ExtProcessorTable::ext_consistency_constraints(
                 &all_challenges.processor_table_challenges,
             ),
             ExtProcessorTable::ext_terminal_constraints(

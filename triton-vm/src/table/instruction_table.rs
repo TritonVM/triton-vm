@@ -83,7 +83,7 @@ impl ExtInstructionTable {
     }
 
     // TODO actually use consistency constraints
-    fn _ext_consistency_constraints(
+    fn ext_consistency_constraints(
         _challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints
@@ -146,6 +146,9 @@ impl ExtInstructionTable {
                 &all_challenges.instruction_table_challenges,
             ),
             ExtInstructionTable::ext_transition_constraints(
+                &all_challenges.instruction_table_challenges,
+            ),
+            ExtInstructionTable::ext_consistency_constraints(
                 &all_challenges.instruction_table_challenges,
             ),
             ExtInstructionTable::ext_terminal_constraints(
@@ -266,6 +269,7 @@ impl InstructionTable {
             base,
             ExtInstructionTable::ext_boundary_constraints(challenges),
             ExtInstructionTable::ext_transition_constraints(&challenges),
+            ExtInstructionTable::ext_consistency_constraints(&challenges),
             ExtInstructionTable::ext_terminal_constraints(&challenges, &terminals),
         );
 

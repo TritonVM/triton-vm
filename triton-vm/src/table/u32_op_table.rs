@@ -71,7 +71,7 @@ impl ExtU32OpTable {
     }
 
     // TODO actually use consistency constraints
-    fn _ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
         vec![]
     }
 
@@ -210,6 +210,7 @@ impl U32OpTable {
             base,
             ExtU32OpTable::ext_boundary_constraints(challenges),
             ExtU32OpTable::ext_transition_constraints(&challenges),
+            ExtU32OpTable::ext_consistency_constraints(&challenges),
             ExtU32OpTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -279,6 +280,7 @@ impl ExtU32OpTable {
             base,
             ExtU32OpTable::ext_boundary_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
+            ExtU32OpTable::ext_consistency_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_terminal_constraints(
                 &all_challenges.u32_op_table_challenges,
                 &all_terminals.u32_op_table_endpoints,

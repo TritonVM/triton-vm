@@ -83,7 +83,7 @@ impl ExtProgramTable {
     }
 
     // TODO actually use consistency constraints
-    fn _ext_consistency_constraints(
+    fn ext_consistency_constraints(
         _challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints
@@ -192,6 +192,7 @@ impl ProgramTable {
             base,
             ExtProgramTable::ext_boundary_constraints(challenges),
             ExtProgramTable::ext_transition_constraints(&challenges),
+            ExtProgramTable::ext_consistency_constraints(&challenges),
             ExtProgramTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -239,6 +240,7 @@ impl ExtProgramTable {
             base,
             ExtProgramTable::ext_boundary_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
+            ExtProgramTable::ext_consistency_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_terminal_constraints(
                 &all_challenges.program_table_challenges,
                 &all_terminals.program_table_endpoints,
