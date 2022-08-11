@@ -253,10 +253,8 @@ mod triton_vm_tests {
     use crate::table::processor_table::ProcessorTable;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
-    use twenty_first::shared_math::rescue_prime_xlix::RP_DEFAULT_WIDTH;
     use twenty_first::shared_math::traits::IdentityValues;
     use twenty_first::shared_math::x_field_element::XFieldElement;
-    use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
 
     #[test]
     fn initialise_table_test() {
@@ -493,9 +491,6 @@ mod triton_vm_tests {
 
     #[test]
     fn processor_table_constraints_evaluate_to_zero_test() {
-        let mut _rng = rand::thread_rng();
-        let hasher = RescuePrimeXlix::<RP_DEFAULT_WIDTH>::new();
-
         // TODO: make this vec into vec of tuples (str, input_vec) to test divine, read_io, etc.
         let all_programs = vec![
             "push 0 pop halt ",
@@ -557,31 +552,8 @@ mod triton_vm_tests {
                 "Matrix length must be power of 2 after padding"
             );
 
-            let mock_seed = 0u128.to_digest();
-            let mock_challenge_weights: Vec<XFieldElement> = hasher
-                .get_n_hash_rounds(&mock_seed, AllChallenges::TOTAL_CHALLENGES / 2)
-                .iter()
-                .flat_map(|digest| {
-                    vec![
-                        XFieldElement::new([digest[0], digest[1], digest[2]]),
-                        XFieldElement::new([digest[3], digest[4], digest[5]]),
-                    ]
-                })
-                .collect();
-            let challenges: AllChallenges =
-                AllChallenges::create_challenges(&mock_challenge_weights);
-
-            let mock_initial_weights: Vec<XFieldElement> = hasher
-                .get_n_hash_rounds(&mock_seed, AllEndpoints::TOTAL_ENDPOINTS / 2)
-                .iter()
-                .flat_map(|digest| {
-                    vec![
-                        XFieldElement::new([digest[0], digest[1], digest[2]]),
-                        XFieldElement::new([digest[3], digest[4], digest[5]]),
-                    ]
-                })
-                .collect();
-            let initials: AllEndpoints = AllEndpoints::create_initials(&mock_initial_weights);
+            let challenges = AllChallenges::dummy();
+            let initials = AllEndpoints::dummy();
 
             let (ext_processor_table, _terminals) = processor_table.extend(
                 &challenges.processor_table_challenges,

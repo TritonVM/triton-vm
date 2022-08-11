@@ -149,11 +149,11 @@ impl Stark {
 
         let extension_challenge_weights =
             hasher.sample_n_weights(&extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
-        let extension_challenges = AllChallenges::create_challenges(&extension_challenge_weights);
+        let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("challenges");
 
         let random_initials = Self::sample_initials();
-        let all_initials = AllEndpoints::create_initials(&random_initials);
+        let all_initials = AllEndpoints::create_initials(random_initials);
         timer.elapsed("initials");
 
         let (ext_tables, all_terminals) =
@@ -608,11 +608,9 @@ impl Stark {
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
         timer.elapsed("Fiat-Shamir seed for extension challenges");
 
-        let extension_challenge_weights: [XFieldElement; AllChallenges::TOTAL_CHALLENGES] = hasher
-            .sample_n_weights(&extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES)
-            .try_into()
-            .unwrap();
-        let extension_challenges = AllChallenges::create_challenges(&extension_challenge_weights);
+        let extension_challenge_weights =
+            hasher.sample_n_weights(&extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
+        let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("Create extension challenges");
 
         let padded_heights = proof_stream
@@ -1023,20 +1021,6 @@ pub(crate) mod triton_stark_tests {
     use twenty_first::shared_math::traits::PrimeField;
     use twenty_first::util_types::proof_stream_typed::ProofStream;
 
-    pub(crate) fn dummy_challenges_initials() -> (AllChallenges, AllEndpoints) {
-        let hasher = StarkHasher::new();
-        let mock_seed = hasher.hash(&[], DIGEST_LEN);
-
-        let challenge_weights =
-            hasher.sample_n_weights(&mock_seed, AllChallenges::TOTAL_CHALLENGES);
-        let dummy_challenges: AllChallenges = AllChallenges::create_challenges(&challenge_weights);
-
-        let initial_weights = hasher.sample_n_weights(&mock_seed, AllEndpoints::TOTAL_ENDPOINTS);
-        let dummy_initials: AllEndpoints = AllEndpoints::create_initials(&initial_weights);
-
-        (dummy_challenges, dummy_initials)
-    }
-
     fn parse_simulate_prove(
         code: &str,
         co_set_fri_offset: BWord,
@@ -1128,17 +1112,18 @@ pub(crate) mod triton_stark_tests {
 
         base_tables.pad();
 
-        let (all_challenges, all_initials) = dummy_challenges_initials();
+        let dummy_challenges = AllChallenges::dummy();
+        let dummy_initials = AllEndpoints::dummy();
         let (ext_tables, all_terminals) =
-            ExtTableCollection::extend_tables(&base_tables, &all_challenges, &all_initials);
+            ExtTableCollection::extend_tables(&base_tables, &dummy_challenges, &dummy_initials);
 
         (
             stdout,
             unpadded_base_tables,
             base_tables,
             ext_tables,
-            all_challenges,
-            all_initials,
+            dummy_challenges,
+            dummy_initials,
             all_terminals,
         )
     }

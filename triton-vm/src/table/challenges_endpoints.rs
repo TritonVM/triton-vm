@@ -29,9 +29,7 @@ pub struct AllChallenges {
 impl AllChallenges {
     pub const TOTAL_CHALLENGES: usize = 127;
 
-    pub fn create_challenges(weights: &[XFieldElement]) -> Self {
-        let mut weights = weights.to_vec();
-
+    pub fn create_challenges(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_challenges = ProcessorTableChallenges {
             input_table_eval_row_weight: weights.pop().unwrap(),
             output_table_eval_row_weight: weights.pop().unwrap(),
@@ -209,10 +207,10 @@ impl AllChallenges {
     }
 
     pub fn dummy() -> Self {
-        let zero: XFieldElement = XFieldElement::new_const(0.into());
-        let zeros = vec![zero; Self::TOTAL_CHALLENGES];
+        let one = XFieldElement::ring_one();
+        let non_random_challenges = vec![one; Self::TOTAL_CHALLENGES];
 
-        Self::create_challenges(&zeros)
+        Self::create_challenges(non_random_challenges)
     }
 }
 
@@ -232,9 +230,7 @@ pub struct AllEndpoints {
 impl AllEndpoints {
     pub const TOTAL_ENDPOINTS: usize = 14;
 
-    pub fn create_initials(weights: &[XFieldElement]) -> Self {
-        let mut weights = weights.to_vec();
-
+    pub fn create_initials(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_initials = ProcessorTableEndpoints {
             input_table_eval_sum: XFieldElement::ring_zero(),
             output_table_eval_sum: XFieldElement::ring_zero(),
@@ -297,6 +293,13 @@ impl AllEndpoints {
             hash_table_endpoints: hash_table_initials,
             u32_op_table_endpoints: u32_op_table_initials,
         }
+    }
+
+    pub fn dummy() -> Self {
+        let one = XFieldElement::ring_one();
+        let non_random_initials = vec![one; Self::TOTAL_ENDPOINTS];
+
+        Self::create_initials(non_random_initials)
     }
 }
 
