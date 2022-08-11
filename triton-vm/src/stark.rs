@@ -7,7 +7,7 @@ use crate::state::DIGEST_LEN;
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
 use crate::triton_xfri::{self, Fri};
-use itertools::Itertools;
+use itertools::{izip, Itertools};
 use rand::{thread_rng, Rng};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -152,11 +152,8 @@ impl Stark {
         let extension_challenges = AllChallenges::create_challenges(&extension_challenge_weights);
         timer.elapsed("challenges");
 
-        let initials_seed = Self::get_initials_seed();
-        let initial_weights =
-            hasher.sample_n_weights(&initials_seed, AllEndpoints::TOTAL_ENDPOINTS);
-        let all_initials = AllEndpoints::create_initials(&initial_weights);
-
+        let random_initials = Self::sample_initials();
+        let all_initials = AllEndpoints::create_initials(&random_initials);
         timer.elapsed("initials");
 
         let (ext_tables, all_terminals) =
@@ -349,14 +346,18 @@ impl Stark {
         revealed_base_elements
     }
 
-    fn get_initials_seed() -> Vec<BFieldElement> {
+    fn sample_initials() -> Vec<XFieldElement> {
         let mut rng = thread_rng();
-        let initials_seed_u64: [u64; RP_DEFAULT_OUTPUT_SIZE] = rng.gen();
-        let initials_seed: Vec<BFieldElement> = initials_seed_u64
-            .into_iter()
-            .map(BFieldElement::new)
-            .collect();
-        initials_seed
+        let initials_seed_u64_0: [u64; AllEndpoints::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_1: [u64; AllEndpoints::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_2: [u64; AllEndpoints::TOTAL_ENDPOINTS] = rng.gen();
+        izip!(
+            initials_seed_u64_0.into_iter(),
+            initials_seed_u64_1.into_iter(),
+            initials_seed_u64_2.into_iter(),
+        )
+        .map(|(c0, c1, c2)| XFieldElement::new_u64([c0, c1, c2]))
+        .collect()
     }
 
     // TODO try to reduce the number of arguments
