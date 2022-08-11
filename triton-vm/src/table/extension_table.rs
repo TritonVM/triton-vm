@@ -209,23 +209,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         }
         timer.elapsed("DONE Transition Constraints");
 
-        if std::env::var("DEBUG").is_ok() {
-            // interpolate the quotient and check the degree
-            for (idx, qc) in quotients.iter().enumerate() {
-                let interpolated: Polynomial<XWord> = fri_domain.interpolate(qc);
-                assert!(
-                    interpolated.degree() < fri_domain.length as isize - 1,
-                    "Degree of transition quotient number {idx} (of {}) in {} must not be maximal. \
-                    Got degree {}, and FRI domain length was {}. \
-                    Unsatisfied constraint: {}",
-                    quotients.len(),
-                    self.name(),
-                    interpolated.degree(),
-                    fri_domain.length,
-                    transition_constraints[idx]
-                );
-            }
-        }
+        self.debug_degree_bound_check(fri_domain, transition_constraints, &quotients);
 
         quotients
     }
@@ -261,22 +245,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             quotient_codewords.push(quotient_codeword);
         }
 
-        if std::env::var("DEBUG").is_ok() {
-            for (idx, qc) in quotient_codewords.iter().enumerate() {
-                let interpolated = fri_domain.interpolate(qc);
-                assert!(
-                    interpolated.degree() < fri_domain.length as isize - 1,
-                    "Degree of terminal quotient number {idx} (of {}) in {} must not be maximal. \
-                    Got degree {}, and FRI domain length was {}. \
-                    Unsatisfied constraint: {}",
-                    quotient_codewords.len(),
-                    self.name(),
-                    interpolated.degree(),
-                    fri_domain.length,
-                    terminal_constraints[idx]
-                );
-            }
-        }
+        self.debug_degree_bound_check(fri_domain, terminal_constraints, &quotient_codewords);
 
         quotient_codewords
     }
@@ -319,24 +288,33 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             quotient_codewords.push(quotient_codeword);
         }
 
-        // If the `DEBUG` environment variable is set, run this extra validity check
-        if std::env::var("DEBUG").is_ok() {
-            for (idx, qc) in quotient_codewords.iter().enumerate() {
-                let interpolated = fri_domain.interpolate(qc);
-                assert!(
-                    interpolated.degree() < fri_domain.length as isize - 1,
-                    "Degree of boundary quotient number {idx} (of {}) in {} must not be maximal. \
-                    Got degree {}, and FRI domain length was {}.\
-                    Unsatisfied constraint: {}",
-                    quotient_codewords.len(),
-                    self.name(),
-                    interpolated.degree(),
-                    fri_domain.length,
-                    boundary_constraints[idx]
-                );
-            }
-        }
+        self.debug_degree_bound_check(fri_domain, boundary_constraints, &quotient_codewords);
 
         quotient_codewords
+    }
+
+    fn debug_degree_bound_check(
+        &self,
+        fri_domain: &FriDomain<XWord>,
+        consistency_constraints: Vec<MPolynomial<XWord>>,
+        quotient_codewords: &Vec<Vec<XFieldElement>>,
+    ) {
+        if std::env::var("DEBUG").is_err() {
+            return;
+        }
+        for (idx, qc) in quotient_codewords.iter().enumerate() {
+            let interpolated = fri_domain.interpolate(qc);
+            assert!(
+                interpolated.degree() < fri_domain.length as isize - 1,
+                "Degree of boundary quotient number {idx} (of {}) in {} must not be maximal. \
+                    Got degree {}, and FRI domain length was {}.\
+                    Unsatisfied constraint: {}",
+                quotient_codewords.len(),
+                self.name(),
+                interpolated.degree(),
+                fri_domain.length,
+                consistency_constraints[idx]
+            );
+        }
     }
 }
