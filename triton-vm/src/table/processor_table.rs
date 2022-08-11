@@ -723,7 +723,6 @@ impl ExtProcessorTable {
         ]
     }
 
-    // TODO actually use consistency constraints
     fn ext_consistency_constraints(
         _challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
@@ -733,12 +732,12 @@ impl ExtProcessorTable {
         //
         // $ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0) = 0$
         let ci_corresponds_to_ib0_thru_ib5 = {
-            let mut ib_composition = factory.one() * factory.ib0();
-            ib_composition += factory.constant(2) * factory.ib1();
-            ib_composition += factory.constant(4) * factory.ib2();
-            ib_composition += factory.constant(8) * factory.ib3();
-            ib_composition += factory.constant(16) * factory.ib4();
-            ib_composition += factory.constant(32) * factory.ib5();
+            let ib_composition = factory.one() * factory.ib0()
+                + factory.constant(2) * factory.ib1()
+                + factory.constant(4) * factory.ib2()
+                + factory.constant(8) * factory.ib3()
+                + factory.constant(16) * factory.ib4()
+                + factory.constant(32) * factory.ib5();
 
             factory.ci() - ib_composition
         };

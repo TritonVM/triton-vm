@@ -849,11 +849,10 @@ impl Stark {
             {
                 let table_height = table.padded_height() as u32;
 
-                let boundary_degree_bounds = table.boundary_quotient_degree_bounds();
                 for (boundary_constraint, degree_bound) in table
                     .get_boundary_constraints()
                     .iter()
-                    .zip_eq(boundary_degree_bounds.iter())
+                    .zip_eq(table.boundary_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = boundary_constraint.evaluate(table_row)
@@ -864,11 +863,10 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
-                let trnstn_deg_bnds = table.transition_quotient_degree_bounds();
                 for (transition_constraint, degree_bound) in table
                     .get_transition_constraints()
                     .iter()
-                    .zip_eq(trnstn_deg_bnds.iter())
+                    .zip_eq(table.transition_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = if table_height == 0 {
@@ -888,13 +886,24 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
-                // let terminal_constraints =
-                //     table.ext_terminal_constraints(&extension_challenges, &all_terminals);
-                let trmnl_deg_bnds = table.terminal_quotient_degree_bounds();
+                for (consistency_constraint, degree_bound) in table
+                    .get_consistency_constraints()
+                    .iter()
+                    .zip_eq(table.consistency_quotient_degree_bounds().iter())
+                {
+                    let shift = self.max_degree - degree_bound;
+                    let quotient = consistency_constraint.evaluate(table_row)
+                        / (current_fri_domain_value.mod_pow_u32(table_height) - 1.into());
+                    let quotient_shifted =
+                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
+                    summands.push(quotient);
+                    summands.push(quotient_shifted);
+                }
+
                 for (terminal_constraint, degree_bound) in table
                     .get_terminal_constraints()
                     .iter()
-                    .zip_eq(trmnl_deg_bnds.iter())
+                    .zip_eq(table.terminal_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = terminal_constraint.evaluate(table_row)

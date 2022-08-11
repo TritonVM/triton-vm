@@ -5,7 +5,6 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
-use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{Inverse, ModPowU32, PrimeField};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
@@ -82,6 +81,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         vec![
             self.boundary_quotient_degree_bounds(),
             self.transition_quotient_degree_bounds(),
+            self.consistency_quotient_degree_bounds(),
             self.terminal_quotient_degree_bounds(),
         ]
         .concat()
@@ -110,6 +110,14 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             .collect()
     }
 
+    fn consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
+        let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
+        self.get_consistency_constraints()
+            .iter()
+            .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - 1)
+            .collect()
+    }
+
     fn terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
         let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
         self.get_terminal_constraints()
@@ -129,12 +137,11 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         let boundary_quotients = self.boundary_quotients(fri_domain, codewords);
         timer.elapsed("boundary quotients");
 
-        // TODO take consistency quotients into account
-        // let consistency_quotients = self.consistency_quotients(fri_domain, codewords, challenges);
-        // timer.elapsed("Done calculating consistency quotients");
-
         let transition_quotients = self.transition_quotients(fri_domain, codewords);
         timer.elapsed("transition quotients");
+
+        let consistency_quotients = self.consistency_quotients(fri_domain, codewords);
+        timer.elapsed("Done calculating consistency quotients");
 
         let terminal_quotients = self.terminal_quotients(fri_domain, codewords);
         timer.elapsed("terminal quotients");
@@ -142,8 +149,8 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         println!("{}", timer.finish());
         vec![
             boundary_quotients,
-            // consistency_quotients,
             transition_quotients,
+            consistency_quotients,
             terminal_quotients,
         ]
         .concat()
@@ -289,6 +296,53 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         }
 
         self.debug_degree_bound_check(fri_domain, boundary_constraints, &quotient_codewords);
+
+        quotient_codewords
+    }
+
+    fn consistency_quotients(
+        &self,
+        fri_domain: &FriDomain<XWord>,
+        codewords: &[Vec<XWord>],
+    ) -> Vec<Vec<XWord>> {
+        assert!(!codewords.is_empty(), "Codewords must be non-empty");
+        for row in codewords.iter() {
+            debug_assert_eq!(
+                fri_domain.length,
+                row.len(),
+                "Codewords have fri_domain.length columns ({}), not {}.",
+                fri_domain.length,
+                row.len()
+            );
+        }
+
+        let consistency_constraints = self.get_consistency_constraints();
+        let zerofier = fri_domain
+            .domain_values()
+            .iter()
+            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XWord::ring_one())
+            .collect();
+        let zerofier_inverse = if self.padded_height() == 0 {
+            zerofier
+        } else {
+            XWord::batch_inversion(zerofier)
+        };
+
+        let mut quotient_codewords = vec![];
+        for cc in consistency_constraints.iter() {
+            let quotient_codeword: Vec<_> = (0..fri_domain.length)
+                .into_iter()
+                .map(|fri_dom_i| {
+                    let point: Vec<XWord> = (0..self.full_width())
+                        .map(|j| codewords[j][fri_dom_i])
+                        .collect();
+                    cc.evaluate(&point) * zerofier_inverse[fri_dom_i]
+                })
+                .collect();
+            quotient_codewords.push(quotient_codeword);
+        }
+
+        self.debug_degree_bound_check(fri_domain, consistency_constraints, &quotient_codewords);
 
         quotient_codewords
     }
