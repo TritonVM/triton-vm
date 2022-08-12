@@ -26,7 +26,7 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = "0.1"
+twenty-first = "0.1.1"
 # twenty-first = { path = "../../twenty-first/twenty-first" }
 anyhow = "1.0"
 bincode = "1.3"
