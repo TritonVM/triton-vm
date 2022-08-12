@@ -160,63 +160,57 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
     fn transition_quotients(
         &self,
         fri_domain: &FriDomain<XWord>,
-        codewords_transposed: &[Vec<XWord>],
+        codewords: &[Vec<XWord>],
     ) -> Vec<Vec<XWord>> {
-        let mut timer = TimingReporter::start();
-        timer.elapsed("Start transition quotients");
+        for codeword in codewords.iter() {
+            debug_assert_eq!(fri_domain.length, codeword.len());
+        }
 
         let one = XWord::ring_one();
-        let x_values = fri_domain.domain_values();
-        timer.elapsed("Domain values");
+        let padded_height = self.padded_height() as u32;
+        let omicron_inverse = self.omicron().inverse();
+        let fri_domain_values = fri_domain.domain_values();
 
-        let subgroup_zerofier: Vec<XWord> = x_values
-            .iter()
-            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - one)
+        let subgroup_zerofier: Vec<_> = fri_domain_values
+            .par_iter()
+            .map(|fri_dom_v| fri_dom_v.mod_pow_u32(padded_height) - one)
             .collect();
-        let subgroup_zerofier_inverse = if self.padded_height() == 0 {
+        let subgroup_zerofier_inverse = if padded_height == 0 {
             subgroup_zerofier
         } else {
             XWord::batch_inversion(subgroup_zerofier)
         };
-        timer.elapsed("Batch Inversion");
-        let omicron_inverse = self.omicron().inverse();
-        let zerofier_inverse: Vec<XWord> = x_values
-            .into_iter()
-            .enumerate()
-            .map(|(i, x)| subgroup_zerofier_inverse[i] * (x - omicron_inverse))
+        let zerofier_inverse: Vec<_> = fri_domain_values
+            .into_par_iter()
+            .zip_eq(subgroup_zerofier_inverse.into_par_iter())
+            .map(|(fri_dom_v, sub_z_inv)| (fri_dom_v - omicron_inverse) * sub_z_inv)
             .collect();
-        timer.elapsed("Zerofier Inverse");
-        let transition_constraints = self.get_transition_constraints();
-        timer.elapsed("Transition Constraints");
 
         let mut quotients: Vec<Vec<XWord>> = vec![];
         let unit_distance = self.unit_distance(fri_domain.length);
+        let transition_constraints = self.get_transition_constraints();
 
         for tc in transition_constraints.iter() {
-            //timer.elapsed(&format!("START for-loop for tc of {}", tc.degree()));
-            let quotient_codeword: Vec<XWord> = zerofier_inverse
+            let quotient_codeword: Vec<_> = zerofier_inverse
                 .par_iter()
                 .enumerate()
-                .map(|(i, z_inverse)| {
-                    let current_row: Vec<XWord> = (0..self.full_width())
-                        .map(|j| codewords_transposed[j][i])
-                        .collect();
-
-                    let next_row: Vec<XWord> = (0..self.full_width())
-                        .map(|j| codewords_transposed[j][(i + unit_distance) % fri_domain.length])
-                        .collect();
-
-                    let point = vec![current_row, next_row].concat();
-                    let composition_evaluation = tc.evaluate(&point);
-                    composition_evaluation * *z_inverse
+                .map(|(current_row_idx, z_inverse)| {
+                    let current_row = codewords
+                        .iter()
+                        .map(|codeword| codeword[current_row_idx])
+                        .collect_vec();
+                    let next_row_idx = (current_row_idx + unit_distance) % fri_domain.length;
+                    let next_row = codewords
+                        .iter()
+                        .map(|codeword| codeword[next_row_idx])
+                        .collect_vec();
+                    let evaluation_point = vec![current_row, next_row].concat();
+                    let evaluated_constraint = tc.evaluate(&evaluation_point);
+                    evaluated_constraint * *z_inverse
                 })
                 .collect();
-
             quotients.push(quotient_codeword);
-            timer.elapsed(&format!("END for-loop for tc of {}", tc.degree()));
         }
-        timer.elapsed("DONE Transition Constraints");
-
         self.debug_degree_bound_check(fri_domain, transition_constraints, &quotients);
 
         quotients
