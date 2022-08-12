@@ -167,16 +167,8 @@ pub enum ExtProcessorTableColumn {
     CompressedRowForHashDigest,
     FromHashTableEvalArg,
 
-    CompressedRowLtU32Op,
-    LtU32OpTablePermArg,
-    CompressedRowAndU32Op,
-    AndU32OpTablePermArg,
-    CompressedRowXorU32Op,
-    XorU32OpTablePermArg,
-    CompressedRowReverseU32Op,
-    ReverseU32OpTablePermArg,
-    CompressedRowDivU32Op,
-    DivU32OpTablePermArg,
+    CompressedRowForU32Op,
+    U32OpTablePermArg,
 }
 
 impl std::fmt::Display for ExtProcessorTableColumn {
@@ -199,16 +191,8 @@ impl std::fmt::Display for ExtProcessorTableColumn {
             ToHashTableEvalArg => write!(f, "ToHashTableEvalArg"),
             CompressedRowForHashDigest => write!(f, "CompressedRowForHashDigest"),
             FromHashTableEvalArg => write!(f, "FromHashTableEvalArg"),
-            CompressedRowLtU32Op => write!(f, "CompressedRowLtU32Op"),
-            LtU32OpTablePermArg => write!(f, "LtU32OpTablePermArg"),
-            CompressedRowAndU32Op => write!(f, "CompressedRowAndU32Op"),
-            AndU32OpTablePermArg => write!(f, "AndU32OpTablePermArg"),
-            CompressedRowXorU32Op => write!(f, "CompressedRowXorU32Op"),
-            XorU32OpTablePermArg => write!(f, "XorU32OpTablePermArg"),
-            CompressedRowReverseU32Op => write!(f, "CompressedRowReverseU32Op"),
-            ReverseU32OpTablePermArg => write!(f, "ReverseU32OpTablePermArg"),
-            CompressedRowDivU32Op => write!(f, "CompressedRowDivU32Op"),
-            DivU32OpTablePermArg => write!(f, "DivU32OpTablePermArg"),
+            CompressedRowForU32Op => write!(f, "CompressedRowForU32Op"),
+            U32OpTablePermArg => write!(f, "U32OpTablePermArg"),
         }
     }
 }
@@ -233,16 +217,8 @@ impl From<ExtProcessorTableColumn> for usize {
             ToHashTableEvalArg => 47,
             CompressedRowForHashDigest => 48,
             FromHashTableEvalArg => 49,
-            CompressedRowLtU32Op => 50,
-            LtU32OpTablePermArg => 51,
-            CompressedRowAndU32Op => 52,
-            AndU32OpTablePermArg => 53,
-            CompressedRowXorU32Op => 54,
-            XorU32OpTablePermArg => 55,
-            CompressedRowReverseU32Op => 56,
-            ReverseU32OpTablePermArg => 57,
-            CompressedRowDivU32Op => 58,
-            DivU32OpTablePermArg => 59,
+            CompressedRowForU32Op => 50,
+            U32OpTablePermArg => 51,
         }
     }
 }
@@ -253,7 +229,7 @@ impl Bounded for ExtProcessorTableColumn {
     }
 
     fn max_value() -> Self {
-        ExtProcessorTableColumn::DivU32OpTablePermArg
+        ExtProcessorTableColumn::U32OpTablePermArg
     }
 }
 
@@ -664,6 +640,7 @@ impl Bounded for ExtHashTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum U32OpTableColumn {
     IDC,
+    CI,
     LHS,
     RHS,
     LT,
@@ -678,12 +655,13 @@ impl From<U32OpTableColumn> for usize {
 
         match c {
             IDC => 0,
-            LHS => 1,
-            RHS => 2,
-            LT => 3,
-            AND => 4,
-            XOR => 5,
-            REV => 6,
+            CI => 1,
+            LHS => 2,
+            RHS => 3,
+            LT => 4,
+            AND => 5,
+            XOR => 6,
+            REV => 7,
         }
     }
 }
@@ -701,16 +679,8 @@ impl Bounded for U32OpTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtU32OpTableColumn {
     BaseColumn(U32OpTableColumn),
-    LtCompressedRow,
-    LtRunningProductPermArg,
-    AndCompressedRow,
-    AndRunningProductPermArg,
-    XorCompressedRow,
-    XorRunningProductPermArg,
-    ReverseCompressedRow,
-    ReverseRunningProductPermArg,
-    DivCompressedRow,
-    DivRunningProductPermArg,
+    CompressedRow,
+    RunningProductPermArg,
 }
 
 impl From<ExtU32OpTableColumn> for usize {
@@ -719,16 +689,8 @@ impl From<ExtU32OpTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            LtCompressedRow => 7,
-            LtRunningProductPermArg => 8,
-            AndCompressedRow => 9,
-            AndRunningProductPermArg => 10,
-            XorCompressedRow => 11,
-            XorRunningProductPermArg => 12,
-            ReverseCompressedRow => 13,
-            ReverseRunningProductPermArg => 14,
-            DivCompressedRow => 15,
-            DivRunningProductPermArg => 16,
+            CompressedRow => 8,
+            RunningProductPermArg => 9,
         }
     }
 }
@@ -739,7 +701,7 @@ impl Bounded for ExtU32OpTableColumn {
     }
 
     fn max_value() -> Self {
-        ExtU32OpTableColumn::DivRunningProductPermArg
+        ExtU32OpTableColumn::RunningProductPermArg
     }
 }
 

@@ -109,68 +109,24 @@ impl PermArg {
         )
     }
 
-    /// A Permutation Argument with the u32 Op-Table for instruction `lt`.
-    pub fn processor_u32_lt_perm_arg() -> Self {
+    /// A Permutation Argument with the u32 Op-Table.
+    pub fn processor_u32_perm_arg() -> Self {
         PermArg::new(
             TableId::ProcessorTable,
-            ExtProcessorTableColumn::LtU32OpTablePermArg.into(),
+            ExtProcessorTableColumn::U32OpTablePermArg.into(),
             TableId::U32OpTable,
-            ExtU32OpTableColumn::LtRunningProductPermArg.into(),
-        )
-    }
-
-    /// A Permutation Argument with the u32 Op-Table for instruction `and`.
-    pub fn processor_u32_and_perm_arg() -> Self {
-        PermArg::new(
-            TableId::ProcessorTable,
-            ExtProcessorTableColumn::AndU32OpTablePermArg.into(),
-            TableId::U32OpTable,
-            ExtU32OpTableColumn::AndRunningProductPermArg.into(),
-        )
-    }
-
-    /// A Permutation Argument with the u32 Op-Table for instruction `xor`.
-    pub fn processor_u32_xor_perm_arg() -> Self {
-        PermArg::new(
-            TableId::ProcessorTable,
-            ExtProcessorTableColumn::XorU32OpTablePermArg.into(),
-            TableId::U32OpTable,
-            ExtU32OpTableColumn::XorRunningProductPermArg.into(),
-        )
-    }
-
-    /// A Permutation Argument with the u32 Op-Table for instruction `reverse`.
-    pub fn processor_u32_reverse_perm_arg() -> Self {
-        PermArg::new(
-            TableId::ProcessorTable,
-            ExtProcessorTableColumn::ReverseU32OpTablePermArg.into(),
-            TableId::U32OpTable,
-            ExtU32OpTableColumn::ReverseRunningProductPermArg.into(),
-        )
-    }
-
-    /// A Permutation Argument with the u32 Op-Table for instruction `div`.
-    pub fn processor_u32_div_perm_arg() -> Self {
-        PermArg::new(
-            TableId::ProcessorTable,
-            ExtProcessorTableColumn::DivU32OpTablePermArg.into(),
-            TableId::U32OpTable,
-            ExtU32OpTableColumn::DivRunningProductPermArg.into(),
+            ExtU32OpTableColumn::RunningProductPermArg.into(),
         )
     }
 
     // FIXME: PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT is incidentally ALL permutation arguments; create new constant?
-    pub fn all_permutation_arguments() -> [Self; PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT - 5] {
+    pub fn all_permutation_arguments() -> [Self; PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT - 1] {
         [
             Self::processor_instruction_perm_arg(),
             Self::processor_jump_stack_perm_arg(),
             Self::processor_op_stack_perm_arg(),
             Self::processor_ram_perm_arg(),
-            // Self::processor_u32_lt_perm_arg(),
-            // Self::processor_u32_and_perm_arg(),
-            // Self::processor_u32_xor_perm_arg(),
-            // Self::processor_u32_reverse_perm_arg(),
-            // Self::processor_u32_div_perm_arg(),
+            // Self::processor_u32_perm_arg(),
         ]
     }
 }

@@ -317,16 +317,8 @@ impl Display for ExtProcessorMatrixRow {
         row(f, "to_hash_table_ea", ToHashTableEvalArg)?;
         row(f, "cr_from_hash_table", CompressedRowForHashDigest)?;
         row(f, "from_hash_table_ea", FromHashTableEvalArg)?;
-        row(f, "cr_u32_lt", CompressedRowLtU32Op)?;
-        row(f, "u32_lt_pa", LtU32OpTablePermArg)?;
-        row(f, "cr_u32_and", CompressedRowAndU32Op)?;
-        row(f, "u32_and_pa", AndU32OpTablePermArg)?;
-        row(f, "cr_u32_xor", CompressedRowXorU32Op)?;
-        row(f, "u32_xor_pa", XorU32OpTablePermArg)?;
-        row(f, "cr_u32_rev", CompressedRowReverseU32Op)?;
-        row(f, "u32_rev_pa", ReverseU32OpTablePermArg)?;
-        row(f, "cr_u32_div", CompressedRowDivU32Op)?;
-        row(f, "u32_div_pa", DivU32OpTablePermArg)?;
+        row(f, "cr_u32_lt", CompressedRowForU32Op)?;
+        row(f, "u32_lt_pa", U32OpTablePermArg)?;
         write!(
             f,
             "     ╰───────────────────────────────────────────────────────\

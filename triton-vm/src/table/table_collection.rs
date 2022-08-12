@@ -380,13 +380,6 @@ impl ExtTableCollection {
         (ext_tables, terminals)
     }
 
-    pub fn codeword_index_to_table_name(&self, idx: usize) -> String {
-        self.into_iter()
-            .flat_map(|ext_table| vec![ext_table.to_base().name.clone(); ext_table.full_width()])
-            .collect_vec()[idx]
-            .clone()
-    }
-
     pub fn codeword_tables(
         &self,
         fri_domain: &FriDomain<XWord>,

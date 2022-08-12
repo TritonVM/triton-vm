@@ -220,7 +220,6 @@ impl Stark {
             base_degree_bounds,
             extension_degree_bounds,
             quotient_degree_bounds,
-            &ext_tables,
         );
         timer.elapsed("non-linear sum");
 
@@ -373,7 +372,6 @@ impl Stark {
         base_degree_bounds: Vec<i64>,
         extension_degree_bounds: Vec<i64>,
         quotient_degree_bounds: Vec<i64>,
-        ext_tables: &ExtTableCollection, // TODO this is just for debugging – try to remove again
     ) -> Vec<XFieldElement> {
         assert_eq!(self.num_randomizer_polynomials, randomizer_codewords.len());
 
@@ -428,7 +426,6 @@ impl Stark {
                     &shift,
                     &codeword,
                     &codeword_shifted,
-                    ext_tables,
                     identifier,
                 );
             }
@@ -453,7 +450,6 @@ impl Stark {
         shift: &u32,
         extension_codeword: &[XFieldElement],
         extension_codeword_shifted: &[XFieldElement],
-        ext_tables: &ExtTableCollection,
         poly_type: &str,
     ) {
         if std::env::var("DEBUG").is_err() {
@@ -470,10 +466,9 @@ impl Stark {
             "   "
         };
         println!(
-            "{maybe_excl_mark} The shifted {poly_type} codeword for {} with index {idx:>2} \
+            "{maybe_excl_mark} The shifted {poly_type} codeword with index {idx:>2} \
             must be of maximal degree {}. Got {}. Predicted degree of unshifted codeword: \
             {degree_bound}. Actual degree of unshifted codeword: {}. Shift = {shift}.",
-            ext_tables.codeword_index_to_table_name(*idx),
             self.max_degree,
             int_shift_deg,
             interpolated.degree(),
@@ -718,7 +713,7 @@ impl Stark {
                     .concat();
                 // FIXME this is a bad assertion. Come up with something better.
                 debug_assert_eq!(
-                    3 * 50, // 50 is the number of extension columns
+                    3 * 34, // 34 is the number of extension columns
                     bvalues.len(),
                     "9 X-field elements must become 27 B-field elements"
                 );

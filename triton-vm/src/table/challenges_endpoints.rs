@@ -39,11 +39,7 @@ impl AllChallenges {
             op_stack_perm_row_weight: weights.pop().unwrap(),
             ram_perm_row_weight: weights.pop().unwrap(),
             jump_stack_perm_row_weight: weights.pop().unwrap(),
-            u32_lt_perm_row_weight: weights.pop().unwrap(),
-            u32_and_perm_row_weight: weights.pop().unwrap(),
-            u32_xor_perm_row_weight: weights.pop().unwrap(),
-            u32_reverse_perm_row_weight: weights.pop().unwrap(),
-            u32_div_perm_row_weight: weights.pop().unwrap(),
+            u32_perm_row_weight: weights.pop().unwrap(),
 
             instruction_table_ip_weight: weights.pop().unwrap(),
             instruction_table_ci_processor_weight: weights.pop().unwrap(),
@@ -75,20 +71,10 @@ impl AllChallenges {
                 .try_into()
                 .unwrap(),
 
-            u32_op_table_lt_lhs_weight: weights.pop().unwrap(),
-            u32_op_table_lt_rhs_weight: weights.pop().unwrap(),
-            u32_op_table_lt_result_weight: weights.pop().unwrap(),
-            u32_op_table_and_lhs_weight: weights.pop().unwrap(),
-            u32_op_table_and_rhs_weight: weights.pop().unwrap(),
-            u32_op_table_and_result_weight: weights.pop().unwrap(),
-            u32_op_table_xor_lhs_weight: weights.pop().unwrap(),
-            u32_op_table_xor_rhs_weight: weights.pop().unwrap(),
-            u32_op_table_xor_result_weight: weights.pop().unwrap(),
-            u32_op_table_reverse_lhs_weight: weights.pop().unwrap(),
-            u32_op_table_reverse_result_weight: weights.pop().unwrap(),
-            u32_op_table_div_divisor_weight: weights.pop().unwrap(),
-            u32_op_table_div_remainder_weight: weights.pop().unwrap(),
-            u32_op_table_div_result_weight: weights.pop().unwrap(),
+            u32_op_table_ci_weight: weights.pop().unwrap(),
+            u32_op_table_lhs_weight: weights.pop().unwrap(),
+            u32_op_table_rhs_weight: weights.pop().unwrap(),
+            u32_op_table_result_weight: weights.pop().unwrap(),
         };
 
         let program_table_challenges = ProgramTableChallenges {
@@ -165,31 +151,12 @@ impl AllChallenges {
         };
 
         let u32_op_table_challenges = U32OpTableChallenges {
-            processor_lt_perm_row_weight: processor_table_challenges.u32_lt_perm_row_weight,
-            processor_and_perm_row_weight: processor_table_challenges.u32_and_perm_row_weight,
-            processor_xor_perm_row_weight: processor_table_challenges.u32_xor_perm_row_weight,
-            processor_reverse_perm_row_weight: processor_table_challenges
-                .u32_reverse_perm_row_weight,
-            processor_div_perm_row_weight: processor_table_challenges.u32_div_perm_row_weight,
+            processor_perm_row_weight: processor_table_challenges.u32_perm_row_weight,
 
-            lt_lhs_weight: processor_table_challenges.u32_op_table_lt_lhs_weight,
-            lt_rhs_weight: processor_table_challenges.u32_op_table_lt_rhs_weight,
-            lt_result_weight: processor_table_challenges.u32_op_table_lt_result_weight,
-
-            and_lhs_weight: processor_table_challenges.u32_op_table_and_lhs_weight,
-            and_rhs_weight: processor_table_challenges.u32_op_table_and_rhs_weight,
-            and_result_weight: processor_table_challenges.u32_op_table_and_result_weight,
-
-            xor_lhs_weight: processor_table_challenges.u32_op_table_xor_lhs_weight,
-            xor_rhs_weight: processor_table_challenges.u32_op_table_xor_rhs_weight,
-            xor_result_weight: processor_table_challenges.u32_op_table_xor_result_weight,
-
-            reverse_lhs_weight: processor_table_challenges.u32_op_table_reverse_lhs_weight,
-            reverse_result_weight: processor_table_challenges.u32_op_table_reverse_result_weight,
-
-            div_divisor_weight: processor_table_challenges.u32_op_table_div_divisor_weight,
-            div_remainder_weight: processor_table_challenges.u32_op_table_div_remainder_weight,
-            div_result_weight: processor_table_challenges.u32_op_table_div_result_weight,
+            ci_weight: processor_table_challenges.u32_op_table_ci_weight,
+            lhs_weight: processor_table_challenges.u32_op_table_lhs_weight,
+            rhs_weight: processor_table_challenges.u32_op_table_rhs_weight,
+            result_weight: processor_table_challenges.u32_op_table_result_weight,
         };
 
         AllChallenges {
@@ -228,7 +195,7 @@ pub struct AllEndpoints {
 }
 
 impl AllEndpoints {
-    pub const TOTAL_ENDPOINTS: usize = 14;
+    pub const TOTAL_ENDPOINTS: usize = 10;
 
     pub fn create_initials(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_initials = ProcessorTableEndpoints {
@@ -240,11 +207,7 @@ impl AllEndpoints {
             jump_stack_perm_product: weights.pop().unwrap(),
             to_hash_table_eval_sum: weights.pop().unwrap(),
             from_hash_table_eval_sum: weights.pop().unwrap(),
-            u32_table_lt_perm_product: weights.pop().unwrap(),
-            u32_table_and_perm_product: weights.pop().unwrap(),
-            u32_table_xor_perm_product: weights.pop().unwrap(),
-            u32_table_reverse_perm_product: weights.pop().unwrap(),
-            u32_table_div_perm_product: weights.pop().unwrap(),
+            u32_table_perm_product: weights.pop().unwrap(),
         };
 
         let program_table_initials = ProgramTableEndpoints {
@@ -276,11 +239,7 @@ impl AllEndpoints {
         };
 
         let u32_op_table_initials = U32OpTableEndpoints {
-            processor_lt_perm_product: processor_table_initials.u32_table_lt_perm_product,
-            processor_and_perm_product: processor_table_initials.u32_table_and_perm_product,
-            processor_xor_perm_product: processor_table_initials.u32_table_xor_perm_product,
-            processor_reverse_perm_product: processor_table_initials.u32_table_reverse_perm_product,
-            processor_div_perm_product: processor_table_initials.u32_table_div_perm_product,
+            processor_perm_product: processor_table_initials.u32_table_perm_product,
         };
 
         AllEndpoints {
@@ -325,23 +284,13 @@ impl IntoIterator for AllEndpoints {
             &self.processor_table_endpoints.jump_stack_perm_product,
             &self.processor_table_endpoints.to_hash_table_eval_sum,
             &self.processor_table_endpoints.from_hash_table_eval_sum,
-            &self.processor_table_endpoints.u32_table_lt_perm_product,
-            &self.processor_table_endpoints.u32_table_and_perm_product,
-            &self.processor_table_endpoints.u32_table_xor_perm_product,
-            &self
-                .processor_table_endpoints
-                .u32_table_reverse_perm_product,
-            &self.processor_table_endpoints.u32_table_div_perm_product,
+            &self.processor_table_endpoints.u32_table_perm_product,
             &self.op_stack_table_endpoints.processor_perm_product,
             &self.ram_table_endpoints.processor_perm_product,
             &self.jump_stack_table_endpoints.processor_perm_product,
             &self.hash_table_endpoints.from_processor_eval_sum,
             &self.hash_table_endpoints.to_processor_eval_sum,
-            &self.u32_op_table_endpoints.processor_lt_perm_product,
-            &self.u32_op_table_endpoints.processor_and_perm_product,
-            &self.u32_op_table_endpoints.processor_xor_perm_product,
-            &self.u32_op_table_endpoints.processor_reverse_perm_product,
-            &self.u32_op_table_endpoints.processor_div_perm_product,
+            &self.u32_op_table_endpoints.processor_perm_product,
         ]
         .into_iter()
         .map(|endpoint| endpoint.coefficients.to_vec())

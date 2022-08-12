@@ -14,17 +14,17 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::table_collection::TableId;
 
-pub const PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 9;
+pub const PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 5;
 pub const PROCESSOR_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 4;
 pub const PROCESSOR_TABLE_INITIALS_COUNT: usize =
     PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT + PROCESSOR_TABLE_EVALUATION_ARGUMENT_COUNT;
 
-/// This is 47 because it combines all other tables (except program).
-pub const PROCESSOR_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 47;
+/// This is 43 because it combines all other tables (except program).
+pub const PROCESSOR_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 43;
 
 pub const BASE_WIDTH: usize = 36;
 /// BASE_WIDTH + 2 * INITIALS_COUNT - 2 (because IOSymbols don't need compression)
-pub const FULL_WIDTH: usize = 60;
+pub const FULL_WIDTH: usize = 52;
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -99,11 +99,7 @@ impl ProcessorTable {
         let mut jump_stack_running_product = initials.jump_stack_perm_product;
         let mut to_hash_table_running_sum = initials.to_hash_table_eval_sum;
         let mut from_hash_table_running_sum = initials.from_hash_table_eval_sum;
-        let mut u32_table_lt_running_product = initials.u32_table_lt_perm_product;
-        let mut u32_table_and_running_product = initials.u32_table_and_perm_product;
-        let mut u32_table_xor_running_product = initials.u32_table_xor_perm_product;
-        let mut u32_table_reverse_running_product = initials.u32_table_reverse_perm_product;
-        let mut u32_table_div_running_product = initials.u32_table_div_perm_product;
+        let mut u32_table_running_product = initials.u32_table_perm_product;
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {
@@ -248,90 +244,55 @@ impl ProcessorTable {
 
             // U32 Table
             if let Some(prow) = previous_row {
-                let lhs = prow[ST0 as usize].lift();
-                let rhs = prow[ST1 as usize].lift();
-                let u32_op_result = extension_row[ST0 as usize];
+                let current_instruction: Instruction = prow[CI as usize]
+                    .value()
+                    .try_into()
+                    .expect("CI does not correspond to any instruction.");
 
-                // less than
-                let compressed_row_for_u32_lt = lhs * challenges.u32_op_table_lt_lhs_weight
-                    + rhs * challenges.u32_op_table_lt_rhs_weight
-                    + u32_op_result * challenges.u32_op_table_lt_result_weight;
-                extension_row.push(compressed_row_for_u32_lt);
+                let (lhs, rhs, u32_op_result) = match current_instruction {
+                    // The `div` instruction is quite special, since it enforces the remainder be
+                    // smaller than the divisor. The result of the required implicit `lt` operation
+                    // _has_ to be 1, else the `div` instruction was not executed correctly.
+                    // Also, and in contrast to all other u32 instructions, the operands `lhs` and
+                    // `rhs` come from different rows.
+                    Instruction::Div => (
+                        extension_row[ST0 as usize], // remainder
+                        prow[ST0 as usize].lift(),   // divisor
+                        XFieldElement::ring_one(),   // result of U32 Table's `lt`
+                    ),
+                    // Since instruction `reverse` is a unary, not a binary, operation, the right-
+                    // hand side is unconstrained.
+                    Instruction::Reverse => (
+                        prow[ST0 as usize].lift(),
+                        XFieldElement::ring_zero(),
+                        extension_row[ST0 as usize],
+                    ),
+                    _ => (
+                        prow[ST0 as usize].lift(),
+                        prow[ST1 as usize].lift(),
+                        extension_row[ST0 as usize],
+                    ),
+                };
 
-                extension_row.push(u32_table_lt_running_product);
-                if prow[CI as usize] == Instruction::Lt.opcode_b() {
-                    u32_table_lt_running_product *=
-                        challenges.u32_lt_perm_row_weight - compressed_row_for_u32_lt;
-                }
+                let compressed_row_for_u32 = ci * challenges.u32_op_table_ci_weight
+                    + lhs * challenges.u32_op_table_lhs_weight
+                    + rhs * challenges.u32_op_table_rhs_weight
+                    + u32_op_result * challenges.u32_op_table_result_weight;
+                extension_row.push(compressed_row_for_u32);
 
-                // and
-                let compressed_row_for_u32_and = lhs * challenges.u32_op_table_and_lhs_weight
-                    + rhs * challenges.u32_op_table_and_rhs_weight
-                    + u32_op_result * challenges.u32_op_table_and_result_weight;
-                extension_row.push(compressed_row_for_u32_and);
-
-                extension_row.push(u32_table_and_running_product);
-                if prow[CI as usize] == Instruction::And.opcode_b() {
-                    u32_table_and_running_product *=
-                        challenges.u32_and_perm_row_weight - compressed_row_for_u32_and;
-                }
-
-                // xor
-                let compressed_row_for_u32_xor = lhs * challenges.u32_op_table_xor_lhs_weight
-                    + rhs * challenges.u32_op_table_xor_rhs_weight
-                    + u32_op_result * challenges.u32_op_table_xor_result_weight;
-                extension_row.push(compressed_row_for_u32_xor);
-
-                extension_row.push(u32_table_xor_running_product);
-                if prow[CI as usize] == Instruction::Xor.opcode_b() {
-                    u32_table_xor_running_product *=
-                        challenges.u32_xor_perm_row_weight - compressed_row_for_u32_xor;
-                }
-
-                // reverse
-                let compressed_row_for_u32_reverse = lhs
-                    * challenges.u32_op_table_reverse_lhs_weight
-                    + u32_op_result * challenges.u32_op_table_reverse_result_weight;
-                extension_row.push(compressed_row_for_u32_reverse);
-
-                extension_row.push(u32_table_reverse_running_product);
-                if prow[CI as usize] == Instruction::Reverse.opcode_b() {
-                    u32_table_reverse_running_product *=
-                        challenges.u32_reverse_perm_row_weight - compressed_row_for_u32_reverse;
-                }
-
-                // div
-                let divisor = prow[ST0 as usize].lift();
-                let remainder = extension_row[ST0 as usize];
-                let lt_for_div_result = extension_row[HV0 as usize];
-                let compressed_row_for_u32_div = divisor
-                    * challenges.u32_op_table_div_divisor_weight
-                    + remainder * challenges.u32_op_table_div_remainder_weight
-                    + lt_for_div_result * challenges.u32_op_table_div_result_weight;
-                extension_row.push(compressed_row_for_u32_div);
-
-                extension_row.push(u32_table_div_running_product);
-                if prow[CI as usize] == Instruction::Div.opcode_b() {
-                    u32_table_div_running_product *=
-                        challenges.u32_lt_perm_row_weight - compressed_row_for_u32_div;
+                extension_row.push(u32_table_running_product);
+                if current_instruction.is_u32_op() {
+                    u32_table_running_product *=
+                        challenges.u32_perm_row_weight - compressed_row_for_u32;
                 }
             } else {
                 // If there is no previous row, none of the u32 operations make sense. The extension
                 // columns must still be filled in. All stack registers are initialized to 0, and
                 // the stack in the non-existing previous row can be safely assumed to be all 0.
-                // Thus, all the compressed_row-values are 0 for the very first extension_row.
-                // The running products can be used as-are, amounting to pushing the initials.
-                let zero = XFieldElement::ring_zero();
-                extension_row.push(zero);
-                extension_row.push(u32_table_lt_running_product);
-                extension_row.push(zero);
-                extension_row.push(u32_table_and_running_product);
-                extension_row.push(zero);
-                extension_row.push(u32_table_xor_running_product);
-                extension_row.push(zero);
-                extension_row.push(u32_table_reverse_running_product);
-                extension_row.push(zero);
-                extension_row.push(u32_table_div_running_product);
+                // Thus, the compressed_row-value is 0 for the very first extension_row.
+                // The running product can be used as-is, amounting to pushing the initial.
+                extension_row.push(XFieldElement::ring_zero());
+                extension_row.push(u32_table_running_product);
             }
 
             debug_assert_eq!(
@@ -352,11 +313,7 @@ impl ProcessorTable {
             jump_stack_perm_product: jump_stack_running_product,
             to_hash_table_eval_sum: to_hash_table_running_sum,
             from_hash_table_eval_sum: from_hash_table_running_sum,
-            u32_table_lt_perm_product: u32_table_lt_running_product,
-            u32_table_and_perm_product: u32_table_and_running_product,
-            u32_table_xor_perm_product: u32_table_xor_running_product,
-            u32_table_reverse_perm_product: u32_table_reverse_running_product,
-            u32_table_div_perm_product: u32_table_div_running_product,
+            u32_table_perm_product: u32_table_running_product,
         };
         let base = self.base.with_lifted_data(extension_matrix);
         let table = BaseTable::extension(
@@ -488,11 +445,7 @@ pub struct ProcessorTableChallenges {
     pub ram_perm_row_weight: XFieldElement,
     pub jump_stack_perm_row_weight: XFieldElement,
 
-    pub u32_lt_perm_row_weight: XFieldElement,
-    pub u32_and_perm_row_weight: XFieldElement,
-    pub u32_xor_perm_row_weight: XFieldElement,
-    pub u32_reverse_perm_row_weight: XFieldElement,
-    pub u32_div_perm_row_weight: XFieldElement,
+    pub u32_perm_row_weight: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub instruction_table_ip_weight: XFieldElement,
@@ -517,24 +470,10 @@ pub struct ProcessorTableChallenges {
     pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LEN],
     pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LEN],
 
-    pub u32_op_table_lt_lhs_weight: XFieldElement,
-    pub u32_op_table_lt_rhs_weight: XFieldElement,
-    pub u32_op_table_lt_result_weight: XFieldElement,
-
-    pub u32_op_table_and_lhs_weight: XFieldElement,
-    pub u32_op_table_and_rhs_weight: XFieldElement,
-    pub u32_op_table_and_result_weight: XFieldElement,
-
-    pub u32_op_table_xor_lhs_weight: XFieldElement,
-    pub u32_op_table_xor_rhs_weight: XFieldElement,
-    pub u32_op_table_xor_result_weight: XFieldElement,
-
-    pub u32_op_table_reverse_lhs_weight: XFieldElement,
-    pub u32_op_table_reverse_result_weight: XFieldElement,
-
-    pub u32_op_table_div_divisor_weight: XFieldElement,
-    pub u32_op_table_div_remainder_weight: XFieldElement,
-    pub u32_op_table_div_result_weight: XFieldElement,
+    pub u32_op_table_lhs_weight: XFieldElement,
+    pub u32_op_table_rhs_weight: XFieldElement,
+    pub u32_op_table_ci_weight: XFieldElement,
+    pub u32_op_table_result_weight: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
@@ -550,11 +489,7 @@ pub struct ProcessorTableEndpoints {
     pub to_hash_table_eval_sum: XFieldElement,
     pub from_hash_table_eval_sum: XFieldElement,
 
-    pub u32_table_lt_perm_product: XFieldElement,
-    pub u32_table_and_perm_product: XFieldElement,
-    pub u32_table_xor_perm_product: XFieldElement,
-    pub u32_table_reverse_perm_product: XFieldElement,
-    pub u32_table_div_perm_product: XFieldElement,
+    pub u32_table_perm_product: XFieldElement,
 }
 
 #[derive(Debug, Clone)]

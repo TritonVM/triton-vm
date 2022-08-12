@@ -4,21 +4,23 @@ use super::extension_table::ExtensionTable;
 use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
+use crate::instruction::Instruction;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::traits::IdentityValues;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-pub const U32_OP_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 5;
+pub const U32_OP_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
 pub const U32_OP_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;
 pub const U32_OP_TABLE_INITIALS_COUNT: usize =
     U32_OP_TABLE_PERMUTATION_ARGUMENTS_COUNT + U32_OP_TABLE_EVALUATION_ARGUMENT_COUNT;
 
-/// This is 14 because it combines: (lt, and, xor, div) x (lhs, rhs, result) + (rev) x (lhs, result)
-pub const U32_OP_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 14;
+/// This is 4 because it combines: ci, lhs, rhs, result
+pub const U32_OP_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 4;
 
-pub const BASE_WIDTH: usize = 7;
-pub const FULL_WIDTH: usize = 17; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const BASE_WIDTH: usize = 8;
+pub const FULL_WIDTH: usize = 10; // BASE_WIDTH + 2 * INITIALS_COUNT
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -121,88 +123,54 @@ impl U32OpTable {
         challenges: &U32OpTableChallenges,
         initials: &U32OpTableEndpoints,
     ) -> (ExtU32OpTable, U32OpTableEndpoints) {
-        let mut lt_running_product = initials.processor_lt_perm_product;
-        let mut and_running_product = initials.processor_and_perm_product;
-        let mut xor_running_product = initials.processor_xor_perm_product;
-        let mut reverse_running_product = initials.processor_reverse_perm_product;
-        let mut div_running_product = initials.processor_div_perm_product;
-
+        let mut running_product = initials.processor_perm_product;
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
+
         for row in self.data().iter() {
             let mut extension_row = Vec::with_capacity(FULL_WIDTH);
             extension_row.extend(row.iter().map(|elem| elem.lift()));
 
-            // lhs and rhs are needed for _all_ of U32Table's Permutation Arguments
+            let current_instruction: Instruction = row[U32OpTableColumn::CI as usize]
+                .value()
+                .try_into()
+                .expect("CI does not correspond to any instruction.");
+
+            // ci, lhs, and rhs are needed for _all_ of U32Table's Permutation Arguments
+            let ci = extension_row[U32OpTableColumn::CI as usize];
             let lhs = extension_row[U32OpTableColumn::LHS as usize];
-            let rhs = extension_row[U32OpTableColumn::RHS as usize];
+            let rhs = match current_instruction {
+                Instruction::Reverse => 0.into(),
+                _ => extension_row[U32OpTableColumn::RHS as usize],
+            };
+            let result = match current_instruction {
+                Instruction::Lt => extension_row[U32OpTableColumn::LT as usize],
+                Instruction::And => extension_row[U32OpTableColumn::AND as usize],
+                Instruction::Xor => extension_row[U32OpTableColumn::XOR as usize],
+                Instruction::Reverse => extension_row[U32OpTableColumn::REV as usize],
+                Instruction::Div => extension_row[U32OpTableColumn::LT as usize],
+                // halt is used for padding
+                Instruction::Halt => XFieldElement::ring_zero(),
+                x => panic!("Unknown instruction '{x}' in the U32 Table."),
+            };
 
-            // Compress (lhs, rhs, lt) into single value
-            let lt = extension_row[U32OpTableColumn::LT as usize];
-            let compressed_row_for_lt = lhs * challenges.lt_lhs_weight
-                + rhs * challenges.lt_rhs_weight
-                + lt * challenges.lt_result_weight;
-            extension_row.push(compressed_row_for_lt);
+            // Compress (ci, lhs, rhs, result) into single value
+            let compressed_row = ci * challenges.ci_weight
+                + lhs * challenges.lhs_weight
+                + rhs * challenges.rhs_weight
+                + result * challenges.result_weight;
+            extension_row.push(compressed_row);
 
-            // Multiply compressed value into running product for lt
-            extension_row.push(lt_running_product);
-            lt_running_product *= challenges.processor_lt_perm_row_weight - compressed_row_for_lt;
-
-            // Compress (lhs, rhs, and) into single value
-            let and = extension_row[U32OpTableColumn::AND as usize];
-            let compressed_row_for_and = lhs * challenges.and_lhs_weight
-                + rhs * challenges.and_rhs_weight
-                + and * challenges.and_result_weight;
-            extension_row.push(compressed_row_for_and);
-
-            // Multiply compressed value into running product for and
-            extension_row.push(and_running_product);
-            and_running_product *=
-                challenges.processor_and_perm_row_weight - compressed_row_for_and;
-
-            // Compress (lhs, rhs, xor) into single value
-            let xor = extension_row[U32OpTableColumn::XOR as usize];
-            let compressed_row_for_xor = lhs * challenges.xor_lhs_weight
-                + rhs * challenges.xor_rhs_weight
-                + xor * challenges.xor_result_weight;
-            extension_row.push(compressed_row_for_xor);
-
-            // Multiply compressed value into running product for xor
-            extension_row.push(xor_running_product);
-            xor_running_product *=
-                challenges.processor_xor_perm_row_weight - compressed_row_for_xor;
-
-            // Compress (lhs, reverse) into single value
-            let reverse = extension_row[U32OpTableColumn::REV as usize];
-            let compressed_row_for_reverse =
-                lhs * challenges.reverse_lhs_weight + reverse * challenges.reverse_result_weight;
-            extension_row.push(compressed_row_for_reverse);
-
-            // Multiply compressed value into running product for reverse
-            extension_row.push(reverse_running_product);
-            reverse_running_product *=
-                challenges.processor_reverse_perm_row_weight - compressed_row_for_reverse;
-
-            // Compress (lhs, rhs, lt) into single value for div
-            let lt_for_div = extension_row[U32OpTableColumn::LT as usize];
-            let compressed_row_for_div = lhs * challenges.div_divisor_weight
-                + rhs * challenges.div_remainder_weight
-                + lt_for_div * challenges.div_result_weight;
-            extension_row.push(compressed_row_for_div);
-
-            // Multiply compressed value into running product for div
-            extension_row.push(div_running_product);
-            div_running_product *=
-                challenges.processor_div_perm_row_weight - compressed_row_for_div;
+            // Multiply compressed value into running product if indicator is set
+            extension_row.push(running_product);
+            if row[U32OpTableColumn::IDC as usize].is_one() {
+                running_product *= challenges.processor_perm_row_weight - compressed_row;
+            }
 
             extension_matrix.push(extension_row);
         }
 
         let terminals = U32OpTableEndpoints {
-            processor_lt_perm_product: lt_running_product,
-            processor_and_perm_product: and_running_product,
-            processor_xor_perm_product: xor_running_product,
-            processor_reverse_perm_product: reverse_running_product,
-            processor_div_perm_product: div_running_product,
+            processor_perm_product: running_product,
         };
 
         let base = self.base.with_lifted_data(extension_matrix);
@@ -295,41 +263,19 @@ impl ExtU32OpTable {
 pub struct U32OpTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the u32 op table.
-    pub processor_lt_perm_row_weight: XFieldElement,
-    pub processor_and_perm_row_weight: XFieldElement,
-    pub processor_xor_perm_row_weight: XFieldElement,
-    pub processor_reverse_perm_row_weight: XFieldElement,
-    pub processor_div_perm_row_weight: XFieldElement,
+    pub processor_perm_row_weight: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub lt_lhs_weight: XFieldElement,
-    pub lt_rhs_weight: XFieldElement,
-    pub lt_result_weight: XFieldElement,
-
-    pub and_lhs_weight: XFieldElement,
-    pub and_rhs_weight: XFieldElement,
-    pub and_result_weight: XFieldElement,
-
-    pub xor_lhs_weight: XFieldElement,
-    pub xor_rhs_weight: XFieldElement,
-    pub xor_result_weight: XFieldElement,
-
-    pub reverse_lhs_weight: XFieldElement,
-    pub reverse_result_weight: XFieldElement,
-
-    pub div_divisor_weight: XFieldElement,
-    pub div_remainder_weight: XFieldElement,
-    pub div_result_weight: XFieldElement,
+    pub lhs_weight: XFieldElement,
+    pub rhs_weight: XFieldElement,
+    pub ci_weight: XFieldElement,
+    pub result_weight: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
 pub struct U32OpTableEndpoints {
     /// Values randomly generated by the prover for zero-knowledge.
-    pub processor_lt_perm_product: XFieldElement,
-    pub processor_and_perm_product: XFieldElement,
-    pub processor_xor_perm_product: XFieldElement,
-    pub processor_reverse_perm_product: XFieldElement,
-    pub processor_div_perm_product: XFieldElement,
+    pub processor_perm_product: XFieldElement,
 }
 
 impl ExtensionTable for ExtU32OpTable {
