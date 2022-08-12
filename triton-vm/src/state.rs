@@ -550,12 +550,11 @@ impl<'pgm> VMState<'pgm> {
         current_instruction: Instruction,
     ) -> [BFieldElement; op_stack_table::BASE_WIDTH] {
         let clk = self.cycle_count.into();
-        let ci = current_instruction.opcode_b();
+        let ib1_shrink_stack = current_instruction.ib(IB1);
         let osp = self.op_stack.osp();
         let osv = self.op_stack.osv();
 
-        // clk, ci, osv, osp
-        [clk, ci, osv, osp]
+        [clk, ib1_shrink_stack, osv, osp]
     }
 
     pub fn to_ram_row(&self) -> [BFieldElement; ram_table::BASE_WIDTH] {

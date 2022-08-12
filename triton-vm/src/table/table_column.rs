@@ -363,7 +363,7 @@ impl Bounded for ExtInstructionTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum OpStackTableColumn {
     CLK,
-    CI,
+    IB1ShrinkStack,
     OSV,
     OSP,
 }
@@ -374,7 +374,7 @@ impl From<OpStackTableColumn> for usize {
 
         match c {
             CLK => 0,
-            CI => 1,
+            IB1ShrinkStack => 1,
             OSV => 2,
             OSP => 3,
         }

@@ -4,7 +4,6 @@ use super::extension_table::ExtensionTable;
 use super::table_collection::TableId;
 use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
-use crate::instruction::{AnInstruction, Instruction};
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -100,12 +99,11 @@ impl ExtOpStackTable {
     }
 
     fn ext_transition_constraints(_challenges: &OpStackTableChallenges) -> Vec<MPolynomial<XWord>> {
-        use AnInstruction::*;
         use OpStackTableColumn::*;
 
         let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
         // let clk = variables[usize::from(CLK)].clone();
-        let ci = variables[usize::from(CI)].clone();
+        let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
         let osv = variables[usize::from(OSV)].clone();
         let osp = variables[usize::from(OSP)].clone();
         let osp_next = variables[FULL_WIDTH + usize::from(OSP)].clone();
@@ -118,37 +116,15 @@ impl ExtOpStackTable {
         let osp_increases_by_1_or_does_not_change =
             (osp_next.clone() - (osp.clone() + one.clone())) * (osp_next.clone() - osp.clone());
 
-        // FIXME: Replace with instruction group selectors for `shrink_stack` group + `binop` group + `xbmul` instruction
-
         // the osp increases by 1 or the osv does not change OR the ci shrinks the OpStack
         //
-        // $ (osp' - (osp + 1)) · (osv' - osv)
-        //                      · (ci - op_code(pop))
-        //                      · (ci - op_code(skiz))
-        //                      · (ci - op_code(assert))
-        //                      · (ci - op_code(add))
-        //                      · (ci - op_code(mul))
-        //                      · (ci - op_code(eq))
-        //                      · (ci - op_code(lt))
-        //                      · (ci - op_code(and))
-        //                      · (ci - op_code(xor))
-        //                      · (ci - op_code(xbmul))
-        //                      · (ci - op_code(write_io)) = 0 $
-        let osp_increases_by_1_or_osv_does_not_change =
-            (osp_next - (osp + one.clone())) * (osv_next - osv);
-
-        let ci_shrinks_opstack = [
-            Pop, Skiz, Assert, Add, Mul, Eq, Lt, And, Xor, XbMul, WriteIo,
-        ]
-        .into_iter()
-        .fold(one, |acc, instr: Instruction| {
-            let opcode = MPolynomial::from_constant(instr.opcode_b().lift(), 2 * FULL_WIDTH);
-            acc * (ci.clone() - opcode)
-        });
+        // $ (osp' - (osp + 1)) · (osv' - osv) · (1 - ib1) = 0$
+        let osp_increases_by_1_or_osv_does_not_change_or_shrink_stack =
+            (osp_next - (osp + one.clone())) * (osv_next - osv) * (one - ib1_shrink_stack);
 
         vec![
             osp_increases_by_1_or_does_not_change,
-            osp_increases_by_1_or_osv_does_not_change * ci_shrinks_opstack,
+            osp_increases_by_1_or_osv_does_not_change_or_shrink_stack,
         ]
     }
 
@@ -204,7 +180,7 @@ impl OpStackTable {
 
             let (clk, ci, osv, osp) = (
                 extension_row[OpStackTableColumn::CLK as usize],
-                extension_row[OpStackTableColumn::CI as usize],
+                extension_row[OpStackTableColumn::IB1ShrinkStack as usize],
                 extension_row[OpStackTableColumn::OSV as usize],
                 extension_row[OpStackTableColumn::OSP as usize],
             );
