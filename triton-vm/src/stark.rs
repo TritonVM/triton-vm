@@ -90,6 +90,10 @@ impl Stark {
         );
         max_degree = (other::roundup_npo2(max_degree as u64) - 1) as i64;
         let fri_domain_length = ((max_degree as u64 + 1) * expansion_factor) as usize;
+        println!(
+            "FRI domain length: {}, expansion factor: {}",
+            fri_domain_length, expansion_factor
+        );
 
         let omega = BWord::ring_zero()
             .get_primitive_root_of_unity(fri_domain_length as u64)
