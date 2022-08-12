@@ -57,7 +57,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
     /// AIR constraints that apply to the table.
     /// TODO: cover other constraints beyond just transitions
     /// TODO: work with unset/general terminals
-    fn max_degree(&self) -> Degree {
+    fn max_degree(&self) -> (Degree, usize, String, Degree) {
         let degree_bounds: Vec<Degree> = vec![self.interpolant_degree(); self.full_width() * 2];
 
         // 1. Insert dummy challenges
@@ -65,14 +65,21 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         //    (and possibly without even calling get_transition_constraints).
         self.dynamic_transition_constraints(&AllChallenges::dummy())
             .iter()
-            .map(|air| {
+            .enumerate()
+            .map(|(i, air)| {
                 let symbolic_degree_bound: Degree = air.symbolic_degree_bound(&degree_bounds);
+                let mpol_degree: Degree = air.degree();
                 let padded_height: Degree = self.padded_height() as Degree;
 
-                symbolic_degree_bound - padded_height + 1
+                (
+                    symbolic_degree_bound - padded_height + 1,
+                    i,
+                    self.name(),
+                    mpol_degree,
+                )
             })
-            .max()
-            .unwrap_or(-1)
+            .max_by(|x, y| x.0.cmp(&y.0))
+            .unwrap_or_else(|| (-1, usize::MAX, self.name(), -1))
     }
 
     fn dynamic_transition_constraints(
