@@ -1,6 +1,3 @@
-use super::base_table::BaseTableTrait;
-use super::challenges_endpoints::AllChallenges;
-use crate::fri_domain::FriDomain;
 use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -9,6 +6,11 @@ use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::{Inverse, ModPowU32, PrimeField};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
+
+use crate::fri_domain::FriDomain;
+
+use super::base_table::BaseTableTrait;
+use super::challenges_endpoints::AllChallenges;
 
 // Generic methods specifically for tables that have been extended
 
@@ -211,7 +213,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
                 .collect();
             quotients.push(quotient_codeword);
         }
-        self.debug_degree_bound_check(fri_domain, transition_constraints, &quotients);
+        self.debug_degree_bound_check(fri_domain, &transition_constraints, &quotients);
 
         quotients
     }
@@ -234,13 +236,9 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             .collect_vec();
 
         let terminal_constraints = self.get_terminal_constraints();
-        let quotient_codewords = self.quotients(
-            fri_domain,
-            codewords,
-            zerofier_codeword,
-            &terminal_constraints,
-        );
-        self.debug_degree_bound_check(fri_domain, terminal_constraints, &quotient_codewords);
+        let quotient_codewords =
+            self.quotients(codewords, zerofier_codeword, &terminal_constraints);
+        self.debug_degree_bound_check(fri_domain, &terminal_constraints, &quotient_codewords);
 
         quotient_codewords
     }
@@ -261,13 +259,9 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             .collect();
 
         let boundary_constraints = self.get_boundary_constraints();
-        let quotient_codewords = self.quotients(
-            fri_domain,
-            codewords,
-            zerofier_codeword,
-            &boundary_constraints,
-        );
-        self.debug_degree_bound_check(fri_domain, boundary_constraints, &quotient_codewords);
+        let quotient_codewords =
+            self.quotients(codewords, zerofier_codeword, &boundary_constraints);
+        self.debug_degree_bound_check(fri_domain, &boundary_constraints, &quotient_codewords);
 
         quotient_codewords
     }
@@ -288,20 +282,21 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             .collect();
 
         let consistency_constraints = self.get_consistency_constraints();
-        let quotient_codewords = self.quotients(
-            fri_domain,
-            codewords,
-            zerofier_codeword,
-            &consistency_constraints,
-        );
-        self.debug_degree_bound_check(fri_domain, consistency_constraints, &quotient_codewords);
+        let quotient_codewords =
+            self.quotients(codewords, zerofier_codeword, &consistency_constraints);
+        self.debug_degree_bound_check(fri_domain, &consistency_constraints, &quotient_codewords);
 
         quotient_codewords
     }
 
+    /// Given some `constraints`, `codewords`, and a `zerofier`, computes `constraints.len()`-many
+    /// `quotient_codewords` by
+    /// 1. evaluating the `constraints` on the `codewords`, then
+    /// 1. dividing the result by the `zerofier`.
+    ///
+    /// All `constraints` must be multivariate polynomials with `codewords.len()`-many variables.
     fn quotients(
         &self,
-        fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
         zerofier: Vec<XFieldElement>,
         constraints: &[MPolynomial<XWord>],
@@ -314,13 +309,15 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
 
         let mut quotient_codewords = vec![];
         for constraint in constraints.iter() {
-            let quotient_codeword: Vec<_> = (0..fri_domain.length)
-                .into_par_iter()
-                .map(|fri_dom_i| {
-                    let point: Vec<_> = (0..self.full_width())
-                        .map(|j| codewords[j][fri_dom_i])
-                        .collect();
-                    constraint.evaluate(&point) * zerofier_inverse[fri_dom_i]
+            let quotient_codeword: Vec<_> = zerofier_inverse
+                .par_iter()
+                .enumerate()
+                .map(|(fri_dom_i, z_inv)| {
+                    let row = codewords
+                        .iter()
+                        .map(|codeword| codeword[fri_dom_i])
+                        .collect_vec();
+                    constraint.evaluate(&row) * *z_inv
                 })
                 .collect();
             quotient_codewords.push(quotient_codeword);
@@ -328,11 +325,19 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         quotient_codewords
     }
 
+    /// Intended for debugging. Will not do anything unless environment variable `DEBUG` is set.
+    /// The performed check
+    /// 1. takes `quotients` in value form (i.e., as codewords),
+    /// 1. interpolates them over the given `fri_domain`, and
+    /// 1. checks their degree.
+    ///
+    /// Panics if an interpolant has maximal degree, indicating that the quotient codeword is most
+    /// probably the result of un-clean division.
     fn debug_degree_bound_check(
         &self,
         fri_domain: &FriDomain<XWord>,
-        consistency_constraints: Vec<MPolynomial<XWord>>,
-        quotient_codewords: &Vec<Vec<XFieldElement>>,
+        constraints: &[MPolynomial<XWord>],
+        quotient_codewords: &[Vec<XFieldElement>],
     ) {
         if std::env::var("DEBUG").is_err() {
             return;
@@ -348,7 +353,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
                 self.name(),
                 interpolated.degree(),
                 fri_domain.length,
-                consistency_constraints[idx]
+                constraints[idx]
             );
         }
     }
