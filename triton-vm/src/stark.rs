@@ -82,8 +82,13 @@ impl Stark {
             &[max_height; NUM_TABLES],
         );
 
-        let max_degree =
-            (other::roundup_npo2(empty_table_collection.max_degree() as u64) - 1) as i64;
+        let (mut max_degree, culprit_transition_constraint_index, culprit_table_name, mpol_degree) =
+            empty_table_collection.max_degree();
+        println!(
+            "Got max degree {} from table {} and transition constraint {}, of degree {}. Max height was: {}",
+            max_degree, culprit_table_name, culprit_transition_constraint_index, mpol_degree, max_height
+        );
+        max_degree = (other::roundup_npo2(max_degree as u64) - 1) as i64;
         let fri_domain_length = ((max_degree as u64 + 1) * expansion_factor) as usize;
 
         let omega = BWord::ring_zero()

@@ -295,11 +295,11 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn max_degree(&self) -> Degree {
+    pub fn max_degree(&self) -> (Degree, usize, String, Degree) {
         self.into_iter()
             .map(|ext_table| ext_table.max_degree())
-            .max()
-            .unwrap_or(-1)
+            .max_by(|x, y| x.0.cmp(&y.0))
+            .unwrap_or_else(|| (-1, usize::MAX, "None".to_string(), -1))
     }
 
     /// Create an ExtTableCollection from a BaseTableCollection by
