@@ -299,7 +299,7 @@ impl ExtTableCollection {
         self.into_iter()
             .map(|ext_table| ext_table.max_degree())
             .max()
-            .unwrap_or(1)
+            .unwrap_or(-1)
     }
 
     /// Create an ExtTableCollection from a BaseTableCollection by
