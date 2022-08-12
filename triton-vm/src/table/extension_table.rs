@@ -1,6 +1,7 @@
 use super::base_table::BaseTableTrait;
 use super::challenges_endpoints::AllChallenges;
 use crate::fri_domain::FriDomain;
+use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -226,32 +227,25 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
     ) -> Vec<Vec<XWord>> {
-        let omicron_inverse = self.omicron().inverse();
+        for codeword in codewords.iter() {
+            debug_assert_eq!(fri_domain.length, codeword.len());
+        }
 
         // The zerofier for the terminal quotient has a root in the last
         // value in the cyclical group generated from omicron.
-        let zerofier_codeword: Vec<XWord> = fri_domain
+        let zerofier_codeword = fri_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - omicron_inverse)
-            .collect();
+            .map(|x| x - self.omicron().inverse())
+            .collect_vec();
 
-        let zerofier_inverse = XWord::batch_inversion(zerofier_codeword);
         let terminal_constraints = self.get_terminal_constraints();
-        let mut quotient_codewords: Vec<Vec<XWord>> = vec![];
-        for termc in terminal_constraints.iter() {
-            let quotient_codeword: Vec<XWord> = (0..fri_domain.length)
-                .into_par_iter()
-                .map(|i| {
-                    let point: Vec<XWord> =
-                        (0..self.full_width()).map(|j| codewords[j][i]).collect();
-
-                    termc.evaluate(&point) * zerofier_inverse[i]
-                })
-                .collect();
-            quotient_codewords.push(quotient_codeword);
-        }
-
+        let quotient_codewords = self.quotients(
+            fri_domain,
+            codewords,
+            zerofier_codeword,
+            &terminal_constraints,
+        );
         self.debug_degree_bound_check(fri_domain, terminal_constraints, &quotient_codewords);
 
         quotient_codewords
@@ -262,39 +256,23 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
     ) -> Vec<Vec<XWord>> {
-        assert!(!codewords.is_empty(), "Codewords must be non-empty");
-        for row in codewords.iter() {
-            debug_assert_eq!(
-                fri_domain.length,
-                row.len(),
-                "Codewords have fri_domain.length columns ({}), not {}.",
-                fri_domain.length,
-                row.len()
-            );
+        for codeword in codewords.iter() {
+            debug_assert_eq!(fri_domain.length, codeword.len());
         }
 
-        let mut quotient_codewords: Vec<Vec<XWord>> = vec![];
-
-        let boundary_constraints: Vec<MPolynomial<XWord>> = self.get_boundary_constraints();
-        let one = XWord::ring_one();
-        let zerofier: Vec<XWord> = (0..fri_domain.length)
-            .map(|i| fri_domain.domain_value(i as u32) - one)
+        let zerofier_codeword = fri_domain
+            .domain_values()
+            .into_iter()
+            .map(|x| x - XFieldElement::ring_one())
             .collect();
-        let zerofier_inverse = XWord::batch_inversion(zerofier);
 
-        for bc in boundary_constraints.iter() {
-            let quotient_codeword: Vec<XWord> = (0..fri_domain.length)
-                .into_iter()
-                .map(|fri_dom_i| {
-                    let point: Vec<XWord> = (0..self.full_width())
-                        .map(|j| codewords[j][fri_dom_i])
-                        .collect();
-                    bc.evaluate(&point) * zerofier_inverse[fri_dom_i]
-                })
-                .collect();
-            quotient_codewords.push(quotient_codeword);
-        }
-
+        let boundary_constraints = self.get_boundary_constraints();
+        let quotient_codewords = self.quotients(
+            fri_domain,
+            codewords,
+            zerofier_codeword,
+            &boundary_constraints,
+        );
         self.debug_degree_bound_check(fri_domain, boundary_constraints, &quotient_codewords);
 
         quotient_codewords
@@ -305,23 +283,35 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
     ) -> Vec<Vec<XWord>> {
-        assert!(!codewords.is_empty(), "Codewords must be non-empty");
-        for row in codewords.iter() {
-            debug_assert_eq!(
-                fri_domain.length,
-                row.len(),
-                "Codewords have fri_domain.length columns ({}), not {}.",
-                fri_domain.length,
-                row.len()
-            );
+        for codeword in codewords.iter() {
+            debug_assert_eq!(fri_domain.length, codeword.len());
         }
 
-        let consistency_constraints = self.get_consistency_constraints();
-        let zerofier = fri_domain
+        let zerofier_codeword = fri_domain
             .domain_values()
             .iter()
             .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XWord::ring_one())
             .collect();
+
+        let consistency_constraints = self.get_consistency_constraints();
+        let quotient_codewords = self.quotients(
+            fri_domain,
+            codewords,
+            zerofier_codeword,
+            &consistency_constraints,
+        );
+        self.debug_degree_bound_check(fri_domain, consistency_constraints, &quotient_codewords);
+
+        quotient_codewords
+    }
+
+    fn quotients(
+        &self,
+        fri_domain: &FriDomain<XWord>,
+        codewords: &[Vec<XWord>],
+        zerofier: Vec<XFieldElement>,
+        constraints: &[MPolynomial<XWord>],
+    ) -> Vec<Vec<XWord>> {
         let zerofier_inverse = if self.padded_height() == 0 {
             zerofier
         } else {
@@ -329,21 +319,18 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         };
 
         let mut quotient_codewords = vec![];
-        for cc in consistency_constraints.iter() {
+        for constraint in constraints.iter() {
             let quotient_codeword: Vec<_> = (0..fri_domain.length)
-                .into_iter()
+                .into_par_iter()
                 .map(|fri_dom_i| {
-                    let point: Vec<XWord> = (0..self.full_width())
+                    let point: Vec<_> = (0..self.full_width())
                         .map(|j| codewords[j][fri_dom_i])
                         .collect();
-                    cc.evaluate(&point) * zerofier_inverse[fri_dom_i]
+                    constraint.evaluate(&point) * zerofier_inverse[fri_dom_i]
                 })
                 .collect();
             quotient_codewords.push(quotient_codeword);
         }
-
-        self.debug_degree_bound_check(fri_domain, consistency_constraints, &quotient_codewords);
-
         quotient_codewords
     }
 
