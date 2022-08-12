@@ -1,7 +1,7 @@
 use super::error::{vm_fail, InstructionError::*};
 use super::instruction::{AnInstruction::*, Instruction};
 use super::op_stack::OpStack;
-use super::ord_n::{Ord16::*, Ord6::*};
+use super::ord_n::{Ord16::*, Ord7::*};
 use super::stdio::InputStream;
 use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table, u32_op_table};
 use super::table::{processor_table, ram_table};
@@ -482,6 +482,7 @@ impl<'pgm> VMState<'pgm> {
         let ib3 = current_instruction.ib(IB3);
         let ib4 = current_instruction.ib(IB4);
         let ib5 = current_instruction.ib(IB5);
+        let ib6 = current_instruction.ib(IB6);
         let st0 = self.op_stack.st(ST0);
         let st1 = self.op_stack.st(ST1);
         let st2 = self.op_stack.st(ST2);
@@ -514,6 +515,7 @@ impl<'pgm> VMState<'pgm> {
             ib3,
             ib4,
             ib5,
+            ib6,
             self.jsp(),
             self.jso(),
             self.jsd(),

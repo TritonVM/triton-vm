@@ -1,4 +1,4 @@
-use super::ord_n::{Ord16, Ord16::*, Ord6};
+use super::ord_n::{Ord16, Ord16::*, Ord7};
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
@@ -144,47 +144,47 @@ impl<Dest> AnInstruction<Dest> {
             Pop => 2,
             Push(_) => 1,
             Divine => 4,
-            Dup(_) => 3,
-            Swap(_) => 5,
+            Dup(_) => 5,
+            Swap(_) => 9,
 
             // Control flow
-            Nop => 6,
-            Skiz => 8,
-            Call(_) => 7,
-            Return => 10,
-            Recurse => 12,
-            Assert => 14,
+            Nop => 8,
+            Skiz => 6,
+            Call(_) => 13,
+            Return => 12,
+            Recurse => 16,
+            Assert => 10,
             Halt => 0,
 
             // Memory access
-            ReadMem => 16,
-            WriteMem => 18,
+            ReadMem => 20,
+            WriteMem => 24,
 
             // Hashing-related instructions
-            Hash => 20,
-            DivineSibling => 22,
-            AssertVector => 24,
+            Hash => 28,
+            DivineSibling => 32,
+            AssertVector => 36,
 
             // Arithmetic on stack instructions
-            Add => 26,
-            Mul => 28,
-            Invert => 30,
-            Split => 32,
-            Eq => 34,
-            Lt => 36,
-            And => 38,
-            Xor => 40,
-            Reverse => 42,
-            Div => 44,
+            Add => 14,
+            Mul => 18,
+            Invert => 40,
+            Split => 44,
+            Eq => 22,
+            Lt => 26,
+            And => 30,
+            Xor => 34,
+            Reverse => 48,
+            Div => 52,
 
-            XxAdd => 46,
-            XxMul => 48,
-            XInvert => 50,
-            XbMul => 52,
+            XxAdd => 56,
+            XxMul => 60,
+            XInvert => 64,
+            XbMul => 38,
 
             // Read/write
-            ReadIo => 54,
-            WriteIo => 56,
+            ReadIo => 68,
+            WriteIo => 42,
         }
     }
 
@@ -215,7 +215,7 @@ impl<Dest> AnInstruction<Dest> {
     }
 
     /// Get the i'th instruction bit
-    pub fn ib(&self, arg: Ord6) -> BFieldElement {
+    pub fn ib(&self, arg: Ord7) -> BFieldElement {
         let opcode = self.opcode();
         let bit_number: usize = arg.into();
 
@@ -285,36 +285,36 @@ impl TryFrom<u32> for Instruction {
             2 => Ok(Pop),
             1 => Ok(Push(Default::default())),
             4 => Ok(Divine),
-            3 => Ok(Dup(ST0)),
-            5 => Ok(Swap(ST0)),
-            6 => Ok(Nop),
-            8 => Ok(Skiz),
-            7 => Ok(Call(Default::default())),
-            10 => Ok(Return),
-            12 => Ok(Recurse),
-            14 => Ok(Assert),
+            5 => Ok(Dup(ST0)),
+            9 => Ok(Swap(ST0)),
+            8 => Ok(Nop),
+            6 => Ok(Skiz),
+            13 => Ok(Call(Default::default())),
+            12 => Ok(Return),
+            16 => Ok(Recurse),
+            10 => Ok(Assert),
             0 => Ok(Halt),
-            16 => Ok(ReadMem),
-            18 => Ok(WriteMem),
-            20 => Ok(Hash),
-            22 => Ok(DivineSibling),
-            24 => Ok(AssertVector),
-            26 => Ok(Add),
-            28 => Ok(Mul),
-            30 => Ok(Invert),
-            32 => Ok(Split),
-            34 => Ok(Eq),
-            36 => Ok(Lt),
-            38 => Ok(And),
-            40 => Ok(Xor),
-            42 => Ok(Reverse),
-            44 => Ok(Div),
-            46 => Ok(XxAdd),
-            48 => Ok(XxMul),
-            50 => Ok(XInvert),
-            52 => Ok(XbMul),
-            54 => Ok(ReadIo),
-            56 => Ok(WriteIo),
+            20 => Ok(ReadMem),
+            24 => Ok(WriteMem),
+            28 => Ok(Hash),
+            32 => Ok(DivineSibling),
+            36 => Ok(AssertVector),
+            14 => Ok(Add),
+            18 => Ok(Mul),
+            40 => Ok(Invert),
+            44 => Ok(Split),
+            22 => Ok(Eq),
+            26 => Ok(Lt),
+            30 => Ok(And),
+            34 => Ok(Xor),
+            48 => Ok(Reverse),
+            52 => Ok(Div),
+            56 => Ok(XxAdd),
+            60 => Ok(XxMul),
+            64 => Ok(XInvert),
+            38 => Ok(XbMul),
+            68 => Ok(ReadIo),
+            42 => Ok(WriteIo),
             _ => Err(format!("No instruction with opcode {} exists.", opcode)),
         }
     }
@@ -1071,7 +1071,7 @@ terminate: pop
 mod instruction_tests {
     use super::{all_instructions_without_args, parse, sample_programs};
     use crate::instruction::all_labelled_instructions_with_args;
-    use crate::ord_n::Ord6;
+    use crate::ord_n::Ord7;
     use crate::vm::Program;
     use twenty_first::shared_math::traits::IdentityValues;
 
@@ -1112,7 +1112,7 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use Ord6::*;
+        use Ord7::*;
 
         for instruction in all_instructions_without_args() {
             for ib in [IB0, IB1, IB2, IB3, IB4, IB5] {

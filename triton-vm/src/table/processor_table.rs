@@ -1,6 +1,6 @@
 use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
-use crate::ord_n::Ord6;
+use crate::ord_n::Ord7;
 use crate::state::DIGEST_LEN;
 use crate::table::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
@@ -22,9 +22,9 @@ pub const PROCESSOR_TABLE_INITIALS_COUNT: usize =
 /// This is 43 because it combines all other tables (except program).
 pub const PROCESSOR_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 43;
 
-pub const BASE_WIDTH: usize = 36;
+pub const BASE_WIDTH: usize = 37;
 /// BASE_WIDTH + 2 * INITIALS_COUNT - 2 (because IOSymbols don't need compression)
-pub const FULL_WIDTH: usize = 52;
+pub const FULL_WIDTH: usize = 53;
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -662,22 +662,48 @@ impl ExtProcessorTable {
         _challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XWord>> {
         let factory = SingleRowConstraints::default();
+        let one = factory.one();
 
         // The composition of instruction buckets ib0-ib5 corresponds the current instruction ci.
         //
-        // $ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0) = 0$
+        // $ci - (2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0) = 0$
         let ci_corresponds_to_ib0_thru_ib5 = {
-            let ib_composition = factory.one() * factory.ib0()
+            let ib_composition = one.clone() * factory.ib0()
                 + factory.constant(2) * factory.ib1()
                 + factory.constant(4) * factory.ib2()
                 + factory.constant(8) * factory.ib3()
                 + factory.constant(16) * factory.ib4()
-                + factory.constant(32) * factory.ib5();
+                + factory.constant(32) * factory.ib5()
+                + factory.constant(64) * factory.ib6();
 
             factory.ci() - ib_composition
         };
 
-        vec![ci_corresponds_to_ib0_thru_ib5]
+        let ib0 = factory.ib0();
+        let ib0_is_bit = ib0.clone() * (ib0 - one.clone());
+        let ib1 = factory.ib1();
+        let ib1_is_bit = ib1.clone() * (ib1 - one.clone());
+        let ib2 = factory.ib2();
+        let ib2_is_bit = ib2.clone() * (ib2 - one.clone());
+        let ib3 = factory.ib3();
+        let ib3_is_bit = ib3.clone() * (ib3 - one.clone());
+        let ib4 = factory.ib4();
+        let ib4_is_bit = ib4.clone() * (ib4 - one.clone());
+        let ib5 = factory.ib5();
+        let ib5_is_bit = ib5.clone() * (ib5 - one.clone());
+        let ib6 = factory.ib6();
+        let ib6_is_bit = ib6.clone() * (ib6 - one);
+
+        vec![
+            ib0_is_bit,
+            ib1_is_bit,
+            ib2_is_bit,
+            ib3_is_bit,
+            ib4_is_bit,
+            ib5_is_bit,
+            ib6_is_bit,
+            ci_corresponds_to_ib0_thru_ib5,
+        ]
     }
 
     fn ext_transition_constraints(
@@ -845,6 +871,10 @@ impl SingleRowConstraints {
 
     pub fn ib5(&self) -> MPolynomial<XWord> {
         self.variables[IB5 as usize].clone()
+    }
+
+    pub fn ib6(&self) -> MPolynomial<XWord> {
+        self.variables[IB6 as usize].clone()
     }
 
     pub fn jsp(&self) -> MPolynomial<XWord> {
@@ -1971,6 +2001,10 @@ impl RowPairConstraints {
         self.variables[IB5 as usize].clone()
     }
 
+    pub fn ib6(&self) -> MPolynomial<XWord> {
+        self.variables[IB6 as usize].clone()
+    }
+
     pub fn jsp(&self) -> MPolynomial<XWord> {
         self.variables[JSP as usize].clone()
     }
@@ -2393,24 +2427,27 @@ impl InstructionDeselectors {
         let one = XWord::ring_one();
         let num_vars = factory.variables.len();
 
-        let ib0 = instruction.ib(Ord6::IB0).lift();
-        let ib1 = instruction.ib(Ord6::IB1).lift();
-        let ib2 = instruction.ib(Ord6::IB2).lift();
-        let ib3 = instruction.ib(Ord6::IB3).lift();
-        let ib4 = instruction.ib(Ord6::IB4).lift();
-        let ib5 = instruction.ib(Ord6::IB5).lift();
+        let ib0 = instruction.ib(Ord7::IB0).lift();
+        let ib1 = instruction.ib(Ord7::IB1).lift();
+        let ib2 = instruction.ib(Ord7::IB2).lift();
+        let ib3 = instruction.ib(Ord7::IB3).lift();
+        let ib4 = instruction.ib(Ord7::IB4).lift();
+        let ib5 = instruction.ib(Ord7::IB5).lift();
+        let ib6 = instruction.ib(Ord7::IB6).lift();
         let deselect_ib0 = MPolynomial::from_constant(one - ib0, num_vars);
         let deselect_ib1 = MPolynomial::from_constant(one - ib1, num_vars);
         let deselect_ib2 = MPolynomial::from_constant(one - ib2, num_vars);
         let deselect_ib3 = MPolynomial::from_constant(one - ib3, num_vars);
         let deselect_ib4 = MPolynomial::from_constant(one - ib4, num_vars);
         let deselect_ib5 = MPolynomial::from_constant(one - ib5, num_vars);
+        let deselect_ib6 = MPolynomial::from_constant(one - ib6, num_vars);
         (factory.ib0() - deselect_ib0)
             * (factory.ib1() - deselect_ib1)
             * (factory.ib2() - deselect_ib2)
             * (factory.ib3() - deselect_ib3)
             * (factory.ib4() - deselect_ib4)
             * (factory.ib5() - deselect_ib5)
+            * (factory.ib6() - deselect_ib6)
     }
 
     pub fn create(factory: &RowPairConstraints) -> HashMap<Instruction, MPolynomial<XWord>> {
@@ -2742,12 +2779,13 @@ mod constraint_polynomial_tests {
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {
-                row[usize::from(IB0)] = other_instruction.ib(Ord6::IB0).lift();
-                row[usize::from(IB1)] = other_instruction.ib(Ord6::IB1).lift();
-                row[usize::from(IB2)] = other_instruction.ib(Ord6::IB2).lift();
-                row[usize::from(IB3)] = other_instruction.ib(Ord6::IB3).lift();
-                row[usize::from(IB4)] = other_instruction.ib(Ord6::IB4).lift();
-                row[usize::from(IB5)] = other_instruction.ib(Ord6::IB5).lift();
+                row[usize::from(IB0)] = other_instruction.ib(Ord7::IB0).lift();
+                row[usize::from(IB1)] = other_instruction.ib(Ord7::IB1).lift();
+                row[usize::from(IB2)] = other_instruction.ib(Ord7::IB2).lift();
+                row[usize::from(IB3)] = other_instruction.ib(Ord7::IB3).lift();
+                row[usize::from(IB4)] = other_instruction.ib(Ord7::IB4).lift();
+                row[usize::from(IB5)] = other_instruction.ib(Ord7::IB5).lift();
+                row[usize::from(IB6)] = other_instruction.ib(Ord7::IB6).lift();
                 let result = deselector.evaluate(&row);
 
                 assert!(
@@ -2759,12 +2797,13 @@ mod constraint_polynomial_tests {
             }
 
             // Positive tests
-            row[usize::from(IB0)] = instruction.ib(Ord6::IB0).lift();
-            row[usize::from(IB1)] = instruction.ib(Ord6::IB1).lift();
-            row[usize::from(IB2)] = instruction.ib(Ord6::IB2).lift();
-            row[usize::from(IB3)] = instruction.ib(Ord6::IB3).lift();
-            row[usize::from(IB4)] = instruction.ib(Ord6::IB4).lift();
-            row[usize::from(IB5)] = instruction.ib(Ord6::IB5).lift();
+            row[usize::from(IB0)] = instruction.ib(Ord7::IB0).lift();
+            row[usize::from(IB1)] = instruction.ib(Ord7::IB1).lift();
+            row[usize::from(IB2)] = instruction.ib(Ord7::IB2).lift();
+            row[usize::from(IB3)] = instruction.ib(Ord7::IB3).lift();
+            row[usize::from(IB4)] = instruction.ib(Ord7::IB4).lift();
+            row[usize::from(IB5)] = instruction.ib(Ord7::IB5).lift();
+            row[usize::from(IB6)] = instruction.ib(Ord7::IB6).lift();
             let result = deselector.evaluate(&row);
             assert!(
                 !result.is_zero(),
