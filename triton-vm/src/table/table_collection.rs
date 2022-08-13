@@ -12,6 +12,7 @@ use super::ram_table::{ExtRamTable, RamTable};
 use super::u32_op_table::{ExtU32OpTable, U32OpTable};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::HasBaseTable;
+use crate::table::extension_table::DegreeWithOrigin;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
@@ -295,11 +296,11 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn max_degree(&self) -> (Degree, usize, String, Degree) {
+    pub fn max_degree_with_origin(&self) -> DegreeWithOrigin {
         self.into_iter()
-            .map(|ext_table| ext_table.max_degree())
-            .max_by(|x, y| x.0.cmp(&y.0))
-            .unwrap_or_else(|| (-1, usize::MAX, "None".to_string(), -1))
+            .map(|ext_table| ext_table.max_degree_with_origin())
+            .max()
+            .unwrap_or_else(|| DegreeWithOrigin::default())
     }
 
     /// Create an ExtTableCollection from a BaseTableCollection by

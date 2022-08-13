@@ -2,6 +2,7 @@ use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use std::fmt::Display;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::{Inverse, ModPowU32, PrimeField};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -57,7 +58,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
     /// AIR constraints that apply to the table.
     /// TODO: cover other constraints beyond just transitions
     /// TODO: work with unset/general terminals
-    fn max_degree(&self) -> (Degree, usize, String, Degree) {
+    fn max_degree_with_origin(&self) -> DegreeWithOrigin {
         let degree_bounds: Vec<Degree> = vec![self.interpolant_degree(); self.full_width() * 2];
 
         // 1. Insert dummy challenges
@@ -67,19 +68,18 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             .iter()
             .enumerate()
             .map(|(i, air)| {
-                let symbolic_degree_bound: Degree = air.symbolic_degree_bound(&degree_bounds);
-                let mpol_degree: Degree = air.degree();
-                let padded_height: Degree = self.padded_height() as Degree;
-
-                (
-                    symbolic_degree_bound - padded_height + 1,
-                    i,
-                    self.name(),
-                    mpol_degree,
-                )
+                let symbolic_degree_bound = air.symbolic_degree_bound(&degree_bounds);
+                let padded_height = self.padded_height();
+                DegreeWithOrigin {
+                    degree: symbolic_degree_bound - (padded_height as Degree) + 1,
+                    origin_table_name: self.name(),
+                    origin_index: i,
+                    origin_air_degree: air.degree(),
+                    origin_table_height: padded_height,
+                }
             })
-            .max_by(|x, y| x.0.cmp(&y.0))
-            .unwrap_or_else(|| (-1, usize::MAX, self.name(), -1))
+            .max()
+            .unwrap_or_else(|| DegreeWithOrigin::default())
     }
 
     fn dynamic_transition_constraints(
@@ -363,5 +363,42 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
                 constraints[idx]
             );
         }
+    }
+}
+
+/// Helps debugging and benchmarking. The maximal degree achieved in any table dictates the length
+/// of the FRI domain, which in turn is responsible for the main performance bottleneck.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub struct DegreeWithOrigin {
+    pub degree: Degree,
+    pub origin_table_name: String,
+    pub origin_index: usize,
+    pub origin_air_degree: Degree,
+    pub origin_table_height: usize,
+}
+
+impl Default for DegreeWithOrigin {
+    fn default() -> Self {
+        DegreeWithOrigin {
+            degree: -1,
+            origin_table_name: "NoTable".to_string(),
+            origin_index: usize::MAX,
+            origin_air_degree: -1,
+            origin_table_height: 0,
+        }
+    }
+}
+
+impl Display for DegreeWithOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "Degree of poly for table {} (index {}) is {}. AIR had degree {}. Table height was {}.",
+            self.origin_table_name,
+            self.origin_index,
+            self.degree,
+            self.origin_air_degree,
+            self.origin_table_height,
+        )
     }
 }
