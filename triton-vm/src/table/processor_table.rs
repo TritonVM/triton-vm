@@ -2480,7 +2480,7 @@ mod constraint_polynomial_tests {
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row_test() {
         let program = Program::from_code("push 2 push -1 add assert halt").unwrap();
-        let (base_matrices, _) = program.simulate_with_input(&[], &[]);
+        let (base_matrices, _, _) = program.simulate_with_input(&[], &[]);
         for row in base_matrices.processor_matrix {
             println!("{}", ProcessorMatrixRow { row });
         }
@@ -2492,7 +2492,7 @@ mod constraint_polynomial_tests {
             .to_vec();
 
         let program = Program::from_code(source_code).unwrap();
-        let (base_matrices, err) = program.simulate_with_input(&[], &[]);
+        let (base_matrices, err, _) = program.simulate_with_input(&[], &[]);
         if let Some(e) = err {
             panic!("The VM crashed because: {}", e);
         }

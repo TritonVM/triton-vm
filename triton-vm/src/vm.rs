@@ -159,17 +159,22 @@ impl Program {
         (base_matrices, None)
     }
 
+    /// Wrapper around `.simulate()` for easier i/o handling. Behaviour is that of `.simulate()`,
+    /// except the executed program's output is returned instead of modified in-place. Consequently,
+    /// takes as arguments only `input` and `secret_input`.
     pub fn simulate_with_input(
         &self,
         input: &[BFieldElement],
         secret_input: &[BFieldElement],
-    ) -> (BaseMatrices, Option<Box<dyn Error>>) {
+    ) -> (BaseMatrices, Option<Box<dyn Error>>, Vec<BFieldElement>) {
         let mut stdin = VecStream::new_bwords(input);
         let mut secret_in = VecStream::new_bwords(secret_input);
         let mut stdout = VecStream::new_bytes(&[]);
         let rescue_prime = neptune_params();
 
-        self.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime)
+        let (base_matrices, vm_error) =
+            self.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        (base_matrices, vm_error, stdout.to_bword_vec())
     }
 
     pub fn run<In, Out>(
@@ -527,7 +532,7 @@ mod triton_vm_tests {
                 source_code
             );
             let program = Program::from_code(source_code).expect("Could not load source code.");
-            let (base_matrices, err) = program.simulate_with_input(&[], &[]);
+            let (base_matrices, err, _) = program.simulate_with_input(&[], &[]);
 
             if let Some(e) = err {
                 panic!("The VM is not happy: {}", e);
