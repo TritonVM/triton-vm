@@ -1,6 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_collection::TableId;
 use super::table_column::ProgramTableColumn;
 use crate::fri_domain::FriDomain;
@@ -42,6 +42,9 @@ impl HasBaseTable<BWord> for ProgramTable {
 pub struct ExtProgramTable {
     base: BaseTable<XFieldElement>,
 }
+
+impl Quotientable for ExtProgramTable {}
+impl QuotientableExtensionTable for ExtProgramTable {}
 
 impl HasBaseTable<XFieldElement> for ExtProgramTable {
     fn to_base(&self) -> &BaseTable<XFieldElement> {

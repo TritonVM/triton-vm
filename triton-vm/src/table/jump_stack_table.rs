@@ -1,6 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_collection::TableId;
 use super::table_column::JumpStackTableColumn::*;
 use crate::fri_domain::FriDomain;
@@ -43,6 +43,9 @@ impl HasBaseTable<BWord> for JumpStackTable {
 pub struct ExtJumpStackTable {
     base: BaseTable<XFieldElement>,
 }
+
+impl Quotientable for ExtJumpStackTable {}
+impl QuotientableExtensionTable for ExtJumpStackTable {}
 
 impl HasBaseTable<XFieldElement> for ExtJumpStackTable {
     fn to_base(&self) -> &BaseTable<XFieldElement> {

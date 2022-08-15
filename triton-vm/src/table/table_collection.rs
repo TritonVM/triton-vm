@@ -1,7 +1,7 @@
 use super::base_matrix::BaseMatrices;
 use super::base_table::BaseTableTrait;
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
+use super::extension_table::QuotientableExtensionTable;
 use super::hash_table::{ExtHashTable, HashTable};
 use super::instruction_table::{ExtInstructionTable, InstructionTable};
 use super::jump_stack_table::{ExtJumpStackTable, JumpStackTable};
@@ -507,20 +507,20 @@ impl ExtTableCollection {
 }
 
 impl<'a> IntoIterator for &'a ExtTableCollection {
-    type Item = &'a dyn ExtensionTable;
+    type Item = &'a dyn QuotientableExtensionTable;
 
-    type IntoIter = std::array::IntoIter<&'a dyn ExtensionTable, NUM_TABLES>;
+    type IntoIter = std::array::IntoIter<&'a dyn QuotientableExtensionTable, NUM_TABLES>;
 
     fn into_iter(self) -> Self::IntoIter {
         [
-            &self.program_table as &'a dyn ExtensionTable,
-            &self.instruction_table as &'a dyn ExtensionTable,
-            &self.processor_table as &'a dyn ExtensionTable,
-            &self.op_stack_table as &'a dyn ExtensionTable,
-            &self.ram_table as &'a dyn ExtensionTable,
-            &self.jump_stack_table as &'a dyn ExtensionTable,
-            &self.hash_table as &'a dyn ExtensionTable,
-            &self.u32_op_table as &'a dyn ExtensionTable,
+            &self.program_table as &'a dyn QuotientableExtensionTable,
+            &self.instruction_table as &'a dyn QuotientableExtensionTable,
+            &self.processor_table as &'a dyn QuotientableExtensionTable,
+            &self.op_stack_table as &'a dyn QuotientableExtensionTable,
+            &self.ram_table as &'a dyn QuotientableExtensionTable,
+            &self.jump_stack_table as &'a dyn QuotientableExtensionTable,
+            &self.hash_table as &'a dyn QuotientableExtensionTable,
+            &self.u32_op_table as &'a dyn QuotientableExtensionTable,
         ]
         .into_iter()
     }

@@ -12,6 +12,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use super::extension_table::{Quotientable, QuotientableExtensionTable};
 use super::table_collection::TableId;
 
 pub const PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 5;
@@ -502,6 +503,9 @@ pub struct IOChallenges {
 pub struct ExtProcessorTable {
     base: BaseTable<XFieldElement>,
 }
+
+impl Quotientable for ExtProcessorTable {}
+impl QuotientableExtensionTable for ExtProcessorTable {}
 
 impl HasBaseTable<XFieldElement> for ExtProcessorTable {
     fn to_base(&self) -> &BaseTable<XFieldElement> {

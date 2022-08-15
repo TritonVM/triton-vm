@@ -1,7 +1,7 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_collection::TableId;
 use super::table_column::InstructionTableColumn::{self, *};
 use crate::fri_domain::FriDomain;
@@ -43,6 +43,9 @@ impl HasBaseTable<BWord> for InstructionTable {
 pub struct ExtInstructionTable {
     base: BaseTable<XFieldElement>,
 }
+
+impl Quotientable for ExtInstructionTable {}
+impl QuotientableExtensionTable for ExtInstructionTable {}
 
 impl HasBaseTable<XFieldElement> for ExtInstructionTable {
     fn to_base(&self) -> &BaseTable<XFieldElement> {

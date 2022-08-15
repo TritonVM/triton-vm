@@ -1,6 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_collection::TableId;
 use super::table_column::HashTableColumn;
 use crate::fri_domain::FriDomain;
@@ -43,6 +43,9 @@ impl HasBaseTable<BWord> for HashTable {
 pub struct ExtHashTable {
     base: BaseTable<XFieldElement>,
 }
+
+impl Quotientable for ExtHashTable {}
+impl QuotientableExtensionTable for ExtHashTable {}
 
 impl HasBaseTable<XFieldElement> for ExtHashTable {
     fn to_base(&self) -> &BaseTable<XFieldElement> {

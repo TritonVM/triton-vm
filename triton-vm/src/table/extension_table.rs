@@ -231,38 +231,10 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             );
         }
     }
+}
 
-    fn all_quotients(
-        &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
-    ) -> Vec<Vec<XWord>> {
-        let mut timer = TimingReporter::start();
-        timer.elapsed(&format!("Table name: {}", self.name()));
-
-        let boundary_quotients = self.boundary_quotients(fri_domain, codewords);
-        timer.elapsed("boundary quotients");
-
-        let transition_quotients = self.transition_quotients(fri_domain, codewords);
-        timer.elapsed("transition quotients");
-
-        let consistency_quotients = self.consistency_quotients(fri_domain, codewords);
-        timer.elapsed("Done calculating consistency quotients");
-
-        let terminal_quotients = self.terminal_quotients(fri_domain, codewords);
-        timer.elapsed("terminal quotients");
-
-        println!("{}", timer.finish());
-        vec![
-            boundary_quotients,
-            transition_quotients,
-            consistency_quotients,
-            terminal_quotients,
-        ]
-        .concat()
-    }
-
-    fn transition_quotients(
+pub trait Quotientable: ExtensionTable {
+    fn boundary_quotients(
         &self,
         fri_domain: &FriDomain<XWord>,
         codewords: &[Vec<XWord>],
@@ -271,16 +243,38 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             debug_assert_eq!(fri_domain.length, codeword.len());
         }
 
+        let zerofier_codeword = fri_domain
+            .domain_values()
+            .into_iter()
+            .map(|x| x - XFieldElement::ring_one())
+            .collect();
+
+        let boundary_constraints = self.get_boundary_constraints();
+        let quotient_codewords =
+            self.quotients(codewords, zerofier_codeword, &boundary_constraints);
+        self.debug_degree_bound_check(fri_domain, &boundary_constraints, &quotient_codewords);
+
+        quotient_codewords
+    }
+    fn transition_quotients(
+        &self,
+        fri_domain: &FriDomain<XWord>,
+        codewords: &[Vec<XWord>],
+    ) -> Vec<Vec<XFieldElement>> {
+        for codeword in codewords.iter() {
+            debug_assert_eq!(fri_domain.length, codeword.len());
+        }
+
         let one = XWord::ring_one();
-        let padded_height = self.padded_height() as u32;
+        let height = self.padded_height() as u32;
         let omicron_inverse = self.omicron().inverse();
         let fri_domain_values = fri_domain.domain_values();
 
         let subgroup_zerofier: Vec<_> = fri_domain_values
             .par_iter()
-            .map(|fri_dom_v| fri_dom_v.mod_pow_u32(padded_height) - one)
+            .map(|fri_dom_v| fri_dom_v.mod_pow_u32(height) - one)
             .collect();
-        let subgroup_zerofier_inverse = if padded_height == 0 {
+        let subgroup_zerofier_inverse = if height == 0 {
             subgroup_zerofier
         } else {
             XWord::batch_inversion(subgroup_zerofier)
@@ -321,6 +315,29 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         quotients
     }
 
+    fn consistency_quotients(
+        &self,
+        fri_domain: &FriDomain<XWord>,
+        codewords: &[Vec<XWord>],
+    ) -> Vec<Vec<XWord>> {
+        for codeword in codewords.iter() {
+            debug_assert_eq!(fri_domain.length, codeword.len());
+        }
+
+        let zerofier_codeword = fri_domain
+            .domain_values()
+            .iter()
+            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XWord::ring_one())
+            .collect();
+
+        let consistency_constraints = self.get_consistency_constraints();
+        let quotient_codewords =
+            self.quotients(codewords, zerofier_codeword, &consistency_constraints);
+        self.debug_degree_bound_check(fri_domain, &consistency_constraints, &quotient_codewords);
+
+        quotient_codewords
+    }
+
     fn terminal_quotients(
         &self,
         fri_domain: &FriDomain<XWord>,
@@ -342,52 +359,6 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         let quotient_codewords =
             self.quotients(codewords, zerofier_codeword, &terminal_constraints);
         self.debug_degree_bound_check(fri_domain, &terminal_constraints, &quotient_codewords);
-
-        quotient_codewords
-    }
-
-    fn boundary_quotients(
-        &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
-    ) -> Vec<Vec<XWord>> {
-        for codeword in codewords.iter() {
-            debug_assert_eq!(fri_domain.length, codeword.len());
-        }
-
-        let zerofier_codeword = fri_domain
-            .domain_values()
-            .into_iter()
-            .map(|x| x - XFieldElement::ring_one())
-            .collect();
-
-        let boundary_constraints = self.get_boundary_constraints();
-        let quotient_codewords =
-            self.quotients(codewords, zerofier_codeword, &boundary_constraints);
-        self.debug_degree_bound_check(fri_domain, &boundary_constraints, &quotient_codewords);
-
-        quotient_codewords
-    }
-
-    fn consistency_quotients(
-        &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
-    ) -> Vec<Vec<XWord>> {
-        for codeword in codewords.iter() {
-            debug_assert_eq!(fri_domain.length, codeword.len());
-        }
-
-        let zerofier_codeword = fri_domain
-            .domain_values()
-            .iter()
-            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XWord::ring_one())
-            .collect();
-
-        let consistency_constraints = self.get_consistency_constraints();
-        let quotient_codewords =
-            self.quotients(codewords, zerofier_codeword, &consistency_constraints);
-        self.debug_degree_bound_check(fri_domain, &consistency_constraints, &quotient_codewords);
 
         quotient_codewords
     }
@@ -428,6 +399,36 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         quotient_codewords
     }
 
+    fn all_quotients(
+        &self,
+        fri_domain: &FriDomain<XWord>,
+        codewords: &[Vec<XWord>],
+    ) -> Vec<Vec<XWord>> {
+        let mut timer = TimingReporter::start();
+        timer.elapsed(&format!("Table name: {}", self.name()));
+
+        let boundary_quotients = self.boundary_quotients(fri_domain, codewords);
+        timer.elapsed("boundary quotients");
+
+        let transition_quotients = self.transition_quotients(fri_domain, codewords);
+        timer.elapsed("transition quotients");
+
+        let consistency_quotients = self.consistency_quotients(fri_domain, codewords);
+        timer.elapsed("Done calculating consistency quotients");
+
+        let terminal_quotients = self.terminal_quotients(fri_domain, codewords);
+        timer.elapsed("terminal quotients");
+
+        println!("{}", timer.finish());
+        vec![
+            boundary_quotients,
+            transition_quotients,
+            consistency_quotients,
+            terminal_quotients,
+        ]
+        .concat()
+    }
+
     /// Intended for debugging. Will not do anything unless environment variable `DEBUG` is set.
     /// The performed check
     /// 1. takes `quotients` in value form (i.e., as codewords),
@@ -461,6 +462,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         }
     }
 }
+pub trait QuotientableExtensionTable: ExtensionTable + Quotientable {}
 
 /// Helps debugging and benchmarking. The maximal degree achieved in any table dictates the length
 /// of the FRI domain, which in turn is responsible for the main performance bottleneck.
