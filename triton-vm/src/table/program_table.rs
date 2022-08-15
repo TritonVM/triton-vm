@@ -292,10 +292,35 @@ pub struct ProgramTableEndpoints {
 }
 
 impl ExtensionTable for ExtProgramTable {
+    fn dynamic_boundary_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProgramTable::ext_boundary_constraints(&challenges.program_table_challenges)
+    }
+
     fn dynamic_transition_constraints(
         &self,
-        challenges: &AllChallenges,
+        challenges: &super::challenges_endpoints::AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_transition_constraints(&challenges.program_table_challenges)
+        ExtProgramTable::ext_transition_constraints(&challenges.program_table_challenges)
+    }
+
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProgramTable::ext_consistency_constraints(&challenges.program_table_challenges)
+    }
+
+    fn dynamic_terminal_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+        terminals: &super::challenges_endpoints::AllEndpoints,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProgramTable::ext_terminal_constraints(
+            &challenges.program_table_challenges,
+            &terminals.program_table_endpoints,
+        )
     }
 }

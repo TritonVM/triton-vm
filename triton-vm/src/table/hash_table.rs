@@ -393,10 +393,35 @@ pub struct HashTableEndpoints {
 }
 
 impl ExtensionTable for ExtHashTable {
+    fn dynamic_boundary_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_boundary_constraints(&challenges.hash_table_challenges)
+    }
+
     fn dynamic_transition_constraints(
         &self,
-        challenges: &AllChallenges,
+        challenges: &super::challenges_endpoints::AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
+    }
+
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_consistency_constraints(&challenges.hash_table_challenges)
+    }
+
+    fn dynamic_terminal_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+        terminals: &super::challenges_endpoints::AllEndpoints,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_terminal_constraints(
+            &challenges.hash_table_challenges,
+            &terminals.hash_table_endpoints,
+        )
     }
 }

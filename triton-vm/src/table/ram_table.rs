@@ -328,10 +328,35 @@ pub struct RamTableEndpoints {
 }
 
 impl ExtensionTable for ExtRamTable {
+    fn dynamic_boundary_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtRamTable::ext_boundary_constraints(&challenges.ram_table_challenges)
+    }
+
     fn dynamic_transition_constraints(
         &self,
-        challenges: &AllChallenges,
+        challenges: &super::challenges_endpoints::AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_transition_constraints(&challenges.ram_table_challenges)
+        ExtRamTable::ext_transition_constraints(&challenges.ram_table_challenges)
+    }
+
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtRamTable::ext_consistency_constraints(&challenges.ram_table_challenges)
+    }
+
+    fn dynamic_terminal_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+        terminals: &super::challenges_endpoints::AllEndpoints,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtRamTable::ext_terminal_constraints(
+            &challenges.ram_table_challenges,
+            &terminals.ram_table_endpoints,
+        )
     }
 }

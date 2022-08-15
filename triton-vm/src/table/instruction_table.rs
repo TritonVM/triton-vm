@@ -348,10 +348,35 @@ pub struct InstructionTableEndpoints {
 }
 
 impl ExtensionTable for ExtInstructionTable {
+    fn dynamic_boundary_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_boundary_constraints(&challenges.instruction_table_challenges)
+    }
+
     fn dynamic_transition_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtInstructionTable::ext_transition_constraints(&challenges.instruction_table_challenges)
+    }
+
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_consistency_constraints(&challenges.instruction_table_challenges)
+    }
+
+    fn dynamic_terminal_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+        terminals: &super::challenges_endpoints::AllEndpoints,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_terminal_constraints(
+            &challenges.instruction_table_challenges,
+            &terminals.instruction_table_endpoints,
+        )
     }
 }

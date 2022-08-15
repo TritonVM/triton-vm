@@ -9,6 +9,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
+use crate::table::challenges_endpoints::AllEndpoints;
 
 use super::base_table::BaseTableTrait;
 use super::challenges_endpoints::AllChallenges;
@@ -60,32 +61,121 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
     /// TODO: cover other constraints beyond just transitions
     /// TODO: work with unset/general terminals
     fn max_degree_with_origin(&self) -> DegreeWithOrigin {
-        let degree_bounds: Vec<Degree> = vec![self.interpolant_degree(); self.full_width() * 2];
+        let interpolant_degree = self.interpolant_degree();
+        let interpolants_degrees = vec![interpolant_degree; self.full_width()];
+        let duplicated_interpolants_degrees = vec![interpolant_degree; self.full_width() * 2];
 
-        // 1. Insert dummy challenges
-        // 2. Refactor so we can calculate max_degree without specifying challenges
-        //    (and possibly without even calling get_transition_constraints).
-        self.dynamic_transition_constraints(&AllChallenges::dummy())
+        let boundary_zerofier_degree = 1;
+        let transition_zerofier_degree = interpolant_degree - 1;
+        let consistency_zerofier_degree = interpolant_degree;
+        let terminal_zerofier_degree = 1;
+
+        let boundary_max_degree_with_origin = self
+            .dynamic_boundary_constraints(&AllChallenges::dummy())
             .iter()
             .enumerate()
             .map(|(i, air)| {
-                let symbolic_degree_bound = air.symbolic_degree_bound(&degree_bounds);
-                let padded_height = self.padded_height();
+                let boundary_polynomial_degree_bound =
+                    air.symbolic_degree_bound(&interpolants_degrees);
                 DegreeWithOrigin {
-                    degree: symbolic_degree_bound - (padded_height as Degree) + 1,
+                    degree: boundary_polynomial_degree_bound - boundary_zerofier_degree,
                     origin_table_name: self.name(),
                     origin_index: i,
                     origin_air_degree: air.degree(),
-                    origin_table_height: padded_height,
+                    origin_table_height: self.padded_height(),
+                    origin_constraint_type: "boundary constraint".to_string(),
                 }
             })
             .max()
-            .unwrap_or_else(|| DegreeWithOrigin::default())
+            .unwrap_or_else(|| DegreeWithOrigin::default());
+
+        let transition_max_degree_with_origin = self
+            .dynamic_transition_constraints(&AllChallenges::dummy())
+            .iter()
+            .enumerate()
+            .map(|(i, air)| {
+                let transition_polynomial_degree_bound =
+                    air.symbolic_degree_bound(&duplicated_interpolants_degrees);
+                DegreeWithOrigin {
+                    degree: transition_polynomial_degree_bound - transition_zerofier_degree,
+                    origin_table_name: self.name(),
+                    origin_index: i,
+                    origin_air_degree: air.degree(),
+                    origin_table_height: self.padded_height(),
+                    origin_constraint_type: "transition constraint".to_string(),
+                }
+            })
+            .max()
+            .unwrap_or_else(|| DegreeWithOrigin::default());
+
+        let consistency_max_degree_with_origin = self
+            .dynamic_consistency_constraints(&AllChallenges::dummy())
+            .iter()
+            .enumerate()
+            .map(|(i, air)| {
+                let consistency_polynomial_degree_bound =
+                    air.symbolic_degree_bound(&interpolants_degrees);
+                DegreeWithOrigin {
+                    degree: consistency_polynomial_degree_bound - consistency_zerofier_degree,
+                    origin_table_name: self.name(),
+                    origin_index: i,
+                    origin_air_degree: air.degree(),
+                    origin_table_height: self.padded_height(),
+                    origin_constraint_type: "consistency constraint".to_string(),
+                }
+            })
+            .max()
+            .unwrap_or_else(|| DegreeWithOrigin::default());
+
+        let terminal_max_degree_with_origin = self
+            .dynamic_terminal_constraints(&AllChallenges::dummy(), &AllEndpoints::dummy())
+            .iter()
+            .enumerate()
+            .map(|(i, air)| {
+                let terminal_polynomial_degree_bound =
+                    air.symbolic_degree_bound(&interpolants_degrees);
+                DegreeWithOrigin {
+                    degree: terminal_polynomial_degree_bound - terminal_zerofier_degree,
+                    origin_table_name: self.name(),
+                    origin_index: i,
+                    origin_air_degree: air.degree(),
+                    origin_table_height: self.padded_height(),
+                    origin_constraint_type: "terminal constraint".to_string(),
+                }
+            })
+            .max()
+            .unwrap_or_else(|| DegreeWithOrigin::default());
+
+        [
+            boundary_max_degree_with_origin,
+            transition_max_degree_with_origin,
+            consistency_max_degree_with_origin,
+            terminal_max_degree_with_origin,
+        ]
+        .into_iter()
+        .max()
+        .unwrap_or_else(|| DegreeWithOrigin::default())
     }
+
+    fn dynamic_boundary_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_transition_constraints(
         &self,
         challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>>;
+
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>>;
+
+    fn dynamic_terminal_constraints(
+        &self,
+        challenges: &AllChallenges,
+        terminals: &AllEndpoints,
     ) -> Vec<MPolynomial<XFieldElement>>;
 
     fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
@@ -381,6 +471,7 @@ pub struct DegreeWithOrigin {
     pub origin_index: usize,
     pub origin_air_degree: Degree,
     pub origin_table_height: usize,
+    pub origin_constraint_type: String,
 }
 
 impl Default for DegreeWithOrigin {
@@ -391,6 +482,7 @@ impl Default for DegreeWithOrigin {
             origin_index: usize::MAX,
             origin_air_degree: -1,
             origin_table_height: 0,
+            origin_constraint_type: "NoType".to_string(),
         }
     }
 }
@@ -399,9 +491,11 @@ impl Display for DegreeWithOrigin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
-            "Degree of poly for table {} (index {}) is {}. AIR had degree {}. Table height was {}.",
+            "Degree of poly for table {} (index {}) of type {} is {}. \
+            AIR had degree {}. Table height was {}.",
             self.origin_table_name,
             self.origin_index,
+            self.origin_constraint_type,
             self.degree,
             self.origin_air_degree,
             self.origin_table_height,
