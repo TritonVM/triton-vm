@@ -155,7 +155,7 @@ impl Stark {
         timer.elapsed("challenges");
 
         let random_initials = Self::sample_initials();
-        let all_initials = AllEndpoints::create_initials(random_initials);
+        let all_initials = AllEndpoints::create_endpoints(random_initials);
         timer.elapsed("initials");
 
         let (ext_tables, all_terminals) =

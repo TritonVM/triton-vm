@@ -9,7 +9,9 @@ use super::ram_table::{RamTableChallenges, RamTableEndpoints};
 use super::u32_op_table::{U32OpTableChallenges, U32OpTableEndpoints};
 use crate::state::DIGEST_LEN;
 use itertools::Itertools;
+use rand::thread_rng;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::traits::GetRandomElements;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone)]
@@ -173,11 +175,12 @@ impl AllChallenges {
         }
     }
 
+    /// Only intended for debugging purposes. In a production STARK, use Fiat-Shamir instead.
     pub fn dummy() -> Self {
-        let one = XFieldElement::ring_one();
-        let non_random_challenges = vec![one; Self::TOTAL_CHALLENGES];
+        let mut rng = thread_rng();
+        let random_challenges = XFieldElement::random_elements(Self::TOTAL_CHALLENGES, &mut rng);
 
-        Self::create_challenges(non_random_challenges)
+        Self::create_challenges(random_challenges)
     }
 }
 
@@ -197,7 +200,7 @@ pub struct AllEndpoints {
 impl AllEndpoints {
     pub const TOTAL_ENDPOINTS: usize = 10;
 
-    pub fn create_initials(mut weights: Vec<XFieldElement>) -> Self {
+    pub fn create_endpoints(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_initials = ProcessorTableEndpoints {
             input_table_eval_sum: XFieldElement::ring_zero(),
             output_table_eval_sum: XFieldElement::ring_zero(),
@@ -254,11 +257,13 @@ impl AllEndpoints {
         }
     }
 
+    /// Only intended for debugging purposes. In a production STARK, don't use this for deriving
+    /// terminals.
     pub fn dummy() -> Self {
-        let one = XFieldElement::ring_one();
-        let non_random_initials = vec![one; Self::TOTAL_ENDPOINTS];
+        let mut rng = thread_rng();
+        let random_challenges = XFieldElement::random_elements(Self::TOTAL_ENDPOINTS, &mut rng);
 
-        Self::create_initials(non_random_initials)
+        Self::create_endpoints(random_challenges)
     }
 }
 
