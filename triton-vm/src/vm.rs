@@ -259,7 +259,6 @@ mod triton_vm_tests {
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
     use twenty_first::shared_math::traits::IdentityValues;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
 
     #[test]
     fn initialise_table_test() {
@@ -494,62 +493,210 @@ mod triton_vm_tests {
         }
     }
 
+    /// Source code and associated input. Primarily for testing of the VM's instructions.
+    struct SourceCodeAndInput {
+        source_code: String,
+        input: Vec<BFieldElement>,
+        secret_input: Vec<BFieldElement>,
+    }
+
+    impl SourceCodeAndInput {
+        fn without_input(source_code: &str) -> Self {
+            Self {
+                source_code: source_code.to_string(),
+                input: vec![],
+                secret_input: vec![],
+            }
+        }
+
+        fn run(&self) -> Vec<BFieldElement> {
+            let program =
+                Program::from_code(&self.source_code).expect("Could not load source code");
+            let (_, output, err) = program.run_with_input(&self.input, &self.secret_input);
+            if let Some(e) = err {
+                panic!("Running the program failed: {}", e)
+            }
+            output
+        }
+
+        fn simulate(&self) -> (BaseMatrices, Option<Box<dyn Error>>, Vec<BFieldElement>) {
+            let program =
+                Program::from_code(&self.source_code).expect("Could not load source code.");
+            program.simulate_with_input(&self.input, &self.secret_input)
+        }
+    }
+
+    fn test_program_for_push_pop_dup_swap_nop() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push 1 push 2 pop assert \
+            push 1 dup0 assert assert \
+            push 1 push 2 swap1 assert pop \
+            nop nop nop halt",
+        )
+    }
+
+    fn test_program_for_divine() -> SourceCodeAndInput {
+        SourceCodeAndInput {
+            source_code: "divine assert halt".to_string(),
+            input: vec![],
+            secret_input: vec![1.into()],
+        }
+    }
+
+    fn test_program_for_skiz() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 1 skiz push 0 skiz assert push 1 skiz halt")
+    }
+
+    fn test_program_for_call_recurse_return() -> SourceCodeAndInput {
+        let source_code = "push 2 call label halt label: push -1 add dup0 skiz recurse return";
+        SourceCodeAndInput::without_input(source_code)
+    }
+
+    fn test_program_for_write_mem_read_mem() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 2 push 1 write_mem pop push 0 read_mem assert halt")
+    }
+
+    fn test_program_for_hash() -> SourceCodeAndInput {
+        let source_code = "push 1 push 2 push 3 hash read_io eq assert halt";
+        SourceCodeAndInput {
+            source_code: source_code.to_string(),
+            input: vec![BFieldElement::new(17994241411625465269)],
+            secret_input: vec![],
+        }
+    }
+
+    fn test_program_for_divine_sibling() -> SourceCodeAndInput {
+        let source_code = "
+            push 3 swap12 divine_sibling \
+            dup0 assert dup1 assert dup2 assert \
+            dup3 assert dup4 assert dup5 assert \
+            halt";
+        let one = BFieldElement::ring_one();
+        SourceCodeAndInput {
+            source_code: source_code.to_string(),
+            input: vec![],
+            secret_input: vec![one, one, one, one, one, one],
+        }
+    }
+
+    fn test_program_for_assert_vector() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push 1 push 2 push 3 push 4 push 5 push 6 \
+             push 1 push 2 push 3 push 4 push 5 push 6 \
+             assert_vector halt",
+        )
+    }
+
+    fn test_program_for_add_mul_invert() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push 2 push -1 add assert \
+            push -1 push -1 mul assert \
+            push 3 dup0 invert mul assert \
+            halt",
+        )
+    }
+
+    fn test_program_for_instruction_split() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push -1 split lt assert halt ")
+    }
+
+    fn test_program_for_eq() -> SourceCodeAndInput {
+        SourceCodeAndInput {
+            source_code: "read_io divine eq assert halt".to_string(),
+            input: vec![42.into()],
+            secret_input: vec![42.into()],
+        }
+    }
+
+    fn test_program_for_lt() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 2 push 3 lt assert halt")
+    }
+
+    fn test_program_for_and() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 5 push 3 and assert halt")
+    }
+
+    fn test_program_for_xor() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 7 push 6 xor assert halt")
+    }
+
+    fn test_program_for_reverse() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 2147483648 reverse assert halt")
+    }
+
+    fn test_program_for_div() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 3 push 2 div assert assert halt")
+    }
+
+    fn test_program_for_xxadd() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt")
+    }
+
+    fn test_program_for_xxmul() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt")
+    }
+
+    fn test_program_for_xinvert() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 5 push 6 push 7 xinvert halt")
+    }
+
+    fn test_program_for_xbmul() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 xbmul halt")
+    }
+
+    fn test_program_for_read_io() -> SourceCodeAndInput {
+        SourceCodeAndInput {
+            source_code: "read_io assert halt".to_string(),
+            input: vec![1.into()],
+            secret_input: vec![],
+        }
+    }
+
     #[test]
     fn processor_table_constraints_evaluate_to_zero_test() {
-        // TODO: make this vec into vec of tuples (str, input_vec) to test divine, read_io, etc.
         let all_programs = vec![
-            "push 0 pop halt ",
-            // "divine pop halt ",
-            "push 1 dup0 pop halt ",
-            "push 1 push 2 swap1 halt ",
-            "nop nop nop halt ",
-            "push 1 skiz push 0 skiz assert push 1 skiz halt ",
-            "push 2 call label halt label: push -1 add dup0 skiz recurse return ",
-            "push 1 assert halt ",
-            "push 2 push 1 write_mem pop push 0 read_mem assert halt ",
-            "push 1 push 2 push 3 hash halt ",
-            // "push 1 push 2 push 3 swap12 divine_sibling halt ",
-            "push 1 push 2 push 3 push 4 push 5 push 6 \
-             push 1 push 2 push 3 push 4 push 5 push 6 assert_vector halt ",
-            "push 2 push -1 add assert halt ",
-            "push -1 push -1 mul assert halt ",
-            "push 3 dup0 invert mul assert halt ",
-            "push -1 split lt assert halt ",
-            "push 3 push 3 eq assert halt ",
-            "push 2 push 3 lt assert halt ",
-            "push 5 push 3 and assert halt ",
-            "push 7 push 6 xor assert halt ",
-            "push 2147483648 reverse assert halt ",
-            "push 9 push 2 div assert halt ",
-            "push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt ",
-            "push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt ",
-            "push 5 push 6 push 7 xinvert halt ",
-            "push 5 push 6 push 7 push 8 xbmul halt ",
+            test_program_for_push_pop_dup_swap_nop(),
+            test_program_for_divine(),
+            test_program_for_skiz(),
+            test_program_for_call_recurse_return(),
+            test_program_for_write_mem_read_mem(),
+            test_program_for_hash(),
+            test_program_for_divine_sibling(),
+            test_program_for_assert_vector(),
+            test_program_for_add_mul_invert(),
+            test_program_for_instruction_split(),
+            test_program_for_eq(),
+            test_program_for_lt(),
+            test_program_for_and(),
+            test_program_for_xor(),
+            test_program_for_reverse(),
+            test_program_for_div(),
+            test_program_for_xxadd(),
+            test_program_for_xxmul(),
+            test_program_for_xinvert(),
+            test_program_for_xbmul(),
+            test_program_for_read_io(),
         ];
-        for source_code in all_programs.into_iter() {
+        for program in all_programs.into_iter() {
             println!(
                 "\n\nChecking transition constraints for program: \"{}\"",
-                source_code
+                &program.source_code
             );
-            let program = Program::from_code(source_code).expect("Could not load source code.");
-            let (base_matrices, err, _) = program.simulate_with_input(&[], &[]);
+            let (base_matrices, err, _) = program.simulate();
 
             if let Some(e) = err {
                 panic!("The VM is not happy: {}", e);
             }
 
-            let number_of_randomizers = 2;
-
+            let num_trace_randomizers = 2;
             let processor_matrix = base_matrices
                 .processor_matrix
                 .iter()
                 .map(|row| row.to_vec())
                 .collect_vec();
 
-            let mut processor_table: ProcessorTable =
-                ProcessorTable::new_prover(number_of_randomizers, processor_matrix);
-
-            // Test air constraints after padding as well
+            let mut processor_table =
+                ProcessorTable::new_prover(num_trace_randomizers, processor_matrix);
             processor_table.pad();
 
             assert!(
@@ -557,31 +704,28 @@ mod triton_vm_tests {
                 "Matrix length must be power of 2 after padding"
             );
 
-            let challenges = AllChallenges::dummy();
-            let initials = AllEndpoints::dummy();
-
-            let (ext_processor_table, _terminals) = processor_table.extend(
-                &challenges.processor_table_challenges,
-                &initials.processor_table_endpoints,
+            let (ext_processor_table, _) = processor_table.extend(
+                &AllChallenges::dummy().processor_table_challenges,
+                &AllEndpoints::dummy().processor_table_endpoints,
             );
-            let x_air_constraints = ext_processor_table.get_transition_constraints();
 
+            let transition_constraints = ext_processor_table.get_transition_constraints();
             for (row_idx, (row, next_row)) in ext_processor_table
                 .data()
                 .iter()
                 .tuple_windows()
                 .enumerate()
             {
-                let xpoint: Vec<XFieldElement> = vec![row.clone(), next_row.clone()].concat();
-
-                for (constr_idx, x_air_constraint) in x_air_constraints.iter().enumerate() {
-                    let x_air_evaluation = x_air_constraint.evaluate(&xpoint);
-                    if !x_air_evaluation.is_zero() {
+                let evaluation_point = vec![row.clone(), next_row.clone()].concat();
+                for (tc_idx, tc) in transition_constraints.iter().enumerate() {
+                    let tc_evaluation_result = tc.evaluate(&evaluation_point);
+                    if !tc_evaluation_result.is_zero() {
                         panic!(
-                            "In row {}, the constraint with index {} evaluates to {} but must be 0.\
-                            \nFailing Polynomial: {}\
-                            \nEvaluation Point:   {:?}",
-                            row_idx, constr_idx, x_air_evaluation, x_air_constraint, xpoint,
+                            "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
+                            {tc_evaluation_result} but must be 0.\n\
+                            Failing Polynomial: {tc}\n\
+                            Evaluation Point:   {:?}",
+                            evaluation_point,
                         );
                     }
                 }
@@ -604,179 +748,113 @@ mod triton_vm_tests {
         }
     }
 
-    fn simulate_and_output(code: &str, stdin_words: &[BWord]) -> VecStream {
-        let program = Program::from_code(code).expect("Program should parse correctly");
-
-        println!("{}", program);
-
-        let mut stdin = VecStream::new_bwords(stdin_words);
-        let mut secret_in = VecStream::new_bwords(&[]);
-        let mut stdout = VecStream::new_bwords(&[]);
-        let rescue_prime = neptune_params();
-
-        let (_base_matrices, err) =
-            program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
-
-        if let Some(err) = err {
-            panic!("{}", err);
-        }
-
-        stdout
-    }
-
     #[test]
     fn xxadd_test() {
-        let stdin_words = &[2.into(), 3.into(), 5.into(), 7.into(), 11.into(), 13.into()];
+        let stdin_words = vec![2.into(), 3.into(), 5.into(), 7.into(), 11.into(), 13.into()];
         let xxadd_code = "
-            read_io
-            read_io
-            read_io
-            read_io
-            read_io
-            read_io
+            read_io read_io read_io
+            read_io read_io read_io
             xxadd
             swap2
-            write_io
-            write_io
-            write_io
+            write_io write_io write_io
             halt
         ";
-        let actual_stdout = simulate_and_output(xxadd_code, stdin_words);
+        let program = SourceCodeAndInput {
+            source_code: xxadd_code.to_string(),
+            input: stdin_words,
+            secret_input: vec![],
+        };
+
+        let actual_stdout = program.run();
         let expected_stdout = VecStream::new_bwords(&[9.into(), 14.into(), 18.into()]);
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout.to_bword_vec());
+        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
     }
 
     #[test]
     fn xxmul_test() {
-        let stdin_words = &[2.into(), 3.into(), 5.into(), 7.into(), 11.into(), 13.into()];
+        let stdin_words = vec![2.into(), 3.into(), 5.into(), 7.into(), 11.into(), 13.into()];
         let xxmul_code = "
-            read_io
-            read_io
-            read_io
-            read_io
-            read_io
-            read_io
+            read_io read_io read_io
+            read_io read_io read_io
             xxmul
             swap2
-            write_io
-            write_io
-            write_io
+            write_io write_io write_io
             halt
         ";
-        let actual_stdout = simulate_and_output(xxmul_code, stdin_words);
+        let program = SourceCodeAndInput {
+            source_code: xxmul_code.to_string(),
+            input: stdin_words,
+            secret_input: vec![],
+        };
+
+        let actual_stdout = program.run();
         let expected_stdout = VecStream::new_bwords(&[108.into(), 123.into(), 22.into()]);
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout.to_bword_vec());
+        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
     }
 
     #[test]
     fn xinv_test() {
-        let stdin_words = &[2.into(), 3.into(), 5.into()];
+        let stdin_words = vec![2.into(), 3.into(), 5.into()];
         let xinv_code = "
-            read_io
-            read_io
-            read_io
-            dup2
-            dup2
-            dup2
-            dup2
-            dup2
-            dup2
-            xinvert
-            xxmul
+            read_io read_io read_io
+            dup2 dup2 dup2
+            dup2 dup2 dup2
+            xinvert xxmul
             swap2
-            write_io
-            write_io
-            write_io
+            write_io write_io write_io
             xinvert
             swap2
-            write_io
-            write_io
-            write_io
-            halt
-        ";
-        let actual_stdout = simulate_and_output(xinv_code, stdin_words);
-        let expected_stdout = VecStream::new_bytes(&[
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            0.into(),
-            1.into(),
-            227.into(),
-            13.into(),
-            145.into(),
-            162.into(),
-            216.into(),
-            50.into(),
-            168.into(),
-            66.into(),
-            197.into(),
-            51.into(),
-            143.into(),
-            211.into(),
-            207.into(),
-            38.into(),
-            229.into(),
-            197.into(),
-            61.into(),
-            131.into(),
-            42.into(),
-            131.into(),
-            212.into(),
-            148.into(),
-            90.into(),
-            118.into(),
+            write_io write_io write_io
+            halt";
+        let program = SourceCodeAndInput {
+            source_code: xinv_code.to_string(),
+            input: stdin_words,
+            secret_input: vec![],
+        };
+
+        let actual_stdout = program.run();
+        let expected_stdout = VecStream::new_bwords(&[
+            BFieldElement::ring_zero(),
+            BFieldElement::ring_zero(),
+            BFieldElement::ring_one(),
+            BFieldElement::new(16360893149904808002),
+            BFieldElement::new(14209859389160351173),
+            BFieldElement::new(4432433203958274678),
         ]);
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout.to_bword_vec());
+        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
     }
 
     #[test]
     fn xbmul_test() {
-        let stdin_words = &[2.into(), 3.into(), 5.into(), 7.into()];
+        let stdin_words = vec![2.into(), 3.into(), 5.into(), 7.into()];
         let xbmul_code: &str = "
-            read_io
-            read_io
-            read_io
+            read_io read_io read_io
             read_io
             xbmul
             swap2
-            write_io
-            write_io
-            write_io
-            halt
-        ";
-        let actual_stdout = simulate_and_output(xbmul_code, stdin_words);
+            write_io write_io write_io
+            halt";
+        let program = SourceCodeAndInput {
+            source_code: xbmul_code.to_string(),
+            input: stdin_words,
+            secret_input: vec![],
+        };
+
+        let actual_stdout = program.run();
         let expected_stdout = VecStream::new_bwords(&[14.into(), 21.into(), 35.into()]);
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout.to_bword_vec());
+        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
     }
 
     #[test]
     fn pseudo_sub_test() {
-        let actual_stdout = simulate_and_output("push 7 push 19 sub write_io halt ", &[]);
+        let actual_stdout =
+            SourceCodeAndInput::without_input("push 7 push 19 sub write_io halt").run();
         let expected_stdout = VecStream::new_bwords(&[12.into()]);
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout.to_bword_vec());
+        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
     }
 }
