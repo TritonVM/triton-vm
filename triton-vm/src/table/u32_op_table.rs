@@ -5,10 +5,11 @@ use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
+use crate::table::table_column::U32OpTableColumn::{Bits, Inv32MinusBits};
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
-use twenty_first::shared_math::traits::IdentityValues;
+use twenty_first::shared_math::traits::{IdentityValues, Inverse};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub const U32_OP_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
@@ -19,8 +20,8 @@ pub const U32_OP_TABLE_INITIALS_COUNT: usize =
 /// This is 4 because it combines: ci, lhs, rhs, result
 pub const U32_OP_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 4;
 
-pub const BASE_WIDTH: usize = 8;
-pub const FULL_WIDTH: usize = 10; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const BASE_WIDTH: usize = 10;
+pub const FULL_WIDTH: usize = 12; // BASE_WIDTH + 2 * INITIALS_COUNT
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -60,7 +61,9 @@ impl HasBaseTable<XFieldElement> for ExtU32OpTable {
 
 impl BaseTableTrait<BWord> for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
-        vec![0.into(); BASE_WIDTH]
+        let mut padding_row = vec![0.into(); BASE_WIDTH];
+        padding_row[Inv32MinusBits as usize] = BFieldElement::new(32).inverse();
+        padding_row
     }
 }
 
@@ -75,9 +78,16 @@ impl ExtU32OpTable {
         vec![]
     }
 
-    // TODO actually use consistency constraints
     fn ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
-        vec![]
+        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
+        let thirty_two = MPolynomial::from_constant(32.into(), FULL_WIDTH);
+        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
+
+        let bits = variables[Bits as usize].clone();
+        let inv = variables[Inv32MinusBits as usize].clone();
+        let bits_is_not_32 = one - (thirty_two - bits) * inv;
+
+        vec![bits_is_not_32]
     }
 
     fn ext_transition_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {

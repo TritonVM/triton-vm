@@ -643,6 +643,8 @@ impl Bounded for ExtHashTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum U32OpTableColumn {
     IDC,
+    Bits,
+    Inv32MinusBits,
     CI,
     LHS,
     RHS,
@@ -658,13 +660,15 @@ impl From<U32OpTableColumn> for usize {
 
         match c {
             IDC => 0,
-            CI => 1,
-            LHS => 2,
-            RHS => 3,
-            LT => 4,
-            AND => 5,
-            XOR => 6,
-            REV => 7,
+            Bits => 1,
+            Inv32MinusBits => 2,
+            CI => 3,
+            LHS => 4,
+            RHS => 5,
+            LT => 6,
+            AND => 7,
+            XOR => 8,
+            REV => 9,
         }
     }
 }
@@ -692,8 +696,8 @@ impl From<ExtU32OpTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            CompressedRow => 8,
-            RunningProductPermArg => 9,
+            CompressedRow => 10,
+            RunningProductPermArg => 11,
         }
     }
 }

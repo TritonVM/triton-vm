@@ -583,17 +583,23 @@ impl<'pgm> VMState<'pgm> {
         mut lhs: u32,
         mut rhs: u32,
     ) -> Vec<[BFieldElement; u32_op_table::BASE_WIDTH]> {
-        let mut rows = vec![];
         let mut idc = 1.into();
+        let zero = BFieldElement::ring_zero();
+        let one = BFieldElement::ring_one();
+        let thirty_two = BFieldElement::new(32);
+
+        let mut bits = zero;
         let ci = self
             .current_instruction()
             .expect("U32 trace can only be generated with an instruction.")
             .opcode_b();
-        let zero = 0.into();
 
+        let mut rows = vec![];
         while lhs > 0 || rhs > 0 {
             let row = [
                 idc,
+                bits,
+                (thirty_two - bits).inverse(),
                 ci,
                 lhs.into(),
                 rhs.into(),
@@ -606,6 +612,7 @@ impl<'pgm> VMState<'pgm> {
             lhs >>= 1;
             rhs >>= 1;
             idc = zero;
+            bits += one;
         }
 
         rows
