@@ -1,3 +1,8 @@
+# Ignore twenty-first, since this is most likely a symlink to a repository that
+# lives in a different repository. This may eventually become a git submodule
+# or similar.
+twenty-first
+
 ### CLion ###
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
