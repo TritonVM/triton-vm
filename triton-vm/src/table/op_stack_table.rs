@@ -1,6 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_collection::TableId;
 use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
@@ -42,6 +42,9 @@ impl HasBaseTable<BWord> for OpStackTable {
 pub struct ExtOpStackTable {
     base: BaseTable<XFieldElement>,
 }
+
+impl Quotientable for ExtOpStackTable {}
+impl QuotientableExtensionTable for ExtOpStackTable {}
 
 impl HasBaseTable<XFieldElement> for ExtOpStackTable {
     fn to_base(&self) -> &BaseTable<XFieldElement> {

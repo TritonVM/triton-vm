@@ -1,6 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::ExtensionTable;
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
@@ -44,6 +44,9 @@ impl HasBaseTable<BWord> for U32OpTable {
 pub struct ExtU32OpTable {
     base: BaseTable<XFieldElement>,
 }
+
+impl Quotientable for ExtU32OpTable {}
+impl QuotientableExtensionTable for ExtU32OpTable {}
 
 impl HasBaseTable<XFieldElement> for ExtU32OpTable {
     fn to_base(&self) -> &BaseTable<XFieldElement> {
