@@ -18,38 +18,39 @@ use super::challenges_endpoints::AllChallenges;
 type XWord = XFieldElement;
 
 pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
-    /// get boundary constraints if they are set; otherwise compute them, set them, and return them
+    /// get boundary constraints if they are set; panic otherwise
     fn get_boundary_constraints(&self) -> Vec<MPolynomial<XWord>> {
         if let Some(bc) = &self.to_base().boundary_constraints {
             bc.to_owned()
         } else {
-            panic!("Do not have boundary constraints! {}", &self.name());
+            panic!("{} does not have boundary constraints!", &self.name());
         }
     }
 
-    /// get transition constraints if they are set; otherwise compute them, set them, and return them
+    /// get transition constraints if they are set; panic otherwise
     fn get_transition_constraints(&self) -> Vec<MPolynomial<XWord>> {
         if let Some(tc) = &self.to_base().transition_constraints {
             tc.to_owned()
         } else {
-            panic!("Do not have transition constraints! {}", &self.name());
+            panic!("{} does not have transition constraints!", &self.name());
         }
     }
 
+    /// get consistency constraints if they are set; panic otherwise
     fn get_consistency_constraints(&self) -> Vec<MPolynomial<XWord>> {
         if let Some(cc) = &self.to_base().consistency_constraints {
             cc.to_owned()
         } else {
-            panic!("Do not have consistency constraints! {} ", &self.name());
+            panic!("{} does not have consistency constraints! ", &self.name());
         }
     }
 
-    /// get terminal constraints if they are set; otherwise compute them, set them, and return them
+    /// get terminal constraints if they are set; panic otherwise
     fn get_terminal_constraints(&self) -> Vec<MPolynomial<XWord>> {
         if let Some(tc) = &self.to_base().terminal_constraints {
             tc.to_owned()
         } else {
-            panic!("Do not have terminal constraints! {}", &self.name());
+            panic!("{} does not have terminal constraints!", &self.name());
         }
     }
 
@@ -87,53 +88,58 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>>;
 
-    fn all_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
         vec![
-            self.boundary_quotient_degree_bounds(),
-            self.transition_quotient_degree_bounds(),
-            self.consistency_quotient_degree_bounds(),
-            self.terminal_quotient_degree_bounds(),
+            self.get_boundary_quotient_degree_bounds(),
+            self.get_transition_quotient_degree_bounds(),
+            self.get_consistency_quotient_degree_bounds(),
+            self.get_terminal_quotient_degree_bounds(),
         ]
         .concat()
     }
 
-    fn boundary_quotient_degree_bounds(&self) -> Vec<Degree> {
-        let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
-
-        let degree_bounds: Vec<Degree> = self
-            .get_boundary_constraints()
-            .iter()
-            .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - 1)
-            .collect();
-
-        degree_bounds
+    fn get_boundary_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.to_base().boundary_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have boundary quotient degree bounds!",
+                &self.name()
+            );
+        }
     }
 
-    fn transition_quotient_degree_bounds(&self) -> Vec<Degree> {
-        let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); 2 * self.full_width()];
-        let transition_constraints = self.get_transition_constraints();
-        // Safe because padded height is at most 2^30.
-        let padded_height: Degree = self.padded_height().try_into().unwrap();
-        transition_constraints
-            .iter()
-            .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - padded_height + 1)
-            .collect()
+    fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.to_base().transition_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have transition quotient degree bounds!",
+                &self.name()
+            );
+        }
     }
 
-    fn consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
-        let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
-        self.get_consistency_constraints()
-            .iter()
-            .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - 1)
-            .collect()
+    fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.to_base().consistency_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have consistency quotient degree bounds!",
+                &self.name()
+            );
+        }
     }
 
-    fn terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
-        let max_degrees: Vec<Degree> = vec![self.interpolant_degree(); self.full_width()];
-        self.get_terminal_constraints()
-            .iter()
-            .map(|mpo| mpo.symbolic_degree_bound(&max_degrees) - 1)
-            .collect::<Vec<Degree>>()
+    fn get_terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.to_base().terminal_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have terminal quotient degree bounds!",
+                &self.name()
+            );
+        }
     }
 
     fn all_quotients(

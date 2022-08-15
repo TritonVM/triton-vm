@@ -848,7 +848,7 @@ impl Stark {
                 for (boundary_constraint, degree_bound) in table
                     .get_boundary_constraints()
                     .iter()
-                    .zip_eq(table.boundary_quotient_degree_bounds().iter())
+                    .zip_eq(table.get_boundary_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = boundary_constraint.evaluate(table_row)
@@ -862,7 +862,7 @@ impl Stark {
                 for (transition_constraint, degree_bound) in table
                     .get_transition_constraints()
                     .iter()
-                    .zip_eq(table.transition_quotient_degree_bounds().iter())
+                    .zip_eq(table.get_transition_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = if table_height == 0 {
@@ -885,7 +885,7 @@ impl Stark {
                 for (consistency_constraint, degree_bound) in table
                     .get_consistency_constraints()
                     .iter()
-                    .zip_eq(table.consistency_quotient_degree_bounds().iter())
+                    .zip_eq(table.get_consistency_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = consistency_constraint.evaluate(table_row)
@@ -899,7 +899,7 @@ impl Stark {
                 for (terminal_constraint, degree_bound) in table
                     .get_terminal_constraints()
                     .iter()
-                    .zip_eq(table.terminal_quotient_degree_bounds().iter())
+                    .zip_eq(table.get_terminal_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = terminal_constraint.evaluate(table_row)

@@ -91,13 +91,49 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
         consistency_constraints: Vec<MPolynomial<DataPF>>,
         terminal_constraints: Vec<MPolynomial<DataPF>>,
     ) -> Self {
+        let interpolant_degree = base_table.interpolant_degree();
+        let full_width = base_table.full_width;
+
+        let bqdb =
+            Self::compute_degree_bounds(&boundary_constraints, interpolant_degree, full_width);
+        let tqdb = Self::compute_degree_bounds(
+            &transition_constraints,
+            interpolant_degree,
+            2 * full_width,
+        );
+        let cqdb =
+            Self::compute_degree_bounds(&consistency_constraints, interpolant_degree, full_width);
+        let termqdb =
+            Self::compute_degree_bounds(&terminal_constraints, interpolant_degree, full_width);
         BaseTable {
             boundary_constraints: Some(boundary_constraints),
             transition_constraints: Some(transition_constraints),
             consistency_constraints: Some(consistency_constraints),
             terminal_constraints: Some(terminal_constraints),
+            boundary_quotient_degree_bounds: Some(bqdb),
+            transition_quotient_degree_bounds: Some(tqdb),
+            consistency_quotient_degree_bounds: Some(cqdb),
+            terminal_quotient_degree_bounds: Some(termqdb),
             ..base_table
         }
+    }
+
+    fn interpolant_degree(&self) -> Degree {
+        (self.padded_height + self.num_trace_randomizers - 1) as Degree
+    }
+
+    /// Computes the degree bounds of the quotients given the AIR constraints and the interpolant
+    /// degree. The AIR constraints are defined over a symbolic ring with `full_width`-many
+    /// variables.
+    fn compute_degree_bounds(
+        air_constraints: &[MPolynomial<DataPF>],
+        interpolant_degree: Degree,
+        full_width: usize,
+    ) -> Vec<Degree> {
+        air_constraints
+            .iter()
+            .map(|mpo| mpo.symbolic_degree_bound(&vec![interpolant_degree; full_width]) - 1)
+            .collect()
     }
 
     /// Create a `BaseTable<DataPF>` with the same parameters, but new `matrix` data.
@@ -145,6 +181,10 @@ pub trait HasBaseTable<DataPF: PrimeField> {
 
     fn num_trace_randomizers(&self) -> usize {
         self.to_base().num_trace_randomizers
+    }
+
+    fn interpolant_degree(&self) -> Degree {
+        self.to_base().interpolant_degree()
     }
 
     fn omicron(&self) -> DataPF {
@@ -204,13 +244,6 @@ where
             let padding_row = self.get_padding_row();
             self.mut_data().push(padding_row);
         }
-    }
-
-    fn interpolant_degree(&self) -> Degree {
-        let padded_height: Degree = self.padded_height().try_into().unwrap_or(0);
-        let num_trace_randomizers: Degree = self.num_trace_randomizers().try_into().unwrap_or(0);
-
-        padded_height + num_trace_randomizers - 1
     }
 
     /// Returns the relation between the FRI domain and the omicron domain

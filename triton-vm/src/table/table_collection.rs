@@ -501,7 +501,7 @@ impl ExtTableCollection {
 
     pub fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
         self.into_iter() // Can we parallelize this? -> implement into_par_iter for TableCollection
-            .map(|ext_table| ext_table.all_quotient_degree_bounds())
+            .map(|ext_table| ext_table.get_all_quotient_degree_bounds())
             .concat()
     }
 }
