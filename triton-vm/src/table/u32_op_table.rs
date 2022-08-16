@@ -76,6 +76,12 @@ impl BaseTableTrait<XFieldElement> for ExtU32OpTable {
 
 impl ExtU32OpTable {
     fn ext_boundary_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
+        // todo: think this through again once all tables use the same padded height.
+        // let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
+        // let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
+        // let idc = variables[IDC as usize].clone();
+        // let idc_is_one = idc - one;
+        // vec![idc_is_one]
         vec![]
     }
 
@@ -140,7 +146,11 @@ impl ExtU32OpTable {
         _challenges: &U32OpTableChallenges,
         _terminals: &U32OpTableEndpoints,
     ) -> Vec<MPolynomial<XWord>> {
-        vec![]
+        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
+        let idc = variables[IDC as usize].clone();
+        let lhs = variables[LHS as usize].clone();
+        let rhs = variables[RHS as usize].clone();
+        vec![idc, lhs, rhs]
     }
 }
 
