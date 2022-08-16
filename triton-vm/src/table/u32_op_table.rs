@@ -5,7 +5,7 @@ use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
-use crate::table::table_column::U32OpTableColumn::{Bits, Inv32MinusBits};
+use crate::table::table_column::U32OpTableColumn::*;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -20,8 +20,8 @@ pub const U32_OP_TABLE_INITIALS_COUNT: usize =
 /// This is 4 because it combines: ci, lhs, rhs, result
 pub const U32_OP_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 4;
 
-pub const BASE_WIDTH: usize = 10;
-pub const FULL_WIDTH: usize = 12; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const BASE_WIDTH: usize = 12;
+pub const FULL_WIDTH: usize = 14; // BASE_WIDTH + 2 * INITIALS_COUNT
 
 type BWord = BFieldElement;
 type XWord = XFieldElement;
@@ -63,6 +63,7 @@ impl BaseTableTrait<BWord> for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
         padding_row[Inv32MinusBits as usize] = BFieldElement::new(32).inverse();
+        padding_row[LT as usize] = 2.into();
         padding_row
     }
 }
@@ -80,14 +81,55 @@ impl ExtU32OpTable {
 
     fn ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
+        let two = MPolynomial::from_constant(2.into(), FULL_WIDTH);
         let thirty_two = MPolynomial::from_constant(32.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
+        let idc = variables[IDC as usize].clone();
         let bits = variables[Bits as usize].clone();
-        let inv = variables[Inv32MinusBits as usize].clone();
-        let bits_is_not_32 = one - (thirty_two - bits) * inv;
+        let idc_is_zero_or_bits_is_zero = idc.clone() * bits.clone();
 
-        vec![bits_is_not_32]
+        let inv = variables[Inv32MinusBits as usize].clone();
+        let bits_is_not_32 = one.clone() - (thirty_two - bits) * inv;
+
+        let lhs = variables[LHS as usize].clone();
+        let lhs_inv = variables[LHSInv as usize].clone();
+        let lhs_is_zero_or_lhs_inv_is_inverse_of_lhs =
+            lhs.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
+        let lhs_inv_is_zero_or_lhs_inv_is_inverse_of_lhs =
+            lhs_inv.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
+
+        let rhs = variables[RHS as usize].clone();
+        let rhs_inv = variables[RHSInv as usize].clone();
+        let rhs_is_zero_or_rhs_inv_is_inverse_of_rhs =
+            rhs.clone() * (rhs.clone() * rhs_inv.clone() - one.clone());
+        let rhs_inv_is_zero_or_rhs_inv_is_inverse_of_rhs =
+            rhs_inv.clone() * (rhs.clone() * rhs_inv.clone() - one.clone());
+
+        let lt = variables[LT as usize].clone();
+        let and = variables[AND as usize].clone();
+        let xor = variables[XOR as usize].clone();
+        let rev = variables[REV as usize].clone();
+        let idc_is_one_or_lhs_is_nonzero_or_rhs_is_nonzero =
+            (one.clone() - idc) * (one.clone() - lhs * lhs_inv) * (one - rhs * rhs_inv);
+        let lt_is_two_after_u32_op =
+            idc_is_one_or_lhs_is_nonzero_or_rhs_is_nonzero.clone() * (lt - two);
+        let and_is_zero_after_u32_op = idc_is_one_or_lhs_is_nonzero_or_rhs_is_nonzero.clone() * and;
+        let xor_is_zero_after_u32_op = idc_is_one_or_lhs_is_nonzero_or_rhs_is_nonzero.clone() * xor;
+        let rev_is_zero_after_u32_op = idc_is_one_or_lhs_is_nonzero_or_rhs_is_nonzero * rev;
+
+        vec![
+            idc_is_zero_or_bits_is_zero,
+            bits_is_not_32,
+            lhs_is_zero_or_lhs_inv_is_inverse_of_lhs,
+            lhs_inv_is_zero_or_lhs_inv_is_inverse_of_lhs,
+            rhs_is_zero_or_rhs_inv_is_inverse_of_rhs,
+            rhs_inv_is_zero_or_rhs_inv_is_inverse_of_rhs,
+            lt_is_two_after_u32_op,
+            and_is_zero_after_u32_op,
+            xor_is_zero_after_u32_op,
+            rev_is_zero_after_u32_op,
+        ]
     }
 
     fn ext_transition_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {

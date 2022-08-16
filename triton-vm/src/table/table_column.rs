@@ -652,6 +652,8 @@ pub enum U32OpTableColumn {
     AND,
     XOR,
     REV,
+    LHSInv,
+    RHSInv,
 }
 
 impl From<U32OpTableColumn> for usize {
@@ -669,6 +671,8 @@ impl From<U32OpTableColumn> for usize {
             AND => 7,
             XOR => 8,
             REV => 9,
+            LHSInv => 10,
+            RHSInv => 11,
         }
     }
 }
@@ -679,7 +683,7 @@ impl Bounded for U32OpTableColumn {
     }
 
     fn max_value() -> Self {
-        U32OpTableColumn::REV
+        U32OpTableColumn::RHSInv
     }
 }
 
@@ -696,8 +700,8 @@ impl From<ExtU32OpTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            CompressedRow => 10,
-            RunningProductPermArg => 11,
+            CompressedRow => 12,
+            RunningProductPermArg => 13,
         }
     }
 }

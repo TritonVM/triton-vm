@@ -782,18 +782,18 @@ The Uint32 Operations Table is a lookup table for “difficult” 32-bit unsigne
 The two inputs to the Uint32 Operations Table are left-hand side (LHS) and right-hand side (RHS).
 
 
-| `idc` | LHS (`st0`) | RHS (`st1`) | LT                  | AND                     | XOR                     | REV           | LHS_inv             | RHS_inv             |
-|------:|:------------|:------------|:--------------------|:------------------------|:------------------------|:--------------|:--------------------|:--------------------|
-|     1 | `a`         | `b`         | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      | `a`${}^{-1}$        | `b`${}^{-1}$        |
-|     0 | `a >> 1`    | `b >> 1`    | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` | `(a >> 1)`${}^{-1}$ | `(b >> 1)`${}^{-1}$ |
-|     0 | `a >> 2`    | `b >> 2`    | …                   | …                       | …                       | …             | …                   | …                   |
-|     … | …           | …           | …                   | …                       | …                       | …             | …                   | …                   |
-|     0 | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
-|     1 | `c`         | `d`         | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      | `c`${}^{-1}$        | `d`${}^{-1}$        |
-|     0 | `c >> 1`    | `d >> 1`    | …                   | …                       | …                       | …             | …                   | …                   |
-|     … | …           | …           | …                   | …                       | …                       | …             | …                   | …                   |
-|     0 | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
-|     … | …           | …           | …                   | …                       | …                       | …             |                     |                     |
+| `idc` | `bits` | `32_minus_bits_inv` | `ci`       | LHS (`st0`) | RHS (`st1`) | LT                  | AND                     | XOR                     | REV           | LHS_inv             | RHS_inv             |
+|------:|-------:|--------------------:|:-----------|:------------|:------------|:--------------------|:------------------------|:------------------------|:--------------|:--------------------|:--------------------|
+|     1 |      0 |           $32^{-1}$ | e.g. `and` | `a`         | `b`         | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      | `a`${}^{-1}$        | `b`${}^{-1}$        |
+|     0 |      1 |           $31^{-1}$ | e.g. `and` | `a >> 1`    | `b >> 1`    | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` | `(a >> 1)`${}^{-1}$ | `(b >> 1)`${}^{-1}$ |
+|     0 |      2 |           $30^{-1}$ | e.g. `and` | `a >> 2`    | `b >> 2`    | …                   | …                       | …                       | …             | …                   | …                   |
+|     … |      … |                   … | …          | …           | …           | …                   | …                       | …                       | …             | …                   | …                   |
+|     0 |    $n$ |       $(32-n)^{-1}$ | e.g. `and` | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
+|     1 |      0 |           $32^{-1}$ | e.g. `lt`  | `c`         | `d`         | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      | `c`${}^{-1}$        | `d`${}^{-1}$        |
+|     0 |      1 |           $31^{-1}$ | e.g. `lt`  | `c >> 1`    | `d >> 1`    | …                   | …                       | …                       | …             | …                   | …                   |
+|     … |      … |                   … | …          | …           | …           | …                   | …                       | …                       | …             | …                   | …                   |
+|     0 |    $m$ |       $(32-m)^{-1}$ | e.g. `lt`  | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
+|     … |      … |                   … | …          | …           | …           | …                   | …                       | …                       | …             |                     |                     |
 
 LT can take three possible values:
 - 0 indicates LHS is definitely greater than or equal to RHS,
@@ -814,19 +814,32 @@ For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `re
 After the Uint32 Operations Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is the following row:
 
-| `idc` | LHS | RHS | LT | AND | XOR | REV | LHS_inv | RHS_inv |
-|:------|:----|:----|:---|:----|:----|:----|--------:|--------:|
-| 0     | 0   | 0   | 2  | 0   | 0   | 0   |       0 |       0 |
+| `idc` | `bits` | `32_minus_bits_inv` | `ci` | LHS | RHS | LT | AND | XOR | REV | LHS_inv | RHS_inv |
+|:------|-------:|--------------------:|-----:|----:|----:|---:|----:|----:|----:|--------:|--------:|
+| 0     |      0 |           $32^{-1}$ |    0 |   0 |   0 |  2 |   0 |   0 |   0 |       0 |       0 |
 
 **Consistency Constraints**
 
-1. The indicator `idc` is either 0 or 1.
+1. If `idc` is 1, then `bits` is 0.
+1. `bits` is not 32.
 1. LHS_inv is the inverse of LHS if LHS is not 0, and 0 otherwise.
 1. RHS_inv is the inverse of RHS if RHS is not 0, and 0 otherwise.
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then LT is 2.
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then AND is 0.
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then XOR is 0.
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then REV is 0.
+
+Written as Disjunctive Normal Form, the same constraints can be expressed as:
+1. `idc` is 0 or `bits` is 0.
+1. `32_minus_bits_inv` is the multiplicative inverse of (`bits` - 32).
+1. LHS is 0, or LHS_inv is the inverse of LHS.
+1. LHS_inv is 0, or LHS_inv is the inverse of LHS.
+1. RHS is 0, or RHS_inv is the inverse of RHS.
+1. RHS_inv is 0, or RHS_inv is the inverse of RHS.
+1. `idc` is 1 or LHS is not 0 or RHS is not 0 or LT is 2.
+1. `idc` is 1 or LHS is not 0 or RHS is not 0 or AND is 0.
+1. `idc` is 1 or LHS is not 0 or RHS is not 0 or XOR is 0.
+1. `idc` is 1 or LHS is not 0 or RHS is not 0 or REV is 0.
 
 **Boundary Constraints**
 
@@ -837,6 +850,7 @@ Each padding row is the following row:
 
 **Transition Constraints**
 
+1. If the indicator `idc` is 0 in the next row, then `bits` in the next row is `bits` in the current row plus 1.
 1. If either LHS or RHS are non-zero in the current row, then the indicator in the next row is 0.
 1. If `idc` in the next row is 0 and the lsb of LHS is 0 and the lsb of RHS is 0, then LT in the next row is 2, indicating inconclusiveness.
 1. If the indicator `idc` is 0 in the next row, then the least significant bit (lsb) of LHS, i.e., the difference between LHS in the current row and twice LHS in the next row, is either 0 or 1.

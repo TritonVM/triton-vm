@@ -583,6 +583,14 @@ impl<'pgm> VMState<'pgm> {
         mut lhs: u32,
         mut rhs: u32,
     ) -> Vec<[BFieldElement; u32_op_table::BASE_WIDTH]> {
+        let inverse_or_zero = |bfe: BFieldElement| {
+            if bfe.is_zero() {
+                bfe
+            } else {
+                bfe.inverse()
+            }
+        };
+
         let mut idc = 1.into();
         let zero = BFieldElement::ring_zero();
         let one = BFieldElement::ring_one();
@@ -599,14 +607,16 @@ impl<'pgm> VMState<'pgm> {
             let row = [
                 idc,
                 bits,
-                (thirty_two - bits).inverse(),
+                inverse_or_zero(thirty_two - bits),
                 ci,
                 lhs.into(),
                 rhs.into(),
-                Self::lt(lhs, rhs),
+                Self::possibly_unclear_lt(&idc, lhs, rhs),
                 (lhs & rhs).into(),
                 (lhs ^ rhs).into(),
                 lhs.reverse_bits().into(),
+                inverse_or_zero(lhs.into()),
+                inverse_or_zero(rhs.into()),
             ];
             rows.push(row);
             lhs >>= 1;
@@ -616,6 +626,14 @@ impl<'pgm> VMState<'pgm> {
         }
 
         rows
+    }
+
+    fn possibly_unclear_lt(idc: &BFieldElement, lhs: u32, rhs: u32) -> BFieldElement {
+        if idc.is_zero() && lhs == rhs {
+            2.into()
+        } else {
+            Self::lt(lhs, rhs)
+        }
     }
 
     fn lt(lhs: u32, rhs: u32) -> BWord {
