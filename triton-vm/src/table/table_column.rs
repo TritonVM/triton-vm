@@ -644,7 +644,7 @@ impl Bounded for ExtHashTableColumn {
 pub enum U32OpTableColumn {
     IDC,
     Bits,
-    Inv32MinusBits,
+    Inv33MinusBits,
     CI,
     LHS,
     RHS,
@@ -663,7 +663,7 @@ impl From<U32OpTableColumn> for usize {
         match c {
             IDC => 0,
             Bits => 1,
-            Inv32MinusBits => 2,
+            Inv33MinusBits => 2,
             CI => 3,
             LHS => 4,
             RHS => 5,

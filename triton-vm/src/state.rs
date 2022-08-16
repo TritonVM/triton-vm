@@ -591,45 +591,47 @@ impl<'pgm> VMState<'pgm> {
             }
         };
 
-        let mut idc = 1.into();
-        let zero = BFieldElement::ring_zero();
-        let one = BFieldElement::ring_one();
-        let thirty_two = BFieldElement::new(32);
-
-        let mut bits = zero;
+        let mut idc = 1;
+        let mut bits = 0;
         let ci = self
             .current_instruction()
             .expect("U32 trace can only be generated with an instruction.")
             .opcode_b();
 
-        let mut rows = vec![];
-        while lhs > 0 || rhs > 0 {
-            let row = [
-                idc,
-                bits,
-                inverse_or_zero(thirty_two - bits),
+        let thirty_three = BFieldElement::new(33);
+        let row = |idc: u32, bits: u32, lhs: u32, rhs: u32| {
+            [
+                idc.into(),
+                bits.into(),
+                inverse_or_zero(thirty_three - bits.into()),
                 ci,
                 lhs.into(),
                 rhs.into(),
-                Self::possibly_unclear_lt(&idc, lhs, rhs),
+                Self::possibly_unclear_lt(idc, lhs, rhs),
                 (lhs & rhs).into(),
                 (lhs ^ rhs).into(),
                 lhs.reverse_bits().into(),
                 inverse_or_zero(lhs.into()),
                 inverse_or_zero(rhs.into()),
-            ];
-            rows.push(row);
+            ]
+        };
+
+        let mut rows = vec![];
+        let mut write_rows = true;
+        while write_rows {
+            rows.push(row(idc, bits, lhs, rhs));
+            idc = 0;
+            bits += 1;
+            write_rows = lhs != 0 || rhs != 0;
             lhs >>= 1;
             rhs >>= 1;
-            idc = zero;
-            bits += one;
         }
 
         rows
     }
 
-    fn possibly_unclear_lt(idc: &BFieldElement, lhs: u32, rhs: u32) -> BFieldElement {
-        if idc.is_zero() && lhs == rhs {
+    fn possibly_unclear_lt(idc: u32, lhs: u32, rhs: u32) -> BFieldElement {
+        if idc == 0 && lhs == rhs {
             2.into()
         } else {
             Self::lt(lhs, rhs)

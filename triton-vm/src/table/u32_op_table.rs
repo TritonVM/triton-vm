@@ -62,7 +62,7 @@ impl HasBaseTable<XFieldElement> for ExtU32OpTable {
 impl BaseTableTrait<BWord> for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
-        padding_row[Inv32MinusBits as usize] = BFieldElement::new(32).inverse();
+        padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
         padding_row[LT as usize] = 2.into();
         padding_row
     }
@@ -82,15 +82,15 @@ impl ExtU32OpTable {
     fn ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let two = MPolynomial::from_constant(2.into(), FULL_WIDTH);
-        let thirty_two = MPolynomial::from_constant(32.into(), FULL_WIDTH);
+        let thirty_three = MPolynomial::from_constant(33.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
         let idc = variables[IDC as usize].clone();
         let bits = variables[Bits as usize].clone();
         let idc_is_zero_or_bits_is_zero = idc.clone() * bits.clone();
 
-        let inv = variables[Inv32MinusBits as usize].clone();
-        let bits_is_not_32 = one.clone() - (thirty_two - bits) * inv;
+        let inv = variables[Inv33MinusBits as usize].clone();
+        let bits_is_not_33 = one.clone() - (thirty_three - bits) * inv;
 
         let lhs = variables[LHS as usize].clone();
         let lhs_inv = variables[LHSInv as usize].clone();
@@ -120,7 +120,7 @@ impl ExtU32OpTable {
 
         vec![
             idc_is_zero_or_bits_is_zero,
-            bits_is_not_32,
+            bits_is_not_33,
             lhs_is_zero_or_lhs_inv_is_inverse_of_lhs,
             lhs_inv_is_zero_or_lhs_inv_is_inverse_of_lhs,
             rhs_is_zero_or_rhs_inv_is_inverse_of_rhs,
