@@ -252,7 +252,12 @@ pub trait Quotientable: ExtensionTable {
         let boundary_constraints = self.get_boundary_constraints();
         let quotient_codewords =
             self.quotients(codewords, zerofier_codeword, &boundary_constraints);
-        self.debug_degree_bound_check(fri_domain, &boundary_constraints, &quotient_codewords);
+        self.debug_degree_bound_check(
+            fri_domain,
+            &boundary_constraints,
+            &quotient_codewords,
+            "boundary",
+        );
 
         quotient_codewords
     }
@@ -310,7 +315,12 @@ pub trait Quotientable: ExtensionTable {
                 .collect();
             quotients.push(quotient_codeword);
         }
-        self.debug_degree_bound_check(fri_domain, &transition_constraints, &quotients);
+        self.debug_degree_bound_check(
+            fri_domain,
+            &transition_constraints,
+            &quotients,
+            "transition",
+        );
 
         quotients
     }
@@ -333,7 +343,12 @@ pub trait Quotientable: ExtensionTable {
         let consistency_constraints = self.get_consistency_constraints();
         let quotient_codewords =
             self.quotients(codewords, zerofier_codeword, &consistency_constraints);
-        self.debug_degree_bound_check(fri_domain, &consistency_constraints, &quotient_codewords);
+        self.debug_degree_bound_check(
+            fri_domain,
+            &consistency_constraints,
+            &quotient_codewords,
+            "consistency",
+        );
 
         quotient_codewords
     }
@@ -358,7 +373,12 @@ pub trait Quotientable: ExtensionTable {
         let terminal_constraints = self.get_terminal_constraints();
         let quotient_codewords =
             self.quotients(codewords, zerofier_codeword, &terminal_constraints);
-        self.debug_degree_bound_check(fri_domain, &terminal_constraints, &quotient_codewords);
+        self.debug_degree_bound_check(
+            fri_domain,
+            &terminal_constraints,
+            &quotient_codewords,
+            "terminal",
+        );
 
         quotient_codewords
     }
@@ -442,6 +462,7 @@ pub trait Quotientable: ExtensionTable {
         fri_domain: &FriDomain<XWord>,
         constraints: &[MPolynomial<XWord>],
         quotient_codewords: &[Vec<XFieldElement>],
+        quotient_type: &str,
     ) {
         if std::env::var("DEBUG").is_err() {
             return;
@@ -450,9 +471,10 @@ pub trait Quotientable: ExtensionTable {
             let interpolated = fri_domain.interpolate(qc);
             assert!(
                 interpolated.degree() < fri_domain.length as isize - 1,
-                "Degree of boundary quotient number {idx} (of {}) in {} must not be maximal. \
+                "Degree of {} quotient index {idx} (total {} quotients) in {} must not be maximal. \
                     Got degree {}, and FRI domain length was {}.\
                     Unsatisfied constraint: {}",
+                quotient_type,
                 quotient_codewords.len(),
                 self.name(),
                 interpolated.degree(),
