@@ -93,29 +93,31 @@ impl ExtU32OpTable {
 
         let idc = variables[IDC as usize].clone();
         let bits = variables[Bits as usize].clone();
-        let idc_is_zero_or_bits_is_zero = idc.clone() * bits.clone();
-
         let inv = variables[Inv33MinusBits as usize].clone();
-        let bits_is_not_33 = one.clone() - (thirty_three - bits) * inv;
-
         let lhs = variables[LHS as usize].clone();
         let lhs_inv = variables[LHSInv as usize].clone();
+        let rhs = variables[RHS as usize].clone();
+        let rhs_inv = variables[RHSInv as usize].clone();
+        let lt = variables[LT as usize].clone();
+        let and = variables[AND as usize].clone();
+        let xor = variables[XOR as usize].clone();
+        let rev = variables[REV as usize].clone();
+
+        let idc_is_0_or_1 = idc.clone() * (idc.clone() - one.clone());
+        let idc_is_zero_or_bits_is_zero = idc.clone() * bits.clone();
+
+        let bits_is_not_33 = one.clone() - (thirty_three - bits) * inv;
+
         let lhs_is_zero_or_lhs_inv_is_inverse_of_lhs =
             lhs.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
         let lhs_inv_is_zero_or_lhs_inv_is_inverse_of_lhs =
             lhs_inv.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
 
-        let rhs = variables[RHS as usize].clone();
-        let rhs_inv = variables[RHSInv as usize].clone();
         let rhs_is_zero_or_rhs_inv_is_inverse_of_rhs =
             rhs.clone() * (rhs.clone() * rhs_inv.clone() - one.clone());
         let rhs_inv_is_zero_or_rhs_inv_is_inverse_of_rhs =
             rhs_inv.clone() * (rhs.clone() * rhs_inv.clone() - one.clone());
 
-        let lt = variables[LT as usize].clone();
-        let and = variables[AND as usize].clone();
-        let xor = variables[XOR as usize].clone();
-        let rev = variables[REV as usize].clone();
         let idc_is_one_or_lhs_is_nonzero_or_rhs_is_nonzero =
             (one.clone() - idc) * (one.clone() - lhs * lhs_inv) * (one - rhs * rhs_inv);
         let lt_is_two_after_u32_op =
@@ -125,6 +127,7 @@ impl ExtU32OpTable {
         let rev_is_zero_after_u32_op = idc_is_one_or_lhs_is_nonzero_or_rhs_is_nonzero * rev;
 
         vec![
+            idc_is_0_or_1,
             idc_is_zero_or_bits_is_zero,
             bits_is_not_33,
             lhs_is_zero_or_lhs_inv_is_inverse_of_lhs,

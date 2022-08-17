@@ -820,6 +820,7 @@ Each padding row is the following row:
 
 **Consistency Constraints**
 
+1. The indicator `idc` is 0 or 1.
 1. If `idc` is 1, then `bits` is 0.
 1. `bits` is not 32.
 1. LHS_inv is the inverse of LHS if LHS is not 0, and 0 otherwise.
@@ -830,6 +831,7 @@ Each padding row is the following row:
 1. If `idc` is 0 and LHS is 0 and RHS is 0, then REV is 0.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
+1. The indicator `idc` is 0 or 1.
 1. `idc` is 0 or `bits` is 0.
 1. `32_minus_bits_inv` is the multiplicative inverse of (`bits` - 32).
 1. LHS is 0, or LHS_inv is the inverse of LHS.
