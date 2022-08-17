@@ -639,7 +639,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn lt(lhs: u32, rhs: u32) -> BWord {
-        if rhs < lhs {
+        if lhs < rhs {
             1.into()
         } else {
             0.into()

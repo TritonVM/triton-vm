@@ -597,7 +597,7 @@ mod triton_vm_tests {
     }
 
     fn test_program_for_instruction_split() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push -1 split lt assert halt ")
+        SourceCodeAndInput::without_input("push -1 split swap1 lt assert halt ")
     }
 
     fn test_program_for_eq() -> SourceCodeAndInput {
@@ -609,7 +609,7 @@ mod triton_vm_tests {
     }
 
     fn test_program_for_lt() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 2 push 3 lt assert halt")
+        SourceCodeAndInput::without_input("push 3 push 2 lt assert halt")
     }
 
     fn test_program_for_and() -> SourceCodeAndInput {

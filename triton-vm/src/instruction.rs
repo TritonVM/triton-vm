@@ -887,15 +887,15 @@ pub mod sample_programs {
         push 0
         push 1
         push 7
-        dup0
         push 2
+        dup1
         lt
         skiz
         call 29
         call 16
     16: call 38
         swap1
-        push 18446744069414584320
+        push -1
         add
         dup0
         skiz
