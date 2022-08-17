@@ -1024,7 +1024,7 @@ pub(crate) mod triton_stark_tests {
         input_symbols: &[BWord],
         output_symbols: &[BWord],
     ) -> (Stark, ProofStream<Item, RescuePrimeXlix<RP_DEFAULT_WIDTH>>) {
-        let (base_matrices, _) = parse_simulate(code, input_symbols, &[], output_symbols);
+        let (base_matrices, _) = parse_simulate(code, input_symbols, &[]);
 
         let num_trace_randomizers = 2;
         let num_randomizer_polynomials = 1;
@@ -1065,7 +1065,6 @@ pub(crate) mod triton_stark_tests {
         code: &str,
         input_symbols: &[BWord],
         secret_input_symbols: &[BWord],
-        output_symbols: &[BWord],
     ) -> (BaseMatrices, VecStream) {
         let program = Program::from_code(code);
 
@@ -1074,7 +1073,7 @@ pub(crate) mod triton_stark_tests {
 
         let mut stdin = VecStream::new_bwords(input_symbols);
         let mut secret_in = VecStream::new_bwords(secret_input_symbols);
-        let mut stdout = VecStream::new_bwords(output_symbols);
+        let mut stdout = VecStream::new_bwords(&[]);
         let rescue_prime = rescue_prime_xlix::neptune_params();
 
         let (base_matrices, err) =
@@ -1089,7 +1088,6 @@ pub(crate) mod triton_stark_tests {
         code: &str,
         stdin: &[BWord],
         secret_in: &[BWord],
-        stdout: &[BWord],
     ) -> (
         VecStream,
         BaseTableCollection,
@@ -1099,7 +1097,7 @@ pub(crate) mod triton_stark_tests {
         AllEndpoints,
         AllEndpoints,
     ) {
-        let (base_matrices, stdout) = parse_simulate(code, stdin, secret_in, stdout);
+        let (base_matrices, stdout) = parse_simulate(code, stdin, secret_in);
         let num_trace_randomizers = 2;
 
         let mut base_tables =
@@ -1125,6 +1123,13 @@ pub(crate) mod triton_stark_tests {
         )
     }
 
+    fn pretty_print_row<PF: PrimeField>(row: &[PF]) -> String {
+        row.iter()
+            .map(|pf| format!("{}", pf))
+            .collect_vec()
+            .join(", ")
+    }
+
     fn assert_transition_constraints_on_table<PF: PrimeField>(
         table_data: &[Vec<PF>],
         air_constraints: &[MPolynomial<PF>],
@@ -1136,10 +1141,15 @@ pub(crate) mod triton_stark_tests {
             for (constraint_idx, air_constraint) in air_constraints.iter().enumerate() {
                 assert!(
                     air_constraint.evaluate(&air_point).is_zero(),
-                    "{}. Constraint index: {}. Row index: {}\n{}",
+                    "{}. Constraint index: {}. Row index: {}\n\
+                    Current row: {:?}\n\
+                    Next row:    {:?}\n\
+                    Constraint:  {}",
                     message,
                     constraint_idx,
                     row_idx,
+                    pretty_print_row(curr_row),
+                    pretty_print_row(next_row),
                     air_constraint,
                 );
             }
@@ -1210,7 +1220,7 @@ pub(crate) mod triton_stark_tests {
             all_challenges,
             _all_initials,
             all_terminals,
-        ) = parse_simulate_pad_extend(read_nop_code, &input_symbols, &[], &[]);
+        ) = parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
 
         let ptie = all_terminals.processor_table_endpoints.input_table_eval_sum;
         let ine = evaluation_argument::compute_terminal(
@@ -1234,7 +1244,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[], &[]);
+        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
 
         for ext_table in ext_tables.into_iter() {
             let boundary_constraints = ext_table.get_boundary_constraints();
@@ -1302,40 +1312,36 @@ pub(crate) mod triton_stark_tests {
             _all_challenges,
             _all_initials,
             _all_terminals,
-        ) = parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[], &[]);
+        ) = parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
 
         for ext_table in (&ext_tables).into_iter() {
             let ext_transition_constraints = ext_table.get_transition_constraints();
-            let message_1 = format!("get_transition_constraints on {}", &ext_table.name());
             assert_transition_constraints_on_table(
                 ext_table.data(),
                 &ext_transition_constraints,
-                &message_1,
+                &format!("get_transition_constraints on {}", &ext_table.name()),
             );
 
             let ext_consistency_constraints = ext_table.get_consistency_constraints();
-            let message_2 = format!("ext_consistency_constraints on {}", &ext_table.name());
             assert_consistency_boundary_constraints_on_table(
                 ext_table.data(),
                 &ext_consistency_constraints,
-                &message_2,
+                &format!("ext_consistency_constraints on {}", &ext_table.name()),
             );
 
             if ext_table.data().len() > 0 {
                 let ext_boundary_constraints = ext_table.get_boundary_constraints();
-                let message_3 = format!("get_boundary_constraints on {}", &ext_table.name());
                 assert_consistency_boundary_constraints_on_table(
                     &[ext_table.data()[0].clone()],
                     &ext_boundary_constraints,
-                    &message_3,
+                    &format!("get_boundary_constraints on {}", &ext_table.name()),
                 );
 
                 let ext_terminal_constraints = ext_table.get_terminal_constraints();
-                let message_4 = format!("get_terminal_constraints on {}", &ext_table.name());
                 assert_consistency_boundary_constraints_on_table(
                     &[ext_table.data().last().unwrap().to_vec()],
                     &ext_terminal_constraints,
-                    &message_4,
+                    &format!("get_terminal_constraints on {}", &ext_table.name()),
                 );
             }
         }
