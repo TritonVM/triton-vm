@@ -1174,6 +1174,19 @@ pub(crate) mod triton_stark_tests {
         }
     }
 
+    /// To be used with `-- --nocapture`. Has mainly informative purpose.
+    #[test]
+    pub fn print_all_constraint_degrees() {
+        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
+        let all_degrees = ext_tables
+            .into_iter()
+            .map(|ext_table| ext_table.all_degrees_with_origin())
+            .concat();
+        for deg in all_degrees {
+            println!("{}", deg);
+        }
+    }
+
     #[test]
     pub fn shift_codeword_test() {
         let stark = Stark::new(2, 2, 1, 2, 32, 1.into(), &[], &[]);

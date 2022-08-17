@@ -298,7 +298,9 @@ impl ExtTableCollection {
 
     pub fn max_degree_with_origin(&self) -> DegreeWithOrigin {
         self.into_iter()
-            .map(|ext_table| ext_table.max_degree_with_origin())
+            .map(|ext_table| ext_table.all_degrees_with_origin())
+            .concat()
+            .into_iter()
             .max()
             .unwrap_or_else(|| DegreeWithOrigin::default())
     }

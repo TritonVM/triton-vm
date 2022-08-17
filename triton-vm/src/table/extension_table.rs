@@ -55,12 +55,10 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         }
     }
 
-    /// max_degree
-    /// Compute the degree of the largest-degree quotient from all
-    /// AIR constraints that apply to the table.
+    /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     /// TODO: cover other constraints beyond just transitions
     /// TODO: work with unset/general terminals
-    fn max_degree_with_origin(&self) -> DegreeWithOrigin {
+    fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
         let interpolant_degree = self.interpolant_degree();
         let interpolants_degrees = vec![interpolant_degree; self.full_width()];
         let duplicated_interpolants_degrees = vec![interpolant_degree; self.full_width() * 2];
@@ -70,7 +68,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         let consistency_zerofier_degree = interpolant_degree;
         let terminal_zerofier_degree = 1;
 
-        let boundary_max_degree_with_origin = self
+        let boundary_degrees_with_origin = self
             .dynamic_boundary_constraints(&AllChallenges::dummy())
             .iter()
             .enumerate()
@@ -86,10 +84,9 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
                     origin_constraint_type: "boundary constraint".to_string(),
                 }
             })
-            .max()
-            .unwrap_or_else(|| DegreeWithOrigin::default());
+            .collect_vec();
 
-        let transition_max_degree_with_origin = self
+        let transition_degrees_with_origin = self
             .dynamic_transition_constraints(&AllChallenges::dummy())
             .iter()
             .enumerate()
@@ -105,10 +102,9 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
                     origin_constraint_type: "transition constraint".to_string(),
                 }
             })
-            .max()
-            .unwrap_or_else(|| DegreeWithOrigin::default());
+            .collect();
 
-        let consistency_max_degree_with_origin = self
+        let consistency_degrees_with_origin = self
             .dynamic_consistency_constraints(&AllChallenges::dummy())
             .iter()
             .enumerate()
@@ -124,10 +120,9 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
                     origin_constraint_type: "consistency constraint".to_string(),
                 }
             })
-            .max()
-            .unwrap_or_else(|| DegreeWithOrigin::default());
+            .collect();
 
-        let terminal_max_degree_with_origin = self
+        let terminal_degrees_with_origin = self
             .dynamic_terminal_constraints(&AllChallenges::dummy(), &AllEndpoints::dummy())
             .iter()
             .enumerate()
@@ -143,18 +138,15 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
                     origin_constraint_type: "terminal constraint".to_string(),
                 }
             })
-            .max()
-            .unwrap_or_else(|| DegreeWithOrigin::default());
+            .collect();
 
         [
-            boundary_max_degree_with_origin,
-            transition_max_degree_with_origin,
-            consistency_max_degree_with_origin,
-            terminal_max_degree_with_origin,
+            boundary_degrees_with_origin,
+            transition_degrees_with_origin,
+            consistency_degrees_with_origin,
+            terminal_degrees_with_origin,
         ]
-        .into_iter()
-        .max()
-        .unwrap_or_else(|| DegreeWithOrigin::default())
+        .concat()
     }
 
     fn dynamic_boundary_constraints(
@@ -513,10 +505,10 @@ impl Default for DegreeWithOrigin {
 
 impl Display for DegreeWithOrigin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
+        write!(
             f,
-            "Degree of poly for table {} (index {}) of type {} is {}. \
-            AIR had degree {}. Table height was {}.",
+            "Degree of poly for table {} (index {:02}) of type {} is {:02}. \
+            AIR has degree {:02}. Table height was {}.",
             self.origin_table_name,
             self.origin_index,
             self.origin_constraint_type,
