@@ -120,13 +120,13 @@ impl PermArg {
     }
 
     // FIXME: PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT is incidentally ALL permutation arguments; create new constant?
-    pub fn all_permutation_arguments() -> [Self; PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT - 1] {
+    pub fn all_permutation_arguments() -> [Self; PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT] {
         [
             Self::processor_instruction_perm_arg(),
             Self::processor_jump_stack_perm_arg(),
             Self::processor_op_stack_perm_arg(),
             Self::processor_ram_perm_arg(),
-            // Self::processor_u32_perm_arg(),
+            Self::processor_u32_perm_arg(),
         ]
     }
 }
