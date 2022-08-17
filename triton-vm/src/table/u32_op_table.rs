@@ -62,6 +62,7 @@ impl HasBaseTable<XFieldElement> for ExtU32OpTable {
 impl BaseTableTrait<BWord> for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
+        padding_row[CI as usize] = self.data().last().unwrap()[CI as usize];
         padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
         padding_row[LT as usize] = 2.into();
         padding_row
@@ -142,7 +143,112 @@ impl ExtU32OpTable {
     }
 
     fn ext_transition_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
-        vec![]
+        let half = MPolynomial::from_constant(
+            XFieldElement::new_const(BFieldElement::new(9223372034707292161)),
+            2 * FULL_WIDTH,
+        );
+        let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
+        let two = MPolynomial::from_constant(2.into(), 2 * FULL_WIDTH);
+        let rev_shift = MPolynomial::from_constant(2_u32.pow(31).into(), 2 * FULL_WIDTH);
+        let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        assert_eq!(one, half.clone() * two.clone());
+
+        let idc = variables[IDC as usize].clone();
+        let bits = variables[Bits as usize].clone();
+        let ci = variables[CI as usize].clone();
+        let lhs = variables[LHS as usize].clone();
+        let rhs = variables[RHS as usize].clone();
+        let lt = variables[LT as usize].clone();
+        let and = variables[AND as usize].clone();
+        let xor = variables[XOR as usize].clone();
+        let rev = variables[REV as usize].clone();
+        let idc_next = variables[FULL_WIDTH + IDC as usize].clone();
+        let bits_next = variables[FULL_WIDTH + Bits as usize].clone();
+        let ci_next = variables[FULL_WIDTH + CI as usize].clone();
+        let lhs_next = variables[FULL_WIDTH + LHS as usize].clone();
+        let rhs_next = variables[FULL_WIDTH + RHS as usize].clone();
+        let lt_next = variables[FULL_WIDTH + LT as usize].clone();
+        let and_next = variables[FULL_WIDTH + AND as usize].clone();
+        let xor_next = variables[FULL_WIDTH + XOR as usize].clone();
+        let rev_next = variables[FULL_WIDTH + REV as usize].clone();
+
+        let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
+        let rhs_lsb = rhs.clone() - two.clone() * rhs_next.clone();
+        let idc_next_is_1 = idc_next.clone() - one.clone();
+
+        let lhs_is_0_or_idc_next_is_0 = lhs.clone() * idc_next.clone();
+        let rhs_is_0_or_idc_next_is_0 = rhs.clone() * idc_next.clone();
+        let idc_next_is_1_or_ci_stays = idc_next_is_1.clone() * (ci - ci_next);
+        let idc_next_is_1_or_lhs_is_0_or_bits_increases = idc_next_is_1.clone()
+            * lhs.clone()
+            * (bits_next.clone() - (bits.clone() + one.clone()));
+        let idc_next_is_1_or_rhs_is_0_or_bits_increases =
+            idc_next_is_1.clone() * rhs.clone() * (bits_next - (bits + one.clone()));
+        let idc_next_is_1_or_lsb_of_lhs_is_0_or_1 =
+            idc_next_is_1.clone() * lhs_lsb.clone() * (lhs_lsb.clone() - one.clone());
+        let idc_next_is_1_or_lsb_of_rhs_is_0_or_1 =
+            idc_next_is_1.clone() * rhs_lsb.clone() * (rhs_lsb.clone() - one.clone());
+
+        // LT
+        let idc_next_is_1_or_lt_next_is_1_or_2_or_lt_is_0 = idc_next_is_1.clone()
+            * (lt_next.clone() - one.clone())
+            * (lt_next.clone() - two.clone())
+            * lt.clone();
+        let idc_next_is_1_or_lt_next_is_0_or_2_or_lt_is_1 = idc_next_is_1.clone()
+            * lt_next.clone()
+            * (lt_next.clone() - two.clone())
+            * (lt.clone() - one.clone());
+
+        let idc_next_is_1_or_lt_next_is_0_or_1 =
+            idc_next_is_1.clone() * lt_next.clone() * (lt_next.clone() - one.clone());
+        let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_is_1_or_rhs_lsb_is_0_or_lt_is_1 =
+            idc_next_is_1_or_lt_next_is_0_or_1.clone()
+                * (lhs_lsb.clone() - one.clone())
+                * rhs_lsb.clone()
+                * (lt.clone() - one.clone());
+        let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lbs_is_0_or_rhs_lsb_is_1_or_lt_is_0 =
+            idc_next_is_1_or_lt_next_is_0_or_1.clone()
+                * lhs_lsb.clone()
+                * (rhs_lsb.clone() - one.clone())
+                * lt.clone();
+
+        let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb =
+            idc_next_is_1_or_lt_next_is_0_or_1 * (one.clone() - lhs_lsb.clone() - rhs_lsb.clone());
+        let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb_or_idc_is_1_or_lt_is_2 =
+            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb.clone()
+                * (idc.clone() - one.clone())
+                * (lt.clone() - two.clone());
+        let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb_or_idc_is_0_or_lt_is_0 =
+            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb.clone() * idc.clone() * lt;
+
+        // AND, XOR, REV
+        let idc_next_is_1_or_and_eq_twice_and_next_plus_and_of_lsbs = idc_next_is_1.clone()
+            * (and - (two.clone() * and_next + lhs_lsb.clone() * rhs_lsb.clone()));
+        let idc_next_is_1_or_xor_eq_twice_xor_next_plus_xor_of_lsbs = idc_next_is_1.clone()
+            * (xor
+                - (two.clone() * xor_next + lhs_lsb.clone() + rhs_lsb.clone()
+                    - two * lhs_lsb.clone() * rhs_lsb));
+        let idc_next_is_1_or_rev_eq_half_rev_next_plus_shifted_lhs_lsb =
+            idc_next_is_1 * (rev - (half * rev_next + rev_shift * lhs_lsb));
+
+        vec![
+            lhs_is_0_or_idc_next_is_0,
+            rhs_is_0_or_idc_next_is_0,
+            idc_next_is_1_or_ci_stays,
+            idc_next_is_1_or_lhs_is_0_or_bits_increases,
+            idc_next_is_1_or_rhs_is_0_or_bits_increases,
+            idc_next_is_1_or_lsb_of_lhs_is_0_or_1,
+            idc_next_is_1_or_lsb_of_rhs_is_0_or_1,
+            idc_next_is_1_or_lt_next_is_1_or_2_or_lt_is_0,
+            idc_next_is_1_or_lt_next_is_0_or_2_or_lt_is_1,
+            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_is_1_or_rhs_lsb_is_0_or_lt_is_1,
+            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lbs_is_0_or_rhs_lsb_is_1_or_lt_is_0,
+            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb_or_idc_is_1_or_lt_is_2,
+            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb_or_idc_is_0_or_lt_is_0,
+            idc_next_is_1_or_and_eq_twice_and_next_plus_and_of_lsbs,
+            idc_next_is_1_or_xor_eq_twice_xor_next_plus_xor_of_lsbs,
+            idc_next_is_1_or_rev_eq_half_rev_next_plus_shifted_lhs_lsb,
+        ]
     }
 
     fn ext_terminal_constraints(

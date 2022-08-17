@@ -852,11 +852,15 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 **Transition Constraints**
 
-1. If the indicator `idc` is 0 in the next row, then `bits` in the next row is `bits` in the current row plus 1.
-1. If either LHS or RHS are non-zero in the current row, then the indicator in the next row is 0.
-1. If `idc` in the next row is 0 and the lsb of LHS is 0 and the lsb of RHS is 0, then LT in the next row is 2, indicating inconclusiveness.
-1. If the indicator `idc` is 0 in the next row, then the least significant bit (lsb) of LHS, i.e., the difference between LHS in the current row and twice LHS in the next row, is either 0 or 1.
-1. If the indicator `idc` is 0 in the next row, then the least significant bit (lsb) of RHS, i.e., the difference between RHS in the current row and twice RHS in the next row, is either 0 or 1.
+Even though they are never explicitly represented, it is useful to alias the LHS's and RHS's _least-significant bit_, or “lsb.”
+Given two consecutive rows for LHS, the (current) least significant bit can be computed by subtracting twice the next row's LHS from the current row's LHS.
+The same is possible for column RHS.
+
+1. If LHS or RHS is non-zero in the current row, then the indicator in the next row is 0.
+1. If the indicator `idc` is 0 in the next row, then `ci` in the next row is `ci` in the current row.
+1. If the indicator `idc` is 0 in the next row and either LHS or RHS is unequal to 0, then `bits` in the next row is `bits` in the current row plus 1.
+1. If the indicator `idc` is 0 in the next row, then the lsb of LHS either 0 or 1.
+1. If the indicator `idc` is 0 in the next row, then the lsb of RHS is either 0 or 1.
 1. If the indicator `idc` is 0 in the next row and LT in the next row is 0, then LT in the current row is 0.
 1. If the indicator `idc` is 0 in the next row and LT in the next row is 1, then LT in the current row is 1.
 1. If the indicator `idc` is 0 in the next row and LT in the next row is 2 and lsb of LHS is 0 and lsb of RHS is 1, then LT in the current row is 1.
@@ -864,8 +868,26 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. If the indicator `idc` is 0 in the next row and LT in the next row is 2 and (lsb of LHS equals lsb of RHS) and the indicator `idc` in the current row is 0, then LT in the current row is 2.
 1. If the indicator `idc` is 0 in the next row and LT in the next row is 2 and (lsb of LHS equals lsb of RHS) and the indicator `idc` in the current row is 1, then LT in the current row is 0.
 1. If the indicator `idc` is 0 in the next row, then AND in the current row equals twice AND in the next row plus (the product of the lsb of LHS and the lsb of the RHS).
-1. If the indicator `idc` is 0 in the next row, then XOR in the current row equals twice XOR in the next row plus the lsb of LHS plus the lsb of RHS minus (twice the product of the lsb of LHS and the lsb of the RHS).
+1. If the indicator `idc` is 0 in the next row, then XOR in the current row equals twice XOR in the next row plus the lsb of LHS plus the lsb of RHS minus (twice the product of the lsb of LHS and the lsb of RHS).
 1. If the indicator `idc` is 0 in the next row, then REV in the current row is (REV in the next row divided by 2, corresponding to a 1-bit right-shift) plus ($2^{31}$ times the lsb of LHS).
+
+Written in disjunctive form, the same constraints can be expressed as:
+1. LHS in the current row is 0 or `idc` in the next row is 0.
+1. RHS in the current row is 0 or `idc` in the next row is 0.
+1. `idc` in the next row is 1 or `ci` in the next row is `ci` in the current row.
+1. `idc` in the next row is 1 or LHS is 0 or `bits` in the next row is `bits` in the current row plus 1.
+1. `idc` in the next row is 1 or RHS is 0 or `bits` in the next row is `bits` in the current row plus 1.
+1. `idc` in the next row is 1 or (the lsb of LHS is 0 or 1).
+1. `idc` in the next row is 1 or (the lsb of RHS is 0 or 1).
+1. `idc` in the next row is 1 or (LT in the next row is 1 or 2) or LT in the current row is 0.
+1. `idc` in the next row is 1 or (LT in the next row is 0 or 2) or LT in the current row is 1.
+1. `idc` in the next row is 1 or (LT in the next row is 0 or 1) or the lsb of LHS is 1 or the lsb of RHS is 0 or LT in the current row is 1.
+1. `idc` in the next row is 1 or (LT in the next row is 0 or 1) or the lsb of LHS is 0 or the lsb of RHS is 1 or LT in the current row is 0.
+1. `idc` in the next row is 1 or (LT in the next row is 0 or 1) or the lsb of LHS is unequal to the lsb of RHS or `idc` is 1 or LT in the current row is 2.
+1. `idc` in the next row is 1 or (LT in the next row is 0 or 1) or the lsb of LHS is unequal to the lsb of RHS or `idc` is 0 or LT in the current row is 0.
+1. `idc` in the next row is 1 or AND in the current row equals twice AND in the next row plus (the product of the lsb of LHS and the lsb of the RHS).
+1. `idc` in the next row is 1 or XOR in the current row equals twice XOR in the next row plus the lsb of LHS plus the lsb of RHS minus (twice the product of the lsb of LHS and the lsb of RHS).
+1. `idc` in the next row is 1 or REV in the current row is (REV in the next row divided by 2) plus ($2^{31}$ times the lsb of LHS).
 
 **Relations to Other Tables**
 

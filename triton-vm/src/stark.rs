@@ -1345,7 +1345,7 @@ pub(crate) mod triton_stark_tests {
     fn triton_prove_verify_test() {
         let co_set_fri_offset = BWord::generator();
         let (stark, mut proof_stream) = parse_simulate_prove(
-            "hash nop hash nop nop hash halt",
+            "hash nop hash nop nop hash push 3 push 2 lt assert halt",
             co_set_fri_offset,
             &[],
             &[],
