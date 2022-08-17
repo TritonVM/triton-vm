@@ -132,11 +132,7 @@ The following constraint applies to every cycle.
 1. A Permutation Argument with the [RAM Table](#random-access-memory-table).
 1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the input to the hash function from the Processor to the Hash Coprocessor.
 1. An Evaluation Argument with the [Hash Table](#hash-coprocessor-table) for copying the hash digest from the Hash Coprocessor to the Processor.
-1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `lt`.
-1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `and`.
-1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `xor`.
-1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `rev`.
-1. A Permutation Argument with the [uint32 Table](#uint32-operations-table) for instruction `div`.
+1. A Permutation Argument with the [uint32 Table](#uint32-operations-table).
 
 ### Program Table
 
@@ -891,11 +887,7 @@ Written in disjunctive form, the same constraints can be expressed as:
 
 **Relations to Other Tables**
 
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `lt`, the operands and result exist as a row in the uint32 table.
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `and`, the operands and result exist as a row in the uint32 table.
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `xor`, the operands and result exist as a row in the uint32 table.
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `rev`, the operands and result exist as a row in the uint32 table.
-1. A Permutation Argument establishes that whenever the [processor](#processor-table) executes `div`, the operands and result exist as a row in the uint32 table.
+1. A Permutation Argument, conditioned on `ci`, establishes that the correct result is transferred to the [processor](#processor-table).
 
 ## Instruction-Specific Transition Constraints
 
