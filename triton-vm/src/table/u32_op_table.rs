@@ -88,7 +88,7 @@ impl ExtU32OpTable {
         vec![]
     }
 
-    fn ext_consistency_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let two = MPolynomial::from_constant(2.into(), FULL_WIDTH);
         let thirty_three = MPolynomial::from_constant(33.into(), FULL_WIDTH);
@@ -354,7 +354,7 @@ impl U32OpTable {
             base,
             ExtU32OpTable::ext_boundary_constraints(challenges),
             ExtU32OpTable::ext_transition_constraints(&challenges),
-            ExtU32OpTable::ext_consistency_constraints(&challenges),
+            ExtU32OpTable::ext_consistency_constraints(),
             ExtU32OpTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -424,7 +424,7 @@ impl ExtU32OpTable {
             base,
             ExtU32OpTable::ext_boundary_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
-            ExtU32OpTable::ext_consistency_constraints(&all_challenges.u32_op_table_challenges),
+            ExtU32OpTable::ext_consistency_constraints(),
             ExtU32OpTable::ext_terminal_constraints(
                 &all_challenges.u32_op_table_challenges,
                 &all_terminals.u32_op_table_endpoints,
@@ -469,11 +469,8 @@ impl ExtensionTable for ExtU32OpTable {
         ExtU32OpTable::ext_transition_constraints(&challenges.u32_op_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtU32OpTable::ext_consistency_constraints(&challenges.u32_op_table_challenges)
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtU32OpTable::ext_consistency_constraints()
     }
 
     fn dynamic_terminal_constraints(

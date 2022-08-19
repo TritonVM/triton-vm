@@ -98,9 +98,7 @@ impl ExtJumpStackTable {
     }
 
     // TODO actually use consistency constraints
-    fn ext_consistency_constraints(
-        _challenges: &JumpStackTableChallenges,
-    ) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
     }
@@ -256,7 +254,7 @@ impl JumpStackTable {
             base,
             ExtJumpStackTable::ext_boundary_constraints(challenges),
             ExtJumpStackTable::ext_transition_constraints(&challenges),
-            ExtJumpStackTable::ext_consistency_constraints(&challenges),
+            ExtJumpStackTable::ext_consistency_constraints(),
             ExtJumpStackTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -330,9 +328,7 @@ impl ExtJumpStackTable {
             ExtJumpStackTable::ext_transition_constraints(
                 &all_challenges.jump_stack_table_challenges,
             ),
-            ExtJumpStackTable::ext_consistency_constraints(
-                &all_challenges.jump_stack_table_challenges,
-            ),
+            ExtJumpStackTable::ext_consistency_constraints(),
             ExtJumpStackTable::ext_terminal_constraints(
                 &all_challenges.jump_stack_table_challenges,
                 &all_terminals.jump_stack_table_endpoints,
@@ -378,11 +374,8 @@ impl ExtensionTable for ExtJumpStackTable {
         ExtJumpStackTable::ext_transition_constraints(&challenges.jump_stack_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_consistency_constraints(&challenges.jump_stack_table_challenges)
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtJumpStackTable::ext_consistency_constraints()
     }
 
     fn dynamic_terminal_constraints(

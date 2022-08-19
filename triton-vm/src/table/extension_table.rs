@@ -105,7 +105,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
             .collect();
 
         let consistency_degrees_with_origin = self
-            .dynamic_consistency_constraints(&AllChallenges::dummy())
+            .dynamic_consistency_constraints()
             .iter()
             .enumerate()
             .map(|(i, air)| {
@@ -159,10 +159,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>>;
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>>;
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_terminal_constraints(
         &self,
@@ -290,7 +287,7 @@ pub trait Quotientable: ExtensionTable {
             let quotient_codeword: Vec<_> = zerofier_inverse
                 .par_iter()
                 .enumerate()
-                .map(|(current_row_idx, z_inverse)| {
+                .map(|(current_row_idx, &z_inverse)| {
                     let current_row = codewords
                         .iter()
                         .map(|codeword| codeword[current_row_idx])
@@ -302,7 +299,7 @@ pub trait Quotientable: ExtensionTable {
                         .collect_vec();
                     let evaluation_point = vec![current_row, next_row].concat();
                     let evaluated_constraint = tc.evaluate(&evaluation_point);
-                    evaluated_constraint * *z_inverse
+                    evaluated_constraint * z_inverse
                 })
                 .collect();
             quotients.push(quotient_codeword);

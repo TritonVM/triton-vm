@@ -90,9 +90,7 @@ impl ExtInstructionTable {
     }
 
     // TODO actually use consistency constraints
-    fn ext_consistency_constraints(
-        _challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
     }
@@ -155,9 +153,7 @@ impl ExtInstructionTable {
             ExtInstructionTable::ext_transition_constraints(
                 &all_challenges.instruction_table_challenges,
             ),
-            ExtInstructionTable::ext_consistency_constraints(
-                &all_challenges.instruction_table_challenges,
-            ),
+            ExtInstructionTable::ext_consistency_constraints(),
             ExtInstructionTable::ext_terminal_constraints(
                 &all_challenges.instruction_table_challenges,
                 &all_terminals.instruction_table_endpoints,
@@ -276,7 +272,7 @@ impl InstructionTable {
             base,
             ExtInstructionTable::ext_boundary_constraints(challenges),
             ExtInstructionTable::ext_transition_constraints(&challenges),
-            ExtInstructionTable::ext_consistency_constraints(&challenges),
+            ExtInstructionTable::ext_consistency_constraints(),
             ExtInstructionTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -369,11 +365,8 @@ impl ExtensionTable for ExtInstructionTable {
         ExtInstructionTable::ext_transition_constraints(&challenges.instruction_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_consistency_constraints(&challenges.instruction_table_challenges)
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_consistency_constraints()
     }
 
     fn dynamic_terminal_constraints(

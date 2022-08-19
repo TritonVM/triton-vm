@@ -321,7 +321,7 @@ impl ProcessorTable {
             base,
             ExtProcessorTable::ext_boundary_constraints(challenges),
             ExtProcessorTable::ext_transition_constraints(&challenges),
-            ExtProcessorTable::ext_consistency_constraints(&challenges),
+            ExtProcessorTable::ext_consistency_constraints(),
             ExtProcessorTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -666,9 +666,7 @@ impl ExtProcessorTable {
         ]
     }
 
-    fn ext_consistency_constraints(
-        _challenges: &ProcessorTableChallenges,
-    ) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
         let factory = SingleRowConstraints::default();
         let one = factory.one();
 
@@ -799,9 +797,7 @@ impl ExtProcessorTable {
             ExtProcessorTable::ext_transition_constraints(
                 &all_challenges.processor_table_challenges,
             ),
-            ExtProcessorTable::ext_consistency_constraints(
-                &all_challenges.processor_table_challenges,
-            ),
+            ExtProcessorTable::ext_consistency_constraints(),
             ExtProcessorTable::ext_terminal_constraints(
                 &all_challenges.processor_table_challenges,
                 &all_terminals.processor_table_endpoints,
@@ -2481,11 +2477,8 @@ impl ExtensionTable for ExtProcessorTable {
         ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_consistency_constraints(&challenges.processor_table_challenges)
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProcessorTable::ext_consistency_constraints()
     }
 
     fn dynamic_terminal_constraints(

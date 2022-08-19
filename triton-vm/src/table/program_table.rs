@@ -90,10 +90,7 @@ impl ExtProgramTable {
         vec![addr]
     }
 
-    // TODO actually use consistency constraints
-    fn ext_consistency_constraints(
-        _challenges: &ProgramTableChallenges,
-    ) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
     }
@@ -200,7 +197,7 @@ impl ProgramTable {
             base,
             ExtProgramTable::ext_boundary_constraints(challenges),
             ExtProgramTable::ext_transition_constraints(&challenges),
-            ExtProgramTable::ext_consistency_constraints(&challenges),
+            ExtProgramTable::ext_consistency_constraints(),
             ExtProgramTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -248,7 +245,7 @@ impl ExtProgramTable {
             base,
             ExtProgramTable::ext_boundary_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
-            ExtProgramTable::ext_consistency_constraints(&all_challenges.program_table_challenges),
+            ExtProgramTable::ext_consistency_constraints(),
             ExtProgramTable::ext_terminal_constraints(
                 &all_challenges.program_table_challenges,
                 &all_terminals.program_table_endpoints,
@@ -314,11 +311,8 @@ impl ExtensionTable for ExtProgramTable {
         ExtProgramTable::ext_transition_constraints(&challenges.program_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProgramTable::ext_consistency_constraints(&challenges.program_table_challenges)
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProgramTable::ext_consistency_constraints()
     }
 
     fn dynamic_terminal_constraints(

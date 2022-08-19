@@ -102,9 +102,7 @@ impl ExtOpStackTable {
     }
 
     // TODO actually use consistency constraints
-    fn ext_consistency_constraints(
-        _challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
     }
@@ -226,7 +224,7 @@ impl OpStackTable {
             base,
             ExtOpStackTable::ext_boundary_constraints(challenges),
             ExtOpStackTable::ext_transition_constraints(&challenges),
-            ExtOpStackTable::ext_consistency_constraints(&challenges),
+            ExtOpStackTable::ext_consistency_constraints(),
             ExtOpStackTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -296,7 +294,7 @@ impl ExtOpStackTable {
             base,
             ExtOpStackTable::ext_boundary_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
-            ExtOpStackTable::ext_consistency_constraints(&all_challenges.op_stack_table_challenges),
+            ExtOpStackTable::ext_consistency_constraints(),
             ExtOpStackTable::ext_terminal_constraints(
                 &all_challenges.op_stack_table_challenges,
                 &all_terminals.op_stack_table_endpoints,
@@ -341,11 +339,8 @@ impl ExtensionTable for ExtOpStackTable {
         ExtOpStackTable::ext_transition_constraints(&challenges.op_stack_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_consistency_constraints(&challenges.op_stack_table_challenges)
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtOpStackTable::ext_consistency_constraints()
     }
 
     fn dynamic_terminal_constraints(

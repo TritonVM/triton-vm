@@ -81,7 +81,7 @@ impl ExtHashTable {
         vec![round_number_is_0_or_1]
     }
 
-    fn ext_consistency_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
         fn constant(constant: u32) -> MPolynomial<XWord> {
             MPolynomial::from_constant(constant.into(), FULL_WIDTH)
         }
@@ -294,7 +294,7 @@ impl HashTable {
             base,
             ExtHashTable::ext_boundary_constraints(challenges),
             ExtHashTable::ext_transition_constraints(&challenges),
-            ExtHashTable::ext_consistency_constraints(&challenges),
+            ExtHashTable::ext_consistency_constraints(),
             ExtHashTable::ext_terminal_constraints(&challenges, &terminals),
         );
 
@@ -364,7 +364,7 @@ impl ExtHashTable {
             base,
             ExtHashTable::ext_boundary_constraints(&all_challenges.hash_table_challenges),
             ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
-            ExtHashTable::ext_consistency_constraints(&all_challenges.hash_table_challenges),
+            ExtHashTable::ext_consistency_constraints(),
             ExtHashTable::ext_terminal_constraints(
                 &all_challenges.hash_table_challenges,
                 &all_terminals.hash_table_endpoints,
@@ -409,11 +409,8 @@ impl ExtensionTable for ExtHashTable {
         ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_consistency_constraints(&challenges.hash_table_challenges)
+    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_consistency_constraints()
     }
 
     fn dynamic_terminal_constraints(
