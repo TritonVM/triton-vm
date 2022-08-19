@@ -710,7 +710,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 **Boundary Constraints**
 
-1. The round number `rnd_nmbr` starts at 1.
+1. The round number `rnd_nmbr` starts at 0 or 1.
 
 **Boundary Constraints as Polynomials**
 

@@ -5,6 +5,7 @@ use super::table_collection::TableId;
 use super::table_column::HashTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::state::DIGEST_LEN;
+use crate::table::table_column::HashTableColumn::*;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -71,15 +72,13 @@ impl BaseTableTrait<XFieldElement> for ExtHashTable {
 
 impl ExtHashTable {
     fn ext_boundary_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
-        let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(FULL_WIDTH, 1.into());
-        let one = MPolynomial::<XFieldElement>::from_constant(1.into(), FULL_WIDTH);
+        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
+        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
 
-        let rnd_nmbr = variables[usize::from(HashTableColumn::ROUNDNUMBER)].clone();
+        let round_number = variables[ROUNDNUMBER as usize].clone();
+        let round_number_is_0_or_1 = round_number.clone() * (round_number - one);
 
-        // 1. The round number rnd_nmbr starts at 1.
-        let rnd_nmbr_starts_at_one = rnd_nmbr - one;
-
-        vec![rnd_nmbr_starts_at_one]
+        vec![round_number_is_0_or_1]
     }
 
     fn ext_consistency_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
