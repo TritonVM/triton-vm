@@ -1,5 +1,8 @@
 # Triton VM
 
+![GitHub CI](https://github.com/TritonVM/triton-vm/actions/workflows/main.yml/badge.svg)
+![crates.io](https://img.shields.io/crates/v/triton-vm.svg)
+
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR) for use in combination with a [STARK proof system](https://neptune.cash/learn/stark-anatomy/).
 It defines a Turing complete [Instruction Set Architecture](./specification/isa.md), as well as the corresponding [arithmetization](./specification/arithmetization.md) of the VM.
 The really cool thing about Triton VM is its efficient _recursive_ verification of the STARKs produced when running Triton VM.
@@ -44,23 +47,26 @@ However, we don't currently foresee big changes.
 
 The Rust implementation of Triton VM resides in [triton-vm](./triton-vm) and can be [found on crates.io](https://crates.io/crates/triton-vm).
 
-Triton VM depends on the [twenty-first](https://crates.io/crates/twenty-first) cryptographic library.
+Triton VM depends on the [`twenty-first`](https://crates.io/crates/twenty-first) cryptographic library.
 
 For trying out the code, [install Rust](https://www.rust-lang.org/tools/install) and run:
 
 ```
 ~/Projects $ git clone https://github.com/TritonVM/triton-vm.git
-~/Projects $ cd triton-vm/triton-vm
-~/Projects/triton-vm/triton-vm $ cargo test
+~/Projects $ cd triton-vm
+~/Projects/triton-vm $ cargo test
 ```
 
-For local development, it is encouraged to fork and clone both and place them relative to one another:
+For local development, it is encouraged to follow [GitHub's fork & pull workflow][gh-fap] by forking and cloning both, place `twenty-first` relative to `triton-vm`, and change the dependency to be `path`-local:
+
+[gh-fap]: https://reflectoring.io/github-fork-and-pull/
 
 ```
 ~/Projects $ git clone git@github.com:you/triton-vm.git
 ~/Projects $ git clone git@github.com:you/twenty-first.git
 ~/Projects $ cd triton-vm
 ~/Projects/triton-vm $ ln -s ../twenty-first/twenty-first twenty-first
+~/Projects/triton-vm $ sed -i '/^twenty-first =/ s/{.*}/{ path = "..\/twenty-first" }/' triton-vm/Cargo.toml 
 ```
 
-This makes Cargo prefer the `path = "../twenty-first"` copy of twenty-first over the version on crates.io, as described in [The Cargo Book: Multiple Locations](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations)
+The dependency `twenty-first = { path = "../twenty-first" }` prefers the `path`-local copy of `twenty-first` over the versioned copy on crates.io, as described in [The Cargo Book: Multiple Locations](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations).
