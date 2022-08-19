@@ -1,7 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_collection::TableId;
 use super::table_column::HashTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::state::DIGEST_LEN;
@@ -199,7 +198,6 @@ impl HashTable {
             omicron,
             matrix,
             "HashTable".to_string(),
-            TableId::HashTable,
         );
 
         Self { base }
@@ -315,7 +313,6 @@ impl ExtHashTable {
             omicron,
             matrix,
             "ExtHashTable".to_string(),
-            TableId::HashTable,
         );
 
         Self { base }
@@ -358,7 +355,6 @@ impl ExtHashTable {
             omicron,
             vec![],
             "ExtHashTable".to_string(),
-            TableId::HashTable,
         );
         let table = BaseTable::extension(
             base,

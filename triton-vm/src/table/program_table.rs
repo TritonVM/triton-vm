@@ -1,7 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_collection::TableId;
 use super::table_column::ProgramTableColumn;
 use crate::fri_domain::FriDomain;
 use itertools::Itertools;
@@ -133,7 +132,6 @@ impl ProgramTable {
             omicron,
             matrix,
             "ProgramTable".to_string(),
-            TableId::ProgramTable,
         );
 
         Self { base }
@@ -218,7 +216,6 @@ impl ExtProgramTable {
             omicron,
             matrix,
             "ExtProgramTable".to_string(),
-            TableId::ProgramTable,
         );
 
         Self { base }
@@ -239,7 +236,6 @@ impl ExtProgramTable {
             omicron,
             vec![],
             "ExtProgramTable".to_string(),
-            TableId::ProgramTable,
         );
         let table = BaseTable::extension(
             base,

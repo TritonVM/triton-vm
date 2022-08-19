@@ -1,7 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_collection::TableId;
 use super::table_column::JumpStackTableColumn::*;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
@@ -188,7 +187,6 @@ impl JumpStackTable {
             omicron,
             matrix,
             "JumpStackTable".to_string(),
-            TableId::JumpStackTable,
         );
 
         Self { base }
@@ -275,7 +273,6 @@ impl ExtJumpStackTable {
             omicron,
             matrix,
             "ExtJumpStackTable".to_string(),
-            TableId::JumpStackTable,
         );
 
         Self { base }
@@ -318,7 +315,6 @@ impl ExtJumpStackTable {
             omicron,
             vec![],
             "ExtJumpStackTable".to_string(),
-            TableId::JumpStackTable,
         );
         let table = BaseTable::extension(
             base,
