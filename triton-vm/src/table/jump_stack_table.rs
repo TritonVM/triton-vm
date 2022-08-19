@@ -5,6 +5,7 @@ use super::table_collection::TableId;
 use super::table_column::JumpStackTableColumn::*;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
+use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -44,6 +45,7 @@ pub struct ExtJumpStackTable {
     base: BaseTable<XFieldElement>,
 }
 
+impl Evaluable for ExtJumpStackTable {}
 impl Quotientable for ExtJumpStackTable {}
 impl QuotientableExtensionTable for ExtJumpStackTable {}
 

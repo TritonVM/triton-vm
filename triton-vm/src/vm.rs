@@ -254,7 +254,7 @@ mod triton_vm_tests {
     use crate::table::base_matrix::ProcessorMatrixRow;
     use crate::table::base_table::{BaseTableTrait, HasBaseTable};
     use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
-    use crate::table::extension_table::ExtensionTable;
+    use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;

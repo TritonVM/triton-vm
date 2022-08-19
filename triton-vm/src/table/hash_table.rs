@@ -5,6 +5,7 @@ use super::table_collection::TableId;
 use super::table_column::HashTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::state::DIGEST_LEN;
+use crate::table::extension_table::Evaluable;
 use crate::table::table_column::HashTableColumn::*;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -45,6 +46,7 @@ pub struct ExtHashTable {
     base: BaseTable<XFieldElement>,
 }
 
+impl Evaluable for ExtHashTable {}
 impl Quotientable for ExtHashTable {}
 impl QuotientableExtensionTable for ExtHashTable {}
 

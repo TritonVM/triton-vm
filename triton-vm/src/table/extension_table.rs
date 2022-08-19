@@ -20,54 +20,6 @@ use super::challenges_endpoints::AllChallenges;
 type XWord = XFieldElement;
 
 pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
-    /// evaluate boundary constraints on given point if they are set; panic otherwise
-    fn evaluate_boundary_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(boundary_constraints) = &self.to_base().boundary_constraints {
-            boundary_constraints
-                .iter()
-                .map(|bc| bc.evaluate(evaluation_point))
-                .collect()
-        } else {
-            panic!("{} does not have boundary constraints!", &self.name());
-        }
-    }
-
-    /// evaluate transition constraints if they are set; panic otherwise
-    fn evaluate_transition_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(transition_constraints) = &self.to_base().transition_constraints {
-            transition_constraints
-                .iter()
-                .map(|tc| tc.evaluate(evaluation_point))
-                .collect()
-        } else {
-            panic!("{} does not have transition constraints!", &self.name());
-        }
-    }
-
-    /// evaluate consistency constraints on given point if they are set; panic otherwise
-    fn evaluate_consistency_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(consistency_constraints) = &self.to_base().consistency_constraints {
-            consistency_constraints
-                .iter()
-                .map(|cc| cc.evaluate(evaluation_point))
-                .collect()
-        } else {
-            panic!("{} does not have consistency constraints!", &self.name());
-        }
-    }
-
-    /// evaluate terminal constraints on given point if they are set; panic otherwise
-    fn evaluate_terminal_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(terminal_constraints) = &self.to_base().terminal_constraints {
-            terminal_constraints
-                .iter()
-                .map(|termc| termc.evaluate(evaluation_point))
-                .collect()
-        } else {
-            panic!("{} does not have terminal constraints!", &self.name());
-        }
-    }
-
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     /// TODO: cover other constraints beyond just transitions
     /// TODO: work with unset/general terminals
@@ -235,7 +187,57 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
     }
 }
 
-pub trait Quotientable: ExtensionTable {
+pub trait Evaluable: ExtensionTable {
+    /// evaluate boundary constraints on given point if they are set; panic otherwise
+    fn evaluate_boundary_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(boundary_constraints) = &self.to_base().boundary_constraints {
+            boundary_constraints
+                .iter()
+                .map(|bc| bc.evaluate(evaluation_point))
+                .collect()
+        } else {
+            panic!("{} does not have boundary constraints!", &self.name());
+        }
+    }
+
+    /// evaluate transition constraints if they are set; panic otherwise
+    fn evaluate_transition_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(transition_constraints) = &self.to_base().transition_constraints {
+            transition_constraints
+                .iter()
+                .map(|tc| tc.evaluate(evaluation_point))
+                .collect()
+        } else {
+            panic!("{} does not have transition constraints!", &self.name());
+        }
+    }
+
+    /// evaluate consistency constraints on given point if they are set; panic otherwise
+    fn evaluate_consistency_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(consistency_constraints) = &self.to_base().consistency_constraints {
+            consistency_constraints
+                .iter()
+                .map(|cc| cc.evaluate(evaluation_point))
+                .collect()
+        } else {
+            panic!("{} does not have consistency constraints!", &self.name());
+        }
+    }
+
+    /// evaluate terminal constraints on given point if they are set; panic otherwise
+    fn evaluate_terminal_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(terminal_constraints) = &self.to_base().terminal_constraints {
+            terminal_constraints
+                .iter()
+                .map(|termc| termc.evaluate(evaluation_point))
+                .collect()
+        } else {
+            panic!("{} does not have terminal constraints!", &self.name());
+        }
+    }
+}
+
+pub trait Quotientable: ExtensionTable + Evaluable {
     fn boundary_quotients(
         &self,
         fri_domain: &FriDomain<XWord>,

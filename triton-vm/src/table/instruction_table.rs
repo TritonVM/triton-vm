@@ -5,6 +5,7 @@ use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtension
 use super::table_collection::TableId;
 use super::table_column::InstructionTableColumn::{self, *};
 use crate::fri_domain::FriDomain;
+use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -44,6 +45,7 @@ pub struct ExtInstructionTable {
     base: BaseTable<XFieldElement>,
 }
 
+impl Evaluable for ExtInstructionTable {}
 impl Quotientable for ExtInstructionTable {}
 impl QuotientableExtensionTable for ExtInstructionTable {}
 

@@ -5,6 +5,7 @@ use super::table_collection::TableId;
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
+use crate::table::extension_table::Evaluable;
 use crate::table::table_column::U32OpTableColumn::*;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -46,6 +47,7 @@ pub struct ExtU32OpTable {
     base: BaseTable<XFieldElement>,
 }
 
+impl Evaluable for ExtU32OpTable {}
 impl Quotientable for ExtU32OpTable {}
 impl QuotientableExtensionTable for ExtU32OpTable {}
 

@@ -4,7 +4,7 @@ use crate::ord_n::Ord7;
 use crate::state::DIGEST_LEN;
 use crate::table::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
-use crate::table::extension_table::ExtensionTable;
+use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
 use itertools::Itertools;
 use std::collections::HashMap;
@@ -504,6 +504,7 @@ pub struct ExtProcessorTable {
     base: BaseTable<XFieldElement>,
 }
 
+impl Evaluable for ExtProcessorTable {}
 impl Quotientable for ExtProcessorTable {}
 impl QuotientableExtensionTable for ExtProcessorTable {}
 
