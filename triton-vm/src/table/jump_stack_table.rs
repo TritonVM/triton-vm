@@ -81,7 +81,7 @@ impl BaseTableTrait<XFieldElement> for ExtJumpStackTable {
 }
 
 impl ExtJumpStackTable {
-    fn ext_boundary_constraints(_challenges: &JumpStackTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
         let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(FULL_WIDTH, 1.into());
 
         // 1. Cycle count clk is 0.
@@ -254,7 +254,7 @@ impl JumpStackTable {
         let base = self.base.with_lifted_data(extension_matrix);
         let table = BaseTable::extension(
             base,
-            ExtJumpStackTable::ext_boundary_constraints(challenges),
+            ExtJumpStackTable::ext_boundary_constraints(),
             ExtJumpStackTable::ext_transition_constraints(&challenges),
             ExtJumpStackTable::ext_consistency_constraints(),
             ExtJumpStackTable::ext_terminal_constraints(&challenges, &terminals),
@@ -324,9 +324,7 @@ impl ExtJumpStackTable {
         );
         let table = BaseTable::extension(
             base,
-            ExtJumpStackTable::ext_boundary_constraints(
-                &all_challenges.jump_stack_table_challenges,
-            ),
+            ExtJumpStackTable::ext_boundary_constraints(),
             ExtJumpStackTable::ext_transition_constraints(
                 &all_challenges.jump_stack_table_challenges,
             ),
@@ -362,11 +360,8 @@ pub struct JumpStackTableEndpoints {
 }
 
 impl ExtensionTable for ExtJumpStackTable {
-    fn dynamic_boundary_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_boundary_constraints(&challenges.jump_stack_table_challenges)
+    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtJumpStackTable::ext_boundary_constraints()
     }
 
     fn dynamic_transition_constraints(

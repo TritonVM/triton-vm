@@ -73,7 +73,7 @@ impl BaseTableTrait<XFieldElement> for ExtHashTable {
 }
 
 impl ExtHashTable {
-    fn ext_boundary_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
 
@@ -294,7 +294,7 @@ impl HashTable {
         let base = self.base.with_lifted_data(extension_matrix);
         let table = BaseTable::extension(
             base,
-            ExtHashTable::ext_boundary_constraints(challenges),
+            ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(&challenges),
             ExtHashTable::ext_consistency_constraints(),
             ExtHashTable::ext_terminal_constraints(&challenges, &terminals),
@@ -364,7 +364,7 @@ impl ExtHashTable {
         );
         let table = BaseTable::extension(
             base,
-            ExtHashTable::ext_boundary_constraints(&all_challenges.hash_table_challenges),
+            ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
             ExtHashTable::ext_consistency_constraints(),
             ExtHashTable::ext_terminal_constraints(
@@ -397,11 +397,8 @@ pub struct HashTableEndpoints {
 }
 
 impl ExtensionTable for ExtHashTable {
-    fn dynamic_boundary_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_boundary_constraints(&challenges.hash_table_challenges)
+    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_boundary_constraints()
     }
 
     fn dynamic_transition_constraints(

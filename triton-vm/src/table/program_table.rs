@@ -79,7 +79,7 @@ impl BaseTableTrait<XFieldElement> for ExtProgramTable {
 }
 
 impl ExtProgramTable {
-    fn ext_boundary_constraints(_challenges: &ProgramTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
         use ProgramTableColumn::*;
 
         let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(FULL_WIDTH, 1.into());
@@ -197,7 +197,7 @@ impl ProgramTable {
         let base = self.base.with_lifted_data(extension_matrix);
         let table = BaseTable::extension(
             base,
-            ExtProgramTable::ext_boundary_constraints(challenges),
+            ExtProgramTable::ext_boundary_constraints(),
             ExtProgramTable::ext_transition_constraints(&challenges),
             ExtProgramTable::ext_consistency_constraints(),
             ExtProgramTable::ext_terminal_constraints(&challenges, &terminals),
@@ -245,7 +245,7 @@ impl ExtProgramTable {
         );
         let table = BaseTable::extension(
             base,
-            ExtProgramTable::ext_boundary_constraints(&all_challenges.program_table_challenges),
+            ExtProgramTable::ext_boundary_constraints(),
             ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_consistency_constraints(),
             ExtProgramTable::ext_terminal_constraints(
@@ -299,11 +299,8 @@ pub struct ProgramTableEndpoints {
 }
 
 impl ExtensionTable for ExtProgramTable {
-    fn dynamic_boundary_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProgramTable::ext_boundary_constraints(&challenges.program_table_challenges)
+    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProgramTable::ext_boundary_constraints()
     }
 
     fn dynamic_transition_constraints(

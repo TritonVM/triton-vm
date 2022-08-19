@@ -21,8 +21,6 @@ type XWord = XFieldElement;
 
 pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
-    /// TODO: cover other constraints beyond just transitions
-    /// TODO: work with unset/general terminals
     fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
         let interpolant_degree = self.interpolant_degree();
         let interpolants_degrees = vec![interpolant_degree; self.full_width()];
@@ -34,7 +32,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         let terminal_zerofier_degree = 1;
 
         let boundary_degrees_with_origin = self
-            .dynamic_boundary_constraints(&AllChallenges::dummy())
+            .dynamic_boundary_constraints()
             .iter()
             .enumerate()
             .map(|(i, air)| {
@@ -114,10 +112,7 @@ pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
         .concat()
     }
 
-    fn dynamic_boundary_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>>;
+    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_transition_constraints(
         &self,

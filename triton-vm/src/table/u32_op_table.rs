@@ -80,7 +80,7 @@ impl BaseTableTrait<XFieldElement> for ExtU32OpTable {
 }
 
 impl ExtU32OpTable {
-    fn ext_boundary_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
         // todo: think this through again once all tables use the same padded height.
         // let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         // let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
@@ -354,7 +354,7 @@ impl U32OpTable {
         let base = self.base.with_lifted_data(extension_matrix);
         let table = BaseTable::extension(
             base,
-            ExtU32OpTable::ext_boundary_constraints(challenges),
+            ExtU32OpTable::ext_boundary_constraints(),
             ExtU32OpTable::ext_transition_constraints(&challenges),
             ExtU32OpTable::ext_consistency_constraints(),
             ExtU32OpTable::ext_terminal_constraints(&challenges, &terminals),
@@ -424,7 +424,7 @@ impl ExtU32OpTable {
         );
         let table = BaseTable::extension(
             base,
-            ExtU32OpTable::ext_boundary_constraints(&all_challenges.u32_op_table_challenges),
+            ExtU32OpTable::ext_boundary_constraints(),
             ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_consistency_constraints(),
             ExtU32OpTable::ext_terminal_constraints(
@@ -457,11 +457,8 @@ pub struct U32OpTableEndpoints {
 }
 
 impl ExtensionTable for ExtU32OpTable {
-    fn dynamic_boundary_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtU32OpTable::ext_boundary_constraints(&challenges.u32_op_table_challenges)
+    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtU32OpTable::ext_boundary_constraints()
     }
 
     fn dynamic_transition_constraints(

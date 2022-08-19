@@ -319,7 +319,7 @@ impl ProcessorTable {
         let base = self.base.with_lifted_data(extension_matrix);
         let table = BaseTable::extension(
             base,
-            ExtProcessorTable::ext_boundary_constraints(challenges),
+            ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(&challenges),
             ExtProcessorTable::ext_consistency_constraints(),
             ExtProcessorTable::ext_terminal_constraints(&challenges, &terminals),
@@ -537,7 +537,7 @@ impl BaseTableTrait<XFieldElement> for ExtProcessorTable {
 }
 
 impl ExtProcessorTable {
-    fn ext_boundary_constraints(_challenges: &ProcessorTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
         let factory = SingleRowConstraints::default();
 
         // The cycle counter `clk` is 0.
@@ -794,7 +794,7 @@ impl ExtProcessorTable {
         );
         let table = BaseTable::extension(
             base,
-            ExtProcessorTable::ext_boundary_constraints(&all_challenges.processor_table_challenges),
+            ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(
                 &all_challenges.processor_table_challenges,
             ),
@@ -2464,11 +2464,8 @@ impl InstructionDeselectors {
 }
 
 impl ExtensionTable for ExtProcessorTable {
-    fn dynamic_boundary_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_boundary_constraints(&challenges.processor_table_challenges)
+    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProcessorTable::ext_boundary_constraints()
     }
 
     fn dynamic_transition_constraints(
