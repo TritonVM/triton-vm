@@ -519,9 +519,13 @@ impl HasBaseTable<XFieldElement> for ExtProcessorTable {
 
 impl BaseTableTrait<BWord> for ProcessorTable {
     fn get_padding_row(&self) -> Vec<BWord> {
-        let mut padding_row = self.data().last().unwrap().clone();
-        padding_row[ProcessorTableColumn::CLK as usize] += 1.into();
-        padding_row
+        if let Some(row) = self.data().last() {
+            let mut padding_row = row.clone();
+            padding_row[ProcessorTableColumn::CLK as usize] += 1.into();
+            padding_row
+        } else {
+            vec![0.into(); BASE_WIDTH]
+        }
     }
 }
 

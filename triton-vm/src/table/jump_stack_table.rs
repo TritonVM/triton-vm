@@ -59,10 +59,16 @@ impl HasBaseTable<XFieldElement> for ExtJumpStackTable {
 
 impl BaseTableTrait<BWord> for JumpStackTable {
     fn get_padding_row(&self) -> Vec<BWord> {
-        let mut padding_row = self.data().last().unwrap().clone();
-        // add same clk padding as in processor table
-        padding_row[CLK as usize] = (self.data().len() as u32).into();
-        padding_row
+        if let Some(row) = self.data().last() {
+            let mut padding_row = row.clone();
+            // add same clk padding as in processor table
+            padding_row[CLK as usize] = (self.data().len() as u32).into();
+            padding_row
+        } else {
+            vec![0.into(); BASE_WIDTH]
+        }
+        // todo: use code below once the table is derived from the processor after that got padded
+        // panic!("This table gets derived from the padded processor table – no more padding here.")
     }
 }
 

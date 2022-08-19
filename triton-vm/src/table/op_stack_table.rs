@@ -58,10 +58,18 @@ impl HasBaseTable<XFieldElement> for ExtOpStackTable {
 
 impl BaseTableTrait<BWord> for OpStackTable {
     fn get_padding_row(&self) -> Vec<BWord> {
-        let mut padding_row = self.data().last().unwrap().clone();
-        // add same clk padding as in processor table
-        padding_row[OpStackTableColumn::CLK as usize] = (self.data().len() as u32).into();
-        padding_row
+        if let Some(row) = self.data().last() {
+            let mut padding_row = row.clone();
+            // add same clk padding as in processor table
+            padding_row[OpStackTableColumn::CLK as usize] = (self.data().len() as u32).into();
+            padding_row
+        } else {
+            let mut padding_row = vec![0.into(); BASE_WIDTH];
+            padding_row[OpStackTableColumn::OSP as usize] = 16.into();
+            padding_row
+        }
+        // todo: use code below once the table is derived from the processor after that got padded
+        // panic!("This table gets derived from the padded processor table – no more padding here.")
     }
 }
 

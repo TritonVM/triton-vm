@@ -62,9 +62,11 @@ impl HasBaseTable<XFieldElement> for ExtU32OpTable {
 impl BaseTableTrait<BWord> for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
-        padding_row[CI as usize] = self.data().last().unwrap()[CI as usize];
-        padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
         padding_row[LT as usize] = 2.into();
+        padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
+        if let Some(row) = self.data().last() {
+            padding_row[CI as usize] = row[CI as usize];
+        }
         padding_row
     }
 }

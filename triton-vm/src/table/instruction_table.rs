@@ -59,10 +59,14 @@ impl HasBaseTable<XFieldElement> for ExtInstructionTable {
 
 impl BaseTableTrait<BWord> for InstructionTable {
     fn get_padding_row(&self) -> Vec<BWord> {
-        let mut padding_row = self.data().last().unwrap().clone();
-        // address keeps increasing
-        padding_row[InstructionTableColumn::Address as usize] += 1.into();
-        padding_row
+        if let Some(row) = self.data().last() {
+            let mut padding_row = row.clone();
+            // address keeps increasing
+            padding_row[InstructionTableColumn::Address as usize] += 1.into();
+            padding_row
+        } else {
+            vec![0.into(); BASE_WIDTH]
+        }
     }
 }
 
