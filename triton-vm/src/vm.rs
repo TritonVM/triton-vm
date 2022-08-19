@@ -709,7 +709,6 @@ mod triton_vm_tests {
                 &AllEndpoints::dummy().processor_table_endpoints,
             );
 
-            let transition_constraints = ext_processor_table.get_transition_constraints();
             for (row_idx, (row, next_row)) in ext_processor_table
                 .data()
                 .iter()
@@ -717,13 +716,15 @@ mod triton_vm_tests {
                 .enumerate()
             {
                 let evaluation_point = vec![row.clone(), next_row.clone()].concat();
-                for (tc_idx, tc) in transition_constraints.iter().enumerate() {
-                    let tc_evaluation_result = tc.evaluate(&evaluation_point);
+                for (tc_idx, tc_evaluation_result) in ext_processor_table
+                    .evaluate_transition_constraints(&evaluation_point)
+                    .iter()
+                    .enumerate()
+                {
                     if !tc_evaluation_result.is_zero() {
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
                             {tc_evaluation_result} but must be 0.\n\
-                            Failing Polynomial: {tc}\n\
                             Evaluation Point:   {:?}",
                             evaluation_point,
                         );

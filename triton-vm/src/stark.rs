@@ -845,23 +845,23 @@ impl Stark {
             {
                 let table_height = table.padded_height() as u32;
 
-                for (boundary_constraint, degree_bound) in table
-                    .get_boundary_constraints()
-                    .iter()
+                for (evaluated_bc, degree_bound) in table
+                    .evaluate_boundary_constraints(table_row)
+                    .into_iter()
                     .zip_eq(table.get_boundary_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = boundary_constraint.evaluate(table_row)
-                        / (current_fri_domain_value - 1.into());
+                    let quotient = evaluated_bc / (current_fri_domain_value - 1.into());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
 
-                for (transition_constraint, degree_bound) in table
-                    .get_transition_constraints()
-                    .iter()
+                let tc_evaluation_point = [table_row.clone(), next_table_row.clone()].concat();
+                for (evaluated_tc, degree_bound) in table
+                    .evaluate_transition_constraints(&tc_evaluation_point)
+                    .into_iter()
                     .zip_eq(table.get_transition_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
@@ -869,12 +869,10 @@ impl Stark {
                         // transition has no meaning on empty table
                         0.into()
                     } else {
-                        let evaluated_transition_constraint = transition_constraint
-                            .evaluate(&vec![table_row.to_owned(), next_table_row.clone()].concat());
                         let numerator = current_fri_domain_value - table.omicron().inverse();
                         let denominator =
                             current_fri_domain_value.mod_pow_u32(table_height) - 1.into();
-                        evaluated_transition_constraint * numerator / denominator
+                        evaluated_tc * numerator / denominator
                     };
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
@@ -882,13 +880,13 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
-                for (consistency_constraint, degree_bound) in table
-                    .get_consistency_constraints()
-                    .iter()
+                for (evaluated_cc, degree_bound) in table
+                    .evaluate_consistency_constraints(table_row)
+                    .into_iter()
                     .zip_eq(table.get_consistency_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = consistency_constraint.evaluate(table_row)
+                    let quotient = evaluated_cc
                         / (current_fri_domain_value.mod_pow_u32(table_height) - 1.into());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
@@ -896,14 +894,14 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
-                for (terminal_constraint, degree_bound) in table
-                    .get_terminal_constraints()
-                    .iter()
+                for (evaluated_termc, degree_bound) in table
+                    .evaluate_terminal_constraints(table_row)
+                    .into_iter()
                     .zip_eq(table.get_terminal_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = terminal_constraint.evaluate(table_row)
-                        / (current_fri_domain_value - table.omicron().inverse());
+                    let quotient =
+                        evaluated_termc / (current_fri_domain_value - table.omicron().inverse());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -1012,10 +1010,8 @@ pub(crate) mod triton_stark_tests {
     use crate::stdio::VecStream;
     use crate::table::base_table;
     use crate::vm::Program;
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::ntt::ntt;
     use twenty_first::shared_math::other::log_2_floor;
-    use twenty_first::shared_math::traits::PrimeField;
     use twenty_first::util_types::proof_stream_typed::ProofStream;
 
     fn parse_simulate_prove(
@@ -1123,57 +1119,6 @@ pub(crate) mod triton_stark_tests {
         )
     }
 
-    fn pretty_print_row<PF: PrimeField>(row: &[PF]) -> String {
-        row.iter()
-            .map(|pf| format!("{}", pf))
-            .collect_vec()
-            .join(", ")
-    }
-
-    fn assert_transition_constraints_on_table<PF: PrimeField>(
-        table_data: &[Vec<PF>],
-        air_constraints: &[MPolynomial<PF>],
-        message: &str,
-    ) {
-        for (row_idx, (curr_row, next_row)) in table_data.iter().tuple_windows().enumerate() {
-            let air_point = [curr_row.to_vec(), next_row.to_vec()].concat();
-
-            for (constraint_idx, air_constraint) in air_constraints.iter().enumerate() {
-                assert!(
-                    air_constraint.evaluate(&air_point).is_zero(),
-                    "{}. Constraint index: {}. Row index: {}\n\
-                    Current row: {:?}\n\
-                    Next row:    {:?}\n\
-                    Constraint:  {}",
-                    message,
-                    constraint_idx,
-                    row_idx,
-                    pretty_print_row(curr_row),
-                    pretty_print_row(next_row),
-                    air_constraint,
-                );
-            }
-        }
-    }
-
-    fn assert_consistency_boundary_constraints_on_table<PF: PrimeField>(
-        table_data: &[Vec<PF>],
-        air_constraints: &[MPolynomial<PF>],
-        message: &str,
-    ) {
-        for (row_idx, curr_row) in table_data.iter().enumerate() {
-            for (constraint_idx, air_constraint) in air_constraints.iter().enumerate() {
-                assert!(
-                    air_constraint.evaluate(&curr_row).is_zero(),
-                    "{}. Constraint index: {}. Row index: {}",
-                    message,
-                    constraint_idx,
-                    row_idx,
-                );
-            }
-        }
-    }
-
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
     #[test]
     pub fn print_all_constraint_degrees() {
@@ -1259,103 +1204,80 @@ pub(crate) mod triton_stark_tests {
     fn constraint_polynomials_use_right_variable_count_test() {
         let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
 
-        for ext_table in ext_tables.into_iter() {
-            let boundary_constraints = ext_table.get_boundary_constraints();
-            for (i, poly) in boundary_constraints.iter().enumerate() {
-                assert_eq!(
-                    ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th boundary constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
+        for table in ext_tables.into_iter() {
+            let dummy_row = vec![0.into(); table.full_width()];
+            let double_length_dummy_row = vec![0.into(); 2 * table.full_width()];
 
-            let consistency_constraints = ext_table.get_consistency_constraints();
-            for (i, poly) in consistency_constraints.iter().enumerate() {
-                assert_eq!(
-                    ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th consistency constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
-
-            let transition_constraints = ext_table.get_transition_constraints();
-            for (i, poly) in transition_constraints.iter().enumerate() {
-                assert_eq!(
-                    2 * ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th transition constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
-
-            let terminal_constraints = ext_table.get_terminal_constraints();
-            for (i, poly) in terminal_constraints.iter().enumerate() {
-                assert_eq!(
-                    ext_table.full_width(),
-                    poly.variable_count,
-                    "{}: The {}'th terminal constraint should have {} variables, has {} variables.",
-                    ext_table.name(),
-                    i,
-                    ext_table.full_width(),
-                    poly.variable_count,
-                );
-            }
+            // will panic if the number of variables is wrong
+            table.evaluate_boundary_constraints(&dummy_row);
+            table.evaluate_transition_constraints(&double_length_dummy_row);
+            table.evaluate_consistency_constraints(&dummy_row);
+            table.evaluate_terminal_constraints(&dummy_row);
         }
     }
 
-    // 2. simulate(), test constraints
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
-        let (
-            _stdout,
-            _unpadded_base_tables,
-            _padded_base_tables,
-            ext_tables,
-            _all_challenges,
-            _all_initials,
-            _all_terminals,
-        ) = parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
+        let zero = XFieldElement::ring_zero();
+        let (_, _, _, ext_tables, _, _, _) =
+            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
 
-        for ext_table in (&ext_tables).into_iter() {
-            let ext_transition_constraints = ext_table.get_transition_constraints();
-            assert_transition_constraints_on_table(
-                ext_table.data(),
-                &ext_transition_constraints,
-                &format!("get_transition_constraints on {}", &ext_table.name()),
-            );
+        for table in (&ext_tables).into_iter() {
+            if let Some(row) = table.data().get(0) {
+                let evaluated_bcs = table.evaluate_boundary_constraints(&row);
+                for (constraint_idx, ebc) in evaluated_bcs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        ebc,
+                        "Failed boundary constraint on {}. Constraint index: {}. Row index: {}",
+                        table.name(),
+                        constraint_idx,
+                        0,
+                    );
+                }
+            }
 
-            let ext_consistency_constraints = ext_table.get_consistency_constraints();
-            assert_consistency_boundary_constraints_on_table(
-                ext_table.data(),
-                &ext_consistency_constraints,
-                &format!("ext_consistency_constraints on {}", &ext_table.name()),
-            );
+            for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
+                let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
+                let evaluated_tcs = table.evaluate_transition_constraints(&evaluation_point);
+                for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        evaluated_tc,
+                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}",
+                        table.name(),
+                        constraint_idx,
+                        row_idx,
+                    );
+                }
+            }
 
-            if ext_table.data().len() > 0 {
-                let ext_boundary_constraints = ext_table.get_boundary_constraints();
-                assert_consistency_boundary_constraints_on_table(
-                    &[ext_table.data()[0].clone()],
-                    &ext_boundary_constraints,
-                    &format!("get_boundary_constraints on {}", &ext_table.name()),
-                );
+            for (row_idx, curr_row) in table.data().iter().enumerate() {
+                let evaluated_ccs = table.evaluate_consistency_constraints(&curr_row);
+                for (constraint_idx, ecc) in evaluated_ccs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        ecc,
+                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}",
+                        table.name(),
+                        constraint_idx,
+                        row_idx,
+                    );
+                }
+            }
 
-                let ext_terminal_constraints = ext_table.get_terminal_constraints();
-                assert_consistency_boundary_constraints_on_table(
-                    &[ext_table.data().last().unwrap().to_vec()],
-                    &ext_terminal_constraints,
-                    &format!("get_terminal_constraints on {}", &ext_table.name()),
-                );
+            if let Some(row) = table.data().last() {
+                let evaluated_termcs = table.evaluate_terminal_constraints(&row);
+                for (constraint_idx, etermc) in evaluated_termcs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        etermc,
+                        "Failed terminal constraint on {}. Constraint index: {}. Row index: {}",
+                        table.name(),
+                        constraint_idx,
+                        table.data().len() - 1,
+                    );
+                }
             }
         }
     }

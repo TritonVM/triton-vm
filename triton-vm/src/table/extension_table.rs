@@ -9,6 +9,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
+use crate::stark::Stark;
 use crate::table::challenges_endpoints::AllEndpoints;
 
 use super::base_table::BaseTableTrait;
@@ -19,37 +20,49 @@ use super::challenges_endpoints::AllChallenges;
 type XWord = XFieldElement;
 
 pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
-    /// get boundary constraints if they are set; panic otherwise
-    fn get_boundary_constraints(&self) -> Vec<MPolynomial<XWord>> {
-        if let Some(bc) = &self.to_base().boundary_constraints {
-            bc.to_owned()
+    /// evaluate boundary constraints on given point if they are set; panic otherwise
+    fn evaluate_boundary_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(boundary_constraints) = &self.to_base().boundary_constraints {
+            boundary_constraints
+                .iter()
+                .map(|bc| bc.evaluate(evaluation_point))
+                .collect()
         } else {
             panic!("{} does not have boundary constraints!", &self.name());
         }
     }
 
-    /// get transition constraints if they are set; panic otherwise
-    fn get_transition_constraints(&self) -> Vec<MPolynomial<XWord>> {
-        if let Some(tc) = &self.to_base().transition_constraints {
-            tc.to_owned()
+    /// evaluate transition constraints if they are set; panic otherwise
+    fn evaluate_transition_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(transition_constraints) = &self.to_base().transition_constraints {
+            transition_constraints
+                .iter()
+                .map(|tc| tc.evaluate(evaluation_point))
+                .collect()
         } else {
             panic!("{} does not have transition constraints!", &self.name());
         }
     }
 
-    /// get consistency constraints if they are set; panic otherwise
-    fn get_consistency_constraints(&self) -> Vec<MPolynomial<XWord>> {
-        if let Some(cc) = &self.to_base().consistency_constraints {
-            cc.to_owned()
+    /// evaluate consistency constraints on given point if they are set; panic otherwise
+    fn evaluate_consistency_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(consistency_constraints) = &self.to_base().consistency_constraints {
+            consistency_constraints
+                .iter()
+                .map(|cc| cc.evaluate(evaluation_point))
+                .collect()
         } else {
-            panic!("{} does not have consistency constraints! ", &self.name());
+            panic!("{} does not have consistency constraints!", &self.name());
         }
     }
 
-    /// get terminal constraints if they are set; panic otherwise
-    fn get_terminal_constraints(&self) -> Vec<MPolynomial<XWord>> {
-        if let Some(tc) = &self.to_base().terminal_constraints {
-            tc.to_owned()
+    /// evaluate terminal constraints on given point if they are set; panic otherwise
+    fn evaluate_terminal_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+        if let Some(terminal_constraints) = &self.to_base().terminal_constraints {
+            terminal_constraints
+                .iter()
+                .map(|termc| termc.evaluate(evaluation_point))
+                .collect()
         } else {
             panic!("{} does not have terminal constraints!", &self.name());
         }
@@ -238,18 +251,30 @@ pub trait Quotientable: ExtensionTable {
             .map(|x| x - XFieldElement::ring_one())
             .collect();
 
-        let boundary_constraints = self.get_boundary_constraints();
-        let quotient_codewords =
-            self.quotients(codewords, zerofier_codeword, &boundary_constraints);
-        self.debug_degree_bound_check(
-            fri_domain,
-            &boundary_constraints,
-            &quotient_codewords,
-            "boundary",
-        );
+        let zerofier_inverse = if self.padded_height() == 0 {
+            zerofier_codeword
+        } else {
+            XWord::batch_inversion(zerofier_codeword)
+        };
+
+        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
+            .par_iter()
+            .enumerate()
+            .map(|(fri_dom_i, &z_inv)| {
+                let row = codewords
+                    .iter()
+                    .map(|codeword| codeword[fri_dom_i])
+                    .collect_vec();
+                let evaluated_bcs = self.evaluate_boundary_constraints(&row);
+                evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
+            })
+            .collect();
+        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "boundary");
 
         quotient_codewords
     }
+
     fn transition_quotients(
         &self,
         fri_domain: &FriDomain<XWord>,
@@ -278,40 +303,30 @@ pub trait Quotientable: ExtensionTable {
             .zip_eq(subgroup_zerofier_inverse.into_par_iter())
             .map(|(fri_dom_v, sub_z_inv)| (fri_dom_v - omicron_inverse) * sub_z_inv)
             .collect();
-
-        let mut quotients: Vec<Vec<XWord>> = vec![];
         let unit_distance = self.unit_distance(fri_domain.length);
-        let transition_constraints = self.get_transition_constraints();
 
-        for tc in transition_constraints.iter() {
-            let quotient_codeword: Vec<_> = zerofier_inverse
-                .par_iter()
-                .enumerate()
-                .map(|(current_row_idx, &z_inverse)| {
-                    let current_row = codewords
-                        .iter()
-                        .map(|codeword| codeword[current_row_idx])
-                        .collect_vec();
-                    let next_row_idx = (current_row_idx + unit_distance) % fri_domain.length;
-                    let next_row = codewords
-                        .iter()
-                        .map(|codeword| codeword[next_row_idx])
-                        .collect_vec();
-                    let evaluation_point = vec![current_row, next_row].concat();
-                    let evaluated_constraint = tc.evaluate(&evaluation_point);
-                    evaluated_constraint * z_inverse
-                })
-                .collect();
-            quotients.push(quotient_codeword);
-        }
-        self.debug_degree_bound_check(
-            fri_domain,
-            &transition_constraints,
-            &quotients,
-            "transition",
-        );
+        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
+            .par_iter()
+            .enumerate()
+            .map(|(current_row_idx, &z_inv)| {
+                let current_row = codewords
+                    .iter()
+                    .map(|codeword| codeword[current_row_idx])
+                    .collect_vec();
+                let next_row_idx = (current_row_idx + unit_distance) % fri_domain.length;
+                let next_row = codewords
+                    .iter()
+                    .map(|codeword| codeword[next_row_idx])
+                    .collect_vec();
+                let evaluation_point = vec![current_row, next_row].concat();
+                let evaluated_tcs = self.evaluate_transition_constraints(&evaluation_point);
+                evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
+            })
+            .collect();
+        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "transition");
 
-        quotients
+        quotient_codewords
     }
 
     fn consistency_quotients(
@@ -329,15 +344,26 @@ pub trait Quotientable: ExtensionTable {
             .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XWord::ring_one())
             .collect();
 
-        let consistency_constraints = self.get_consistency_constraints();
-        let quotient_codewords =
-            self.quotients(codewords, zerofier_codeword, &consistency_constraints);
-        self.debug_degree_bound_check(
-            fri_domain,
-            &consistency_constraints,
-            &quotient_codewords,
-            "consistency",
-        );
+        let zerofier_inverse = if self.padded_height() == 0 {
+            zerofier_codeword
+        } else {
+            XWord::batch_inversion(zerofier_codeword)
+        };
+
+        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
+            .par_iter()
+            .enumerate()
+            .map(|(fri_dom_i, &z_inv)| {
+                let row = codewords
+                    .iter()
+                    .map(|codeword| codeword[fri_dom_i])
+                    .collect_vec();
+                let evaluated_ccs = self.evaluate_consistency_constraints(&row);
+                evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
+            })
+            .collect();
+        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "consistency");
 
         quotient_codewords
     }
@@ -359,52 +385,27 @@ pub trait Quotientable: ExtensionTable {
             .map(|x| x - self.omicron().inverse())
             .collect_vec();
 
-        let terminal_constraints = self.get_terminal_constraints();
-        let quotient_codewords =
-            self.quotients(codewords, zerofier_codeword, &terminal_constraints);
-        self.debug_degree_bound_check(
-            fri_domain,
-            &terminal_constraints,
-            &quotient_codewords,
-            "terminal",
-        );
-
-        quotient_codewords
-    }
-
-    /// Given some `constraints`, `codewords`, and a `zerofier`, computes `constraints.len()`-many
-    /// `quotient_codewords` by
-    /// 1. evaluating the `constraints` on the `codewords`, then
-    /// 1. dividing the result by the `zerofier`.
-    ///
-    /// All `constraints` must be multivariate polynomials with `codewords.len()`-many variables.
-    fn quotients(
-        &self,
-        codewords: &[Vec<XWord>],
-        zerofier: Vec<XFieldElement>,
-        constraints: &[MPolynomial<XWord>],
-    ) -> Vec<Vec<XWord>> {
         let zerofier_inverse = if self.padded_height() == 0 {
-            zerofier
+            zerofier_codeword
         } else {
-            XWord::batch_inversion(zerofier)
+            XWord::batch_inversion(zerofier_codeword)
         };
 
-        let mut quotient_codewords = vec![];
-        for constraint in constraints.iter() {
-            let quotient_codeword: Vec<_> = zerofier_inverse
-                .par_iter()
-                .enumerate()
-                .map(|(fri_dom_i, z_inv)| {
-                    let row = codewords
-                        .iter()
-                        .map(|codeword| codeword[fri_dom_i])
-                        .collect_vec();
-                    constraint.evaluate(&row) * *z_inv
-                })
-                .collect();
-            quotient_codewords.push(quotient_codeword);
-        }
+        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
+            .par_iter()
+            .enumerate()
+            .map(|(fri_dom_i, &z_inv)| {
+                let row = codewords
+                    .iter()
+                    .map(|codeword| codeword[fri_dom_i])
+                    .collect_vec();
+                let evaluated_termcs = self.evaluate_terminal_constraints(&row);
+                evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
+            })
+            .collect();
+        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "terminal");
+
         quotient_codewords
     }
 
@@ -449,7 +450,6 @@ pub trait Quotientable: ExtensionTable {
     fn debug_degree_bound_check(
         &self,
         fri_domain: &FriDomain<XWord>,
-        constraints: &[MPolynomial<XWord>],
         quotient_codewords: &[Vec<XFieldElement>],
         quotient_type: &str,
     ) {
@@ -461,14 +461,12 @@ pub trait Quotientable: ExtensionTable {
             assert!(
                 interpolated.degree() < fri_domain.length as isize - 1,
                 "Degree of {} quotient index {idx} (total {} quotients) in {} must not be maximal. \
-                    Got degree {}, and FRI domain length was {}.\
-                    Unsatisfied constraint: {}",
+                    Got degree {}, and FRI domain length was {}.",
                 quotient_type,
                 quotient_codewords.len(),
                 self.name(),
                 interpolated.degree(),
                 fri_domain.length,
-                constraints[idx]
             );
         }
     }
