@@ -377,7 +377,7 @@ impl ExtProcessorTable {
     /// Transition constraints are combined with deselectors in such a way
     /// that arbitrary sets of mutually exclusive combinations are summed, i.e.,
     ///
-    /// ```norun
+    /// ```py
     /// [ deselector_pop * tc_pop_0 + deselector_push * tc_push_0 + ...,
     ///   deselector_pop * tc_pop_1 + deselector_push * tc_push_1 + ...,
     ///   ...,

@@ -555,20 +555,20 @@ impl Stark {
 
     /// Essentially a matrix transpose. Given
     ///
-    /// ```norun
+    /// ```py
     /// [a b c]
     /// [d e f]
     /// ```
     ///
     /// returns
     ///
-    /// ```norun
+    /// ```py
     /// [a d]
     /// [b e]
     /// [c f]
     /// ```
     /// Assumes that input is of rectangular shape.
-    fn transpose_codewords<P: Copy>(codewords: &[Vec<P>]) -> Vec<Vec<P>> {
+    pub fn transpose_codewords<P: Copy>(codewords: &[Vec<P>]) -> Vec<Vec<P>> {
         (0..codewords[0].len())
             .map(|col_idx| codewords.iter().map(|row| row[col_idx]).collect())
             .collect()
