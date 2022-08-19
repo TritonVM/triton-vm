@@ -13,7 +13,6 @@ use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
-use super::table_collection::TableId;
 
 pub const PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 5;
 pub const PROCESSOR_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 4;
@@ -59,7 +58,6 @@ impl ProcessorTable {
             omicron,
             matrix,
             "ProcessorTable".to_string(),
-            TableId::ProcessorTable,
         );
 
         Self { base }
@@ -341,7 +339,6 @@ impl ExtProcessorTable {
             omicron,
             matrix,
             "ExtProcessorTable".to_string(),
-            TableId::ProcessorTable,
         );
 
         Self::new(base)
@@ -786,7 +783,6 @@ impl ExtProcessorTable {
             omicron,
             vec![],
             "ExtProcessorTable".to_string(),
-            TableId::ProcessorTable,
         );
         let table = BaseTable::extension(
             base,

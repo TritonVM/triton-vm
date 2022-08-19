@@ -1,5 +1,4 @@
 use super::super::fri_domain::FriDomain;
-use super::table_collection::TableId;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::ops::Range;
@@ -36,9 +35,6 @@ pub struct BaseTable<FieldElement: PrimeField> {
     /// The name of the table. Mostly for debugging purpose.
     pub(crate) name: String,
 
-    /// Table id, for dynamic specializations of statically abtract types
-    id: TableId,
-
     /// AIR constraints, to be populated upon extension
     pub(crate) boundary_constraints: Option<Vec<MPolynomial<FieldElement>>>,
     pub(crate) transition_constraints: Option<Vec<MPolynomial<FieldElement>>>,
@@ -62,7 +58,6 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
         omicron: DataPF,
         matrix: Vec<Vec<DataPF>>,
         name: String,
-        id: TableId,
     ) -> Self {
         BaseTable {
             base_width,
@@ -72,7 +67,6 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
             omicron,
             matrix,
             name,
-            id,
             boundary_constraints: None,
             transition_constraints: None,
             consistency_constraints: None,
@@ -157,7 +151,6 @@ impl BaseTable<BWord> {
             self.omicron.lift(),
             matrix,
             format!("{} with lifted data", self.name),
-            self.id,
         )
     }
 }
@@ -196,10 +189,6 @@ pub trait HasBaseTable<DataPF: PrimeField> {
 
     fn mut_data(&mut self) -> &mut Vec<Vec<DataPF>> {
         &mut self.to_mut_base().matrix
-    }
-
-    fn id(&self) -> TableId {
-        self.to_base().id
     }
 }
 

@@ -1,7 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_collection::TableId;
 use super::table_column::RamTableColumn::{self, *};
 use crate::fri_domain::FriDomain;
 use crate::table::extension_table::Evaluable;
@@ -72,7 +71,6 @@ impl RamTable {
             omicron,
             matrix,
             "RamTable".to_string(),
-            TableId::RamTable,
         );
 
         Self { base }
@@ -154,7 +152,6 @@ impl ExtRamTable {
             omicron,
             matrix,
             "ExtRamTable".to_string(),
-            TableId::RamTable,
         );
 
         Self { base }
@@ -299,7 +296,6 @@ impl ExtRamTable {
             omicron,
             vec![],
             "ExtRamTable".to_string(),
-            TableId::RamTable,
         );
         let table = BaseTable::extension(
             base,

@@ -1,7 +1,6 @@
 use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_collection::TableId;
 use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::table::extension_table::Evaluable;
@@ -162,7 +161,6 @@ impl OpStackTable {
             omicron,
             matrix,
             "OpStackTable".to_string(),
-            TableId::OpStackTable,
         );
 
         Self { base }
@@ -246,7 +244,6 @@ impl ExtOpStackTable {
             omicron,
             matrix,
             "ExtOpStackTable".to_string(),
-            TableId::OpStackTable,
         );
 
         Self { base }
@@ -286,7 +283,6 @@ impl ExtOpStackTable {
             omicron,
             vec![],
             "ExtOpStackTable".to_string(),
-            TableId::OpStackTable,
         );
         let table = BaseTable::extension(
             base,
