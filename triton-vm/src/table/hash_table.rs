@@ -8,6 +8,7 @@ use crate::state::DIGEST_LEN;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::HashTableColumn::*;
 use itertools::Itertools;
+use std::ops::Mul;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -74,108 +75,64 @@ impl BaseTableTrait<XFieldElement> for ExtHashTable {
 
 impl ExtHashTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
-        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
+        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
         let round_number = variables[ROUNDNUMBER as usize].clone();
         let round_number_is_0_or_1 = round_number.clone() * (round_number - one);
-
         vec![round_number_is_0_or_1]
     }
 
     fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
-        fn constant(constant: u32) -> MPolynomial<XWord> {
-            MPolynomial::from_constant(constant.into(), FULL_WIDTH)
-        }
+        let constant = |c: u32| MPolynomial::from_constant(c.into(), FULL_WIDTH);
+        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
-        let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(FULL_WIDTH, 1.into());
+        let round_number = variables[ROUNDNUMBER as usize].clone();
+        let state12 = variables[STATE12 as usize].clone();
+        let state13 = variables[STATE13 as usize].clone();
+        let state14 = variables[STATE14 as usize].clone();
+        let state15 = variables[STATE15 as usize].clone();
 
-        let rnd_nmbr = variables[usize::from(HashTableColumn::ROUNDNUMBER)].clone();
-        let state12 = variables[usize::from(HashTableColumn::STATE12)].clone();
-        let state13 = variables[usize::from(HashTableColumn::STATE13)].clone();
-        let state14 = variables[usize::from(HashTableColumn::STATE14)].clone();
-        let state15 = variables[usize::from(HashTableColumn::STATE15)].clone();
-
-        let common_factor = (0..=0)
-            .chain(2..=8)
-            .into_iter()
-            .map(|n| rnd_nmbr.clone() - constant(n))
-            .fold(constant(1), |acc, x| acc * x);
-
-        // 1. If the round number is 1, register state12 is 0.
-        let if_rnd_nmbr_is_1_then_state12_is_0 = common_factor.clone() * state12;
-
-        // 2. If the round number is 1, register state13 is 0.
-        let if_rnd_nmbr_is_1_then_state13_is_0 = common_factor.clone() * state13;
-
-        // 3. If the round number is 1, register state14 is 0.
-        let if_rnd_nmbr_is_1_then_state14_is_0 = common_factor.clone() * state14;
-
-        // 4. If the round number is 1, register state15 is 0.
-        let if_rnd_nmbr_is_1_then_state15_is_0 = common_factor * state15;
+        let round_number_is_not_1_or = (0..=8)
+            .filter(|&r| r != 1)
+            .map(|r| round_number.clone() - constant(r))
+            .fold(constant(1), MPolynomial::mul);
 
         vec![
-            if_rnd_nmbr_is_1_then_state12_is_0,
-            if_rnd_nmbr_is_1_then_state13_is_0,
-            if_rnd_nmbr_is_1_then_state14_is_0,
-            if_rnd_nmbr_is_1_then_state15_is_0,
+            round_number_is_not_1_or.clone() * state12,
+            round_number_is_not_1_or.clone() * state13,
+            round_number_is_not_1_or.clone() * state14,
+            round_number_is_not_1_or * state15,
         ]
     }
 
     fn ext_transition_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
-        fn constant(constant: u32) -> MPolynomial<XWord> {
-            MPolynomial::from_constant(constant.into(), 2 * FULL_WIDTH)
-        }
+        let constant = |c: u32| MPolynomial::from_constant(c.into(), 2 * FULL_WIDTH);
+        let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
 
-        let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        let round_number = variables[ROUNDNUMBER as usize].clone();
+        let round_number_next = variables[FULL_WIDTH + ROUNDNUMBER as usize].clone();
 
-        let rnd_nmbr = variables[usize::from(HashTableColumn::ROUNDNUMBER)].clone();
-        let rnd_nmbr_next =
-            variables[FULL_WIDTH + usize::from(HashTableColumn::ROUNDNUMBER)].clone();
-
-        let helper = |rnd_nmbr_arg, rnd_nmbr_next_arg| -> MPolynomial<XFieldElement> {
-            let mut prod = rnd_nmbr_next.clone() - constant(rnd_nmbr_next_arg);
-            for i in 0..=8 {
-                if i != rnd_nmbr_arg {
-                    prod *= rnd_nmbr.clone() - constant(i)
-                }
-            }
-            prod
+        let if_round_number_is_x_then_round_number_next_is_y = |x, y| {
+            (0..=8)
+                .filter(|&r| r != x)
+                .map(|r| round_number.clone() - constant(r))
+                .fold(round_number_next.clone() - constant(y), MPolynomial::mul)
         };
 
-        // 1. If the round number is 0, the next round number is 0.
-        let if_rnd_nmbr_is_0_then_next_rnd_nmbr_is_0 = helper(0, 0);
-        // 2. If the round number is 1, the next round number is 2.
-        let if_rnd_nmbr_is_1_then_next_rnd_nmbr_is_2 = helper(1, 2);
-        // 3. If the round number is 2, the next round number is 3.
-        let if_rnd_nmbr_is_2_then_next_rnd_nmbr_is_3 = helper(2, 3);
-        // 4. If the round number is 3, the next round number is 4.
-        let if_rnd_nmbr_is_3_then_next_rnd_nmbr_is_4 = helper(3, 4);
-        // 5. If the round number is 4, the next round number is 5.
-        let if_rnd_nmbr_is_4_then_next_rnd_nmbr_is_5 = helper(4, 5);
-        // 6. If the round number is 5, the next round number is 6.
-        let if_rnd_nmbr_is_5_then_next_rnd_nmbr_is_6 = helper(5, 6);
-        // 7. If the round number is 6, the next round number is 7.
-        let if_rnd_nmbr_is_6_then_next_rnd_nmbr_is_7 = helper(6, 7);
-        // 8. If the round number is 7, the next round number is 8.
-        let if_rnd_nmbr_is_7_then_next_rnd_nmbr_is_8 = helper(7, 8);
-        // 9. If the round number is 8, the next round number is either 0 or 1.
-        let if_rnd_nmbr_is_8_then_next_rnd_nmbr_is_0_or_1 =
-            helper(8, 0) * (rnd_nmbr_next - constant(1));
-        // 10. The remaining 7·16 = 112 constraints are left as an exercise to the reader.
-        // TODO
-        //let _remaining = todo!();
-
         vec![
-            if_rnd_nmbr_is_0_then_next_rnd_nmbr_is_0,
-            if_rnd_nmbr_is_1_then_next_rnd_nmbr_is_2,
-            if_rnd_nmbr_is_2_then_next_rnd_nmbr_is_3,
-            if_rnd_nmbr_is_3_then_next_rnd_nmbr_is_4,
-            if_rnd_nmbr_is_4_then_next_rnd_nmbr_is_5,
-            if_rnd_nmbr_is_5_then_next_rnd_nmbr_is_6,
-            if_rnd_nmbr_is_6_then_next_rnd_nmbr_is_7,
-            if_rnd_nmbr_is_7_then_next_rnd_nmbr_is_8,
-            if_rnd_nmbr_is_8_then_next_rnd_nmbr_is_0_or_1,
+            if_round_number_is_x_then_round_number_next_is_y(0, 0),
+            if_round_number_is_x_then_round_number_next_is_y(1, 2),
+            if_round_number_is_x_then_round_number_next_is_y(2, 3),
+            if_round_number_is_x_then_round_number_next_is_y(3, 4),
+            if_round_number_is_x_then_round_number_next_is_y(4, 5),
+            if_round_number_is_x_then_round_number_next_is_y(5, 6),
+            if_round_number_is_x_then_round_number_next_is_y(6, 7),
+            if_round_number_is_x_then_round_number_next_is_y(7, 8),
+            // if round number is 8, then round number next is 0 or 1
+            if_round_number_is_x_then_round_number_next_is_y(8, 0)
+                * (round_number_next - constant(1)),
+            // todo: The remaining 7·16 = 112 constraints are left as an exercise to the reader.
         ]
     }
 
