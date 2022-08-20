@@ -34,7 +34,6 @@ type BWord = BFieldElement;
 type XWord = XFieldElement;
 type StarkHasher = RescuePrimeXlix<RP_DEFAULT_WIDTH>;
 
-// We use a type-parameterised FriDomain to avoid duplicate `b_*()` and `x_*()` methods.
 pub struct Stark {
     num_trace_randomizers: usize,
     num_randomizer_polynomials: usize,
@@ -50,7 +49,6 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         max_height: usize,
-        num_trace_randomizers: usize,
         num_randomizer_polynomials: usize,
         log_expansion_factor: usize,
         security_level: usize,
@@ -77,6 +75,7 @@ impl Stark {
             "expansion factor must be at least 4."
         );
 
+        let num_trace_randomizers = Self::num_trace_randomizers(security_level);
         let empty_table_collection = ExtTableCollection::with_padded_heights(
             num_trace_randomizers,
             &[max_height; NUM_TABLES],
@@ -1000,6 +999,10 @@ impl Stark {
         }
         index_map
     }
+
+    fn num_trace_randomizers(security_level: usize) -> usize {
+        2 * security_level
+    }
 }
 
 #[cfg(test)]
@@ -1022,7 +1025,6 @@ pub(crate) mod triton_stark_tests {
     ) -> (Stark, ProofStream<Item, RescuePrimeXlix<RP_DEFAULT_WIDTH>>) {
         let (base_matrices, _) = parse_simulate(code, input_symbols, &[]);
 
-        let num_trace_randomizers = 2;
         let num_randomizer_polynomials = 1;
         let log_expansion_factor = 2;
         let security_level = 32;
@@ -1044,7 +1046,6 @@ pub(crate) mod triton_stark_tests {
 
         let stark = Stark::new(
             padded_height,
-            num_trace_randomizers,
             num_randomizer_polynomials,
             log_expansion_factor,
             security_level,
@@ -1134,7 +1135,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     pub fn shift_codeword_test() {
-        let stark = Stark::new(2, 2, 1, 2, 32, 1.into(), &[], &[]);
+        let stark = Stark::new(2, 1, 2, 32, 1.into(), &[], &[]);
         let fri_x_values = stark.xfri.domain.domain_values();
 
         let mut test_codeword: Vec<XFieldElement> = vec![0.into(); stark.xfri.domain.length];
