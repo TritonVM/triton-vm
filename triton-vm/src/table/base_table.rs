@@ -224,6 +224,20 @@ pub fn pad_height(height: usize, num_trace_randomizers: usize) -> usize {
     }
 }
 
+fn disjoint_domain<DataPF: PrimeField>(
+    domain_length: usize,
+    disjoint_domain: &[DataPF],
+    ring_one: DataPF,
+) -> Vec<DataPF> {
+    // Why do we still have this? 😩
+    let zero = ring_one.ring_zero();
+    (0..2_usize.pow(32))
+        .map(|d| zero.new_from_usize(d))
+        .filter(|d| !disjoint_domain.contains(d))
+        .take(domain_length)
+        .collect_vec()
+}
+
 pub trait BaseTableTrait<DataPF>: HasBaseTable<DataPF>
 where
     // Self: Sized,
@@ -298,23 +312,13 @@ where
             return vec![Polynomial::ring_zero(); columns.len()];
         }
 
-        assert!(
-            self.padded_height() >= num_trace_randomizers,
-            "Number of trace randomizers must not exceed padded table height. \
-            {} height: {} Num trace randomizers: {}",
-            self.name(),
-            self.padded_height(),
-            num_trace_randomizers
-        );
-
         // FIXME: Unfold with multiplication instead of mapping with power.
         let omicron_domain = (0..self.padded_height())
             .map(|i| self.omicron().mod_pow_u32(i as u32))
             .collect_vec();
 
-        let randomizer_domain = (0..num_trace_randomizers)
-            .map(|i| omega * omicron_domain[i])
-            .collect_vec();
+        let one = omega.ring_one();
+        let randomizer_domain = disjoint_domain(num_trace_randomizers, &omicron_domain, one);
 
         let interpolation_domain = vec![omicron_domain, randomizer_domain].concat();
         let mut all_randomized_traces = vec![];
@@ -343,7 +347,8 @@ where
 
 #[cfg(test)]
 mod test_base_table {
-    use crate::table::base_table::pad_height;
+    use crate::table::base_table::{disjoint_domain, pad_height};
+    use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other;
 
     #[ignore]
@@ -357,5 +362,13 @@ mod test_base_table {
             assert_eq!(other::roundup_npo2(x as u64) as usize, padded_x);
             assert_eq!(padded_x, pad_height(padded_x, num_trace_randomizers))
         }
+    }
+
+    #[test]
+    fn disjoint_domain_test() {
+        let one = BFieldElement::ring_one();
+        let domain = [2.into(), 5.into(), 4.into()];
+        let ddomain = disjoint_domain(5, &domain, one);
+        assert_eq!(vec![0.into(), one, 3.into(), 6.into(), 7.into()], ddomain);
     }
 }
