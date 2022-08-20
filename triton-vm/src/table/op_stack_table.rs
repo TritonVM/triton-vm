@@ -151,7 +151,7 @@ impl ExtOpStackTable {
 impl OpStackTable {
     pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BWord>>) -> Self {
         let unpadded_height = matrix.len();
-        let padded_height = base_table::pad_height(unpadded_height, num_trace_randomizers);
+        let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let base = BaseTable::new(
@@ -170,8 +170,7 @@ impl OpStackTable {
 
     pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords =
-            self.low_degree_extension(fri_domain, self.num_trace_randomizers(), base_columns);
+        let codewords = self.low_degree_extension(fri_domain, base_columns);
 
         let base = self.base.with_data(codewords);
         Self { base }
@@ -258,11 +257,8 @@ impl ExtOpStackTable {
         fri_domain: &FriDomain<XWord>,
         base_codewords: &[Vec<BWord>],
     ) -> Self {
-        // Extension Tables do not have a randomized trace
-        let num_trace_randomizers = 0;
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords =
-            self.low_degree_extension(fri_domain, num_trace_randomizers, ext_columns);
+        let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);
 
         let lifted_base_codewords = base_codewords
             .iter()

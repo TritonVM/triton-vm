@@ -2,7 +2,6 @@ use super::super::fri_domain::FriDomain;
 use super::table_collection::TableId;
 use itertools::Itertools;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::cmp::max;
 use std::ops::Range;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
@@ -216,11 +215,11 @@ pub fn derive_omicron<DataPF: PrimeField>(padded_height: u64) -> DataPF {
         .unwrap()
 }
 
-pub fn pad_height(height: usize, num_trace_randomizers: usize) -> usize {
+pub fn pad_height(height: usize) -> usize {
     if height == 0 {
         0
     } else {
-        roundup_npo2(max(height as u64, num_trace_randomizers as u64)) as usize
+        roundup_npo2(height as u64) as usize
     }
 }
 
@@ -254,7 +253,7 @@ where
     }
 
     fn pad(&mut self) {
-        while self.data().len() != pad_height(self.data().len(), self.num_trace_randomizers()) {
+        while self.data().len() != pad_height(self.data().len()) {
             let padding_row = self.get_padding_row();
             self.mut_data().push(padding_row);
         }
@@ -272,19 +271,13 @@ where
     fn low_degree_extension(
         &self,
         fri_domain: &FriDomain<DataPF>,
-        num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Vec<DataPF>> {
         // FIXME: Table<> supports Vec<[DataPF; WIDTH]>, but FriDomain does not (yet).
-        self.interpolate_columns(
-            fri_domain.omega,
-            fri_domain.length,
-            num_trace_randomizers,
-            columns,
-        )
-        .par_iter()
-        .map(|polynomial| fri_domain.evaluate(polynomial))
-        .collect()
+        self.interpolate_columns(fri_domain.omega, fri_domain.length, columns)
+            .par_iter()
+            .map(|polynomial| fri_domain.evaluate(polynomial))
+            .collect()
     }
 
     /// Return the interpolation of columns. The `column_indices` variable
@@ -294,7 +287,6 @@ where
         &self,
         omega: DataPF,
         omega_order: usize,
-        num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Polynomial<DataPF>> {
         // FIXME: Inject `rng` instead.
@@ -318,6 +310,7 @@ where
             .collect_vec();
 
         let one = omega.ring_one();
+        let num_trace_randomizers = self.num_trace_randomizers();
         let randomizer_domain = disjoint_domain(num_trace_randomizers, &omicron_domain, one);
 
         let interpolation_domain = vec![omicron_domain, randomizer_domain].concat();
@@ -351,16 +344,13 @@ mod test_base_table {
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other;
 
-    #[ignore]
     #[test]
-    /// padding should be idempotent if number of trace randomizers is <= 1
     fn pad_height_test() {
-        let num_trace_randomizers = 1;
-        assert_eq!(0, pad_height(0, num_trace_randomizers));
+        assert_eq!(0, pad_height(0));
         for x in 1..=1025 {
-            let padded_x = pad_height(x, num_trace_randomizers);
+            let padded_x = pad_height(x);
             assert_eq!(other::roundup_npo2(x as u64) as usize, padded_x);
-            assert_eq!(padded_x, pad_height(padded_x, num_trace_randomizers))
+            assert_eq!(padded_x, pad_height(padded_x))
         }
     }
 
