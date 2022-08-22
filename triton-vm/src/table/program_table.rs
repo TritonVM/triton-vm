@@ -197,9 +197,9 @@ impl ProgramTable {
         let table = BaseTable::extension(
             base,
             ExtProgramTable::ext_boundary_constraints(),
-            ExtProgramTable::ext_transition_constraints(&challenges),
+            ExtProgramTable::ext_transition_constraints(challenges),
             ExtProgramTable::ext_consistency_constraints(),
-            ExtProgramTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtProgramTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtProgramTable { base: table }, terminals)

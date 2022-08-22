@@ -231,57 +231,57 @@ impl ExtTableCollection {
         let ext_program_table = ExtProgramTable::for_verifier(
             num_trace_randomizers,
             padded_heights[0],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         let ext_instruction_table = ExtInstructionTable::for_verifier(
             num_trace_randomizers,
             padded_heights[1],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         let ext_processor_table = ExtProcessorTable::for_verifier(
             num_trace_randomizers,
             padded_heights[2],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         let ext_op_stack_table = ExtOpStackTable::for_verifier(
             num_trace_randomizers,
             padded_heights[3],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         let ext_ram_table = ExtRamTable::for_verifier(
             num_trace_randomizers,
             padded_heights[4],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         let ext_jump_stack_table = ExtJumpStackTable::for_verifier(
             num_trace_randomizers,
             padded_heights[5],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         let ext_hash_table = ExtHashTable::for_verifier(
             num_trace_randomizers,
             padded_heights[6],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         let ext_u32_op_table = ExtU32OpTable::for_verifier(
             num_trace_randomizers,
             padded_heights[7],
-            &challenges,
-            &terminals,
+            challenges,
+            terminals,
         );
 
         ExtTableCollection {
@@ -302,7 +302,7 @@ impl ExtTableCollection {
             .concat()
             .into_iter()
             .max()
-            .unwrap_or_else(|| DegreeWithOrigin::default())
+            .unwrap_or_default()
     }
 
     /// Create an ExtTableCollection from a BaseTableCollection by

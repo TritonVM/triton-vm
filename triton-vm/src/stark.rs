@@ -178,7 +178,7 @@ impl Stark {
         let extension_tree = Self::get_extension_merkle_tree(&hasher, &transposed_ext_codewords);
 
         proof_stream.enqueue(&Item::MerkleRoot(extension_tree.get_root()));
-        proof_stream.enqueue(&Item::Terminals(all_terminals.clone()));
+        proof_stream.enqueue(&Item::Terminals(all_terminals));
         timer.elapsed("extension_tree");
 
         let base_degree_bounds = base_tables.get_base_degree_bounds();
@@ -941,13 +941,9 @@ impl Stark {
         if !verify_evaluation_argument(
             &self.input_symbols,
             extension_challenges
-                .clone()
                 .processor_table_challenges
                 .input_table_eval_row_weight,
-            all_terminals
-                .clone()
-                .processor_table_endpoints
-                .input_table_eval_sum,
+            all_terminals.processor_table_endpoints.input_table_eval_sum,
         ) {
             return Err(Box::new(StarkVerifyError::EvaluationArgument(0)));
         }
@@ -955,11 +951,9 @@ impl Stark {
         if !verify_evaluation_argument(
             &self.output_symbols,
             extension_challenges
-                .clone()
                 .processor_table_challenges
                 .output_table_eval_row_weight,
             all_terminals
-                .clone()
                 .processor_table_endpoints
                 .output_table_eval_sum,
         ) {

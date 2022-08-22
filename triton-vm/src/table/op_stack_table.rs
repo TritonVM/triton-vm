@@ -224,9 +224,9 @@ impl OpStackTable {
         let table = BaseTable::extension(
             base,
             ExtOpStackTable::ext_boundary_constraints(),
-            ExtOpStackTable::ext_transition_constraints(&challenges),
+            ExtOpStackTable::ext_transition_constraints(challenges),
             ExtOpStackTable::ext_consistency_constraints(),
-            ExtOpStackTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtOpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtOpStackTable { base: table }, terminals)

@@ -26,7 +26,7 @@ impl OutputStream for Stdout {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct VecStream {
     cursor: Cursor<Vec<u8>>,
 }
