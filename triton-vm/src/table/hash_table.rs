@@ -249,9 +249,9 @@ impl HashTable {
         let table = BaseTable::extension(
             base,
             ExtHashTable::ext_boundary_constraints(),
-            ExtHashTable::ext_transition_constraints(&challenges),
+            ExtHashTable::ext_transition_constraints(challenges),
             ExtHashTable::ext_consistency_constraints(),
-            ExtHashTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtHashTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtHashTable { base: table }, terminals)

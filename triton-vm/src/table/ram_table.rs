@@ -130,9 +130,9 @@ impl RamTable {
         let table = BaseTable::extension(
             base,
             ExtRamTable::ext_boundary_constraints(),
-            ExtRamTable::ext_transition_constraints(&challenges),
+            ExtRamTable::ext_transition_constraints(challenges),
             ExtRamTable::ext_consistency_constraints(),
-            ExtRamTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtRamTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtRamTable { base: table }, terminals)

@@ -252,9 +252,9 @@ impl JumpStackTable {
         let table = BaseTable::extension(
             base,
             ExtJumpStackTable::ext_boundary_constraints(),
-            ExtJumpStackTable::ext_transition_constraints(&challenges),
+            ExtJumpStackTable::ext_transition_constraints(challenges),
             ExtJumpStackTable::ext_consistency_constraints(),
-            ExtJumpStackTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtJumpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtJumpStackTable { base: table }, terminals)

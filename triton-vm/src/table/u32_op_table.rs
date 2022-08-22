@@ -175,18 +175,17 @@ impl ExtU32OpTable {
         let xor_next = variables[FULL_WIDTH + XOR as usize].clone();
         let rev_next = variables[FULL_WIDTH + REV as usize].clone();
 
-        let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
-        let rhs_lsb = rhs.clone() - two.clone() * rhs_next.clone();
+        let lhs_lsb = lhs.clone() - two.clone() * lhs_next;
+        let rhs_lsb = rhs.clone() - two.clone() * rhs_next;
         let idc_next_is_1 = idc_next.clone() - one.clone();
 
         let lhs_is_0_or_idc_next_is_0 = lhs.clone() * idc_next.clone();
-        let rhs_is_0_or_idc_next_is_0 = rhs.clone() * idc_next.clone();
+        let rhs_is_0_or_idc_next_is_0 = rhs.clone() * idc_next;
         let idc_next_is_1_or_ci_stays = idc_next_is_1.clone() * (ci - ci_next);
-        let idc_next_is_1_or_lhs_is_0_or_bits_increases = idc_next_is_1.clone()
-            * lhs.clone()
-            * (bits_next.clone() - (bits.clone() + one.clone()));
+        let idc_next_is_1_or_lhs_is_0_or_bits_increases =
+            idc_next_is_1.clone() * lhs * (bits_next.clone() - (bits.clone() + one.clone()));
         let idc_next_is_1_or_rhs_is_0_or_bits_increases =
-            idc_next_is_1.clone() * rhs.clone() * (bits_next - (bits + one.clone()));
+            idc_next_is_1.clone() * rhs * (bits_next - (bits + one.clone()));
         let idc_next_is_1_or_lsb_of_lhs_is_0_or_1 =
             idc_next_is_1.clone() * lhs_lsb.clone() * (lhs_lsb.clone() - one.clone());
         let idc_next_is_1_or_lsb_of_rhs_is_0_or_1 =
@@ -203,7 +202,7 @@ impl ExtU32OpTable {
             * (lt.clone() - one.clone());
 
         let idc_next_is_1_or_lt_next_is_0_or_1 =
-            idc_next_is_1.clone() * lt_next.clone() * (lt_next.clone() - one.clone());
+            idc_next_is_1.clone() * lt_next.clone() * (lt_next - one.clone());
         let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_is_1_or_rhs_lsb_is_0_or_lt_is_1 =
             idc_next_is_1_or_lt_next_is_0_or_1.clone()
                 * (lhs_lsb.clone() - one.clone())
@@ -219,10 +218,10 @@ impl ExtU32OpTable {
             idc_next_is_1_or_lt_next_is_0_or_1 * (one.clone() - lhs_lsb.clone() - rhs_lsb.clone());
         let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb_or_idc_is_1_or_lt_is_2 =
             idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb.clone()
-                * (idc.clone() - one.clone())
+                * (idc.clone() - one)
                 * (lt.clone() - two.clone());
         let idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb_or_idc_is_0_or_lt_is_0 =
-            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb.clone() * idc.clone() * lt;
+            idc_next_is_1_or_lt_next_is_0_or_1_or_lhs_lsb_uneq_rhs_lsb * idc * lt;
 
         // AND, XOR, REV
         let idc_next_is_1_or_and_eq_twice_and_next_plus_and_of_lsbs = idc_next_is_1.clone()
@@ -352,9 +351,9 @@ impl U32OpTable {
         let table = BaseTable::extension(
             base,
             ExtU32OpTable::ext_boundary_constraints(),
-            ExtU32OpTable::ext_transition_constraints(&challenges),
+            ExtU32OpTable::ext_transition_constraints(challenges),
             ExtU32OpTable::ext_consistency_constraints(),
-            ExtU32OpTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtU32OpTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtU32OpTable { base: table }, terminals)

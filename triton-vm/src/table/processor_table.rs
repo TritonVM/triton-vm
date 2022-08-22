@@ -317,9 +317,9 @@ impl ProcessorTable {
         let table = BaseTable::extension(
             base,
             ExtProcessorTable::ext_boundary_constraints(),
-            ExtProcessorTable::ext_transition_constraints(&challenges),
+            ExtProcessorTable::ext_transition_constraints(challenges),
             ExtProcessorTable::ext_consistency_constraints(),
-            ExtProcessorTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtProcessorTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtProcessorTable { base: table }, terminals)

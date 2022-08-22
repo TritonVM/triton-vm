@@ -60,7 +60,7 @@ pub struct VMState<'pgm> {
     pub instruction_pointer: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum VMOutput {
     /// Trace output from `write_io`
     WriteOutputSymbol(BWord),

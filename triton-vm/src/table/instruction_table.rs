@@ -265,9 +265,9 @@ impl InstructionTable {
         let table = BaseTable::extension(
             base,
             ExtInstructionTable::ext_boundary_constraints(),
-            ExtInstructionTable::ext_transition_constraints(&challenges),
+            ExtInstructionTable::ext_transition_constraints(challenges),
             ExtInstructionTable::ext_consistency_constraints(),
-            ExtInstructionTable::ext_terminal_constraints(&challenges, &terminals),
+            ExtInstructionTable::ext_terminal_constraints(challenges, &terminals),
         );
 
         (ExtInstructionTable { base: table }, terminals)
