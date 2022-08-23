@@ -57,7 +57,7 @@ For trying out the code, [install Rust](https://www.rust-lang.org/tools/install)
 ~/Projects/triton-vm $ cargo test
 ```
 
-For local development, it is encouraged to follow [GitHub's fork & pull workflow][gh-fap] by forking and cloning both, place `twenty-first` relative to `triton-vm`, and change the dependency to be `path`-local:
+For local development of both libraries, it is encouraged to follow [GitHub's fork & pull workflow][gh-fap] by forking and cloning both, place `twenty-first` relative to `triton-vm`, and change the dependency to be `path`-local:
 
 [gh-fap]: https://reflectoring.io/github-fork-and-pull/
 
@@ -68,5 +68,3 @@ For local development, it is encouraged to follow [GitHub's fork & pull workflow
 ~/Projects/triton-vm $ ln -s ../twenty-first/twenty-first twenty-first
 ~/Projects/triton-vm $ sed -i '/^twenty-first =/ s/{.*}/{ path = "..\/twenty-first" }/' triton-vm/Cargo.toml 
 ```
-
-The dependency `twenty-first = { path = "../twenty-first" }` prefers the `path`-local copy of `twenty-first` over the versioned copy on crates.io, as described in [The Cargo Book: Multiple Locations](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations).
