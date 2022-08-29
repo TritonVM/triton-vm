@@ -8,10 +8,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use AnInstruction::*;
 use TokenError::*;
 
-type BWord = BFieldElement;
-
 /// An `Instruction` has `call` addresses encoded as absolute integers.
-pub type Instruction = AnInstruction<BWord>;
+pub type Instruction = AnInstruction<BFieldElement>;
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
 ///
@@ -42,7 +40,7 @@ impl Display for LabelledInstruction {
 pub enum AnInstruction<Dest> {
     // OpStack manipulation
     Pop,
-    Push(BWord),
+    Push(BFieldElement),
     Divine,
     Dup(Ord16),
     Swap(Ord16),
@@ -395,7 +393,7 @@ fn convert_labels_helper(
                 // FIXME: Consider failing graciously on missing labels.
                 let label_not_found = format!("Label not found: {}", label_name);
                 let absolute_address = label_map.get(label_name).expect(&label_not_found);
-                BWord::new(*absolute_address as u64)
+                BFieldElement::new(*absolute_address as u64)
             });
 
             vec![unlabelled_instruction]
@@ -496,8 +494,8 @@ fn parse_token(
         "xbmul" => vec![XbMul],
 
         // Pseudo-instructions
-        "neg" => vec![Push(BWord::ring_one().neg()), Mul],
-        "sub" => vec![Swap(ST1), Push(BWord::ring_one().neg()), Mul, Add],
+        "neg" => vec![Push(BFieldElement::ring_one().neg()), Mul],
+        "sub" => vec![Swap(ST1), Push(BFieldElement::ring_one().neg()), Mul, Add],
 
         // Read/write
         "read_io" => vec![ReadIo],

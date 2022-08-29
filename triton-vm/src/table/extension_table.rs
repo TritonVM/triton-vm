@@ -17,9 +17,7 @@ use super::challenges_endpoints::AllChallenges;
 
 // Generic methods specifically for tables that have been extended
 
-type XWord = XFieldElement;
-
-pub trait ExtensionTable: TableLike<XWord> + Sync {
+pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
         let interpolant_degree = self.interpolant_degree();
@@ -184,7 +182,10 @@ pub trait ExtensionTable: TableLike<XWord> + Sync {
 
 pub trait Evaluable: ExtensionTable {
     /// evaluate boundary constraints on given point if they are set; panic otherwise
-    fn evaluate_boundary_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+    fn evaluate_boundary_constraints(
+        &self,
+        evaluation_point: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
         if let Some(boundary_constraints) = &self.inherited_table().boundary_constraints {
             boundary_constraints
                 .iter()
@@ -196,7 +197,10 @@ pub trait Evaluable: ExtensionTable {
     }
 
     /// evaluate transition constraints if they are set; panic otherwise
-    fn evaluate_transition_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+    fn evaluate_transition_constraints(
+        &self,
+        evaluation_point: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
         if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
             transition_constraints
                 .iter()
@@ -208,7 +212,10 @@ pub trait Evaluable: ExtensionTable {
     }
 
     /// evaluate consistency constraints on given point if they are set; panic otherwise
-    fn evaluate_consistency_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+    fn evaluate_consistency_constraints(
+        &self,
+        evaluation_point: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
         if let Some(consistency_constraints) = &self.inherited_table().consistency_constraints {
             consistency_constraints
                 .iter()
@@ -220,7 +227,10 @@ pub trait Evaluable: ExtensionTable {
     }
 
     /// evaluate terminal constraints on given point if they are set; panic otherwise
-    fn evaluate_terminal_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
+    fn evaluate_terminal_constraints(
+        &self,
+        evaluation_point: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
         if let Some(terminal_constraints) = &self.inherited_table().terminal_constraints {
             terminal_constraints
                 .iter()
@@ -235,9 +245,9 @@ pub trait Evaluable: ExtensionTable {
 pub trait Quotientable: ExtensionTable + Evaluable {
     fn boundary_quotients(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
-    ) -> Vec<Vec<XWord>> {
+        fri_domain: &FriDomain<XFieldElement>,
+        codewords: &[Vec<XFieldElement>],
+    ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
         }
@@ -251,7 +261,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_inverse = if self.padded_height() == 0 {
             zerofier_codeword
         } else {
-            XWord::batch_inversion(zerofier_codeword)
+            XFieldElement::batch_inversion(zerofier_codeword)
         };
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
@@ -274,14 +284,14 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn transition_quotients(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
+        fri_domain: &FriDomain<XFieldElement>,
+        codewords: &[Vec<XFieldElement>],
     ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
         }
 
-        let one = XWord::ring_one();
+        let one = XFieldElement::ring_one();
         let height = self.padded_height() as u32;
         let omicron_inverse = self.omicron().inverse();
         let fri_domain_values = fri_domain.domain_values();
@@ -293,7 +303,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let subgroup_zerofier_inverse = if height == 0 {
             subgroup_zerofier
         } else {
-            XWord::batch_inversion(subgroup_zerofier)
+            XFieldElement::batch_inversion(subgroup_zerofier)
         };
         let zerofier_inverse: Vec<_> = fri_domain_values
             .into_par_iter()
@@ -328,9 +338,9 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn consistency_quotients(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
-    ) -> Vec<Vec<XWord>> {
+        fri_domain: &FriDomain<XFieldElement>,
+        codewords: &[Vec<XFieldElement>],
+    ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
         }
@@ -338,13 +348,13 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_codeword = fri_domain
             .domain_values()
             .iter()
-            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XWord::ring_one())
+            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XFieldElement::ring_one())
             .collect();
 
         let zerofier_inverse = if self.padded_height() == 0 {
             zerofier_codeword
         } else {
-            XWord::batch_inversion(zerofier_codeword)
+            XFieldElement::batch_inversion(zerofier_codeword)
         };
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
@@ -367,9 +377,9 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn terminal_quotients(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
-    ) -> Vec<Vec<XWord>> {
+        fri_domain: &FriDomain<XFieldElement>,
+        codewords: &[Vec<XFieldElement>],
+    ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
         }
@@ -385,7 +395,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_inverse = if self.padded_height() == 0 {
             zerofier_codeword
         } else {
-            XWord::batch_inversion(zerofier_codeword)
+            XFieldElement::batch_inversion(zerofier_codeword)
         };
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
@@ -408,9 +418,9 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn all_quotients(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        codewords: &[Vec<XWord>],
-    ) -> Vec<Vec<XWord>> {
+        fri_domain: &FriDomain<XFieldElement>,
+        codewords: &[Vec<XFieldElement>],
+    ) -> Vec<Vec<XFieldElement>> {
         let mut timer = TimingReporter::start();
         timer.elapsed(&format!("Table name: {}", self.name()));
 
@@ -446,7 +456,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     /// probably the result of un-clean division.
     fn debug_degree_bound_check(
         &self,
-        fri_domain: &FriDomain<XWord>,
+        fri_domain: &FriDomain<XFieldElement>,
         quotient_codewords: &[Vec<XFieldElement>],
         quotient_type: &str,
     ) {

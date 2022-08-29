@@ -19,9 +19,6 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
-
 pub const NUM_TABLES: usize = 8;
 
 #[derive(Debug, Clone)]
@@ -123,7 +120,7 @@ impl BaseTableCollection {
         }
     }
 
-    pub fn codeword_tables(&self, fri_domain: &FriDomain<BWord>) -> BaseTableCollection {
+    pub fn codeword_tables(&self, fri_domain: &FriDomain<BFieldElement>) -> BaseTableCollection {
         BaseTableCollection {
             program_table: self.program_table.codeword_table(fri_domain),
             instruction_table: self.instruction_table.codeword_table(fri_domain),
@@ -136,7 +133,7 @@ impl BaseTableCollection {
         }
     }
 
-    pub fn get_all_base_columns(&self) -> Vec<Vec<BWord>> {
+    pub fn get_all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
         self.into_iter()
             .map(|table| table.data().clone())
             .collect_vec()
@@ -162,20 +159,20 @@ impl BaseTableCollection {
 }
 
 impl<'a> IntoIterator for &'a BaseTableCollection {
-    type Item = &'a dyn TableLike<BWord>;
+    type Item = &'a dyn TableLike<BFieldElement>;
 
-    type IntoIter = std::array::IntoIter<&'a dyn TableLike<BWord>, NUM_TABLES>;
+    type IntoIter = std::array::IntoIter<&'a dyn TableLike<BFieldElement>, NUM_TABLES>;
 
     fn into_iter(self) -> Self::IntoIter {
         [
-            &self.program_table as &'a dyn TableLike<BWord>,
-            &self.instruction_table as &'a dyn TableLike<BWord>,
-            &self.processor_table as &'a dyn TableLike<BWord>,
-            &self.op_stack_table as &'a dyn TableLike<BWord>,
-            &self.ram_table as &'a dyn TableLike<BWord>,
-            &self.jump_stack_table as &'a dyn TableLike<BWord>,
-            &self.hash_table as &'a dyn TableLike<BWord>,
-            &self.u32_op_table as &'a dyn TableLike<BWord>,
+            &self.program_table as &'a dyn TableLike<BFieldElement>,
+            &self.instruction_table as &'a dyn TableLike<BFieldElement>,
+            &self.processor_table as &'a dyn TableLike<BFieldElement>,
+            &self.op_stack_table as &'a dyn TableLike<BFieldElement>,
+            &self.ram_table as &'a dyn TableLike<BFieldElement>,
+            &self.jump_stack_table as &'a dyn TableLike<BFieldElement>,
+            &self.hash_table as &'a dyn TableLike<BFieldElement>,
+            &self.u32_op_table as &'a dyn TableLike<BFieldElement>,
         ]
         .into_iter()
     }
@@ -385,7 +382,7 @@ impl ExtTableCollection {
 
     pub fn codeword_tables(
         &self,
-        fri_domain: &FriDomain<XWord>,
+        fri_domain: &FriDomain<XFieldElement>,
         base_codeword_tables: BaseTableCollection,
     ) -> Self {
         let program_table = self
@@ -425,7 +422,7 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn get_all_extension_columns(&self) -> Vec<Vec<XWord>> {
+    pub fn get_all_extension_columns(&self) -> Vec<Vec<XFieldElement>> {
         let mut all_ext_cols = vec![];
 
         for table in self.into_iter() {
@@ -436,7 +433,7 @@ impl ExtTableCollection {
         all_ext_cols
     }
 
-    pub fn data(&self, table_id: TableId) -> &Vec<Vec<XWord>> {
+    pub fn data(&self, table_id: TableId) -> &Vec<Vec<XFieldElement>> {
         use TableId::*;
 
         match table_id {
@@ -483,7 +480,10 @@ impl ExtTableCollection {
             .concat()
     }
 
-    pub fn get_all_quotients(&self, fri_domain: &FriDomain<XWord>) -> Vec<Vec<XWord>> {
+    pub fn get_all_quotients(
+        &self,
+        fri_domain: &FriDomain<XFieldElement>,
+    ) -> Vec<Vec<XFieldElement>> {
         let mut timer = TimingReporter::start();
         self.into_iter()
             .map(|ext_codeword_table| {

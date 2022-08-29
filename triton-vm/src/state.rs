@@ -18,9 +18,6 @@ use twenty_first::shared_math::rescue_prime_xlix::RescuePrimeXlix;
 use twenty_first::shared_math::traits::{IdentityValues, Inverse};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
-
 /// The number of `BFieldElement`s in a Rescue-Prime digest for Triton VM.
 pub const DIGEST_LEN: usize = 6;
 
@@ -39,7 +36,7 @@ pub struct VMState<'pgm> {
     program: &'pgm [Instruction],
 
     /// 2. **Random-access memory**, to which the VM can read and write field elements
-    ram: HashMap<BWord, BWord>,
+    ram: HashMap<BFieldElement, BFieldElement>,
 
     /// 3. **Op-stack memory**, which stores the part of the operational stack
     ///    that is not represented explicitly by the operational stack registers
@@ -48,7 +45,7 @@ pub struct VMState<'pgm> {
     op_stack: OpStack,
 
     /// 4. Jump-stack memory, which stores the entire jump stack
-    jump_stack: Vec<(BWord, BWord)>,
+    jump_stack: Vec<(BFieldElement, BFieldElement)>,
 
     ///
     /// Registers
@@ -63,17 +60,17 @@ pub struct VMState<'pgm> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum VMOutput {
     /// Trace output from `write_io`
-    WriteOutputSymbol(BWord),
+    WriteOutputSymbol(BFieldElement),
 
     /// Trace of state registers for hash coprocessor table
     ///
     /// One row per round in the XLIX permutation
-    XlixTrace(Vec<[BWord; hash_table::BASE_WIDTH]>),
+    XlixTrace(Vec<[BFieldElement; hash_table::BASE_WIDTH]>),
 
     /// Trace of u32 operations for u32 op table
     ///
     /// One row per defined bit
-    U32OpTrace(Vec<[BWord; u32_op_table::BASE_WIDTH]>),
+    U32OpTrace(Vec<[BFieldElement; u32_op_table::BASE_WIDTH]>),
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -112,7 +109,7 @@ impl<'pgm> VMState<'pgm> {
             .map(|vm_output| (next_state, vm_output))
     }
 
-    pub fn derive_helper_variables(&self) -> [BWord; HV_REGISTER_COUNT] {
+    pub fn derive_helper_variables(&self) -> [BFieldElement; HV_REGISTER_COUNT] {
         let mut hvs = [0.into(); HV_REGISTER_COUNT];
 
         let current_instruction = self.current_instruction();
@@ -135,15 +132,15 @@ impl<'pgm> VMState<'pgm> {
             // indicator polynomials of the AIR actually evaluate to 0.
             Dup(arg) | Swap(arg) => {
                 let arg_val: u64 = arg.into();
-                hvs[0] = BWord::new(arg_val % 2);
-                hvs[1] = BWord::new((arg_val >> 1) % 2);
-                hvs[2] = BWord::new((arg_val >> 2) % 2);
-                hvs[3] = BWord::new((arg_val >> 3) % 2);
+                hvs[0] = BFieldElement::new(arg_val % 2);
+                hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
+                hvs[2] = BFieldElement::new((arg_val >> 2) % 2);
+                hvs[3] = BFieldElement::new((arg_val >> 3) % 2);
             }
             Skiz => {
                 let nia = self.nia().value();
-                hvs[0] = BWord::new(nia % 2);
-                hvs[1] = BWord::new(nia / 2);
+                hvs[0] = BFieldElement::new(nia % 2);
+                hvs[1] = BFieldElement::new(nia / 2);
                 let st0 = self.op_stack.safe_peek(ST0);
                 if !st0.is_zero() {
                     hvs[2] = st0.inverse();
@@ -155,16 +152,16 @@ impl<'pgm> VMState<'pgm> {
                 let node_index_lsb = node_index % 2;
                 let node_index_msbs = node_index / 2;
                 // set hv registers to correct decomposition of node_index
-                hvs[0] = BWord::new(node_index_lsb);
-                hvs[1] = BWord::new(node_index_msbs);
+                hvs[0] = BFieldElement::new(node_index_lsb);
+                hvs[1] = BFieldElement::new(node_index_msbs);
             }
             Split => {
                 let elem = self.op_stack.safe_peek(ST0);
                 let n: u64 = elem.value();
-                let lo = BWord::new(n & 0xffff_ffff);
-                let hi = BWord::new(n >> 32);
+                let lo = BFieldElement::new(n & 0xffff_ffff);
+                let hi = BFieldElement::new(n >> 32);
                 if !lo.is_zero() {
-                    let max_val_of_hi = BWord::new(2_u64.pow(32) - 1);
+                    let max_val_of_hi = BFieldElement::new(2_u64.pow(32) - 1);
                     hvs[0] = (hi - max_val_of_hi).inverse();
                 }
             }
@@ -290,7 +287,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Hash => {
-                let mut state = [BWord::new(0); STATE_REGISTER_COUNT];
+                let mut state = [BFieldElement::new(0); STATE_REGISTER_COUNT];
                 for i in 0..2 * DIGEST_LEN {
                     state[i] = self.op_stack.pop()?;
                 }
@@ -347,8 +344,8 @@ impl<'pgm> VMState<'pgm> {
             Split => {
                 let elem = self.op_stack.pop()?;
                 let n: u64 = elem.value();
-                let lo = BWord::new(n & 0xffff_ffff);
-                let hi = BWord::new(n >> 32);
+                let lo = BFieldElement::new(n & 0xffff_ffff);
+                let hi = BFieldElement::new(n >> 32);
                 self.op_stack.push(lo);
                 self.op_stack.push(hi);
                 self.instruction_pointer += 1;
@@ -410,28 +407,28 @@ impl<'pgm> VMState<'pgm> {
             }
 
             XxAdd => {
-                let lhs: XWord = self.op_stack.pop_x()?;
-                let rhs: XWord = self.op_stack.safe_peek_x();
+                let lhs: XFieldElement = self.op_stack.pop_x()?;
+                let rhs: XFieldElement = self.op_stack.safe_peek_x();
                 self.op_stack.push_x(lhs + rhs);
                 self.instruction_pointer += 1;
             }
 
             XxMul => {
-                let lhs: XWord = self.op_stack.pop_x()?;
-                let rhs: XWord = self.op_stack.safe_peek_x();
+                let lhs: XFieldElement = self.op_stack.pop_x()?;
+                let rhs: XFieldElement = self.op_stack.safe_peek_x();
                 self.op_stack.push_x(lhs * rhs);
                 self.instruction_pointer += 1;
             }
 
             XInvert => {
-                let elem: XWord = self.op_stack.pop_x()?;
+                let elem: XFieldElement = self.op_stack.pop_x()?;
                 self.op_stack.push_x(elem.inverse());
                 self.instruction_pointer += 1;
             }
 
             XbMul => {
-                let lhs: BWord = self.op_stack.pop()?;
-                let rhs: XWord = self.op_stack.pop_x()?;
+                let lhs: BFieldElement = self.op_stack.pop()?;
+                let rhs: XFieldElement = self.op_stack.pop_x()?;
                 self.op_stack.push_x(lhs.lift() * rhs);
                 self.instruction_pointer += 1;
             }
@@ -541,7 +538,7 @@ impl<'pgm> VMState<'pgm> {
             hvs[1],
             hvs[2],
             hvs[3],
-            *self.ram.get(&st1).unwrap_or(&BWord::new(0)),
+            *self.ram.get(&st1).unwrap_or(&BFieldElement::new(0)),
         ]
     }
 
@@ -560,10 +557,10 @@ impl<'pgm> VMState<'pgm> {
     pub fn to_ram_row(&self) -> [BFieldElement; ram_table::BASE_WIDTH] {
         let clk = self.cycle_count.into();
         let ramp = self.op_stack.st(ST1);
-        let ramv = *self.ram.get(&ramp).unwrap_or(&BWord::new(0));
+        let ramv = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
 
         // placeholder value – actual value only known after sorting the RAM Table
-        let inverse_of_ramp_diff = BWord::new(0);
+        let inverse_of_ramp_diff = BFieldElement::new(0);
 
         [clk, ramp, ramv, inverse_of_ramp_diff]
     }
@@ -638,7 +635,7 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
-    fn lt(lhs: u32, rhs: u32) -> BWord {
+    fn lt(lhs: u32, rhs: u32) -> BFieldElement {
         if lhs < rhs {
             1.into()
         } else {
@@ -646,7 +643,7 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
-    fn eq(lhs: BWord, rhs: BWord) -> BWord {
+    fn eq(lhs: BFieldElement, rhs: BFieldElement) -> BFieldElement {
         if lhs == rhs {
             1.into()
         } else {
@@ -654,7 +651,7 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
-    fn nia(&self) -> BWord {
+    fn nia(&self) -> BFieldElement {
         self.current_instruction()
             .map(|curr_instr| {
                 curr_instr.arg().unwrap_or_else(|| {
@@ -667,12 +664,12 @@ impl<'pgm> VMState<'pgm> {
     }
 
     /// Jump-stack pointer
-    fn jsp(&self) -> BWord {
-        BWord::new(self.jump_stack.len() as u64)
+    fn jsp(&self) -> BFieldElement {
+        BFieldElement::new(self.jump_stack.len() as u64)
     }
 
     /// Jump-stack origin
-    fn jso(&self) -> BWord {
+    fn jso(&self) -> BFieldElement {
         self.jump_stack
             .last()
             .map(|(o, _d)| *o)
@@ -680,7 +677,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     /// Jump-stack destination
-    fn jsd(&self) -> BWord {
+    fn jsd(&self) -> BFieldElement {
         self.jump_stack
             .last()
             .map(|(_o, d)| *d)
@@ -719,13 +716,13 @@ impl<'pgm> VMState<'pgm> {
             .copied()
     }
 
-    fn jump_stack_pop(&mut self) -> Result<(BWord, BWord), Box<dyn Error>> {
+    fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement), Box<dyn Error>> {
         self.jump_stack
             .pop()
             .ok_or_else(|| vm_fail(JumpStackTooShallow))
     }
 
-    fn jump_stack_peek(&mut self) -> Result<(BWord, BWord), Box<dyn Error>> {
+    fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement), Box<dyn Error>> {
         self.jump_stack
             .last()
             .copied()
@@ -765,7 +762,7 @@ impl<'pgm> VMState<'pgm> {
         &mut self,
         secret_in: &mut In,
     ) -> Result<(), Box<dyn Error>> {
-        let known_digest: [BWord; DIGEST_LEN] = [
+        let known_digest: [BFieldElement; DIGEST_LEN] = [
             self.op_stack.pop()?,
             self.op_stack.pop()?,
             self.op_stack.pop()?,
@@ -864,7 +861,10 @@ mod vm_state_tests {
         let (trace, _out, _err) = program.run_with_input(&[], &[]);
 
         let last_state = trace.last().unwrap();
-        assert_eq!(BWord::ring_zero(), last_state.op_stack.safe_peek(ST0));
+        assert_eq!(
+            BFieldElement::ring_zero(),
+            last_state.op_stack.safe_peek(ST0)
+        );
 
         println!("{}", last_state);
     }
@@ -960,161 +960,161 @@ mod vm_state_tests {
         let (trace, _out, err) = program.run_with_input(
             &[
                 // Merkle root
-                BWord::new(2661879877493968030),
-                BWord::new(8411897398996365015),
-                BWord::new(11724741215505059774),
-                BWord::new(10869446635029787183),
-                BWord::new(3194712170375950680),
-                BWord::new(5350293309391779043),
+                BFieldElement::new(2661879877493968030),
+                BFieldElement::new(8411897398996365015),
+                BFieldElement::new(11724741215505059774),
+                BFieldElement::new(10869446635029787183),
+                BFieldElement::new(3194712170375950680),
+                BFieldElement::new(5350293309391779043),
                 // node index 64, leaf index 0
-                BWord::new(64),
+                BFieldElement::new(64),
                 // value of leaf with index 0
-                BWord::new(17),
-                BWord::new(22),
-                BWord::new(19),
+                BFieldElement::new(17),
+                BFieldElement::new(22),
+                BFieldElement::new(19),
                 // node index 92, leaf index 28
-                BWord::new(92),
+                BFieldElement::new(92),
                 // value of leaf with index 28
-                BWord::new(45),
-                BWord::new(50),
-                BWord::new(47),
+                BFieldElement::new(45),
+                BFieldElement::new(50),
+                BFieldElement::new(47),
                 // node index 119, leaf index 55
-                BWord::new(119),
+                BFieldElement::new(119),
                 // value of leaf with node 55
-                BWord::new(72),
-                BWord::new(77),
-                BWord::new(74),
+                BFieldElement::new(72),
+                BFieldElement::new(77),
+                BFieldElement::new(74),
             ],
             &[
                 // Merkle Authentication Path 0
                 // Merkle Authentication Path 0 Element 0
-                BWord::new(7433611961471031299),
-                BWord::new(10663067815302282105),
-                BWord::new(11189271637150912214),
-                BWord::new(6731301558776007763),
-                BWord::new(12404371806864851196),
-                BWord::new(4001338418445453888),
+                BFieldElement::new(7433611961471031299),
+                BFieldElement::new(10663067815302282105),
+                BFieldElement::new(11189271637150912214),
+                BFieldElement::new(6731301558776007763),
+                BFieldElement::new(12404371806864851196),
+                BFieldElement::new(4001338418445453888),
                 // Merkle Authentication Path 0 Element 1
-                BWord::new(15447170459020364568),
-                BWord::new(13311771520545451802),
-                BWord::new(4832613912751814227),
-                BWord::new(16118512681346800136),
-                BWord::new(11903034542985100612),
-                BWord::new(8722502554058837902),
+                BFieldElement::new(15447170459020364568),
+                BFieldElement::new(13311771520545451802),
+                BFieldElement::new(4832613912751814227),
+                BFieldElement::new(16118512681346800136),
+                BFieldElement::new(11903034542985100612),
+                BFieldElement::new(8722502554058837902),
                 // Merkle Authentication Path 0 Element 2
-                BWord::new(927166763011592563),
-                BWord::new(1017721141586418898),
-                BWord::new(14149577177119432718),
-                BWord::new(11112535232426569259),
-                BWord::new(6770923340167310082),
-                BWord::new(6635263622554958787),
+                BFieldElement::new(927166763011592563),
+                BFieldElement::new(1017721141586418898),
+                BFieldElement::new(14149577177119432718),
+                BFieldElement::new(11112535232426569259),
+                BFieldElement::new(6770923340167310082),
+                BFieldElement::new(6635263622554958787),
                 // Merkle Authentication Path 0 Element 3
-                BWord::new(11997402720255929816),
-                BWord::new(7083119985125877931),
-                BWord::new(3583918993470398367),
-                BWord::new(12665589384229632447),
-                BWord::new(4869924221127107207),
-                BWord::new(2205377658620204174),
+                BFieldElement::new(11997402720255929816),
+                BFieldElement::new(7083119985125877931),
+                BFieldElement::new(3583918993470398367),
+                BFieldElement::new(12665589384229632447),
+                BFieldElement::new(4869924221127107207),
+                BFieldElement::new(2205377658620204174),
                 // Merkle Authentication Path 0 Element 4
-                BWord::new(4108830855587634814),
-                BWord::new(11363551275926927759),
-                BWord::new(8897943612193465442),
-                BWord::new(18175199505544299571),
-                BWord::new(5933081913383911549),
-                BWord::new(11963915458141697161),
+                BFieldElement::new(4108830855587634814),
+                BFieldElement::new(11363551275926927759),
+                BFieldElement::new(8897943612193465442),
+                BFieldElement::new(18175199505544299571),
+                BFieldElement::new(5933081913383911549),
+                BFieldElement::new(11963915458141697161),
                 // Merkle Authentication Path 0 Element 5
-                BWord::new(239086846863014618),
-                BWord::new(18353654918351264251),
-                BWord::new(1162413056004073118),
-                BWord::new(63172233802162855),
-                BWord::new(15287652336563130555),
-                BWord::new(6615623432715966135),
+                BFieldElement::new(239086846863014618),
+                BFieldElement::new(18353654918351264251),
+                BFieldElement::new(1162413056004073118),
+                BFieldElement::new(63172233802162855),
+                BFieldElement::new(15287652336563130555),
+                BFieldElement::new(6615623432715966135),
                 // Merkle Authentication Path 1
                 // Merkle Authentication Path 1 Element 0
-                BWord::new(9199975892950715767),
-                BWord::new(18392437377232084500),
-                BWord::new(7389509101855274876),
-                BWord::new(13193152724141987884),
-                BWord::new(12764531673520060724),
-                BWord::new(16294749329463136349),
+                BFieldElement::new(9199975892950715767),
+                BFieldElement::new(18392437377232084500),
+                BFieldElement::new(7389509101855274876),
+                BFieldElement::new(13193152724141987884),
+                BFieldElement::new(12764531673520060724),
+                BFieldElement::new(16294749329463136349),
                 // Merkle Authentication Path 1 Element 1
-                BWord::new(13265185672483741593),
-                BWord::new(4801722111881156327),
-                BWord::new(297253697970945484),
-                BWord::new(8955967409623509220),
-                BWord::new(10440367450900769517),
-                BWord::new(10816277785135288164),
+                BFieldElement::new(13265185672483741593),
+                BFieldElement::new(4801722111881156327),
+                BFieldElement::new(297253697970945484),
+                BFieldElement::new(8955967409623509220),
+                BFieldElement::new(10440367450900769517),
+                BFieldElement::new(10816277785135288164),
                 // Merkle Authentication Path 1 Element 2
-                BWord::new(3378320220263195325),
-                BWord::new(17709073937843856976),
-                BWord::new(3737595776877974498),
-                BWord::new(1050267233733511018),
-                BWord::new(18417031760560110797),
-                BWord::new(13081044610877517462),
+                BFieldElement::new(3378320220263195325),
+                BFieldElement::new(17709073937843856976),
+                BFieldElement::new(3737595776877974498),
+                BFieldElement::new(1050267233733511018),
+                BFieldElement::new(18417031760560110797),
+                BFieldElement::new(13081044610877517462),
                 // Merkle Authentication Path 1 Element 3
-                BWord::new(11029368221459961736),
-                BWord::new(2601431810170510531),
-                BWord::new(3845091993529784163),
-                BWord::new(18440963282863373173),
-                BWord::new(15782363319704900162),
-                BWord::new(5649168943621408804),
+                BFieldElement::new(11029368221459961736),
+                BFieldElement::new(2601431810170510531),
+                BFieldElement::new(3845091993529784163),
+                BFieldElement::new(18440963282863373173),
+                BFieldElement::new(15782363319704900162),
+                BFieldElement::new(5649168943621408804),
                 // Merkle Authentication Path 1 Element 4
-                BWord::new(10193657868364591231),
-                BWord::new(10099674955292945516),
-                BWord::new(11861368391420694868),
-                BWord::new(12281343418175235418),
-                BWord::new(4979963636183136673),
-                BWord::new(18369998622044683261),
+                BFieldElement::new(10193657868364591231),
+                BFieldElement::new(10099674955292945516),
+                BFieldElement::new(11861368391420694868),
+                BFieldElement::new(12281343418175235418),
+                BFieldElement::new(4979963636183136673),
+                BFieldElement::new(18369998622044683261),
                 // Merkle Authentication Path 1 Element 5
-                BWord::new(239086846863014618),
-                BWord::new(18353654918351264251),
-                BWord::new(1162413056004073118),
-                BWord::new(63172233802162855),
-                BWord::new(15287652336563130555),
-                BWord::new(6615623432715966135),
+                BFieldElement::new(239086846863014618),
+                BFieldElement::new(18353654918351264251),
+                BFieldElement::new(1162413056004073118),
+                BFieldElement::new(63172233802162855),
+                BFieldElement::new(15287652336563130555),
+                BFieldElement::new(6615623432715966135),
                 // Merkle Authentication Path 2
                 // Merkle Authentication Path 2 Element 0
-                BWord::new(4481571126490316833),
-                BWord::new(8911895412157369567),
-                BWord::new(5835492500982839536),
-                BWord::new(7582358620718112504),
-                BWord::new(17844368221186872833),
-                BWord::new(17133435817149957052),
+                BFieldElement::new(4481571126490316833),
+                BFieldElement::new(8911895412157369567),
+                BFieldElement::new(5835492500982839536),
+                BFieldElement::new(7582358620718112504),
+                BFieldElement::new(17844368221186872833),
+                BFieldElement::new(17133435817149957052),
                 // Merkle Authentication Path 2 Element 1
-                BWord::new(14881877338661058963),
-                BWord::new(13193566745649419854),
-                BWord::new(6162692737252551562),
-                BWord::new(11371203176785325596),
-                BWord::new(9217246242682535563),
-                BWord::new(6324769433519982629),
+                BFieldElement::new(14881877338661058963),
+                BFieldElement::new(13193566745649419854),
+                BFieldElement::new(6162692737252551562),
+                BFieldElement::new(11371203176785325596),
+                BFieldElement::new(9217246242682535563),
+                BFieldElement::new(6324769433519982629),
                 // Merkle Authentication Path 2 Element 2
-                BWord::new(13364374456634379783),
-                BWord::new(11904780360815341732),
-                BWord::new(13838542444368435771),
-                BWord::new(3920552087776628004),
-                BWord::new(11527431398195960804),
-                BWord::new(9866681327490442483),
+                BFieldElement::new(13364374456634379783),
+                BFieldElement::new(11904780360815341732),
+                BFieldElement::new(13838542444368435771),
+                BFieldElement::new(3920552087776628004),
+                BFieldElement::new(11527431398195960804),
+                BFieldElement::new(9866681327490442483),
                 // Merkle Authentication Path 2 Element 3
-                BWord::new(1435791031511559365),
-                BWord::new(15545210664684920678),
-                BWord::new(3431133792584929176),
-                BWord::new(8726944733794952298),
-                BWord::new(16054902179813715844),
-                BWord::new(4961109724612073173),
+                BFieldElement::new(1435791031511559365),
+                BFieldElement::new(15545210664684920678),
+                BFieldElement::new(3431133792584929176),
+                BFieldElement::new(8726944733794952298),
+                BFieldElement::new(16054902179813715844),
+                BFieldElement::new(4961109724612073173),
                 // Merkle Authentication Path 2 Element 4
-                BWord::new(6120454613508763402),
-                BWord::new(13046522894794631380),
-                BWord::new(12811925518855679797),
-                BWord::new(17271969057789657726),
-                BWord::new(9660251638518579939),
-                BWord::new(4505728643179916723),
+                BFieldElement::new(6120454613508763402),
+                BFieldElement::new(13046522894794631380),
+                BFieldElement::new(12811925518855679797),
+                BFieldElement::new(17271969057789657726),
+                BFieldElement::new(9660251638518579939),
+                BFieldElement::new(4505728643179916723),
                 // Merkle Authentication Path 2 Element 5
-                BWord::new(15982248888191274947),
-                BWord::new(16924250102716460133),
-                BWord::new(10777256019074274502),
-                BWord::new(5171550821485636583),
-                BWord::new(1372154037340399671),
-                BWord::new(13169355684141832888),
+                BFieldElement::new(15982248888191274947),
+                BFieldElement::new(16924250102716460133),
+                BFieldElement::new(10777256019074274502),
+                BFieldElement::new(5171550821485636583),
+                BFieldElement::new(1372154037340399671),
+                BFieldElement::new(13169355684141832888),
             ],
         );
 
@@ -1161,7 +1161,7 @@ mod vm_state_tests {
         }
 
         let last_state = trace.last().unwrap();
-        assert_eq!(BWord::ring_zero(), last_state.op_stack.st(ST0));
+        assert_eq!(BFieldElement::ring_zero(), last_state.op_stack.st(ST0));
     }
 
     #[test]
@@ -1177,7 +1177,7 @@ mod vm_state_tests {
         }
 
         let last_state = trace.last().unwrap();
-        assert_eq!(BWord::new(21), last_state.op_stack.st(ST0));
+        assert_eq!(BFieldElement::new(21), last_state.op_stack.st(ST0));
     }
 
     #[test]
@@ -1192,7 +1192,7 @@ mod vm_state_tests {
         }
 
         let last_state = trace.last().unwrap();
-        assert_eq!(BWord::new(21), last_state.op_stack.st(ST0));
+        assert_eq!(BFieldElement::new(21), last_state.op_stack.st(ST0));
     }
 
     #[test]

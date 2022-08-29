@@ -30,8 +30,6 @@ use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
 type StarkHasher = RescuePrimeXlix<RP_DEFAULT_WIDTH>;
 
 pub struct Stark {
@@ -39,10 +37,10 @@ pub struct Stark {
     num_randomizer_polynomials: usize,
     security_level: usize,
     max_degree: Degree,
-    bfri_domain: FriDomain<BWord>,
+    bfri_domain: FriDomain<BFieldElement>,
     xfri: Fri<StarkHasher>,
-    input_symbols: Vec<BWord>,
-    output_symbols: Vec<BWord>,
+    input_symbols: Vec<BFieldElement>,
+    output_symbols: Vec<BFieldElement>,
 }
 
 impl Stark {
@@ -52,9 +50,9 @@ impl Stark {
         num_randomizer_polynomials: usize,
         log_expansion_factor: usize,
         security_level: usize,
-        co_set_fri_offset: BWord,
-        input_symbols: &[BWord],
-        output_symbols: &[BWord],
+        co_set_fri_offset: BFieldElement,
+        input_symbols: &[BFieldElement],
+        output_symbols: &[BFieldElement],
     ) -> Self {
         assert_eq!(
             0,
@@ -87,7 +85,7 @@ impl Stark {
         println!("Max Degree: {}", max_degree_with_origin);
         println!("FRI domain length: {fri_domain_length}, expansion factor: {expansion_factor}");
 
-        let omega = BWord::ring_zero()
+        let omega = BFieldElement::ring_zero()
             .get_primitive_root_of_unity(fri_domain_length as u64)
             .0
             .unwrap();
@@ -163,7 +161,7 @@ impl Stark {
 
         let padded_heights = (&ext_tables)
             .into_iter()
-            .map(|ext_table| BWord::new(ext_table.padded_height() as u64))
+            .map(|ext_table| BFieldElement::new(ext_table.padded_height() as u64))
             .collect_vec();
         proof_stream.enqueue(&Item::PaddedHeights(padded_heights));
         timer.elapsed("Sent all padded heights");
@@ -282,7 +280,7 @@ impl Stark {
         // open combination codeword at the same positions
         // Notice that we need to loop over `indices` here, not `revealed_indices`
         // as the latter includes adjacent table rows relative to the values in `indices`
-        let revealed_combination_elements: Vec<XWord> = cross_codeword_slice_indices
+        let revealed_combination_elements: Vec<XFieldElement> = cross_codeword_slice_indices
             .iter()
             .map(|i| combination_codeword[*i])
             .collect();
@@ -508,7 +506,7 @@ impl Stark {
 
     fn get_extension_merkle_tree(
         hasher: &RescuePrimeXlix<16>,
-        transposed_extension_codewords: &Vec<Vec<XWord>>,
+        transposed_extension_codewords: &Vec<Vec<XFieldElement>>,
     ) -> MerkleTree<StarkHasher> {
         let mut extension_codeword_digests_by_index =
             Vec::with_capacity(transposed_extension_codewords.len());
@@ -542,7 +540,7 @@ impl Stark {
 
     fn get_merkle_tree(
         hasher: &RescuePrimeXlix<RP_DEFAULT_WIDTH>,
-        codewords: &Vec<Vec<BWord>>,
+        codewords: &Vec<Vec<BFieldElement>>,
     ) -> MerkleTree<StarkHasher> {
         let mut codeword_digests_by_index = Vec::with_capacity(codewords.len());
         codewords
@@ -580,10 +578,10 @@ impl Stark {
         base_tables
     }
 
-    fn get_randomizer_codewords(&self) -> (Vec<XWord>, Vec<Vec<BWord>>) {
+    fn get_randomizer_codewords(&self) -> (Vec<XFieldElement>, Vec<Vec<BFieldElement>>) {
         let mut rng = rand::thread_rng();
         let randomizer_coefficients =
-            XWord::random_elements(self.max_degree as usize + 1, &mut rng);
+            XFieldElement::random_elements(self.max_degree as usize + 1, &mut rng);
         let randomizer_polynomial = Polynomial::new(randomizer_coefficients);
 
         let x_randomizer_codeword = self.xfri.domain.evaluate(&randomizer_polynomial);
@@ -1016,9 +1014,9 @@ pub(crate) mod triton_stark_tests {
 
     fn parse_simulate_prove(
         code: &str,
-        co_set_fri_offset: BWord,
-        input_symbols: &[BWord],
-        output_symbols: &[BWord],
+        co_set_fri_offset: BFieldElement,
+        input_symbols: &[BFieldElement],
+        output_symbols: &[BFieldElement],
     ) -> (Stark, ProofStream<Item, RescuePrimeXlix<RP_DEFAULT_WIDTH>>) {
         let (base_matrices, _) = parse_simulate(code, input_symbols, &[]);
 
@@ -1057,8 +1055,8 @@ pub(crate) mod triton_stark_tests {
 
     fn parse_simulate(
         code: &str,
-        input_symbols: &[BWord],
-        secret_input_symbols: &[BWord],
+        input_symbols: &[BFieldElement],
+        secret_input_symbols: &[BFieldElement],
     ) -> (BaseMatrices, VecStream) {
         let program = Program::from_code(code);
 
@@ -1080,8 +1078,8 @@ pub(crate) mod triton_stark_tests {
 
     fn parse_simulate_pad_extend(
         code: &str,
-        stdin: &[BWord],
-        secret_in: &[BWord],
+        stdin: &[BFieldElement],
+        secret_in: &[BFieldElement],
     ) -> (
         VecStream,
         BaseTableCollection,
@@ -1282,7 +1280,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_prove_verify_test() {
-        let co_set_fri_offset = BWord::generator();
+        let co_set_fri_offset = BFieldElement::generator();
         let (stark, mut proof_stream) = parse_simulate_prove(
             "hash nop hash nop nop hash push 3 push 2 lt assert halt",
             co_set_fri_offset,

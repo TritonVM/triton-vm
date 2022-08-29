@@ -24,20 +24,17 @@ pub const HASH_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 18;
 pub const BASE_WIDTH: usize = 17;
 pub const FULL_WIDTH: usize = 21; // BASE_WIDTH + 2 * INITIALS_COUNT
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
-
 #[derive(Debug, Clone)]
 pub struct HashTable {
-    inherited_table: Table<BWord>,
+    inherited_table: Table<BFieldElement>,
 }
 
-impl InheritsFromTable<BWord> for HashTable {
-    fn inherited_table(&self) -> &Table<BWord> {
+impl InheritsFromTable<BFieldElement> for HashTable {
+    fn inherited_table(&self) -> &Table<BFieldElement> {
         &self.inherited_table
     }
 
-    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
         &mut self.inherited_table
     }
 }
@@ -71,7 +68,7 @@ impl Extendable for HashTable {
 impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
@@ -80,7 +77,7 @@ impl ExtHashTable {
         vec![round_number_is_0_or_1]
     }
 
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let constant = |c: u32| MPolynomial::from_constant(c.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
@@ -103,7 +100,9 @@ impl ExtHashTable {
         ]
     }
 
-    fn ext_transition_constraints(_challenges: &HashTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_transition_constraints(
+        _challenges: &HashTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let constant = |c: u32| MPolynomial::from_constant(c.into(), 2 * FULL_WIDTH);
         let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
 
@@ -136,13 +135,13 @@ impl ExtHashTable {
     fn ext_terminal_constraints(
         _challenges: &HashTableChallenges,
         _terminals: &HashTableEndpoints,
-    ) -> Vec<MPolynomial<XWord>> {
+    ) -> Vec<MPolynomial<XFieldElement>> {
         vec![]
     }
 }
 
 impl HashTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BWord>>) -> Self {
+    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
         let unpadded_height = matrix.len();
         let padded_height = base_table::pad_height(unpadded_height);
 
@@ -160,7 +159,7 @@ impl HashTable {
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
+    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
@@ -200,7 +199,7 @@ impl HashTable {
                 .iter()
                 .zip(challenges.stack_input_weights.iter())
                 .map(|(state, weight)| *weight * *state)
-                .fold(XWord::ring_zero(), |sum, summand| sum + summand);
+                .fold(XFieldElement::ring_zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_state_for_input);
 
             // Add compressed input to running sum if round index marks beginning of hashing
@@ -224,7 +223,7 @@ impl HashTable {
                 .iter()
                 .zip(challenges.digest_output_weights.iter())
                 .map(|(state, weight)| *weight * *state)
-                .fold(XWord::ring_zero(), |sum, summand| sum + summand);
+                .fold(XFieldElement::ring_zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_state_for_output);
 
             // Add compressed digest to running sum if round index marks end of hashing
@@ -296,7 +295,7 @@ impl HashTable {
 
 impl ExtHashTable {
     pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
-        let matrix: Vec<Vec<XWord>> = vec![];
+        let matrix: Vec<Vec<XFieldElement>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -314,8 +313,8 @@ impl ExtHashTable {
 
     pub fn ext_codeword_table(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        base_codewords: &[Vec<BWord>],
+        fri_domain: &FriDomain<XFieldElement>,
+        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
         let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);

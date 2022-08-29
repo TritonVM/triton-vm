@@ -10,8 +10,6 @@ use std::io::Cursor;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_xlix::{neptune_params, RescuePrimeXlix};
 
-type BWord = BFieldElement;
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
@@ -89,12 +87,12 @@ impl Program {
         Ok(Program::new(&instructions))
     }
 
-    /// Convert a `Program` to a `Vec<BWord>`.
+    /// Convert a `Program` to a `Vec<BFieldElement>`.
     ///
     /// Every single-word instruction is converted to a single word.
     ///
     /// Every double-word instruction is converted to two words.
-    pub fn to_bwords(&self) -> Vec<BWord> {
+    pub fn to_bwords(&self) -> Vec<BFieldElement> {
         self.clone()
             .into_iter()
             .map(|instruction| {
@@ -215,7 +213,7 @@ impl Program {
         &self,
         input: &[BFieldElement],
         secret_input: &[BFieldElement],
-    ) -> (Vec<VMState>, Vec<BWord>, Option<Box<dyn Error>>) {
+    ) -> (Vec<VMState>, Vec<BFieldElement>, Option<Box<dyn Error>>) {
         let input_bytes = input
             .iter()
             .flat_map(|elem| elem.value().to_be_bytes())
@@ -330,7 +328,7 @@ mod triton_vm_tests {
         let (_, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
 
         assert!(err.is_none());
-        let expected = BWord::new(14);
+        let expected = BFieldElement::new(14);
         let actual = stdout.to_bword_vec()[0];
 
         assert_eq!(expected, actual);
@@ -364,7 +362,7 @@ mod triton_vm_tests {
             ]
             .into_iter()
             .rev()
-            .map(|x| BWord::new(x));
+            .map(|x| BFieldElement::new(x));
             let actuals = stdout.to_bword_vec();
 
             assert_eq!(expecteds.len(), actuals.len());
@@ -456,7 +454,7 @@ mod triton_vm_tests {
     ) {
         // 1. Check `output_matrix`.
         {
-            let expecteds = vec![].into_iter().rev().map(|x| BWord::new(x));
+            let expecteds = vec![].into_iter().rev().map(|x| BFieldElement::new(x));
             let actuals = output_symbols.to_vec();
 
             assert_eq!(expecteds.len(), actuals.len());

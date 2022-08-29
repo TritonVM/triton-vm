@@ -21,20 +21,17 @@ pub const OP_STACK_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 4;
 pub const BASE_WIDTH: usize = 4;
 pub const FULL_WIDTH: usize = 6; // BASE_WIDTH + 2 * INITIALS_COUNT
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
-
 #[derive(Debug, Clone)]
 pub struct OpStackTable {
-    inherited_table: Table<BWord>,
+    inherited_table: Table<BFieldElement>,
 }
 
-impl InheritsFromTable<BWord> for OpStackTable {
-    fn inherited_table(&self) -> &Table<BWord> {
+impl InheritsFromTable<BFieldElement> for OpStackTable {
+    fn inherited_table(&self) -> &Table<BFieldElement> {
         &self.inherited_table
     }
 
-    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
         &mut self.inherited_table
     }
 }
@@ -61,7 +58,7 @@ impl InheritsFromTable<XFieldElement> for ExtOpStackTable {
 impl TableLike<BFieldElement> for OpStackTable {}
 
 impl Extendable for OpStackTable {
-    fn get_padding_row(&self) -> Vec<BWord> {
+    fn get_padding_row(&self) -> Vec<BFieldElement> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
             // add same clk padding as in processor table
@@ -80,10 +77,11 @@ impl Extendable for OpStackTable {
 impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
         use OpStackTableColumn::*;
 
-        let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> =
+            MPolynomial::variables(FULL_WIDTH, 1.into());
         let clk = variables[usize::from(CLK)].clone();
         let osv = variables[usize::from(OSV)].clone();
         let osp = variables[usize::from(OSP)].clone();
@@ -102,15 +100,18 @@ impl ExtOpStackTable {
     }
 
     // TODO actually use consistency constraints
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
         // no further constraints
         vec![]
     }
 
-    fn ext_transition_constraints(_challenges: &OpStackTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_transition_constraints(
+        _challenges: &OpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         use OpStackTableColumn::*;
 
-        let variables: Vec<MPolynomial<XWord>> = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> =
+            MPolynomial::variables(2 * FULL_WIDTH, 1.into());
         // let clk = variables[usize::from(CLK)].clone();
         let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
         let osv = variables[usize::from(OSV)].clone();
@@ -140,14 +141,14 @@ impl ExtOpStackTable {
     fn ext_terminal_constraints(
         _challenges: &OpStackTableChallenges,
         _terminals: &OpStackTableEndpoints,
-    ) -> Vec<MPolynomial<XWord>> {
+    ) -> Vec<MPolynomial<XFieldElement>> {
         // no further constraints
         vec![]
     }
 }
 
 impl OpStackTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BWord>>) -> Self {
+    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
         let unpadded_height = matrix.len();
         let padded_height = base_table::pad_height(unpadded_height);
 
@@ -165,7 +166,7 @@ impl OpStackTable {
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
+    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
@@ -264,7 +265,7 @@ impl OpStackTable {
 
 impl ExtOpStackTable {
     pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
-        let matrix: Vec<Vec<XWord>> = vec![];
+        let matrix: Vec<Vec<XFieldElement>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -282,8 +283,8 @@ impl ExtOpStackTable {
 
     pub fn ext_codeword_table(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        base_codewords: &[Vec<BWord>],
+        fri_domain: &FriDomain<XFieldElement>,
+        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
         let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);

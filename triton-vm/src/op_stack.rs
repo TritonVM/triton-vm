@@ -4,12 +4,9 @@ use std::error::Error;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
-
 #[derive(Debug, Clone)]
 pub struct OpStack {
-    pub stack: Vec<BWord>,
+    pub stack: Vec<BFieldElement>,
 }
 
 /// The number of op-stack registers, and the internal index at which the
@@ -26,22 +23,22 @@ impl Default for OpStack {
 }
 
 impl OpStack {
-    pub fn push(&mut self, elem: BWord) {
+    pub fn push(&mut self, elem: BFieldElement) {
         self.stack.push(elem);
     }
 
-    pub fn push_x(&mut self, elem: XWord) {
+    pub fn push_x(&mut self, elem: XFieldElement) {
         self.push(elem.coefficients[2]);
         self.push(elem.coefficients[1]);
         self.push(elem.coefficients[0]);
     }
 
-    pub fn pop(&mut self) -> Result<BWord, Box<dyn Error>> {
+    pub fn pop(&mut self) -> Result<BFieldElement, Box<dyn Error>> {
         self.stack.pop().ok_or_else(|| vm_fail(OpStackTooShallow))
     }
 
-    pub fn pop_x(&mut self) -> Result<XWord, Box<dyn Error>> {
-        Ok(XWord::new([self.pop()?, self.pop()?, self.pop()?]))
+    pub fn pop_x(&mut self) -> Result<XFieldElement, Box<dyn Error>> {
+        Ok(XFieldElement::new([self.pop()?, self.pop()?, self.pop()?]))
     }
 
     pub fn pop_u32(&mut self) -> Result<u32, Box<dyn Error>> {
@@ -50,15 +47,15 @@ impl OpStack {
             .map_err(|_| vm_fail(FailedU32Conversion(elem)))
     }
 
-    pub fn safe_peek_x(&mut self) -> XWord {
-        XWord::new([
+    pub fn safe_peek_x(&mut self) -> XFieldElement {
+        XFieldElement::new([
             self.safe_peek(ST0),
             self.safe_peek(ST1),
             self.safe_peek(ST2),
         ])
     }
 
-    pub fn safe_peek(&self, arg: Ord16) -> BWord {
+    pub fn safe_peek(&self, arg: Ord16) -> BFieldElement {
         let n: usize = arg.into();
         let top = self.stack.len() - 1;
         self.stack[top - n]
@@ -70,7 +67,7 @@ impl OpStack {
         self.stack.swap(top, top - n);
     }
 
-    pub fn peek(&self, n: usize) -> Option<BWord> {
+    pub fn peek(&self, n: usize) -> Option<BFieldElement> {
         let top = self.stack.len() - 1;
         self.stack.get(top - n).copied()
     }
@@ -84,7 +81,7 @@ impl OpStack {
     }
 
     /// Get the arg'th op-stack register value
-    pub fn st(&self, arg: Ord16) -> BWord {
+    pub fn st(&self, arg: Ord16) -> BFieldElement {
         let top = self.stack.len() - 1;
         let n: usize = arg.into();
         self.stack[top - n]
@@ -94,8 +91,8 @@ impl OpStack {
     ///
     /// Contains address of next empty op-stack position.
     /// Equivalent to the current length of the op-stack.
-    pub fn osp(&self) -> BWord {
-        BWord::new(self.stack.len() as u64)
+    pub fn osp(&self) -> BFieldElement {
+        BFieldElement::new(self.stack.len() as u64)
     }
 
     /// Operational stack value
@@ -103,7 +100,7 @@ impl OpStack {
     /// Has the value of the top-most op-stack value that does not have an st_ register.
     ///
     /// Assumed to be 0 when op-stack memory is empty.
-    pub fn osv(&self) -> BWord {
+    pub fn osv(&self) -> BFieldElement {
         if self.stack.len() <= OP_STACK_REG_COUNT {
             0.into()
         } else {

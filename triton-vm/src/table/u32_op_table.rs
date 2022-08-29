@@ -24,20 +24,17 @@ pub const U32_OP_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 4;
 pub const BASE_WIDTH: usize = 12;
 pub const FULL_WIDTH: usize = 14; // BASE_WIDTH + 2 * INITIALS_COUNT
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
-
 #[derive(Debug, Clone)]
 pub struct U32OpTable {
-    inherited_table: Table<BWord>,
+    inherited_table: Table<BFieldElement>,
 }
 
-impl InheritsFromTable<BWord> for U32OpTable {
-    fn inherited_table(&self) -> &Table<BWord> {
+impl InheritsFromTable<BFieldElement> for U32OpTable {
+    fn inherited_table(&self) -> &Table<BFieldElement> {
         &self.inherited_table
     }
 
-    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
         &mut self.inherited_table
     }
 }
@@ -63,7 +60,7 @@ impl InheritsFromTable<XFieldElement> for ExtU32OpTable {
 }
 
 impl Extendable for U32OpTable {
-    fn get_padding_row(&self) -> Vec<BWord> {
+    fn get_padding_row(&self) -> Vec<BFieldElement> {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
         padding_row[LT as usize] = 2.into();
         padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
@@ -77,7 +74,7 @@ impl Extendable for U32OpTable {
 impl TableLike<XFieldElement> for ExtU32OpTable {}
 
 impl ExtU32OpTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
+    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
         // todo: think this through again once all tables use the same padded height.
         // let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         // let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
@@ -87,7 +84,7 @@ impl ExtU32OpTable {
         vec![]
     }
 
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XWord>> {
+    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let two = MPolynomial::from_constant(2.into(), FULL_WIDTH);
         let thirty_three = MPolynomial::from_constant(33.into(), FULL_WIDTH);
@@ -143,7 +140,9 @@ impl ExtU32OpTable {
         ]
     }
 
-    fn ext_transition_constraints(_challenges: &U32OpTableChallenges) -> Vec<MPolynomial<XWord>> {
+    fn ext_transition_constraints(
+        _challenges: &U32OpTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let half = MPolynomial::from_constant(
             XFieldElement::new_const(BFieldElement::new(9223372034707292161)),
             2 * FULL_WIDTH,
@@ -254,7 +253,7 @@ impl ExtU32OpTable {
     fn ext_terminal_constraints(
         _challenges: &U32OpTableChallenges,
         _terminals: &U32OpTableEndpoints,
-    ) -> Vec<MPolynomial<XWord>> {
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
         let idc = variables[IDC as usize].clone();
         let lhs = variables[LHS as usize].clone();
@@ -264,7 +263,7 @@ impl ExtU32OpTable {
 }
 
 impl U32OpTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BWord>>) -> Self {
+    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
         let unpadded_height = matrix.len();
         let padded_height = base_table::pad_height(unpadded_height);
 
@@ -282,7 +281,7 @@ impl U32OpTable {
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
+    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
@@ -392,7 +391,7 @@ impl U32OpTable {
 
 impl ExtU32OpTable {
     pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
-        let matrix: Vec<Vec<XWord>> = vec![];
+        let matrix: Vec<Vec<XFieldElement>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -409,8 +408,8 @@ impl ExtU32OpTable {
 
     pub fn ext_codeword_table(
         &self,
-        fri_domain: &FriDomain<XWord>,
-        base_codewords: &[Vec<BWord>],
+        fri_domain: &FriDomain<XFieldElement>,
+        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
         let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);
