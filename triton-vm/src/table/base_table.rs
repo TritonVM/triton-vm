@@ -9,9 +9,6 @@ use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{GetRandomElements, PrimeField};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-type BWord = BFieldElement;
-type XWord = XFieldElement;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Table<FieldElement: PrimeField> {
     /// The width of each `data` row in the base version of the table
@@ -77,56 +74,9 @@ impl<DataPF: PrimeField> Table<DataPF> {
             terminal_quotient_degree_bounds: None,
         }
     }
-    pub fn extension(
-        base_table: Table<DataPF>,
-        boundary_constraints: Vec<MPolynomial<DataPF>>,
-        transition_constraints: Vec<MPolynomial<DataPF>>,
-        consistency_constraints: Vec<MPolynomial<DataPF>>,
-        terminal_constraints: Vec<MPolynomial<DataPF>>,
-    ) -> Self {
-        let interpolant_degree = base_table.interpolant_degree();
-        let full_width = base_table.full_width;
-
-        let bqdb =
-            Self::compute_degree_bounds(&boundary_constraints, interpolant_degree, full_width);
-        let tqdb = Self::compute_degree_bounds(
-            &transition_constraints,
-            interpolant_degree,
-            2 * full_width,
-        );
-        let cqdb =
-            Self::compute_degree_bounds(&consistency_constraints, interpolant_degree, full_width);
-        let termqdb =
-            Self::compute_degree_bounds(&terminal_constraints, interpolant_degree, full_width);
-        Table {
-            boundary_constraints: Some(boundary_constraints),
-            transition_constraints: Some(transition_constraints),
-            consistency_constraints: Some(consistency_constraints),
-            terminal_constraints: Some(terminal_constraints),
-            boundary_quotient_degree_bounds: Some(bqdb),
-            transition_quotient_degree_bounds: Some(tqdb),
-            consistency_quotient_degree_bounds: Some(cqdb),
-            terminal_quotient_degree_bounds: Some(termqdb),
-            ..base_table
-        }
-    }
 
     fn interpolant_degree(&self) -> Degree {
         (self.padded_height + self.num_trace_randomizers - 1) as Degree
-    }
-
-    /// Computes the degree bounds of the quotients given the AIR constraints and the interpolant
-    /// degree. The AIR constraints are defined over a symbolic ring with `full_width`-many
-    /// variables.
-    fn compute_degree_bounds(
-        air_constraints: &[MPolynomial<DataPF>],
-        interpolant_degree: Degree,
-        full_width: usize,
-    ) -> Vec<Degree> {
-        air_constraints
-            .iter()
-            .map(|mpo| mpo.symbolic_degree_bound(&vec![interpolant_degree; full_width]) - 1)
-            .collect()
     }
 
     /// Create a `BaseTable<DataPF>` with the same parameters, but new `matrix` data.
@@ -136,22 +86,6 @@ impl<DataPF: PrimeField> Table<DataPF> {
             name: format!("{} with data", self.name),
             ..self.to_owned()
         }
-    }
-}
-
-/// Create a `BaseTable<XWord` from a `BaseTable<BWord>` with the same parameters lifted from the
-/// B-Field into the X-Field (where applicable), but new `matrix` data.
-impl Table<BWord> {
-    pub fn with_lifted_data(&self, matrix: Vec<Vec<XWord>>) -> Table<XWord> {
-        Table::new(
-            self.base_width,
-            self.full_width,
-            self.padded_height,
-            self.num_trace_randomizers,
-            self.omicron.lift(),
-            matrix,
-            format!("{} with lifted data", self.name),
-        )
     }
 }
 
@@ -189,6 +123,124 @@ pub trait InheritsFromTable<DataPF: PrimeField> {
 
     fn mut_data(&mut self) -> &mut Vec<Vec<DataPF>> {
         &mut self.mut_inherited_table().matrix
+    }
+}
+
+pub trait Extendable: TableLike<BFieldElement> {
+    // Abstract functions that individual structs implement
+
+    fn get_padding_row(&self) -> Vec<BFieldElement>;
+
+    // Generic functions common to all extendable tables
+
+    fn new_from_lifted_matrix(&self, matrix: Vec<Vec<XFieldElement>>) -> Table<XFieldElement> {
+        Table::new(
+            self.base_width(),
+            self.full_width(),
+            self.padded_height(),
+            self.num_trace_randomizers(),
+            self.omicron().lift(),
+            matrix,
+            format!("{} with lifted matrix", self.name()),
+        )
+    }
+
+    fn pad(&mut self) {
+        while self.data().len() != pad_height(self.data().len()) {
+            let padding_row = self.get_padding_row();
+            self.mut_data().push(padding_row);
+        }
+    }
+
+    /// Computes the degree bounds of the quotients given the AIR constraints and the interpolant
+    /// degree. The AIR constraints are defined over a symbolic ring with `full_width`-many
+    /// variables.
+    fn compute_degree_bounds(
+        air_constraints: &[MPolynomial<XFieldElement>],
+        interpolant_degree: Degree,
+        full_width: usize,
+    ) -> Vec<Degree> {
+        air_constraints
+            .iter()
+            .map(|mpo| mpo.symbolic_degree_bound(&vec![interpolant_degree; full_width]) - 1)
+            .collect()
+    }
+
+    fn get_boundary_quotient_degree_bounds(
+        boundary_constraints: &[MPolynomial<XFieldElement>],
+        interpolant_degree: Degree,
+        full_width: usize,
+    ) -> Vec<Degree> {
+        Self::compute_degree_bounds(&boundary_constraints, interpolant_degree, full_width)
+    }
+
+    fn get_transition_quotient_degree_bounds(
+        transition_constraints: &[MPolynomial<XFieldElement>],
+        interpolant_degree: Degree,
+        full_width: usize,
+    ) -> Vec<Degree> {
+        Self::compute_degree_bounds(&transition_constraints, interpolant_degree, 2 * full_width)
+    }
+
+    fn get_consistency_quotient_degree_bounds(
+        consistency_constraints: &[MPolynomial<XFieldElement>],
+        interpolant_degree: Degree,
+        full_width: usize,
+    ) -> Vec<Degree> {
+        Self::compute_degree_bounds(&consistency_constraints, interpolant_degree, full_width)
+    }
+
+    fn get_terminal_quotient_degree_bounds(
+        terminal_constraints: &[MPolynomial<XFieldElement>],
+        interpolant_degree: Degree,
+        full_width: usize,
+    ) -> Vec<Degree> {
+        Self::compute_degree_bounds(&terminal_constraints, interpolant_degree, full_width)
+    }
+
+    fn extension(
+        &self,
+        extended_matrix: Vec<Vec<XFieldElement>>,
+        boundary_constraints: Vec<MPolynomial<XFieldElement>>,
+        transition_constraints: Vec<MPolynomial<XFieldElement>>,
+        consistency_constraints: Vec<MPolynomial<XFieldElement>>,
+        terminal_constraints: Vec<MPolynomial<XFieldElement>>,
+    ) -> Table<XFieldElement> {
+        let interpolant_degree = self.interpolant_degree();
+        let full_width = self.full_width();
+
+        let bqdb = Self::get_boundary_quotient_degree_bounds(
+            &boundary_constraints,
+            interpolant_degree,
+            full_width,
+        );
+        let tqdb = Self::get_transition_quotient_degree_bounds(
+            &transition_constraints,
+            interpolant_degree,
+            full_width,
+        );
+        let cqdb = Self::get_consistency_quotient_degree_bounds(
+            &consistency_constraints,
+            interpolant_degree,
+            full_width,
+        );
+        let termqdb = Self::get_terminal_quotient_degree_bounds(
+            &terminal_constraints,
+            interpolant_degree,
+            full_width,
+        );
+        let new_table = self.new_from_lifted_matrix(extended_matrix);
+        Table {
+            boundary_constraints: Some(boundary_constraints),
+            transition_constraints: Some(transition_constraints),
+            consistency_constraints: Some(consistency_constraints),
+            terminal_constraints: Some(terminal_constraints),
+            boundary_quotient_degree_bounds: Some(bqdb),
+            transition_quotient_degree_bounds: Some(tqdb),
+            consistency_quotient_degree_bounds: Some(cqdb),
+            terminal_quotient_degree_bounds: Some(termqdb),
+            ..new_table
+        }
     }
 }
 
@@ -231,21 +283,10 @@ where
     // Self: Sized,
     DataPF: PrimeField + GetRandomElements,
 {
-    // Abstract functions that individual structs implement
-
-    fn get_padding_row(&self) -> Vec<DataPF>;
-
     // Generic functions common to all tables
 
     fn name(&self) -> String {
         self.inherited_table().name.clone()
-    }
-
-    fn pad(&mut self) {
-        while self.data().len() != pad_height(self.data().len()) {
-            let padding_row = self.get_padding_row();
-            self.mut_data().push(padding_row);
-        }
     }
 
     /// Returns the relation between the FRI domain and the omicron domain

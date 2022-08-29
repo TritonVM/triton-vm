@@ -4,6 +4,7 @@ use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtension
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
+use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::U32OpTableColumn::*;
 use itertools::Itertools;
@@ -46,6 +47,7 @@ pub struct ExtU32OpTable {
     inherited_table: Table<XFieldElement>,
 }
 
+impl TableLike<BFieldElement> for U32OpTable {}
 impl Evaluable for ExtU32OpTable {}
 impl Quotientable for ExtU32OpTable {}
 impl QuotientableExtensionTable for ExtU32OpTable {}
@@ -60,7 +62,7 @@ impl InheritsFromTable<XFieldElement> for ExtU32OpTable {
     }
 }
 
-impl TableLike<BWord> for U32OpTable {
+impl Extendable for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
         padding_row[LT as usize] = 2.into();
@@ -72,11 +74,7 @@ impl TableLike<BWord> for U32OpTable {
     }
 }
 
-impl TableLike<XFieldElement> for ExtU32OpTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtU32OpTable {}
 
 impl ExtU32OpTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -347,21 +345,48 @@ impl U32OpTable {
             processor_perm_product: running_product,
         };
 
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let extension_table = Table::extension(
-            inherited_table,
+        let inherited_table = self.extension(
+            extension_matrix,
             ExtU32OpTable::ext_boundary_constraints(),
             ExtU32OpTable::ext_transition_constraints(challenges),
             ExtU32OpTable::ext_consistency_constraints(),
             ExtU32OpTable::ext_terminal_constraints(challenges, &terminals),
         );
+        (ExtU32OpTable { inherited_table }, terminals)
+    }
 
-        (
-            ExtU32OpTable {
-                inherited_table: extension_table,
-            },
-            terminals,
-        )
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtU32OpTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::<BFieldElement>::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtU32OpTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtU32OpTable::ext_boundary_constraints(),
+            ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
+            ExtU32OpTable::ext_consistency_constraints(),
+            ExtU32OpTable::ext_terminal_constraints(
+                &all_challenges.u32_op_table_challenges,
+                &all_terminals.u32_op_table_endpoints,
+            ),
+        );
+
+        ExtU32OpTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
@@ -399,38 +424,6 @@ impl ExtU32OpTable {
 
         let inherited_table = self.inherited_table.with_data(all_codewords);
         ExtU32OpTable { inherited_table }
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtU32OpTable".to_string(),
-        );
-        let extension_table = Table::extension(
-            inherited_table,
-            ExtU32OpTable::ext_boundary_constraints(),
-            ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
-            ExtU32OpTable::ext_consistency_constraints(),
-            ExtU32OpTable::ext_terminal_constraints(
-                &all_challenges.u32_op_table_challenges,
-                &all_terminals.u32_op_table_endpoints,
-            ),
-        );
-
-        ExtU32OpTable {
-            inherited_table: extension_table,
-        }
     }
 }
 

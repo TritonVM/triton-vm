@@ -621,9 +621,12 @@ impl Stark {
         let all_terminals = proof_stream.dequeue()?.as_terminals()?;
         timer.elapsed("Get extension tree's root & terminals from proof stream");
 
-        let ext_table_collection =
-            // ExtTableCollection::with_padded_heights(self.num_trace_randomizers, &padded_heights);
-            ExtTableCollection::for_verifier(self.num_trace_randomizers, &padded_heights, &extension_challenges, &all_terminals);
+        let ext_table_collection = ExtTableCollection::for_verifier(
+            self.num_trace_randomizers,
+            &padded_heights,
+            &extension_challenges,
+            &all_terminals,
+        );
 
         let base_degree_bounds: Vec<Degree> = ext_table_collection.get_all_base_degree_bounds();
         timer.elapsed("Calculated base degree bounds");

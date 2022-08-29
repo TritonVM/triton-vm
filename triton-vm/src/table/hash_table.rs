@@ -4,6 +4,7 @@ use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtension
 use super::table_column::HashTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::state::DIGEST_LEN;
+use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::HashTableColumn::*;
 use itertools::Itertools;
@@ -45,7 +46,6 @@ impl InheritsFromTable<BWord> for HashTable {
 pub struct ExtHashTable {
     inherited_table: Table<XFieldElement>,
 }
-
 impl Evaluable for ExtHashTable {}
 impl Quotientable for ExtHashTable {}
 impl QuotientableExtensionTable for ExtHashTable {}
@@ -60,17 +60,15 @@ impl InheritsFromTable<XFieldElement> for ExtHashTable {
     }
 }
 
-impl TableLike<BWord> for HashTable {
-    fn get_padding_row(&self) -> Vec<BWord> {
+impl TableLike<BFieldElement> for HashTable {}
+
+impl Extendable for HashTable {
+    fn get_padding_row(&self) -> Vec<BFieldElement> {
         vec![0.into(); BASE_WIDTH]
     }
 }
 
-impl TableLike<XFieldElement> for ExtHashTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -245,9 +243,8 @@ impl HashTable {
             to_processor_eval_sum: to_processor_running_sum,
         };
 
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let extension_table = Table::extension(
-            inherited_table,
+        let extension_table = self.extension(
+            extension_matrix,
             ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(challenges),
             ExtHashTable::ext_consistency_constraints(),
@@ -260,6 +257,40 @@ impl HashTable {
             },
             terminals,
         )
+    }
+
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtHashTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtHashTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtHashTable::ext_boundary_constraints(),
+            ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
+            ExtHashTable::ext_consistency_constraints(),
+            ExtHashTable::ext_terminal_constraints(
+                &all_challenges.hash_table_challenges,
+                &all_terminals.hash_table_endpoints,
+            ),
+        );
+
+        ExtHashTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
@@ -298,38 +329,6 @@ impl ExtHashTable {
 
         let inherited_table = self.inherited_table.with_data(all_codewords);
         ExtHashTable { inherited_table }
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtHashTable".to_string(),
-        );
-        let extension_table = Table::extension(
-            inherited_table,
-            ExtHashTable::ext_boundary_constraints(),
-            ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
-            ExtHashTable::ext_consistency_constraints(),
-            ExtHashTable::ext_terminal_constraints(
-                &all_challenges.hash_table_challenges,
-                &all_terminals.hash_table_endpoints,
-            ),
-        );
-
-        ExtHashTable {
-            inherited_table: extension_table,
-        }
     }
 }
 

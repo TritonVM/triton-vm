@@ -252,7 +252,7 @@ mod triton_vm_tests {
     use super::*;
     use crate::instruction::sample_programs;
     use crate::table::base_matrix::ProcessorMatrixRow;
-    use crate::table::base_table::{InheritsFromTable, TableLike};
+    use crate::table::base_table::{Extendable, InheritsFromTable};
     use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;

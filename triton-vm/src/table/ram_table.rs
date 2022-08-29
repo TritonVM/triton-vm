@@ -3,6 +3,7 @@ use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::RamTableColumn::{self, *};
 use crate::fri_domain::FriDomain;
+use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -126,21 +127,48 @@ impl RamTable {
             processor_perm_product: running_product,
         };
 
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let table = Table::extension(
-            inherited_table,
+        let inherited_table = self.extension(
+            extension_matrix,
             ExtRamTable::ext_boundary_constraints(),
             ExtRamTable::ext_transition_constraints(challenges),
             ExtRamTable::ext_consistency_constraints(),
             ExtRamTable::ext_terminal_constraints(challenges, &terminals),
         );
+        (ExtRamTable { inherited_table }, terminals)
+    }
 
-        (
-            ExtRamTable {
-                inherited_table: table,
-            },
-            terminals,
-        )
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtRamTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtRamTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtRamTable::ext_boundary_constraints(),
+            ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
+            ExtRamTable::ext_consistency_constraints(),
+            ExtRamTable::ext_terminal_constraints(
+                &all_challenges.ram_table_challenges,
+                &all_terminals.ram_table_endpoints,
+            ),
+        );
+
+        ExtRamTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
@@ -182,7 +210,9 @@ impl ExtRamTable {
     }
 }
 
-impl TableLike<BWord> for RamTable {
+impl TableLike<BFieldElement> for RamTable {}
+
+impl Extendable for RamTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -197,11 +227,7 @@ impl TableLike<BWord> for RamTable {
     }
 }
 
-impl TableLike<XFieldElement> for ExtRamTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtRamTable {}
 
 impl ExtRamTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -284,38 +310,6 @@ impl ExtRamTable {
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtRamTable".to_string(),
-        );
-        let extension_table = Table::extension(
-            inherited_table,
-            ExtRamTable::ext_boundary_constraints(),
-            ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_consistency_constraints(),
-            ExtRamTable::ext_terminal_constraints(
-                &all_challenges.ram_table_challenges,
-                &all_terminals.ram_table_endpoints,
-            ),
-        );
-
-        ExtRamTable {
-            inherited_table: extension_table,
-        }
     }
 }
 

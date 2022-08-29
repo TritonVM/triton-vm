@@ -2,7 +2,7 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::state::DIGEST_LEN;
-use crate::table::base_table::{self, InheritsFromTable, Table, TableLike};
+use crate::table::base_table::{self, Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
@@ -313,21 +313,51 @@ impl ProcessorTable {
             from_hash_table_eval_sum: from_hash_table_running_sum,
             u32_table_perm_product: u32_table_running_product,
         };
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let extension_table = Table::extension(
-            inherited_table,
+
+        let inherited_table = self.extension(
+            extension_matrix,
             ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(challenges),
             ExtProcessorTable::ext_consistency_constraints(),
             ExtProcessorTable::ext_terminal_constraints(challenges, &terminals),
         );
+        (ExtProcessorTable { inherited_table }, terminals)
+    }
 
-        (
-            ExtProcessorTable {
-                inherited_table: extension_table,
-            },
-            terminals,
-        )
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtProcessorTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtProcessorTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtProcessorTable::ext_boundary_constraints(),
+            ExtProcessorTable::ext_transition_constraints(
+                &all_challenges.processor_table_challenges,
+            ),
+            ExtProcessorTable::ext_consistency_constraints(),
+            ExtProcessorTable::ext_terminal_constraints(
+                &all_challenges.processor_table_challenges,
+                &all_terminals.processor_table_endpoints,
+            ),
+        );
+
+        ExtProcessorTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
@@ -518,7 +548,9 @@ impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
     }
 }
 
-impl TableLike<BWord> for ProcessorTable {
+impl TableLike<BFieldElement> for ProcessorTable {}
+
+impl Extendable for ProcessorTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -530,11 +562,7 @@ impl TableLike<BWord> for ProcessorTable {
     }
 }
 
-impl TableLike<XFieldElement> for ExtProcessorTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtProcessorTable {}
 
 impl ExtProcessorTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -773,40 +801,6 @@ impl ExtProcessorTable {
         let last_ci_is_halt = factory.ci();
 
         vec![last_ci_is_halt]
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtProcessorTable".to_string(),
-        );
-        let extension_table = Table::extension(
-            inherited_table,
-            ExtProcessorTable::ext_boundary_constraints(),
-            ExtProcessorTable::ext_transition_constraints(
-                &all_challenges.processor_table_challenges,
-            ),
-            ExtProcessorTable::ext_consistency_constraints(),
-            ExtProcessorTable::ext_terminal_constraints(
-                &all_challenges.processor_table_challenges,
-                &all_terminals.processor_table_endpoints,
-            ),
-        );
-
-        ExtProcessorTable {
-            inherited_table: extension_table,
-        }
     }
 }
 

@@ -3,6 +3,7 @@ use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::ProgramTableColumn;
 use crate::fri_domain::FriDomain;
+use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -57,7 +58,9 @@ impl InheritsFromTable<XFieldElement> for ExtProgramTable {
     }
 }
 
-impl TableLike<BWord> for ProgramTable {
+impl TableLike<BFieldElement> for ProgramTable {}
+
+impl Extendable for ProgramTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -71,11 +74,7 @@ impl TableLike<BWord> for ProgramTable {
     }
 }
 
-impl TableLike<XFieldElement> for ExtProgramTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtProgramTable {}
 
 impl ExtProgramTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -191,21 +190,48 @@ impl ProgramTable {
             instruction_eval_sum: instruction_table_running_sum,
         };
 
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let table = Table::extension(
-            inherited_table,
+        let inherited_table = self.extension(
+            extension_matrix,
             ExtProgramTable::ext_boundary_constraints(),
             ExtProgramTable::ext_transition_constraints(challenges),
             ExtProgramTable::ext_consistency_constraints(),
             ExtProgramTable::ext_terminal_constraints(challenges, &terminals),
         );
+        (ExtProgramTable { inherited_table }, terminals)
+    }
 
-        (
-            ExtProgramTable {
-                inherited_table: table,
-            },
-            terminals,
-        )
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtProgramTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtProgramTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtProgramTable::ext_boundary_constraints(),
+            ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
+            ExtProgramTable::ext_consistency_constraints(),
+            ExtProgramTable::ext_terminal_constraints(
+                &all_challenges.program_table_challenges,
+                &all_terminals.program_table_endpoints,
+            ),
+        );
+
+        ExtProgramTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
@@ -225,38 +251,6 @@ impl ExtProgramTable {
         );
 
         Self { inherited_table }
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtProgramTable".to_string(),
-        );
-        let extension_table = Table::extension(
-            inherited_table,
-            ExtProgramTable::ext_boundary_constraints(),
-            ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
-            ExtProgramTable::ext_consistency_constraints(),
-            ExtProgramTable::ext_terminal_constraints(
-                &all_challenges.program_table_challenges,
-                &all_terminals.program_table_endpoints,
-            ),
-        );
-
-        ExtProgramTable {
-            inherited_table: extension_table,
-        }
     }
 
     pub fn ext_codeword_table(

@@ -4,6 +4,7 @@ use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtension
 use super::table_column::JumpStackTableColumn::*;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
+use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -58,7 +59,9 @@ impl InheritsFromTable<XFieldElement> for ExtJumpStackTable {
     }
 }
 
-impl TableLike<BWord> for JumpStackTable {
+impl TableLike<BFieldElement> for JumpStackTable {}
+
+impl Extendable for JumpStackTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -73,11 +76,7 @@ impl TableLike<BWord> for JumpStackTable {
     }
 }
 
-impl TableLike<XFieldElement> for ExtJumpStackTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -248,21 +247,50 @@ impl JumpStackTable {
             processor_perm_product: running_product,
         };
 
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let extension_table = Table::extension(
-            inherited_table,
+        let inherited_table = self.extension(
+            extension_matrix,
             ExtJumpStackTable::ext_boundary_constraints(),
             ExtJumpStackTable::ext_transition_constraints(challenges),
             ExtJumpStackTable::ext_consistency_constraints(),
             ExtJumpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
+        (ExtJumpStackTable { inherited_table }, terminals)
+    }
 
-        (
-            ExtJumpStackTable {
-                inherited_table: extension_table,
-            },
-            terminals,
-        )
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtJumpStackTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtJumpStackTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtJumpStackTable::ext_boundary_constraints(),
+            ExtJumpStackTable::ext_transition_constraints(
+                &all_challenges.jump_stack_table_challenges,
+            ),
+            ExtJumpStackTable::ext_consistency_constraints(),
+            ExtJumpStackTable::ext_terminal_constraints(
+                &all_challenges.jump_stack_table_challenges,
+                &all_terminals.jump_stack_table_endpoints,
+            ),
+        );
+
+        ExtJumpStackTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
@@ -301,40 +329,6 @@ impl ExtJumpStackTable {
 
         let inherited_table = self.inherited_table.with_data(all_codewords);
         ExtJumpStackTable { inherited_table }
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtJumpStackTable".to_string(),
-        );
-        let table = Table::extension(
-            inherited_table,
-            ExtJumpStackTable::ext_boundary_constraints(),
-            ExtJumpStackTable::ext_transition_constraints(
-                &all_challenges.jump_stack_table_challenges,
-            ),
-            ExtJumpStackTable::ext_consistency_constraints(),
-            ExtJumpStackTable::ext_terminal_constraints(
-                &all_challenges.jump_stack_table_challenges,
-                &all_terminals.jump_stack_table_endpoints,
-            ),
-        );
-
-        ExtJumpStackTable {
-            inherited_table: table,
-        }
     }
 }
 

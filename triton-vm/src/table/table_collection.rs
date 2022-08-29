@@ -11,7 +11,7 @@ use super::program_table::{ExtProgramTable, ProgramTable};
 use super::ram_table::{ExtRamTable, RamTable};
 use super::u32_op_table::{ExtU32OpTable, U32OpTable};
 use crate::fri_domain::FriDomain;
-use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -228,56 +228,56 @@ impl ExtTableCollection {
     ) -> Self {
         // TODO: integrate challenges and terminals
 
-        let ext_program_table = ExtProgramTable::for_verifier(
+        let ext_program_table = ProgramTable::for_verifier(
             num_trace_randomizers,
             padded_heights[0],
             challenges,
             terminals,
         );
 
-        let ext_instruction_table = ExtInstructionTable::for_verifier(
+        let ext_instruction_table = InstructionTable::for_verifier(
             num_trace_randomizers,
             padded_heights[1],
             challenges,
             terminals,
         );
 
-        let ext_processor_table = ExtProcessorTable::for_verifier(
+        let ext_processor_table = ProcessorTable::for_verifier(
             num_trace_randomizers,
             padded_heights[2],
             challenges,
             terminals,
         );
 
-        let ext_op_stack_table = ExtOpStackTable::for_verifier(
+        let ext_op_stack_table = OpStackTable::for_verifier(
             num_trace_randomizers,
             padded_heights[3],
             challenges,
             terminals,
         );
 
-        let ext_ram_table = ExtRamTable::for_verifier(
+        let ext_ram_table = RamTable::for_verifier(
             num_trace_randomizers,
             padded_heights[4],
             challenges,
             terminals,
         );
 
-        let ext_jump_stack_table = ExtJumpStackTable::for_verifier(
+        let ext_jump_stack_table = JumpStackTable::for_verifier(
             num_trace_randomizers,
             padded_heights[5],
             challenges,
             terminals,
         );
 
-        let ext_hash_table = ExtHashTable::for_verifier(
+        let ext_hash_table = HashTable::for_verifier(
             num_trace_randomizers,
             padded_heights[6],
             challenges,
             terminals,
         );
 
-        let ext_u32_op_table = ExtU32OpTable::for_verifier(
+        let ext_u32_op_table = U32OpTable::for_verifier(
             num_trace_randomizers,
             padded_heights[7],
             challenges,

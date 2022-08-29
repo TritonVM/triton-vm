@@ -3,6 +3,7 @@ use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
+use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -57,7 +58,9 @@ impl InheritsFromTable<XFieldElement> for ExtOpStackTable {
     }
 }
 
-impl TableLike<BWord> for OpStackTable {
+impl TableLike<BFieldElement> for OpStackTable {}
+
+impl Extendable for OpStackTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -74,11 +77,7 @@ impl TableLike<BWord> for OpStackTable {
     }
 }
 
-impl TableLike<XFieldElement> for ExtOpStackTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -218,21 +217,48 @@ impl OpStackTable {
             processor_perm_product: running_product,
         };
 
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let extension_table = Table::extension(
-            inherited_table,
+        let inherited_table = self.extension(
+            extension_matrix,
             ExtOpStackTable::ext_boundary_constraints(),
             ExtOpStackTable::ext_transition_constraints(challenges),
             ExtOpStackTable::ext_consistency_constraints(),
             ExtOpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
+        (ExtOpStackTable { inherited_table }, terminals)
+    }
 
-        (
-            ExtOpStackTable {
-                inherited_table: extension_table,
-            },
-            terminals,
-        )
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtOpStackTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtOpStackTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtOpStackTable::ext_boundary_constraints(),
+            ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
+            ExtOpStackTable::ext_consistency_constraints(),
+            ExtOpStackTable::ext_terminal_constraints(
+                &all_challenges.op_stack_table_challenges,
+                &all_terminals.op_stack_table_endpoints,
+            ),
+        );
+
+        ExtOpStackTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
@@ -271,38 +297,6 @@ impl ExtOpStackTable {
 
         let inherited_table = self.inherited_table.with_data(all_codewords);
         ExtOpStackTable { inherited_table }
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtOpStackTable".to_string(),
-        );
-        let extension_table = Table::extension(
-            inherited_table,
-            ExtOpStackTable::ext_boundary_constraints(),
-            ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
-            ExtOpStackTable::ext_consistency_constraints(),
-            ExtOpStackTable::ext_terminal_constraints(
-                &all_challenges.op_stack_table_challenges,
-                &all_terminals.op_stack_table_endpoints,
-            ),
-        );
-
-        ExtOpStackTable {
-            inherited_table: extension_table,
-        }
     }
 }
 

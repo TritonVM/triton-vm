@@ -4,6 +4,7 @@ use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::InstructionTableColumn::{self, *};
 use crate::fri_domain::FriDomain;
+use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -58,7 +59,9 @@ impl InheritsFromTable<XFieldElement> for ExtInstructionTable {
     }
 }
 
-impl TableLike<BWord> for InstructionTable {
+impl TableLike<BFieldElement> for InstructionTable {}
+
+impl Extendable for InstructionTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -71,11 +74,7 @@ impl TableLike<BWord> for InstructionTable {
     }
 }
 
-impl TableLike<XFieldElement> for ExtInstructionTable {
-    fn get_padding_row(&self) -> Vec<XFieldElement> {
-        panic!("Extension tables don't get padded");
-    }
-}
+impl TableLike<XFieldElement> for ExtInstructionTable {}
 
 impl ExtInstructionTable {
     fn ext_boundary_constraints() -> Vec<MPolynomial<XWord>> {
@@ -125,40 +124,6 @@ impl ExtInstructionTable {
     ) -> Vec<MPolynomial<XWord>> {
         // no further constraints
         vec![]
-    }
-
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
-    ) -> Self {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtInstructionTable".to_string(),
-        );
-        let table = Table::extension(
-            inherited_table,
-            ExtInstructionTable::ext_boundary_constraints(),
-            ExtInstructionTable::ext_transition_constraints(
-                &all_challenges.instruction_table_challenges,
-            ),
-            ExtInstructionTable::ext_consistency_constraints(),
-            ExtInstructionTable::ext_terminal_constraints(
-                &all_challenges.instruction_table_challenges,
-                &all_terminals.instruction_table_endpoints,
-            ),
-        );
-
-        ExtInstructionTable {
-            inherited_table: table,
-        }
     }
 }
 
@@ -263,21 +228,50 @@ impl InstructionTable {
             program_eval_sum: program_table_running_sum,
         };
 
-        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
-        let extension_table = Table::extension(
-            inherited_table,
+        let inherited_table = self.extension(
+            extension_matrix,
             ExtInstructionTable::ext_boundary_constraints(),
             ExtInstructionTable::ext_transition_constraints(challenges),
             ExtInstructionTable::ext_consistency_constraints(),
             ExtInstructionTable::ext_terminal_constraints(challenges, &terminals),
         );
+        (ExtInstructionTable { inherited_table }, terminals)
+    }
 
-        (
-            ExtInstructionTable {
-                inherited_table: extension_table,
-            },
-            terminals,
-        )
+    pub fn for_verifier(
+        num_trace_randomizers: usize,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+        all_terminals: &AllEndpoints,
+    ) -> ExtInstructionTable {
+        let omicron = base_table::derive_omicron(padded_height as u64);
+        let inherited_table = Table::new(
+            BASE_WIDTH,
+            FULL_WIDTH,
+            padded_height,
+            num_trace_randomizers,
+            omicron,
+            vec![],
+            "ExtInstructionTable".to_string(),
+        );
+        let base_table = Self { inherited_table };
+        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
+        let extension_table = base_table.extension(
+            empty_matrix,
+            ExtInstructionTable::ext_boundary_constraints(),
+            ExtInstructionTable::ext_transition_constraints(
+                &all_challenges.instruction_table_challenges,
+            ),
+            ExtInstructionTable::ext_consistency_constraints(),
+            ExtInstructionTable::ext_terminal_constraints(
+                &all_challenges.instruction_table_challenges,
+                &all_terminals.instruction_table_endpoints,
+            ),
+        );
+
+        ExtInstructionTable {
+            inherited_table: extension_table,
+        }
     }
 }
 
