@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::HashTableColumn;
@@ -28,34 +28,34 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct HashTable {
-    base: BaseTable<BWord>,
+    base: Table<BWord>,
 }
 
-impl HasBaseTable<BWord> for HashTable {
-    fn to_base(&self) -> &BaseTable<BWord> {
+impl InheritsFromTable<BWord> for HashTable {
+    fn to_base(&self) -> &Table<BWord> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<BWord> {
+    fn to_mut_base(&mut self) -> &mut Table<BWord> {
         &mut self.base
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtHashTable {
-    base: BaseTable<XFieldElement>,
+    base: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtHashTable {}
 impl Quotientable for ExtHashTable {}
 impl QuotientableExtensionTable for ExtHashTable {}
 
-impl HasBaseTable<XFieldElement> for ExtHashTable {
-    fn to_base(&self) -> &BaseTable<XFieldElement> {
+impl InheritsFromTable<XFieldElement> for ExtHashTable {
+    fn to_base(&self) -> &Table<XFieldElement> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<XFieldElement> {
+    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
         &mut self.base
     }
 }
@@ -149,7 +149,7 @@ impl HashTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -246,7 +246,7 @@ impl HashTable {
         };
 
         let base = self.base.with_lifted_data(extension_matrix);
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(challenges),
@@ -263,7 +263,7 @@ impl ExtHashTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -302,7 +302,7 @@ impl ExtHashTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -311,7 +311,7 @@ impl ExtHashTable {
             vec![],
             "ExtHashTable".to_string(),
         );
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),

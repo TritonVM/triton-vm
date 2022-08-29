@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::OpStackTableColumn;
@@ -25,34 +25,34 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct OpStackTable {
-    base: BaseTable<BWord>,
+    base: Table<BWord>,
 }
 
-impl HasBaseTable<BWord> for OpStackTable {
-    fn to_base(&self) -> &BaseTable<BWord> {
+impl InheritsFromTable<BWord> for OpStackTable {
+    fn to_base(&self) -> &Table<BWord> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<BWord> {
+    fn to_mut_base(&mut self) -> &mut Table<BWord> {
         &mut self.base
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtOpStackTable {
-    base: BaseTable<XFieldElement>,
+    base: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtOpStackTable {}
 impl Quotientable for ExtOpStackTable {}
 impl QuotientableExtensionTable for ExtOpStackTable {}
 
-impl HasBaseTable<XFieldElement> for ExtOpStackTable {
-    fn to_base(&self) -> &BaseTable<XFieldElement> {
+impl InheritsFromTable<XFieldElement> for ExtOpStackTable {
+    fn to_base(&self) -> &Table<XFieldElement> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<XFieldElement> {
+    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
         &mut self.base
     }
 }
@@ -153,7 +153,7 @@ impl OpStackTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -219,7 +219,7 @@ impl OpStackTable {
         };
 
         let base = self.base.with_lifted_data(extension_matrix);
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtOpStackTable::ext_boundary_constraints(),
             ExtOpStackTable::ext_transition_constraints(challenges),
@@ -236,7 +236,7 @@ impl ExtOpStackTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -275,7 +275,7 @@ impl ExtOpStackTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -284,7 +284,7 @@ impl ExtOpStackTable {
             vec![],
             "ExtOpStackTable".to_string(),
         );
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtOpStackTable::ext_boundary_constraints(),
             ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),

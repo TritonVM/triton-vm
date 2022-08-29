@@ -2,7 +2,7 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::state::DIGEST_LEN;
-use crate::table::base_table::{self, BaseTable, HasBaseTable, TableLike};
+use crate::table::base_table::{self, InheritsFromTable, Table, TableLike};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
@@ -31,15 +31,15 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorTable {
-    base: BaseTable<BWord>,
+    base: Table<BWord>,
 }
 
-impl HasBaseTable<BWord> for ProcessorTable {
-    fn to_base(&self) -> &BaseTable<BWord> {
+impl InheritsFromTable<BWord> for ProcessorTable {
+    fn to_base(&self) -> &Table<BWord> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<BWord> {
+    fn to_mut_base(&mut self) -> &mut Table<BWord> {
         &mut self.base
     }
 }
@@ -50,7 +50,7 @@ impl ProcessorTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -314,7 +314,7 @@ impl ProcessorTable {
             u32_table_perm_product: u32_table_running_product,
         };
         let base = self.base.with_lifted_data(extension_matrix);
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(challenges),
@@ -331,7 +331,7 @@ impl ExtProcessorTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -363,7 +363,7 @@ impl ExtProcessorTable {
         Self::new(base)
     }
 
-    pub fn new(base: BaseTable<XFieldElement>) -> ExtProcessorTable {
+    pub fn new(base: Table<XFieldElement>) -> ExtProcessorTable {
         Self { base }
     }
 
@@ -494,19 +494,19 @@ pub struct IOChallenges {
 
 #[derive(Debug, Clone)]
 pub struct ExtProcessorTable {
-    base: BaseTable<XFieldElement>,
+    base: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtProcessorTable {}
 impl Quotientable for ExtProcessorTable {}
 impl QuotientableExtensionTable for ExtProcessorTable {}
 
-impl HasBaseTable<XFieldElement> for ExtProcessorTable {
-    fn to_base(&self) -> &BaseTable<XFieldElement> {
+impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
+    fn to_base(&self) -> &Table<XFieldElement> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<XFieldElement> {
+    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
         &mut self.base
     }
 }
@@ -775,7 +775,7 @@ impl ExtProcessorTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -784,7 +784,7 @@ impl ExtProcessorTable {
             vec![],
             "ExtProcessorTable".to_string(),
         );
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(

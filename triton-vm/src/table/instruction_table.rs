@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
 
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
@@ -26,34 +26,34 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct InstructionTable {
-    base: BaseTable<BWord>,
+    base: Table<BWord>,
 }
 
-impl HasBaseTable<BWord> for InstructionTable {
-    fn to_base(&self) -> &BaseTable<BWord> {
+impl InheritsFromTable<BWord> for InstructionTable {
+    fn to_base(&self) -> &Table<BWord> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<BWord> {
+    fn to_mut_base(&mut self) -> &mut Table<BWord> {
         &mut self.base
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtInstructionTable {
-    base: BaseTable<XFieldElement>,
+    base: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtInstructionTable {}
 impl Quotientable for ExtInstructionTable {}
 impl QuotientableExtensionTable for ExtInstructionTable {}
 
-impl HasBaseTable<XFieldElement> for ExtInstructionTable {
-    fn to_base(&self) -> &BaseTable<XFieldElement> {
+impl InheritsFromTable<XFieldElement> for ExtInstructionTable {
+    fn to_base(&self) -> &Table<XFieldElement> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<XFieldElement> {
+    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
         &mut self.base
     }
 }
@@ -134,7 +134,7 @@ impl ExtInstructionTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -143,7 +143,7 @@ impl ExtInstructionTable {
             vec![],
             "ExtInstructionTable".to_string(),
         );
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtInstructionTable::ext_boundary_constraints(),
             ExtInstructionTable::ext_transition_constraints(
@@ -166,7 +166,7 @@ impl InstructionTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -262,7 +262,7 @@ impl InstructionTable {
         };
 
         let base = self.base.with_lifted_data(extension_matrix);
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtInstructionTable::ext_boundary_constraints(),
             ExtInstructionTable::ext_transition_constraints(challenges),
@@ -279,7 +279,7 @@ impl ExtInstructionTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,

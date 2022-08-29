@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::U32OpTableColumn;
@@ -28,34 +28,34 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct U32OpTable {
-    base: BaseTable<BWord>,
+    base: Table<BWord>,
 }
 
-impl HasBaseTable<BWord> for U32OpTable {
-    fn to_base(&self) -> &BaseTable<BWord> {
+impl InheritsFromTable<BWord> for U32OpTable {
+    fn to_base(&self) -> &Table<BWord> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<BWord> {
+    fn to_mut_base(&mut self) -> &mut Table<BWord> {
         &mut self.base
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtU32OpTable {
-    base: BaseTable<XFieldElement>,
+    base: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtU32OpTable {}
 impl Quotientable for ExtU32OpTable {}
 impl QuotientableExtensionTable for ExtU32OpTable {}
 
-impl HasBaseTable<XFieldElement> for ExtU32OpTable {
-    fn to_base(&self) -> &BaseTable<XFieldElement> {
+impl InheritsFromTable<XFieldElement> for ExtU32OpTable {
+    fn to_base(&self) -> &Table<XFieldElement> {
         &self.base
     }
 
-    fn to_mut_base(&mut self) -> &mut BaseTable<XFieldElement> {
+    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
         &mut self.base
     }
 }
@@ -271,7 +271,7 @@ impl U32OpTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -348,7 +348,7 @@ impl U32OpTable {
         };
 
         let base = self.base.with_lifted_data(extension_matrix);
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtU32OpTable::ext_boundary_constraints(),
             ExtU32OpTable::ext_transition_constraints(challenges),
@@ -365,7 +365,7 @@ impl ExtU32OpTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -404,7 +404,7 @@ impl ExtU32OpTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = BaseTable::new(
+        let base = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -413,7 +413,7 @@ impl ExtU32OpTable {
             vec![],
             "ExtU32OpTable".to_string(),
         );
-        let table = BaseTable::extension(
+        let table = Table::extension(
             base,
             ExtU32OpTable::ext_boundary_constraints(),
             ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),

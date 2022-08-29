@@ -11,7 +11,7 @@ use super::program_table::{ExtProgramTable, ProgramTable};
 use super::ram_table::{ExtRamTable, RamTable};
 use super::u32_op_table::{ExtU32OpTable, U32OpTable};
 use crate::fri_domain::FriDomain;
-use crate::table::base_table::HasBaseTable;
+use crate::table::base_table::InheritsFromTable;
 use crate::table::extension_table::DegreeWithOrigin;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;

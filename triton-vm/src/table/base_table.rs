@@ -13,7 +13,7 @@ type BWord = BFieldElement;
 type XWord = XFieldElement;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BaseTable<FieldElement: PrimeField> {
+pub struct Table<FieldElement: PrimeField> {
     /// The width of each `data` row in the base version of the table
     base_width: usize,
 
@@ -49,7 +49,7 @@ pub struct BaseTable<FieldElement: PrimeField> {
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<DataPF: PrimeField> BaseTable<DataPF> {
+impl<DataPF: PrimeField> Table<DataPF> {
     pub fn new(
         base_width: usize,
         full_width: usize,
@@ -59,7 +59,7 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
         matrix: Vec<Vec<DataPF>>,
         name: String,
     ) -> Self {
-        BaseTable {
+        Table {
             base_width,
             full_width,
             padded_height,
@@ -78,7 +78,7 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
         }
     }
     pub fn extension(
-        base_table: BaseTable<DataPF>,
+        base_table: Table<DataPF>,
         boundary_constraints: Vec<MPolynomial<DataPF>>,
         transition_constraints: Vec<MPolynomial<DataPF>>,
         consistency_constraints: Vec<MPolynomial<DataPF>>,
@@ -98,7 +98,7 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
             Self::compute_degree_bounds(&consistency_constraints, interpolant_degree, full_width);
         let termqdb =
             Self::compute_degree_bounds(&terminal_constraints, interpolant_degree, full_width);
-        BaseTable {
+        Table {
             boundary_constraints: Some(boundary_constraints),
             transition_constraints: Some(transition_constraints),
             consistency_constraints: Some(consistency_constraints),
@@ -131,7 +131,7 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
 
     /// Create a `BaseTable<DataPF>` with the same parameters, but new `matrix` data.
     pub fn with_data(&self, matrix: Vec<Vec<DataPF>>) -> Self {
-        BaseTable {
+        Table {
             matrix,
             name: format!("{} with data", self.name),
             ..self.to_owned()
@@ -141,9 +141,9 @@ impl<DataPF: PrimeField> BaseTable<DataPF> {
 
 /// Create a `BaseTable<XWord` from a `BaseTable<BWord>` with the same parameters lifted from the
 /// B-Field into the X-Field (where applicable), but new `matrix` data.
-impl BaseTable<BWord> {
-    pub fn with_lifted_data(&self, matrix: Vec<Vec<XWord>>) -> BaseTable<XWord> {
-        BaseTable::new(
+impl Table<BWord> {
+    pub fn with_lifted_data(&self, matrix: Vec<Vec<XWord>>) -> Table<XWord> {
+        Table::new(
             self.base_width,
             self.full_width,
             self.padded_height,
@@ -155,9 +155,9 @@ impl BaseTable<BWord> {
     }
 }
 
-pub trait HasBaseTable<DataPF: PrimeField> {
-    fn to_base(&self) -> &BaseTable<DataPF>;
-    fn to_mut_base(&mut self) -> &mut BaseTable<DataPF>;
+pub trait InheritsFromTable<DataPF: PrimeField> {
+    fn to_base(&self) -> &Table<DataPF>;
+    fn to_mut_base(&mut self) -> &mut Table<DataPF>;
 
     fn base_width(&self) -> usize {
         self.to_base().base_width
@@ -226,7 +226,7 @@ fn disjoint_domain<DataPF: PrimeField>(
         .collect_vec()
 }
 
-pub trait TableLike<DataPF>: HasBaseTable<DataPF>
+pub trait TableLike<DataPF>: InheritsFromTable<DataPF>
 where
     // Self: Sized,
     DataPF: PrimeField + GetRandomElements,
