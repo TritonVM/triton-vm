@@ -226,7 +226,7 @@ fn disjoint_domain<DataPF: PrimeField>(
         .collect_vec()
 }
 
-pub trait BaseTableTrait<DataPF>: HasBaseTable<DataPF>
+pub trait TableLike<DataPF>: HasBaseTable<DataPF>
 where
     // Self: Sized,
     DataPF: PrimeField + GetRandomElements,

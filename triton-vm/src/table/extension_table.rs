@@ -12,14 +12,14 @@ use crate::fri_domain::FriDomain;
 use crate::stark::Stark;
 use crate::table::challenges_endpoints::AllEndpoints;
 
-use super::base_table::BaseTableTrait;
+use super::base_table::TableLike;
 use super::challenges_endpoints::AllChallenges;
 
 // Generic methods specifically for tables that have been extended
 
 type XWord = XFieldElement;
 
-pub trait ExtensionTable: BaseTableTrait<XWord> + Sync {
+pub trait ExtensionTable: TableLike<XWord> + Sync {
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
         let interpolant_degree = self.interpolant_degree();

@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
+use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::U32OpTableColumn;
@@ -60,7 +60,7 @@ impl HasBaseTable<XFieldElement> for ExtU32OpTable {
     }
 }
 
-impl BaseTableTrait<BWord> for U32OpTable {
+impl TableLike<BWord> for U32OpTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
         padding_row[LT as usize] = 2.into();
@@ -72,7 +72,7 @@ impl BaseTableTrait<BWord> for U32OpTable {
     }
 }
 
-impl BaseTableTrait<XFieldElement> for ExtU32OpTable {
+impl TableLike<XFieldElement> for ExtU32OpTable {
     fn get_padding_row(&self) -> Vec<XFieldElement> {
         panic!("Extension tables don't get padded");
     }

@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
+use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::JumpStackTableColumn::*;
@@ -58,7 +58,7 @@ impl HasBaseTable<XFieldElement> for ExtJumpStackTable {
     }
 }
 
-impl BaseTableTrait<BWord> for JumpStackTable {
+impl TableLike<BWord> for JumpStackTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -73,7 +73,7 @@ impl BaseTableTrait<BWord> for JumpStackTable {
     }
 }
 
-impl BaseTableTrait<XFieldElement> for ExtJumpStackTable {
+impl TableLike<XFieldElement> for ExtJumpStackTable {
     fn get_padding_row(&self) -> Vec<XFieldElement> {
         panic!("Extension tables don't get padded");
     }

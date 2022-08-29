@@ -1,5 +1,5 @@
 use super::base_matrix::BaseMatrices;
-use super::base_table::BaseTableTrait;
+use super::base_table::TableLike;
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::QuotientableExtensionTable;
 use super::hash_table::{ExtHashTable, HashTable};
@@ -162,20 +162,20 @@ impl BaseTableCollection {
 }
 
 impl<'a> IntoIterator for &'a BaseTableCollection {
-    type Item = &'a dyn BaseTableTrait<BWord>;
+    type Item = &'a dyn TableLike<BWord>;
 
-    type IntoIter = std::array::IntoIter<&'a dyn BaseTableTrait<BWord>, NUM_TABLES>;
+    type IntoIter = std::array::IntoIter<&'a dyn TableLike<BWord>, NUM_TABLES>;
 
     fn into_iter(self) -> Self::IntoIter {
         [
-            &self.program_table as &'a dyn BaseTableTrait<BWord>,
-            &self.instruction_table as &'a dyn BaseTableTrait<BWord>,
-            &self.processor_table as &'a dyn BaseTableTrait<BWord>,
-            &self.op_stack_table as &'a dyn BaseTableTrait<BWord>,
-            &self.ram_table as &'a dyn BaseTableTrait<BWord>,
-            &self.jump_stack_table as &'a dyn BaseTableTrait<BWord>,
-            &self.hash_table as &'a dyn BaseTableTrait<BWord>,
-            &self.u32_op_table as &'a dyn BaseTableTrait<BWord>,
+            &self.program_table as &'a dyn TableLike<BWord>,
+            &self.instruction_table as &'a dyn TableLike<BWord>,
+            &self.processor_table as &'a dyn TableLike<BWord>,
+            &self.op_stack_table as &'a dyn TableLike<BWord>,
+            &self.ram_table as &'a dyn TableLike<BWord>,
+            &self.jump_stack_table as &'a dyn TableLike<BWord>,
+            &self.hash_table as &'a dyn TableLike<BWord>,
+            &self.u32_op_table as &'a dyn TableLike<BWord>,
         ]
         .into_iter()
     }

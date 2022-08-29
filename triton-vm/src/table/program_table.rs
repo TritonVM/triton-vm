@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
+use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::ProgramTableColumn;
@@ -57,7 +57,7 @@ impl HasBaseTable<XFieldElement> for ExtProgramTable {
     }
 }
 
-impl BaseTableTrait<BWord> for ProgramTable {
+impl TableLike<BWord> for ProgramTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -71,7 +71,7 @@ impl BaseTableTrait<BWord> for ProgramTable {
     }
 }
 
-impl BaseTableTrait<XFieldElement> for ExtProgramTable {
+impl TableLike<XFieldElement> for ExtProgramTable {
     fn get_padding_row(&self) -> Vec<XFieldElement> {
         panic!("Extension tables don't get padded");
     }

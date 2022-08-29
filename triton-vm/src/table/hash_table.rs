@@ -1,4 +1,4 @@
-use super::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
+use super::base_table::{self, BaseTable, HasBaseTable, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::HashTableColumn;
@@ -60,13 +60,13 @@ impl HasBaseTable<XFieldElement> for ExtHashTable {
     }
 }
 
-impl BaseTableTrait<BWord> for HashTable {
+impl TableLike<BWord> for HashTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         vec![0.into(); BASE_WIDTH]
     }
 }
 
-impl BaseTableTrait<XFieldElement> for ExtHashTable {
+impl TableLike<XFieldElement> for ExtHashTable {
     fn get_padding_row(&self) -> Vec<XFieldElement> {
         panic!("Extension tables don't get padded");
     }

@@ -2,7 +2,7 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::state::DIGEST_LEN;
-use crate::table::base_table::{self, BaseTable, BaseTableTrait, HasBaseTable};
+use crate::table::base_table::{self, BaseTable, HasBaseTable, TableLike};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
@@ -511,7 +511,7 @@ impl HasBaseTable<XFieldElement> for ExtProcessorTable {
     }
 }
 
-impl BaseTableTrait<BWord> for ProcessorTable {
+impl TableLike<BWord> for ProcessorTable {
     fn get_padding_row(&self) -> Vec<BWord> {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
@@ -523,7 +523,7 @@ impl BaseTableTrait<BWord> for ProcessorTable {
     }
 }
 
-impl BaseTableTrait<XFieldElement> for ExtProcessorTable {
+impl TableLike<XFieldElement> for ExtProcessorTable {
     fn get_padding_row(&self) -> Vec<XFieldElement> {
         panic!("Extension tables don't get padded");
     }
