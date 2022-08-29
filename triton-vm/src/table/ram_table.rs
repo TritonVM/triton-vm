@@ -25,22 +25,22 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct RamTable {
-    base: Table<BWord>,
+    inherited_table: Table<BWord>,
 }
 
 impl InheritsFromTable<BWord> for RamTable {
-    fn to_base(&self) -> &Table<BWord> {
-        &self.base
+    fn inherited_table(&self) -> &Table<BWord> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<BWord> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+        &mut self.inherited_table
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtRamTable {
-    base: Table<XFieldElement>,
+    inherited_table: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtRamTable {}
@@ -48,12 +48,12 @@ impl Quotientable for ExtRamTable {}
 impl QuotientableExtensionTable for ExtRamTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtRamTable {
-    fn to_base(&self) -> &Table<XFieldElement> {
-        &self.base
+    fn inherited_table(&self) -> &Table<XFieldElement> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
+        &mut self.inherited_table
     }
 }
 
@@ -63,7 +63,7 @@ impl RamTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -73,15 +73,15 @@ impl RamTable {
             "RamTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
-        let base = self.base.with_data(codewords);
-        Self { base }
+        let inherited_table = self.inherited_table.with_data(codewords);
+        Self { inherited_table }
     }
 
     pub fn extend(
@@ -126,16 +126,21 @@ impl RamTable {
             processor_perm_product: running_product,
         };
 
-        let base = self.base.with_lifted_data(extension_matrix);
+        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
         let table = Table::extension(
-            base,
+            inherited_table,
             ExtRamTable::ext_boundary_constraints(),
             ExtRamTable::ext_transition_constraints(challenges),
             ExtRamTable::ext_consistency_constraints(),
             ExtRamTable::ext_terminal_constraints(challenges, &terminals),
         );
 
-        (ExtRamTable { base: table }, terminals)
+        (
+            ExtRamTable {
+                inherited_table: table,
+            },
+            terminals,
+        )
     }
 }
 
@@ -144,7 +149,7 @@ impl ExtRamTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -154,7 +159,7 @@ impl ExtRamTable {
             "ExtRamTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn ext_codeword_table(
@@ -172,8 +177,8 @@ impl ExtRamTable {
         let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
         assert_eq!(self.full_width(), all_codewords.len());
 
-        let base = self.base.with_data(all_codewords);
-        ExtRamTable { base }
+        let inherited_table = self.inherited_table.with_data(all_codewords);
+        ExtRamTable { inherited_table }
     }
 }
 
@@ -288,7 +293,7 @@ impl ExtRamTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -297,8 +302,8 @@ impl ExtRamTable {
             vec![],
             "ExtRamTable".to_string(),
         );
-        let table = Table::extension(
-            base,
+        let extension_table = Table::extension(
+            inherited_table,
             ExtRamTable::ext_boundary_constraints(),
             ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_consistency_constraints(),
@@ -308,7 +313,9 @@ impl ExtRamTable {
             ),
         );
 
-        ExtRamTable { base: table }
+        ExtRamTable {
+            inherited_table: extension_table,
+        }
     }
 }
 

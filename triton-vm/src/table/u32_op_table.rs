@@ -28,22 +28,22 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct U32OpTable {
-    base: Table<BWord>,
+    inherited_table: Table<BWord>,
 }
 
 impl InheritsFromTable<BWord> for U32OpTable {
-    fn to_base(&self) -> &Table<BWord> {
-        &self.base
+    fn inherited_table(&self) -> &Table<BWord> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<BWord> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+        &mut self.inherited_table
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtU32OpTable {
-    base: Table<XFieldElement>,
+    inherited_table: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtU32OpTable {}
@@ -51,12 +51,12 @@ impl Quotientable for ExtU32OpTable {}
 impl QuotientableExtensionTable for ExtU32OpTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtU32OpTable {
-    fn to_base(&self) -> &Table<XFieldElement> {
-        &self.base
+    fn inherited_table(&self) -> &Table<XFieldElement> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
+        &mut self.inherited_table
     }
 }
 
@@ -271,7 +271,7 @@ impl U32OpTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -281,15 +281,15 @@ impl U32OpTable {
             "U32OpTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
-        let base = self.base.with_data(codewords);
-        Self { base }
+        let inherited_table = self.inherited_table.with_data(codewords);
+        Self { inherited_table }
     }
 
     pub fn extend(
@@ -347,16 +347,21 @@ impl U32OpTable {
             processor_perm_product: running_product,
         };
 
-        let base = self.base.with_lifted_data(extension_matrix);
-        let table = Table::extension(
-            base,
+        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
+        let extension_table = Table::extension(
+            inherited_table,
             ExtU32OpTable::ext_boundary_constraints(),
             ExtU32OpTable::ext_transition_constraints(challenges),
             ExtU32OpTable::ext_consistency_constraints(),
             ExtU32OpTable::ext_terminal_constraints(challenges, &terminals),
         );
 
-        (ExtU32OpTable { base: table }, terminals)
+        (
+            ExtU32OpTable {
+                inherited_table: extension_table,
+            },
+            terminals,
+        )
     }
 }
 
@@ -365,7 +370,7 @@ impl ExtU32OpTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -374,8 +379,7 @@ impl ExtU32OpTable {
             matrix,
             "ExtU32OpTable".to_string(),
         );
-
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn ext_codeword_table(
@@ -393,8 +397,8 @@ impl ExtU32OpTable {
         let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
         assert_eq!(self.full_width(), all_codewords.len());
 
-        let base = self.base.with_data(all_codewords);
-        ExtU32OpTable { base }
+        let inherited_table = self.inherited_table.with_data(all_codewords);
+        ExtU32OpTable { inherited_table }
     }
 
     pub fn for_verifier(
@@ -404,7 +408,7 @@ impl ExtU32OpTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -413,8 +417,8 @@ impl ExtU32OpTable {
             vec![],
             "ExtU32OpTable".to_string(),
         );
-        let table = Table::extension(
-            base,
+        let extension_table = Table::extension(
+            inherited_table,
             ExtU32OpTable::ext_boundary_constraints(),
             ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_consistency_constraints(),
@@ -424,7 +428,9 @@ impl ExtU32OpTable {
             ),
         );
 
-        ExtU32OpTable { base: table }
+        ExtU32OpTable {
+            inherited_table: extension_table,
+        }
     }
 }
 

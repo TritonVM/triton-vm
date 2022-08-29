@@ -28,22 +28,22 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct HashTable {
-    base: Table<BWord>,
+    inherited_table: Table<BWord>,
 }
 
 impl InheritsFromTable<BWord> for HashTable {
-    fn to_base(&self) -> &Table<BWord> {
-        &self.base
+    fn inherited_table(&self) -> &Table<BWord> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<BWord> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+        &mut self.inherited_table
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtHashTable {
-    base: Table<XFieldElement>,
+    inherited_table: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtHashTable {}
@@ -51,12 +51,12 @@ impl Quotientable for ExtHashTable {}
 impl QuotientableExtensionTable for ExtHashTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtHashTable {
-    fn to_base(&self) -> &Table<XFieldElement> {
-        &self.base
+    fn inherited_table(&self) -> &Table<XFieldElement> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
+        &mut self.inherited_table
     }
 }
 
@@ -149,7 +149,7 @@ impl HashTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -159,15 +159,15 @@ impl HashTable {
             "HashTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
-        let base = self.base.with_data(codewords);
-        Self { base }
+        let inherited_table = self.inherited_table.with_data(codewords);
+        Self { inherited_table }
     }
 
     pub fn extend(
@@ -245,16 +245,21 @@ impl HashTable {
             to_processor_eval_sum: to_processor_running_sum,
         };
 
-        let base = self.base.with_lifted_data(extension_matrix);
-        let table = Table::extension(
-            base,
+        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
+        let extension_table = Table::extension(
+            inherited_table,
             ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(challenges),
             ExtHashTable::ext_consistency_constraints(),
             ExtHashTable::ext_terminal_constraints(challenges, &terminals),
         );
 
-        (ExtHashTable { base: table }, terminals)
+        (
+            ExtHashTable {
+                inherited_table: extension_table,
+            },
+            terminals,
+        )
     }
 }
 
@@ -263,7 +268,7 @@ impl ExtHashTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -273,7 +278,7 @@ impl ExtHashTable {
             "ExtHashTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn ext_codeword_table(
@@ -291,8 +296,8 @@ impl ExtHashTable {
         let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
         assert_eq!(self.full_width(), all_codewords.len());
 
-        let base = self.base.with_data(all_codewords);
-        ExtHashTable { base }
+        let inherited_table = self.inherited_table.with_data(all_codewords);
+        ExtHashTable { inherited_table }
     }
 
     pub fn for_verifier(
@@ -302,7 +307,7 @@ impl ExtHashTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -311,8 +316,8 @@ impl ExtHashTable {
             vec![],
             "ExtHashTable".to_string(),
         );
-        let table = Table::extension(
-            base,
+        let extension_table = Table::extension(
+            inherited_table,
             ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
             ExtHashTable::ext_consistency_constraints(),
@@ -322,7 +327,9 @@ impl ExtHashTable {
             ),
         );
 
-        ExtHashTable { base: table }
+        ExtHashTable {
+            inherited_table: extension_table,
+        }
     }
 }
 

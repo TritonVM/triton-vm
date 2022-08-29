@@ -138,7 +138,7 @@ pub trait ExtensionTable: TableLike<XWord> + Sync {
     }
 
     fn get_boundary_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.to_base().boundary_quotient_degree_bounds {
+        if let Some(db) = &self.inherited_table().boundary_quotient_degree_bounds {
             db.to_owned()
         } else {
             panic!(
@@ -149,7 +149,7 @@ pub trait ExtensionTable: TableLike<XWord> + Sync {
     }
 
     fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.to_base().transition_quotient_degree_bounds {
+        if let Some(db) = &self.inherited_table().transition_quotient_degree_bounds {
             db.to_owned()
         } else {
             panic!(
@@ -160,7 +160,7 @@ pub trait ExtensionTable: TableLike<XWord> + Sync {
     }
 
     fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.to_base().consistency_quotient_degree_bounds {
+        if let Some(db) = &self.inherited_table().consistency_quotient_degree_bounds {
             db.to_owned()
         } else {
             panic!(
@@ -171,7 +171,7 @@ pub trait ExtensionTable: TableLike<XWord> + Sync {
     }
 
     fn get_terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.to_base().terminal_quotient_degree_bounds {
+        if let Some(db) = &self.inherited_table().terminal_quotient_degree_bounds {
             db.to_owned()
         } else {
             panic!(
@@ -185,7 +185,7 @@ pub trait ExtensionTable: TableLike<XWord> + Sync {
 pub trait Evaluable: ExtensionTable {
     /// evaluate boundary constraints on given point if they are set; panic otherwise
     fn evaluate_boundary_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(boundary_constraints) = &self.to_base().boundary_constraints {
+        if let Some(boundary_constraints) = &self.inherited_table().boundary_constraints {
             boundary_constraints
                 .iter()
                 .map(|bc| bc.evaluate(evaluation_point))
@@ -197,7 +197,7 @@ pub trait Evaluable: ExtensionTable {
 
     /// evaluate transition constraints if they are set; panic otherwise
     fn evaluate_transition_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(transition_constraints) = &self.to_base().transition_constraints {
+        if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
             transition_constraints
                 .iter()
                 .map(|tc| tc.evaluate(evaluation_point))
@@ -209,7 +209,7 @@ pub trait Evaluable: ExtensionTable {
 
     /// evaluate consistency constraints on given point if they are set; panic otherwise
     fn evaluate_consistency_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(consistency_constraints) = &self.to_base().consistency_constraints {
+        if let Some(consistency_constraints) = &self.inherited_table().consistency_constraints {
             consistency_constraints
                 .iter()
                 .map(|cc| cc.evaluate(evaluation_point))
@@ -221,7 +221,7 @@ pub trait Evaluable: ExtensionTable {
 
     /// evaluate terminal constraints on given point if they are set; panic otherwise
     fn evaluate_terminal_constraints(&self, evaluation_point: &[XWord]) -> Vec<XWord> {
-        if let Some(terminal_constraints) = &self.to_base().terminal_constraints {
+        if let Some(terminal_constraints) = &self.inherited_table().terminal_constraints {
             terminal_constraints
                 .iter()
                 .map(|termc| termc.evaluate(evaluation_point))

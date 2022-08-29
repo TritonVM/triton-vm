@@ -156,39 +156,39 @@ impl Table<BWord> {
 }
 
 pub trait InheritsFromTable<DataPF: PrimeField> {
-    fn to_base(&self) -> &Table<DataPF>;
-    fn to_mut_base(&mut self) -> &mut Table<DataPF>;
+    fn inherited_table(&self) -> &Table<DataPF>;
+    fn mut_inherited_table(&mut self) -> &mut Table<DataPF>;
 
     fn base_width(&self) -> usize {
-        self.to_base().base_width
+        self.inherited_table().base_width
     }
 
     fn full_width(&self) -> usize {
-        self.to_base().full_width
+        self.inherited_table().full_width
     }
 
     fn padded_height(&self) -> usize {
-        self.to_base().padded_height
+        self.inherited_table().padded_height
     }
 
     fn num_trace_randomizers(&self) -> usize {
-        self.to_base().num_trace_randomizers
+        self.inherited_table().num_trace_randomizers
     }
 
     fn interpolant_degree(&self) -> Degree {
-        self.to_base().interpolant_degree()
+        self.inherited_table().interpolant_degree()
     }
 
     fn omicron(&self) -> DataPF {
-        self.to_base().omicron
+        self.inherited_table().omicron
     }
 
     fn data(&self) -> &Vec<Vec<DataPF>> {
-        &self.to_base().matrix
+        &self.inherited_table().matrix
     }
 
     fn mut_data(&mut self) -> &mut Vec<Vec<DataPF>> {
-        &mut self.to_mut_base().matrix
+        &mut self.mut_inherited_table().matrix
     }
 }
 
@@ -238,7 +238,7 @@ where
     // Generic functions common to all tables
 
     fn name(&self) -> String {
-        self.to_base().name.clone()
+        self.inherited_table().name.clone()
     }
 
     fn pad(&mut self) {

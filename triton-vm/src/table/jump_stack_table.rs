@@ -26,22 +26,22 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct JumpStackTable {
-    base: Table<BWord>,
+    inherited_table: Table<BWord>,
 }
 
 impl InheritsFromTable<BWord> for JumpStackTable {
-    fn to_base(&self) -> &Table<BWord> {
-        &self.base
+    fn inherited_table(&self) -> &Table<BWord> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<BWord> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+        &mut self.inherited_table
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct ExtJumpStackTable {
-    base: Table<XFieldElement>,
+    inherited_table: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtJumpStackTable {}
@@ -49,12 +49,12 @@ impl Quotientable for ExtJumpStackTable {}
 impl QuotientableExtensionTable for ExtJumpStackTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtJumpStackTable {
-    fn to_base(&self) -> &Table<XFieldElement> {
-        &self.base
+    fn inherited_table(&self) -> &Table<XFieldElement> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
+        &mut self.inherited_table
     }
 }
 
@@ -181,7 +181,7 @@ impl JumpStackTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -191,15 +191,15 @@ impl JumpStackTable {
             "JumpStackTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
-        let base = self.base.with_data(codewords);
-        Self { base }
+        let inherited_table = self.inherited_table.with_data(codewords);
+        Self { inherited_table }
     }
 
     pub fn extend(
@@ -248,16 +248,21 @@ impl JumpStackTable {
             processor_perm_product: running_product,
         };
 
-        let base = self.base.with_lifted_data(extension_matrix);
-        let table = Table::extension(
-            base,
+        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
+        let extension_table = Table::extension(
+            inherited_table,
             ExtJumpStackTable::ext_boundary_constraints(),
             ExtJumpStackTable::ext_transition_constraints(challenges),
             ExtJumpStackTable::ext_consistency_constraints(),
             ExtJumpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
 
-        (ExtJumpStackTable { base: table }, terminals)
+        (
+            ExtJumpStackTable {
+                inherited_table: extension_table,
+            },
+            terminals,
+        )
     }
 }
 
@@ -266,7 +271,7 @@ impl ExtJumpStackTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -276,7 +281,7 @@ impl ExtJumpStackTable {
             "ExtJumpStackTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn ext_codeword_table(
@@ -294,8 +299,8 @@ impl ExtJumpStackTable {
         let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
         assert_eq!(self.full_width(), all_codewords.len());
 
-        let base = self.base.with_data(all_codewords);
-        ExtJumpStackTable { base }
+        let inherited_table = self.inherited_table.with_data(all_codewords);
+        ExtJumpStackTable { inherited_table }
     }
 
     pub fn for_verifier(
@@ -305,7 +310,7 @@ impl ExtJumpStackTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -315,7 +320,7 @@ impl ExtJumpStackTable {
             "ExtJumpStackTable".to_string(),
         );
         let table = Table::extension(
-            base,
+            inherited_table,
             ExtJumpStackTable::ext_boundary_constraints(),
             ExtJumpStackTable::ext_transition_constraints(
                 &all_challenges.jump_stack_table_challenges,
@@ -327,7 +332,9 @@ impl ExtJumpStackTable {
             ),
         );
 
-        ExtJumpStackTable { base: table }
+        ExtJumpStackTable {
+            inherited_table: table,
+        }
     }
 }
 

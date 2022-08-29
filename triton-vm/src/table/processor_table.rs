@@ -31,16 +31,16 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorTable {
-    base: Table<BWord>,
+    inherited_table: Table<BWord>,
 }
 
 impl InheritsFromTable<BWord> for ProcessorTable {
-    fn to_base(&self) -> &Table<BWord> {
-        &self.base
+    fn inherited_table(&self) -> &Table<BWord> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<BWord> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+        &mut self.inherited_table
     }
 }
 
@@ -50,7 +50,7 @@ impl ProcessorTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -60,15 +60,15 @@ impl ProcessorTable {
             "ProcessorTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
-        let base = self.base.with_data(codewords);
-        Self { base }
+        let inherited_table = self.inherited_table.with_data(codewords);
+        Self { inherited_table }
     }
 
     pub fn extend(
@@ -313,16 +313,21 @@ impl ProcessorTable {
             from_hash_table_eval_sum: from_hash_table_running_sum,
             u32_table_perm_product: u32_table_running_product,
         };
-        let base = self.base.with_lifted_data(extension_matrix);
-        let table = Table::extension(
-            base,
+        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
+        let extension_table = Table::extension(
+            inherited_table,
             ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(challenges),
             ExtProcessorTable::ext_consistency_constraints(),
             ExtProcessorTable::ext_terminal_constraints(challenges, &terminals),
         );
 
-        (ExtProcessorTable { base: table }, terminals)
+        (
+            ExtProcessorTable {
+                inherited_table: extension_table,
+            },
+            terminals,
+        )
     }
 }
 
@@ -331,7 +336,7 @@ impl ExtProcessorTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -341,7 +346,7 @@ impl ExtProcessorTable {
             "ExtProcessorTable".to_string(),
         );
 
-        Self::new(base)
+        Self::new(inherited_table)
     }
 
     pub fn ext_codeword_table(
@@ -359,12 +364,14 @@ impl ExtProcessorTable {
         let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
         assert_eq!(self.full_width(), all_codewords.len());
 
-        let base = self.base.with_data(all_codewords);
-        Self::new(base)
+        let inherited_table = self.inherited_table.with_data(all_codewords);
+        Self::new(inherited_table)
     }
 
     pub fn new(base: Table<XFieldElement>) -> ExtProcessorTable {
-        Self { base }
+        Self {
+            inherited_table: base,
+        }
     }
 
     /// Transition constraints are combined with deselectors in such a way
@@ -494,7 +501,7 @@ pub struct IOChallenges {
 
 #[derive(Debug, Clone)]
 pub struct ExtProcessorTable {
-    base: Table<XFieldElement>,
+    inherited_table: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtProcessorTable {}
@@ -502,12 +509,12 @@ impl Quotientable for ExtProcessorTable {}
 impl QuotientableExtensionTable for ExtProcessorTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
-    fn to_base(&self) -> &Table<XFieldElement> {
-        &self.base
+    fn inherited_table(&self) -> &Table<XFieldElement> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
+        &mut self.inherited_table
     }
 }
 
@@ -775,7 +782,7 @@ impl ExtProcessorTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -784,8 +791,8 @@ impl ExtProcessorTable {
             vec![],
             "ExtProcessorTable".to_string(),
         );
-        let table = Table::extension(
-            base,
+        let extension_table = Table::extension(
+            inherited_table,
             ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(
                 &all_challenges.processor_table_challenges,
@@ -797,7 +804,9 @@ impl ExtProcessorTable {
             ),
         );
 
-        ExtProcessorTable { base: table }
+        ExtProcessorTable {
+            inherited_table: extension_table,
+        }
     }
 }
 

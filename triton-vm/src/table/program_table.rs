@@ -25,22 +25,22 @@ type XWord = XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct ProgramTable {
-    base: Table<BWord>,
+    inherited_table: Table<BWord>,
 }
 
 impl InheritsFromTable<BWord> for ProgramTable {
-    fn to_base(&self) -> &Table<BWord> {
-        &self.base
+    fn inherited_table(&self) -> &Table<BWord> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<BWord> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<BWord> {
+        &mut self.inherited_table
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtProgramTable {
-    base: Table<XFieldElement>,
+    inherited_table: Table<XFieldElement>,
 }
 
 impl Evaluable for ExtProgramTable {}
@@ -48,12 +48,12 @@ impl Quotientable for ExtProgramTable {}
 impl QuotientableExtensionTable for ExtProgramTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtProgramTable {
-    fn to_base(&self) -> &Table<XFieldElement> {
-        &self.base
+    fn inherited_table(&self) -> &Table<XFieldElement> {
+        &self.inherited_table
     }
 
-    fn to_mut_base(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.base
+    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
+        &mut self.inherited_table
     }
 }
 
@@ -126,7 +126,7 @@ impl ProgramTable {
         let padded_height = base_table::pad_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -136,15 +136,15 @@ impl ProgramTable {
             "ProgramTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn codeword_table(&self, fri_domain: &FriDomain<BWord>) -> Self {
         let base_columns = 0..self.base_width();
         let codewords = self.low_degree_extension(fri_domain, base_columns);
 
-        let base = self.base.with_data(codewords);
-        Self { base }
+        let inherited_table = self.inherited_table.with_data(codewords);
+        Self { inherited_table }
     }
 
     pub fn extend(
@@ -191,16 +191,21 @@ impl ProgramTable {
             instruction_eval_sum: instruction_table_running_sum,
         };
 
-        let base = self.base.with_lifted_data(extension_matrix);
+        let inherited_table = self.inherited_table.with_lifted_data(extension_matrix);
         let table = Table::extension(
-            base,
+            inherited_table,
             ExtProgramTable::ext_boundary_constraints(),
             ExtProgramTable::ext_transition_constraints(challenges),
             ExtProgramTable::ext_consistency_constraints(),
             ExtProgramTable::ext_terminal_constraints(challenges, &terminals),
         );
 
-        (ExtProgramTable { base: table }, terminals)
+        (
+            ExtProgramTable {
+                inherited_table: table,
+            },
+            terminals,
+        )
     }
 }
 
@@ -209,7 +214,7 @@ impl ExtProgramTable {
         let matrix: Vec<Vec<XWord>> = vec![];
 
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -219,7 +224,7 @@ impl ExtProgramTable {
             "ExtProgramTable".to_string(),
         );
 
-        Self { base }
+        Self { inherited_table }
     }
 
     pub fn for_verifier(
@@ -229,7 +234,7 @@ impl ExtProgramTable {
         all_terminals: &AllEndpoints,
     ) -> Self {
         let omicron = base_table::derive_omicron(padded_height as u64);
-        let base = Table::new(
+        let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
             padded_height,
@@ -238,8 +243,8 @@ impl ExtProgramTable {
             vec![],
             "ExtProgramTable".to_string(),
         );
-        let table = Table::extension(
-            base,
+        let extension_table = Table::extension(
+            inherited_table,
             ExtProgramTable::ext_boundary_constraints(),
             ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_consistency_constraints(),
@@ -249,7 +254,9 @@ impl ExtProgramTable {
             ),
         );
 
-        ExtProgramTable { base: table }
+        ExtProgramTable {
+            inherited_table: extension_table,
+        }
     }
 
     pub fn ext_codeword_table(
@@ -267,8 +274,8 @@ impl ExtProgramTable {
         let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
         assert_eq!(self.full_width(), all_codewords.len());
 
-        let base = self.base.with_data(all_codewords);
-        ExtProgramTable { base }
+        let inherited_table = self.inherited_table.with_data(all_codewords);
+        ExtProgramTable { inherited_table }
     }
 }
 
