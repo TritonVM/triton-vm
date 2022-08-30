@@ -10,7 +10,7 @@ use crate::table::table_column::HashTableColumn::*;
 use itertools::Itertools;
 use std::ops::Mul;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub const HASH_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
@@ -27,6 +27,9 @@ pub const NUM_ROUND_CONSTANTS: usize = 32;
 
 /// The number of rounds for Rescue Prime
 pub const NUM_ROUNDS: usize = 8;
+
+/// Capacity of Rescue Prime
+pub const CAPACITY: usize = 4;
 
 pub const BASE_WIDTH: usize = 49;
 pub const FULL_WIDTH: usize = 53; // BASE_WIDTH + 2 * INITIALS_COUNT
@@ -50,8 +53,38 @@ impl InheritsFromTable<BFieldElement> for HashTable {
 pub struct ExtHashTable {
     inherited_table: Table<XFieldElement>,
 }
-impl Evaluable for ExtHashTable {}
-impl Quotientable for ExtHashTable {}
+
+impl Evaluable for ExtHashTable {
+    fn evaluate_consistency_constraints(
+        &self,
+        evaluation_point: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
+        let round_number = evaluation_point[ROUNDNUMBER as usize];
+        let state12 = evaluation_point[STATE12 as usize];
+        let state13 = evaluation_point[STATE13 as usize];
+        let state14 = evaluation_point[STATE14 as usize];
+        let state15 = evaluation_point[STATE15 as usize];
+
+        let round_number_is_not_1_or = (0..=8)
+            .filter(|&r| r != 1)
+            .map(|r| round_number.clone() - r.into())
+            .fold(1.into(), XFieldElement::mul);
+
+        vec![
+            round_number_is_not_1_or * state12,
+            round_number_is_not_1_or * state13,
+            round_number_is_not_1_or * state14,
+            round_number_is_not_1_or * state15,
+        ]
+    }
+}
+
+impl Quotientable for ExtHashTable {
+    fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
+        vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; CAPACITY]
+    }
+}
+
 impl QuotientableExtensionTable for ExtHashTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtHashTable {
@@ -84,6 +117,9 @@ impl ExtHashTable {
         vec![round_number_is_0_or_1]
     }
 
+    /// The implementation below is kept around for debugging purposes. This table evaluates the
+    /// corresponding constraints directly by implementing the respective method in trait
+    /// `Evaluable`, and does not use the polynomials below.
     fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let constant = |c: u32| MPolynomial::from_constant(c.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
