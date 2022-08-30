@@ -6,6 +6,7 @@
 
 use num_traits::Bounded;
 use std::fmt::{Display, Formatter};
+use HashTableColumn::*;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ProcessorTableColumn {
@@ -548,7 +549,7 @@ impl Bounded for ExtJumpStackTableColumn {
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HashTableColumn {
     ROUNDNUMBER,
     STATE0,
@@ -655,6 +656,63 @@ impl From<HashTableColumn> for usize {
             CONSTANT13B => 46,
             CONSTANT14B => 47,
             CONSTANT15B => 48,
+        }
+    }
+}
+
+impl From<usize> for HashTableColumn {
+    fn from(idx: usize) -> Self {
+        match idx {
+            0 => ROUNDNUMBER,
+            1 => STATE0,
+            2 => STATE1,
+            3 => STATE2,
+            4 => STATE3,
+            5 => STATE4,
+            6 => STATE5,
+            7 => STATE6,
+            8 => STATE7,
+            9 => STATE8,
+            10 => STATE9,
+            11 => STATE10,
+            12 => STATE11,
+            13 => STATE12,
+            14 => STATE13,
+            15 => STATE14,
+            16 => STATE15,
+            17 => CONSTANT0A,
+            18 => CONSTANT1A,
+            19 => CONSTANT2A,
+            20 => CONSTANT3A,
+            21 => CONSTANT4A,
+            22 => CONSTANT5A,
+            23 => CONSTANT6A,
+            24 => CONSTANT7A,
+            25 => CONSTANT8A,
+            26 => CONSTANT9A,
+            27 => CONSTANT10A,
+            28 => CONSTANT11A,
+            29 => CONSTANT12A,
+            30 => CONSTANT13A,
+            31 => CONSTANT14A,
+            32 => CONSTANT15A,
+            33 => CONSTANT0B,
+            34 => CONSTANT1B,
+            35 => CONSTANT2B,
+            36 => CONSTANT3B,
+            37 => CONSTANT4B,
+            38 => CONSTANT5B,
+            39 => CONSTANT6B,
+            40 => CONSTANT7B,
+            41 => CONSTANT8B,
+            42 => CONSTANT9B,
+            43 => CONSTANT10B,
+            44 => CONSTANT11B,
+            45 => CONSTANT12B,
+            46 => CONSTANT13B,
+            47 => CONSTANT14B,
+            48 => CONSTANT15B,
+            _ => panic!("No Hash Table column with index {idx} exists."),
         }
     }
 }
