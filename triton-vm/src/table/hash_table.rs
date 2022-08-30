@@ -21,8 +21,15 @@ pub const HASH_TABLE_INITIALS_COUNT: usize =
 /// This is 18 because it combines: 12 stack_input_weights and 6 digest_output_weights.
 pub const HASH_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 18;
 
-pub const BASE_WIDTH: usize = 17;
-pub const FULL_WIDTH: usize = 21; // BASE_WIDTH + 2 * INITIALS_COUNT
+/// The number of constants used in each round of the permutation. Since Rescue Prime uses one round
+/// constant per half-round, this number is twice the number of state elements.
+pub const NUM_ROUND_CONSTANTS: usize = 32;
+
+/// The number of rounds for Rescue Prime
+pub const NUM_ROUNDS: usize = 8;
+
+pub const BASE_WIDTH: usize = 49;
+pub const FULL_WIDTH: usize = 53; // BASE_WIDTH + 2 * INITIALS_COUNT
 
 #[derive(Debug, Clone)]
 pub struct HashTable {

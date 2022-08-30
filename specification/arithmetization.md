@@ -674,14 +674,15 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 The instruction `hash` hashes the OpStack's 12 top-most elements in one cycle.
 What happens in the background is that the registers `st0` through `st11` are copied to the Hash Coprocessor's registers `state0` through `state11`.
-The Hash Coprocessor's remaining four registers, `state12` through `state15`, are set to 0.
-Then, the Coprocessor runs the 7 rounds of Rescue-XLIX on its `state` registers.
+The Hash Coprocessor's four remaining state registers, `state12` through `state15`, are set to 0.
+Then, the Coprocessor runs the 8 rounds of Rescue-XLIX on its `state` registers.
 Finally, the hash digest, i.e., the 6 values from `state0` through `state5`, are copied back to the OpStack.
 This allows the (main) Processor to perform the hashing instruction in a single cycle.
 
-The Hash Table has 17 columns:
-- one column `rnd_nmbr` to indicate the round number, and
-- 16 state registers `state0` through `state15` to which the Rescue-XLIX rounds are applied.
+The Hash Table has 49 columns:
+- one column `rnd_nmbr` to indicate the round number,
+- 16 state registers `state0` through `state15` to which the Rescue-XLIX rounds are applied, and
+- 32 helper registers holding round constants.
 
 **Padding**
 
@@ -734,6 +735,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. If the round number is 5, the `state` registers adhere to the rules of applying Rescue-XLIX round 5.
 1. If the round number is 6, the `state` registers adhere to the rules of applying Rescue-XLIX round 6.
 1. If the round number is 7, the `state` registers adhere to the rules of applying Rescue-XLIX round 7.
+1. If the round number is 8, the `state` registers adhere to the rules of applying Rescue-XLIX round 8.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The round number is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or the next round number is 0.
@@ -752,6 +754,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The round number is 0 or 1 or 2 or 3 or 4 or 6 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 5.
 1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 7 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 6.
 1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 8 or the `state` registers adhere to the rules of applying Rescue-XLIX round 7.
+1. The round number is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or the `state` registers adhere to the rules of applying Rescue-XLIX round 8.
 
 **Transition Constraints as Polynomials**
 

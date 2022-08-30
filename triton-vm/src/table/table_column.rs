@@ -567,6 +567,38 @@ pub enum HashTableColumn {
     STATE13,
     STATE14,
     STATE15,
+    CONSTANT0A,
+    CONSTANT1A,
+    CONSTANT2A,
+    CONSTANT3A,
+    CONSTANT4A,
+    CONSTANT5A,
+    CONSTANT6A,
+    CONSTANT7A,
+    CONSTANT8A,
+    CONSTANT9A,
+    CONSTANT10A,
+    CONSTANT11A,
+    CONSTANT12A,
+    CONSTANT13A,
+    CONSTANT14A,
+    CONSTANT15A,
+    CONSTANT0B,
+    CONSTANT1B,
+    CONSTANT2B,
+    CONSTANT3B,
+    CONSTANT4B,
+    CONSTANT5B,
+    CONSTANT6B,
+    CONSTANT7B,
+    CONSTANT8B,
+    CONSTANT9B,
+    CONSTANT10B,
+    CONSTANT11B,
+    CONSTANT12B,
+    CONSTANT13B,
+    CONSTANT14B,
+    CONSTANT15B,
 }
 
 impl From<HashTableColumn> for usize {
@@ -591,6 +623,38 @@ impl From<HashTableColumn> for usize {
             STATE13 => 14,
             STATE14 => 15,
             STATE15 => 16,
+            CONSTANT0A => 17,
+            CONSTANT1A => 18,
+            CONSTANT2A => 19,
+            CONSTANT3A => 20,
+            CONSTANT4A => 21,
+            CONSTANT5A => 22,
+            CONSTANT6A => 23,
+            CONSTANT7A => 24,
+            CONSTANT8A => 25,
+            CONSTANT9A => 26,
+            CONSTANT10A => 27,
+            CONSTANT11A => 28,
+            CONSTANT12A => 29,
+            CONSTANT13A => 30,
+            CONSTANT14A => 31,
+            CONSTANT15A => 32,
+            CONSTANT0B => 33,
+            CONSTANT1B => 34,
+            CONSTANT2B => 35,
+            CONSTANT3B => 36,
+            CONSTANT4B => 37,
+            CONSTANT5B => 38,
+            CONSTANT6B => 39,
+            CONSTANT7B => 40,
+            CONSTANT8B => 41,
+            CONSTANT9B => 42,
+            CONSTANT10B => 43,
+            CONSTANT11B => 44,
+            CONSTANT12B => 45,
+            CONSTANT13B => 46,
+            CONSTANT14B => 47,
+            CONSTANT15B => 48,
         }
     }
 }
@@ -601,7 +665,7 @@ impl Bounded for HashTableColumn {
     }
 
     fn max_value() -> Self {
-        HashTableColumn::STATE15
+        HashTableColumn::CONSTANT15B
     }
 }
 
@@ -620,10 +684,10 @@ impl From<ExtHashTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            CompressedStateForInput => 17,
-            ToProcessorRunningSum => 18,
-            CompressedStateForOutput => 19,
-            FromProcessorRunningSum => 20,
+            CompressedStateForInput => 49,
+            ToProcessorRunningSum => 50,
+            CompressedStateForOutput => 51,
+            FromProcessorRunningSum => 52,
         }
     }
 }
