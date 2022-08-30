@@ -124,60 +124,6 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
         challenges: &AllChallenges,
         terminals: &AllEndpoints,
     ) -> Vec<MPolynomial<XFieldElement>>;
-
-    fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
-        vec![
-            self.get_boundary_quotient_degree_bounds(),
-            self.get_transition_quotient_degree_bounds(),
-            self.get_consistency_quotient_degree_bounds(),
-            self.get_terminal_quotient_degree_bounds(),
-        ]
-        .concat()
-    }
-
-    fn get_boundary_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.inherited_table().boundary_quotient_degree_bounds {
-            db.to_owned()
-        } else {
-            panic!(
-                "{} does not have boundary quotient degree bounds!",
-                &self.name()
-            );
-        }
-    }
-
-    fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.inherited_table().transition_quotient_degree_bounds {
-            db.to_owned()
-        } else {
-            panic!(
-                "{} does not have transition quotient degree bounds!",
-                &self.name()
-            );
-        }
-    }
-
-    fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.inherited_table().consistency_quotient_degree_bounds {
-            db.to_owned()
-        } else {
-            panic!(
-                "{} does not have consistency quotient degree bounds!",
-                &self.name()
-            );
-        }
-    }
-
-    fn get_terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.inherited_table().terminal_quotient_degree_bounds {
-            db.to_owned()
-        } else {
-            panic!(
-                "{} does not have terminal quotient degree bounds!",
-                &self.name()
-            );
-        }
-    }
 }
 
 pub trait Evaluable: ExtensionTable {
@@ -277,7 +223,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
-        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "boundary");
+        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "boundary");
 
         quotient_codewords
     }
@@ -331,7 +277,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
-        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "transition");
+        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "transition");
 
         quotient_codewords
     }
@@ -370,7 +316,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
-        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "consistency");
+        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "consistency");
 
         quotient_codewords
     }
@@ -411,7 +357,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
-        self.debug_degree_bound_check(fri_domain, &quotient_codewords, "terminal");
+        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "terminal");
 
         quotient_codewords
     }
@@ -454,7 +400,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     ///
     /// Panics if an interpolant has maximal degree, indicating that the quotient codeword is most
     /// probably the result of un-clean division.
-    fn debug_degree_bound_check(
+    fn debug_fri_domain_bound_check(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         quotient_codewords: &[Vec<XFieldElement>],
@@ -474,6 +420,60 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 self.name(),
                 interpolated.degree(),
                 fri_domain.length,
+            );
+        }
+    }
+
+    fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
+        vec![
+            self.get_boundary_quotient_degree_bounds(),
+            self.get_transition_quotient_degree_bounds(),
+            self.get_consistency_quotient_degree_bounds(),
+            self.get_terminal_quotient_degree_bounds(),
+        ]
+        .concat()
+    }
+
+    fn get_boundary_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.inherited_table().boundary_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have boundary quotient degree bounds!",
+                &self.name()
+            );
+        }
+    }
+
+    fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.inherited_table().transition_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have transition quotient degree bounds!",
+                &self.name()
+            );
+        }
+    }
+
+    fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.inherited_table().consistency_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have consistency quotient degree bounds!",
+                &self.name()
+            );
+        }
+    }
+
+    fn get_terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.inherited_table().terminal_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            panic!(
+                "{} does not have terminal quotient degree bounds!",
+                &self.name()
             );
         }
     }
