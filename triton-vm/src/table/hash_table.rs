@@ -328,21 +328,39 @@ impl Evaluable for ExtHashTable {
 
         let round_number_is_not_1_or = (0..=8)
             .filter(|&r| r != 1)
-            .map(|r| round_number.clone() - r.into())
+            .map(|r| round_number - r.into())
             .fold(1.into(), XFieldElement::mul);
 
-        vec![
+        let mut evaluated_consistency_constraints = vec![
             round_number_is_not_1_or * state12,
             round_number_is_not_1_or * state13,
             round_number_is_not_1_or * state14,
             round_number_is_not_1_or * state15,
-        ]
+        ];
+
+        let round_constant_offset = CONSTANT0A as usize;
+        for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
+            let round_constant_column: HashTableColumn =
+                (round_constant_idx + round_constant_offset).into();
+            evaluated_consistency_constraints.push(
+                round_number
+                    * (Self::round_constants_interpolant(round_constant_column)
+                        .evaluate(&evaluation_point[ROUNDNUMBER as usize])
+                        - evaluation_point[round_constant_column as usize]),
+            );
+        }
+
+        evaluated_consistency_constraints
     }
 }
 
 impl Quotientable for ExtHashTable {
     fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
-        vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; CAPACITY]
+        let capacity_degree_bounds =
+            vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; CAPACITY];
+        let round_constant_degree_bounds =
+            vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; NUM_ROUND_CONSTANTS];
+        [capacity_degree_bounds, round_constant_degree_bounds].concat()
     }
 }
 
@@ -407,9 +425,12 @@ impl ExtHashTable {
         for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column: HashTableColumn =
                 (round_constant_idx + round_constant_offset).into();
+            let interpolant = Self::round_constants_interpolant(round_constant_column);
+            let multivariate_interpolant =
+                MPolynomial::lift(interpolant, ROUNDNUMBER as usize, FULL_WIDTH);
             consistency_polynomials.push(
                 round_number.clone()
-                    * (Self::round_constants_interpolant(round_constant_column)
+                    * (multivariate_interpolant
                         - variables[round_constant_column as usize].clone()),
             );
         }
@@ -417,7 +438,7 @@ impl ExtHashTable {
         consistency_polynomials
     }
 
-    fn round_constants_interpolant(round_constant: HashTableColumn) -> MPolynomial<XFieldElement> {
+    fn round_constants_interpolant(round_constant: HashTableColumn) -> Polynomial<XFieldElement> {
         let round_constant_idx = (round_constant as usize) - (CONSTANT0A as usize);
         let domain = (1..=NUM_ROUNDS)
             .map(|x| BFieldElement::new(x as u64).lift())
@@ -426,8 +447,7 @@ impl ExtHashTable {
             .map(|i| ROUND_CONSTANTS[NUM_ROUND_CONSTANTS * (i - 1) + round_constant_idx])
             .map(|x| BFieldElement::new(x).lift())
             .collect_vec();
-        let interpolant = Polynomial::lagrange_interpolate(&domain, &abscissae);
-        MPolynomial::lift(interpolant, ROUNDNUMBER as usize, FULL_WIDTH)
+        Polynomial::lagrange_interpolate(&domain, &abscissae)
     }
 
     fn ext_transition_constraints(

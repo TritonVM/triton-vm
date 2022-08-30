@@ -682,7 +682,7 @@ This allows the (main) Processor to perform the hashing instruction in a single 
 The Hash Table has 49 columns:
 - one column `rnd_nmbr` to indicate the round number,
 - 16 state registers `state0` through `state15` to which the Rescue-XLIX rounds are applied, and
-- 32 helper registers holding round constants.
+- 32 helper registers called `constant0A` through `constant15A` and `constant0B` through `constant15B` holding round constants.
 
 **Padding**
 
@@ -695,12 +695,14 @@ Each padding row is the all-zero row.
 1. If the round number is 1, register `state13` is 0.
 1. If the round number is 1, register `state14` is 0.
 1. If the round number is 1, register `state15` is 0.
+1. The round constants adhere to the specification of Rescue Prime.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state12` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state13` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state14` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state15` is 0.
+1. The `constantiX` equals interpolant(`rnd_nmbr`), where “interpolant” is the lowest-degree interpolant through (i, `constantiX`) for $1 \leqslant i \leqslant 8$, `X` $\in$ {A, B}.
 
 **Consistency Constraints as Polynomials**
 
@@ -767,7 +769,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·(rnd_nmbr' -  7)`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 8)·(rnd_nmbr' -  8)`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr' -  0)·(rnd_nmbr' -  1)`
-1. The remaining 7·16 = 112 constraints are left as an exercise to the reader.
+1. The remaining 16 constraints are left as an exercise to the reader.
 For hints, see the [Rescue-Prime Systematization of Knowledge, Sections 2.4 & 2.5](https://eprint.iacr.org/2020/1143.pdf#page=5).
 
 **Relations to Other Tables**
