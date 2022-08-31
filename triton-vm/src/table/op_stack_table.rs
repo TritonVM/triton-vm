@@ -5,6 +5,7 @@ use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
+use crate::table::table_column::OpStackTableColumn::*;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -172,6 +173,11 @@ impl OpStackTable {
 
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
+    }
+
+    pub fn sort(&mut self) {
+        self.mut_data()
+            .sort_by_key(|row| (row[OSP as usize].value(), row[CLK as usize].value()))
     }
 
     pub fn extend(

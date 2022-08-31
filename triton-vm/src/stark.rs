@@ -575,6 +575,7 @@ impl Stark {
         let mut base_tables =
             BaseTableCollection::from_base_matrices(self.num_trace_randomizers, base_matrices);
         base_tables.pad();
+        base_tables.sort();
         base_tables
     }
 
@@ -1098,6 +1099,7 @@ pub(crate) mod triton_stark_tests {
         let unpadded_base_tables = base_tables.clone();
 
         base_tables.pad();
+        base_tables.sort();
 
         let dummy_challenges = AllChallenges::dummy();
         let dummy_initials = AllEndpoints::dummy();

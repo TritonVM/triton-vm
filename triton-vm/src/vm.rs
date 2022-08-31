@@ -147,13 +147,6 @@ impl Program {
             base_matrices.append(&state, vm_output, current_instruction);
         }
 
-        base_matrices.sort_instruction_matrix();
-        base_matrices.sort_op_stack_matrix();
-        base_matrices.sort_ram_matrix();
-        base_matrices.sort_jump_stack_matrix();
-
-        base_matrices.set_ram_matrix_inverse_of_ramp_diff();
-
         (base_matrices, None)
     }
 
