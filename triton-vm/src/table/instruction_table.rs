@@ -153,11 +153,6 @@ impl InstructionTable {
         Self { inherited_table }
     }
 
-    pub fn sort(&mut self) {
-        self.mut_data()
-            .sort_by_key(|row| row[Address as usize].value())
-    }
-
     pub fn extend(
         &self,
         challenges: &InstructionTableChallenges,

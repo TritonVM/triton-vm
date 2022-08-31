@@ -575,7 +575,6 @@ impl Stark {
         let mut base_tables =
             BaseTableCollection::from_base_matrices(self.num_trace_randomizers, base_matrices);
         base_tables.pad();
-        base_tables.sort();
         base_tables
     }
 
@@ -1007,6 +1006,7 @@ pub(crate) mod triton_stark_tests {
     use crate::arguments::evaluation_argument;
     use crate::instruction::sample_programs;
     use crate::stdio::VecStream;
+    use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table;
     use crate::vm::Program;
     use twenty_first::shared_math::ntt::ntt;
@@ -1019,7 +1019,8 @@ pub(crate) mod triton_stark_tests {
         input_symbols: &[BFieldElement],
         output_symbols: &[BFieldElement],
     ) -> (Stark, ProofStream<Item, RescuePrimeXlix<RP_DEFAULT_WIDTH>>) {
-        let (base_matrices, _) = parse_simulate(code, input_symbols, &[]);
+        let (aet, _, program) = parse_setup_simulate(code, input_symbols, &[]);
+        let base_matrices = BaseMatrices::new(aet, &program);
 
         let num_randomizer_polynomials = 1;
         let log_expansion_factor = 2;
@@ -1054,11 +1055,11 @@ pub(crate) mod triton_stark_tests {
         (stark, proof_stream)
     }
 
-    fn parse_simulate(
+    fn parse_setup_simulate(
         code: &str,
         input_symbols: &[BFieldElement],
         secret_input_symbols: &[BFieldElement],
-    ) -> (BaseMatrices, VecStream) {
+    ) -> (AlgebraicExecutionTrace, VecStream, Program) {
         let program = Program::from_code(code);
 
         assert!(program.is_ok(), "program parses correctly");
@@ -1069,12 +1070,11 @@ pub(crate) mod triton_stark_tests {
         let mut stdout = VecStream::new_bwords(&[]);
         let rescue_prime = rescue_prime_xlix::neptune_params();
 
-        let (base_matrices, err) =
-            program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
-        (base_matrices, stdout)
+        (aet, stdout, program)
     }
 
     fn parse_simulate_pad_extend(
@@ -1090,16 +1090,16 @@ pub(crate) mod triton_stark_tests {
         AllEndpoints,
         AllEndpoints,
     ) {
-        let (base_matrices, stdout) = parse_simulate(code, stdin, secret_in);
-        let num_trace_randomizers = 2;
+        let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
+        let base_matrices = BaseMatrices::new(aet, &program);
 
+        let num_trace_randomizers = 2;
         let mut base_tables =
             BaseTableCollection::from_base_matrices(num_trace_randomizers, &base_matrices);
 
         let unpadded_base_tables = base_tables.clone();
 
         base_tables.pad();
-        base_tables.sort();
 
         let dummy_challenges = AllChallenges::dummy();
         let dummy_initials = AllEndpoints::dummy();
