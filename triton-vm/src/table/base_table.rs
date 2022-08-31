@@ -129,7 +129,9 @@ pub trait InheritsFromTable<DataPF: PrimeField> {
 pub trait Extendable: TableLike<BFieldElement> {
     // Abstract functions that individual structs implement
 
-    fn get_padding_row(&self) -> Vec<BFieldElement>;
+    /// Computes some (or all) padding rows and, if appropriate, the index where they are to be
+    /// inserted.
+    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>);
 
     // Generic functions common to all extendable tables
 
@@ -146,10 +148,18 @@ pub trait Extendable: TableLike<BFieldElement> {
     }
 
     fn pad(&mut self) {
-        while self.data().len() != pad_height(self.data().len()) {
-            let padding_row = self.get_padding_row();
-            self.mut_data().push(padding_row);
+        while self.data().len() < padded_height(self.data().len()) {
+            let (maybe_index, mut rows) = self.get_padding_rows();
+            match maybe_index {
+                Some(idx) => {
+                    let old_tail_length = self.mut_data().len() - idx;
+                    self.mut_data().append(&mut rows);
+                    self.mut_data()[idx..].rotate_left(old_tail_length);
+                }
+                None => self.mut_data().append(&mut rows),
+            }
         }
+        assert_eq!(self.data().len(), padded_height(self.data().len()));
     }
 
     /// Computes the degree bounds of the quotients given the AIR constraints and the interpolant
@@ -241,7 +251,7 @@ pub fn derive_omicron<DataPF: PrimeField>(padded_height: u64) -> DataPF {
         .unwrap()
 }
 
-pub fn pad_height(height: usize) -> usize {
+pub fn padded_height(height: usize) -> usize {
     if height == 0 {
         0
     } else {
@@ -355,17 +365,17 @@ where
 
 #[cfg(test)]
 mod test_base_table {
-    use crate::table::base_table::{disjoint_domain, pad_height};
+    use crate::table::base_table::{disjoint_domain, padded_height};
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other;
 
     #[test]
     fn pad_height_test() {
-        assert_eq!(0, pad_height(0));
+        assert_eq!(0, padded_height(0));
         for x in 1..=1025 {
-            let padded_x = pad_height(x);
+            let padded_x = padded_height(x);
             assert_eq!(other::roundup_npo2(x as u64) as usize, padded_x);
-            assert_eq!(padded_x, pad_height(padded_x))
+            assert_eq!(padded_x, padded_height(padded_x))
         }
     }
 

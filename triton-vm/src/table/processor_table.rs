@@ -44,7 +44,7 @@ impl InheritsFromTable<BFieldElement> for ProcessorTable {
 impl ProcessorTable {
     pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
         let unpadded_height = matrix.len();
-        let padded_height = base_table::pad_height(unpadded_height);
+        let padded_height = base_table::padded_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -548,13 +548,13 @@ impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
 impl TableLike<BFieldElement> for ProcessorTable {}
 
 impl Extendable for ProcessorTable {
-    fn get_padding_row(&self) -> Vec<BFieldElement> {
+    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
             padding_row[ProcessorTableColumn::CLK as usize] += 1.into();
-            padding_row
+            (None, vec![padding_row])
         } else {
-            vec![0.into(); BASE_WIDTH]
+            (None, vec![vec![0.into(); BASE_WIDTH]])
         }
     }
 }

@@ -59,17 +59,15 @@ impl InheritsFromTable<XFieldElement> for ExtJumpStackTable {
 impl TableLike<BFieldElement> for JumpStackTable {}
 
 impl Extendable for JumpStackTable {
-    fn get_padding_row(&self) -> Vec<BFieldElement> {
+    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
             // add same clk padding as in processor table
             padding_row[CLK as usize] = (self.data().len() as u32).into();
-            padding_row
+            (None, vec![padding_row])
         } else {
-            vec![0.into(); BASE_WIDTH]
+            (None, vec![vec![0.into(); BASE_WIDTH]])
         }
-        // todo: use code below once the table is derived from the processor after that got padded
-        // panic!("This table gets derived from the padded processor table – no more padding here.")
     }
 }
 
@@ -176,7 +174,7 @@ impl ExtJumpStackTable {
 impl JumpStackTable {
     pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
         let unpadded_height = matrix.len();
-        let padded_height = base_table::pad_height(unpadded_height);
+        let padded_height = base_table::padded_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(

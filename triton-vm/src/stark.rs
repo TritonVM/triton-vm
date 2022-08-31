@@ -1039,7 +1039,7 @@ pub(crate) mod triton_stark_tests {
         .into_iter()
         .max()
         .unwrap_or(0);
-        let padded_height = base_table::pad_height(unpadded_height);
+        let padded_height = base_table::padded_height(unpadded_height);
 
         let stark = Stark::new(
             padded_height,
