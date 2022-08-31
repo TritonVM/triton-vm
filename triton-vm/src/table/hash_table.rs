@@ -379,8 +379,8 @@ impl InheritsFromTable<XFieldElement> for ExtHashTable {
 impl TableLike<BFieldElement> for HashTable {}
 
 impl Extendable for HashTable {
-    fn get_padding_row(&self) -> Vec<BFieldElement> {
-        vec![0.into(); BASE_WIDTH]
+    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
+        (None, vec![vec![0.into(); BASE_WIDTH]])
     }
 }
 
@@ -493,7 +493,7 @@ impl ExtHashTable {
 impl HashTable {
     pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
         let unpadded_height = matrix.len();
-        let padded_height = base_table::pad_height(unpadded_height);
+        let padded_height = base_table::padded_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(

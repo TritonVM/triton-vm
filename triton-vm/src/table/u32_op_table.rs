@@ -60,14 +60,14 @@ impl InheritsFromTable<XFieldElement> for ExtU32OpTable {
 }
 
 impl Extendable for U32OpTable {
-    fn get_padding_row(&self) -> Vec<BFieldElement> {
+    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         let mut padding_row = vec![0.into(); BASE_WIDTH];
         padding_row[LT as usize] = 2.into();
         padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
         if let Some(row) = self.data().last() {
             padding_row[CI as usize] = row[CI as usize];
         }
-        padding_row
+        (None, vec![padding_row])
     }
 }
 
@@ -265,7 +265,7 @@ impl ExtU32OpTable {
 impl U32OpTable {
     pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
         let unpadded_height = matrix.len();
-        let padded_height = base_table::pad_height(unpadded_height);
+        let padded_height = base_table::padded_height(unpadded_height);
 
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
