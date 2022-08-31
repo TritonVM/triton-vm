@@ -1,14 +1,18 @@
+use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::traits::IdentityValues;
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::fri_domain::FriDomain;
+use crate::table::base_table::Extendable;
+use crate::table::extension_table::Evaluable;
+
 use super::base_table::{self, InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::RamTableColumn::{self, *};
-use crate::fri_domain::FriDomain;
-use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
-use itertools::Itertools;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub const RAM_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
 pub const RAM_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;
@@ -80,6 +84,34 @@ impl RamTable {
 
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
+    }
+
+    pub fn sort(&mut self) {
+        self.mut_data()
+            .sort_by_key(|row| (row[RAMP as usize].value(), row[CLK as usize].value()));
+
+        // The difference of the ram pointer for two consecutive rows might have changed.
+        // Thus, the inverse of the ramp difference (iord) needs to be recomputed.
+        let mut iord_column = Vec::with_capacity(self.data().len());
+
+        for (curr_row, next_row) in self.data().iter().tuple_windows() {
+            let ramp_difference = next_row[RAMP as usize] - curr_row[RAMP as usize];
+            let inverse_of_ramp_difference = if ramp_difference.is_zero() {
+                ramp_difference
+            } else {
+                ramp_difference.inverse()
+            };
+            iord_column.push(inverse_of_ramp_difference);
+        }
+
+        // fill in last row, for which there is no next row, with default value
+        iord_column.push(0.into());
+
+        debug_assert_eq!(self.data().len(), iord_column.len());
+
+        for (ram_row, iord) in self.mut_data().iter_mut().zip(iord_column) {
+            ram_row[InverseOfRampDifference as usize] = iord;
+        }
     }
 
     pub fn extend(

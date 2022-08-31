@@ -156,6 +156,14 @@ impl BaseTableCollection {
         self.hash_table.pad();
         self.u32_op_table.pad();
     }
+
+    /// Sort all the tables that require sorting according to their respective sorting rules
+    pub fn sort(&mut self) {
+        self.instruction_table.sort();
+        self.op_stack_table.sort();
+        self.ram_table.sort();
+        self.jump_stack_table.sort();
+    }
 }
 
 impl<'a> IntoIterator for &'a BaseTableCollection {

@@ -1,23 +1,20 @@
-use super::table_column::{
-    ExtProcessorTableColumn, InstructionTableColumn, JumpStackTableColumn, OpStackTableColumn,
-    ProcessorTableColumn::*, RamTableColumn,
-};
-use super::{
-    hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
-    program_table, ram_table, u32_op_table,
-};
+use std::fmt::{Display, Formatter};
+
+use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
 use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::state::{VMOutput, VMState};
 use crate::table::table_column::ExtProcessorTableColumn::*;
-use crate::table::table_column::RamTableColumn::{InverseOfRampDifference, RAMP};
 use crate::vm::Program;
-use itertools::Itertools;
-use std::fmt::{Display, Formatter};
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::traits::IdentityValues;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use super::table_column::{ExtProcessorTableColumn, JumpStackTableColumn, ProcessorTableColumn::*};
+use super::{
+    hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
+    program_table, ram_table, u32_op_table,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct BaseMatrices {
@@ -46,61 +43,6 @@ impl BaseMatrices {
         }
 
         debug_assert_eq!(program.len(), self.instruction_matrix.len());
-    }
-
-    pub fn sort_instruction_matrix(&mut self) {
-        self.instruction_matrix
-            .sort_by_key(|row| row[InstructionTableColumn::Address as usize].value());
-    }
-
-    pub fn sort_op_stack_matrix(&mut self) {
-        self.op_stack_matrix.sort_by_key(|row| {
-            (
-                row[OpStackTableColumn::OSP as usize].value(),
-                row[OpStackTableColumn::CLK as usize].value(),
-            )
-        })
-    }
-
-    pub fn sort_ram_matrix(&mut self) {
-        self.ram_matrix.sort_by_key(|row| {
-            (
-                row[RamTableColumn::RAMP as usize].value(),
-                row[RamTableColumn::CLK as usize].value(),
-            )
-        })
-    }
-
-    pub fn sort_jump_stack_matrix(&mut self) {
-        self.jump_stack_matrix.sort_by_key(|row| {
-            (
-                row[JumpStackTableColumn::JSP as usize].value(),
-                row[JumpStackTableColumn::CLK as usize].value(),
-            )
-        })
-    }
-
-    pub fn set_ram_matrix_inverse_of_ramp_diff(&mut self) {
-        let mut iord_column = Vec::with_capacity(self.ram_matrix.len());
-
-        for (curr_row, next_row) in self.ram_matrix.iter().tuple_windows() {
-            let ramp_difference = next_row[RAMP as usize] - curr_row[RAMP as usize];
-            let inverse_of_ramp_difference = if ramp_difference.is_zero() {
-                ramp_difference
-            } else {
-                ramp_difference.inverse()
-            };
-            iord_column.push(inverse_of_ramp_difference);
-        }
-
-        // fill in last row, for which there is no next row, with default value
-        iord_column.push(0.into());
-
-        debug_assert_eq!(self.ram_matrix.len(), iord_column.len());
-
-        for (ram_row, iord) in self.ram_matrix.iter_mut().zip(iord_column) {
-            ram_row[InverseOfRampDifference as usize] = iord;
-        }
     }
 
     pub fn append(

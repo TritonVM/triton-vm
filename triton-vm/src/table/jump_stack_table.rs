@@ -200,6 +200,11 @@ impl JumpStackTable {
         Self { inherited_table }
     }
 
+    pub fn sort(&mut self) {
+        self.mut_data()
+            .sort_by_key(|row| (row[JSP as usize].value(), row[CLK as usize].value()))
+    }
+
     pub fn extend(
         &self,
         challenges: &JumpStackTableChallenges,
