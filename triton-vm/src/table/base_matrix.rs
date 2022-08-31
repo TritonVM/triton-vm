@@ -2,12 +2,16 @@ use std::fmt::{Display, Formatter};
 
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::traits::{IdentityValues, PrimeField};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::state::{VMOutput, VMState};
 use crate::table::table_column::ExtProcessorTableColumn::*;
+use crate::table::table_column::{
+    InstructionTableColumn, OpStackTableColumn, ProgramTableColumn, RamTableColumn,
+};
 use crate::vm::Program;
 
 use super::table_column::{ExtProcessorTableColumn, JumpStackTableColumn, ProcessorTableColumn::*};
@@ -17,34 +21,13 @@ use super::{
 };
 
 #[derive(Debug, Clone, Default)]
-pub struct BaseMatrices {
-    pub program_matrix: Vec<[BFieldElement; program_table::BASE_WIDTH]>,
+pub struct AlgebraicExecutionTrace {
     pub processor_matrix: Vec<[BFieldElement; processor_table::BASE_WIDTH]>,
-    pub instruction_matrix: Vec<[BFieldElement; instruction_table::BASE_WIDTH]>,
-    pub op_stack_matrix: Vec<[BFieldElement; op_stack_table::BASE_WIDTH]>,
-    pub ram_matrix: Vec<[BFieldElement; ram_table::BASE_WIDTH]>,
-    pub jump_stack_matrix: Vec<[BFieldElement; jump_stack_table::BASE_WIDTH]>,
     pub hash_matrix: Vec<[BFieldElement; hash_table::BASE_WIDTH]>,
     pub u32_op_matrix: Vec<[BFieldElement; u32_op_table::BASE_WIDTH]>,
 }
 
-impl BaseMatrices {
-    /// Initialize `program_matrix` and `instruction_matrix` so that both contain one row per word
-    /// in the program. Note that this does not mean “one row per instruction:” instructions that
-    /// take two words (e.g. `push N`) add two rows.
-    pub fn initialize(&mut self, program: &Program) {
-        let mut words_with_0 = program.to_bwords();
-        words_with_0.push(0.into());
-
-        for (i, (word, next_word)) in words_with_0.into_iter().tuple_windows().enumerate() {
-            let index = (i as u32).into();
-            self.program_matrix.push([index, word]);
-            self.instruction_matrix.push([index, word, next_word]);
-        }
-
-        debug_assert_eq!(program.len(), self.instruction_matrix.len());
-    }
-
+impl AlgebraicExecutionTrace {
     pub fn append(
         &mut self,
         state: &VMState,
@@ -54,23 +37,186 @@ impl BaseMatrices {
         self.processor_matrix
             .push(state.to_processor_row(current_instruction));
 
-        self.instruction_matrix
-            .push(state.to_instruction_row(current_instruction));
-
-        self.op_stack_matrix
-            .push(state.to_op_stack_row(current_instruction));
-
-        self.ram_matrix.push(state.to_ram_row());
-
-        self.jump_stack_matrix
-            .push(state.to_jump_stack_row(current_instruction));
-
         match vm_output {
             Some(VMOutput::WriteOutputSymbol(_)) => (),
             Some(VMOutput::XlixTrace(mut hash_trace)) => self.hash_matrix.append(&mut hash_trace),
             Some(VMOutput::U32OpTrace(mut trace)) => self.u32_op_matrix.append(&mut trace),
             None => (),
         }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BaseMatrices {
+    pub program_matrix: Vec<[BFieldElement; program_table::BASE_WIDTH]>,
+    pub instruction_matrix: Vec<[BFieldElement; instruction_table::BASE_WIDTH]>,
+    pub processor_matrix: Vec<[BFieldElement; processor_table::BASE_WIDTH]>,
+    pub op_stack_matrix: Vec<[BFieldElement; op_stack_table::BASE_WIDTH]>,
+    pub ram_matrix: Vec<[BFieldElement; ram_table::BASE_WIDTH]>,
+    pub jump_stack_matrix: Vec<[BFieldElement; jump_stack_table::BASE_WIDTH]>,
+    pub hash_matrix: Vec<[BFieldElement; hash_table::BASE_WIDTH]>,
+    pub u32_op_matrix: Vec<[BFieldElement; u32_op_table::BASE_WIDTH]>,
+}
+
+impl BaseMatrices {
+    pub fn new(aet: AlgebraicExecutionTrace, program: &Program) -> Self {
+        Self {
+            program_matrix: Self::derive_program_matrix(program),
+            instruction_matrix: Self::derive_instruction_matrix(&aet, program),
+            op_stack_matrix: Self::derive_op_stack_matrix(&aet),
+            ram_matrix: Self::derive_ram_matrix(&aet),
+            jump_stack_matrix: Self::derive_jump_stack_matrix(&aet),
+            processor_matrix: aet.processor_matrix,
+            hash_matrix: aet.hash_matrix,
+            u32_op_matrix: aet.u32_op_matrix,
+        }
+    }
+
+    fn derive_program_matrix(program: &Program) -> Vec<[BFieldElement; program_table::BASE_WIDTH]> {
+        program
+            .to_bwords()
+            .into_iter()
+            .enumerate()
+            .map(|(idx, instruction)| {
+                let mut derived_row = [0.into(); program_table::BASE_WIDTH];
+                derived_row[ProgramTableColumn::Address as usize] = (idx as u32).into();
+                derived_row[ProgramTableColumn::Instruction as usize] = instruction;
+                derived_row
+            })
+            .collect_vec()
+    }
+
+    fn derive_instruction_matrix(
+        aet: &AlgebraicExecutionTrace,
+        program: &Program,
+    ) -> Vec<[BFieldElement; instruction_table::BASE_WIDTH]> {
+        let program_append_0 = [program.to_bwords(), vec![0.into()]].concat();
+        let program_part = program_append_0
+            .into_iter()
+            .tuple_windows()
+            .enumerate()
+            .map(|(idx, (instruction, next_instruction))| {
+                let mut derived_row = [0.into(); instruction_table::BASE_WIDTH];
+                derived_row[InstructionTableColumn::Address as usize] = (idx as u32).into();
+                derived_row[InstructionTableColumn::CI as usize] = instruction;
+                derived_row[InstructionTableColumn::NIA as usize] = next_instruction;
+                derived_row
+            })
+            .collect_vec();
+        let processor_part = aet
+            .processor_matrix
+            .iter()
+            .map(|&row| {
+                let mut derived_row = [0.into(); instruction_table::BASE_WIDTH];
+                derived_row[InstructionTableColumn::Address as usize] = row[IP as usize];
+                derived_row[InstructionTableColumn::CI as usize] = row[CI as usize];
+                derived_row[InstructionTableColumn::NIA as usize] = row[NIA as usize];
+                derived_row
+            })
+            .collect_vec();
+        let mut instruction_matrix = [program_part, processor_part].concat();
+        instruction_matrix.sort_by_key(|row| row[InstructionTableColumn::Address as usize].value());
+        instruction_matrix
+    }
+
+    fn derive_op_stack_matrix(
+        aet: &AlgebraicExecutionTrace,
+    ) -> Vec<[BFieldElement; op_stack_table::BASE_WIDTH]> {
+        let mut op_stack_matrix = aet
+            .processor_matrix
+            .iter()
+            .map(|&row| {
+                let mut derived_row = [0.into(); op_stack_table::BASE_WIDTH];
+                derived_row[OpStackTableColumn::CLK as usize] = row[CLK as usize];
+                derived_row[OpStackTableColumn::IB1ShrinkStack as usize] = row[IB1 as usize];
+                derived_row[OpStackTableColumn::OSP as usize] = row[OSP as usize];
+                derived_row[OpStackTableColumn::OSV as usize] = row[OSV as usize];
+                derived_row
+            })
+            .collect_vec();
+        op_stack_matrix.sort_by_key(|row| {
+            (
+                row[OpStackTableColumn::OSP as usize].value(),
+                row[OpStackTableColumn::CLK as usize].value(),
+            )
+        });
+        op_stack_matrix
+    }
+
+    fn derive_ram_matrix(
+        aet: &AlgebraicExecutionTrace,
+    ) -> Vec<[BFieldElement; ram_table::BASE_WIDTH]> {
+        let mut ram_matrix = aet
+            .processor_matrix
+            .iter()
+            .map(|&row| {
+                let mut derived_row = [0.into(); ram_table::BASE_WIDTH];
+                derived_row[RamTableColumn::CLK as usize] = row[CLK as usize];
+                derived_row[RamTableColumn::RAMP as usize] = row[ST1 as usize];
+                derived_row[RamTableColumn::RAMV as usize] = row[RAMV as usize];
+                derived_row[RamTableColumn::InverseOfRampDifference as usize] = 0.into();
+                derived_row
+            })
+            .collect_vec();
+        ram_matrix.sort_by_key(|row| {
+            (
+                row[RamTableColumn::RAMP as usize].value(),
+                row[RamTableColumn::CLK as usize].value(),
+            )
+        });
+
+        // calculate inverse of ramp difference
+        let indexed_non_zero_differences = ram_matrix
+            .iter()
+            .tuple_windows()
+            .enumerate()
+            .map(|(idx, (curr_row, next_row))| {
+                (
+                    idx,
+                    next_row[RamTableColumn::RAMP as usize]
+                        - curr_row[RamTableColumn::RAMP as usize],
+                )
+            })
+            .filter(|(_, x)| !BFieldElement::is_zero(x))
+            .collect_vec();
+        let inverses = BFieldElement::batch_inversion(
+            indexed_non_zero_differences
+                .iter()
+                .map(|&(_, x)| x)
+                .collect_vec(),
+        );
+        for ((idx, _), inverse) in indexed_non_zero_differences
+            .into_iter()
+            .zip_eq(inverses.into_iter())
+        {
+            ram_matrix[idx][RamTableColumn::InverseOfRampDifference as usize] = inverse;
+        }
+        ram_matrix
+    }
+
+    fn derive_jump_stack_matrix(
+        aet: &AlgebraicExecutionTrace,
+    ) -> Vec<[BFieldElement; jump_stack_table::BASE_WIDTH]> {
+        let mut jump_stack_matrix = aet
+            .processor_matrix
+            .iter()
+            .map(|&row| {
+                let mut derived_row = [0.into(); jump_stack_table::BASE_WIDTH];
+                derived_row[JumpStackTableColumn::CLK as usize] = row[CLK as usize];
+                derived_row[JumpStackTableColumn::CI as usize] = row[CI as usize];
+                derived_row[JumpStackTableColumn::JSP as usize] = row[JSP as usize];
+                derived_row[JumpStackTableColumn::JSO as usize] = row[JSO as usize];
+                derived_row[JumpStackTableColumn::JSD as usize] = row[JSD as usize];
+                derived_row
+            })
+            .collect_vec();
+        jump_stack_matrix.sort_by_key(|row| {
+            (
+                row[JumpStackTableColumn::JSP as usize].value(),
+                row[JumpStackTableColumn::CLK as usize].value(),
+            )
+        });
+        jump_stack_matrix
     }
 }
 

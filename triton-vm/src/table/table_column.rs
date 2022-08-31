@@ -365,8 +365,8 @@ impl Bounded for ExtInstructionTableColumn {
 pub enum OpStackTableColumn {
     CLK,
     IB1ShrinkStack,
-    OSV,
     OSP,
+    OSV,
 }
 
 impl From<OpStackTableColumn> for usize {
@@ -376,8 +376,8 @@ impl From<OpStackTableColumn> for usize {
         match c {
             CLK => 0,
             IB1ShrinkStack => 1,
-            OSV => 2,
-            OSP => 3,
+            OSP => 2,
+            OSV => 3,
         }
     }
 }
@@ -388,7 +388,7 @@ impl Bounded for OpStackTableColumn {
     }
 
     fn max_value() -> Self {
-        OpStackTableColumn::OSP
+        OpStackTableColumn::OSV
     }
 }
 

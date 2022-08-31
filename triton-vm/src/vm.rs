@@ -2,7 +2,7 @@ use crate::instruction;
 use crate::instruction::{parse, Instruction, LabelledInstruction};
 use crate::state::{VMOutput, VMState, STATE_REGISTER_COUNT};
 use crate::stdio::{InputStream, OutputStream, VecStream};
-use crate::table::base_matrix::BaseMatrices;
+use crate::table::base_matrix::AlgebraicExecutionTrace;
 use itertools::Itertools;
 use std::error::Error;
 use std::fmt::Display;
@@ -118,36 +118,35 @@ impl Program {
         secret_in: &mut In,
         stdout: &mut Out,
         rescue_prime: &RescuePrimeXlix<{ STATE_REGISTER_COUNT }>,
-    ) -> (BaseMatrices, Option<Box<dyn Error>>)
+    ) -> (AlgebraicExecutionTrace, Option<Box<dyn Error>>)
     where
         In: InputStream,
         Out: OutputStream,
     {
-        let mut base_matrices = BaseMatrices::default();
-        base_matrices.initialize(self);
+        let mut aet = AlgebraicExecutionTrace::default();
 
         let mut state = VMState::new(self);
         let initial_instruction = state.current_instruction().unwrap();
 
-        base_matrices.append(&state, None, initial_instruction);
+        aet.append(&state, None, initial_instruction);
 
         while !state.is_complete() {
             let vm_output = match state.step_mut(stdin, secret_in, rescue_prime) {
-                Err(err) => return (base_matrices, Some(err)),
+                Err(err) => return (aet, Some(err)),
                 Ok(vm_output) => vm_output,
             };
             let current_instruction = state.current_instruction().unwrap_or(Instruction::Halt);
 
             if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
                 if let Err(error) = stdout.write_elem(written_word) {
-                    return (base_matrices, Some(Box::new(error)));
+                    return (aet, Some(Box::new(error)));
                 }
             }
 
-            base_matrices.append(&state, vm_output, current_instruction);
+            aet.append(&state, vm_output, current_instruction);
         }
 
-        (base_matrices, None)
+        (aet, None)
     }
 
     /// Wrapper around `.simulate()` for easier i/o handling. Behaviour is that of `.simulate()`,
@@ -157,15 +156,18 @@ impl Program {
         &self,
         input: &[BFieldElement],
         secret_input: &[BFieldElement],
-    ) -> (BaseMatrices, Option<Box<dyn Error>>, Vec<BFieldElement>) {
+    ) -> (
+        AlgebraicExecutionTrace,
+        Option<Box<dyn Error>>,
+        Vec<BFieldElement>,
+    ) {
         let mut stdin = VecStream::new_bwords(input);
         let mut secret_in = VecStream::new_bwords(secret_input);
         let mut stdout = VecStream::new_bytes(&[]);
         let rescue_prime = neptune_params();
 
-        let (base_matrices, vm_error) =
-            self.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
-        (base_matrices, vm_error, stdout.to_bword_vec())
+        let (aet, vm_error) = self.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        (aet, vm_error, stdout.to_bword_vec())
     }
 
     pub fn run<In, Out>(
@@ -242,7 +244,7 @@ mod triton_vm_tests {
 
     use super::*;
     use crate::instruction::sample_programs;
-    use crate::table::base_matrix::ProcessorMatrixRow;
+    use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
     use crate::table::base_table::{Extendable, InheritsFromTable};
     use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
     use crate::table::extension_table::Evaluable;
@@ -340,8 +342,8 @@ mod triton_vm_tests {
         let mut stdout = VecStream::new_bwords(&[]);
         let rescue_prime = neptune_params();
 
-        let (base_matrices, err) =
-            program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        let base_matrices = BaseMatrices::new(aet, &program);
 
         println!("{:?}", err);
         for row in base_matrices.processor_matrix.clone() {
@@ -413,8 +415,8 @@ mod triton_vm_tests {
         let mut stdout = VecStream::new_bwords(&[]);
         let rescue_prime = neptune_params();
 
-        let (base_matrices, err) =
-            program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        let base_matrices = BaseMatrices::new(aet, &program);
 
         let jmp_rows_count = base_matrices.jump_stack_matrix.len();
         let prc_rows_count = base_matrices.processor_matrix.len();
@@ -435,53 +437,6 @@ mod triton_vm_tests {
 
         // 4. The number of output_table rows is equivalent to the number of write_io instructions.
         assert_eq!(0, stdout.to_bword_vec().len());
-    }
-
-    fn _check_base_matrices(
-        base_matrices: &BaseMatrices,
-        input_symbols: &[BFieldElement],
-        output_symbols: &[BFieldElement],
-        expected_input_rows: usize,
-        expected_output_rows: usize,
-        hash_instruction_count: usize,
-    ) {
-        // 1. Check `output_matrix`.
-        {
-            let expecteds = vec![].into_iter().rev().map(|x| BFieldElement::new(x));
-            let actuals = output_symbols.to_vec();
-
-            assert_eq!(expecteds.len(), actuals.len());
-
-            for (expected, actual) in zip(expecteds, actuals) {
-                assert_eq!(expected, actual)
-            }
-        }
-
-        // 2. Each `hash` operation result in 8 rows in the state matrix.
-        {
-            let hash_state_rows_count = base_matrices.hash_matrix.len();
-            assert_eq!(hash_instruction_count * 8, hash_state_rows_count)
-        }
-
-        //3. noRows(jmpstack_tabel) == noRows(processor_table)
-        {
-            let jmp_rows_count = base_matrices.jump_stack_matrix.len();
-            let prc_rows_count = base_matrices.processor_matrix.len();
-            assert_eq!(jmp_rows_count, prc_rows_count)
-        }
-
-        // "4. "READIO; WRITEIO" -> noRows(inputable) + noRows(outputtable) == noReadIO +
-        // noWriteIO"
-        {
-            // Input
-            let actual_input_rows = input_symbols.len();
-            assert_eq!(expected_input_rows, actual_input_rows);
-
-            // Output
-            let actual_output_rows = output_symbols.len();
-
-            assert_eq!(expected_output_rows, actual_output_rows);
-        }
     }
 
     /// Source code and associated input. Primarily for testing of the VM's instructions.
@@ -510,7 +465,13 @@ mod triton_vm_tests {
             output
         }
 
-        fn simulate(&self) -> (BaseMatrices, Option<Box<dyn Error>>, Vec<BFieldElement>) {
+        fn simulate(
+            &self,
+        ) -> (
+            AlgebraicExecutionTrace,
+            Option<Box<dyn Error>>,
+            Vec<BFieldElement>,
+        ) {
             let program =
                 Program::from_code(&self.source_code).expect("Could not load source code.");
             program.simulate_with_input(&self.input, &self.secret_input)

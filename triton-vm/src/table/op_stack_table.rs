@@ -5,7 +5,6 @@ use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::OpStackTableColumn::*;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -83,9 +82,9 @@ impl ExtOpStackTable {
 
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
-        let clk = variables[usize::from(CLK)].clone();
-        let osv = variables[usize::from(OSV)].clone();
-        let osp = variables[usize::from(OSP)].clone();
+        let clk = variables[CLK as usize].clone();
+        let osv = variables[OSV as usize].clone();
+        let osp = variables[OSP as usize].clone();
         let sixteen = MPolynomial::from_constant(16.into(), FULL_WIDTH);
 
         // 1. clk is 0.
@@ -173,11 +172,6 @@ impl OpStackTable {
 
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
-    }
-
-    pub fn sort(&mut self) {
-        self.mut_data()
-            .sort_by_key(|row| (row[OSP as usize].value(), row[CLK as usize].value()))
     }
 
     pub fn extend(
