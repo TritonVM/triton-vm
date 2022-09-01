@@ -6,6 +6,7 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
+use crate::table::table_column::JumpStackTableColumn;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -60,11 +61,16 @@ impl TableLike<BFieldElement> for JumpStackTable {}
 
 impl Extendable for JumpStackTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            // add same clk padding as in processor table
-            padding_row[CLK as usize] = (self.data().len() as u32).into();
-            (None, vec![padding_row])
+        let max_clock = self.data().len() as u64 - 1;
+        if let Some((idx, padding_template)) = self
+            .data()
+            .iter()
+            .enumerate()
+            .find(|(_, row)| row[JumpStackTableColumn::CLK as usize].value() == max_clock)
+        {
+            let mut padding_row = padding_template.clone();
+            padding_row[JumpStackTableColumn::CLK as usize] += 1.into();
+            (Some(idx + 1), vec![padding_row])
         } else {
             (None, vec![vec![0.into(); BASE_WIDTH]])
         }

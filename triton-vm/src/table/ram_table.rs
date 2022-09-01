@@ -213,14 +213,49 @@ impl TableLike<BFieldElement> for RamTable {}
 
 impl Extendable for RamTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            // add same clk padding as in processor table
-            padding_row[RamTableColumn::CLK as usize] = (self.data().len() as u32).into();
-            (None, vec![padding_row])
-        } else {
-            (None, vec![vec![0.into(); BASE_WIDTH]])
+        panic!("This function should not be called: the Ram Table implements `.pad` directly.")
+    }
+
+    fn pad(&mut self) {
+        let max_clock = self.data().len() as u64 - 1;
+        let padded_height = self.padded_height();
+        let num_padding_rows = padded_height - self.data().len();
+
+        if self.data().is_empty() {
+            self.mut_data()
+                .append(&mut vec![vec![0.into(); BASE_WIDTH]; padded_height]);
+            return;
         }
+
+        let idx = self
+            .mut_data()
+            .iter()
+            .enumerate()
+            .find(|(_, row)| row[RamTableColumn::CLK as usize].value() == max_clock)
+            .map(|(idx, _)| idx)
+            .unwrap();
+
+        let padding_template = &mut self.mut_data()[idx];
+        let difference_inverse = padding_template[RamTableColumn::InverseOfRampDifference as usize];
+        padding_template[RamTableColumn::InverseOfRampDifference as usize] = 0.into();
+
+        let mut padding_rows = vec![];
+        while padding_rows.len() < num_padding_rows {
+            let mut padding_row = padding_template.clone();
+            padding_row[RamTableColumn::CLK as usize] += (padding_rows.len() as u32 + 1).into();
+            padding_rows.push(padding_row)
+        }
+
+        if let Some(row) = padding_rows.last_mut() {
+            row[RamTableColumn::InverseOfRampDifference as usize] = difference_inverse;
+        }
+
+        let insertion_index = idx + 1;
+        let old_tail_length = self.data().len() - insertion_index;
+        self.mut_data().append(&mut padding_rows);
+        self.mut_data()[insertion_index..].rotate_left(old_tail_length);
+
+        assert_eq!(padded_height, self.data().len());
     }
 }
 

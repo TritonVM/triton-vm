@@ -59,11 +59,16 @@ impl TableLike<BFieldElement> for OpStackTable {}
 
 impl Extendable for OpStackTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            // add same clk padding as in processor table
-            padding_row[OpStackTableColumn::CLK as usize] = (self.data().len() as u32).into();
-            (None, vec![padding_row])
+        let max_clock = self.data().len() as u64 - 1;
+        if let Some((idx, padding_template)) = self
+            .data()
+            .iter()
+            .enumerate()
+            .find(|(_, row)| row[OpStackTableColumn::CLK as usize].value() == max_clock)
+        {
+            let mut padding_row = padding_template.clone();
+            padding_row[OpStackTableColumn::CLK as usize] += 1.into();
+            (Some(idx + 1), vec![padding_row])
         } else {
             let mut padding_row = vec![0.into(); BASE_WIDTH];
             padding_row[OpStackTableColumn::OSP as usize] = 16.into();
