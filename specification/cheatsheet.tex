@@ -1,10 +1,13 @@
 \documentclass{article}
+\PassOptionsToPackage{table}{xcolor}
 \usepackage{geometry}
 \usepackage{tikz}
 \usepackage[most]{tcolorbox}
 \usepackage{mathabx}
 \usepackage{booktabs}
+\usepackage{tabularx}
 \usepackage{nicefrac}
+\usepackage{pdflscape}
 
 % https://tex.stackexchange.com/questions/198658/
 \makeatletter
@@ -35,6 +38,8 @@
 \colorlet{instr-jsp}{blue!90!green!20}
 \colorlet{instr-u32}{orange!90!black!20}
 \colorlet{hint}{gray}
+\colorlet{row1}{white}
+\colorlet{row2}{gray!8}
 
 % declared as commands purely for reasons of latex source code formatting
 \newcommand{\hintdivinesib}{
@@ -93,6 +98,7 @@
 \end{tabular}
 \end{minipage}\hfill%
 \begin{minipage}[][0.84\textheight][s]{0.6\textwidth}
+    \rowcolors{3}{row1}{row2}
     \hfill
     \includegraphics[keepaspectratio,width=0.9\textwidth]{img/aet-relations.pdf}
     \vfill
@@ -110,6 +116,7 @@
     \vfill
 
     \hfill
+    \rowcolors{2}{row2}{row1}
     \begin{tabular}{lrrr}
         \toprule
                     & base & ext & $\sum$ \\ \midrule
@@ -124,4 +131,21 @@
         $\sum$      &  112 &  34 &    146
     \end{tabular}
 \end{minipage}
+
+\newpage
+\begin{landscape}
+    \rowcolors{2}{row2}{row1}
+\begin{tabular}{lllllllllllllllllllll}
+    \toprule
+    Table       & \multicolumn{5}{l}{Base Columns}                                        &       &              &              &                         &              &              &              &               &              &                      &              &                      &              &               &               \\ \midrule
+    Program     & \multicolumn{2}{l}{Address} & \multicolumn{3}{l}{Instruction}           &       &              &              &                         &              &              &              &               &              &                      &              &                      &              &               &               \\
+    Instruction & \multicolumn{2}{l}{Address} & \texttt{CI} & \texttt{NIA} &              &       &              &              &                         &              &              &              &               &              &                      &              &                      &              &               &               \\
+    Processor   & \texttt{CLK} & \texttt{IP}  & \texttt{CI} & \texttt{NIA} & \texttt{IB0} & \dots & \texttt{IB6} & \texttt{JSP} & \texttt{JSO}            & \texttt{JSD} & \texttt{ST0} & \dots        & \texttt{ST15} & \texttt{OSP} & \texttt{OSV}         & \texttt{HV0} & \dots                & \texttt{HV3} & \texttt{RAMV} &               \\
+    OpStack     & \texttt{CLK} &              &             &              &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)} &              &              &              &               & \texttt{OSP} & \texttt{OSV}         &              &                      &              &               &               \\
+    RAM         & \texttt{CLK} &              &             &              &              &       &              &              &                         &              &              & \multicolumn{4}{l}{\texttt{RAMP} ($\widehat{=}$ \texttt{ST1})}     &              &                      &              & \texttt{RAMV} & \texttt{IORD} \\
+    JumpStack   & \texttt{CLK} &              & \texttt{CI} &              &              &       &              & \texttt{JSP} & \texttt{JSO}            & \texttt{JSD} &              &              &               &              &                      &              &                      &              &               &               \\
+    Hash        & \multicolumn{4}{l}{RoundNumber}                          &              &       &              &              &                         &              & \texttt{ST0} & \dots        & \texttt{ST15} & \multicolumn{3}{l}{\texttt{CONSTANT0A}}            & \dots                & \multicolumn{3}{l}{\texttt{CONSTANT15B}}     \\
+    U32         & \texttt{IDC} & \multicolumn{2}{l}{Bits}   & \multicolumn{3}{l}{Inv33MinusBits}  & \texttt{CI}  & \texttt{LHS} & \texttt{RHS}            & \texttt{LT}  & \texttt{AND} & \texttt{XOR} & \texttt{REV}  & \multicolumn{2}{l}{\texttt{LHS}Inv} & \multicolumn{2}{l}{\texttt{RHS}Inv} &              &               &               \\ \bottomrule
+\end{tabular}
+\end{landscape}
 \end{document}
