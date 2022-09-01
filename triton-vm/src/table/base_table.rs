@@ -152,7 +152,7 @@ pub trait Extendable: TableLike<BFieldElement> {
             let (maybe_index, mut rows) = self.get_padding_rows();
             match maybe_index {
                 Some(idx) => {
-                    let old_tail_length = self.mut_data().len() - idx;
+                    let old_tail_length = self.data().len() - idx;
                     self.mut_data().append(&mut rows);
                     self.mut_data()[idx..].rotate_left(old_tail_length);
                 }
