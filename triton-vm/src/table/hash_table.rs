@@ -447,7 +447,7 @@ impl ExtHashTable {
             .map(|i| ROUND_CONSTANTS[NUM_ROUND_CONSTANTS * (i - 1) + round_constant_idx])
             .map(|x| BFieldElement::new(x).lift())
             .collect_vec();
-        Polynomial::slow_lagrange_interpolation_new(&domain, &abscissae)
+        Polynomial::lagrange_interpolate(&domain, &abscissae)
     }
 
     fn ext_transition_constraints(
