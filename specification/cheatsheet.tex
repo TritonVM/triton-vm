@@ -65,36 +65,36 @@
     \texttt{02} & $\ominus$ & \texttt{pop}                                       &                \\
     \texttt{01} & $\oplus$  & \tcbox[colback=instr-arg]{\texttt{push + a}}       &                \\
     \texttt{04} & $\oplus$  & \texttt{divine}                                    &                \\
-    \texttt{03} & $\oplus$  & \tcbox[colback=instr-arg]{\texttt{dup + i}}        &                \\
-    \texttt{05} &           & \tcbox[colback=instr-arg]{\texttt{swap + i}}       &                \\
-    \texttt{06} & $\ovoid$  & \texttt{nop}                                       &                \\
-    \texttt{08} & $\ominus$ & \tcbox[colback=instr-jsp]{\texttt{skiz}}           &                \\
-    \texttt{07} & $\ovoid$  & \splitbox{instr-jsp}{instr-arg}{\texttt{call + d}} &                \\
-    \texttt{10} & $\ovoid$  & \tcbox[colback=instr-jsp]{\texttt{return}}         &                \\
-    \texttt{12} & $\ovoid$  & \tcbox[colback=instr-jsp]{\texttt{recurse}}        &                \\
-    \texttt{14} & $\ominus$ & \texttt{assert}                                    &                \\
+    \texttt{05} & $\oplus$  & \tcbox[colback=instr-arg]{\texttt{dup + i}}        &                \\
+    \texttt{09} &           & \tcbox[colback=instr-arg]{\texttt{swap + i}}       &                \\
+    \texttt{08} & $\ovoid$  & \texttt{nop}                                       &                \\
+    \texttt{06} & $\ominus$ & \tcbox[colback=instr-jsp]{\texttt{skiz}}           &                \\
+    \texttt{13} & $\ovoid$  & \splitbox{instr-jsp}{instr-arg}{\texttt{call + d}} &                \\
+    \texttt{12} & $\ovoid$  & \tcbox[colback=instr-jsp]{\texttt{return}}         &                \\
+    \texttt{16} & $\ovoid$  & \tcbox[colback=instr-jsp]{\texttt{recurse}}        &                \\
+    \texttt{10} & $\ominus$ & \texttt{assert}                                    &                \\
     \texttt{00} & $\ovoid$  & \texttt{halt}                                      &                \\
-    \texttt{16} & $\odot$   & \texttt{read\_mem}                                 &                \\
-    \texttt{18} & $\ovoid$  & \texttt{write\_mem}                                &                \\
-    \texttt{20} &           & \texttt{hash}                                      &                \\
-    \texttt{22} &           & \texttt{divine\_sibling}                           & \hintdivinesib \\
-    \texttt{24} & $\ovoid$  & \texttt{assert\_vector}                            &                \\
-    \texttt{26} & $\ocol$   & \texttt{add}                                       &                \\
-    \texttt{28} & $\ocol$   & \texttt{mul}                                       &                \\
-    \texttt{30} & $\odot$   & \texttt{invert}                                    &                \\
-    \texttt{32} &           & \texttt{split}                                     & \hintsplit     \\
-    \texttt{34} & $\ocol$   & \texttt{eq}                                        &                \\
-    \texttt{36} & $\ocol$   & \tcbox[colback=instr-u32]{\texttt{lt}}             & \hintlt        \\
-    \texttt{38} & $\ocol$   & \tcbox[colback=instr-u32]{\texttt{and}}            &                \\
-    \texttt{40} & $\ocol$   & \tcbox[colback=instr-u32]{\texttt{xor}}            &                \\
-    \texttt{42} & $\odot$   & \tcbox[colback=instr-u32]{\texttt{reverse}}        &                \\
-    \texttt{44} &           & \tcbox[colback=instr-u32]{\texttt{div}}            & \hintdiv       \\
-    \texttt{46} &           & \texttt{xxadd}                                     &                \\
-    \texttt{48} &           & \texttt{xxmul}                                     &                \\
-    \texttt{50} &           & \texttt{xinv}                                      &                \\
-    \texttt{52} &           & \texttt{xbmul}                                     & \hintxbmul     \\
-    \texttt{54} & $\oplus$  & \texttt{read\_io}                                  &                \\
-    \texttt{56} & $\ominus$ & \texttt{write\_io}                                 &
+    \texttt{20} & $\odot$   & \texttt{read\_mem}                                 &                \\
+    \texttt{24} & $\ovoid$  & \texttt{write\_mem}                                &                \\
+    \texttt{28} &           & \texttt{hash}                                      &                \\
+    \texttt{32} &           & \texttt{divine\_sibling}                           & \hintdivinesib \\
+    \texttt{36} & $\ovoid$  & \texttt{assert\_vector}                            &                \\
+    \texttt{14} & $\ocol$   & \texttt{add}                                       &                \\
+    \texttt{18} & $\ocol$   & \texttt{mul}                                       &                \\
+    \texttt{40} & $\odot$   & \texttt{invert}                                    &                \\
+    \texttt{44} &           & \texttt{split}                                     & \hintsplit     \\
+    \texttt{22} & $\ocol$   & \texttt{eq}                                        &                \\
+    \texttt{26} & $\ocol$   & \tcbox[colback=instr-u32]{\texttt{lt}}             & \hintlt        \\
+    \texttt{30} & $\ocol$   & \tcbox[colback=instr-u32]{\texttt{and}}            &                \\
+    \texttt{34} & $\ocol$   & \tcbox[colback=instr-u32]{\texttt{xor}}            &                \\
+    \texttt{48} & $\odot$   & \tcbox[colback=instr-u32]{\texttt{reverse}}        &                \\
+    \texttt{52} &           & \tcbox[colback=instr-u32]{\texttt{div}}            & \hintdiv       \\
+    \texttt{56} &           & \texttt{xxadd}                                     &                \\
+    \texttt{60} &           & \texttt{xxmul}                                     &                \\
+    \texttt{64} &           & \texttt{xinv}                                      &                \\
+    \texttt{38} &           & \texttt{xbmul}                                     & \hintxbmul     \\
+    \texttt{68} & $\oplus$  & \texttt{read\_io}                                  &                \\
+    \texttt{42} & $\ominus$ & \texttt{write\_io}                                 &
 \end{tabular}
 \end{minipage}\hfill%
 \begin{minipage}[][0.84\textheight][s]{0.6\textwidth}
