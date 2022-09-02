@@ -18,98 +18,6 @@ use super::challenges_endpoints::AllChallenges;
 // Generic methods specifically for tables that have been extended
 
 pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
-    /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
-    fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
-        let interpolant_degree = self.interpolant_degree();
-        let interpolants_degrees = vec![interpolant_degree; self.full_width()];
-        let duplicated_interpolants_degrees = vec![interpolant_degree; self.full_width() * 2];
-
-        let boundary_zerofier_degree = 1;
-        let transition_zerofier_degree = interpolant_degree - 1;
-        let consistency_zerofier_degree = interpolant_degree;
-        let terminal_zerofier_degree = 1;
-
-        let boundary_degrees_with_origin = self
-            .dynamic_boundary_constraints()
-            .iter()
-            .enumerate()
-            .map(|(i, air)| {
-                let boundary_polynomial_degree_bound =
-                    air.symbolic_degree_bound(&interpolants_degrees);
-                DegreeWithOrigin {
-                    degree: boundary_polynomial_degree_bound - boundary_zerofier_degree,
-                    origin_table_name: self.name(),
-                    origin_index: i,
-                    origin_air_degree: air.degree(),
-                    origin_table_height: self.padded_height(),
-                    origin_constraint_type: "boundary constraint".to_string(),
-                }
-            })
-            .collect_vec();
-
-        let transition_degrees_with_origin = self
-            .dynamic_transition_constraints(&AllChallenges::dummy())
-            .iter()
-            .enumerate()
-            .map(|(i, air)| {
-                let transition_polynomial_degree_bound =
-                    air.symbolic_degree_bound(&duplicated_interpolants_degrees);
-                DegreeWithOrigin {
-                    degree: transition_polynomial_degree_bound - transition_zerofier_degree,
-                    origin_table_name: self.name(),
-                    origin_index: i,
-                    origin_air_degree: air.degree(),
-                    origin_table_height: self.padded_height(),
-                    origin_constraint_type: "transition constraint".to_string(),
-                }
-            })
-            .collect();
-
-        let consistency_degrees_with_origin = self
-            .dynamic_consistency_constraints()
-            .iter()
-            .enumerate()
-            .map(|(i, air)| {
-                let consistency_polynomial_degree_bound =
-                    air.symbolic_degree_bound(&interpolants_degrees);
-                DegreeWithOrigin {
-                    degree: consistency_polynomial_degree_bound - consistency_zerofier_degree,
-                    origin_table_name: self.name(),
-                    origin_index: i,
-                    origin_air_degree: air.degree(),
-                    origin_table_height: self.padded_height(),
-                    origin_constraint_type: "consistency constraint".to_string(),
-                }
-            })
-            .collect();
-
-        let terminal_degrees_with_origin = self
-            .dynamic_terminal_constraints(&AllChallenges::dummy(), &AllEndpoints::dummy())
-            .iter()
-            .enumerate()
-            .map(|(i, air)| {
-                let terminal_polynomial_degree_bound =
-                    air.symbolic_degree_bound(&interpolants_degrees);
-                DegreeWithOrigin {
-                    degree: terminal_polynomial_degree_bound - terminal_zerofier_degree,
-                    origin_table_name: self.name(),
-                    origin_index: i,
-                    origin_air_degree: air.degree(),
-                    origin_table_height: self.padded_height(),
-                    origin_constraint_type: "terminal constraint".to_string(),
-                }
-            })
-            .collect();
-
-        [
-            boundary_degrees_with_origin,
-            transition_degrees_with_origin,
-            consistency_degrees_with_origin,
-            terminal_degrees_with_origin,
-        ]
-        .concat()
-    }
-
     fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_transition_constraints(
@@ -189,6 +97,69 @@ pub trait Evaluable: ExtensionTable {
 }
 
 pub trait Quotientable: ExtensionTable + Evaluable {
+    /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
+    fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
+        let boundary_degrees_with_origin = self
+            .get_boundary_quotient_degree_bounds()
+            .into_iter()
+            .enumerate()
+            .map(|(i, d)| DegreeWithOrigin {
+                degree: d,
+                origin_table_name: self.name(),
+                origin_index: i,
+                origin_table_height: self.padded_height(),
+                origin_constraint_type: "boundary constraint".to_string(),
+            })
+            .collect_vec();
+
+        let transition_degrees_with_origin = self
+            .get_transition_quotient_degree_bounds()
+            .into_iter()
+            .enumerate()
+            .map(|(i, d)| DegreeWithOrigin {
+                degree: d,
+                origin_table_name: self.name(),
+                origin_index: i,
+                origin_table_height: self.padded_height(),
+                origin_constraint_type: "transition constraint".to_string(),
+            })
+            .collect();
+
+        let consistency_degrees_with_origin = self
+            .get_consistency_quotient_degree_bounds()
+            .into_iter()
+            .enumerate()
+            .map(|(i, d)| DegreeWithOrigin {
+                degree: d,
+                origin_table_name: self.name(),
+                origin_index: i,
+                origin_table_height: self.padded_height(),
+                origin_constraint_type: "consistency constraint".to_string(),
+            })
+            .collect();
+
+        let terminal_degrees_with_origin = self
+            .get_terminal_quotient_degree_bounds()
+            .into_iter()
+            .enumerate()
+            .map(|(i, d)| DegreeWithOrigin {
+                degree: d,
+                origin_table_name: self.name(),
+                origin_index: i,
+                origin_table_height: self.padded_height(),
+                origin_constraint_type: "terminal constraint".to_string(),
+            })
+            .collect();
+
+        [
+            boundary_degrees_with_origin,
+            transition_degrees_with_origin,
+            consistency_degrees_with_origin,
+            terminal_degrees_with_origin,
+        ]
+        .concat()
+    }
+
     fn boundary_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
@@ -495,7 +466,6 @@ pub struct DegreeWithOrigin {
     pub degree: Degree,
     pub origin_table_name: String,
     pub origin_index: usize,
-    pub origin_air_degree: Degree,
     pub origin_table_height: usize,
     pub origin_constraint_type: String,
 }
@@ -506,7 +476,6 @@ impl Default for DegreeWithOrigin {
             degree: -1,
             origin_table_name: "NoTable".to_string(),
             origin_index: usize::MAX,
-            origin_air_degree: -1,
             origin_table_height: 0,
             origin_constraint_type: "NoType".to_string(),
         }
@@ -518,12 +487,11 @@ impl Display for DegreeWithOrigin {
         write!(
             f,
             "Degree of poly for table {} (index {:02}) of type {} is {:02}. \
-            AIR has degree {:02}. Table height was {}.",
+            Table height was {}.",
             self.origin_table_name,
             self.origin_index,
             self.origin_constraint_type,
             self.degree,
-            self.origin_air_degree,
             self.origin_table_height,
         )
     }
