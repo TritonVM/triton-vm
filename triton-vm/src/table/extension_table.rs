@@ -438,10 +438,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         if let Some(db) = &self.inherited_table().boundary_quotient_degree_bounds {
             db.to_owned()
         } else {
-            panic!(
-                "{} does not have boundary quotient degree bounds!",
-                &self.name()
-            );
+            let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
+            let zerofier_degree = 1;
+            self.dynamic_boundary_constraints()
+                .iter()
+                .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
+                .collect()
         }
     }
 
@@ -449,10 +451,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         if let Some(db) = &self.inherited_table().transition_quotient_degree_bounds {
             db.to_owned()
         } else {
-            panic!(
-                "{} does not have transition quotient degree bounds!",
-                &self.name()
-            );
+            let max_degrees = vec![(self.padded_height() - 1) as i64; 2 * self.full_width()];
+            let zerofier_degree = self.padded_height() as Degree - 1;
+            self.dynamic_transition_constraints(&AllChallenges::dummy())
+                .iter()
+                .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
+                .collect()
         }
     }
 
@@ -460,10 +464,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         if let Some(db) = &self.inherited_table().consistency_quotient_degree_bounds {
             db.to_owned()
         } else {
-            panic!(
-                "{} does not have consistency quotient degree bounds!",
-                &self.name()
-            );
+            let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
+            let zerofier_degree = self.padded_height() as Degree;
+            self.dynamic_consistency_constraints()
+                .iter()
+                .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
+                .collect()
         }
     }
 
@@ -471,10 +477,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         if let Some(db) = &self.inherited_table().terminal_quotient_degree_bounds {
             db.to_owned()
         } else {
-            panic!(
-                "{} does not have terminal quotient degree bounds!",
-                &self.name()
-            );
+            let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
+            let zerofier_degree = 1 as Degree;
+            self.dynamic_terminal_constraints(&AllChallenges::dummy(), &AllEndpoints::dummy())
+                .iter()
+                .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
+                .collect()
         }
     }
 }
