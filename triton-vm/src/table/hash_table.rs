@@ -13,6 +13,7 @@ use std::ops::Mul;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::traits::ModPowU64;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub const HASH_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
@@ -871,6 +872,107 @@ impl Evaluable for ExtHashTable {
 
         evaluated_consistency_constraints
     }
+
+    fn evaluate_transition_constraints(
+        &self,
+        evaluation_point: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
+        let constant = |c: u64| BFieldElement::new(c).lift();
+
+        let round_number = evaluation_point[ROUNDNUMBER as usize].clone();
+        let round_number_next = evaluation_point[FULL_WIDTH + ROUNDNUMBER as usize].clone();
+
+        let mut constraint_polynomials: Vec<XFieldElement> = vec![];
+
+        // round number
+        // round numbers evolve as
+        // 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8, and
+        // 8 -> 1 or 8 -> 0, and
+        // 0 -> 0
+
+        // 1. round number belongs to {0, ..., 8}
+        // => consistency constraint
+
+        // 2. if round number is 0, then next round number is 0
+        // DNF: rn in {1, ..., 8} \/ rn* = 0
+        let mut polynomial = (1..=8)
+            .map(|r| constant(r) - round_number.clone())
+            .fold(constant(1), XFieldElement::mul);
+        polynomial *= round_number_next.clone();
+        constraint_polynomials.push(polynomial);
+
+        // 3. if round number is 8, then next round number is 0 or 1
+        // DNF: rn =/= 8 \/ rn* = 0 \/ rn* = 1
+        polynomial = (0..=7)
+            .map(|r| constant(r) - round_number.clone())
+            .fold(constant(1), XFieldElement::mul);
+        polynomial *= constant(1) - round_number_next.clone();
+        polynomial *= round_number_next.clone();
+        constraint_polynomials.push(polynomial);
+
+        // 4. if round number is in {1, ..., 7} then next round number is +1
+        // DNF: (rn == 0 \/ rn == 8) \/ rn* = rn + 1
+        polynomial = round_number.clone()
+            * (constant(8) - round_number.clone())
+            * (round_number_next.clone() - round_number.clone() - constant(1));
+        constraint_polynomials.push(polynomial);
+
+        // Rescue-XLIX
+
+        // left-hand-side, starting at current round and going forward
+        let current_state: Vec<XFieldElement> = (0..STATE_SIZE)
+            .map(|i| evaluation_point[HashTableColumn::STATE0 as usize + i].clone())
+            .collect_vec();
+        let after_sbox = current_state
+            .into_iter()
+            .map(|c| c.mod_pow_u64(7))
+            .collect_vec();
+        let after_mds = (0..STATE_SIZE)
+            .map(|i| {
+                (0..STATE_SIZE)
+                    .map(|j| constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
+                    .fold(constant(1), XFieldElement::add)
+            })
+            .collect_vec();
+        let round_constants = evaluation_point
+            [(HashTableColumn::CONSTANT0A as usize)..=(HashTableColumn::CONSTANT15B as usize)]
+            .to_vec();
+        let after_constants = after_mds
+            .into_iter()
+            .zip_eq(&round_constants[..(NUM_ROUND_CONSTANTS / 2)])
+            .map(|(st, rndc)| st + rndc.to_owned())
+            .collect_vec();
+
+        // right hand side; move backwards
+        let next_state: Vec<XFieldElement> = (0..STATE_SIZE)
+            .map(|i| evaluation_point[FULL_WIDTH + HashTableColumn::STATE0 as usize + i].clone())
+            .collect_vec();
+        let before_constants = next_state
+            .into_iter()
+            .zip_eq(&round_constants[(NUM_ROUND_CONSTANTS / 2)..])
+            .map(|(st, rndc)| st - rndc.to_owned())
+            .collect_vec();
+        let before_mds = (0..STATE_SIZE)
+            .map(|i| {
+                (0..STATE_SIZE)
+                    .map(|j| constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
+                    .fold(constant(1), XFieldElement::add)
+            })
+            .collect_vec();
+        let before_sbox = before_mds.iter().map(|c| (*c).mod_pow_u64(7)).collect_vec();
+
+        // equate left hand side to right hand side
+        // (and ignore if padding row)
+        constraint_polynomials.append(
+            &mut after_constants
+                .into_iter()
+                .zip_eq(before_sbox.into_iter())
+                .map(|(lhs, rhs)| round_number.clone() * (lhs - rhs))
+                .collect_vec(),
+        );
+
+        constraint_polynomials
+    }
 }
 
 impl Quotientable for ExtHashTable {
@@ -928,7 +1030,9 @@ impl ExtHashTable {
     /// The implementation below is kept around for debugging purposes. This table evaluates the
     /// consistency constraints directly by implementing the respective method in trait
     /// `Evaluable`, and does not use the polynomials below.
+    #[allow(unreachable_code)]
     fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+        panic!("ext_consistency_constraints should never be called; method is bypassed statically");
         let constant = |c: u32| MPolynomial::from_constant(c.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
@@ -991,9 +1095,11 @@ impl ExtHashTable {
     /// The implementation below is kept around for debugging purposes. This table evaluates the
     /// transition constraints directly by implementing the respective method in trait
     /// `Evaluable`, and does not use the polynomials below.
+    #[allow(unreachable_code)]
     fn ext_transition_constraints(
         _challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
+        panic!("ext_transition_constraints should never be called; method is bypassed statically");
         let constant =
             |c: u64| MPolynomial::from_constant(BFieldElement::new(c).lift(), 2 * FULL_WIDTH);
         let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
@@ -1209,8 +1315,8 @@ impl HashTable {
         let extension_table = self.extension(
             extension_matrix,
             ExtHashTable::ext_boundary_constraints(),
-            ExtHashTable::ext_transition_constraints(challenges),
-            ExtHashTable::ext_consistency_constraints(),
+            vec![],
+            vec![],
             ExtHashTable::ext_terminal_constraints(challenges, &terminals),
         );
 
