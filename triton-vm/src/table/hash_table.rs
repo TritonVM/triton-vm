@@ -397,7 +397,7 @@ impl ExtHashTable {
     }
 
     /// The implementation below is kept around for debugging purposes. This table evaluates the
-    /// corresponding constraints directly by implementing the respective method in trait
+    /// consistency constraints directly by implementing the respective method in trait
     /// `Evaluable`, and does not use the polynomials below.
     fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let constant = |c: u32| MPolynomial::from_constant(c.into(), FULL_WIDTH);
@@ -409,6 +409,8 @@ impl ExtHashTable {
         let state14 = variables[STATE14 as usize].clone();
         let state15 = variables[STATE15 as usize].clone();
 
+        // 1. if round number is 1, then capacity is zero
+        // DNF: rn =/= 1 \/ cap = 0
         let round_number_is_not_1_or = (0..=8)
             .filter(|&r| r != 1)
             .map(|r| round_number.clone() - constant(r))
@@ -421,6 +423,13 @@ impl ExtHashTable {
             round_number_is_not_1_or * state15,
         ];
 
+        // 2. round number is in {0, ..., 8}
+        let polynomial = (0..=8)
+            .map(|r| constant(r) - round_number.clone())
+            .fold(constant(1), MPolynomial::mul);
+        consistency_polynomials.push(polynomial);
+
+        // 3. round constants
         let round_constant_offset = CONSTANT0A as usize;
         for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column: HashTableColumn =
@@ -450,36 +459,55 @@ impl ExtHashTable {
         Polynomial::lagrange_interpolate(&domain, &abscissae)
     }
 
+    /// The implementation below is kept around for debugging purposes. This table evaluates the
+    /// transition constraints directly by implementing the respective method in trait
+    /// `Evaluable`, and does not use the polynomials below.
     fn ext_transition_constraints(
         _challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let constant = |c: u32| MPolynomial::from_constant(c.into(), 2 * FULL_WIDTH);
+        let one = constant(1u32);
         let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
 
         let round_number = variables[ROUNDNUMBER as usize].clone();
         let round_number_next = variables[FULL_WIDTH + ROUNDNUMBER as usize].clone();
 
-        let if_round_number_is_x_then_round_number_next_is_y = |x, y| {
-            (0..=8)
-                .filter(|&r| r != x)
-                .map(|r| round_number.clone() - constant(r))
-                .fold(round_number_next.clone() - constant(y), MPolynomial::mul)
-        };
+        let mut constraint_polynomials: Vec<MPolynomial<XFieldElement>> = vec![];
 
-        vec![
-            if_round_number_is_x_then_round_number_next_is_y(0, 0),
-            if_round_number_is_x_then_round_number_next_is_y(1, 2),
-            if_round_number_is_x_then_round_number_next_is_y(2, 3),
-            if_round_number_is_x_then_round_number_next_is_y(3, 4),
-            if_round_number_is_x_then_round_number_next_is_y(4, 5),
-            if_round_number_is_x_then_round_number_next_is_y(5, 6),
-            if_round_number_is_x_then_round_number_next_is_y(6, 7),
-            if_round_number_is_x_then_round_number_next_is_y(7, 8),
-            // if round number is 8, then round number next is 0 or 1
-            if_round_number_is_x_then_round_number_next_is_y(8, 0)
-                * (round_number_next - constant(1)),
-            // todo: The remaining 7·16 = 112 constraints are left as an exercise to the reader.
-        ]
+        // round number
+        // round numbers evolve as
+        // 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8, and
+        // 8 -> 1 or 8 -> 0, and
+        // 0 -> 0
+
+        // 1. round number belongs to {0, ..., 8}
+        // => consistency constraint
+
+        // 2. if round number is 0, then next round number is 0
+        // DNF: rn in {1, ..., 8} \/ rn* = 0
+        let mut polynomial = (1..=8)
+            .map(|r| constant(r) - round_number.clone())
+            .fold(one.clone(), MPolynomial::mul);
+        polynomial *= round_number_next.clone();
+        constraint_polynomials.push(polynomial);
+
+        // 3. if round number is 8, then next round number is 0 or 1
+        // DNF: rn =/= 8 \/ rn* = 0 \/ rn* = 1
+        polynomial = (0..=7)
+            .map(|r| constant(r) - round_number.clone())
+            .fold(one.clone(), MPolynomial::mul);
+        polynomial *= constant(1) - round_number_next.clone();
+        polynomial *= round_number_next.clone();
+        constraint_polynomials.push(polynomial);
+
+        // 4. if round number is in {1, ..., 7} then next round number is +1
+        // DNF: (rn == 0 \/ rn == 8) \/ rn* = rn + 1
+        polynomial = round_number.clone()
+            * (constant(8) - round_number.clone())
+            * (round_number_next.clone() - round_number.clone() - one.clone());
+        constraint_polynomials.push(polynomial);
+
+        constraint_polynomials
     }
 
     fn ext_terminal_constraints(
