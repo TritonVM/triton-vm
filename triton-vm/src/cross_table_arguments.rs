@@ -1,15 +1,21 @@
-use crate::fri_domain::FriDomain;
-use crate::table::processor_table::PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
-use crate::table::table_collection::{ExtTableCollection, TableId};
-use crate::table::table_column::{
-    ExtInstructionTableColumn, ExtJumpStackTableColumn, ExtOpStackTableColumn,
-    ExtProcessorTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
-};
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::PrimeField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::fri_domain::FriDomain;
+use crate::table::processor_table::PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
+use crate::table::table_collection::TableId::{
+    HashTable, InstructionTable, ProcessorTable, ProgramTable,
+};
+use crate::table::table_collection::{ExtTableCollection, TableId};
+use crate::table::table_column::{
+    ExtHashTableColumn, ExtInstructionTableColumn, ExtJumpStackTableColumn, ExtOpStackTableColumn,
+    ExtProcessorTableColumn, ExtProgramTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
+};
+
+pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
 
 pub trait CrossTableArg {
     fn from(&self) -> (TableId, usize);
@@ -218,6 +224,44 @@ impl CrossTableArg for EvalArg {
             running_sum = challenge * running_sum + s.lift();
         }
         running_sum
+    }
+}
+
+impl EvalArg {
+    /// The Evaluation Argument between the Program Table and the Instruction Table
+    pub fn program_instruction_eval_arg() -> Self {
+        Self {
+            from_table: ProgramTable,
+            from_column: ExtProgramTableColumn::EvalArgRunningSum.into(),
+            to_table: InstructionTable,
+            to_column: ExtInstructionTableColumn::RunningSumEvalArg.into(),
+        }
+    }
+
+    pub fn processor_to_hash_eval_arg() -> Self {
+        Self {
+            from_table: ProcessorTable,
+            from_column: ExtProcessorTableColumn::ToHashTableEvalArg.into(),
+            to_table: HashTable,
+            to_column: ExtHashTableColumn::FromProcessorRunningSum.into(),
+        }
+    }
+
+    pub fn hash_to_processor_eval_arg() -> Self {
+        Self {
+            from_table: HashTable,
+            from_column: ExtHashTableColumn::ToProcessorRunningSum.into(),
+            to_table: ProcessorTable,
+            to_column: ExtProcessorTableColumn::FromHashTableEvalArg.into(),
+        }
+    }
+
+    pub fn all_private_evaluation_arguments() -> [Self; NUM_PRIVATE_EVAL_ARGS] {
+        [
+            Self::program_instruction_eval_arg(),
+            Self::processor_to_hash_eval_arg(),
+            Self::hash_to_processor_eval_arg(),
+        ]
     }
 }
 
