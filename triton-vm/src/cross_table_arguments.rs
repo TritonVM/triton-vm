@@ -15,6 +15,14 @@ pub trait CrossTableArg {
     fn from(&self) -> (TableId, usize);
     fn to(&self) -> (TableId, usize);
 
+    fn default_initial() -> XFieldElement;
+
+    fn compute_terminal(
+        symbols: &[BFieldElement],
+        initial: XFieldElement,
+        challenge: XFieldElement,
+    ) -> XFieldElement;
+
     fn boundary_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
@@ -56,6 +64,15 @@ pub trait CrossTableArg {
 
         lhs - rhs
     }
+
+    fn verify_with_public_data(
+        symbols: &[BFieldElement],
+        challenge: XFieldElement,
+        expected_terminal: XFieldElement,
+    ) -> bool {
+        let initial = Self::default_initial();
+        Self::compute_terminal(symbols, initial, challenge) == expected_terminal
+    }
 }
 
 pub struct PermArg {
@@ -72,6 +89,23 @@ impl CrossTableArg for PermArg {
 
     fn to(&self) -> (TableId, usize) {
         (self.to_table, self.to_column)
+    }
+
+    fn default_initial() -> XFieldElement {
+        XFieldElement::ring_one()
+    }
+
+    /// Compute the product for a permutation argument using `initial` and `symbols`.
+    fn compute_terminal(
+        symbols: &[BFieldElement],
+        initial: XFieldElement,
+        challenge: XFieldElement,
+    ) -> XFieldElement {
+        let mut running_product = initial;
+        for s in symbols.iter() {
+            running_product = running_product * (challenge - s.lift());
+        }
+        running_product
     }
 }
 
@@ -166,21 +200,15 @@ impl CrossTableArg for EvalArg {
     fn to(&self) -> (TableId, usize) {
         (self.to_table, self.to_column)
     }
-}
 
-impl EvalArg {
-    pub fn verify_with_public_data(
-        symbols: &[BFieldElement],
-        challenge: XFieldElement,
-        expected_terminal: XFieldElement,
-    ) -> bool {
-        Self::compute_terminal(symbols, XFieldElement::ring_zero(), challenge) == expected_terminal
+    fn default_initial() -> XFieldElement {
+        XFieldElement::ring_zero()
     }
 
     /// Compute the running sum for an evaluation argument as specified by `initial`,
     /// This amounts to evaluating polynomial `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i` at position
     /// challenge, i.e., returns `f(challenge)`.
-    pub fn compute_terminal(
+    fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,
         challenge: XFieldElement,
