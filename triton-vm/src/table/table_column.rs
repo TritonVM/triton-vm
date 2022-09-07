@@ -743,9 +743,9 @@ impl From<ExtHashTableColumn> for usize {
         match c {
             BaseColumn(base_column) => base_column.into(),
             CompressedStateForInput => 49,
-            ToProcessorRunningSum => 50,
+            FromProcessorRunningSum => 50,
             CompressedStateForOutput => 51,
-            FromProcessorRunningSum => 52,
+            ToProcessorRunningSum => 52,
         }
     }
 }
@@ -756,7 +756,7 @@ impl Bounded for ExtHashTableColumn {
     }
 
     fn max_value() -> Self {
-        ExtHashTableColumn::FromProcessorRunningSum
+        ExtHashTableColumn::ToProcessorRunningSum
     }
 }
 
