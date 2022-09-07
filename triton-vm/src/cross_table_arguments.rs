@@ -47,7 +47,7 @@ pub trait CrossTableArg {
 
         inverse_zerofier
             .into_iter()
-            .zip_eq(lhs_codeword.into_iter().zip_eq(rhs_codeword.into_iter()))
+            .zip_eq(lhs_codeword.iter().zip_eq(rhs_codeword.iter()))
             .map(|(z, (from, to))| (*from - *to) * z)
             .collect_vec()
     }
@@ -109,7 +109,7 @@ impl CrossTableArg for PermArg {
     ) -> XFieldElement {
         let mut running_product = initial;
         for s in symbols.iter() {
-            running_product = running_product * (challenge - s.lift());
+            running_product *= challenge - s.lift();
         }
         running_product
     }
