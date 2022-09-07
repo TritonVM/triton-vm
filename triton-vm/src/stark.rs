@@ -1,19 +1,11 @@
-use super::table::base_matrix::BaseMatrices;
-use crate::arguments::evaluation_argument::verify_evaluation_argument;
-use crate::arguments::permutation_argument::PermArg;
-use crate::fri_domain::FriDomain;
-use crate::proof_item::{Item, StarkProofStream};
-use crate::state::DIGEST_LEN;
-use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
-use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
-use crate::triton_xfri::{self, Fri};
+use std::collections::HashMap;
+use std::error::Error;
+
 use itertools::{izip, Itertools};
 use rand::{thread_rng, Rng};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::collections::HashMap;
-use std::error::Error;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other;
@@ -29,6 +21,17 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
+
+use crate::arguments::evaluation_argument::verify_evaluation_argument;
+use crate::arguments::permutation_argument::{CrossTableArg, PermArg};
+use crate::fri_domain::FriDomain;
+use crate::proof_item::{Item, StarkProofStream};
+use crate::state::DIGEST_LEN;
+use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
+use crate::triton_xfri::{self, Fri};
+
+use super::table::base_matrix::BaseMatrices;
 
 type StarkHasher = RescuePrimeXlix<RP_DEFAULT_WIDTH>;
 
@@ -193,7 +196,7 @@ impl Stark {
 
         // Prove equal initial values for the permutation-extension column pairs
         for pa in PermArg::all_permutation_arguments().iter() {
-            quotient_codewords.push(pa.quotient(&ext_codeword_tables, &self.xfri.domain));
+            quotient_codewords.push(pa.boundary_quotient(&ext_codeword_tables, &self.xfri.domain));
             quotient_degree_bounds.push(pa.quotient_degree_bound(&ext_codeword_tables));
         }
 
@@ -1002,16 +1005,18 @@ impl Stark {
 
 #[cfg(test)]
 pub(crate) mod triton_stark_tests {
-    use super::*;
+    use twenty_first::shared_math::ntt::ntt;
+    use twenty_first::shared_math::other::log_2_floor;
+    use twenty_first::util_types::proof_stream_typed::ProofStream;
+
     use crate::arguments::evaluation_argument;
     use crate::instruction::sample_programs;
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table;
     use crate::vm::Program;
-    use twenty_first::shared_math::ntt::ntt;
-    use twenty_first::shared_math::other::log_2_floor;
-    use twenty_first::util_types::proof_stream_typed::ProofStream;
+
+    use super::*;
 
     fn parse_simulate_prove(
         code: &str,
