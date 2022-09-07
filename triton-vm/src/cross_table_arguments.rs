@@ -15,19 +15,25 @@ use crate::table::table_column::{
     ExtProcessorTableColumn, ExtProgramTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
 };
 
+pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
 pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
+pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS;
 
 pub trait CrossTableArg {
     fn from(&self) -> (TableId, usize);
     fn to(&self) -> (TableId, usize);
 
-    fn default_initial() -> XFieldElement;
+    fn default_initial() -> XFieldElement
+    where
+        Self: Sized;
 
     fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,
         challenge: XFieldElement,
-    ) -> XFieldElement;
+    ) -> XFieldElement
+    where
+        Self: Sized;
 
     fn boundary_quotient(
         &self,
@@ -75,12 +81,16 @@ pub trait CrossTableArg {
         symbols: &[BFieldElement],
         challenge: XFieldElement,
         expected_terminal: XFieldElement,
-    ) -> bool {
+    ) -> bool
+    where
+        Self: Sized,
+    {
         let initial = Self::default_initial();
-        Self::compute_terminal(symbols, initial, challenge) == expected_terminal
+        expected_terminal == Self::compute_terminal(symbols, initial, challenge)
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct PermArg {
     from_table: TableId,
     from_column: usize,
@@ -179,8 +189,7 @@ impl PermArg {
         )
     }
 
-    // FIXME: PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT is incidentally ALL permutation arguments; create new constant?
-    pub fn all_permutation_arguments() -> [Self; PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT] {
+    pub fn all_permutation_arguments() -> [Self; NUM_PRIVATE_PERM_ARGS] {
         [
             Self::processor_instruction_perm_arg(),
             Self::processor_jump_stack_perm_arg(),
@@ -191,6 +200,7 @@ impl PermArg {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct EvalArg {
     from_table: TableId,
     from_column: usize,
@@ -262,6 +272,52 @@ impl EvalArg {
             Self::processor_to_hash_eval_arg(),
             Self::hash_to_processor_eval_arg(),
         ]
+    }
+}
+
+pub struct AllCrossTableArgs {
+    processor_instruction_perm_arg: PermArg,
+    processor_jump_stack_perm_arg: PermArg,
+    processor_op_stack_perm_arg: PermArg,
+    processor_ram_perm_arg: PermArg,
+    processor_u32_perm_arg: PermArg,
+    program_instruction_eval_arg: EvalArg,
+    processor_to_hash_eval_arg: EvalArg,
+    hash_to_processor_eval_arg: EvalArg,
+}
+
+impl Default for AllCrossTableArgs {
+    fn default() -> Self {
+        Self {
+            processor_instruction_perm_arg: PermArg::processor_instruction_perm_arg(),
+            processor_jump_stack_perm_arg: PermArg::processor_jump_stack_perm_arg(),
+            processor_op_stack_perm_arg: PermArg::processor_op_stack_perm_arg(),
+            processor_ram_perm_arg: PermArg::processor_ram_perm_arg(),
+            processor_u32_perm_arg: PermArg::processor_u32_perm_arg(),
+            program_instruction_eval_arg: EvalArg::program_instruction_eval_arg(),
+            processor_to_hash_eval_arg: EvalArg::processor_to_hash_eval_arg(),
+            hash_to_processor_eval_arg: EvalArg::hash_to_processor_eval_arg(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a AllCrossTableArgs {
+    type Item = &'a dyn CrossTableArg;
+
+    type IntoIter = std::array::IntoIter<&'a dyn CrossTableArg, NUM_CROSS_TABLE_ARGS>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        [
+            &self.processor_instruction_perm_arg as &'a dyn CrossTableArg,
+            &self.processor_jump_stack_perm_arg as &'a dyn CrossTableArg,
+            &self.processor_op_stack_perm_arg as &'a dyn CrossTableArg,
+            &self.processor_ram_perm_arg as &'a dyn CrossTableArg,
+            &self.processor_u32_perm_arg as &'a dyn CrossTableArg,
+            &self.program_instruction_eval_arg as &'a dyn CrossTableArg,
+            &self.processor_to_hash_eval_arg as &'a dyn CrossTableArg,
+            &self.hash_to_processor_eval_arg as &'a dyn CrossTableArg,
+        ]
+        .into_iter()
     }
 }
 

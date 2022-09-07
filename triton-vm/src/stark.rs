@@ -22,7 +22,9 @@ use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
+use crate::cross_table_arguments::{
+    AllCrossTableArgs, CrossTableArg, EvalArg, NUM_CROSS_TABLE_ARGS,
+};
 use crate::fri_domain::FriDomain;
 use crate::proof_item::{Item, StarkProofStream};
 use crate::state::DIGEST_LEN;
@@ -193,15 +195,10 @@ impl Stark {
         let mut quotient_degree_bounds = ext_codeword_tables.get_all_quotient_degree_bounds();
         timer.elapsed("Calculated quotient degree bounds");
 
-        // Prove equal initial values for the column pairs pertaining to permutation arguments
-        for pa in PermArg::all_permutation_arguments().iter() {
-            quotient_codewords.push(pa.boundary_quotient(&ext_codeword_tables, &self.xfri.domain));
-            quotient_degree_bounds.push(pa.quotient_degree_bound(&ext_codeword_tables));
-        }
-        // Prove equal initial values for the column pairs pertaining to evaluation arguments
-        for ea in EvalArg::all_private_evaluation_arguments().iter() {
-            quotient_codewords.push(ea.boundary_quotient(&ext_codeword_tables, &self.xfri.domain));
-            quotient_degree_bounds.push(ea.quotient_degree_bound(&ext_codeword_tables));
+        // Prove equal initial values for the column pairs pertaining to cross table arguments
+        for arg in AllCrossTableArgs::default().into_iter() {
+            quotient_codewords.push(arg.boundary_quotient(&ext_codeword_tables, &self.xfri.domain));
+            quotient_degree_bounds.push(arg.quotient_degree_bound(&ext_codeword_tables));
         }
 
         let non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
@@ -211,8 +208,7 @@ impl Stark {
             + 2 * base_codewords.len()
             + 2 * extension_codewords.len()
             + 2 * quotient_degree_bounds.len()
-            + 2 * PermArg::all_permutation_arguments().len()
-            + 2 * EvalArg::all_private_evaluation_arguments().len();
+            + 2 * NUM_CROSS_TABLE_ARGS;
         let non_lin_combi_weights =
             hasher.sample_n_weights(&non_lin_combi_weights_seed, non_lin_combi_weights_count);
         timer.elapsed("Sampled weights for non-linear combination");
@@ -652,8 +648,7 @@ impl Stark {
         let num_base_polynomials = base_degree_bounds.len();
         let num_extension_polynomials = extension_degree_bounds.len();
         let num_quotient_polynomials = quotient_degree_bounds.len();
-        let num_difference_quotients = PermArg::all_permutation_arguments().len()
-            + EvalArg::all_private_evaluation_arguments().len();
+        let num_difference_quotients = NUM_CROSS_TABLE_ARGS;
         let non_lin_combi_weights_count = self.num_randomizer_polynomials
             + 2 * num_base_polynomials
             + 2 * num_extension_polynomials
@@ -784,6 +779,7 @@ impl Stark {
         let base_offset = self.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
+        let all_cross_table_args = AllCrossTableArgs::default();
         for (combination_check_index, revealed_combination_leaf) in combination_check_indices
             .into_iter()
             .zip_eq(revealed_combination_leafs)
@@ -918,20 +914,9 @@ impl Stark {
                 }
             }
 
-            for arg in PermArg::all_permutation_arguments().iter() {
-                let perm_arg_deg_bound = arg.quotient_degree_bound(&ext_table_collection);
-                let shift = self.max_degree - perm_arg_deg_bound;
-                let quotient = arg.evaluate_difference(&cross_slice_by_table)
-                    / (current_fri_domain_value - 1.into());
-                let quotient_shifted =
-                    quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-                summands.push(quotient);
-                summands.push(quotient_shifted);
-            }
-
-            for arg in EvalArg::all_private_evaluation_arguments().iter() {
-                let arg_deg_bound = arg.quotient_degree_bound(&ext_table_collection);
-                let shift = self.max_degree - arg_deg_bound;
+            for arg in all_cross_table_args.into_iter() {
+                let degree_bound = arg.quotient_degree_bound(&ext_table_collection);
+                let shift = self.max_degree - degree_bound;
                 let quotient = arg.evaluate_difference(&cross_slice_by_table)
                     / (current_fri_domain_value - 1.into());
                 let quotient_shifted =
@@ -954,9 +939,6 @@ impl Stark {
             );
         }
         timer.elapsed(&format!("Verified {num_idxs} non-linear combinations"));
-
-        // TODO: check cross-table difference boundary constraints for PermArgs
-        // TODO: check cross-table difference boundary constraints for EvalArgs
 
         // Verify external terminals
         if !EvalArg::verify_with_public_data(
