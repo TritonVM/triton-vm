@@ -22,8 +22,7 @@ use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
 
-use crate::arguments::evaluation_argument::verify_evaluation_argument;
-use crate::arguments::permutation_argument::{CrossTableArg, PermArg};
+use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::proof_item::{Item, StarkProofStream};
 use crate::state::DIGEST_LEN;
@@ -942,7 +941,7 @@ impl Stark {
         // TODO: check cross-table difference boundary constraints for EvalArgs
 
         // Verify external terminals
-        if !verify_evaluation_argument(
+        if !EvalArg::verify_with_public_data(
             &self.input_symbols,
             extension_challenges
                 .processor_table_challenges
@@ -952,7 +951,7 @@ impl Stark {
             return Err(Box::new(StarkVerifyError::EvaluationArgument(0)));
         }
 
-        if !verify_evaluation_argument(
+        if !EvalArg::verify_with_public_data(
             &self.output_symbols,
             extension_challenges
                 .processor_table_challenges
@@ -1009,7 +1008,7 @@ pub(crate) mod triton_stark_tests {
     use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::util_types::proof_stream_typed::ProofStream;
 
-    use crate::arguments::evaluation_argument;
+    use crate::cross_table_arguments::EvalArg;
     use crate::instruction::sample_programs;
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
@@ -1184,7 +1183,7 @@ pub(crate) mod triton_stark_tests {
         ) = parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
 
         let ptie = all_terminals.processor_table_endpoints.input_table_eval_sum;
-        let ine = evaluation_argument::compute_terminal(
+        let ine = EvalArg::compute_terminal(
             &input_symbols,
             XFieldElement::ring_zero(),
             all_challenges.input_challenges.processor_eval_row_weight,
@@ -1195,7 +1194,7 @@ pub(crate) mod triton_stark_tests {
             .processor_table_endpoints
             .output_table_eval_sum;
 
-        let oute = evaluation_argument::compute_terminal(
+        let oute = EvalArg::compute_terminal(
             &stdout.to_bword_vec(),
             XFieldElement::ring_zero(),
             all_challenges.output_challenges.processor_eval_row_weight,

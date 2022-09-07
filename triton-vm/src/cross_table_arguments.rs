@@ -6,6 +6,7 @@ use crate::table::table_column::{
     ExtProcessorTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
 };
 use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::PrimeField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -164,6 +165,31 @@ impl CrossTableArg for EvalArg {
 
     fn to(&self) -> (TableId, usize) {
         (self.to_table, self.to_column)
+    }
+}
+
+impl EvalArg {
+    pub fn verify_with_public_data(
+        symbols: &[BFieldElement],
+        challenge: XFieldElement,
+        expected_terminal: XFieldElement,
+    ) -> bool {
+        Self::compute_terminal(symbols, XFieldElement::ring_zero(), challenge) == expected_terminal
+    }
+
+    /// Compute the running sum for an evaluation argument as specified by `initial`,
+    /// This amounts to evaluating polynomial `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i` at position
+    /// challenge, i.e., returns `f(challenge)`.
+    pub fn compute_terminal(
+        symbols: &[BFieldElement],
+        initial: XFieldElement,
+        challenge: XFieldElement,
+    ) -> XFieldElement {
+        let mut running_sum = initial;
+        for s in symbols.iter() {
+            running_sum = challenge * running_sum + s.lift();
+        }
+        running_sum
     }
 }
 

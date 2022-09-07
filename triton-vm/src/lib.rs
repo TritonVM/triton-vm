@@ -1,4 +1,4 @@
-pub mod arguments;
+pub mod cross_table_arguments;
 pub mod error;
 pub mod fri_domain;
 pub mod instruction;
