@@ -1,9 +1,11 @@
 use itertools::Itertools;
+use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 
@@ -140,7 +142,7 @@ impl RamTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
+        all_terminals: &AllEndpoints<StarkHasher>,
     ) -> ExtRamTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -222,8 +224,10 @@ impl Extendable for RamTable {
         let num_padding_rows = padded_height - self.data().len();
 
         if self.data().is_empty() {
-            self.mut_data()
-                .append(&mut vec![vec![0.into(); BASE_WIDTH]; padded_height]);
+            self.mut_data().append(&mut vec![
+                vec![BFieldElement::zero(); BASE_WIDTH];
+                padded_height
+            ]);
             return;
         }
 
@@ -237,7 +241,7 @@ impl Extendable for RamTable {
 
         let padding_template = &mut self.mut_data()[idx];
         let difference_inverse = padding_template[RamTableColumn::InverseOfRampDifference as usize];
-        padding_template[RamTableColumn::InverseOfRampDifference as usize] = 0.into();
+        padding_template[RamTableColumn::InverseOfRampDifference as usize] = BFieldElement::zero();
 
         let mut padding_rows = vec![];
         while padding_rows.len() < num_padding_rows {
@@ -386,7 +390,7 @@ impl ExtensionTable for ExtRamTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints,
+        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtRamTable::ext_terminal_constraints(
             &challenges.ram_table_challenges,

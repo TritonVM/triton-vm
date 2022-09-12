@@ -4,10 +4,12 @@ use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtension
 use super::table_column::JumpStackTableColumn::*;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
+use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::JumpStackTableColumn;
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -69,10 +71,10 @@ impl Extendable for JumpStackTable {
             .find(|(_, row)| row[JumpStackTableColumn::CLK as usize].value() == max_clock)
         {
             let mut padding_row = padding_template.clone();
-            padding_row[JumpStackTableColumn::CLK as usize] += 1.into();
+            padding_row[JumpStackTableColumn::CLK as usize] += BFieldElement::one();
             (Some(idx + 1), vec![padding_row])
         } else {
-            (None, vec![vec![0.into(); BASE_WIDTH]])
+            (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
         }
     }
 }
@@ -264,7 +266,7 @@ impl JumpStackTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
+        all_terminals: &AllEndpoints<StarkHasher>,
     ) -> ExtJumpStackTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -374,7 +376,7 @@ impl ExtensionTable for ExtJumpStackTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints,
+        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtJumpStackTable::ext_terminal_constraints(
             &challenges.jump_stack_table_challenges,

@@ -1,12 +1,12 @@
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::PrimeField;
+use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone)]
 pub struct FriDomain<PF>
 where
-    PF: PrimeField,
+    PF: FiniteField,
 {
     pub offset: PF,
     pub omega: PF,
@@ -15,7 +15,7 @@ where
 
 impl<PF> FriDomain<PF>
 where
-    PF: PrimeField,
+    PF: FiniteField,
 {
     pub fn evaluate(&self, polynomial: &Polynomial<PF>) -> Vec<PF> {
         polynomial.fast_coset_evaluate(&self.offset, self.omega, self.length)
@@ -31,7 +31,7 @@ where
 
     pub fn domain_values(&self) -> Vec<PF> {
         let mut res = Vec::with_capacity(self.length);
-        let mut acc = self.omega.ring_one();
+        let mut acc = PF::one();
 
         for _ in 0..self.length {
             res.push(acc * self.offset);
@@ -53,21 +53,24 @@ pub fn lift_domain(domain: &FriDomain<BFieldElement>) -> FriDomain<XFieldElement
 #[cfg(test)]
 mod fri_domain_tests {
     use super::*;
+    use num_traits::{One, Zero};
     use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::traits::GetPrimitiveRootOfUnity;
+    use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
     use twenty_first::shared_math::x_field_element::XFieldElement;
 
     #[test]
     fn x_values_test() {
         // f(x) = x^3
-        let x_squared_coefficients = vec![0.into(), 0.into(), 0.into(), 1.into()];
+        let x_squared_coefficients = vec![
+            BFieldElement::zero(),
+            BFieldElement::zero(),
+            BFieldElement::zero(),
+            BFieldElement::one(),
+        ];
         let poly = Polynomial::<BFieldElement>::new(x_squared_coefficients.clone());
 
         for order in [4, 8, 32] {
-            let omega = BFieldElement::ring_zero()
-                .get_primitive_root_of_unity(order)
-                .0
-                .unwrap();
+            let omega = BFieldElement::primitive_root_of_unity(order).unwrap();
 
             let offset = BFieldElement::generator();
             let b_domain = FriDomain {

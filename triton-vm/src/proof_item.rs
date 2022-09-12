@@ -1,39 +1,43 @@
 use super::table::challenges_endpoints::AllEndpoints;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::rescue_prime_xlix::{RescuePrimeXlix, RP_DEFAULT_WIDTH};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
-use twenty_first::util_types::proof_stream_typed::{ProofStream, ProofStreamError};
+use twenty_first::util_types::proof_stream_typed::ProofStreamError;
+use twenty_first::util_types::simple_hasher::{Hashable, Hasher};
 
-pub type StarkProofStream = ProofStream<Item, RescuePrimeXlix<RP_DEFAULT_WIDTH>>;
-
-type FriProof = Vec<(PartialAuthenticationPath<Vec<BFieldElement>>, XFieldElement)>;
-type CompressedAuthenticationPaths = Vec<PartialAuthenticationPath<Vec<BFieldElement>>>;
+type FriProof<Digest> = Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>;
+type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
-pub enum Item {
-    CompressedAuthenticationPaths(CompressedAuthenticationPaths),
+pub enum ProofItem<H: Hasher>
+where
+    BFieldElement: Hashable<H::T>,
+{
+    CompressedAuthenticationPaths(AuthenticationStructure<H::Digest>),
     TransposedBaseElementVectors(Vec<Vec<BFieldElement>>),
     TransposedExtensionElementVectors(Vec<Vec<XFieldElement>>),
-    MerkleRoot(Vec<BFieldElement>),
-    Terminals(AllEndpoints),
+    MerkleRoot(H::Digest),
+    Terminals(AllEndpoints<H>),
     TransposedBaseElements(Vec<BFieldElement>),
     TransposedExtensionElements(Vec<XFieldElement>),
-    AuthenticationPath(Vec<Vec<BFieldElement>>),
+    AuthenticationPath(Vec<H::Digest>),
     // FIXME: Redundancy.
     RevealedCombinationElement(XFieldElement),
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
-    FriProof(FriProof),
+    FriProof(FriProof<H::Digest>),
     PaddedHeights(Vec<BFieldElement>),
 }
 
-impl Item {
+impl<H: Hasher> ProofItem<H>
+where
+    BFieldElement: Hashable<H::T>,
+{
     pub fn as_compressed_authentication_paths(
         &self,
-    ) -> Result<CompressedAuthenticationPaths, Box<dyn std::error::Error>> {
+    ) -> Result<AuthenticationStructure<H::Digest>, Box<dyn std::error::Error>> {
         match self {
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
             _ => Err(ProofStreamError::boxed(
@@ -64,7 +68,7 @@ impl Item {
         }
     }
 
-    pub fn as_merkle_root(&self) -> Result<Vec<BFieldElement>, Box<dyn std::error::Error>> {
+    pub fn as_merkle_root(&self) -> Result<H::Digest, Box<dyn std::error::Error>> {
         match self {
             Self::MerkleRoot(bs) => Ok(bs.clone()),
             _ => Err(ProofStreamError::boxed(
@@ -73,7 +77,7 @@ impl Item {
         }
     }
 
-    pub fn as_terminals(&self) -> Result<AllEndpoints, Box<dyn std::error::Error>> {
+    pub fn as_terminals(&self) -> Result<AllEndpoints<H>, Box<dyn std::error::Error>> {
         match self {
             Self::Terminals(all_endpoints) => Ok(all_endpoints.to_owned()),
             _ => Err(ProofStreamError::boxed(
@@ -104,9 +108,7 @@ impl Item {
         }
     }
 
-    pub fn as_authentication_path(
-        &self,
-    ) -> Result<Vec<Vec<BFieldElement>>, Box<dyn std::error::Error>> {
+    pub fn as_authentication_path(&self) -> Result<Vec<H::Digest>, Box<dyn std::error::Error>> {
         match self {
             Self::AuthenticationPath(bss) => Ok(bss.to_owned()),
             _ => Err(ProofStreamError::boxed(
@@ -146,7 +148,7 @@ impl Item {
         }
     }
 
-    pub fn as_fri_proof(&self) -> Result<FriProof, Box<dyn std::error::Error>> {
+    pub fn as_fri_proof(&self) -> Result<FriProof<H::Digest>, Box<dyn std::error::Error>> {
         match self {
             Self::FriProof(fri_proof) => Ok(fri_proof.to_owned()),
             _ => Err(ProofStreamError::boxed(
@@ -165,58 +167,80 @@ impl Item {
     }
 }
 
-impl IntoIterator for Item {
-    type Item = BFieldElement;
+impl<H: Hasher> IntoIterator for ProofItem<H>
+where
+    BFieldElement: Hashable<H::T>,
+    XFieldElement: Hashable<H::T>,
+{
+    type Item = H::T;
 
-    type IntoIter = std::vec::IntoIter<BFieldElement>;
+    type IntoIter = std::vec::IntoIter<H::T>;
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
-            Item::MerkleRoot(bs) => bs.into_iter(),
-            Item::Terminals(all_endpoints) => all_endpoints.into_iter(),
-            Item::TransposedBaseElements(bs) => bs.into_iter(),
-            Item::TransposedExtensionElements(xs) => xs_to_bs(&xs),
-            Item::AuthenticationPath(bss) => bss.concat().into_iter(),
-            Item::RevealedCombinationElement(x) => xs_to_bs(&[x]),
-            Item::FriCodeword(xs) => xs_to_bs(&xs),
-            Item::RevealedCombinationElements(xs) => xs_to_bs(&xs),
-            Item::FriProof(fri_proof) => {
-                let mut bs: Vec<BFieldElement> = vec![];
+            ProofItem::MerkleRoot(bs) => bs.to_sequence().into_iter(),
+            ProofItem::Terminals(all_endpoints) => all_endpoints.into_iter(),
+            ProofItem::TransposedBaseElements(bs) => bs_to_ts::<H>(&bs).into_iter(),
+            ProofItem::TransposedExtensionElements(xs) => bs_to_ts::<H>(&xs_to_bs(&xs)).into_iter(),
+            ProofItem::AuthenticationPath(bss) => {
+                bss.iter().map(|ap| ap.to_sequence()).concat().into_iter()
+            }
+
+            ProofItem::RevealedCombinationElement(x) => bs_to_ts::<H>(&xs_to_bs(&[x])).into_iter(),
+            ProofItem::FriCodeword(xs) => bs_to_ts::<H>(&xs_to_bs(&xs)).into_iter(),
+            ProofItem::RevealedCombinationElements(xs) => bs_to_ts::<H>(&xs_to_bs(&xs)).into_iter(),
+            ProofItem::FriProof(fri_proof) => {
+                let mut ts: Vec<H::T> = vec![];
 
                 for (partial_auth_path, x) in fri_proof.iter() {
-                    for bs_in_partial_auth_path in partial_auth_path.0.iter().flatten() {
-                        bs.append(&mut bs_in_partial_auth_path.clone());
+                    for ts_in_partial_auth_path in partial_auth_path.0.iter().flatten() {
+                        ts.append(&mut ts_in_partial_auth_path.to_sequence());
                     }
-                    bs.append(&mut xs_to_bs(&[x.to_owned()]).collect());
+                    ts.append(&mut x.clone().to_sequence());
                 }
 
-                bs.into_iter()
+                ts.into_iter()
             }
-            Item::CompressedAuthenticationPaths(partial_auth_paths) => {
-                let mut bs: Vec<BFieldElement> = vec![];
+            ProofItem::CompressedAuthenticationPaths(partial_auth_paths) => {
+                let mut bs: Vec<H::T> = vec![];
 
                 for partial_auth_path in partial_auth_paths.iter() {
                     for bs_in_partial_auth_path in partial_auth_path.0.iter().flatten() {
-                        bs.append(&mut bs_in_partial_auth_path.clone());
+                        bs.append(&mut bs_in_partial_auth_path.to_sequence());
                     }
                 }
 
                 bs.into_iter()
             }
-            Item::TransposedBaseElementVectors(bss) => bss.concat().into_iter(),
-            Item::TransposedExtensionElementVectors(xss) => xss
-                .into_iter()
-                .map(|xs| xs_to_bs(&xs).collect::<Vec<_>>())
-                .concat()
-                .into_iter(),
-            Item::PaddedHeights(padded_heights) => padded_heights.into_iter(),
+            ProofItem::TransposedBaseElementVectors(bss) => {
+                bs_to_ts::<H>(&bss.concat()).into_iter()
+            }
+            ProofItem::TransposedExtensionElementVectors(xss) => {
+                bs_to_ts::<H>(&xss.into_iter().map(|xs| xs_to_bs(&xs)).concat()).into_iter()
+            }
+            ProofItem::PaddedHeights(padded_heights) => bs_to_ts::<H>(&padded_heights).into_iter(),
         }
     }
 }
 
-fn xs_to_bs(xs: &[XFieldElement]) -> std::vec::IntoIter<BFieldElement> {
-    xs.iter()
-        .map(|x| x.coefficients.to_vec())
-        .concat()
-        .into_iter()
+impl<H: Hasher> Default for ProofItem<H>
+where
+    BFieldElement: Hashable<H::T>,
+{
+    fn default() -> Self {
+        panic!("Should not have to implement default for ProofItem<H>")
+    }
+}
+
+fn xs_to_bs(xs: &[XFieldElement]) -> Vec<BFieldElement> {
+    xs.iter().map(|x| x.coefficients.to_vec()).concat()
+}
+
+fn bs_to_ts<H: Hasher>(bs: &[BFieldElement]) -> Vec<H::T>
+where
+    BFieldElement: Hashable<H::T>,
+{
+    bs.iter()
+        .flat_map(|b| b.to_sequence())
+        .collect::<Vec<H::T>>()
 }

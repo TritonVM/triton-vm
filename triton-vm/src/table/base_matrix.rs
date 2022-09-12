@@ -1,8 +1,9 @@
 use std::fmt::{Display, Formatter};
 
 use itertools::Itertools;
+use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::traits::{IdentityValues, PrimeField};
+use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::instruction::AnInstruction::*;
@@ -78,7 +79,7 @@ impl BaseMatrices {
             .into_iter()
             .enumerate()
             .map(|(idx, instruction)| {
-                let mut derived_row = [0.into(); program_table::BASE_WIDTH];
+                let mut derived_row = [BFieldElement::zero(); program_table::BASE_WIDTH];
                 derived_row[ProgramTableColumn::Address as usize] = (idx as u32).into();
                 derived_row[ProgramTableColumn::Instruction as usize] = instruction;
                 derived_row
@@ -90,13 +91,13 @@ impl BaseMatrices {
         aet: &AlgebraicExecutionTrace,
         program: &Program,
     ) -> Vec<[BFieldElement; instruction_table::BASE_WIDTH]> {
-        let program_append_0 = [program.to_bwords(), vec![0.into()]].concat();
+        let program_append_0 = [program.to_bwords(), vec![BFieldElement::zero()]].concat();
         let program_part = program_append_0
             .into_iter()
             .tuple_windows()
             .enumerate()
             .map(|(idx, (instruction, next_instruction))| {
-                let mut derived_row = [0.into(); instruction_table::BASE_WIDTH];
+                let mut derived_row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
                 derived_row[InstructionTableColumn::Address as usize] = (idx as u32).into();
                 derived_row[InstructionTableColumn::CI as usize] = instruction;
                 derived_row[InstructionTableColumn::NIA as usize] = next_instruction;
@@ -107,7 +108,7 @@ impl BaseMatrices {
             .processor_matrix
             .iter()
             .map(|&row| {
-                let mut derived_row = [0.into(); instruction_table::BASE_WIDTH];
+                let mut derived_row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
                 derived_row[InstructionTableColumn::Address as usize] = row[IP as usize];
                 derived_row[InstructionTableColumn::CI as usize] = row[CI as usize];
                 derived_row[InstructionTableColumn::NIA as usize] = row[NIA as usize];
@@ -126,7 +127,7 @@ impl BaseMatrices {
             .processor_matrix
             .iter()
             .map(|&row| {
-                let mut derived_row = [0.into(); op_stack_table::BASE_WIDTH];
+                let mut derived_row = [BFieldElement::zero(); op_stack_table::BASE_WIDTH];
                 derived_row[OpStackTableColumn::CLK as usize] = row[CLK as usize];
                 derived_row[OpStackTableColumn::IB1ShrinkStack as usize] = row[IB1 as usize];
                 derived_row[OpStackTableColumn::OSP as usize] = row[OSP as usize];
@@ -150,11 +151,12 @@ impl BaseMatrices {
             .processor_matrix
             .iter()
             .map(|&row| {
-                let mut derived_row = [0.into(); ram_table::BASE_WIDTH];
+                let mut derived_row = [BFieldElement::zero(); ram_table::BASE_WIDTH];
                 derived_row[RamTableColumn::CLK as usize] = row[CLK as usize];
                 derived_row[RamTableColumn::RAMP as usize] = row[ST1 as usize];
                 derived_row[RamTableColumn::RAMV as usize] = row[RAMV as usize];
-                derived_row[RamTableColumn::InverseOfRampDifference as usize] = 0.into();
+                derived_row[RamTableColumn::InverseOfRampDifference as usize] =
+                    BFieldElement::zero();
                 derived_row
             })
             .collect_vec();
@@ -201,7 +203,7 @@ impl BaseMatrices {
             .processor_matrix
             .iter()
             .map(|&row| {
-                let mut derived_row = [0.into(); jump_stack_table::BASE_WIDTH];
+                let mut derived_row = [BFieldElement::zero(); jump_stack_table::BASE_WIDTH];
                 derived_row[JumpStackTableColumn::CLK as usize] = row[CLK as usize];
                 derived_row[JumpStackTableColumn::CI as usize] = row[CI as usize];
                 derived_row[JumpStackTableColumn::JSP as usize] = row[JSP as usize];

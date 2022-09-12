@@ -1,5 +1,6 @@
 use super::error::{vm_fail, InstructionError::*};
 use super::ord_n::{Ord16, Ord16::*};
+use num_traits::Zero;
 use std::error::Error;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -17,7 +18,7 @@ pub const OP_STACK_REG_COUNT: usize = 16;
 impl Default for OpStack {
     fn default() -> Self {
         Self {
-            stack: vec![0.into(); OP_STACK_REG_COUNT],
+            stack: vec![BFieldElement::zero(); OP_STACK_REG_COUNT],
         }
     }
 }
@@ -102,10 +103,13 @@ impl OpStack {
     /// Assumed to be 0 when op-stack memory is empty.
     pub fn osv(&self) -> BFieldElement {
         if self.stack.len() <= OP_STACK_REG_COUNT {
-            0.into()
+            BFieldElement::zero()
         } else {
             let n = self.stack.len() - OP_STACK_REG_COUNT;
-            self.stack.get(n).copied().unwrap_or_else(|| 0.into())
+            self.stack
+                .get(n)
+                .copied()
+                .unwrap_or_else(|| BFieldElement::zero())
         }
     }
 }

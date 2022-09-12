@@ -8,20 +8,20 @@ use super::table::{processor_table, ram_table};
 use super::vm::Program;
 use crate::error::vm_err;
 use crate::table::base_matrix::ProcessorMatrixRow;
-use crate::table::table_column::HashTableColumn::ROUNDNUMBER;
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::Display;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other;
-use twenty_first::shared_math::rescue_prime_xlix::RescuePrimeXlix;
-use twenty_first::shared_math::traits::{IdentityValues, Inverse};
+use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 /// The number of `BFieldElement`s in a Rescue-Prime digest for Triton VM.
-pub const DIGEST_LEN: usize = 6;
+pub const DIGEST_LEN: usize = 5;
 
 /// The number of state registers for hashing-specific instructions.
 pub const STATE_REGISTER_COUNT: usize = 16;
@@ -100,19 +100,18 @@ impl<'pgm> VMState<'pgm> {
         &self,
         stdin: &mut In,
         secret_in: &mut In,
-        rescue_prime: &RescuePrimeXlix<STATE_REGISTER_COUNT>,
     ) -> Result<(VMState<'pgm>, Option<VMOutput>), Box<dyn Error>>
     where
         In: InputStream,
     {
         let mut next_state = self.clone();
         next_state
-            .step_mut(stdin, secret_in, rescue_prime)
+            .step_mut(stdin, secret_in)
             .map(|vm_output| (next_state, vm_output))
     }
 
     pub fn derive_helper_variables(&self) -> [BFieldElement; HV_REGISTER_COUNT] {
-        let mut hvs = [0.into(); HV_REGISTER_COUNT];
+        let mut hvs = [BFieldElement::zero(); HV_REGISTER_COUNT];
 
         let current_instruction = self.current_instruction();
         if current_instruction.is_err() {
@@ -123,7 +122,7 @@ impl<'pgm> VMState<'pgm> {
         // Helps preventing OpStack Underflow
         match current_instruction {
             Pop | Skiz | Assert | Add | Mul | Eq | Lt | And | Xor | XbMul | WriteIo => {
-                hvs[3] = (self.op_stack.osp() - 16.into()).inverse()
+                hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse()
             }
             _ => (),
         }
@@ -175,7 +174,7 @@ impl<'pgm> VMState<'pgm> {
                 }
             }
             Div => {
-                hvs[0] = 1.into();
+                hvs[0] = BFieldElement::one();
                 let st0 = self.op_stack.safe_peek(ST0);
                 if !st0.is_zero() {
                     hvs[2] = st0.inverse();
@@ -192,7 +191,6 @@ impl<'pgm> VMState<'pgm> {
         &mut self,
         stdin: &mut In,
         secret_in: &mut In,
-        rescue_prime: &RescuePrimeXlix<STATE_REGISTER_COUNT>,
     ) -> Result<Option<VMOutput>, Box<dyn Error>>
     where
         In: InputStream,
@@ -294,13 +292,13 @@ impl<'pgm> VMState<'pgm> {
                     state[i] = self.op_stack.pop()?;
                 }
 
-                let hash_trace = rescue_prime.rescue_xlix_permutation_trace(&mut state);
-                let hash_trace_with_round_constants =
-                    Self::concatenate_hash_trace_with_rescue_xlix_round_constants(&hash_trace);
+                //let hash_trace = rescue_prime.rescue_xlix_permutation_trace(&mut state);
+                let hash_trace = RescuePrimeRegular::trace(&state[0..10].try_into().unwrap());
+                let hash_trace_with_round_constants = Self::inprocess_hash_trace(&hash_trace);
                 vm_output = Some(VMOutput::XlixTrace(hash_trace_with_round_constants));
 
                 for _ in 0..DIGEST_LEN {
-                    self.op_stack.push(0.into());
+                    self.op_stack.push(BFieldElement::zero());
                 }
 
                 for i in (0..DIGEST_LEN).rev() {
@@ -633,7 +631,7 @@ impl<'pgm> VMState<'pgm> {
 
     fn possibly_unclear_lt(idc: u32, lhs: u32, rhs: u32) -> BFieldElement {
         if idc == 0 && lhs == rhs {
-            2.into()
+            BFieldElement::new(2)
         } else {
             Self::lt(lhs, rhs)
         }
@@ -641,17 +639,17 @@ impl<'pgm> VMState<'pgm> {
 
     fn lt(lhs: u32, rhs: u32) -> BFieldElement {
         if lhs < rhs {
-            1.into()
+            BFieldElement::one()
         } else {
-            0.into()
+            BFieldElement::zero()
         }
     }
 
     fn eq(lhs: BFieldElement, rhs: BFieldElement) -> BFieldElement {
         if lhs == rhs {
-            1.into()
+            BFieldElement::one()
         } else {
-            0.into()
+            BFieldElement::zero()
         }
     }
 
@@ -661,10 +659,10 @@ impl<'pgm> VMState<'pgm> {
                 curr_instr.arg().unwrap_or_else(|| {
                     self.next_instruction()
                         .map(|next_instr| next_instr.opcode_b())
-                        .unwrap_or_else(|_| 0.into())
+                        .unwrap_or_else(|_| BFieldElement::zero())
                 })
             })
-            .unwrap_or_else(|_| 0.into())
+            .unwrap_or_else(|_| BFieldElement::zero())
     }
 
     /// Jump-stack pointer
@@ -677,7 +675,7 @@ impl<'pgm> VMState<'pgm> {
         self.jump_stack
             .last()
             .map(|(o, _d)| *o)
-            .unwrap_or_else(|| 0.into())
+            .unwrap_or_else(|| BFieldElement::zero())
     }
 
     /// Jump-stack destination
@@ -685,7 +683,7 @@ impl<'pgm> VMState<'pgm> {
         self.jump_stack
             .last()
             .map(|(_o, d)| *d)
-            .unwrap_or_else(|| 0.into())
+            .unwrap_or_else(|| BFieldElement::zero())
     }
 
     pub fn current_instruction(&self) -> Result<Instruction, Box<dyn Error>> {
@@ -772,7 +770,6 @@ impl<'pgm> VMState<'pgm> {
             self.op_stack.pop()?,
             self.op_stack.pop()?,
             self.op_stack.pop()?,
-            self.op_stack.pop()?,
         ];
 
         for _ in 0..DIGEST_LEN {
@@ -782,7 +779,6 @@ impl<'pgm> VMState<'pgm> {
         let node_index: u32 = self.op_stack.pop()?.try_into()?;
 
         let sibling_digest = [
-            secret_in.read_elem()?,
             secret_in.read_elem()?,
             secret_in.read_elem()?,
             secret_in.read_elem()?,
@@ -818,18 +814,20 @@ impl<'pgm> VMState<'pgm> {
         Ok(())
     }
 
-    fn concatenate_hash_trace_with_rescue_xlix_round_constants(
-        hash_trace: &[[BFieldElement; hash_table::BASE_WIDTH - hash_table::NUM_ROUND_CONSTANTS]],
+    fn inprocess_hash_trace(
+        hash_trace: &[[BFieldElement;
+              hash_table::BASE_WIDTH - hash_table::NUM_ROUND_CONSTANTS - 1]],
     ) -> Vec<[BFieldElement; hash_table::BASE_WIDTH]> {
         let mut hash_trace_with_constants = vec![];
-        for trace_row in hash_trace {
-            let round_number = trace_row[ROUNDNUMBER as usize].value() as usize;
+        for (index, trace_row) in hash_trace.iter().enumerate() {
+            let round_number = index + 1;
             let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
             let new_trace_row = {
-                let mut new_trace_row = [0.into(); hash_table::BASE_WIDTH];
+                let mut new_trace_row = [BFieldElement::zero(); hash_table::BASE_WIDTH];
                 let mid_point = hash_table::BASE_WIDTH - hash_table::NUM_ROUND_CONSTANTS;
                 let (old_trace_row, trace_round_constants) = new_trace_row.split_at_mut(mid_point);
-                old_trace_row.copy_from_slice(trace_row);
+                old_trace_row[0] = BFieldElement::new(round_number as u64);
+                old_trace_row[1..].copy_from_slice(trace_row);
                 trace_round_constants.copy_from_slice(&round_constants);
                 new_trace_row
             };
@@ -850,7 +848,7 @@ impl<'pgm> VMState<'pgm> {
                 .unwrap();
 
         match round_number {
-            0 => [0.into(); hash_table::NUM_ROUND_CONSTANTS],
+            0 => [BFieldElement::zero(); hash_table::NUM_ROUND_CONSTANTS],
             i if i <= hash_table::NUM_ROUNDS => round_constants
                 [hash_table::NUM_ROUND_CONSTANTS * (i - 1)..hash_table::NUM_ROUND_CONSTANTS * i]
                 .try_into()
@@ -906,10 +904,7 @@ mod vm_state_tests {
         let (trace, _out, _err) = program.run_with_input(&[], &[]);
 
         let last_state = trace.last().unwrap();
-        assert_eq!(
-            BFieldElement::ring_zero(),
-            last_state.op_stack.safe_peek(ST0)
-        );
+        assert_eq!(BFieldElement::zero(), last_state.op_stack.safe_peek(ST0));
 
         println!("{}", last_state);
     }
@@ -984,7 +979,7 @@ mod vm_state_tests {
     fn run_tvm_sample_weights_test() {
         let program = Program::from_code(sample_programs::SAMPLE_WEIGHTS).unwrap();
         println!("Successfully parsed the program.");
-        let (trace, _out, err) = program.run_with_input(&[11.into()], &[]);
+        let (trace, _out, err) = program.run_with_input(&[BFieldElement::new(11)], &[]);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -1179,9 +1174,17 @@ mod vm_state_tests {
     fn run_tvm_get_colinear_y_test() {
         let program = Program::from_code(sample_programs::GET_COLINEAR_Y).unwrap();
         println!("Successfully parsed the program.");
-        let (trace, out, err) =
-            program.run_with_input(&[7.into(), 2.into(), 1.into(), 3.into(), 4.into()], &[]);
-        assert_eq!(out[0], 4.into());
+        let (trace, out, err) = program.run_with_input(
+            &[
+                BFieldElement::new(7),
+                BFieldElement::new(2),
+                BFieldElement::new(1),
+                BFieldElement::new(3),
+                BFieldElement::new(4),
+            ],
+            &[],
+        );
+        assert_eq!(out[0], BFieldElement::new(4));
         for state in trace.iter() {
             println!("{}", state);
         }
@@ -1206,7 +1209,7 @@ mod vm_state_tests {
         }
 
         let last_state = trace.last().unwrap();
-        assert_eq!(BFieldElement::ring_zero(), last_state.op_stack.st(ST0));
+        assert_eq!(BFieldElement::zero(), last_state.op_stack.st(ST0));
     }
 
     #[test]
@@ -1246,7 +1249,8 @@ mod vm_state_tests {
         let program = Program::from_code(code).unwrap();
 
         println!("{}", program);
-        let (trace, out, _err) = program.run_with_input(&[42.into(), 56.into()], &[]);
+        let (trace, out, _err) =
+            program.run_with_input(&[BFieldElement::new(42), BFieldElement::new(56)], &[]);
 
         println!("{}", program);
         for state in trace.iter() {

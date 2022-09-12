@@ -3,9 +3,11 @@ use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::OpStackTableColumn;
 use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -67,11 +69,11 @@ impl Extendable for OpStackTable {
             .find(|(_, row)| row[OpStackTableColumn::CLK as usize].value() == max_clock)
         {
             let mut padding_row = padding_template.clone();
-            padding_row[OpStackTableColumn::CLK as usize] += 1.into();
+            padding_row[OpStackTableColumn::CLK as usize] += BFieldElement::one();
             (Some(idx + 1), vec![padding_row])
         } else {
-            let mut padding_row = vec![0.into(); BASE_WIDTH];
-            padding_row[OpStackTableColumn::OSP as usize] = 16.into();
+            let mut padding_row = vec![BFieldElement::zero(); BASE_WIDTH];
+            padding_row[OpStackTableColumn::OSP as usize] = BFieldElement::new(16);
             (None, vec![padding_row])
         }
     }
@@ -235,7 +237,7 @@ impl OpStackTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
+        all_terminals: &AllEndpoints<StarkHasher>,
     ) -> ExtOpStackTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -342,7 +344,7 @@ impl ExtensionTable for ExtOpStackTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints,
+        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtOpStackTable::ext_terminal_constraints(
             &challenges.op_stack_table_challenges,

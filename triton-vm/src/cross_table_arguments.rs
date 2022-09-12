@@ -1,7 +1,8 @@
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::traits::PrimeField;
+use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
@@ -108,7 +109,7 @@ impl CrossTableArg for PermArg {
     }
 
     fn default_initial() -> XFieldElement {
-        XFieldElement::ring_one()
+        XFieldElement::one()
     }
 
     /// Compute the product for a permutation argument using `initial` and `symbols`.
@@ -218,7 +219,7 @@ impl CrossTableArg for EvalArg {
     }
 
     fn default_initial() -> XFieldElement {
-        XFieldElement::ring_zero()
+        XFieldElement::zero()
     }
 
     /// Compute the running sum for an evaluation argument as specified by `initial`,

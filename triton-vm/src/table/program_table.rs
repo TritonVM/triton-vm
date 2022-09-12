@@ -3,9 +3,11 @@ use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::ProgramTableColumn;
 use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -61,12 +63,12 @@ impl Extendable for ProgramTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
-            padding_row[ProgramTableColumn::Address as usize] += 1.into();
+            padding_row[ProgramTableColumn::Address as usize] += BFieldElement::one();
             // address keeps increasing
             (None, vec![padding_row])
         } else {
             // Not that it makes much sense to run a program with no instructions.
-            (None, vec![vec![0.into(); BASE_WIDTH]])
+            (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
         }
     }
 }
@@ -156,7 +158,7 @@ impl ProgramTable {
         let mut instruction_table_running_sum = initials.instruction_eval_sum;
 
         let mut data_with_0 = self.data().clone();
-        data_with_0.push(vec![0.into(); BASE_WIDTH]);
+        data_with_0.push(vec![BFieldElement::zero(); BASE_WIDTH]);
 
         for (row, next_row) in data_with_0.into_iter().tuple_windows() {
             let mut extension_row = Vec::with_capacity(FULL_WIDTH);
@@ -205,7 +207,7 @@ impl ProgramTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
+        all_terminals: &AllEndpoints<StarkHasher>,
     ) -> ExtProgramTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -311,7 +313,7 @@ impl ExtensionTable for ExtProgramTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints,
+        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProgramTable::ext_terminal_constraints(
             &challenges.program_table_challenges,

@@ -6,11 +6,11 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::{GetRandomElements, PrimeField};
+use twenty_first::shared_math::traits::{FiniteField, GetRandomElements};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Table<FieldElement: PrimeField> {
+pub struct Table<FieldElement: FiniteField> {
     /// The width of each `data` row in the base version of the table
     base_width: usize,
 
@@ -46,7 +46,7 @@ pub struct Table<FieldElement: PrimeField> {
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<DataPF: PrimeField> Table<DataPF> {
+impl<DataPF: FiniteField> Table<DataPF> {
     pub fn new(
         base_width: usize,
         full_width: usize,
@@ -89,7 +89,7 @@ impl<DataPF: PrimeField> Table<DataPF> {
     }
 }
 
-pub trait InheritsFromTable<DataPF: PrimeField> {
+pub trait InheritsFromTable<DataPF: FiniteField> {
     fn inherited_table(&self) -> &Table<DataPF>;
     fn mut_inherited_table(&mut self) -> &mut Table<DataPF>;
 
@@ -239,16 +239,13 @@ pub trait Extendable: TableLike<BFieldElement> {
     }
 }
 
-pub fn derive_omicron<DataPF: PrimeField>(padded_height: u64) -> DataPF {
+pub fn derive_omicron<DataPF: FiniteField>(padded_height: u64) -> DataPF {
     debug_assert!(
         0 == padded_height || is_power_of_two(padded_height),
         "The padded height was: {}",
         padded_height
     );
-    DataPF::default()
-        .get_primitive_root_of_unity(padded_height)
-        .0
-        .unwrap()
+    DataPF::primitive_root_of_unity(padded_height).unwrap()
 }
 
 pub fn padded_height(height: usize) -> usize {
@@ -259,24 +256,25 @@ pub fn padded_height(height: usize) -> usize {
     }
 }
 
-fn disjoint_domain<DataPF: PrimeField>(
+fn disjoint_domain<DataPF: FiniteField>(
     domain_length: usize,
     disjoint_domain: &[DataPF],
-    ring_one: DataPF,
 ) -> Vec<DataPF> {
-    // Why do we still have this? 😩
-    let zero = ring_one.ring_zero();
-    (0..2_usize.pow(32))
-        .map(|d| zero.new_from_usize(d))
-        .filter(|d| !disjoint_domain.contains(d))
-        .take(domain_length)
-        .collect_vec()
+    let mut domain = vec![];
+    let mut elm = DataPF::one();
+    while domain.len() != domain_length {
+        if !disjoint_domain.contains(&elm) {
+            domain.push(elm);
+        }
+        elm = elm + DataPF::one();
+    }
+    domain
 }
 
 pub trait TableLike<DataPF>: InheritsFromTable<DataPF>
 where
     // Self: Sized,
-    DataPF: PrimeField + GetRandomElements,
+    DataPF: FiniteField + GetRandomElements,
 {
     // Generic functions common to all tables
 
@@ -326,7 +324,7 @@ where
         );
 
         if self.padded_height() == 0 {
-            return vec![Polynomial::ring_zero(); columns.len()];
+            return vec![Polynomial::zero(); columns.len()];
         }
 
         // FIXME: Unfold with multiplication instead of mapping with power.
@@ -334,9 +332,8 @@ where
             .map(|i| self.omicron().mod_pow_u32(i as u32))
             .collect_vec();
 
-        let one = omega.ring_one();
         let num_trace_randomizers = self.num_trace_randomizers();
-        let randomizer_domain = disjoint_domain(num_trace_randomizers, &omicron_domain, one);
+        let randomizer_domain = disjoint_domain(num_trace_randomizers, &omicron_domain);
 
         let interpolation_domain = vec![omicron_domain, randomizer_domain].concat();
         let mut all_randomized_traces = vec![];
@@ -366,6 +363,7 @@ where
 #[cfg(test)]
 mod test_base_table {
     use crate::table::base_table::{disjoint_domain, padded_height};
+    use num_traits::One;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other;
 
@@ -381,9 +379,22 @@ mod test_base_table {
 
     #[test]
     fn disjoint_domain_test() {
-        let one = BFieldElement::ring_one();
-        let domain = [2.into(), 5.into(), 4.into()];
-        let ddomain = disjoint_domain(5, &domain, one);
-        assert_eq!(vec![0.into(), one, 3.into(), 6.into(), 7.into()], ddomain);
+        let one = BFieldElement::one();
+        let domain = [
+            BFieldElement::new(2),
+            BFieldElement::new(5),
+            BFieldElement::new(4),
+        ];
+        let ddomain = disjoint_domain(5, &domain);
+        assert_eq!(
+            vec![
+                BFieldElement::new(0),
+                one,
+                BFieldElement::new(3),
+                BFieldElement::new(6),
+                BFieldElement::new(7)
+            ],
+            ddomain
+        );
     }
 }

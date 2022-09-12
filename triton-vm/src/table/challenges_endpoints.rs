@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use super::hash_table::{HashTableChallenges, HashTableEndpoints};
 use super::instruction_table::{InstructionTableChallenges, InstructionTableEndpoints};
 use super::jump_stack_table::{JumpStackTableChallenges, JumpStackTableEndpoints};
@@ -9,10 +11,12 @@ use super::ram_table::{RamTableChallenges, RamTableEndpoints};
 use super::u32_op_table::{U32OpTableChallenges, U32OpTableEndpoints};
 use crate::state::DIGEST_LEN;
 use itertools::Itertools;
+use num_traits::Zero;
 use rand::thread_rng;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::GetRandomElements;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::simple_hasher::{Hashable, Hasher};
 
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
@@ -186,7 +190,10 @@ impl AllChallenges {
 
 /// An *endpoint* is the collective term for *initials* and *terminals*.
 #[derive(Debug, Clone)]
-pub struct AllEndpoints {
+pub struct AllEndpoints<H: Hasher>
+where
+    BFieldElement: Hashable<H::T>,
+{
     pub program_table_endpoints: ProgramTableEndpoints,
     pub instruction_table_endpoints: InstructionTableEndpoints,
     pub processor_table_endpoints: ProcessorTableEndpoints,
@@ -195,15 +202,19 @@ pub struct AllEndpoints {
     pub jump_stack_table_endpoints: JumpStackTableEndpoints,
     pub hash_table_endpoints: HashTableEndpoints,
     pub u32_op_table_endpoints: U32OpTableEndpoints,
+    pub(crate) pantom: PhantomData<H>,
 }
 
-impl AllEndpoints {
+impl<H: Hasher> AllEndpoints<H>
+where
+    BFieldElement: Hashable<H::T>,
+{
     pub const TOTAL_ENDPOINTS: usize = 10;
 
     pub fn create_endpoints(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_initials = ProcessorTableEndpoints {
-            input_table_eval_sum: XFieldElement::ring_zero(),
-            output_table_eval_sum: XFieldElement::ring_zero(),
+            input_table_eval_sum: XFieldElement::zero(),
+            output_table_eval_sum: XFieldElement::zero(),
             instruction_table_perm_product: weights.pop().unwrap(),
             opstack_table_perm_product: weights.pop().unwrap(),
             ram_table_perm_product: weights.pop().unwrap(),
@@ -254,6 +265,7 @@ impl AllEndpoints {
             jump_stack_table_endpoints: jump_stack_table_initials,
             hash_table_endpoints: hash_table_initials,
             u32_op_table_endpoints: u32_op_table_initials,
+            pantom: PhantomData,
         }
     }
 
@@ -271,12 +283,18 @@ impl AllEndpoints {
 ///
 /// In order for `Stark::verify()` to receive all terminals via `ProofStream`,
 /// they must serialise to a stream of `BFieldElement`s.
-impl IntoIterator for AllEndpoints {
-    type Item = BFieldElement;
+impl<H: Hasher> IntoIterator for AllEndpoints<H>
+where
+    BFieldElement: Hashable<H::T>,
+{
+    type Item = H::T;
 
-    type IntoIter = std::vec::IntoIter<BFieldElement>;
+    type IntoIter = std::vec::IntoIter<H::T>;
 
-    fn into_iter(self) -> Self::IntoIter {
+    fn into_iter(self) -> Self::IntoIter
+    where
+        BFieldElement: Hashable<H::T>,
+    {
         vec![
             &self.program_table_endpoints.instruction_eval_sum,
             &self.instruction_table_endpoints.processor_perm_product,
@@ -300,23 +318,28 @@ impl IntoIterator for AllEndpoints {
         .into_iter()
         .map(|endpoint| endpoint.coefficients.to_vec())
         .concat()
+        .iter()
+        .flat_map(|b| b.to_sequence())
+        .collect_vec()
         .into_iter()
     }
 }
 
 #[cfg(test)]
 mod challenges_endpoints_tests {
+    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+
+    use crate::table::challenges_endpoints::AllEndpoints;
     use crate::table::processor_table;
     use crate::table::program_table;
 
-    use super::*;
-
     #[test]
     fn total_challenges_equal_permutation_and_evaluation_args_test() {
+        type AEP = AllEndpoints<RescuePrimeRegular>;
         assert_eq!(
             processor_table::PROCESSOR_TABLE_INITIALS_COUNT
                 + program_table::PROGRAM_TABLE_INITIALS_COUNT,
-            AllEndpoints::TOTAL_ENDPOINTS,
+            AEP::TOTAL_ENDPOINTS,
         );
     }
 }

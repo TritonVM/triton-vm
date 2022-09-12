@@ -4,13 +4,15 @@ use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtension
 use super::table_column::U32OpTableColumn;
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
+use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::U32OpTableColumn::*;
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
-use twenty_first::shared_math::traits::{IdentityValues, Inverse};
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 pub const U32_OP_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
@@ -61,8 +63,8 @@ impl InheritsFromTable<XFieldElement> for ExtU32OpTable {
 
 impl Extendable for U32OpTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        let mut padding_row = vec![0.into(); BASE_WIDTH];
-        padding_row[LT as usize] = 2.into();
+        let mut padding_row = vec![BFieldElement::zero(); BASE_WIDTH];
+        padding_row[LT as usize] = BFieldElement::new(2);
         padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
         if let Some(row) = self.data().last() {
             padding_row[CI as usize] = row[CI as usize];
@@ -320,7 +322,7 @@ impl U32OpTable {
                 Instruction::Reverse => extension_row[U32OpTableColumn::REV as usize],
                 Instruction::Div => extension_row[U32OpTableColumn::LT as usize],
                 // halt is used for padding
-                Instruction::Halt => XFieldElement::ring_zero(),
+                Instruction::Halt => XFieldElement::zero(),
                 x => panic!("Unknown instruction '{x}' in the U32 Table."),
             };
 
@@ -358,7 +360,7 @@ impl U32OpTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
+        all_terminals: &AllEndpoints<StarkHasher>,
     ) -> ExtU32OpTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::<BFieldElement>::new(
@@ -464,7 +466,7 @@ impl ExtensionTable for ExtU32OpTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints,
+        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtU32OpTable::ext_terminal_constraints(
             &challenges.u32_op_table_challenges,

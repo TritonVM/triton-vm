@@ -1,12 +1,14 @@
 use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
+use crate::stark::StarkHasher;
 use crate::state::DIGEST_LEN;
 use crate::table::base_table::{self, Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
 use itertools::Itertools;
+use num_traits::{One, Zero};
 use std::collections::HashMap;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
@@ -76,12 +78,12 @@ impl ProcessorTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
         assert_eq!(
-            XFieldElement::ring_zero(),
+            XFieldElement::zero(),
             initials.input_table_eval_sum,
             "The Evaluation Argument's initial for the Input Table must be 0."
         );
         assert_eq!(
-            XFieldElement::ring_zero(),
+            XFieldElement::zero(),
             initials.output_table_eval_sum,
             "The Evaluation Argument's initial for the Output Table must be 0."
         );
@@ -202,7 +204,7 @@ impl ProcessorTable {
                 .iter()
                 .zip(challenges.hash_table_stack_input_weights.iter())
                 .map(|(st, weight)| *weight * *st)
-                .fold(XFieldElement::ring_zero(), |sum, summand| sum + summand);
+                .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_row_for_hash_input);
 
             extension_row.push(to_hash_table_running_sum);
@@ -225,7 +227,7 @@ impl ProcessorTable {
                 .iter()
                 .zip(challenges.hash_table_digest_output_weights.iter())
                 .map(|(st, weight)| *weight * *st)
-                .fold(XFieldElement::ring_zero(), |sum, summand| sum + summand);
+                .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_row_for_hash_digest);
 
             extension_row.push(from_hash_table_running_sum);
@@ -253,13 +255,13 @@ impl ProcessorTable {
                     Instruction::Div => (
                         extension_row[ST0 as usize], // remainder
                         prow[ST0 as usize].lift(),   // divisor
-                        XFieldElement::ring_one(),   // result of U32 Table's `lt`
+                        XFieldElement::one(),        // result of U32 Table's `lt`
                     ),
                     // Since instruction `reverse` is a unary, not a binary, operation, the right-
                     // hand side is unconstrained.
                     Instruction::Reverse => (
                         prow[ST0 as usize].lift(),
-                        XFieldElement::ring_zero(),
+                        XFieldElement::zero(),
                         extension_row[ST0 as usize],
                     ),
                     _ => (
@@ -286,7 +288,7 @@ impl ProcessorTable {
                 // the stack in the non-existing previous row can be safely assumed to be all 0.
                 // Thus, the compressed_row-value is 0 for the very first extension_row.
                 // The running product can be used as-is, amounting to pushing the initial.
-                extension_row.push(XFieldElement::ring_zero());
+                extension_row.push(XFieldElement::zero());
                 extension_row.push(u32_table_running_product);
             }
 
@@ -325,7 +327,7 @@ impl ProcessorTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
+        all_terminals: &AllEndpoints<StarkHasher>,
     ) -> ExtProcessorTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -551,10 +553,10 @@ impl Extendable for ProcessorTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
-            padding_row[ProcessorTableColumn::CLK as usize] += 1.into();
+            padding_row[ProcessorTableColumn::CLK as usize] += BFieldElement::one();
             (None, vec![padding_row])
         } else {
-            (None, vec![vec![0.into(); BASE_WIDTH]])
+            (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
         }
     }
 }
@@ -2421,7 +2423,7 @@ impl InstructionDeselectors {
         factory: &RowPairConstraints,
         instruction: Instruction,
     ) -> MPolynomial<XFieldElement> {
-        let one = XFieldElement::ring_one();
+        let one = XFieldElement::one();
         let num_vars = factory.variables.len();
 
         let ib0 = instruction.ib(Ord7::IB0).lift();
@@ -2476,7 +2478,7 @@ impl ExtensionTable for ExtProcessorTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints,
+        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProcessorTable::ext_terminal_constraints(
             &challenges.processor_table_challenges,
@@ -2492,7 +2494,6 @@ mod constraint_polynomial_tests {
     use crate::table::base_matrix::ProcessorMatrixRow;
     use crate::table::processor_table;
     use crate::vm::Program;
-    use twenty_first::shared_math::traits::IdentityValues;
 
     #[test]
     /// helps identifying whether the printing causes an infinite loop
@@ -2505,7 +2506,7 @@ mod constraint_polynomial_tests {
     }
 
     fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Vec<XFieldElement> {
-        let fake_extension_columns = [BFieldElement::ring_zero();
+        let fake_extension_columns = [BFieldElement::zero();
             processor_table::FULL_WIDTH - processor_table::BASE_WIDTH]
             .to_vec();
 
@@ -2596,7 +2597,7 @@ mod constraint_polynomial_tests {
                     "The test is trying to check the wrong constraint polynomials."
                 );
                 assert_eq!(
-                    XFieldElement::ring_zero(),
+                    XFieldElement::zero(),
                     poly.evaluate(&test_row),
                     "For case {}, polynomial with index {} must evaluate to zero.",
                     case_idx,
@@ -2621,7 +2622,7 @@ mod constraint_polynomial_tests {
     fn transition_constraints_for_instruction_push_test() {
         let test_rows = [get_test_row_from_source_code("push 1 halt", 0)];
         test_constraints_for_rows_with_debug_info(
-            Push(1.into()),
+            Push(BFieldElement::one()),
             &test_rows,
             &[ST0, ST1, ST2],
             &[ST0, ST1, ST2],

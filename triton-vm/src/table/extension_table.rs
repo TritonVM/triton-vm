@@ -1,15 +1,16 @@
 use itertools::Itertools;
+use num_traits::One;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use std::fmt::Display;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
-use twenty_first::shared_math::traits::{Inverse, ModPowU32, PrimeField};
+use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
-use crate::stark::Stark;
+use crate::stark::{Stark, StarkHasher};
 use crate::table::challenges_endpoints::AllEndpoints;
 
 use super::base_table::TableLike;
@@ -30,7 +31,7 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &AllChallenges,
-        terminals: &AllEndpoints,
+        terminals: &AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>>;
 }
 
@@ -172,7 +173,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_codeword = fri_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - XFieldElement::ring_one())
+            .map(|x| x - XFieldElement::one())
             .collect();
 
         let zerofier_inverse = if self.padded_height() == 0 {
@@ -208,7 +209,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             debug_assert_eq!(fri_domain.length, codeword.len());
         }
 
-        let one = XFieldElement::ring_one();
+        let one = XFieldElement::one();
         let height = self.padded_height() as u32;
         let omicron_inverse = self.omicron().inverse();
         let fri_domain_values = fri_domain.domain_values();
@@ -265,7 +266,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_codeword = fri_domain
             .domain_values()
             .iter()
-            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XFieldElement::ring_one())
+            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XFieldElement::one())
             .collect();
 
         let zerofier_inverse = if self.padded_height() == 0 {

@@ -3,16 +3,19 @@ use super::challenges_endpoints::{AllChallenges, AllEndpoints};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::HashTableColumn;
 use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
 use crate::state::DIGEST_LEN;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::HashTableColumn::*;
 use itertools::Itertools;
+use num_traits::Zero;
 use std::ops::Add;
 use std::ops::Mul;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::rescue_prime_regular::ALPHA;
 use twenty_first::shared_math::traits::ModPowU64;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -1011,7 +1014,7 @@ impl TableLike<BFieldElement> for HashTable {}
 
 impl Extendable for HashTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        (None, vec![vec![0.into(); BASE_WIDTH]])
+        (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
     }
 }
 
@@ -1148,10 +1151,7 @@ impl ExtHashTable {
         let current_state: Vec<MPolynomial<XFieldElement>> = (0..STATE_SIZE)
             .map(|i| variables[HashTableColumn::STATE0 as usize + i].clone())
             .collect_vec();
-        let after_sbox = current_state
-            .iter()
-            .map(|c| c.mod_pow(7.into(), XFieldElement::ring_one()))
-            .collect_vec();
+        let after_sbox = current_state.iter().map(|c| c.pow(ALPHA)).collect_vec();
         let after_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
@@ -1184,10 +1184,7 @@ impl ExtHashTable {
                     .fold(constant(1), MPolynomial::add)
             })
             .collect_vec();
-        let before_sbox = before_mds
-            .iter()
-            .map(|c| c.mod_pow(7.into(), XFieldElement::ring_one()))
-            .collect_vec();
+        let before_sbox = before_mds.iter().map(|c| c.pow(ALPHA)).collect_vec();
 
         // equate left hand side to right hand side
         // (and ignore if padding row)
@@ -1269,7 +1266,7 @@ impl HashTable {
                 .iter()
                 .zip(challenges.stack_input_weights.iter())
                 .map(|(state, weight)| *weight * *state)
-                .fold(XFieldElement::ring_zero(), |sum, summand| sum + summand);
+                .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_state_for_input);
 
             // Add compressed input to running sum if round index marks beginning of hashing
@@ -1293,7 +1290,7 @@ impl HashTable {
                 .iter()
                 .zip(challenges.digest_output_weights.iter())
                 .map(|(state, weight)| *weight * *state)
-                .fold(XFieldElement::ring_zero(), |sum, summand| sum + summand);
+                .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_state_for_output);
 
             // Add compressed digest to running sum if round index marks end of hashing
@@ -1332,7 +1329,7 @@ impl HashTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints,
+        all_terminals: &AllEndpoints<StarkHasher>,
     ) -> ExtHashTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -1439,7 +1436,7 @@ impl ExtensionTable for ExtHashTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints,
+        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtHashTable::ext_terminal_constraints(
             &challenges.hash_table_challenges,

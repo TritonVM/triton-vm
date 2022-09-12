@@ -11,6 +11,7 @@ use super::program_table::{ExtProgramTable, ProgramTable};
 use super::ram_table::{ExtRamTable, RamTable};
 use super::u32_op_table::{ExtU32OpTable, U32OpTable};
 use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
 use itertools::Itertools;
@@ -221,7 +222,7 @@ impl ExtTableCollection {
         num_trace_randomizers: usize,
         padded_heights: &[usize],
         challenges: &AllChallenges,
-        terminals: &AllEndpoints,
+        terminals: &AllEndpoints<StarkHasher>,
     ) -> Self {
         // TODO: integrate challenges and terminals
 
@@ -312,8 +313,8 @@ impl ExtTableCollection {
     pub fn extend_tables(
         base_tables: &BaseTableCollection,
         all_challenges: &AllChallenges,
-        all_initials: &AllEndpoints,
-    ) -> (Self, AllEndpoints) {
+        all_initials: &AllEndpoints<StarkHasher>,
+    ) -> (Self, AllEndpoints<StarkHasher>) {
         let (program_table, program_table_terminals) = base_tables.program_table.extend(
             &all_challenges.program_table_challenges,
             &all_initials.program_table_endpoints,
@@ -375,6 +376,7 @@ impl ExtTableCollection {
             jump_stack_table_endpoints: jump_stack_table_terminals,
             hash_table_endpoints: hash_table_terminals,
             u32_op_table_endpoints: u32_op_table_terminals,
+            pantom: std::marker::PhantomData,
         };
 
         (ext_tables, terminals)

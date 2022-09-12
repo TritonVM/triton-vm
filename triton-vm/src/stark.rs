@@ -10,31 +10,30 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::rescue_prime_xlix::{
-    self, RescuePrimeXlix, RP_DEFAULT_OUTPUT_SIZE, RP_DEFAULT_WIDTH,
-};
+use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::stark::stark_verify_error::StarkVerifyError;
 use twenty_first::shared_math::traits::{
-    GetPrimitiveRootOfUnity, GetRandomElements, Inverse, ModPowU32, PrimeField,
+    FiniteField, GetRandomElements, Inverse, ModPowU32, PrimitiveRootOfUnity,
 };
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::merkle_tree::MerkleTree;
-use twenty_first::util_types::simple_hasher::{Hasher, ToDigest};
+use twenty_first::util_types::proof_stream_typed::ProofStream;
+use twenty_first::util_types::simple_hasher::{Hashable, Hasher, SamplableFrom};
 
 use crate::cross_table_arguments::{
     AllCrossTableArgs, CrossTableArg, EvalArg, NUM_CROSS_TABLE_ARGS,
 };
 use crate::fri_domain::FriDomain;
-use crate::proof_item::{Item, StarkProofStream};
-use crate::state::DIGEST_LEN;
+use crate::proof_item::ProofItem;
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
 use crate::triton_xfri::{self, Fri};
 
 use super::table::base_matrix::BaseMatrices;
 
-type StarkHasher = RescuePrimeXlix<RP_DEFAULT_WIDTH>;
+pub type StarkHasher = RescuePrimeRegular;
+pub type StarkProofStream = ProofStream<ProofItem<StarkHasher>, StarkHasher>;
 
 pub struct Stark {
     num_trace_randomizers: usize,
@@ -89,10 +88,7 @@ impl Stark {
         println!("Max Degree: {}", max_degree_with_origin);
         println!("FRI domain length: {fri_domain_length}, expansion factor: {expansion_factor}");
 
-        let omega = BFieldElement::ring_zero()
-            .get_primitive_root_of_unity(fri_domain_length as u64)
-            .0
-            .unwrap();
+        let omega = BFieldElement::primitive_root_of_unity(fri_domain_length as u64).unwrap();
 
         let bfri_domain = FriDomain {
             offset: co_set_fri_offset,
@@ -137,21 +133,24 @@ impl Stark {
         let transposed_base_codewords = Self::transpose_codewords(&all_base_codewords);
         timer.elapsed("transposed_base_codewords");
 
-        let hasher = rescue_prime_xlix::neptune_params();
+        let hasher = RescuePrimeRegular::new();
         let base_tree = Self::get_merkle_tree(&hasher, &transposed_base_codewords);
         let base_merkle_tree_root = base_tree.get_root();
         timer.elapsed("base_merkle_tree");
 
         // Commit to base codewords
         let mut proof_stream = StarkProofStream::default();
-        proof_stream.enqueue(&Item::MerkleRoot(base_merkle_tree_root));
+        proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         timer.elapsed("proof_stream.enqueue");
 
         let extension_challenge_seed = proof_stream.prover_fiat_shamir();
         timer.elapsed("prover_fiat_shamir");
 
-        let extension_challenge_weights =
-            hasher.sample_n_weights(&extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
+        let extension_challenge_weights = Self::sample_weights(
+            extension_challenge_seed,
+            &hasher,
+            AllChallenges::TOTAL_CHALLENGES,
+        );
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("challenges");
 
@@ -167,7 +166,7 @@ impl Stark {
             .into_iter()
             .map(|ext_table| BFieldElement::new(ext_table.padded_height() as u64))
             .collect_vec();
-        proof_stream.enqueue(&Item::PaddedHeights(padded_heights));
+        proof_stream.enqueue(&ProofItem::PaddedHeights(padded_heights));
         timer.elapsed("Sent all padded heights");
 
         let ext_codeword_tables =
@@ -179,8 +178,8 @@ impl Stark {
 
         let extension_tree = Self::get_extension_merkle_tree(&hasher, &transposed_ext_codewords);
 
-        proof_stream.enqueue(&Item::MerkleRoot(extension_tree.get_root()));
-        proof_stream.enqueue(&Item::Terminals(all_terminals));
+        proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
+        proof_stream.enqueue(&ProofItem::Terminals(all_terminals));
         timer.elapsed("extension_tree");
 
         let base_degree_bounds = base_tables.get_base_degree_bounds();
@@ -209,8 +208,11 @@ impl Stark {
             + 2 * extension_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * NUM_CROSS_TABLE_ARGS;
-        let non_lin_combi_weights =
-            hasher.sample_n_weights(&non_lin_combi_weights_seed, non_lin_combi_weights_count);
+        let non_lin_combi_weights = Self::sample_weights(
+            non_lin_combi_weights_seed,
+            &hasher,
+            non_lin_combi_weights_count,
+        );
         timer.elapsed("Sampled weights for non-linear combination");
 
         let combination_codeword = self.create_combination_codeword(
@@ -227,21 +229,18 @@ impl Stark {
         timer.elapsed("non-linear sum");
 
         // TODO use Self::get_extension_merkle_tree (or similar) here?
-        let mut combination_codeword_digests: Vec<Vec<BFieldElement>> =
+        let mut combination_codeword_digests: Vec<<StarkHasher as Hasher>::Digest> =
             Vec::with_capacity(combination_codeword.len());
         combination_codeword
             .clone()
             .into_par_iter()
-            .map(|xfe| {
-                let digest: Vec<BFieldElement> = xfe.to_digest();
-                hasher.hash(&digest, RP_DEFAULT_OUTPUT_SIZE)
-            })
+            .map(|xfe| hasher.hash_sequence(&xfe.to_sequence()))
             .collect_into_vec(&mut combination_codeword_digests);
         let combination_tree =
             MerkleTree::<StarkHasher>::from_digests(&combination_codeword_digests);
-        let combination_root: Vec<BFieldElement> = combination_tree.get_root();
+        let combination_root: <StarkHasher as Hasher>::Digest = combination_tree.get_root();
 
-        proof_stream.enqueue(&Item::MerkleRoot(combination_root.clone()));
+        proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root.clone()));
 
         timer.elapsed("combination_tree");
 
@@ -270,15 +269,19 @@ impl Stark {
 
         let revealed_base_elems =
             Self::get_revealed_elements(&transposed_base_codewords, &revealed_indices);
-        let auth_paths_base = base_tree.get_multi_proof(&revealed_indices);
-        proof_stream.enqueue(&Item::TransposedBaseElementVectors(revealed_base_elems));
-        proof_stream.enqueue(&Item::CompressedAuthenticationPaths(auth_paths_base));
+        let auth_paths_base = base_tree.get_authentication_structure(&revealed_indices);
+        proof_stream.enqueue(&ProofItem::TransposedBaseElementVectors(
+            revealed_base_elems,
+        ));
+        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
 
         let revealed_ext_elems =
             Self::get_revealed_elements(&transposed_ext_codewords, &revealed_indices);
-        let auth_paths_ext = extension_tree.get_multi_proof(&revealed_indices);
-        proof_stream.enqueue(&Item::TransposedExtensionElementVectors(revealed_ext_elems));
-        proof_stream.enqueue(&Item::CompressedAuthenticationPaths(auth_paths_ext));
+        let auth_paths_ext = extension_tree.get_authentication_structure(&revealed_indices);
+        proof_stream.enqueue(&ProofItem::TransposedExtensionElementVectors(
+            revealed_ext_elems,
+        ));
+        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_ext));
         timer.elapsed("open leafs of zipped codewords");
 
         // open combination codeword at the same positions
@@ -289,11 +292,11 @@ impl Stark {
             .map(|i| combination_codeword[*i])
             .collect();
         let revealed_combination_auth_paths =
-            combination_tree.get_multi_proof(&cross_codeword_slice_indices);
-        proof_stream.enqueue(&Item::RevealedCombinationElements(
+            combination_tree.get_authentication_structure(&cross_codeword_slice_indices);
+        proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
             revealed_combination_elements,
         ));
-        proof_stream.enqueue(&Item::CompressedAuthenticationPaths(
+        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
             revealed_combination_auth_paths,
         ));
 
@@ -337,7 +340,7 @@ impl Stark {
         unit_distances
     }
 
-    fn get_revealed_elements<PF: PrimeField>(
+    fn get_revealed_elements<PF: FiniteField>(
         transposed_base_codewords: &[Vec<PF>],
         revealed_indices: &[usize],
     ) -> Vec<Vec<PF>> {
@@ -350,9 +353,9 @@ impl Stark {
 
     fn sample_initials() -> Vec<XFieldElement> {
         let mut rng = thread_rng();
-        let initials_seed_u64_0: [u64; AllEndpoints::TOTAL_ENDPOINTS] = rng.gen();
-        let initials_seed_u64_1: [u64; AllEndpoints::TOTAL_ENDPOINTS] = rng.gen();
-        let initials_seed_u64_2: [u64; AllEndpoints::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_0: [u64; AllEndpoints::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_1: [u64; AllEndpoints::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_2: [u64; AllEndpoints::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
         izip!(
             initials_seed_u64_0.into_iter(),
             initials_seed_u64_1.into_iter(),
@@ -509,7 +512,7 @@ impl Stark {
     }
 
     fn get_extension_merkle_tree(
-        hasher: &RescuePrimeXlix<16>,
+        hasher: &RescuePrimeRegular,
         transposed_extension_codewords: &Vec<Vec<XFieldElement>>,
     ) -> MerkleTree<StarkHasher> {
         let mut extension_codeword_digests_by_index =
@@ -535,7 +538,7 @@ impl Stark {
                 //     "There are just as many coefficients as there are BFieldElements in the full width of all extension tables."
                 // );
 
-                hasher.hash(&transposed_ext_codeword_coeffs, RP_DEFAULT_OUTPUT_SIZE)
+                hasher.hash_sequence(&transposed_ext_codeword_coeffs)
             })
             .collect_into_vec(&mut extension_codeword_digests_by_index);
 
@@ -543,13 +546,13 @@ impl Stark {
     }
 
     fn get_merkle_tree(
-        hasher: &RescuePrimeXlix<RP_DEFAULT_WIDTH>,
+        hasher: &StarkHasher,
         codewords: &Vec<Vec<BFieldElement>>,
     ) -> MerkleTree<StarkHasher> {
         let mut codeword_digests_by_index = Vec::with_capacity(codewords.len());
         codewords
             .par_iter()
-            .map(|values| hasher.hash(values, DIGEST_LEN))
+            .map(|values| hasher.hash_sequence(values))
             .collect_into_vec(&mut codeword_digests_by_index);
         MerkleTree::<StarkHasher>::from_digests(&codeword_digests_by_index)
     }
@@ -598,6 +601,24 @@ impl Stark {
         (x_randomizer_codeword, b_randomizer_codewords)
     }
 
+    fn sample_weights(
+        seed: <StarkHasher as Hasher>::Digest,
+        hasher: &StarkHasher,
+        num: usize,
+    ) -> Vec<XFieldElement> {
+        (0..num)
+            .map(|i| {
+                [
+                    seed.to_sequence(),
+                    BFieldElement::new(i as u64).to_sequence(),
+                ]
+                .concat()
+            })
+            .map(|seq| hasher.hash_sequence(&seq))
+            .map(|digest| XFieldElement::sample(&digest))
+            .collect()
+    }
+
     pub fn verify(&self, proof_stream: &mut StarkProofStream) -> Result<bool, Box<dyn Error>> {
         let mut timer = TimingReporter::start();
         let hasher = StarkHasher::new();
@@ -606,8 +627,11 @@ impl Stark {
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
         timer.elapsed("Fiat-Shamir seed for extension challenges");
 
-        let extension_challenge_weights =
-            hasher.sample_n_weights(&extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
+        let extension_challenge_weights = Self::sample_weights(
+            extension_challenge_seed,
+            &hasher,
+            AllChallenges::TOTAL_CHALLENGES,
+        );
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("Create extension challenges");
 
@@ -654,8 +678,11 @@ impl Stark {
             + 2 * num_extension_polynomials
             + 2 * num_quotient_polynomials
             + 2 * num_difference_quotients;
-        let non_lin_combi_weights =
-            hasher.sample_n_weights(&non_lin_combi_weights_seed, non_lin_combi_weights_count);
+        let non_lin_combi_weights = Self::sample_weights(
+            non_lin_combi_weights_seed,
+            &hasher,
+            non_lin_combi_weights_count,
+        );
         timer.elapsed("Sampled weights for non-linear combination");
 
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
@@ -688,11 +715,11 @@ impl Stark {
         timer.elapsed("Read base elements and auth paths from proof stream");
         let leaf_digests_base: Vec<_> = revealed_base_elems
             .par_iter()
-            .map(|revealed_base_elem| hasher.hash(revealed_base_elem, RP_DEFAULT_OUTPUT_SIZE))
+            .map(|revealed_base_elem| hasher.hash_sequence(revealed_base_elem))
             .collect();
         timer.elapsed(&format!("Got {num_idxs} leaf digests for base elements"));
 
-        if !MerkleTree::<StarkHasher>::verify_multi_proof_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
             &revealed_indices,
             &leaf_digests_base,
@@ -723,12 +750,12 @@ impl Stark {
                     bvalues.len(),
                     "9 X-field elements must become 27 B-field elements"
                 );
-                hasher.hash(&bvalues, RP_DEFAULT_OUTPUT_SIZE)
+                hasher.hash_sequence(&bvalues)
             })
             .collect();
         timer.elapsed(&format!("Got {num_idxs} leaf digests for ext elements"));
 
-        if !MerkleTree::<StarkHasher>::verify_multi_proof_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
             &revealed_indices,
             &leaf_digests_ext,
@@ -744,15 +771,12 @@ impl Stark {
             proof_stream.dequeue()?.as_revealed_combination_elements()?;
         let revealed_combination_digests: Vec<_> = revealed_combination_leafs
             .par_iter()
-            .map(|xfe| {
-                let b_elements: Vec<BFieldElement> = xfe.to_digest();
-                hasher.hash(&b_elements, RP_DEFAULT_OUTPUT_SIZE)
-            })
+            .map(|xfe| hasher.hash_sequence(&xfe.to_sequence()))
             .collect();
         let revealed_combination_auth_paths = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
-        if !MerkleTree::<StarkHasher>::verify_multi_proof_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             combination_root.clone(),
             &combination_check_indices,
             &revealed_combination_digests,
@@ -1004,6 +1028,7 @@ impl Stark {
 
 #[cfg(test)]
 pub(crate) mod triton_stark_tests {
+    use num_traits::{One, Zero};
     use twenty_first::shared_math::ntt::ntt;
     use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::util_types::proof_stream_typed::ProofStream;
@@ -1022,7 +1047,10 @@ pub(crate) mod triton_stark_tests {
         co_set_fri_offset: BFieldElement,
         input_symbols: &[BFieldElement],
         output_symbols: &[BFieldElement],
-    ) -> (Stark, ProofStream<Item, RescuePrimeXlix<RP_DEFAULT_WIDTH>>) {
+    ) -> (
+        Stark,
+        ProofStream<ProofItem<RescuePrimeRegular>, RescuePrimeRegular>,
+    ) {
         let (aet, _, program) = parse_setup_simulate(code, input_symbols, &[]);
         let base_matrices = BaseMatrices::new(aet, &program);
 
@@ -1072,9 +1100,8 @@ pub(crate) mod triton_stark_tests {
         let mut stdin = VecStream::new_bwords(input_symbols);
         let mut secret_in = VecStream::new_bwords(secret_input_symbols);
         let mut stdout = VecStream::new_bwords(&[]);
-        let rescue_prime = rescue_prime_xlix::neptune_params();
 
-        let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout, &rescue_prime);
+        let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
@@ -1091,8 +1118,8 @@ pub(crate) mod triton_stark_tests {
         BaseTableCollection,
         ExtTableCollection,
         AllChallenges,
-        AllEndpoints,
-        AllEndpoints,
+        AllEndpoints<RescuePrimeRegular>,
+        AllEndpoints<RescuePrimeRegular>,
     ) {
         let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
         let base_matrices = BaseMatrices::new(aet, &program);
@@ -1136,7 +1163,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     pub fn shift_codeword_test() {
-        let stark = Stark::new(2, 1, 2, 32, 1.into(), &[], &[]);
+        let stark = Stark::new(2, 1, 2, 32, BFieldElement::one(), &[], &[]);
         let fri_x_values = stark.xfri.domain.domain_values();
 
         let mut test_codeword: Vec<XFieldElement> = vec![0.into(); stark.xfri.domain.length];
@@ -1171,7 +1198,11 @@ pub(crate) mod triton_stark_tests {
             read_io read_io read_io
             nop nop
         ";
-        let input_symbols = vec![3.into(), 5.into(), 7.into()];
+        let input_symbols = vec![
+            BFieldElement::new(3),
+            BFieldElement::new(5),
+            BFieldElement::new(7),
+        ];
         let (
             stdout,
             _unpadded_base_tables,
@@ -1185,7 +1216,7 @@ pub(crate) mod triton_stark_tests {
         let ptie = all_terminals.processor_table_endpoints.input_table_eval_sum;
         let ine = EvalArg::compute_terminal(
             &input_symbols,
-            XFieldElement::ring_zero(),
+            XFieldElement::zero(),
             all_challenges.input_challenges.processor_eval_row_weight,
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
@@ -1196,7 +1227,7 @@ pub(crate) mod triton_stark_tests {
 
         let oute = EvalArg::compute_terminal(
             &stdout.to_bword_vec(),
-            XFieldElement::ring_zero(),
+            XFieldElement::zero(),
             all_challenges.output_challenges.processor_eval_row_weight,
         );
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
@@ -1220,7 +1251,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
-        let zero = XFieldElement::ring_zero();
+        let zero = XFieldElement::zero();
         let (_, _, _, ext_tables, _, _, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
 
