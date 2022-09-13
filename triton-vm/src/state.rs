@@ -8,6 +8,7 @@ use super::table::{processor_table, ram_table};
 use super::vm::Program;
 use crate::error::vm_err;
 use crate::table::base_matrix::ProcessorMatrixRow;
+use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use std::collections::HashMap;
@@ -16,7 +17,9 @@ use std::error::Error;
 use std::fmt::Display;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other;
-use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+use twenty_first::shared_math::rescue_prime_regular::{
+    RescuePrimeRegular, NUM_ROUNDS, ROUND_CONSTANTS,
+};
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -836,23 +839,28 @@ impl<'pgm> VMState<'pgm> {
         hash_trace_with_constants
     }
 
+    /// rescue_xlix_round_constants_by_round_number
+    /// returns the 2m round constant for round `round_number`.
+    /// This counter starts at 1; round number 0 indicates padding;
+    /// and round number 9 indicates a transition to a new hash so
+    /// the round constants will be all zeros.
     fn rescue_xlix_round_constants_by_round_number(
         round_number: usize,
-    ) -> [BFieldElement; hash_table::NUM_ROUND_CONSTANTS] {
-        let round_constants: [BFieldElement; hash_table::TOTAL_NUM_CONSTANTS] =
-            hash_table::ROUND_CONSTANTS
-                .iter()
-                .map(|&x| BFieldElement::new(x))
-                .collect_vec()
-                .try_into()
-                .unwrap();
+    ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
+        let round_constants: [BFieldElement; TOTAL_NUM_CONSTANTS] = ROUND_CONSTANTS
+            .iter()
+            .map(|&x| BFieldElement::new(x))
+            .collect_vec()
+            .try_into()
+            .unwrap();
 
         match round_number {
             0 => [BFieldElement::zero(); hash_table::NUM_ROUND_CONSTANTS],
-            i if i <= hash_table::NUM_ROUNDS => round_constants
-                [hash_table::NUM_ROUND_CONSTANTS * (i - 1)..hash_table::NUM_ROUND_CONSTANTS * i]
+            i if i <= NUM_ROUNDS => round_constants
+                [NUM_ROUND_CONSTANTS * (i - 1)..NUM_ROUND_CONSTANTS * i]
                 .try_into()
                 .unwrap(),
+            i if i == NUM_ROUNDS + 1 => [BFieldElement::zero(); hash_table::NUM_ROUND_CONSTANTS],
             _ => panic!("Round with number {round_number} does not have round constants."),
         }
     }
