@@ -704,40 +704,40 @@ pub mod sample_programs {
     ///
     /// output: Result<(), VMFail>
     pub const MT_AP_VERIFY: &str = concat!(
-        "push 3 ",                                          // number of APs – should be an argument
-        "mt_ap_verify: ",                                   // proper program starts here
-        "push 0 swap1 write_mem pop pop ",                  // store number of APs at RAM address 0
-        "read_io read_io read_io read_io read_io read_io ", // read Merkle root
-        "call check_aps ",                                  //
-        "pop pop ",                                         // leave clean stack: number APs
-        "pop pop pop pop pop pop ",                         // leave clean stack: Merkle root
-        "halt ",                                            // done – should be “return”
-        "",                                                 //
-        "check_aps: ",                                      // subroutine: check AP one at a time
-        "push 0 push 0 read_mem dup0 ",                     // get number of APs left to check
-        "push 0 eq skiz return ",                           // no APs left
-        "push -1 add write_mem pop pop ",                   // decrease number of APs to still check
-        "call get_idx_and_hash_leaf ",                      //
-        "call traverse_tree ",                              //
-        "call at_tree_top ",                                //
-        "recurse ",                                         // check next AP
-        "",                                                 //
-        "get_idx_and_hash_leaf: ",                          // subroutine: read index & hash leaf
-        "read_io ",                                         // node index
-        "push 0 push 0 push 0 push 0 push 0 push 0 ",       // prepare stack for hashing
-        "push 0 push 0 push 0 read_io read_io read_io ",    // leaf's value (XField Element)
-        "hash return ",                                     // compute leaf's digest
-        "",                                                 //
-        "traverse_tree: ",                                  // subroutine: go up tree
-        "dup12 push 1 eq skiz return ",                     // break loop if node index is 1
-        "divine_sibling hash recurse ",                     // move up one level in the Merkle tree
-        "",                                                 //
-        "at_tree_top: ",                                    // subroutine: compare digests
-        "swap7 pop swap7 pop swap7 pop ",                   // remove unnecessary “0”s from hashing
-        "swap7 pop swap7 pop swap7 pop pop ",               // and remnant of node index
-        "assert_vector ",                                   // actually compare to root of tree
-        "pop pop pop pop pop pop ",                         // clean up stack, leave only one root
-        "return ",                                          //
+        "push 3 ",                                  // number of APs – should be an argument
+        "mt_ap_verify: ",                           // proper program starts here
+        "push 0 swap1 write_mem pop pop ",          // store number of APs at RAM address 0
+        "read_io read_io read_io read_io read_io ", // read Merkle root
+        "call check_aps ",                          //
+        "pop pop ",                                 // leave clean stack: number APs
+        "pop pop pop pop pop ",                     // leave clean stack: Merkle root
+        "halt ",                                    // done – should be “return”
+        "",                                         //
+        "check_aps: ",                              // subroutine: check AP one at a time
+        "push 0 push 0 read_mem dup0 ",             // get number of APs left to check
+        "push 0 eq skiz return ",                   // no APs left
+        "push -1 add write_mem pop pop ",           // decrease number of APs to still check
+        "call get_idx_and_hash_leaf ",              //
+        "call traverse_tree ",                      //
+        "call at_tree_top ",                        //
+        "recurse ",                                 // check next AP
+        "",                                         //
+        "get_idx_and_hash_leaf: ",                  // subroutine: read index & hash leaf
+        "read_io ",                                 // node index
+        "push 0 push 0 push 0 push 0 push 0 ",      // prepare stack for hashing
+        "push 0 push 0 read_io read_io read_io ",   // leaf's value (XField Element)
+        "hash return ",                             // compute leaf's digest
+        "",                                         //
+        "traverse_tree: ",                          // subroutine: go up tree
+        "dup10 push 1 eq skiz return ",             // break loop if node index is 1
+        "divine_sibling hash recurse ",             // move up one level in the Merkle tree
+        "",                                         //
+        "at_tree_top: ",                            // subroutine: compare digests
+        "swap6 pop swap6 pop swap6 pop ",           // remove unnecessary “0”s from hashing
+        "swap6 pop swap6 pop pop ",                 // and remnant of node index
+        "assert_vector ",                           // actually compare to root of tree
+        "pop pop pop pop pop ",                     // clean up stack, leave only one root
+        "return ",                                  //
     );
 
     // see also: get_colinear_y in src/shared_math/polynomial.rs
