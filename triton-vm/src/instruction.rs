@@ -651,7 +651,7 @@ pub mod sample_programs {
 
     pub const PUSH_PUSH_ADD_POP_S: &str = "
         push 1
-        push 2
+        push 1
         add
         pop
     ";
@@ -1088,9 +1088,6 @@ mod instruction_tests {
         let pgm_pretty = format!("{}", pgm_expected);
         let instructions = parse(&pgm_pretty).unwrap();
         let pgm_actual = Program::new(&instructions);
-
-        println!("Expected:\n{}", pgm_expected);
-        println!("Actual:\n{}", pgm_actual);
 
         assert_eq!(pgm_expected, pgm_actual);
 
