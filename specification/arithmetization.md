@@ -672,11 +672,11 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 ### Hash Coprocessor Table
 
-The instruction `hash` hashes the OpStack's 12 top-most elements in one cycle.
-What happens in the background is that the registers `st0` through `st11` are copied to the Hash Coprocessor's registers `state0` through `state11`.
-The Hash Coprocessor's four remaining state registers, `state12` through `state15`, are set to 0.
+The instruction `hash` hashes the OpStack's 10 top-most elements in one cycle.
+What happens in the background is that the registers `st0` through `st9` are copied to the Hash Coprocessor's registers `state0` through `state9`.
+The Hash Coprocessor's four remaining state registers, `state11` through `state15`, are set to 0.
 Then, the Coprocessor runs the 8 rounds of Rescue-XLIX on its `state` registers.
-Finally, the hash digest, i.e., the 6 values from `state0` through `state5`, are copied back to the OpStack.
+Finally, the hash digest, i.e., the 5 values from `state0` through `state4`, are copied back to the OpStack.
 This allows the (main) Processor to perform the hashing instruction in a single cycle.
 
 The Hash Table has 49 columns:
@@ -691,6 +691,8 @@ Each padding row is the all-zero row.
 
 **Consistency Constraints**
 
+1. If the round number is 1, register `state10` is 0.
+1. If the round number is 1, register `state11` is 0.
 1. If the round number is 1, register `state12` is 0.
 1. If the round number is 1, register `state13` is 0.
 1. If the round number is 1, register `state14` is 0.
@@ -698,6 +700,8 @@ Each padding row is the all-zero row.
 1. The round constants adhere to the specification of Rescue Prime.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state10` is 0.
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state11` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state12` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state13` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state14` is 0.
@@ -706,6 +710,8 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 **Consistency Constraints as Polynomials**
 
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state10`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state11`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state12`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state13`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state14`
@@ -1587,26 +1593,25 @@ Two Evaluation Arguments with the [Hash Table](#hash-coprocessor-table) guarante
 #### Instruction `divine_sibling`
 
 Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0 (respectively 1) as their least significant bit.
-The first two polynomials achieve that helper variable `hv0` holds the result of `st12 mod 2`.
-The third polynomial sets the new value of `st12` to `st12 div 2`.
+The first two polynomials achieve that helper variable `hv0` holds the result of `st10 mod 2`.
+The third polynomial sets the new value of `st10` to `st10 div 2`.
 
 ##### Description
 
 1. Helper variable `hv0` is either 0 or 1.
-1. The 13th stack element decomposes into helper variables `hv1` and `hv0`.
-1. The 13th stack register is shifted by 1 bit to the right.
+1. The 11th stack register is shifted by 1 bit to the right.
 1. If `hv0` is 0, then `st0` does not change.
 1. If `hv0` is 0, then `st1` does not change.
 1. If `hv0` is 0, then `st2` does not change.
 1. If `hv0` is 0, then `st3` does not change.
 1. If `hv0` is 0, then `st4` does not change.
-1. If `hv0` is 0, then `st5` does not change.
-1. If `hv0` is 1, then `st0` is copied to `st6`.
-1. If `hv0` is 1, then `st1` is copied to `st7`.
-1. If `hv0` is 1, then `st2` is copied to `st8`.
-1. If `hv0` is 1, then `st3` is copied to `st9`.
-1. If `hv0` is 1, then `st4` is copied to `st10`.
-1. If `hv0` is 1, then `st5` is copied to `st11`.
+1. If `hv0` is 1, then `st0` is copied to `st5`.
+1. If `hv0` is 1, then `st1` is copied to `st6`.
+1. If `hv0` is 1, then `st2` is copied to `st7`.
+1. If `hv0` is 1, then `st3` is copied to `st8`.
+1. If `hv0` is 1, then `st4` is copied to `st9`.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
 1. The stack element in `st13` does not change.
 1. The stack element in `st14` does not change.
 1. The stack element in `st15` does not change.
@@ -1617,20 +1622,14 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 ##### Polynomials
 
 1. `hv0·(hv0 - 1)`
-1. `st12 - (2·hv1 + hv0)`
-1. `st12' - hv1`
-1. `(1 - hv0)·(st0' - st0)`
-1. `(1 - hv0)·(st1' - st1)`
-1. `(1 - hv0)·(st2' - st2)`
-1. `(1 - hv0)·(st3' - st3)`
-1. `(1 - hv0)·(st4' - st4)`
-1. `(1 - hv0)·(st5' - st5)`
-1. `hv0·(st6' - st0)`
-1. `hv0·(st7' - st1)`
-1. `hv0·(st8' - st2)`
-1. `hv0·(st9' - st3)`
-1. `hv0·(st10' - st4)`
-1. `hv0·(st11' - st5)`
+1. `st10'·2 + hv0 - st10`
+1. `(1 - hv0)·(st0' - st0) + hv0·(st5' - st0)`
+1. `(1 - hv0)·(st1' - st1) + hv0·(st6' - st1)`
+1. `(1 - hv0)·(st2' - st2) + hv0·(st7' - st2)`
+1. `(1 - hv0)·(st3' - st3) + hv0·(st8' - st3)`
+1. `(1 - hv0)·(st4' - st4) + hv0·(st9' - st4)`
+1. `st11' - st11`
+1. `st12' - st12`
 1. `st13' - st13`
 1. `st14' - st14`
 1. `st15' - st15`
@@ -1640,30 +1639,27 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 
 ##### Helper variable definitions for `divine_sibling`
 
-Since `st12` contains the Merkle tree node index,
+Since `st10` contains the Merkle tree node index,
 
-1. `hv0` holds the result of `st12 % 2` (the node index'es least significant bit, indicating whether it is a left/right node).
-1. `hv1` holds the result of `st12 / 2` (the node index'es remaining bits, indicating the left/right location of parents).
+1. `hv0` holds the result of `st10 % 2` (the node index'es least significant bit, indicating whether it is a left/right node).
 
 #### Instruction `assert_vector`
 
 ##### Description
 
-1. Register `st0` is equal to `st6`.
-1. Register `st1` is equal to `st7`.
-1. Register `st2` is equal to `st8`.
-1. Register `st3` is equal to `st9`.
-1. Register `st4` is equal to `st10`.
-1. Register `st5` is equal to `st11`.
+1. Register `st0` is equal to `st5`.
+1. Register `st1` is equal to `st6`.
+1. Register `st2` is equal to `st7`.
+1. Register `st3` is equal to `st8`.
+1. Register `st4` is equal to `st9`.
 
 ##### Polynomials
 
-1. `st6 - st0`
-1. `st7 - st1`
-1. `st8 - st2`
-1. `st9 - st3`
-1. `st10 - st4`
-1. `st11 - st5`
+1. `st5 - st0`
+1. `st6 - st1`
+1. `st7 - st2`
+1. `st8 - st3`
+1. `st9 - st4`
 
 #### Instruction `add`
 

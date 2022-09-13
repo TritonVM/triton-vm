@@ -24,7 +24,7 @@ impl Display for InstructionError {
             }
 
             OpStackTooShallow => {
-                write!(f, "Instruction addresses too deeply into the stack")
+                write!(f, "Operational stack is too shallow")
             }
 
             JumpStackTooShallow => {

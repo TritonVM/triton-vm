@@ -248,7 +248,7 @@ mod triton_vm_tests {
     use num_traits::{One, Zero};
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
-    use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+    use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
 
     #[test]
     fn initialise_table_test() {
@@ -499,32 +499,38 @@ mod triton_vm_tests {
     }
 
     fn test_program_for_hash() -> SourceCodeAndInput {
-        let source_code = "push 1 push 2 push 3 hash read_io eq assert halt";
+        let source_code =
+            "push 0 push 0 push 0 push 1 push 2 push 3 hash pop pop pop pop pop read_io eq assert halt";
+        let mut hash_input = [BFieldElement::zero(); 10];
+        hash_input[0] = BFieldElement::new(3);
+        hash_input[1] = BFieldElement::new(2);
+        hash_input[2] = BFieldElement::new(1);
+        let digest = RescuePrimeRegular::hash_10(&hash_input);
         SourceCodeAndInput {
             source_code: source_code.to_string(),
-            input: vec![BFieldElement::new(17994241411625465269)],
+            input: vec![digest.to_vec()[0]],
             secret_input: vec![],
         }
     }
 
     fn test_program_for_divine_sibling() -> SourceCodeAndInput {
         let source_code = "
-            push 3 swap12 divine_sibling \
+            push 3 swap10 divine_sibling \
             dup0 assert dup1 assert dup2 assert \
-            dup3 assert dup4 assert dup5 assert \
+            dup3 assert dup4 assert \
             halt";
         let one = BFieldElement::one();
         SourceCodeAndInput {
             source_code: source_code.to_string(),
             input: vec![],
-            secret_input: vec![one, one, one, one, one, one],
+            secret_input: vec![one, one, one, one, one],
         }
     }
 
     fn test_program_for_assert_vector() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
-            "push 1 push 2 push 3 push 4 push 5 push 6 \
-             push 1 push 2 push 3 push 4 push 5 push 6 \
+            "push 1 push 2 push 3 push 4 push 5 \
+             push 1 push 2 push 3 push 4 push 5 \
              assert_vector halt",
         )
     }

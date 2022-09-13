@@ -152,24 +152,25 @@ the value `a` was supplied as a secret input.
 
 | Instruction      | Value | old OpStack       | new OpStack                     | Description                                                                                             |
 |:-----------------|:------|:------------------|:--------------------------------|:--------------------------------------------------------------------------------------------------------|
-| `hash`           | ?     | `_lkjihgfedcba`   | `_000000zyxwvu`                 | Overwrites the stack's 12 top-most elements with their hash digest (length 6) and 6 zeros.              |
-| `divine_sibling` | ?     | `_ i******fedcba` | e.g., `_ (i div 2)fedcbazyxwvu` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
-| `assert_vector`  | ?     | `_`               | `_`                             | Assert equality of `st(i)` to `st(i+6)` for `0 <= i < 6`. Crashes the VM if any pair is unequal.        |
+| `hash`           | ?     | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 6) and 6 zeros.              |
+| `divine_sibling` | ?     | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
+| `assert_vector`  | ?     | `_`               | `_`                             | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
 
 The instruction `hash` works as follows.
-The stack's 12 top-most elements (`lkjihgfedcba`) are concatenated to four zeros, resulting in `0000lkjihgfedcba`.
-The permutation `xlix` is applied to `0000lkjihgfedcba`, resulting in `zyxwvuκιθηζεδγβα`.
-The first six elements of this result, i.e., `zyxwvu`, are written to the stack, overwriting `st0` through `st5`, i.e., `fedcba`.
-The next six elements of the stack `st6` through `st11`, i.e,`lkjihg`, are set to zero.
+The stack's 10 top-most elements (`jihgfedcba`) are reversed and concatenated with six zeros, resulting in `abcdefghij000000`.
+The permutation `xlix` is applied to `abcdefghij000000`, resulting in `αβγδεζηθικuvwxyz`.
+The first five elements of this result, i.e., `αβγδε`, are reversed and written to the stack, overwriting `st5` through `st9`.
+The top elements of the stack `st5` through `st9` are set to zero.
+For example, the old stack was `_ jihgfedcba` and the new stack is `_ εδγβα 00000`.
 
 The instruction `divine_sibling` works as follows.
-The 13th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st0` through `st5`, i.e., `fedcba`.
-The sibling digest of `fedcba` is `zyxwvu` and is read from the input interface of secret data.
-The least-significant bit of `i` indicates whether `fedcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
-Depending on this least-significant bit of `i`, `divine_sibling` either
-1. does not change registers `st0` through `st5` and moves `zyxwvu` into registers `st6` through `st11`, or
-2. moves `fedcba` into registers `st6` through `st11` and moves `zyxwvu` into registers `st0` through `st5`.
-The 13th element of the operational stack is modified by shifting `i` by 1 bit to the right, i.e., dropping the least-significant bit.
+The 13th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st0` through `st4`, i.e., `edcba`.
+The sibling digest of `edcba` is `zyxwv` and is read from the input interface of secret data.
+The least-significant bit of `i` indicates whether `edcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
+Depending on this least significant bit of `i`, `divine_sibling` either
+1. does not change registers `st0` through `st4` and moves `zyxwv` into registers `st5` through `st9`, or
+2. moves `edcba` into registers `st5` through `st9` and moves `zyxwv` into registers `st0` through `st4`.
+The 11th element of the operational stack is modified by shifting `i` by 1 bit to the right, i.e., dropping the least-significant bit.
 In conjunction with instruction `hash` and `assert_vector`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
 
 ### Arithmetic on Stack

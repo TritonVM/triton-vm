@@ -125,7 +125,11 @@ impl<'pgm> VMState<'pgm> {
         // Helps preventing OpStack Underflow
         match current_instruction {
             Pop | Skiz | Assert | Add | Mul | Eq | Lt | And | Xor | XbMul | WriteIo => {
-                hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse()
+                if self.op_stack.osp() == BFieldElement::new(16) {
+                    hvs[3] = BFieldElement::zero()
+                } else {
+                    hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse()
+                }
             }
             _ => (),
         }
@@ -151,13 +155,9 @@ impl<'pgm> VMState<'pgm> {
                 }
             }
             DivineSibling => {
-                let node_index = self.op_stack.safe_peek(ST12).value();
-                // lsb = least significant bit
-                let node_index_lsb = node_index % 2;
-                let node_index_msbs = node_index / 2;
-                // set hv registers to correct decomposition of node_index
-                hvs[0] = BFieldElement::new(node_index_lsb);
-                hvs[1] = BFieldElement::new(node_index_msbs);
+                let node_index = self.op_stack.safe_peek(ST10).value();
+                // set hv0 register to least significant bit of st10
+                hvs[0] = BFieldElement::new(node_index as u64 % 2);
             }
             Split => {
                 let elem = self.op_stack.safe_peek(ST0);
@@ -247,7 +247,7 @@ impl<'pgm> VMState<'pgm> {
 
             Call(addr) => {
                 let o_plus_2 = self.instruction_pointer as u32 + 2;
-                let pair = (o_plus_2.into(), addr);
+                let pair = (BFieldElement::new(o_plus_2 as u64), addr);
                 self.jump_stack.push(pair);
                 self.instruction_pointer = addr.value() as usize;
             }
@@ -290,22 +290,22 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Hash => {
-                let mut state = [BFieldElement::new(0); STATE_REGISTER_COUNT];
+                let mut hash_input = [BFieldElement::new(0); 2 * DIGEST_LEN];
                 for i in 0..2 * DIGEST_LEN {
-                    state[i] = self.op_stack.pop()?;
+                    hash_input[i] = self.op_stack.pop()?;
                 }
 
-                //let hash_trace = rescue_prime.rescue_xlix_permutation_trace(&mut state);
-                let hash_trace = RescuePrimeRegular::trace(&state[0..10].try_into().unwrap());
+                let hash_trace = RescuePrimeRegular::trace(&hash_input);
+                let hash_output = &hash_trace[hash_trace.len() - 1][0..DIGEST_LEN];
                 let hash_trace_with_round_constants = Self::inprocess_hash_trace(&hash_trace);
                 vm_output = Some(VMOutput::XlixTrace(hash_trace_with_round_constants));
 
-                for _ in 0..DIGEST_LEN {
-                    self.op_stack.push(BFieldElement::zero());
+                for i in (0..DIGEST_LEN).rev() {
+                    self.op_stack.push(hash_output[i]);
                 }
 
-                for i in (0..DIGEST_LEN).rev() {
-                    self.op_stack.push(state[i]);
+                for _ in 0..DIGEST_LEN {
+                    self.op_stack.push(BFieldElement::zero());
                 }
 
                 self.instruction_pointer += 1;
@@ -375,7 +375,7 @@ impl<'pgm> VMState<'pgm> {
             And => {
                 let lhs: u32 = self.op_stack.pop_u32()?;
                 let rhs: u32 = self.op_stack.pop_u32()?;
-                self.op_stack.push((lhs & rhs).into());
+                self.op_stack.push(BFieldElement::new((lhs & rhs) as u64));
                 let trace = self.u32_op_trace(lhs, rhs);
                 vm_output = Some(VMOutput::U32OpTrace(trace));
                 self.instruction_pointer += 1;
@@ -384,7 +384,7 @@ impl<'pgm> VMState<'pgm> {
             Xor => {
                 let lhs: u32 = self.op_stack.pop_u32()?;
                 let rhs: u32 = self.op_stack.pop_u32()?;
-                self.op_stack.push((lhs ^ rhs).into());
+                self.op_stack.push(BFieldElement::new((lhs ^ rhs) as u64));
                 let trace = self.u32_op_trace(lhs, rhs);
                 vm_output = Some(VMOutput::U32OpTrace(trace));
                 self.instruction_pointer += 1;
@@ -392,7 +392,8 @@ impl<'pgm> VMState<'pgm> {
 
             Reverse => {
                 let elem: u32 = self.op_stack.pop_u32()?;
-                self.op_stack.push(elem.reverse_bits().into());
+                self.op_stack
+                    .push(BFieldElement::new(elem.reverse_bits() as u64));
 
                 // for instruction `reverse`, the Uint32 Table's RHS is (arbitrarily) set to 0
                 let trace = self.u32_op_trace(elem, 0);
@@ -404,8 +405,8 @@ impl<'pgm> VMState<'pgm> {
                 let denom: u32 = self.op_stack.pop_u32()?;
                 let numerator: u32 = self.op_stack.pop_u32()?;
                 let (quot, rem) = other::div_rem(numerator, denom);
-                self.op_stack.push(quot.into());
-                self.op_stack.push(rem.into());
+                self.op_stack.push(BFieldElement::new(quot as u64));
+                self.op_stack.push(BFieldElement::new(rem as u64));
                 let trace = self.u32_op_trace(denom, numerator);
                 vm_output = Some(VMOutput::U32OpTrace(trace));
                 self.instruction_pointer += 1;
@@ -473,7 +474,7 @@ impl<'pgm> VMState<'pgm> {
         &self,
         current_instruction: Instruction,
     ) -> [BFieldElement; processor_table::BASE_WIDTH] {
-        let clk = self.cycle_count.into();
+        let clk = BFieldElement::new(self.cycle_count as u64);
         let ip = (self.instruction_pointer as u32).try_into().unwrap();
         // FIXME either have `nia()` use the argument `current_instruction` or derive `ci` from `ip`
         let ci = current_instruction.opcode_b();
@@ -551,7 +552,7 @@ impl<'pgm> VMState<'pgm> {
         &self,
         current_instruction: Instruction,
     ) -> [BFieldElement; op_stack_table::BASE_WIDTH] {
-        let clk = self.cycle_count.into();
+        let clk = BFieldElement::new(self.cycle_count as u64);
         let ib1_shrink_stack = current_instruction.ib(IB1);
         let osp = self.op_stack.osp();
         let osv = self.op_stack.osv();
@@ -560,7 +561,7 @@ impl<'pgm> VMState<'pgm> {
     }
 
     pub fn to_ram_row(&self) -> [BFieldElement; ram_table::BASE_WIDTH] {
-        let clk = self.cycle_count.into();
+        let clk = BFieldElement::new(self.cycle_count as u64);
         let ramp = self.op_stack.st(ST1);
         let ramv = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
 
@@ -574,7 +575,7 @@ impl<'pgm> VMState<'pgm> {
         &self,
         current_instruction: Instruction,
     ) -> [BFieldElement; jump_stack_table::BASE_WIDTH] {
-        let clk = self.cycle_count.into();
+        let clk = BFieldElement::new(self.cycle_count as u64);
         let ci = current_instruction.opcode_b();
 
         [clk, ci, self.jsp(), self.jso(), self.jsd()]
@@ -603,18 +604,18 @@ impl<'pgm> VMState<'pgm> {
         let thirty_three = BFieldElement::new(33);
         let row = |idc: u32, bits: u32, lhs: u32, rhs: u32| {
             [
-                idc.into(),
-                bits.into(),
-                inverse_or_zero(thirty_three - bits.into()),
+                BFieldElement::new(idc as u64),
+                BFieldElement::new(bits as u64),
+                inverse_or_zero(thirty_three - BFieldElement::new(bits as u64)),
                 ci,
-                lhs.into(),
-                rhs.into(),
+                BFieldElement::new(lhs as u64),
+                BFieldElement::new(rhs as u64),
                 Self::possibly_unclear_lt(idc, lhs, rhs),
-                (lhs & rhs).into(),
-                (lhs ^ rhs).into(),
-                lhs.reverse_bits().into(),
-                inverse_or_zero(lhs.into()),
-                inverse_or_zero(rhs.into()),
+                BFieldElement::new((lhs & rhs) as u64),
+                BFieldElement::new((lhs ^ rhs) as u64),
+                BFieldElement::new(lhs.reverse_bits() as u64),
+                inverse_or_zero(BFieldElement::new(lhs as u64)),
+                inverse_or_zero(BFieldElement::new(rhs as u64)),
             ]
         };
 
@@ -767,6 +768,7 @@ impl<'pgm> VMState<'pgm> {
         &mut self,
         secret_in: &mut In,
     ) -> Result<(), Box<dyn Error>> {
+        // st0-st4
         let known_digest: [BFieldElement; DIGEST_LEN] = [
             self.op_stack.pop()?,
             self.op_stack.pop()?,
@@ -775,10 +777,12 @@ impl<'pgm> VMState<'pgm> {
             self.op_stack.pop()?,
         ];
 
+        // st5-st9
         for _ in 0..DIGEST_LEN {
             self.op_stack.pop()?;
         }
 
+        // st10
         let node_index: u32 = self.op_stack.pop()?.try_into()?;
 
         let sibling_digest = [
@@ -789,29 +793,46 @@ impl<'pgm> VMState<'pgm> {
             secret_in.read_elem()?,
         ];
 
-        // lsb = least significant bit
-        let node_index_lsb = node_index % 2;
-        let node_index_msbs = node_index / 2;
+        // least significant bit
+        let hv0 = node_index % 2;
 
-        let known_digest_is_left_node = node_index_lsb == 0;
-        let (first, second) = if known_digest_is_left_node {
-            // move sibling digest to rhs
-            (known_digest, sibling_digest)
+        // push new node index
+        // st10
+        self.op_stack
+            .push(BFieldElement::new(node_index as u64 >> 1));
+
+        // push 2 digests, in correct order
+        // Correct order means the following:
+        //
+        // | sponge | stack | digest element | hv0 == 0 |
+        // |--------|-------|----------------|----------|
+        // | r0     | st0   | left0          | known0   |
+        // | r1     | st1   | left1          | known1   |
+        // | r2     | st2   | left2          | known2   |
+        // | r3     | st3   | left3          | known3   |
+        // | r4     | st4   | left4          | known4   |
+        // | r5     | st5   | right0         | sibling0 |
+        // | r6     | st6   | right1         | sibling1 |
+        // | r7     | st7   | right2         | sibling2 |
+        // | r8     | st8   | right3         | sibling3 |
+        // | r9     | st9   | right4         | sibling4 |
+
+        if hv0 == 0 {
+            for sibling_element in sibling_digest.iter().rev() {
+                self.op_stack.push(*sibling_element);
+            }
+
+            for known_digest_element in known_digest.iter().rev() {
+                self.op_stack.push(*known_digest_element);
+            }
         } else {
-            // move sibling digest to lhs
-            (sibling_digest, known_digest)
-        };
+            for known_digest_element in known_digest.iter().rev() {
+                self.op_stack.push(*known_digest_element);
+            }
 
-        // Push the new node index and 2 digests to stack
-
-        self.op_stack.push(node_index_msbs.into());
-
-        for word in second.iter().rev() {
-            self.op_stack.push(*word);
-        }
-
-        for word in first.iter().rev() {
-            self.op_stack.push(*word);
+            for sibling_element in sibling_digest.iter().rev() {
+                self.op_stack.push(*sibling_element);
+            }
         }
 
         Ok(())

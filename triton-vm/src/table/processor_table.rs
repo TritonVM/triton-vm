@@ -1281,48 +1281,32 @@ impl RowPairConstraints {
     /// Recall that in a Merkle tree, the indices of left (respectively right)
     /// leafs have 0 (respectively 1) as their least significant bit. The first
     /// two polynomials achieve that helper variable hv0 holds the result of
-    /// st12 mod 2. The third polynomial sets the new value of st12 to st12 div 2.
+    /// st10 mod 2. The second polynomial sets the new value of st10 to st10 div 2.
     pub fn instruction_divine_sibling(&self) -> Vec<MPolynomial<XFieldElement>> {
         // Helper variable hv0 is either 0 or 1.
         let hv0_is_0_or_1 = self.hv0() * (self.hv0() - self.one());
 
-        // The 13th stack element decomposes into helper variables hv1 and hv0.
-        let st12_decomposes_to_hvs = self.st12() - (self.two() * self.hv1() + self.hv0());
+        // The 11th stack register is shifted by 1 bit to the right.
+        let st10_is_shifted_1_bit_right = self.st10_next() * self.two() + self.hv0() - self.st10();
 
-        // The 13th stack register is shifted by 1 bit to the right.
-        let st12_becomes_shifted_1_bit_right = self.st12_next() - self.hv1();
-
-        // If hv0 is 0, then st0-st5 contains a left sibling in a Merkle tree and so does not change.
-        let left_siblings_remain_left = vec![
-            // If hv0 is 0, then st0 does not change.
-            (self.one() - self.hv0()) * (self.st0_next() - self.st0()),
-            // If hv0 is 0, then st1 does not change.
-            (self.one() - self.hv0()) * (self.st1_next() - self.st1()),
-            // If hv0 is 0, then st2 does not change.
-            (self.one() - self.hv0()) * (self.st2_next() - self.st2()),
-            // If hv0 is 0, then st3 does not change.
-            (self.one() - self.hv0()) * (self.st3_next() - self.st3()),
-            // If hv0 is 0, then st4 does not change.
-            (self.one() - self.hv0()) * (self.st4_next() - self.st4()),
-            // If hv0 is 0, then st5 does not change.
-            (self.one() - self.hv0()) * (self.st5_next() - self.st5()),
+        let maybe_copied = vec![
+            (self.one() - self.hv0()) * (self.st0() - self.st0_next())
+                + self.hv0() * (self.st0() - self.st5_next()),
+            (self.one() - self.hv0()) * (self.st1() - self.st1_next())
+                + self.hv0() * (self.st1() - self.st6_next()),
+            (self.one() - self.hv0()) * (self.st2() - self.st2_next())
+                + self.hv0() * (self.st2() - self.st7_next()),
+            (self.one() - self.hv0()) * (self.st3() - self.st3_next())
+                + self.hv0() * (self.st3() - self.st8_next()),
+            (self.one() - self.hv0()) * (self.st4() - self.st4_next())
+                + self.hv0() * (self.st4() - self.st9_next()),
         ];
 
-        // If hv0 is 1, then st0-st5 contains a right sibling in a Merkle tree and so are copied to st6-st11.
-        let right_siblings_are_copied_right = vec![
-            // If hv0 is 1, then st0 is copied to st6.
-            self.hv0() * (self.st6_next() - self.st0()),
-            // If hv0 is 1, then st1 is copied to st7.
-            self.hv0() * (self.st7_next() - self.st1()),
-            // If hv0 is 1, then st2 is copied to st8.
-            self.hv0() * (self.st8_next() - self.st2()),
-            // If hv0 is 1, then st3 is copied to st9.
-            self.hv0() * (self.st9_next() - self.st3()),
-            // If hv0 is 1, then st4 is copied to st10.
-            self.hv0() * (self.st10_next() - self.st4()),
-            // If hv0 is 1, then st5 is copied to st11.
-            self.hv0() * (self.st11_next() - self.st5()),
-        ];
+        // The stack element in st11 does not change.
+        let st11_does_not_change = self.st11_next() - self.st11();
+
+        // The stack element in st12 does not change.
+        let st12_does_not_change = self.st12_next() - self.st12();
 
         // The stack element in st13 does not change.
         let st13_does_not_change = self.st13_next() - self.st13();
@@ -1344,14 +1328,11 @@ impl RowPairConstraints {
             (self.one() - self.hv0()) * (self.ramv_next() - self.ramv());
 
         vec![
+            vec![hv0_is_0_or_1, st10_is_shifted_1_bit_right],
+            maybe_copied,
             vec![
-                hv0_is_0_or_1,
-                st12_decomposes_to_hvs,
-                st12_becomes_shifted_1_bit_right,
-            ],
-            left_siblings_remain_left,
-            right_siblings_are_copied_right,
-            vec![
+                st11_does_not_change,
+                st12_does_not_change,
                 st13_does_not_change,
                 st14_does_not_change,
                 st15_does_not_change,
@@ -1367,24 +1348,21 @@ impl RowPairConstraints {
 
     pub fn instruction_assert_vector(&self) -> Vec<MPolynomial<XFieldElement>> {
         vec![
-            // Register st0 is equal to st6.
+            // Register st0 is equal to st5.
             // $st6 - st0 = 0$
-            self.st6() - self.st0(),
-            // Register st1 is equal to st7.
+            self.st5() - self.st0(),
+            // Register st1 is equal to st6.
             // $st7 - st1 = 0$
-            self.st6() - self.st0(),
-            // Register st2 is equal to st8.
+            self.st6() - self.st1(),
+            // Register st2 is equal to st7.
             // $st8 - st2 = 0$
-            self.st6() - self.st0(),
-            // Register st3 is equal to st9.
+            self.st7() - self.st2(),
+            // Register st3 is equal to st8.
             // $st9 - st3 = 0$
-            self.st6() - self.st0(),
-            // Register st4 is equal to st10.
+            self.st8() - self.st3(),
+            // Register st4 is equal to st9.
             // $st10 - st4 = 0$
-            self.st6() - self.st0(),
-            // Register st5 is equal to st11.
-            // $st11 - st5 = 0$
-            self.st6() - self.st0(),
+            self.st9() - self.st4(),
         ]
     }
 
