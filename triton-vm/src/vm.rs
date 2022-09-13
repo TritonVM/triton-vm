@@ -248,6 +248,7 @@ mod triton_vm_tests {
     use num_traits::{One, Zero};
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
+    use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 
     #[test]
     fn initialise_table_test() {
@@ -415,8 +416,8 @@ mod triton_vm_tests {
         }
         println!("Errors: {:?}", err);
 
-        // 1. Each of three `hash` instructions result in 8 rows.
-        assert_eq!(24, base_matrices.hash_matrix.len());
+        // 1. Each of three `hash` instructions result in NUM_ROUNDS+1 rows.
+        assert_eq!(3 * (NUM_ROUNDS + 1), base_matrices.hash_matrix.len());
 
         // 2. noRows(jmpstack_table) == noRows(processor_table)
         assert_eq!(jmp_rows_count, prc_rows_count);
