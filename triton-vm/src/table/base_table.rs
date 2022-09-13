@@ -363,7 +363,6 @@ where
 #[cfg(test)]
 mod test_base_table {
     use crate::table::base_table::{disjoint_domain, padded_height};
-    use num_traits::One;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other;
 
@@ -379,22 +378,14 @@ mod test_base_table {
 
     #[test]
     fn disjoint_domain_test() {
-        let one = BFieldElement::one();
         let domain = [
             BFieldElement::new(2),
             BFieldElement::new(5),
             BFieldElement::new(4),
         ];
         let ddomain = disjoint_domain(5, &domain);
-        assert_eq!(
-            vec![
-                BFieldElement::new(0),
-                one,
-                BFieldElement::new(3),
-                BFieldElement::new(6),
-                BFieldElement::new(7)
-            ],
-            ddomain
-        );
+        for d in ddomain {
+            assert!(!domain.contains(&d));
+        }
     }
 }
