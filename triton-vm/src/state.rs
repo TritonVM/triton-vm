@@ -1002,6 +1002,7 @@ mod vm_state_tests {
     }
 
     #[test]
+    #[ignore]
     fn run_tvm_mt_ap_verify_test() {
         let program = Program::from_code(sample_programs::MT_AP_VERIFY).unwrap();
         println!("Successfully parsed the program.");
