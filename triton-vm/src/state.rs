@@ -18,7 +18,7 @@ use std::fmt::Display;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other;
 use twenty_first::shared_math::rescue_prime_regular::{
-    RescuePrimeRegular, NUM_ROUNDS, ROUND_CONSTANTS,
+    RescuePrimeRegular, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
 };
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -846,15 +846,13 @@ impl<'pgm> VMState<'pgm> {
         for (index, trace_row) in hash_trace.iter().enumerate() {
             let round_number = index + 1;
             let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
-            let new_trace_row = {
-                let mut new_trace_row = [BFieldElement::zero(); hash_table::BASE_WIDTH];
-                let mid_point = hash_table::BASE_WIDTH - hash_table::NUM_ROUND_CONSTANTS;
-                let (old_trace_row, trace_round_constants) = new_trace_row.split_at_mut(mid_point);
-                old_trace_row[0] = BFieldElement::new(round_number as u64);
-                old_trace_row[1..].copy_from_slice(trace_row);
-                trace_round_constants.copy_from_slice(&round_constants);
-                new_trace_row
-            };
+            let mut new_trace_row = [BFieldElement::zero(); hash_table::BASE_WIDTH];
+            let mut offset = 0;
+            new_trace_row[offset] = BFieldElement::new(round_number as u64);
+            offset += 1;
+            new_trace_row[offset..offset + STATE_SIZE].copy_from_slice(trace_row);
+            offset += STATE_SIZE;
+            new_trace_row[offset..].copy_from_slice(&round_constants);
             hash_trace_with_constants.push(new_trace_row)
         }
         hash_trace_with_constants
