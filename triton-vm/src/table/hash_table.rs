@@ -61,6 +61,8 @@ impl Evaluable for ExtHashTable {
         evaluation_point: &[XFieldElement],
     ) -> Vec<XFieldElement> {
         let round_number = evaluation_point[ROUNDNUMBER as usize];
+        let state10 = evaluation_point[STATE10 as usize];
+        let state11 = evaluation_point[STATE11 as usize];
         let state12 = evaluation_point[STATE12 as usize];
         let state13 = evaluation_point[STATE13 as usize];
         let state14 = evaluation_point[STATE14 as usize];
@@ -72,6 +74,8 @@ impl Evaluable for ExtHashTable {
             .fold(1.into(), XFieldElement::mul);
 
         let mut evaluated_consistency_constraints = vec![
+            round_number_is_not_1_or * state10,
+            round_number_is_not_1_or * state11,
             round_number_is_not_1_or * state12,
             round_number_is_not_1_or * state13,
             round_number_is_not_1_or * state14,
@@ -102,7 +106,7 @@ impl Evaluable for ExtHashTable {
         let round_number = evaluation_point[ROUNDNUMBER as usize].clone();
         let round_number_next = evaluation_point[FULL_WIDTH + ROUNDNUMBER as usize].clone();
 
-        let mut constraint_polynomials: Vec<XFieldElement> = vec![];
+        let mut constraint_evaluations: Vec<XFieldElement> = vec![];
 
         // round number
         // round numbers evolve as
@@ -115,27 +119,27 @@ impl Evaluable for ExtHashTable {
 
         // 2. if round number is 0, then next round number is 0
         // DNF: rn in {1, ..., 8} \/ rn* = 0
-        let mut polynomial = (1..=8)
+        let mut evaluation = (1..=8)
             .map(|r| constant(r) - round_number.clone())
             .fold(constant(1), XFieldElement::mul);
-        polynomial *= round_number_next.clone();
-        constraint_polynomials.push(polynomial);
+        evaluation *= round_number_next.clone();
+        constraint_evaluations.push(evaluation);
 
         // 3. if round number is 8, then next round number is 0 or 1
         // DNF: rn =/= 8 \/ rn* = 0 \/ rn* = 1
-        polynomial = (0..=7)
+        evaluation = (0..=7)
             .map(|r| constant(r) - round_number.clone())
             .fold(constant(1), XFieldElement::mul);
-        polynomial *= constant(1) - round_number_next.clone();
-        polynomial *= round_number_next.clone();
-        constraint_polynomials.push(polynomial);
+        evaluation *= constant(1) - round_number_next.clone();
+        evaluation *= round_number_next.clone();
+        constraint_evaluations.push(evaluation);
 
         // 4. if round number is in {1, ..., 7} then next round number is +1
         // DNF: (rn == 0 \/ rn == 8) \/ rn* = rn + 1
-        polynomial = round_number.clone()
+        evaluation = round_number.clone()
             * (constant(8) - round_number.clone())
             * (round_number_next.clone() - round_number.clone() - constant(1));
-        constraint_polynomials.push(polynomial);
+        constraint_evaluations.push(evaluation);
 
         // Rescue-XLIX
 
@@ -183,7 +187,7 @@ impl Evaluable for ExtHashTable {
 
         // equate left hand side to right hand side
         // (and ignore if padding row)
-        constraint_polynomials.append(
+        constraint_evaluations.append(
             &mut after_constants
                 .into_iter()
                 .zip_eq(before_sbox.into_iter())
@@ -191,7 +195,7 @@ impl Evaluable for ExtHashTable {
                 .collect_vec(),
         );
 
-        constraint_polynomials
+        constraint_evaluations
     }
 }
 
@@ -201,6 +205,7 @@ impl Quotientable for ExtHashTable {
             vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; CAPACITY];
         let round_constant_degree_bounds =
             vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; NUM_ROUND_CONSTANTS];
+
         [capacity_degree_bounds, round_constant_degree_bounds].concat()
     }
 
@@ -211,6 +216,7 @@ impl Quotientable for ExtHashTable {
             self.interpolant_degree() * 3,
         ];
         let state_evolution_bounds = vec![self.interpolant_degree() * 8; STATE_SIZE];
+
         [round_number_bounds, state_evolution_bounds].concat()
     }
 }
