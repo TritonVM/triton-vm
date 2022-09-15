@@ -109,7 +109,7 @@ impl OpStack {
             self.stack
                 .get(n)
                 .copied()
-                .unwrap_or_else(|| BFieldElement::zero())
+                .unwrap_or_else(BFieldElement::zero)
         }
     }
 }

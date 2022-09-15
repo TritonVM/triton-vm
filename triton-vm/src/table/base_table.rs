@@ -266,7 +266,7 @@ fn disjoint_domain<DataPF: FiniteField>(
         if !disjoint_domain.contains(&elm) {
             domain.push(elm);
         }
-        elm = elm + DataPF::one();
+        elm += DataPF::one();
     }
     domain
 }

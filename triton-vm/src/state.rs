@@ -679,7 +679,7 @@ impl<'pgm> VMState<'pgm> {
         self.jump_stack
             .last()
             .map(|(o, _d)| *o)
-            .unwrap_or_else(|| BFieldElement::zero())
+            .unwrap_or_else(BFieldElement::zero)
     }
 
     /// Jump-stack destination
@@ -687,7 +687,7 @@ impl<'pgm> VMState<'pgm> {
         self.jump_stack
             .last()
             .map(|(_o, d)| *d)
-            .unwrap_or_else(|| BFieldElement::zero())
+            .unwrap_or_else(BFieldElement::zero)
     }
 
     pub fn current_instruction(&self) -> Result<Instruction, Box<dyn Error>> {

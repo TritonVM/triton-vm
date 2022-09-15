@@ -240,7 +240,7 @@ impl Stark {
             MerkleTree::<StarkHasher>::from_digests(&combination_codeword_digests);
         let combination_root: <StarkHasher as Hasher>::Digest = combination_tree.get_root();
 
-        proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root.clone()));
+        proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root));
 
         timer.elapsed("combination_tree");
 
@@ -777,7 +777,7 @@ impl Stark {
             .dequeue()?
             .as_compressed_authentication_paths()?;
         if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
-            combination_root.clone(),
+            combination_root,
             &combination_check_indices,
             &revealed_combination_digests,
             &revealed_combination_auth_paths,

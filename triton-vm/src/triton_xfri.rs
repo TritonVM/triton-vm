@@ -107,14 +107,10 @@ where
     ) -> Result<Vec<XFieldElement>, Box<dyn Error>> {
         let hasher = H::new();
         let dequeued_paths_and_leafs = proof_stream.dequeue()?.as_fri_proof()?;
-        let paths: Vec<PartialAuthenticationPath<H::Digest>> = dequeued_paths_and_leafs
-            .clone()
-            .into_iter()
-            .map(|(p, _)| p.to_owned())
-            .collect();
+        let paths = dequeued_paths_and_leafs.clone().into_iter().map(|(p, _)| p);
         let values: Vec<XFieldElement> = dequeued_paths_and_leafs
             .into_iter()
-            .map(|(_, v)| v.clone())
+            .map(|(_, v)| v)
             .collect();
         let digests: Vec<H::Digest> = values
             .par_iter()

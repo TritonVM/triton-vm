@@ -104,8 +104,8 @@ impl Evaluable for ExtHashTable {
     ) -> Vec<XFieldElement> {
         let constant = |c: u64| BFieldElement::new(c).lift();
 
-        let round_number = evaluation_point[ROUNDNUMBER as usize].clone();
-        let round_number_next = evaluation_point[FULL_WIDTH + ROUNDNUMBER as usize].clone();
+        let round_number = evaluation_point[ROUNDNUMBER as usize];
+        let round_number_next = evaluation_point[FULL_WIDTH + ROUNDNUMBER as usize];
 
         let mut constraint_evaluations: Vec<XFieldElement> = vec![];
 
@@ -121,32 +121,32 @@ impl Evaluable for ExtHashTable {
         // 2. if round number is 0, then next round number is 0
         // DNF: rn in {1, ..., 9} \/ rn* = 0
         let mut evaluation = (1..=9)
-            .map(|r| constant(r) - round_number.clone())
+            .map(|r| constant(r) - round_number)
             .fold(constant(1), XFieldElement::mul);
-        evaluation *= round_number_next.clone();
+        evaluation *= round_number_next;
         constraint_evaluations.push(evaluation);
 
         // 3. if round number is 9, then next round number is 0 or 1
         // DNF: rn =/= 9 \/ rn* = 0 \/ rn* = 1
         evaluation = (0..=8)
-            .map(|r| constant(r) - round_number.clone())
+            .map(|r| constant(r) - round_number)
             .fold(constant(1), XFieldElement::mul);
-        evaluation *= constant(1) - round_number_next.clone();
-        evaluation *= round_number_next.clone();
+        evaluation *= constant(1) - round_number_next;
+        evaluation *= round_number_next;
         constraint_evaluations.push(evaluation);
 
         // 4. if round number is in {1, ..., 8} then next round number is +1
         // DNF: (rn == 0 \/ rn == 9) \/ rn* = rn + 1
-        evaluation = round_number.clone()
-            * (constant(9) - round_number.clone())
-            * (round_number_next.clone() - round_number.clone() - constant(1));
+        evaluation = round_number
+            * (constant(9) - round_number)
+            * (round_number_next - round_number - constant(1));
         constraint_evaluations.push(evaluation);
 
         // Rescue-XLIX
 
         // left-hand-side, starting at current round and going forward
         let current_state: Vec<XFieldElement> = (0..STATE_SIZE)
-            .map(|i| evaluation_point[HashTableColumn::STATE0 as usize + i].clone())
+            .map(|i| evaluation_point[HashTableColumn::STATE0 as usize + i])
             .collect_vec();
         let after_sbox = current_state
             .into_iter()
@@ -155,7 +155,7 @@ impl Evaluable for ExtHashTable {
         let after_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
+                    .map(|j| constant(MDS[i * STATE_SIZE + j]) * after_sbox[j])
                     .fold(constant(0), XFieldElement::add)
             })
             .collect_vec();
@@ -170,7 +170,7 @@ impl Evaluable for ExtHashTable {
 
         // right hand side; move backwards
         let next_state: Vec<XFieldElement> = (0..STATE_SIZE)
-            .map(|i| evaluation_point[FULL_WIDTH + HashTableColumn::STATE0 as usize + i].clone())
+            .map(|i| evaluation_point[FULL_WIDTH + HashTableColumn::STATE0 as usize + i])
             .collect_vec();
         let before_constants = next_state
             .into_iter()
@@ -180,7 +180,7 @@ impl Evaluable for ExtHashTable {
         let before_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
+                    .map(|j| constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j])
                     .fold(constant(0), XFieldElement::add)
             })
             .collect_vec();
@@ -195,9 +195,7 @@ impl Evaluable for ExtHashTable {
             &mut after_constants
                 .into_iter()
                 .zip_eq(before_sbox.into_iter())
-                .map(|(lhs, rhs)| {
-                    round_number.clone() * (round_number.clone() - constant(9)) * (lhs - rhs)
-                })
+                .map(|(lhs, rhs)| round_number * (round_number - constant(9)) * (lhs - rhs))
                 .collect_vec(),
         );
 
