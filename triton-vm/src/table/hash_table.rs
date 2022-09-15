@@ -208,7 +208,7 @@ impl Evaluable for ExtHashTable {
 impl Quotientable for ExtHashTable {
     fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
         let capacity_degree_bounds =
-            vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; CAPACITY];
+            vec![self.interpolant_degree() * (NUM_ROUNDS + 1 + 1) as Degree; CAPACITY];
         let round_constant_degree_bounds =
             vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; NUM_ROUND_CONSTANTS];
 
@@ -217,11 +217,12 @@ impl Quotientable for ExtHashTable {
 
     fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
         let round_number_bounds = vec![
-            self.interpolant_degree() * 9,
-            self.interpolant_degree() * 9,
+            self.interpolant_degree() * (NUM_ROUNDS + 1 + 1) as Degree,
+            self.interpolant_degree() * (NUM_ROUNDS + 1 + 1 + 1) as Degree,
             self.interpolant_degree() * 3,
         ];
-        let state_evolution_bounds = vec![self.interpolant_degree() * 8; STATE_SIZE];
+        let state_evolution_bounds =
+            vec![self.interpolant_degree() * (ALPHA + 1 + 1) as Degree; STATE_SIZE];
 
         [round_number_bounds, state_evolution_bounds].concat()
     }
