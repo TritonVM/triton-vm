@@ -164,7 +164,7 @@ The top elements of the stack `st5` through `st9` are set to zero.
 For example, the old stack was `_ jihgfedcba` and the new stack is `_ εδγβα 00000`.
 
 The instruction `divine_sibling` works as follows.
-The 13th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st0` through `st4`, i.e., `edcba`.
+The 11th element of the stack `i` is taken as the node index for a Merkle tree that is claimed to include data whose digest is the content of stack registers `st0` through `st4`, i.e., `edcba`.
 The sibling digest of `edcba` is `zyxwv` and is read from the input interface of secret data.
 The least-significant bit of `i` indicates whether `edcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
 Depending on this least significant bit of `i`, `divine_sibling` either
