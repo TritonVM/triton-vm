@@ -53,7 +53,6 @@ pub fn lift_domain(domain: &FriDomain<BFieldElement>) -> FriDomain<XFieldElement
 #[cfg(test)]
 mod fri_domain_tests {
     use super::*;
-    use num_traits::{One, Zero};
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
     use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -61,12 +60,7 @@ mod fri_domain_tests {
     #[test]
     fn x_values_test() {
         // f(x) = x^3
-        let x_squared_coefficients = vec![
-            BFieldElement::zero(),
-            BFieldElement::zero(),
-            BFieldElement::zero(),
-            BFieldElement::one(),
-        ];
+        let x_squared_coefficients = vec![0u64.into(), 0u64.into(), 0u64.into(), 1u64.into()];
         let poly = Polynomial::<BFieldElement>::new(x_squared_coefficients.clone());
 
         for order in [4, 8, 32] {
