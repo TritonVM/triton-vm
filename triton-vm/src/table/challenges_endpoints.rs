@@ -202,7 +202,7 @@ where
     pub jump_stack_table_endpoints: JumpStackTableEndpoints,
     pub hash_table_endpoints: HashTableEndpoints,
     pub u32_op_table_endpoints: U32OpTableEndpoints,
-    pub(crate) pantom: PhantomData<H>,
+    pub(crate) phantom: PhantomData<H>,
 }
 
 impl<H: Hasher> AllEndpoints<H>
@@ -265,7 +265,7 @@ where
             jump_stack_table_endpoints: jump_stack_table_initials,
             hash_table_endpoints: hash_table_initials,
             u32_op_table_endpoints: u32_op_table_initials,
-            pantom: PhantomData,
+            phantom: PhantomData,
         }
     }
 

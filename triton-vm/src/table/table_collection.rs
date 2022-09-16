@@ -376,7 +376,7 @@ impl ExtTableCollection {
             jump_stack_table_endpoints: jump_stack_table_terminals,
             hash_table_endpoints: hash_table_terminals,
             u32_op_table_endpoints: u32_op_table_terminals,
-            pantom: std::marker::PhantomData,
+            phantom: std::marker::PhantomData,
         };
 
         (ext_tables, terminals)
