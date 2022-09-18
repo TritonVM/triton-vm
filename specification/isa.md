@@ -160,7 +160,7 @@ The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are reversed and concatenated with six zeros, resulting in `abcdefghij000000`.
 The permutation `xlix` is applied to `abcdefghij000000`, resulting in `αβγδεζηθικuvwxyz`.
 The first five elements of this result, i.e., `αβγδε`, are reversed and written to the stack, overwriting `st5` through `st9`.
-The top elements of the stack `st5` through `st9` are set to zero.
+The top elements of the stack `st0` through `st4` are set to zero.
 For example, the old stack was `_ jihgfedcba` and the new stack is `_ εδγβα 00000`.
 
 The instruction `divine_sibling` works as follows.
