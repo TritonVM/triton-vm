@@ -1,25 +1,28 @@
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::HashTableColumn;
-use crate::fri_domain::FriDomain;
-use crate::stark::StarkHasher;
-use crate::state::DIGEST_LEN;
-use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
-use crate::table::table_column::HashTableColumn::*;
-use itertools::Itertools;
-use num_traits::{One, Zero};
 use std::ops::Add;
 use std::ops::Mul;
+
+use itertools::Itertools;
+use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::{
     ALPHA, CAPACITY, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
 };
 use twenty_first::shared_math::traits::ModPowU64;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
+use crate::table::base_table::Extendable;
+use crate::table::extension_table::Evaluable;
+use crate::table::table_column::HashTableColumn::*;
+
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::table_column::HashTableColumn;
 
 pub const HASH_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
 pub const HASH_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 2;
@@ -647,8 +650,8 @@ pub struct HashTableChallenges {
     pub to_processor_eval_row_weight: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub stack_input_weights: [XFieldElement; 2 * DIGEST_LEN],
-    pub digest_output_weights: [XFieldElement; DIGEST_LEN],
+    pub stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
+    pub digest_output_weights: [XFieldElement; DIGEST_LENGTH],
 }
 
 #[derive(Debug, Clone)]
