@@ -597,6 +597,9 @@ impl HashTable {
         let extension_table = base_table.extension(
             empty_matrix,
             ExtHashTable::ext_boundary_constraints(),
+            // The Hash Table bypasses the symbolic representation of transition and consistency constraints.
+            // As a result, there is nothing to memoize. Since the memoization dictionary is never used, it
+            // can't hurt to supply empty databases.
             vec![], // ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
             vec![], // ExtHashTable::ext_consistency_constraints(),
             ExtHashTable::ext_terminal_constraints(
