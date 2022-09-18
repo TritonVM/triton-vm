@@ -606,15 +606,10 @@ impl Stark {
         hasher: &StarkHasher,
         num: usize,
     ) -> Vec<XFieldElement> {
-        (0..num)
-            .map(|i| {
-                [
-                    seed.to_sequence(),
-                    BFieldElement::new(i as u64).to_sequence(),
-                ]
-                .concat()
-            })
-            .map(|seq| hasher.hash_sequence(&seq))
+        (0..num as u64)
+            .map(BFieldElement::new)
+            .map(|bfe| [seed.to_sequence(), bfe.to_sequence()].concat())
+            .map(|s| hasher.hash_sequence(&s))
             .map(|digest| XFieldElement::sample(&digest))
             .collect()
     }
