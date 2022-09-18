@@ -60,6 +60,7 @@ impl Evaluable for ExtHashTable {
         &self,
         evaluation_point: &[XFieldElement],
     ) -> Vec<XFieldElement> {
+        let constant = |x| BFieldElement::new(x as u64).lift();
         let round_number = evaluation_point[ROUNDNUMBER as usize];
         let state10 = evaluation_point[STATE10 as usize];
         let state11 = evaluation_point[STATE11 as usize];
@@ -68,10 +69,10 @@ impl Evaluable for ExtHashTable {
         let state14 = evaluation_point[STATE14 as usize];
         let state15 = evaluation_point[STATE15 as usize];
 
-        let round_number_is_not_1_or = (0..=9)
+        let round_number_is_not_1_or = (0..=NUM_ROUNDS + 1)
             .filter(|&r| r != 1)
-            .map(|r| round_number - r.into())
-            .fold(1.into(), XFieldElement::mul);
+            .map(|r| round_number - constant(r))
+            .fold(XFieldElement::one(), XFieldElement::mul);
 
         let mut evaluated_consistency_constraints = vec![
             round_number_is_not_1_or * (state10 - XFieldElement::one()), // <-- domain separation bit
@@ -120,8 +121,8 @@ impl Evaluable for ExtHashTable {
 
         // 2. if round number is 0, then next round number is 0
         // DNF: rn in {1, ..., 9} \/ rn* = 0
-        let mut evaluation = (1..=9)
-            .map(|r| constant(r) - round_number)
+        let mut evaluation = (1..=NUM_ROUNDS + 1)
+            .map(|r| constant(r as u64) - round_number)
             .fold(constant(1), XFieldElement::mul);
         evaluation *= round_number_next;
         constraint_evaluations.push(evaluation);
@@ -264,7 +265,8 @@ impl ExtHashTable {
     #[allow(unreachable_code)]
     fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
         panic!("ext_consistency_constraints should never be called; method is bypassed statically");
-        let constant = |c: u32| MPolynomial::from_constant(c.into(), FULL_WIDTH);
+        let constant =
+            |c| MPolynomial::from_constant(BFieldElement::new(c as u64).lift(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
         let round_number = variables[ROUNDNUMBER as usize].clone();
@@ -277,7 +279,7 @@ impl ExtHashTable {
 
         // 1. if round number is 1, then capacity is zero
         // DNF: rn =/= 1 \/ cap = 0
-        let round_number_is_not_1_or = (0..=9)
+        let round_number_is_not_1_or = (0..=NUM_ROUNDS + 1)
             .filter(|&r| r != 1)
             .map(|r| round_number.clone() - constant(r))
             .fold(constant(1), MPolynomial::mul);
@@ -293,7 +295,7 @@ impl ExtHashTable {
         ];
 
         // 2. round number is in {0, ..., 9}
-        let polynomial = (0..=9)
+        let polynomial = (0..=NUM_ROUNDS + 1)
             .map(|r| constant(r) - round_number.clone())
             .fold(constant(1), MPolynomial::mul);
         consistency_polynomials.push(polynomial);
@@ -341,8 +343,8 @@ impl ExtHashTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         panic!("ext_transition_constraints should never be called; method is bypassed statically");
         let constant =
-            |c: u64| MPolynomial::from_constant(BFieldElement::new(c).lift(), 2 * FULL_WIDTH);
-        let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+            |c| MPolynomial::from_constant(BFieldElement::new(c as u64).lift(), 2 * FULL_WIDTH);
+        let variables = MPolynomial::variables(2 * FULL_WIDTH, XFieldElement::one());
 
         let round_number = variables[ROUNDNUMBER as usize].clone();
         let round_number_next = variables[FULL_WIDTH + ROUNDNUMBER as usize].clone();
@@ -360,7 +362,7 @@ impl ExtHashTable {
 
         // 2. if round number is 0, then next round number is 0
         // DNF: rn in {1, ..., 9} \/ rn* = 0
-        let mut polynomial = (1..=9)
+        let mut polynomial = (1..=NUM_ROUNDS + 1)
             .map(|r| constant(r) - round_number.clone())
             .fold(constant(1), MPolynomial::mul);
         polynomial *= round_number_next.clone();
@@ -392,7 +394,12 @@ impl ExtHashTable {
         let after_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
+                    .map(|j| {
+                        MPolynomial::from_constant(
+                            BFieldElement::from(MDS[i * STATE_SIZE + j]).lift(),
+                            2 * FULL_WIDTH,
+                        ) * after_sbox[j].clone()
+                    })
                     .fold(constant(0), MPolynomial::add)
             })
             .collect_vec();
@@ -417,7 +424,12 @@ impl ExtHashTable {
         let before_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
+                    .map(|j| {
+                        MPolynomial::from_constant(
+                            BFieldElement::from(MDS_INV[i * STATE_SIZE + j]).lift(),
+                            2 * FULL_WIDTH,
+                        ) * before_constants[j].clone()
+                    })
                     .fold(constant(0), MPolynomial::add)
             })
             .collect_vec();
