@@ -1,18 +1,20 @@
+use std::collections::HashMap;
+
+use itertools::Itertools;
+use num_traits::{One, Zero};
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
 use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::stark::StarkHasher;
-use crate::state::DIGEST_LEN;
 use crate::table::base_table::{self, Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
-use itertools::Itertools;
-use num_traits::{One, Zero};
-use std::collections::HashMap;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
 
@@ -497,8 +499,8 @@ pub struct ProcessorTableChallenges {
     pub jump_stack_table_jso_weight: XFieldElement,
     pub jump_stack_table_jsd_weight: XFieldElement,
 
-    pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LEN],
-    pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LEN],
+    pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
+    pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LENGTH],
 
     pub u32_op_table_lhs_weight: XFieldElement,
     pub u32_op_table_rhs_weight: XFieldElement,

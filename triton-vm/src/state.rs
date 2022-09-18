@@ -1,3 +1,22 @@
+use std::collections::HashMap;
+use std::convert::TryInto;
+use std::error::Error;
+use std::fmt::Display;
+
+use itertools::Itertools;
+use num_traits::{One, Zero};
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::other;
+use twenty_first::shared_math::rescue_prime_regular::{
+    RescuePrimeRegular, DIGEST_LENGTH, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
+};
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::error::vm_err;
+use crate::table::base_matrix::ProcessorMatrixRow;
+use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
+
 use super::error::{vm_fail, InstructionError::*};
 use super::instruction::{AnInstruction::*, Instruction};
 use super::op_stack::OpStack;
@@ -6,25 +25,6 @@ use super::stdio::InputStream;
 use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table, u32_op_table};
 use super::table::{processor_table, ram_table};
 use super::vm::Program;
-use crate::error::vm_err;
-use crate::table::base_matrix::ProcessorMatrixRow;
-use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
-use itertools::Itertools;
-use num_traits::{One, Zero};
-use std::collections::HashMap;
-use std::convert::TryInto;
-use std::error::Error;
-use std::fmt::Display;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::other;
-use twenty_first::shared_math::rescue_prime_regular::{
-    RescuePrimeRegular, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
-};
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-
-/// The number of `BFieldElement`s in a Rescue-Prime digest for Triton VM.
-pub const DIGEST_LEN: usize = 5;
 
 /// The number of state registers for hashing-specific instructions.
 pub const STATE_REGISTER_COUNT: usize = 16;
@@ -290,21 +290,21 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Hash => {
-                let mut hash_input = [BFieldElement::new(0); 2 * DIGEST_LEN];
-                for i in 0..2 * DIGEST_LEN {
+                let mut hash_input = [BFieldElement::new(0); 2 * DIGEST_LENGTH];
+                for i in 0..2 * DIGEST_LENGTH {
                     hash_input[i] = self.op_stack.pop()?;
                 }
 
                 let hash_trace = RescuePrimeRegular::trace(&hash_input);
-                let hash_output = &hash_trace[hash_trace.len() - 1][0..DIGEST_LEN];
+                let hash_output = &hash_trace[hash_trace.len() - 1][0..DIGEST_LENGTH];
                 let hash_trace_with_round_constants = Self::inprocess_hash_trace(&hash_trace);
                 vm_output = Some(VMOutput::XlixTrace(hash_trace_with_round_constants));
 
-                for i in (0..DIGEST_LEN).rev() {
+                for i in (0..DIGEST_LENGTH).rev() {
                     self.op_stack.push(hash_output[i]);
                 }
 
-                for _ in 0..DIGEST_LEN {
+                for _ in 0..DIGEST_LENGTH {
                     self.op_stack.push(BFieldElement::zero());
                 }
 
@@ -743,10 +743,10 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn assert_vector(&self) -> bool {
-        for i in 0..DIGEST_LEN {
+        for i in 0..DIGEST_LENGTH {
             // Safe as long as 2 * DIGEST_LEN <= OP_STACK_REG_COUNT
             let lhs = i.try_into().unwrap();
-            let rhs = (i + DIGEST_LEN).try_into().unwrap();
+            let rhs = (i + DIGEST_LENGTH).try_into().unwrap();
 
             if self.op_stack.safe_peek(lhs) != self.op_stack.safe_peek(rhs) {
                 return false;
@@ -769,7 +769,7 @@ impl<'pgm> VMState<'pgm> {
         secret_in: &mut In,
     ) -> Result<(), Box<dyn Error>> {
         // st0-st4
-        let known_digest: [BFieldElement; DIGEST_LEN] = [
+        let known_digest: [BFieldElement; DIGEST_LENGTH] = [
             self.op_stack.pop()?,
             self.op_stack.pop()?,
             self.op_stack.pop()?,
@@ -778,7 +778,7 @@ impl<'pgm> VMState<'pgm> {
         ];
 
         // st5-st9
-        for _ in 0..DIGEST_LEN {
+        for _ in 0..DIGEST_LENGTH {
             self.op_stack.pop()?;
         }
 
@@ -909,7 +909,7 @@ mod vm_state_tests {
     #[test]
     fn tvm_op_stack_big_enough_test() {
         assert!(
-            DIGEST_LEN <= OP_STACK_REG_COUNT,
+            DIGEST_LENGTH <= OP_STACK_REG_COUNT,
             "The OpStack must be large enough to hold a single Rescue-Prime digest"
         );
     }

@@ -1,5 +1,14 @@
 use std::marker::PhantomData;
 
+use itertools::Itertools;
+use num_traits::Zero;
+use rand::thread_rng;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
+use twenty_first::shared_math::traits::GetRandomElements;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::simple_hasher::{Hashable, Hasher};
+
 use super::hash_table::{HashTableChallenges, HashTableEndpoints};
 use super::instruction_table::{InstructionTableChallenges, InstructionTableEndpoints};
 use super::jump_stack_table::{JumpStackTableChallenges, JumpStackTableEndpoints};
@@ -9,14 +18,6 @@ use super::processor_table::{ProcessorTableChallenges, ProcessorTableEndpoints};
 use super::program_table::{ProgramTableChallenges, ProgramTableEndpoints};
 use super::ram_table::{RamTableChallenges, RamTableEndpoints};
 use super::u32_op_table::{U32OpTableChallenges, U32OpTableEndpoints};
-use crate::state::DIGEST_LEN;
-use itertools::Itertools;
-use num_traits::Zero;
-use rand::thread_rng;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::traits::GetRandomElements;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::simple_hasher::{Hashable, Hasher};
 
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
@@ -67,12 +68,12 @@ impl AllChallenges {
             jump_stack_table_jsd_weight: weights.pop().unwrap(),
 
             hash_table_stack_input_weights: weights
-                .drain(0..2 * DIGEST_LEN)
+                .drain(0..2 * DIGEST_LENGTH)
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
             hash_table_digest_output_weights: weights
-                .drain(0..DIGEST_LEN)
+                .drain(0..DIGEST_LENGTH)
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
@@ -135,13 +136,13 @@ impl AllChallenges {
         };
 
         let stack_input_weights = weights
-            .drain(0..2 * DIGEST_LEN)
+            .drain(0..2 * DIGEST_LENGTH)
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
 
         let digest_output_weights = weights
-            .drain(0..DIGEST_LEN)
+            .drain(0..DIGEST_LENGTH)
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
