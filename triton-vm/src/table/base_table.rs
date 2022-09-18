@@ -260,7 +260,7 @@ fn disjoint_domain<DataPF: FiniteField>(
     domain_length: usize,
     disjoint_domain: &[DataPF],
 ) -> Vec<DataPF> {
-    let mut domain = vec![];
+    let mut domain = Vec::with_capacity(domain_length);
     let mut elm = DataPF::one();
     while domain.len() != domain_length {
         if !disjoint_domain.contains(&elm) {
