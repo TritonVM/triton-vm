@@ -674,7 +674,8 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 The instruction `hash` hashes the OpStack's 10 top-most elements in one cycle.
 What happens in the background is that the registers `st0` through `st9` are copied to the Hash Coprocessor's registers `state0` through `state9`.
-The Hash Coprocessor's four remaining state registers, `state11` through `state15`, are set to 0.
+The eleventh state register, `state10` is set to 1; this is the domain separation bit.
+The Hash Coprocessor's five remaining state registers, `state11` through `state15`, are set to 0.
 Then, the Coprocessor runs the 8 rounds of Rescue-XLIX on its `state` registers.
 Finally, the hash digest, i.e., the 5 values from `state0` through `state4`, are copied back to the OpStack.
 This allows the (main) Processor to perform the hashing instruction in a single cycle.
