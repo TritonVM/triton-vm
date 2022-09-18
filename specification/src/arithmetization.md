@@ -1,6 +1,5 @@
-# Triton VM Arithmetization
+# Arithmetization
 
-This document describes the arithmetization of Triton VM, whose instruction set architecture is defined [here](isa.md).
 An arithmetization defines two things:
 1. algebraic execution tables (AETs), and
 1. arithmetic intermediate representation (AIR) constraints.

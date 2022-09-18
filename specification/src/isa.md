@@ -1,4 +1,4 @@
-# Triton VM Instruction Set Architecture
+# Instruction Set Architecture
 
 Triton VM is a stack machine with RAM.
 It is a [Harvard architecture](https://en.wikipedia.org/wiki/Harvard_architecture) with read-only memory for the program.
