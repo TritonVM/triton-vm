@@ -1,10 +1,11 @@
 # Hash Table
 
-The instruction `hash` hashes the OpStack's 12 top-most elements in one cycle.
-What happens in the background is that the registers `st0` through `st11` are copied to the Hash Coprocessor's registers `state0` through `state11`.
-The Hash Coprocessor's four remaining state registers, `state12` through `state15`, are set to 0.
+The instruction `hash` hashes the OpStack's 10 top-most elements in one cycle.
+What happens in the background is that the registers `st0` through `st9` are copied to the Hash Coprocessor's registers `state0` through `state9`.
+The eleventh state register, `state10` is set to 1; this is the domain separation bit.
+The Hash Coprocessor's five remaining state registers, `state11` through `state15`, are set to 0.
 Then, the Coprocessor runs the 8 rounds of Rescue-XLIX on its `state` registers.
-Finally, the hash digest, i.e., the 6 values from `state0` through `state5`, are copied back to the OpStack.
+Finally, the hash digest, i.e., the 5 values from `state0` through `state4`, are copied back to the OpStack.
 This allows the (main) Processor to perform the hashing instruction in a single cycle.
 
 The Hash Table has 49 columns:
@@ -19,6 +20,8 @@ Each padding row is the all-zero row.
 
 **Consistency Constraints**
 
+1. If the round number is 1, register `state10` is 0.
+1. If the round number is 1, register `state11` is 0.
 1. If the round number is 1, register `state12` is 0.
 1. If the round number is 1, register `state13` is 0.
 1. If the round number is 1, register `state14` is 0.
@@ -26,6 +29,8 @@ Each padding row is the all-zero row.
 1. The round constants adhere to the specification of Rescue Prime.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state10` is 0.
+1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state11` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state12` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state13` is 0.
 1. The round number is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `state14` is 0.
@@ -34,6 +39,8 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 **Consistency Constraints as Polynomials**
 
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state10`
+1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state11`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state12`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state13`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state14`

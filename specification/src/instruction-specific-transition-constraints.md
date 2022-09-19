@@ -320,29 +320,29 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 This instruction has no additional transition constraints.
 Two Evaluation Arguments with the [Hash Table](hash-table.md) guarantee correct transition.
 
-## Instruction `divine_sibling`
+#### Instruction `divine_sibling`
 
 Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0 (respectively 1) as their least significant bit.
-The first two polynomials achieve that helper variable `hv0` holds the result of `st12 mod 2`.
-The third polynomial sets the new value of `st12` to `st12 div 2`.
+The first two polynomials achieve that helper variable `hv0` holds the result of `st10 mod 2`.
+The third polynomial sets the new value of `st10` to `st10 div 2`.
 
-### Description
+##### Description
 
 1. Helper variable `hv0` is either 0 or 1.
-1. The 13th stack element decomposes into helper variables `hv1` and `hv0`.
-1. The 13th stack register is shifted by 1 bit to the right.
+1. The 11th stack register is shifted by 1 bit to the right.
+
 1. If `hv0` is 0, then `st0` does not change.
 1. If `hv0` is 0, then `st1` does not change.
 1. If `hv0` is 0, then `st2` does not change.
 1. If `hv0` is 0, then `st3` does not change.
 1. If `hv0` is 0, then `st4` does not change.
-1. If `hv0` is 0, then `st5` does not change.
-1. If `hv0` is 1, then `st0` is copied to `st6`.
-1. If `hv0` is 1, then `st1` is copied to `st7`.
-1. If `hv0` is 1, then `st2` is copied to `st8`.
-1. If `hv0` is 1, then `st3` is copied to `st9`.
-1. If `hv0` is 1, then `st4` is copied to `st10`.
-1. If `hv0` is 1, then `st5` is copied to `st11`.
+1. If `hv0` is 1, then `st0` is copied to `st5`.
+1. If `hv0` is 1, then `st1` is copied to `st6`.
+1. If `hv0` is 1, then `st2` is copied to `st7`.
+1. If `hv0` is 1, then `st3` is copied to `st8`.
+1. If `hv0` is 1, then `st4` is copied to `st9`.
+1. The stack element in `st11` does not change.
+1. The stack element in `st12` does not change.
 1. The stack element in `st13` does not change.
 1. The stack element in `st14` does not change.
 1. The stack element in `st15` does not change.
@@ -350,23 +350,17 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 1. The OpStack pointer does not change.
 1. If `hv0` is 0, then the RAM value `ramv` does not change.
 
-### Polynomials
+##### Polynomials
 
 1. `hv0·(hv0 - 1)`
-1. `st12 - (2·hv1 + hv0)`
-1. `st12' - hv1`
-1. `(1 - hv0)·(st0' - st0)`
-1. `(1 - hv0)·(st1' - st1)`
-1. `(1 - hv0)·(st2' - st2)`
-1. `(1 - hv0)·(st3' - st3)`
-1. `(1 - hv0)·(st4' - st4)`
-1. `(1 - hv0)·(st5' - st5)`
-1. `hv0·(st6' - st0)`
-1. `hv0·(st7' - st1)`
-1. `hv0·(st8' - st2)`
-1. `hv0·(st9' - st3)`
-1. `hv0·(st10' - st4)`
-1. `hv0·(st11' - st5)`
+1. `st10'·2 + hv0 - st10`
+1. `(1 - hv0)·(st0' - st0) + hv0·(st5' - st0)`
+1. `(1 - hv0)·(st1' - st1) + hv0·(st6' - st1)`
+1. `(1 - hv0)·(st2' - st2) + hv0·(st7' - st2)`
+1. `(1 - hv0)·(st3' - st3) + hv0·(st8' - st3)`
+1. `(1 - hv0)·(st4' - st4) + hv0·(st9' - st4)`
+1. `st11' - st11`
+1. `st12' - st12`
 1. `st13' - st13`
 1. `st14' - st14`
 1. `st15' - st15`
@@ -374,34 +368,31 @@ The third polynomial sets the new value of `st12` to `st12 div 2`.
 1. `osp' - osp`
 1. `(1 - hv0)·(ramv' - ramv)`
 
-### Helper variable definitions for `divine_sibling`
+##### Helper variable definitions for `divine_sibling`
 
-Since `st12` contains the Merkle tree node index,
+Since `st10` contains the Merkle tree node index,
 
-1. `hv0` holds the result of `st12 % 2` (the node index'es least significant bit, indicating whether it is a left/right node).
-1. `hv1` holds the result of `st12 / 2` (the node index'es remaining bits, indicating the left/right location of parents).
+1. `hv0` holds the result of `st10 % 2` (the node index'es least significant bit, indicating whether it is a left/right node).
 
-## Instruction `assert_vector`
+#### Instruction `assert_vector`
 
-### Description
+##### Description
 
-1. Register `st0` is equal to `st6`.
-1. Register `st1` is equal to `st7`.
-1. Register `st2` is equal to `st8`.
-1. Register `st3` is equal to `st9`.
-1. Register `st4` is equal to `st10`.
-1. Register `st5` is equal to `st11`.
+1. Register `st0` is equal to `st5`.
+1. Register `st1` is equal to `st6`.
+1. Register `st2` is equal to `st7`.
+1. Register `st3` is equal to `st8`.
+1. Register `st4` is equal to `st9`.
 
-### Polynomials
+##### Polynomials
 
-1. `st6 - st0`
-1. `st7 - st1`
-1. `st8 - st2`
-1. `st9 - st3`
-1. `st10 - st4`
-1. `st11 - st5`
+1. `st5 - st0`
+1. `st6 - st1`
+1. `st7 - st2`
+1. `st8 - st3`
+1. `st9 - st4`
 
-## Instruction `add`
+#### Instruction `add`
 
 ### Description
 
