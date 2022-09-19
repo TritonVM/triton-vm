@@ -882,6 +882,20 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
 
+                for (evaluated_cc, degree_bound) in table
+                    .evaluate_consistency_constraints(table_row)
+                    .into_iter()
+                    .zip_eq(table.get_consistency_quotient_degree_bounds().iter())
+                {
+                    let shift = self.max_degree - degree_bound;
+                    let quotient = evaluated_cc
+                        / (current_fri_domain_value.mod_pow_u32(table_height) - 1.into());
+                    let quotient_shifted =
+                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
+                    summands.push(quotient);
+                    summands.push(quotient_shifted);
+                }
+
                 let tc_evaluation_point = [table_row.clone(), next_table_row.clone()].concat();
                 for (evaluated_tc, degree_bound) in table
                     .evaluate_transition_constraints(&tc_evaluation_point)
@@ -898,20 +912,6 @@ impl Stark {
                             current_fri_domain_value.mod_pow_u32(table_height) - 1.into();
                         evaluated_tc * numerator / denominator
                     };
-                    let quotient_shifted =
-                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-                    summands.push(quotient);
-                    summands.push(quotient_shifted);
-                }
-
-                for (evaluated_cc, degree_bound) in table
-                    .evaluate_consistency_constraints(table_row)
-                    .into_iter()
-                    .zip_eq(table.get_consistency_quotient_degree_bounds().iter())
-                {
-                    let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_cc
-                        / (current_fri_domain_value.mod_pow_u32(table_height) - 1.into());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -1239,8 +1239,8 @@ pub(crate) mod triton_stark_tests {
 
             // will panic if the number of variables is wrong
             table.evaluate_initial_constraints(&dummy_row);
-            table.evaluate_transition_constraints(&double_length_dummy_row);
             table.evaluate_consistency_constraints(&dummy_row);
+            table.evaluate_transition_constraints(&double_length_dummy_row);
             table.evaluate_terminal_constraints(&dummy_row);
         }
     }
@@ -1266,6 +1266,20 @@ pub(crate) mod triton_stark_tests {
                 }
             }
 
+            for (row_idx, curr_row) in table.data().iter().enumerate() {
+                let evaluated_ccs = table.evaluate_consistency_constraints(&curr_row);
+                for (constraint_idx, ecc) in evaluated_ccs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        ecc,
+                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}",
+                        table.name(),
+                        constraint_idx,
+                        row_idx,
+                    );
+                }
+            }
+
             for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
                 let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
                 let evaluated_tcs = table.evaluate_transition_constraints(&evaluation_point);
@@ -1274,20 +1288,6 @@ pub(crate) mod triton_stark_tests {
                         zero,
                         evaluated_tc,
                         "Failed transition constraint on {}. Constraint index: {}. Row index: {}",
-                        table.name(),
-                        constraint_idx,
-                        row_idx,
-                    );
-                }
-            }
-
-            for (row_idx, curr_row) in table.data().iter().enumerate() {
-                let evaluated_ccs = table.evaluate_consistency_constraints(&curr_row);
-                for (constraint_idx, ecc) in evaluated_ccs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        ecc,
-                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}",
                         table.name(),
                         constraint_idx,
                         row_idx,

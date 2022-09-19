@@ -39,6 +39,10 @@ Each padding row is the following row:
 |:------|-------:|--------------------:|-----:|----:|----:|---:|----:|----:|----:|--------:|--------:|
 | 0     |      0 |           $32^{-1}$ |    0 |   0 |   0 |  2 |   0 |   0 |   0 |       0 |       0 |
 
+**Initial Constraints**
+
+1. In the first row, the indicator `idc` is 1.
+
 **Consistency Constraints**
 
 1. The indicator `idc` is 0 or 1.
@@ -63,16 +67,6 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `idc` is 1 or LHS is not 0 or RHS is not 0 or AND is 0.
 1. `idc` is 1 or LHS is not 0 or RHS is not 0 or XOR is 0.
 1. `idc` is 1 or LHS is not 0 or RHS is not 0 or REV is 0.
-
-**Initial Constraints**
-
-1. In the first row, the indicator `idc` is 1.
-
-**Terminal Constraints**
-
-1. In the last row, the indicator `idc` is 0.
-1. In the last row, LHS is 0.
-1. In the last row, RHS is 0.
 
 **Transition Constraints**
 
@@ -112,6 +106,12 @@ Written in disjunctive form, the same constraints can be expressed as:
 1. `idc` in the next row is 1 or AND in the current row equals twice AND in the next row plus (the product of the lsb of LHS and the lsb of the RHS).
 1. `idc` in the next row is 1 or XOR in the current row equals twice XOR in the next row plus the lsb of LHS plus the lsb of RHS minus (twice the product of the lsb of LHS and the lsb of RHS).
 1. `idc` in the next row is 1 or REV in the current row is (REV in the next row divided by 2) plus ($2^{31}$ times the lsb of LHS).
+
+**Terminal Constraints**
+
+1. In the last row, the indicator `idc` is 0.
+1. In the last row, LHS is 0.
+1. In the last row, RHS is 0.
 
 **Relations to Other Tables**
 

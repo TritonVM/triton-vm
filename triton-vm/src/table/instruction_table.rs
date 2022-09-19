@@ -233,8 +233,8 @@ impl InstructionTable {
         let inherited_table = self.extension(
             extension_matrix,
             ExtInstructionTable::ext_initial_constraints(),
-            ExtInstructionTable::ext_transition_constraints(challenges),
             ExtInstructionTable::ext_consistency_constraints(challenges),
+            ExtInstructionTable::ext_transition_constraints(challenges),
             ExtInstructionTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtInstructionTable { inherited_table }, terminals)
@@ -261,10 +261,10 @@ impl InstructionTable {
         let extension_table = base_table.extension(
             empty_matrix,
             ExtInstructionTable::ext_initial_constraints(),
-            ExtInstructionTable::ext_transition_constraints(
+            ExtInstructionTable::ext_consistency_constraints(
                 &all_challenges.instruction_table_challenges,
             ),
-            ExtInstructionTable::ext_consistency_constraints(
+            ExtInstructionTable::ext_transition_constraints(
                 &all_challenges.instruction_table_challenges,
             ),
             ExtInstructionTable::ext_terminal_constraints(
@@ -350,18 +350,18 @@ impl ExtensionTable for ExtInstructionTable {
         ExtInstructionTable::ext_initial_constraints()
     }
 
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_transition_constraints(&challenges.instruction_table_challenges)
-    }
-
     fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtInstructionTable::ext_consistency_constraints(&challenges.instruction_table_challenges)
+    }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_transition_constraints(&challenges.instruction_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

@@ -18,10 +18,6 @@ After the Program Table is filled in, its length being $l$, the table is padded 
 Each padding row is a direct copy of the Program Table's last row, with the exception of the column `address`.
 Column `address` increases by 1 between any two consecutive rows, even padding rows.
 
-**Consistency Constraints**
-
-None.
-
 **Initial Constraints**
 
 1. The first address is 0.
@@ -30,7 +26,7 @@ None.
 
 1. `addr`
 
-**Terminal Constraints**
+**Consistency Constraints**
 
 None.
 
@@ -41,6 +37,10 @@ None.
 **Transition Constraints as Polynomials**
 
 1. `addr' - (addr + 1)`
+
+**Terminal Constraints**
+
+None.
 
 **Relations to other Tables**
 

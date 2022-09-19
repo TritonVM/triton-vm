@@ -102,10 +102,6 @@ Each padding row is a direct copy of the RAM Table's last row, with the exceptio
 In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
 This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the RAM Table's `clk` column.
 
-**Consistency Constraints**
-
-None.
-
 **Initial Constraints**
 
 1. Cycle count `clk` is 0.
@@ -118,7 +114,7 @@ None.
 1. `ramp`
 1. `ramv`
 
-**Terminal Constraints**
+**Consistency Constraints**
 
 None.
 
@@ -140,6 +136,10 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(ramp' - ramp)·(hv6·(ramp' - ramp) - 1)`
 1. `(ramp' - ramp)·ramv'`
 1. `(hv6·(ramp' - ramp) - 1)·(ramv' - ramv)·(clk' - (clk + 1))`
+
+**Terminal Constraints**
+
+None.
 
 **Relations to Other Tables**
 

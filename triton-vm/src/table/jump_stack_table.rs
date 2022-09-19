@@ -258,8 +258,8 @@ impl JumpStackTable {
         let inherited_table = self.extension(
             extension_matrix,
             ExtJumpStackTable::ext_initial_constraints(),
-            ExtJumpStackTable::ext_transition_constraints(challenges),
             ExtJumpStackTable::ext_consistency_constraints(challenges),
+            ExtJumpStackTable::ext_transition_constraints(challenges),
             ExtJumpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtJumpStackTable { inherited_table }, terminals)
@@ -286,10 +286,10 @@ impl JumpStackTable {
         let extension_table = base_table.extension(
             empty_matrix,
             ExtJumpStackTable::ext_initial_constraints(),
-            ExtJumpStackTable::ext_transition_constraints(
+            ExtJumpStackTable::ext_consistency_constraints(
                 &all_challenges.jump_stack_table_challenges,
             ),
-            ExtJumpStackTable::ext_consistency_constraints(
+            ExtJumpStackTable::ext_transition_constraints(
                 &all_challenges.jump_stack_table_challenges,
             ),
             ExtJumpStackTable::ext_terminal_constraints(
@@ -367,18 +367,18 @@ impl ExtensionTable for ExtJumpStackTable {
         ExtJumpStackTable::ext_initial_constraints()
     }
 
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_transition_constraints(&challenges.jump_stack_table_challenges)
-    }
-
     fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtJumpStackTable::ext_consistency_constraints(&challenges.jump_stack_table_challenges)
+    }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtJumpStackTable::ext_transition_constraints(&challenges.jump_stack_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

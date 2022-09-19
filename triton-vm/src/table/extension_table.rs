@@ -22,12 +22,12 @@ use super::challenges_endpoints::AllChallenges;
 pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
     fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
 
-    fn dynamic_transition_constraints(
+    fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>>;
 
-    fn dynamic_consistency_constraints(
+    fn dynamic_transition_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>>;
@@ -55,21 +55,6 @@ pub trait Evaluable: ExtensionTable {
         }
     }
 
-    /// evaluate transition constraints if they are set; panic otherwise
-    fn evaluate_transition_constraints(
-        &self,
-        evaluation_point: &[XFieldElement],
-    ) -> Vec<XFieldElement> {
-        if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
-            transition_constraints
-                .iter()
-                .map(|tc| tc.evaluate(evaluation_point))
-                .collect()
-        } else {
-            panic!("{} does not have transition constraints!", &self.name());
-        }
-    }
-
     /// evaluate consistency constraints on given point if they are set; panic otherwise
     fn evaluate_consistency_constraints(
         &self,
@@ -82,6 +67,21 @@ pub trait Evaluable: ExtensionTable {
                 .collect()
         } else {
             panic!("{} does not have consistency constraints!", &self.name());
+        }
+    }
+
+    /// evaluate transition constraints if they are set; panic otherwise
+    fn evaluate_transition_constraints(
+        &self,
+        evaluation_point: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
+        if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
+            transition_constraints
+                .iter()
+                .map(|tc| tc.evaluate(evaluation_point))
+                .collect()
+        } else {
+            panic!("{} does not have transition constraints!", &self.name());
         }
     }
 
@@ -117,19 +117,6 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect_vec();
 
-        let transition_degrees_with_origin = self
-            .get_transition_quotient_degree_bounds()
-            .into_iter()
-            .enumerate()
-            .map(|(i, d)| DegreeWithOrigin {
-                degree: d,
-                origin_table_name: self.name(),
-                origin_index: i,
-                origin_table_height: self.padded_height(),
-                origin_constraint_type: "transition constraint".to_string(),
-            })
-            .collect();
-
         let consistency_degrees_with_origin = self
             .get_consistency_quotient_degree_bounds()
             .into_iter()
@@ -140,6 +127,19 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 origin_index: i,
                 origin_table_height: self.padded_height(),
                 origin_constraint_type: "consistency constraint".to_string(),
+            })
+            .collect();
+
+        let transition_degrees_with_origin = self
+            .get_transition_quotient_degree_bounds()
+            .into_iter()
+            .enumerate()
+            .map(|(i, d)| DegreeWithOrigin {
+                degree: d,
+                origin_table_name: self.name(),
+                origin_index: i,
+                origin_table_height: self.padded_height(),
+                origin_constraint_type: "transition constraint".to_string(),
             })
             .collect();
 
@@ -158,8 +158,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
         [
             initial_degrees_with_origin,
-            transition_degrees_with_origin,
             consistency_degrees_with_origin,
+            transition_degrees_with_origin,
             terminal_degrees_with_origin,
         ]
         .concat()
@@ -200,6 +200,45 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "initial");
+
+        quotient_codewords
+    }
+
+    fn consistency_quotients(
+        &self,
+        fri_domain: &FriDomain<XFieldElement>,
+        codewords: &[Vec<XFieldElement>],
+    ) -> Vec<Vec<XFieldElement>> {
+        for codeword in codewords.iter() {
+            debug_assert_eq!(fri_domain.length, codeword.len());
+        }
+
+        let zerofier_codeword = fri_domain
+            .domain_values()
+            .iter()
+            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XFieldElement::one())
+            .collect();
+
+        let zerofier_inverse = if self.padded_height() == 0 {
+            zerofier_codeword
+        } else {
+            XFieldElement::batch_inversion(zerofier_codeword)
+        };
+
+        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
+            .par_iter()
+            .enumerate()
+            .map(|(fri_dom_i, &z_inv)| {
+                let row = codewords
+                    .iter()
+                    .map(|codeword| codeword[fri_dom_i])
+                    .collect_vec();
+                let evaluated_ccs = self.evaluate_consistency_constraints(&row);
+                evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
+            })
+            .collect();
+        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "consistency");
 
         quotient_codewords
     }
@@ -258,45 +297,6 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         quotient_codewords
     }
 
-    fn consistency_quotients(
-        &self,
-        fri_domain: &FriDomain<XFieldElement>,
-        codewords: &[Vec<XFieldElement>],
-    ) -> Vec<Vec<XFieldElement>> {
-        for codeword in codewords.iter() {
-            debug_assert_eq!(fri_domain.length, codeword.len());
-        }
-
-        let zerofier_codeword = fri_domain
-            .domain_values()
-            .iter()
-            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XFieldElement::one())
-            .collect();
-
-        let zerofier_inverse = if self.padded_height() == 0 {
-            zerofier_codeword
-        } else {
-            XFieldElement::batch_inversion(zerofier_codeword)
-        };
-
-        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
-            .par_iter()
-            .enumerate()
-            .map(|(fri_dom_i, &z_inv)| {
-                let row = codewords
-                    .iter()
-                    .map(|codeword| codeword[fri_dom_i])
-                    .collect_vec();
-                let evaluated_ccs = self.evaluate_consistency_constraints(&row);
-                evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
-            })
-            .collect();
-        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
-        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "consistency");
-
-        quotient_codewords
-    }
-
     fn terminal_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
@@ -349,11 +349,11 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let initial_quotients = self.initial_quotients(fri_domain, codewords);
         timer.elapsed("initial quotients");
 
-        let transition_quotients = self.transition_quotients(fri_domain, codewords);
-        timer.elapsed("transition quotients");
-
         let consistency_quotients = self.consistency_quotients(fri_domain, codewords);
         timer.elapsed("Done calculating consistency quotients");
+
+        let transition_quotients = self.transition_quotients(fri_domain, codewords);
+        timer.elapsed("transition quotients");
 
         let terminal_quotients = self.terminal_quotients(fri_domain, codewords);
         timer.elapsed("terminal quotients");
@@ -361,8 +361,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         println!("{}", timer.finish());
         vec![
             initial_quotients,
-            transition_quotients,
             consistency_quotients,
+            transition_quotients,
             terminal_quotients,
         ]
         .concat()
@@ -403,8 +403,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
         vec![
             self.get_initial_quotient_degree_bounds(),
-            self.get_transition_quotient_degree_bounds(),
             self.get_consistency_quotient_degree_bounds(),
+            self.get_transition_quotient_degree_bounds(),
             self.get_terminal_quotient_degree_bounds(),
         ]
         .concat()
@@ -423,19 +423,6 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         }
     }
 
-    fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.inherited_table().transition_quotient_degree_bounds {
-            db.to_owned()
-        } else {
-            let max_degrees = vec![(self.padded_height() - 1) as i64; 2 * self.full_width()];
-            let zerofier_degree = self.padded_height() as Degree - 1;
-            self.dynamic_transition_constraints(&AllChallenges::dummy())
-                .iter()
-                .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
-                .collect()
-        }
-    }
-
     fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
         if let Some(db) = &self.inherited_table().consistency_quotient_degree_bounds {
             db.to_owned()
@@ -443,6 +430,19 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
             let zerofier_degree = self.padded_height() as Degree;
             self.dynamic_consistency_constraints(&AllChallenges::dummy())
+                .iter()
+                .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
+                .collect()
+        }
+    }
+
+    fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.inherited_table().transition_quotient_degree_bounds {
+            db.to_owned()
+        } else {
+            let max_degrees = vec![(self.padded_height() - 1) as i64; 2 * self.full_width()];
+            let zerofier_degree = self.padded_height() as Degree - 1;
+            self.dynamic_transition_constraints(&AllChallenges::dummy())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()

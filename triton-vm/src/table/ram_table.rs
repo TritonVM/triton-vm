@@ -131,8 +131,8 @@ impl RamTable {
         let inherited_table = self.extension(
             extension_matrix,
             ExtRamTable::ext_initial_constraints(),
-            ExtRamTable::ext_transition_constraints(challenges),
             ExtRamTable::ext_consistency_constraints(challenges),
+            ExtRamTable::ext_transition_constraints(challenges),
             ExtRamTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtRamTable { inherited_table }, terminals)
@@ -159,8 +159,8 @@ impl RamTable {
         let extension_table = base_table.extension(
             empty_matrix,
             ExtRamTable::ext_initial_constraints(),
-            ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
+            ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_terminal_constraints(
                 &all_challenges.ram_table_challenges,
                 &all_terminals.ram_table_endpoints,
@@ -377,18 +377,18 @@ impl ExtensionTable for ExtRamTable {
         ExtRamTable::ext_initial_constraints()
     }
 
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_transition_constraints(&challenges.ram_table_challenges)
-    }
-
     fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtRamTable::ext_consistency_constraints(&challenges.ram_table_challenges)
+    }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtRamTable::ext_transition_constraints(&challenges.ram_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

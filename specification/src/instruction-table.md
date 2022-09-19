@@ -45,17 +45,13 @@ After the Instruction Table is filled in, its length being $l$, the table is pad
 Each padding row is a direct copy of the Instruction Table's last row, with the exception of the column `address`.
 Column `address` increases by 1 between any two consecutive rows if at least one of the two rows is a padding row.
 
-**Consistency Constraints**
+**Initial Constraints**
 
 None.
 
-**Initial Constraints**
+**Consistency Constraints**
 
-None
-
-**Terminal Constraints**
-
-None
+None.
 
 **Transition Constraints**
 
@@ -66,6 +62,10 @@ None
 
 1. `(address' - (address + 1))·(current_instruction' - current_instruction)`
 1. `(address' - (address + 1))·(next_instruction_or_arg' - next_instruction_or_arg)`
+
+**Terminal Constraints**
+
+None.
 
 **Relations to Other Tables**
 

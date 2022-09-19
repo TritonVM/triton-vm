@@ -592,8 +592,8 @@ impl HashTable {
             // The Hash Table bypasses the symbolic representation of transition and consistency constraints.
             // As a result, there is nothing to memoize. Since the memoization dictionary is never used, it
             // can't hurt to supply empty databases.
-            vec![], // ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
             vec![], // ExtHashTable::ext_consistency_constraints(),
+            vec![], // ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
             ExtHashTable::ext_terminal_constraints(
                 &all_challenges.hash_table_challenges,
                 &all_terminals.hash_table_endpoints,
@@ -668,18 +668,18 @@ impl ExtensionTable for ExtHashTable {
         ExtHashTable::ext_initial_constraints()
     }
 
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
-    }
-
     fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtHashTable::ext_consistency_constraints(&challenges.hash_table_challenges)
+    }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

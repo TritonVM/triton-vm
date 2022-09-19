@@ -229,8 +229,8 @@ impl OpStackTable {
         let inherited_table = self.extension(
             extension_matrix,
             ExtOpStackTable::ext_initial_constraints(),
-            ExtOpStackTable::ext_transition_constraints(challenges),
             ExtOpStackTable::ext_consistency_constraints(challenges),
+            ExtOpStackTable::ext_transition_constraints(challenges),
             ExtOpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtOpStackTable { inherited_table }, terminals)
@@ -257,8 +257,8 @@ impl OpStackTable {
         let extension_table = base_table.extension(
             empty_matrix,
             ExtOpStackTable::ext_initial_constraints(),
-            ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_consistency_constraints(&all_challenges.op_stack_table_challenges),
+            ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_terminal_constraints(
                 &all_challenges.op_stack_table_challenges,
                 &all_terminals.op_stack_table_endpoints,
@@ -333,18 +333,18 @@ impl ExtensionTable for ExtOpStackTable {
         ExtOpStackTable::ext_initial_constraints()
     }
 
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_transition_constraints(&challenges.op_stack_table_challenges)
-    }
-
     fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtOpStackTable::ext_consistency_constraints(&challenges.op_stack_table_challenges)
+    }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtOpStackTable::ext_transition_constraints(&challenges.op_stack_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

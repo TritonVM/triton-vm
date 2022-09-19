@@ -86,11 +86,7 @@ Each padding row is a direct copy of the Op Stack Table's last row, with the exc
 In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
 This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the Op Stack Table's `clk` column.
 
-**Consistency Constraints**
-
-None.
-
-**Initial Conditions**
+**Initial Constraints**
 
 1. `clk` is 0
 1. `osv` is 0.
@@ -102,7 +98,7 @@ None.
 1. `osv`
 1. `osp - 16`
 
-**Terminal Constraints**
+**Consistency Constraints**
 
 None.
 
@@ -126,6 +122,9 @@ An instruction is OpStack-shrinking if it is
 1. `(osp' - (osp + 1))·(osp' - osp)`
 1. `(osp' - (osp + 1))·(osv' - osv)·(ci - op_code(pop))·(ci - op_code(skiz))·(ci - op_code(assert))·(ci - op_code(add))·(ci - op_code(mul))·(ci - op_code(eq))·(ci - op_code(lt))·(ci - op_code(and))·(ci - op_code(xor))·(ci - op_code(xbmul))·(ci - op_code(write_io))`
 
+**Terminal Constraints**
+
+None.
 
 **Relations to Other Tables**
 

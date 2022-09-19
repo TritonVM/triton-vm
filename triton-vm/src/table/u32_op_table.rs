@@ -353,8 +353,8 @@ impl U32OpTable {
         let inherited_table = self.extension(
             extension_matrix,
             ExtU32OpTable::ext_initial_constraints(),
-            ExtU32OpTable::ext_transition_constraints(challenges),
             ExtU32OpTable::ext_consistency_constraints(challenges),
+            ExtU32OpTable::ext_transition_constraints(challenges),
             ExtU32OpTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtU32OpTable { inherited_table }, terminals)
@@ -381,8 +381,8 @@ impl U32OpTable {
         let extension_table = base_table.extension(
             empty_matrix,
             ExtU32OpTable::ext_initial_constraints(),
-            ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_consistency_constraints(&all_challenges.u32_op_table_challenges),
+            ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_terminal_constraints(
                 &all_challenges.u32_op_table_challenges,
                 &all_terminals.u32_op_table_endpoints,
@@ -456,18 +456,18 @@ impl ExtensionTable for ExtU32OpTable {
         ExtU32OpTable::ext_initial_constraints()
     }
 
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtU32OpTable::ext_transition_constraints(&challenges.u32_op_table_challenges)
-    }
-
     fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtU32OpTable::ext_consistency_constraints(&challenges.u32_op_table_challenges)
+    }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtU32OpTable::ext_transition_constraints(&challenges.u32_op_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

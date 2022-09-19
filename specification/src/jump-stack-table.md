@@ -102,10 +102,6 @@ Each padding row is a direct copy of the Jump Stack Table's last row, with the e
 In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
 This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the Jump Stack Table's `clk` column.
 
-**Consistency Constraints**
-
-None.
-
 **Initial Constraints**
 
 1. Cycle count `clk` is 0.
@@ -120,7 +116,7 @@ None.
 1. `jso`
 1. `jsd`
 
-**Terminal Constraints**
+**Consistency Constraints**
 
 None.
 
@@ -143,6 +139,10 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(jsp' - (jsp + 1))·(jso' - jso)·(ci - op_code(return))`
 1. `(jsp' - (jsp + 1))·(jsd' - jsd)·(ci - op_code(return))`
 1. `(jsp' - (jsp + 1))·(clk' - (clk + 1))·(ci - op_code(call))·(ci - op_code(return))`
+
+**Terminal Constraints**
+
+None.
  
 **Relations to Other Tables**
 

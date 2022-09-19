@@ -318,8 +318,8 @@ impl ProcessorTable {
         let inherited_table = self.extension(
             extension_matrix,
             ExtProcessorTable::ext_initial_constraints(),
-            ExtProcessorTable::ext_transition_constraints(challenges),
             ExtProcessorTable::ext_consistency_constraints(challenges),
+            ExtProcessorTable::ext_transition_constraints(challenges),
             ExtProcessorTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtProcessorTable { inherited_table }, terminals)
@@ -346,10 +346,10 @@ impl ProcessorTable {
         let extension_table = base_table.extension(
             empty_matrix,
             ExtProcessorTable::ext_initial_constraints(),
-            ExtProcessorTable::ext_transition_constraints(
+            ExtProcessorTable::ext_consistency_constraints(
                 &all_challenges.processor_table_challenges,
             ),
-            ExtProcessorTable::ext_consistency_constraints(
+            ExtProcessorTable::ext_transition_constraints(
                 &all_challenges.processor_table_challenges,
             ),
             ExtProcessorTable::ext_terminal_constraints(
@@ -2447,18 +2447,18 @@ impl ExtensionTable for ExtProcessorTable {
         ExtProcessorTable::ext_initial_constraints()
     }
 
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
-    }
-
     fn dynamic_consistency_constraints(
         &self,
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProcessorTable::ext_consistency_constraints(&challenges.processor_table_challenges)
+    }
+
+    fn dynamic_transition_constraints(
+        &self,
+        challenges: &super::challenges_endpoints::AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

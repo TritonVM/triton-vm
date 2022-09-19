@@ -9,14 +9,6 @@ After the Processor Table is filled in, its length being $l$, the table is padde
 Each padding row is a direct copy of the Processor Table's last row, with the exception of the cycle count column `clk`.
 Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 
-**Consistency Constraints**
-
-1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
-
-**Consistency Constraints as Polynomials**
-
-1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
-
 **Initial Constraints**
 
 1. The cycle counter `clk` is 0.
@@ -71,13 +63,13 @@ Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 1. `osv`
 1. `ramv`
 
-**Terminal Constraints**
+**Consistency Constraints**
 
-1. In the last row, register “current instruction” `ci` is 0, corresponding to instruction `halt`.
+1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
 
-**Terminal Constraints as Polynomials**
+**Consistency Constraints as Polynomials**
 
-1. `ci`
+1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
 
 **Transition Constraints**
 
@@ -89,6 +81,14 @@ The following constraint applies to every cycle.
 **Transition Constraints as Polynomials**
 
 1. `clk' - (clk + 1)`
+
+**Terminal Constraints**
+
+1. In the last row, register “current instruction” `ci` is 0, corresponding to instruction `halt`.
+
+**Terminal Constraints as Polynomials**
+
+1. `ci`
 
 **Relations to Other Tables**
 

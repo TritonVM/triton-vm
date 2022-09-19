@@ -18,6 +18,14 @@ The Hash Table has 49 columns:
 After the Hash Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is the all-zero row.
 
+**Initial Constraints**
+
+1. The round number `rnd_nmbr` starts at 0 or 1.
+
+**Initial Constraints as Polynomials**
+
+1. `rnd_nmbr·(rnd_nmbr - 1)`
+
 **Consistency Constraints**
 
 1. If the round number is 1, register `state10` is 0.
@@ -45,18 +53,6 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state13`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state14`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state15`
-
-**Initial Constraints**
-
-1. The round number `rnd_nmbr` starts at 0 or 1.
-
-**Initial Constraints as Polynomials**
-
-1. `rnd_nmbr·(rnd_nmbr - 1)`
-
-**Terminal Constraints**
-
-None.
 
 **Transition Constraints**
 
@@ -110,6 +106,10 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 1)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr' -  0)·(rnd_nmbr' -  1)`
 1. The remaining 16 constraints are left as an exercise to the reader.
 For hints, see the [Rescue-Prime Systematization of Knowledge, Sections 2.4 & 2.5](https://eprint.iacr.org/2020/1143.pdf#page=5).
+
+**Terminal Constraints**
+
+None.
 
 **Relations to Other Tables**
 
