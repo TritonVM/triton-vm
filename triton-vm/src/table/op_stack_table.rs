@@ -84,7 +84,7 @@ impl Extendable for OpStackTable {
 impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
         use OpStackTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
@@ -228,7 +228,7 @@ impl OpStackTable {
 
         let inherited_table = self.extension(
             extension_matrix,
-            ExtOpStackTable::ext_boundary_constraints(),
+            ExtOpStackTable::ext_initial_constraints(),
             ExtOpStackTable::ext_transition_constraints(challenges),
             ExtOpStackTable::ext_consistency_constraints(challenges),
             ExtOpStackTable::ext_terminal_constraints(challenges, &terminals),
@@ -256,7 +256,7 @@ impl OpStackTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
-            ExtOpStackTable::ext_boundary_constraints(),
+            ExtOpStackTable::ext_initial_constraints(),
             ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_consistency_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_terminal_constraints(
@@ -329,8 +329,8 @@ pub struct OpStackTableEndpoints {
 }
 
 impl ExtensionTable for ExtOpStackTable {
-    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_boundary_constraints()
+    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtOpStackTable::ext_initial_constraints()
     }
 
     fn dynamic_transition_constraints(

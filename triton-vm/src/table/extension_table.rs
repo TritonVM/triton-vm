@@ -20,7 +20,7 @@ use super::challenges_endpoints::AllChallenges;
 // Generic methods specifically for tables that have been extended
 
 pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
-    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
+    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_transition_constraints(
         &self,
@@ -40,18 +40,18 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
 }
 
 pub trait Evaluable: ExtensionTable {
-    /// evaluate boundary constraints on given point if they are set; panic otherwise
-    fn evaluate_boundary_constraints(
+    /// evaluate initial constraints on given point if they are set; panic otherwise
+    fn evaluate_initial_constraints(
         &self,
         evaluation_point: &[XFieldElement],
     ) -> Vec<XFieldElement> {
-        if let Some(boundary_constraints) = &self.inherited_table().boundary_constraints {
-            boundary_constraints
+        if let Some(initial_constraints) = &self.inherited_table().initial_constraints {
+            initial_constraints
                 .iter()
                 .map(|bc| bc.evaluate(evaluation_point))
                 .collect()
         } else {
-            panic!("{} does not have boundary constraints!", &self.name());
+            panic!("{} does not have initial constraints!", &self.name());
         }
     }
 
@@ -104,8 +104,8 @@ pub trait Evaluable: ExtensionTable {
 pub trait Quotientable: ExtensionTable + Evaluable {
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
-        let boundary_degrees_with_origin = self
-            .get_boundary_quotient_degree_bounds()
+        let initial_degrees_with_origin = self
+            .get_initial_quotient_degree_bounds()
             .into_iter()
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
@@ -113,7 +113,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 origin_table_name: self.name(),
                 origin_index: i,
                 origin_table_height: self.padded_height(),
-                origin_constraint_type: "boundary constraint".to_string(),
+                origin_constraint_type: "initial constraint".to_string(),
             })
             .collect_vec();
 
@@ -157,7 +157,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .collect();
 
         [
-            boundary_degrees_with_origin,
+            initial_degrees_with_origin,
             transition_degrees_with_origin,
             consistency_degrees_with_origin,
             terminal_degrees_with_origin,
@@ -165,7 +165,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         .concat()
     }
 
-    fn boundary_quotients(
+    fn initial_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
@@ -194,12 +194,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                     .iter()
                     .map(|codeword| codeword[fri_dom_i])
                     .collect_vec();
-                let evaluated_bcs = self.evaluate_boundary_constraints(&row);
+                let evaluated_bcs = self.evaluate_initial_constraints(&row);
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
-        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "boundary");
+        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "initial");
 
         quotient_codewords
     }
@@ -346,8 +346,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let mut timer = TimingReporter::start();
         timer.elapsed(&format!("Table name: {}", self.name()));
 
-        let boundary_quotients = self.boundary_quotients(fri_domain, codewords);
-        timer.elapsed("boundary quotients");
+        let initial_quotients = self.initial_quotients(fri_domain, codewords);
+        timer.elapsed("initial quotients");
 
         let transition_quotients = self.transition_quotients(fri_domain, codewords);
         timer.elapsed("transition quotients");
@@ -360,7 +360,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
         println!("{}", timer.finish());
         vec![
-            boundary_quotients,
+            initial_quotients,
             transition_quotients,
             consistency_quotients,
             terminal_quotients,
@@ -402,7 +402,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
         vec![
-            self.get_boundary_quotient_degree_bounds(),
+            self.get_initial_quotient_degree_bounds(),
             self.get_transition_quotient_degree_bounds(),
             self.get_consistency_quotient_degree_bounds(),
             self.get_terminal_quotient_degree_bounds(),
@@ -410,13 +410,13 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         .concat()
     }
 
-    fn get_boundary_quotient_degree_bounds(&self) -> Vec<Degree> {
-        if let Some(db) = &self.inherited_table().boundary_quotient_degree_bounds {
+    fn get_initial_quotient_degree_bounds(&self) -> Vec<Degree> {
+        if let Some(db) = &self.inherited_table().initial_quotient_degree_bounds {
             db.to_owned()
         } else {
             let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
             let zerofier_degree = 1;
-            self.dynamic_boundary_constraints()
+            self.dynamic_initial_constraints()
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()

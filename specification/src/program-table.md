@@ -22,13 +22,17 @@ Column `address` increases by 1 between any two consecutive rows, even padding r
 
 None.
 
-**Boundary Constraints**
+**Initial Constraints**
 
 1. The first address is 0.
 
-**Boundary Constraints as Polynomials**
+**Initial Constraints as Polynomials**
 
 1. `addr`
+
+**Terminal Constraints**
+
+None.
 
 **Transition Constraints**
 

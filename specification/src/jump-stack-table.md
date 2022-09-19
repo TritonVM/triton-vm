@@ -106,19 +106,23 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 
 None.
 
-**Boundary Constraints**
+**Initial Constraints**
 
 1. Cycle count `clk` is 0.
 1. Jump Stack Pointer `jsp` is 0.
 1. Jump Stack Origin `jso` is 0.
 1. Jump Stack Destination `jsd` is 0.
 
-**Boundary Constraints as Polynomials**
+**Initial Constraints as Polynomials**
 
 1. `clk`
 1. `jsp`
 1. `jso`
 1. `jsd`
+
+**Terminal Constraints**
+
+None.
 
 **Transition Constraints**
 

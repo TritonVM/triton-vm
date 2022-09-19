@@ -49,7 +49,7 @@ Column `address` increases by 1 between any two consecutive rows if at least one
 
 None.
 
-**Boundary Constraints**
+**Initial Constraints**
 
 None
 

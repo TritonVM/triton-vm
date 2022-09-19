@@ -90,17 +90,21 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 
 None.
 
-**Boundary Conditions**
+**Initial Conditions**
 
 1. `clk` is 0
 1. `osv` is 0.
 1. `osp` is the number of available stack registers, i.e., 16.
 
-**Boundary Constraints as Polynomials**
+**Initial Constraints as Polynomials**
 
 1. `clk`
 1. `osv`
 1. `osp - 16`
+
+**Terminal Constraints**
+
+None.
 
 **Transition Constraints**
 

@@ -36,7 +36,7 @@ pub trait CrossTableArg {
     where
         Self: Sized;
 
-    fn boundary_quotient(
+    fn initial_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
         fri_domain: &FriDomain<XFieldElement>,

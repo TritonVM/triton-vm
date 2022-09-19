@@ -253,7 +253,7 @@ impl Extendable for HashTable {
 impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
@@ -554,7 +554,7 @@ impl HashTable {
 
         let extension_table = self.extension(
             extension_matrix,
-            ExtHashTable::ext_boundary_constraints(),
+            ExtHashTable::ext_initial_constraints(),
             vec![],
             vec![],
             ExtHashTable::ext_terminal_constraints(challenges, &terminals),
@@ -588,7 +588,7 @@ impl HashTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
-            ExtHashTable::ext_boundary_constraints(),
+            ExtHashTable::ext_initial_constraints(),
             // The Hash Table bypasses the symbolic representation of transition and consistency constraints.
             // As a result, there is nothing to memoize. Since the memoization dictionary is never used, it
             // can't hurt to supply empty databases.
@@ -664,8 +664,8 @@ pub struct HashTableEndpoints {
 }
 
 impl ExtensionTable for ExtHashTable {
-    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_boundary_constraints()
+    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_initial_constraints()
     }
 
     fn dynamic_transition_constraints(
@@ -718,7 +718,7 @@ mod constraint_tests {
             &AllInitials::<StarkHasher>::dummy().hash_table_endpoints,
         );
 
-        for v in ext_hash_table.evaluate_boundary_constraints(&ext_hash_table.data()[0]) {
+        for v in ext_hash_table.evaluate_initial_constraints(&ext_hash_table.data()[0]) {
             assert!(v.is_zero());
         }
 

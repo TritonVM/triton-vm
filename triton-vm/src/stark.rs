@@ -196,7 +196,7 @@ impl Stark {
 
         // Prove equal initial values for the column pairs pertaining to cross table arguments
         for arg in AllCrossTableArgs::default().into_iter() {
-            quotient_codewords.push(arg.boundary_quotient(&ext_codeword_tables, &self.xfri.domain));
+            quotient_codewords.push(arg.initial_quotient(&ext_codeword_tables, &self.xfri.domain));
             quotient_degree_bounds.push(arg.quotient_degree_bound(&ext_codeword_tables));
         }
 
@@ -870,9 +870,9 @@ impl Stark {
                 let table_height = table.padded_height() as u32;
 
                 for (evaluated_bc, degree_bound) in table
-                    .evaluate_boundary_constraints(table_row)
+                    .evaluate_initial_constraints(table_row)
                     .into_iter()
-                    .zip_eq(table.get_boundary_quotient_degree_bounds().iter())
+                    .zip_eq(table.get_initial_quotient_degree_bounds().iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_bc / (current_fri_domain_value - 1.into());
@@ -1238,7 +1238,7 @@ pub(crate) mod triton_stark_tests {
             let double_length_dummy_row = vec![0.into(); 2 * table.full_width()];
 
             // will panic if the number of variables is wrong
-            table.evaluate_boundary_constraints(&dummy_row);
+            table.evaluate_initial_constraints(&dummy_row);
             table.evaluate_transition_constraints(&double_length_dummy_row);
             table.evaluate_consistency_constraints(&dummy_row);
             table.evaluate_terminal_constraints(&dummy_row);
@@ -1253,12 +1253,12 @@ pub(crate) mod triton_stark_tests {
 
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
-                let evaluated_bcs = table.evaluate_boundary_constraints(&row);
+                let evaluated_bcs = table.evaluate_initial_constraints(&row);
                 for (constraint_idx, ebc) in evaluated_bcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
                         ebc,
-                        "Failed boundary constraint on {}. Constraint index: {}. Row index: {}",
+                        "Failed initial constraint on {}. Constraint index: {}. Row index: {}",
                         table.name(),
                         constraint_idx,
                         0,

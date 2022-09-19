@@ -13,8 +13,9 @@ All values of columns corresponding to one such register are elements of the B-F
 The entries of a table's columns corresponding to Evaluation or Permutation Arguments are elements from the _X-Field_ $\mathbb{F}_{p^3}$.
 
 For each table, up to three lists containing constraints of different type are given:
+1. Initial Constraints, defining values in a table's first row,
 1. Consistency Constraints, establishing consistency within any given row,
-1. Boundary Constraints, defining values in a table's first row and, in some cases, also the last, and
-1. Transition Constraints, establishing the consistency of two consecutive rows in relation to each other.
+1. Transition Constraints, establishing the consistency of two consecutive rows in relation to each other, and
+1. Terminal Constraints, defining values in a table's last row.
 
 Together, all these constraints constitute the AIR constraints.

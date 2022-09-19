@@ -33,13 +33,13 @@ pub struct Table<FieldElement: FiniteField> {
     pub(crate) name: String,
 
     /// AIR constraints, to be populated upon extension
-    pub(crate) boundary_constraints: Option<Vec<MPolynomial<FieldElement>>>,
+    pub(crate) initial_constraints: Option<Vec<MPolynomial<FieldElement>>>,
     pub(crate) transition_constraints: Option<Vec<MPolynomial<FieldElement>>>,
     pub(crate) consistency_constraints: Option<Vec<MPolynomial<FieldElement>>>,
     pub(crate) terminal_constraints: Option<Vec<MPolynomial<FieldElement>>>,
 
     /// quotient degrees, to be populated upon extension
-    pub(crate) boundary_quotient_degree_bounds: Option<Vec<i64>>,
+    pub(crate) initial_quotient_degree_bounds: Option<Vec<i64>>,
     pub(crate) transition_quotient_degree_bounds: Option<Vec<i64>>,
     pub(crate) consistency_quotient_degree_bounds: Option<Vec<i64>>,
     pub(crate) terminal_quotient_degree_bounds: Option<Vec<i64>>,
@@ -64,11 +64,11 @@ impl<DataPF: FiniteField> Table<DataPF> {
             omicron,
             matrix,
             name,
-            boundary_constraints: None,
+            initial_constraints: None,
             transition_constraints: None,
             consistency_constraints: None,
             terminal_constraints: None,
-            boundary_quotient_degree_bounds: None,
+            initial_quotient_degree_bounds: None,
             transition_quotient_degree_bounds: None,
             consistency_quotient_degree_bounds: None,
             terminal_quotient_degree_bounds: None,
@@ -176,13 +176,13 @@ pub trait Extendable: TableLike<BFieldElement> {
             .collect()
     }
 
-    fn get_boundary_quotient_degree_bounds(
+    fn get_initial_quotient_degree_bounds(
         &self,
-        boundary_constraints: &[MPolynomial<XFieldElement>],
+        initial_constraints: &[MPolynomial<XFieldElement>],
     ) -> Vec<Degree> {
         let interpolant_degree = self.interpolant_degree();
         let full_width = self.full_width();
-        Self::compute_degree_bounds(boundary_constraints, interpolant_degree, full_width)
+        Self::compute_degree_bounds(initial_constraints, interpolant_degree, full_width)
     }
 
     fn get_transition_quotient_degree_bounds(
@@ -215,22 +215,22 @@ pub trait Extendable: TableLike<BFieldElement> {
     fn extension(
         &self,
         extended_matrix: Vec<Vec<XFieldElement>>,
-        boundary_constraints: Vec<MPolynomial<XFieldElement>>,
+        initial_constraints: Vec<MPolynomial<XFieldElement>>,
         transition_constraints: Vec<MPolynomial<XFieldElement>>,
         consistency_constraints: Vec<MPolynomial<XFieldElement>>,
         terminal_constraints: Vec<MPolynomial<XFieldElement>>,
     ) -> Table<XFieldElement> {
-        let bqdb = self.get_boundary_quotient_degree_bounds(&boundary_constraints);
+        let bqdb = self.get_initial_quotient_degree_bounds(&initial_constraints);
         let tqdb = self.get_transition_quotient_degree_bounds(&transition_constraints);
         let cqdb = self.get_consistency_quotient_degree_bounds(&consistency_constraints);
         let termqdb = self.get_terminal_quotient_degree_bounds(&terminal_constraints);
         let new_table = self.new_from_lifted_matrix(extended_matrix);
         Table {
-            boundary_constraints: Some(boundary_constraints),
+            initial_constraints: Some(initial_constraints),
             transition_constraints: Some(transition_constraints),
             consistency_constraints: Some(consistency_constraints),
             terminal_constraints: Some(terminal_constraints),
-            boundary_quotient_degree_bounds: Some(bqdb),
+            initial_quotient_degree_bounds: Some(bqdb),
             transition_quotient_degree_bounds: Some(tqdb),
             consistency_quotient_degree_bounds: Some(cqdb),
             terminal_quotient_degree_bounds: Some(termqdb),

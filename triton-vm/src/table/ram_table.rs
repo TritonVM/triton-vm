@@ -130,7 +130,7 @@ impl RamTable {
 
         let inherited_table = self.extension(
             extension_matrix,
-            ExtRamTable::ext_boundary_constraints(),
+            ExtRamTable::ext_initial_constraints(),
             ExtRamTable::ext_transition_constraints(challenges),
             ExtRamTable::ext_consistency_constraints(challenges),
             ExtRamTable::ext_terminal_constraints(challenges, &terminals),
@@ -158,7 +158,7 @@ impl RamTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
-            ExtRamTable::ext_boundary_constraints(),
+            ExtRamTable::ext_initial_constraints(),
             ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_terminal_constraints(
@@ -266,7 +266,7 @@ impl Extendable for RamTable {
 impl TableLike<XFieldElement> for ExtRamTable {}
 
 impl ExtRamTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
         use RamTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
@@ -373,8 +373,8 @@ pub struct RamTableEndpoints {
 }
 
 impl ExtensionTable for ExtRamTable {
-    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_boundary_constraints()
+    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtRamTable::ext_initial_constraints()
     }
 
     fn dynamic_transition_constraints(

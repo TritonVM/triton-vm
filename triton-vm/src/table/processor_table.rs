@@ -317,7 +317,7 @@ impl ProcessorTable {
 
         let inherited_table = self.extension(
             extension_matrix,
-            ExtProcessorTable::ext_boundary_constraints(),
+            ExtProcessorTable::ext_initial_constraints(),
             ExtProcessorTable::ext_transition_constraints(challenges),
             ExtProcessorTable::ext_consistency_constraints(challenges),
             ExtProcessorTable::ext_terminal_constraints(challenges, &terminals),
@@ -345,7 +345,7 @@ impl ProcessorTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
-            ExtProcessorTable::ext_boundary_constraints(),
+            ExtProcessorTable::ext_initial_constraints(),
             ExtProcessorTable::ext_transition_constraints(
                 &all_challenges.processor_table_challenges,
             ),
@@ -568,7 +568,7 @@ impl Extendable for ProcessorTable {
 impl TableLike<XFieldElement> for ExtProcessorTable {}
 
 impl ExtProcessorTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
 
         // The cycle counter `clk` is 0.
@@ -818,7 +818,7 @@ impl Default for SingleRowConstraints {
     fn default() -> Self {
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into())
             .try_into()
-            .expect("Create variables for boundary/consistency constraints");
+            .expect("Create variables for initial/consistency/terminal constraints");
 
         Self { variables }
     }
@@ -2443,8 +2443,8 @@ impl InstructionDeselectors {
 }
 
 impl ExtensionTable for ExtProcessorTable {
-    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_boundary_constraints()
+    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProcessorTable::ext_initial_constraints()
     }
 
     fn dynamic_transition_constraints(

@@ -17,7 +17,7 @@ Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 
 1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
 
-**Boundary Constraints**
+**Initial Constraints**
 
 1. The cycle counter `clk` is 0.
 1. The instruction pointer `ip` is 0.
@@ -43,9 +43,8 @@ Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 1. The operational stack pointer `osp` is 16.
 1. The operational stack value `osv` is 0.
 1. The RAM value `ramv` is 0.
-1. In the last row, current instruction register `ci` is 0, corresponding to instruction `halt`.
 
-**Boundary Constraints as Polynomials**
+**Initial Constraints as Polynomials**
 
 1. `clk`
 1. `ip`
@@ -71,6 +70,13 @@ Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 1. `osp`
 1. `osv`
 1. `ramv`
+
+**Terminal Constraints**
+
+1. In the last row, register “current instruction” `ci` is 0, corresponding to instruction `halt`.
+
+**Terminal Constraints as Polynomials**
+
 1. `ci`
 
 **Transition Constraints**

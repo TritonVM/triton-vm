@@ -46,13 +46,17 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state14`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state15`
 
-**Boundary Constraints**
+**Initial Constraints**
 
 1. The round number `rnd_nmbr` starts at 0 or 1.
 
-**Boundary Constraints as Polynomials**
+**Initial Constraints as Polynomials**
 
-1. `rnd_nmbr - 1`
+1. `rnd_nmbr·(rnd_nmbr - 1)`
+
+**Terminal Constraints**
+
+None.
 
 **Transition Constraints**
 

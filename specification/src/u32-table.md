@@ -64,9 +64,12 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `idc` is 1 or LHS is not 0 or RHS is not 0 or XOR is 0.
 1. `idc` is 1 or LHS is not 0 or RHS is not 0 or REV is 0.
 
-**Boundary Constraints**
+**Initial Constraints**
 
 1. In the first row, the indicator `idc` is 1.
+
+**Terminal Constraints**
+
 1. In the last row, the indicator `idc` is 0.
 1. In the last row, LHS is 0.
 1. In the last row, RHS is 0.

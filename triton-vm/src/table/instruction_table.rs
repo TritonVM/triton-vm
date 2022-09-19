@@ -77,7 +77,7 @@ impl Extendable for InstructionTable {
 impl TableLike<XFieldElement> for ExtInstructionTable {}
 
 impl ExtInstructionTable {
-    fn ext_boundary_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
         let addr = variables[usize::from(Address)].clone();
@@ -232,7 +232,7 @@ impl InstructionTable {
 
         let inherited_table = self.extension(
             extension_matrix,
-            ExtInstructionTable::ext_boundary_constraints(),
+            ExtInstructionTable::ext_initial_constraints(),
             ExtInstructionTable::ext_transition_constraints(challenges),
             ExtInstructionTable::ext_consistency_constraints(challenges),
             ExtInstructionTable::ext_terminal_constraints(challenges, &terminals),
@@ -260,7 +260,7 @@ impl InstructionTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
-            ExtInstructionTable::ext_boundary_constraints(),
+            ExtInstructionTable::ext_initial_constraints(),
             ExtInstructionTable::ext_transition_constraints(
                 &all_challenges.instruction_table_challenges,
             ),
@@ -346,8 +346,8 @@ pub struct InstructionTableEndpoints {
 }
 
 impl ExtensionTable for ExtInstructionTable {
-    fn dynamic_boundary_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_boundary_constraints()
+    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_initial_constraints()
     }
 
     fn dynamic_transition_constraints(
