@@ -265,7 +265,13 @@ impl<'pgm> VMState<'pgm> {
             Assert => {
                 let elem = self.op_stack.pop()?;
                 if !elem.is_one() {
-                    return vm_err(AssertionFailed);
+                    return vm_err(AssertionFailed(
+                        self.instruction_pointer,
+                        self.cycle_count,
+                        self.op_stack
+                            .peek(0)
+                            .expect("Could not unwrap top of stack."),
+                    ));
                 }
                 self.instruction_pointer += 1;
             }
@@ -318,7 +324,13 @@ impl<'pgm> VMState<'pgm> {
 
             AssertVector => {
                 if !self.assert_vector() {
-                    return vm_err(AssertionFailed);
+                    return vm_err(AssertionFailed(
+                        self.instruction_pointer,
+                        self.cycle_count,
+                        self.op_stack
+                            .peek(0)
+                            .expect("Could not unwrap top of stack."),
+                    ));
                 }
                 self.instruction_pointer += 1;
             }
@@ -769,6 +781,11 @@ impl<'pgm> VMState<'pgm> {
         secret_in: &mut In,
     ) -> Result<(), Box<dyn Error>> {
         // st0-st4
+        for _ in 0..DIGEST_LENGTH {
+            self.op_stack.pop()?;
+        }
+
+        // st5-st9
         let known_digest: [BFieldElement; DIGEST_LENGTH] = [
             self.op_stack.pop()?,
             self.op_stack.pop()?,
@@ -777,14 +794,10 @@ impl<'pgm> VMState<'pgm> {
             self.op_stack.pop()?,
         ];
 
-        // st5-st9
-        for _ in 0..DIGEST_LENGTH {
-            self.op_stack.pop()?;
-        }
-
         // st10
         let node_index: u32 = self.op_stack.pop()?.try_into()?;
 
+        // nondeterministic guess
         let sibling_digest = [
             secret_in.read_elem()?,
             secret_in.read_elem()?,
@@ -804,35 +817,31 @@ impl<'pgm> VMState<'pgm> {
         // push 2 digests, in correct order
         // Correct order means the following:
         //
-        // | sponge | stack | digest element | hv0 == 0 |
-        // |--------|-------|----------------|----------|
-        // | r0     | st0   | left0          | known0   |
-        // | r1     | st1   | left1          | known1   |
-        // | r2     | st2   | left2          | known2   |
-        // | r3     | st3   | left3          | known3   |
-        // | r4     | st4   | left4          | known4   |
-        // | r5     | st5   | right0         | sibling0 |
-        // | r6     | st6   | right1         | sibling1 |
-        // | r7     | st7   | right2         | sibling2 |
-        // | r8     | st8   | right3         | sibling3 |
-        // | r9     | st9   | right4         | sibling4 |
+        // | sponge | stack | digest element | hv0 == 0 | hv0 == 1 |
+        // |--------|-------|----------------|----------|----------|
+        // | r0     | st0   | left0          | known0   | sibling0 |
+        // | r1     | st1   | left1          | known1   | sibling1 |
+        // | r2     | st2   | left2          | known2   | sibling2 |
+        // | r3     | st3   | left3          | known3   | sibling3 |
+        // | r4     | st4   | left4          | known4   | sibling4 |
+        // | r5     | st5   | right0         | sibling0 | known0   |
+        // | r6     | st6   | right1         | sibling1 | known1   |
+        // | r7     | st7   | right2         | sibling2 | known2   |
+        // | r8     | st8   | right3         | sibling3 | known3   |
+        // | r9     | st9   | right4         | sibling4 | known4   |
 
-        if hv0 == 0 {
-            for sibling_element in sibling_digest.iter().rev() {
-                self.op_stack.push(*sibling_element);
-            }
-
-            for known_digest_element in known_digest.iter().rev() {
-                self.op_stack.push(*known_digest_element);
-            }
+        let (top_digest, runner_up) = if hv0 == 0 {
+            (known_digest, sibling_digest)
         } else {
-            for known_digest_element in known_digest.iter().rev() {
-                self.op_stack.push(*known_digest_element);
-            }
+            (sibling_digest, known_digest)
+        };
 
-            for sibling_element in sibling_digest.iter().rev() {
-                self.op_stack.push(*sibling_element);
-            }
+        for digest_element in runner_up.iter().rev() {
+            self.op_stack.push(*digest_element);
+        }
+
+        for digest_element in top_digest.iter().rev() {
+            self.op_stack.push(*digest_element);
         }
 
         Ok(())

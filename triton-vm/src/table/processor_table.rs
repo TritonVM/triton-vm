@@ -1291,17 +1291,17 @@ impl RowPairConstraints {
         // The 11th stack register is shifted by 1 bit to the right.
         let st10_is_shifted_1_bit_right = self.st10_next() * self.two() + self.hv0() - self.st10();
 
-        // The the top pentuplet either stays where it is, or is moved down by 5 slots
-        let maybe_move_st0 = (self.one() - self.hv0()) * (self.st0() - self.st0_next())
-            + self.hv0() * (self.st0() - self.st5_next());
-        let maybe_move_st1 = (self.one() - self.hv0()) * (self.st1() - self.st1_next())
-            + self.hv0() * (self.st1() - self.st6_next());
-        let maybe_move_st2 = (self.one() - self.hv0()) * (self.st2() - self.st2_next())
-            + self.hv0() * (self.st2() - self.st7_next());
-        let maybe_move_st3 = (self.one() - self.hv0()) * (self.st3() - self.st3_next())
-            + self.hv0() * (self.st3() - self.st8_next());
-        let maybe_move_st4 = (self.one() - self.hv0()) * (self.st4() - self.st4_next())
-            + self.hv0() * (self.st4() - self.st9_next());
+        // The the second pentuplet either stays where it is, or is moved to the top
+        let maybe_move_st5 = (self.one() - self.hv0()) * (self.st5() - self.st0_next())
+            + self.hv0() * (self.st5() - self.st5_next());
+        let maybe_move_st6 = (self.one() - self.hv0()) * (self.st6() - self.st1_next())
+            + self.hv0() * (self.st6() - self.st6_next());
+        let maybe_move_st7 = (self.one() - self.hv0()) * (self.st7() - self.st2_next())
+            + self.hv0() * (self.st7() - self.st7_next());
+        let maybe_move_st8 = (self.one() - self.hv0()) * (self.st8() - self.st3_next())
+            + self.hv0() * (self.st8() - self.st8_next());
+        let maybe_move_st9 = (self.one() - self.hv0()) * (self.st9() - self.st4_next())
+            + self.hv0() * (self.st9() - self.st9_next());
 
         // The stack element in st11 does not change.
         let st11_does_not_change = self.st11_next() - self.st11();
@@ -1331,11 +1331,11 @@ impl RowPairConstraints {
         vec![
             hv0_is_0_or_1,
             st10_is_shifted_1_bit_right,
-            maybe_move_st0,
-            maybe_move_st1,
-            maybe_move_st2,
-            maybe_move_st3,
-            maybe_move_st4,
+            maybe_move_st5,
+            maybe_move_st6,
+            maybe_move_st7,
+            maybe_move_st8,
+            maybe_move_st9,
             st11_does_not_change,
             st12_does_not_change,
             st13_does_not_change,

@@ -8,7 +8,7 @@ pub enum InstructionError {
     InstructionPointerOverflow(usize),
     OpStackTooShallow,
     JumpStackTooShallow,
-    AssertionFailed,
+    AssertionFailed(usize, u32, BFieldElement),
     MemoryAddressNotFound,
     InverseOfZero,
     RunawayInstructionArg,
@@ -31,8 +31,12 @@ impl Display for InstructionError {
                 write!(f, "Jump stack does not contain return address")
             }
 
-            AssertionFailed => {
-                write!(f, "Assertion failed")
+            AssertionFailed(ip, clk, st0) => {
+                write!(
+                    f,
+                    "Assertion failed. ip: {}, clk: {}, st0: {}",
+                    ip, clk, st0
+                )
             }
 
             MemoryAddressNotFound => {

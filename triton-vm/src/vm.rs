@@ -515,10 +515,17 @@ mod triton_vm_tests {
 
     fn test_program_for_divine_sibling() -> SourceCodeAndInput {
         let source_code = "
-            push 3 swap10 divine_sibling \
-            dup0 assert dup1 assert dup2 assert \
-            dup3 assert dup4 assert \
-            halt";
+            push 3 \
+            push 2 push 2 push 2 push 2 push 2 \
+            push 0 push 0 push 0 push 0 push 0 \
+            divine_sibling \
+            assert assert assert assert assert \
+            push -1 add assert \
+            push -1 add assert \
+            push -1 add assert \
+            push -1 add assert \
+            push -1 add assert \
+            assert";
         let one = BFieldElement::one();
         SourceCodeAndInput {
             source_code: source_code.to_string(),
