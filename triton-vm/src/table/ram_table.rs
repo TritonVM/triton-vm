@@ -132,7 +132,7 @@ impl RamTable {
             extension_matrix,
             ExtRamTable::ext_boundary_constraints(),
             ExtRamTable::ext_transition_constraints(challenges),
-            ExtRamTable::ext_consistency_constraints(),
+            ExtRamTable::ext_consistency_constraints(challenges),
             ExtRamTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtRamTable { inherited_table }, terminals)
@@ -160,7 +160,7 @@ impl RamTable {
             empty_matrix,
             ExtRamTable::ext_boundary_constraints(),
             ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_consistency_constraints(),
+            ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_terminal_constraints(
                 &all_challenges.ram_table_challenges,
                 &all_terminals.ram_table_endpoints,
@@ -287,8 +287,9 @@ impl ExtRamTable {
         vec![clk_is_0, ramp_is_0, ramv_is_0]
     }
 
-    // TODO actually use consistency constraints
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_consistency_constraints(
+        _challenges: &RamTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         // no further constraints
         vec![]
     }
@@ -383,8 +384,11 @@ impl ExtensionTable for ExtRamTable {
         ExtRamTable::ext_transition_constraints(&challenges.ram_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtRamTable::ext_consistency_constraints(&challenges.ram_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

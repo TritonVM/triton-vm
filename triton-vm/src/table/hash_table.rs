@@ -266,7 +266,9 @@ impl ExtHashTable {
     /// consistency constraints directly by implementing the respective method in trait
     /// `Evaluable`, and does not use the polynomials below.
     #[allow(unreachable_code)]
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_consistency_constraints(
+        _challenges: &HashTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         panic!("ext_consistency_constraints should never be called; method is bypassed statically");
         let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
@@ -673,8 +675,11 @@ impl ExtensionTable for ExtHashTable {
         ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_consistency_constraints(&challenges.hash_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

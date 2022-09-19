@@ -1,9 +1,10 @@
+use std::fmt::Display;
+
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use std::fmt::Display;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -26,7 +27,10 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>>;
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_terminal_constraints(
         &self,
@@ -438,7 +442,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         } else {
             let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
             let zerofier_degree = self.padded_height() as Degree;
-            self.dynamic_consistency_constraints()
+            self.dynamic_consistency_constraints(&AllChallenges::dummy())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()

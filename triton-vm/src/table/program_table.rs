@@ -1,16 +1,18 @@
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::ProgramTableColumn;
-use crate::fri_domain::FriDomain;
-use crate::stark::StarkHasher;
-use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
+use crate::table::base_table::Extendable;
+use crate::table::extension_table::Evaluable;
+
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::table_column::ProgramTableColumn;
 
 pub const PROGRAM_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
 pub const PROGRAM_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 1;
@@ -90,7 +92,9 @@ impl ExtProgramTable {
         vec![addr]
     }
 
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_consistency_constraints(
+        _challenges: &ProgramTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         // no further constraints
         vec![]
     }
@@ -197,7 +201,7 @@ impl ProgramTable {
             extension_matrix,
             ExtProgramTable::ext_boundary_constraints(),
             ExtProgramTable::ext_transition_constraints(challenges),
-            ExtProgramTable::ext_consistency_constraints(),
+            ExtProgramTable::ext_consistency_constraints(challenges),
             ExtProgramTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtProgramTable { inherited_table }, terminals)
@@ -225,7 +229,7 @@ impl ProgramTable {
             empty_matrix,
             ExtProgramTable::ext_boundary_constraints(),
             ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
-            ExtProgramTable::ext_consistency_constraints(),
+            ExtProgramTable::ext_consistency_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_terminal_constraints(
                 &all_challenges.program_table_challenges,
                 &all_terminals.program_table_endpoints,
@@ -306,8 +310,11 @@ impl ExtensionTable for ExtProgramTable {
         ExtProgramTable::ext_transition_constraints(&challenges.program_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProgramTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProgramTable::ext_consistency_constraints(&challenges.program_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

@@ -1,18 +1,20 @@
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::JumpStackTableColumn::*;
+use itertools::Itertools;
+use num_traits::{One, Zero};
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
 use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::JumpStackTableColumn;
-use itertools::Itertools;
-use num_traits::{One, Zero};
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::table_column::JumpStackTableColumn::*;
 
 pub const JUMP_STACK_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
 pub const JUMP_STACK_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;
@@ -101,8 +103,9 @@ impl ExtJumpStackTable {
         vec![clk, jsp, jso, jsd]
     }
 
-    // TODO actually use consistency constraints
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_consistency_constraints(
+        _challenges: &JumpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         // no further constraints
         vec![]
     }
@@ -256,7 +259,7 @@ impl JumpStackTable {
             extension_matrix,
             ExtJumpStackTable::ext_boundary_constraints(),
             ExtJumpStackTable::ext_transition_constraints(challenges),
-            ExtJumpStackTable::ext_consistency_constraints(),
+            ExtJumpStackTable::ext_consistency_constraints(challenges),
             ExtJumpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtJumpStackTable { inherited_table }, terminals)
@@ -286,7 +289,9 @@ impl JumpStackTable {
             ExtJumpStackTable::ext_transition_constraints(
                 &all_challenges.jump_stack_table_challenges,
             ),
-            ExtJumpStackTable::ext_consistency_constraints(),
+            ExtJumpStackTable::ext_consistency_constraints(
+                &all_challenges.jump_stack_table_challenges,
+            ),
             ExtJumpStackTable::ext_terminal_constraints(
                 &all_challenges.jump_stack_table_challenges,
                 &all_terminals.jump_stack_table_endpoints,
@@ -369,8 +374,11 @@ impl ExtensionTable for ExtJumpStackTable {
         ExtJumpStackTable::ext_transition_constraints(&challenges.jump_stack_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtJumpStackTable::ext_consistency_constraints(&challenges.jump_stack_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

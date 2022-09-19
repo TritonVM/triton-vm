@@ -1,16 +1,18 @@
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::OpStackTableColumn;
-use crate::fri_domain::FriDomain;
-use crate::stark::StarkHasher;
-use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::fri_domain::FriDomain;
+use crate::stark::StarkHasher;
+use crate::table::base_table::Extendable;
+use crate::table::extension_table::Evaluable;
+
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::table_column::OpStackTableColumn;
 
 pub const OP_STACK_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
 pub const OP_STACK_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;
@@ -104,8 +106,9 @@ impl ExtOpStackTable {
         vec![clk_is_0, osv_is_0, osp_is_16]
     }
 
-    // TODO actually use consistency constraints
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_consistency_constraints(
+        _challenges: &OpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         // no further constraints
         vec![]
     }
@@ -227,7 +230,7 @@ impl OpStackTable {
             extension_matrix,
             ExtOpStackTable::ext_boundary_constraints(),
             ExtOpStackTable::ext_transition_constraints(challenges),
-            ExtOpStackTable::ext_consistency_constraints(),
+            ExtOpStackTable::ext_consistency_constraints(challenges),
             ExtOpStackTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtOpStackTable { inherited_table }, terminals)
@@ -255,7 +258,7 @@ impl OpStackTable {
             empty_matrix,
             ExtOpStackTable::ext_boundary_constraints(),
             ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
-            ExtOpStackTable::ext_consistency_constraints(),
+            ExtOpStackTable::ext_consistency_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_terminal_constraints(
                 &all_challenges.op_stack_table_challenges,
                 &all_terminals.op_stack_table_endpoints,
@@ -337,8 +340,11 @@ impl ExtensionTable for ExtOpStackTable {
         ExtOpStackTable::ext_transition_constraints(&challenges.op_stack_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtOpStackTable::ext_consistency_constraints(&challenges.op_stack_table_challenges)
     }
 
     fn dynamic_terminal_constraints(
