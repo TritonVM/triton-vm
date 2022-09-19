@@ -12,7 +12,7 @@ use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instru
 use crate::ord_n::Ord7;
 use crate::stark::StarkHasher;
 use crate::table::base_table::{self, Extendable, InheritsFromTable, Table, TableLike};
-use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+use crate::table::challenges_endpoints::{AllChallenges, AllTerminals};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
 
@@ -329,7 +329,7 @@ impl ProcessorTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints<StarkHasher>,
+        all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtProcessorTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -2464,7 +2464,7 @@ impl ExtensionTable for ExtProcessorTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
+        terminals: &super::challenges_endpoints::AllTerminals<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProcessorTable::ext_terminal_constraints(
             &challenges.processor_table_challenges,

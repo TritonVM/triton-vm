@@ -26,7 +26,7 @@ use crate::cross_table_arguments::{
 };
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
-use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+use crate::table::challenges_endpoints::{AllChallenges, AllInitials};
 use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
 use crate::triton_xfri::{self, Fri};
 
@@ -155,7 +155,7 @@ impl Stark {
         timer.elapsed("challenges");
 
         let random_initials = Self::sample_initials();
-        let all_initials = AllEndpoints::create_endpoints(random_initials);
+        let all_initials = AllInitials::create_endpoints(random_initials);
         timer.elapsed("initials");
 
         let (ext_tables, all_terminals) =
@@ -353,9 +353,9 @@ impl Stark {
 
     fn sample_initials() -> Vec<XFieldElement> {
         let mut rng = thread_rng();
-        let initials_seed_u64_0: [u64; AllEndpoints::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
-        let initials_seed_u64_1: [u64; AllEndpoints::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
-        let initials_seed_u64_2: [u64; AllEndpoints::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_0: [u64; AllInitials::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_1: [u64; AllInitials::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
+        let initials_seed_u64_2: [u64; AllInitials::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
         izip!(
             initials_seed_u64_0.into_iter(),
             initials_seed_u64_1.into_iter(),
@@ -1033,6 +1033,7 @@ pub(crate) mod triton_stark_tests {
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table;
+    use crate::table::challenges_endpoints::AllTerminals;
     use crate::vm::Program;
 
     use super::*;
@@ -1113,8 +1114,8 @@ pub(crate) mod triton_stark_tests {
         BaseTableCollection,
         ExtTableCollection,
         AllChallenges,
-        AllEndpoints<RescuePrimeRegular>,
-        AllEndpoints<RescuePrimeRegular>,
+        AllInitials<RescuePrimeRegular>,
+        AllTerminals<RescuePrimeRegular>,
     ) {
         let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
         let base_matrices = BaseMatrices::new(aet, &program);
@@ -1128,7 +1129,7 @@ pub(crate) mod triton_stark_tests {
         base_tables.pad();
 
         let dummy_challenges = AllChallenges::dummy();
-        let dummy_initials = AllEndpoints::dummy();
+        let dummy_initials = AllInitials::dummy();
         let (ext_tables, all_terminals) =
             ExtTableCollection::extend_tables(&base_tables, &dummy_challenges, &dummy_initials);
 

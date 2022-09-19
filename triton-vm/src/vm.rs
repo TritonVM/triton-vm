@@ -245,7 +245,7 @@ mod triton_vm_tests {
     use crate::stark::StarkHasher;
     use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
     use crate::table::base_table::{Extendable, InheritsFromTable};
-    use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
+    use crate::table::challenges_endpoints::{AllChallenges, AllInitials};
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;
     use num_traits::{One, Zero};
@@ -688,7 +688,7 @@ mod triton_vm_tests {
 
             let (ext_processor_table, _) = processor_table.extend(
                 &AllChallenges::dummy().processor_table_challenges,
-                &AllEndpoints::<StarkHasher>::dummy().processor_table_endpoints,
+                &AllInitials::<StarkHasher>::dummy().processor_table_endpoints,
             );
 
             for (row_idx, (row, next_row)) in ext_processor_table

@@ -12,7 +12,7 @@ use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
 use crate::stark::{Stark, StarkHasher};
-use crate::table::challenges_endpoints::AllEndpoints;
+use crate::table::challenges_endpoints::AllTerminals;
 
 use super::base_table::TableLike;
 use super::challenges_endpoints::AllChallenges;
@@ -35,7 +35,7 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &AllChallenges,
-        terminals: &AllEndpoints<StarkHasher>,
+        terminals: &AllTerminals<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>>;
 }
 
@@ -455,7 +455,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         } else {
             let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
             let zerofier_degree = 1 as Degree;
-            self.dynamic_terminal_constraints(&AllChallenges::dummy(), &AllEndpoints::dummy())
+            self.dynamic_terminal_constraints(&AllChallenges::dummy(), &AllTerminals::dummy())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()

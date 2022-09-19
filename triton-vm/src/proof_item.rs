@@ -1,4 +1,4 @@
-use super::table::challenges_endpoints::AllEndpoints;
+use super::table::challenges_endpoints::AllTerminals;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -19,7 +19,7 @@ where
     TransposedBaseElementVectors(Vec<Vec<BFieldElement>>),
     TransposedExtensionElementVectors(Vec<Vec<XFieldElement>>),
     MerkleRoot(H::Digest),
-    Terminals(AllEndpoints<H>),
+    Terminals(AllTerminals<H>),
     TransposedBaseElements(Vec<BFieldElement>),
     TransposedExtensionElements(Vec<XFieldElement>),
     AuthenticationPath(Vec<H::Digest>),
@@ -77,7 +77,7 @@ where
         }
     }
 
-    pub fn as_terminals(&self) -> Result<AllEndpoints<H>, Box<dyn std::error::Error>> {
+    pub fn as_terminals(&self) -> Result<AllTerminals<H>, Box<dyn std::error::Error>> {
         match self {
             Self::Terminals(all_endpoints) => Ok(all_endpoints.to_owned()),
             _ => Err(ProofStreamError::boxed(

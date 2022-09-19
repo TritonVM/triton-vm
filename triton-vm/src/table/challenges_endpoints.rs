@@ -190,6 +190,9 @@ impl AllChallenges {
 }
 
 /// An *endpoint* is the collective term for *initials* and *terminals*.
+pub type AllInitials<T> = AllEndpoints<T>;
+pub type AllTerminals<T> = AllEndpoints<T>;
+
 #[derive(Debug, Clone)]
 pub struct AllEndpoints<H: Hasher>
 where

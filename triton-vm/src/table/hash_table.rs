@@ -20,7 +20,7 @@ use crate::table::extension_table::Evaluable;
 use crate::table::table_column::HashTableColumn::*;
 
 use super::base_table::{self, InheritsFromTable, Table, TableLike};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::challenges_endpoints::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::HashTableColumn;
 
@@ -572,7 +572,7 @@ impl HashTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints<StarkHasher>,
+        all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtHashTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
@@ -685,7 +685,7 @@ impl ExtensionTable for ExtHashTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
+        terminals: &super::challenges_endpoints::AllTerminals<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtHashTable::ext_terminal_constraints(
             &challenges.hash_table_challenges,
@@ -696,6 +696,7 @@ impl ExtensionTable for ExtHashTable {
 
 #[cfg(test)]
 mod constraint_tests {
+    use crate::table::challenges_endpoints::AllInitials;
     use crate::vm::Program;
 
     use super::*;
@@ -714,7 +715,7 @@ mod constraint_tests {
         )
         .extend(
             &AllChallenges::dummy().hash_table_challenges,
-            &AllEndpoints::<StarkHasher>::dummy().hash_table_endpoints,
+            &AllInitials::<StarkHasher>::dummy().hash_table_endpoints,
         );
 
         for v in ext_hash_table.evaluate_boundary_constraints(&ext_hash_table.data()[0]) {

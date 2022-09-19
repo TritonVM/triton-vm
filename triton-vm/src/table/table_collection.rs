@@ -1,6 +1,6 @@
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::challenges_endpoints::{AllChallenges, AllInitials, AllTerminals};
 use super::extension_table::QuotientableExtensionTable;
 use super::hash_table::{ExtHashTable, HashTable};
 use super::instruction_table::{ExtInstructionTable, InstructionTable};
@@ -222,7 +222,7 @@ impl ExtTableCollection {
         num_trace_randomizers: usize,
         padded_heights: &[usize],
         challenges: &AllChallenges,
-        terminals: &AllEndpoints<StarkHasher>,
+        terminals: &AllTerminals<StarkHasher>,
     ) -> Self {
         // TODO: integrate challenges and terminals
 
@@ -313,8 +313,8 @@ impl ExtTableCollection {
     pub fn extend_tables(
         base_tables: &BaseTableCollection,
         all_challenges: &AllChallenges,
-        all_initials: &AllEndpoints<StarkHasher>,
-    ) -> (Self, AllEndpoints<StarkHasher>) {
+        all_initials: &AllInitials<StarkHasher>,
+    ) -> (Self, AllTerminals<StarkHasher>) {
         let (program_table, program_table_terminals) = base_tables.program_table.extend(
             &all_challenges.program_table_challenges,
             &all_initials.program_table_endpoints,
@@ -367,7 +367,7 @@ impl ExtTableCollection {
             u32_op_table,
         };
 
-        let terminals = AllEndpoints {
+        let terminals = AllTerminals {
             program_table_endpoints: program_table_terminals,
             instruction_table_endpoints: instruction_table_terminals,
             processor_table_endpoints: processor_table_terminals,

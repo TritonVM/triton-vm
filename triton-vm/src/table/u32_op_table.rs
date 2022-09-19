@@ -13,7 +13,7 @@ use crate::table::extension_table::Evaluable;
 use crate::table::table_column::U32OpTableColumn::*;
 
 use super::base_table::{self, InheritsFromTable, Table, TableLike};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::challenges_endpoints::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::U32OpTableColumn;
 
@@ -364,7 +364,7 @@ impl U32OpTable {
         num_trace_randomizers: usize,
         padded_height: usize,
         all_challenges: &AllChallenges,
-        all_terminals: &AllEndpoints<StarkHasher>,
+        all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtU32OpTable {
         let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::<BFieldElement>::new(
@@ -473,7 +473,7 @@ impl ExtensionTable for ExtU32OpTable {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllEndpoints<StarkHasher>,
+        terminals: &super::challenges_endpoints::AllTerminals<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtU32OpTable::ext_terminal_constraints(
             &challenges.u32_op_table_challenges,
