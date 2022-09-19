@@ -1,18 +1,21 @@
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::HashTableColumn;
+use std::ops::Mul;
+
+use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
 use crate::fri_domain::FriDomain;
 use crate::state::DIGEST_LEN;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::HashTableColumn::*;
-use itertools::Itertools;
-use std::ops::Mul;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
-use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::table_column::HashTableColumn;
 
 pub const HASH_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
 pub const HASH_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 2;
@@ -399,7 +402,9 @@ impl ExtHashTable {
     /// The implementation below is kept around for debugging purposes. This table evaluates the
     /// corresponding constraints directly by implementing the respective method in trait
     /// `Evaluable`, and does not use the polynomials below.
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_consistency_constraints(
+        _challenges: &HashTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let constant = |c: u32| MPolynomial::from_constant(c.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
@@ -596,7 +601,7 @@ impl HashTable {
             extension_matrix,
             ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(challenges),
-            ExtHashTable::ext_consistency_constraints(),
+            ExtHashTable::ext_consistency_constraints(challenges),
             ExtHashTable::ext_terminal_constraints(challenges, &terminals),
         );
 
@@ -630,7 +635,7 @@ impl HashTable {
             empty_matrix,
             ExtHashTable::ext_boundary_constraints(),
             ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
-            ExtHashTable::ext_consistency_constraints(),
+            ExtHashTable::ext_consistency_constraints(&all_challenges.hash_table_challenges),
             ExtHashTable::ext_terminal_constraints(
                 &all_challenges.hash_table_challenges,
                 &all_terminals.hash_table_endpoints,
@@ -712,8 +717,11 @@ impl ExtensionTable for ExtHashTable {
         ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_consistency_constraints(&challenges.hash_table_challenges)
     }
 
     fn dynamic_terminal_constraints(

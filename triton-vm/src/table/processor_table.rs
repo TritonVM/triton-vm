@@ -1,3 +1,10 @@
+use std::collections::HashMap;
+
+use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
 use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
@@ -6,11 +13,6 @@ use crate::table::base_table::{self, Extendable, InheritsFromTable, Table, Table
 use crate::table::challenges_endpoints::{AllChallenges, AllEndpoints};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
-use itertools::Itertools;
-use std::collections::HashMap;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
 
@@ -315,7 +317,7 @@ impl ProcessorTable {
             extension_matrix,
             ExtProcessorTable::ext_boundary_constraints(),
             ExtProcessorTable::ext_transition_constraints(challenges),
-            ExtProcessorTable::ext_consistency_constraints(),
+            ExtProcessorTable::ext_consistency_constraints(challenges),
             ExtProcessorTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtProcessorTable { inherited_table }, terminals)
@@ -345,7 +347,9 @@ impl ProcessorTable {
             ExtProcessorTable::ext_transition_constraints(
                 &all_challenges.processor_table_challenges,
             ),
-            ExtProcessorTable::ext_consistency_constraints(),
+            ExtProcessorTable::ext_consistency_constraints(
+                &all_challenges.processor_table_challenges,
+            ),
             ExtProcessorTable::ext_terminal_constraints(
                 &all_challenges.processor_table_challenges,
                 &all_terminals.processor_table_endpoints,
@@ -692,7 +696,9 @@ impl ExtProcessorTable {
         ]
     }
 
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_consistency_constraints(
+        _challenges: &ProcessorTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
         let one = factory.one();
 
@@ -2469,8 +2475,11 @@ impl ExtensionTable for ExtProcessorTable {
         ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProcessorTable::ext_consistency_constraints(&challenges.processor_table_challenges)
     }
 
     fn dynamic_terminal_constraints(
@@ -2487,12 +2496,14 @@ impl ExtensionTable for ExtProcessorTable {
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
-    use super::*;
+    use twenty_first::shared_math::traits::IdentityValues;
+
     use crate::ord_n::Ord16;
     use crate::table::base_matrix::ProcessorMatrixRow;
     use crate::table::processor_table;
     use crate::vm::Program;
-    use twenty_first::shared_math::traits::IdentityValues;
+
+    use super::*;
 
     #[test]
     /// helps identifying whether the printing causes an infinite loop

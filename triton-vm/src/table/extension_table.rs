@@ -66,7 +66,7 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
             .collect();
 
         let consistency_degrees_with_origin = self
-            .dynamic_consistency_constraints()
+            .dynamic_consistency_constraints(&AllChallenges::dummy())
             .iter()
             .enumerate()
             .map(|(i, air)| {
@@ -117,7 +117,10 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
         challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>>;
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_terminal_constraints(
         &self,

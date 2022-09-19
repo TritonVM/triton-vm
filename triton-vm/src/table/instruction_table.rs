@@ -1,15 +1,16 @@
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
-
-use super::challenges_endpoints::{AllChallenges, AllEndpoints};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::InstructionTableColumn::{self, *};
-use crate::fri_domain::FriDomain;
-use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::fri_domain::FriDomain;
+use crate::table::base_table::Extendable;
+use crate::table::extension_table::Evaluable;
+
+use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::challenges_endpoints::{AllChallenges, AllEndpoints};
+use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::table_column::InstructionTableColumn::{self, *};
 
 pub const INSTRUCTION_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
 pub const INSTRUCTION_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 1;
@@ -85,9 +86,9 @@ impl ExtInstructionTable {
         vec![fst_addr_is_zero]
     }
 
-    // TODO actually use consistency constraints
-    fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
+    fn ext_consistency_constraints(
+        _challenges: &InstructionTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         vec![]
     }
 
@@ -231,7 +232,7 @@ impl InstructionTable {
             extension_matrix,
             ExtInstructionTable::ext_boundary_constraints(),
             ExtInstructionTable::ext_transition_constraints(challenges),
-            ExtInstructionTable::ext_consistency_constraints(),
+            ExtInstructionTable::ext_consistency_constraints(challenges),
             ExtInstructionTable::ext_terminal_constraints(challenges, &terminals),
         );
         (ExtInstructionTable { inherited_table }, terminals)
@@ -261,7 +262,9 @@ impl InstructionTable {
             ExtInstructionTable::ext_transition_constraints(
                 &all_challenges.instruction_table_challenges,
             ),
-            ExtInstructionTable::ext_consistency_constraints(),
+            ExtInstructionTable::ext_consistency_constraints(
+                &all_challenges.instruction_table_challenges,
+            ),
             ExtInstructionTable::ext_terminal_constraints(
                 &all_challenges.instruction_table_challenges,
                 &all_terminals.instruction_table_endpoints,
@@ -352,8 +355,11 @@ impl ExtensionTable for ExtInstructionTable {
         ExtInstructionTable::ext_transition_constraints(&challenges.instruction_table_challenges)
     }
 
-    fn dynamic_consistency_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_consistency_constraints()
+    fn dynamic_consistency_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_consistency_constraints(&challenges.instruction_table_challenges)
     }
 
     fn dynamic_terminal_constraints(
