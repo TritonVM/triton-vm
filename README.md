@@ -4,7 +4,7 @@
 [![crates.io](https://img.shields.io/crates/v/triton-vm.svg)](https://crates.io/crates/triton-vm)
 
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR) for use in combination with a [STARK proof system](https://neptune.cash/learn/stark-anatomy/).
-It defines a Turing complete [Instruction Set Architecture](./specification/src/isa.md), as well as the corresponding [arithmetization](./specification/src/arithmetization.md) of the VM.
+It defines a Turing complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.md), as well as the corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.md) of the VM.
 The really cool thing about Triton VM is its efficient _recursive_ verification of the STARKs produced when running Triton VM.
 
 ## Recursive STARKs of Computational Integrity
@@ -40,8 +40,23 @@ Triton VM is specifically designed to allow fast recursive verification.
 Triton VM is still under construction.
 We currently don't recommend using it in production.
 
-Please note that the [Instruction Set Architecture](./specification/src/isa.md) is not to be considered final.
+Please note that the [Instruction Set Architecture](https://triton-vm.org/spec/isa.md) is not to be considered final.
 However, we don't currently foresee big changes.
+
+## Specification
+
+The specification can be found [here](https://triton-vm.org/spec/).
+Alternatively, you can self-host the [mdBook](https://rust-lang.github.io/mdBook/) by first installing the dependencies, then serving the mdBook.
+
+```sh
+cargo install mdbook
+cargo install mdbook-katex
+cargo install mdbook-linkcheck
+
+mdbook serve --open
+```
+
+Potentially, `~/.cargo/bin` needs to be added to the PATH.
 
 ## Running the Code
 
