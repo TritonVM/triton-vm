@@ -1092,9 +1092,9 @@ pub(crate) mod triton_stark_tests {
         assert!(program.is_ok(), "program parses correctly");
         let program = program.unwrap();
 
-        let mut stdin = VecStream::new_bwords(input_symbols);
-        let mut secret_in = VecStream::new_bwords(secret_input_symbols);
-        let mut stdout = VecStream::new_bwords(&[]);
+        let mut stdin = VecStream::new(input_symbols);
+        let mut secret_in = VecStream::new(secret_input_symbols);
+        let mut stdout = VecStream::new(&[]);
 
         let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
         if let Some(error) = err {

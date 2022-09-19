@@ -159,9 +159,9 @@ impl Program {
         Option<Box<dyn Error>>,
         Vec<BFieldElement>,
     ) {
-        let mut stdin = VecStream::new_bwords(input);
-        let mut secret_in = VecStream::new_bwords(secret_input);
-        let mut stdout = VecStream::new_bytes(&[]);
+        let mut stdin = VecStream::new(input);
+        let mut secret_in = VecStream::new(secret_input);
+        let mut stdout = VecStream::new(&[]);
 
         let (aet, vm_error) = self.simulate(&mut stdin, &mut secret_in, &mut stdout);
         (aet, vm_error, stdout.to_bword_vec())
@@ -183,7 +183,10 @@ impl Program {
         while !current_state.is_complete() {
             let step = current_state.step(stdin, secret_in);
             let (next_state, vm_output) = match step {
-                Err(err) => return (states, Some(err)),
+                Err(err) => {
+                    println!("Encountered an error when running VM.");
+                    return (states, Some(err));
+                }
                 Ok((next_state, vm_output)) => (next_state, vm_output),
             };
 
@@ -213,9 +216,9 @@ impl Program {
             .iter()
             .flat_map(|elem| elem.value().to_be_bytes())
             .collect_vec();
-        let mut stdin = VecStream::new_bytes(&input_bytes);
-        let mut secret_in = VecStream::new_bytes(&secret_input_bytes);
-        let mut stdout = VecStream::new_bytes(&[]);
+        let mut stdin = VecStream::new_from_bytes(&input_bytes);
+        let mut secret_in = VecStream::new_from_bytes(&secret_input_bytes);
+        let mut stdout = VecStream::new_from_bytes(&[]);
 
         let (trace, err) = self.run(&mut stdin, &mut secret_in, &mut stdout);
 
@@ -258,9 +261,9 @@ mod triton_vm_tests {
 
         println!("{}", program);
 
-        let mut stdin = VecStream::new_bwords(&[BFieldElement::new(42), BFieldElement::new(56)]);
-        let mut secret_in = VecStream::new_bwords(&[]);
-        let mut stdout = VecStream::new_bwords(&[]);
+        let mut stdin = VecStream::new(&[BFieldElement::new(42), BFieldElement::new(56)]);
+        let mut secret_in = VecStream::new(&[]);
+        let mut stdout = VecStream::new(&[]);
 
         // 2. Execute program, convert to base matrices
         let (base_matrices, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
@@ -289,9 +292,9 @@ mod triton_vm_tests {
 
         println!("{}", program);
 
-        let mut stdin = VecStream::new_bwords(&[]);
-        let mut secret_in = VecStream::new_bwords(&[]);
-        let mut stdout = VecStream::new_bwords(&[]);
+        let mut stdin = VecStream::new(&[]);
+        let mut secret_in = VecStream::new(&[]);
+        let mut stdout = VecStream::new(&[]);
 
         let (base_matrices, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
 
@@ -308,9 +311,9 @@ mod triton_vm_tests {
 
         println!("{}", program);
 
-        let mut stdin = VecStream::new_bwords(&[BFieldElement::new(42), BFieldElement::new(56)]);
-        let mut secret_in = VecStream::new_bwords(&[]);
-        let mut stdout = VecStream::new_bwords(&[]);
+        let mut stdin = VecStream::new(&[BFieldElement::new(42), BFieldElement::new(56)]);
+        let mut secret_in = VecStream::new(&[]);
+        let mut stdout = VecStream::new(&[]);
 
         let (_, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
 
@@ -329,9 +332,9 @@ mod triton_vm_tests {
 
         println!("{}", program);
 
-        let mut stdin = VecStream::new_bwords(&[]);
-        let mut secret_in = VecStream::new_bwords(&[]);
-        let mut stdout = VecStream::new_bwords(&[]);
+        let mut stdin = VecStream::new(&[]);
+        let mut secret_in = VecStream::new(&[]);
+        let mut stdout = VecStream::new(&[]);
 
         let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
         let base_matrices = BaseMatrices::new(aet, &program);
@@ -401,9 +404,9 @@ mod triton_vm_tests {
 
         println!("{}", program);
 
-        let mut stdin = VecStream::new_bwords(&[]);
-        let mut secret_in = VecStream::new_bwords(&[]);
-        let mut stdout = VecStream::new_bwords(&[]);
+        let mut stdin = VecStream::new(&[]);
+        let mut secret_in = VecStream::new(&[]);
+        let mut stdout = VecStream::new(&[]);
 
         let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
         let base_matrices = BaseMatrices::new(aet, &program);
@@ -729,7 +732,7 @@ mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new_bwords(&[
+        let expected_stdout = VecStream::new(&[
             BFieldElement::new(9),
             BFieldElement::new(14),
             BFieldElement::new(18),
@@ -763,7 +766,7 @@ mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new_bwords(&[
+        let expected_stdout = VecStream::new(&[
             BFieldElement::new(108),
             BFieldElement::new(123),
             BFieldElement::new(22),
@@ -797,7 +800,7 @@ mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new_bwords(&[
+        let expected_stdout = VecStream::new(&[
             BFieldElement::zero(),
             BFieldElement::zero(),
             BFieldElement::one(),
@@ -831,7 +834,7 @@ mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new_bwords(&[
+        let expected_stdout = VecStream::new(&[
             BFieldElement::new(14),
             BFieldElement::new(21),
             BFieldElement::new(35),
@@ -844,7 +847,7 @@ mod triton_vm_tests {
     fn pseudo_sub_test() {
         let actual_stdout =
             SourceCodeAndInput::without_input("push 7 push 19 sub write_io halt").run();
-        let expected_stdout = VecStream::new_bwords(&[BFieldElement::new(12)]);
+        let expected_stdout = VecStream::new(&[BFieldElement::new(12)]);
 
         assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
     }
