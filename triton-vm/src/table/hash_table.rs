@@ -265,8 +265,7 @@ impl ExtHashTable {
     #[allow(unreachable_code)]
     fn ext_consistency_constraints() -> Vec<MPolynomial<XFieldElement>> {
         panic!("ext_consistency_constraints should never be called; method is bypassed statically");
-        let constant =
-            |c| MPolynomial::from_constant(BFieldElement::new(c as u64).lift(), FULL_WIDTH);
+        let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
         let round_number = variables[ROUNDNUMBER as usize].clone();
@@ -281,12 +280,11 @@ impl ExtHashTable {
         // DNF: rn =/= 1 \/ cap = 0
         let round_number_is_not_1_or = (0..=NUM_ROUNDS + 1)
             .filter(|&r| r != 1)
-            .map(|r| round_number.clone() - constant(r))
+            .map(|r| round_number.clone() - constant(r as u64))
             .fold(constant(1), MPolynomial::mul);
 
         let mut consistency_polynomials = vec![
-            round_number_is_not_1_or.clone()
-                * (state10 - MPolynomial::from_constant(XFieldElement::one(), FULL_WIDTH)), // <-- domain separation bit
+            round_number_is_not_1_or.clone() * (state10 - constant(1)), // <-- domain separation bit
             round_number_is_not_1_or.clone() * state11,
             round_number_is_not_1_or.clone() * state12,
             round_number_is_not_1_or.clone() * state13,
@@ -296,7 +294,7 @@ impl ExtHashTable {
 
         // 2. round number is in {0, ..., 9}
         let polynomial = (0..=NUM_ROUNDS + 1)
-            .map(|r| constant(r) - round_number.clone())
+            .map(|r| constant(r as u64) - round_number.clone())
             .fold(constant(1), MPolynomial::mul);
         consistency_polynomials.push(polynomial);
 
@@ -342,8 +340,7 @@ impl ExtHashTable {
         _challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         panic!("ext_transition_constraints should never be called; method is bypassed statically");
-        let constant =
-            |c| MPolynomial::from_constant(BFieldElement::new(c as u64).lift(), 2 * FULL_WIDTH);
+        let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), 2 * FULL_WIDTH);
         let variables = MPolynomial::variables(2 * FULL_WIDTH, XFieldElement::one());
 
         let round_number = variables[ROUNDNUMBER as usize].clone();
@@ -363,8 +360,8 @@ impl ExtHashTable {
         // 2. if round number is 0, then next round number is 0
         // DNF: rn in {1, ..., 9} \/ rn* = 0
         let mut polynomial = (1..=NUM_ROUNDS + 1)
-            .map(|r| constant(r) - round_number.clone())
-            .fold(constant(1), MPolynomial::mul);
+            .map(|r| constant(r as u64) - round_number.clone())
+            .fold(constant(1_u64), MPolynomial::mul);
         polynomial *= round_number_next.clone();
         constraint_polynomials.push(polynomial);
 
@@ -394,12 +391,7 @@ impl ExtHashTable {
         let after_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| {
-                        MPolynomial::from_constant(
-                            BFieldElement::from(MDS[i * STATE_SIZE + j]).lift(),
-                            2 * FULL_WIDTH,
-                        ) * after_sbox[j].clone()
-                    })
+                    .map(|j| constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
                     .fold(constant(0), MPolynomial::add)
             })
             .collect_vec();
@@ -424,12 +416,7 @@ impl ExtHashTable {
         let before_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| {
-                        MPolynomial::from_constant(
-                            BFieldElement::from(MDS_INV[i * STATE_SIZE + j]).lift(),
-                            2 * FULL_WIDTH,
-                        ) * before_constants[j].clone()
-                    })
+                    .map(|j| constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
                     .fold(constant(0), MPolynomial::add)
             })
             .collect_vec();
