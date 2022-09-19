@@ -704,40 +704,66 @@ pub mod sample_programs {
     ///
     /// output: Result<(), VMFail>
     pub const MT_AP_VERIFY: &str = concat!(
-        "push 3 ",                                  // number of APs – should be an argument
+        "read_io ",                                 // number of authentication paths to test
+        "",                                         // stack: [num]
         "mt_ap_verify: ",                           // proper program starts here
         "push 0 swap1 write_mem pop pop ",          // store number of APs at RAM address 0
+        "",                                         // stack: []
         "read_io read_io read_io read_io read_io ", // read Merkle root
+        "",                                         // stack: [r4 r3 r2 r1 r0]
         "call check_aps ",                          //
-        "pop pop ",                                 // leave clean stack: number APs
         "pop pop pop pop pop ",                     // leave clean stack: Merkle root
+        "",                                         // stack: []
         "halt ",                                    // done – should be “return”
-        "",                                         //
-        "check_aps: ",                              // subroutine: check AP one at a time
-        "push 0 push 0 read_mem dup0 ",             // get number of APs left to check
-        "push 0 eq skiz return ",                   // no APs left
-        "push -1 add write_mem pop pop ",           // decrease number of APs to still check
-        "call get_idx_and_hash_leaf ",              //
-        "call traverse_tree ",                      //
-        "call at_tree_top ",                        //
-        "recurse ",                                 // check next AP
-        "",                                         //
-        "get_idx_and_hash_leaf: ",                  // subroutine: read index & hash leaf
-        "read_io ",                                 // node index
-        "push 0 push 0 push 0 push 0 push 0 ",      // prepare stack for hashing
-        "push 0 push 0 read_io read_io read_io ",   // leaf's value (XField Element)
-        "hash return ",                             // compute leaf's digest
-        "",                                         //
-        "traverse_tree: ",                          // subroutine: go up tree
-        "dup10 push 1 eq skiz return ",             // break loop if node index is 1
-        "divine_sibling hash recurse ",             // move up one level in the Merkle tree
-        "",                                         //
-        "at_tree_top: ",                            // subroutine: compare digests
-        "swap6 pop swap6 pop swap6 pop ",           // remove unnecessary “0”s from hashing
-        "swap6 pop swap6 pop pop ",                 // and remnant of node index
-        "assert_vector ",                           // actually compare to root of tree
-        "pop pop pop pop pop ",                     // clean up stack, leave only one root
-        "return ",                                  //
+        "",
+        "",                               // subroutine: check AP one at a time
+        "",                               // stack before: [* r4 r3 r2 r1 r0]
+        "",                               // stack after: [* r4 r3 r2 r1 r0]
+        "check_aps: ",                    // start function description:
+        "push 0 push 0 read_mem dup0 ",   // get number of APs left to check
+        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
+        "push 0 eq ",                     // see if there are authentication paths left
+        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
+        "skiz return ",                   // return if no authentication paths left
+        "push -1 add write_mem pop pop ", // decrease number of authentication paths left to check
+        "",                               // stack: [* r4 r3 r2 r1 r0]
+        "call get_idx_and_hash_leaf ",    //
+        "",                               // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
+        "call traverse_tree ",            //
+        "",                               // stack: [* r4 r3 r2 r1 r0 idx>>2 - - - - - - - - - -]
+        "call assert_tree_top ",          //
+        // stack: [* r4 r3 r2 r1 r0]
+        "recurse ", // check next AP
+        "",
+        "",                                         // subroutine: read index & hash leaf
+        "",                                         // stack before: [*]
+        "",                        // stack afterwards: [* idx d4 d3 d2 d1 d0 0 0 0 0 0]
+        "get_idx_and_hash_leaf: ", // start function description:
+        "read_io ",                // read node index
+        "read_io read_io read_io read_io read_io ", // read leaf's value
+        "push 0 push 0 push 0 push 0 push 0 ", // pad before fixed-length hash
+        "hash return ",            // compute leaf's digest
+        "",
+        "",                             // subroutine: go up tree
+        "",                             // stack before: [* idx - - - - - - - - - -]
+        "",                             // stack after: [* idx>>2 - - - - - - - - - -]
+        "traverse_tree: ",              // start function description:
+        "dup10 push 1 eq skiz return ", // break loop if node index is 1
+        "divine_sibling hash recurse ", // move up one level in the Merkle tree
+        "",
+        "",                     // subroutine: compare digests
+        "",                     // stack before: [* r4 r3 r2 r1 r0 idx a b c d e - - - - -]
+        "",                     // stack after: [* r4 r3 r2 r1 r0]
+        "assert_tree_top: ",    // start function description:
+        "pop pop pop pop pop ", // remove unnecessary “0”s from hashing
+        "",                     // stack: [* r4 r3 r2 r1 r0 idx a b c d e]
+        "swap1 swap2 swap3 swap4 swap5 ",
+        "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e idx]
+        "assert ",              //
+        "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e]
+        "assert_vector ",       // actually compare to root of tree
+        "pop pop pop pop pop ", // clean up stack, leave only one root
+        "return ",              //
     );
 
     // see also: get_colinear_y in src/shared_math/polynomial.rs

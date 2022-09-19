@@ -516,24 +516,47 @@ mod triton_vm_tests {
         }
     }
 
-    fn test_program_for_divine_sibling() -> SourceCodeAndInput {
+    fn test_program_for_divine_sibling_noswitch() -> SourceCodeAndInput {
         let source_code = "
             push 3 \
-            push 2 push 2 push 2 push 2 push 2 \
-            push 0 push 0 push 0 push 0 push 0 \
+            push 4 push 2 push 2 push 2 push 1 \
+            push 5679457 push 1337 push 345887 push -234578456 push 23657565 \
             divine_sibling \
-            assert assert assert assert assert \
+            push 1 add assert assert assert assert assert \
+            assert \
             push -1 add assert \
             push -1 add assert \
             push -1 add assert \
-            push -1 add assert \
-            push -1 add assert \
+            push -3 add assert \
             assert";
         let one = BFieldElement::one();
+        let zero = BFieldElement::zero();
         SourceCodeAndInput {
             source_code: source_code.to_string(),
             input: vec![],
-            secret_input: vec![one, one, one, one, one],
+            secret_input: vec![one, one, one, one, zero],
+        }
+    }
+
+    fn test_program_for_divine_sibling_switch() -> SourceCodeAndInput {
+        let source_code = "
+            push 2 \
+            push 4 push 2 push 2 push 2 push 1 \
+            push 5679457 push 1337 push 345887 push -234578456 push 23657565 \
+            divine_sibling \
+            assert \
+            push -1 add assert \
+            push -1 add assert \
+            push -1 add assert \
+            push -3 add assert \
+            push 1 add assert assert assert assert assert \
+            assert";
+        let one = BFieldElement::one();
+        let zero = BFieldElement::zero();
+        SourceCodeAndInput {
+            source_code: source_code.to_string(),
+            input: vec![],
+            secret_input: vec![one, one, one, one, zero],
         }
     }
 
@@ -619,7 +642,8 @@ mod triton_vm_tests {
             test_program_for_call_recurse_return(),
             test_program_for_write_mem_read_mem(),
             test_program_for_hash(),
-            test_program_for_divine_sibling(),
+            test_program_for_divine_sibling_noswitch(),
+            test_program_for_divine_sibling_switch(),
             test_program_for_assert_vector(),
             test_program_for_add_mul_invert(),
             test_program_for_instruction_split(),

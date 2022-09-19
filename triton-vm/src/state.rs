@@ -797,14 +797,13 @@ impl<'pgm> VMState<'pgm> {
         // st10
         let node_index: u32 = self.op_stack.pop()?.try_into()?;
 
-        // nondeterministic guess
-        let sibling_digest = [
-            secret_in.read_elem()?,
-            secret_in.read_elem()?,
-            secret_in.read_elem()?,
-            secret_in.read_elem()?,
-            secret_in.read_elem()?,
-        ];
+        // nondeterministic guess, flipped
+        let mut sibling_digest = [BFieldElement::zero(); DIGEST_LENGTH];
+        sibling_digest[4] = secret_in.read_elem()?;
+        sibling_digest[3] = secret_in.read_elem()?;
+        sibling_digest[2] = secret_in.read_elem()?;
+        sibling_digest[1] = secret_in.read_elem()?;
+        sibling_digest[0] = secret_in.read_elem()?;
 
         // least significant bit
         let hv0 = node_index % 2;
@@ -908,6 +907,12 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 mod vm_state_tests {
+
+    use rand::thread_rng;
+    use twenty_first::shared_math::traits::GetRandomElements;
+    use twenty_first::util_types::merkle_tree::MerkleTree;
+    use twenty_first::util_types::simple_hasher::Hasher;
+
     use super::*;
     use crate::instruction::sample_programs;
     use crate::op_stack::OP_STACK_REG_COUNT;
@@ -1030,149 +1035,185 @@ mod vm_state_tests {
     }
 
     #[test]
-    #[ignore]
     fn run_tvm_mt_ap_verify_test() {
+        // generate merkle tree
+        type H = RescuePrimeRegular;
+        type Digest = <H as Hasher>::Digest;
+        let hasher = H::new();
+        let mut rng = thread_rng();
+        const NUM_LEAFS: usize = 64;
+        let leafs: [Digest; NUM_LEAFS] = (0..NUM_LEAFS)
+            .map(|_| {
+                BFieldElement::random_elements(DIGEST_LENGTH, &mut rng)
+                    .try_into()
+                    .unwrap()
+                // hasher.hash_sequence(&BFieldElement::new(i as u64).to_sequence())
+            })
+            .collect_vec()
+            .try_into()
+            .unwrap();
+        let zero_padding = [BFieldElement::zero(); DIGEST_LENGTH];
+        let digests = leafs
+            .iter()
+            .map(|l| hasher.hash_pair(&zero_padding, l))
+            .collect_vec();
+        let merkle_tree = MerkleTree::<H>::from_digests(&digests);
+        let root = merkle_tree.get_root();
+
+        // generate program
         let program = Program::from_code(sample_programs::MT_AP_VERIFY).unwrap();
-        println!("Successfully parsed the program.");
+        let order: Vec<usize> = (0..5).rev().collect();
         let (trace, _out, err) = program.run_with_input(
             &[
+                // number of path tests
+                BFieldElement::new(3),
                 // Merkle root
-                BFieldElement::new(2661879877493968030),
-                BFieldElement::new(8411897398996365015),
-                BFieldElement::new(11724741215505059774),
-                BFieldElement::new(10869446635029787183),
-                BFieldElement::new(3194712170375950680),
+                root[order[0]],
+                root[order[1]],
+                root[order[2]],
+                root[order[3]],
+                root[order[4]],
                 // node index 64, leaf index 0
                 BFieldElement::new(64),
                 // value of leaf with index 0
-                BFieldElement::new(17),
-                BFieldElement::new(22),
-                BFieldElement::new(19),
+                leafs[0][order[0]],
+                leafs[0][order[1]],
+                leafs[0][order[2]],
+                leafs[0][order[3]],
+                leafs[0][order[4]],
                 // node index 92, leaf index 28
+                // 92 = 1011100_2
+                // 28 =   11100_2
                 BFieldElement::new(92),
                 // value of leaf with index 28
-                BFieldElement::new(45),
-                BFieldElement::new(50),
-                BFieldElement::new(47),
+                leafs[28][order[0]],
+                leafs[28][order[1]],
+                leafs[28][order[2]],
+                leafs[28][order[3]],
+                leafs[28][order[4]],
                 // node index 119, leaf index 55
                 BFieldElement::new(119),
+                // 119 = 1110111_2
+                // 55  =  110111_2
                 // value of leaf with node 55
-                BFieldElement::new(72),
-                BFieldElement::new(77),
-                BFieldElement::new(74),
+                leafs[55][order[0]],
+                leafs[55][order[1]],
+                leafs[55][order[2]],
+                leafs[55][order[3]],
+                leafs[55][order[4]],
             ],
             &[
                 // Merkle Authentication Path 0
                 // Merkle Authentication Path 0 Element 0
-                BFieldElement::new(7433611961471031299),
-                BFieldElement::new(10663067815302282105),
-                BFieldElement::new(11189271637150912214),
-                BFieldElement::new(6731301558776007763),
-                BFieldElement::new(12404371806864851196),
+                merkle_tree.get_authentication_path(0)[0][order[0]],
+                merkle_tree.get_authentication_path(0)[0][order[1]],
+                merkle_tree.get_authentication_path(0)[0][order[2]],
+                merkle_tree.get_authentication_path(0)[0][order[3]],
+                merkle_tree.get_authentication_path(0)[0][order[4]],
                 // Merkle Authentication Path 0 Element 1
-                BFieldElement::new(15447170459020364568),
-                BFieldElement::new(13311771520545451802),
-                BFieldElement::new(4832613912751814227),
-                BFieldElement::new(16118512681346800136),
-                BFieldElement::new(11903034542985100612),
+                merkle_tree.get_authentication_path(0)[1][order[0]],
+                merkle_tree.get_authentication_path(0)[1][order[1]],
+                merkle_tree.get_authentication_path(0)[1][order[2]],
+                merkle_tree.get_authentication_path(0)[1][order[3]],
+                merkle_tree.get_authentication_path(0)[1][order[4]],
                 // Merkle Authentication Path 0 Element 2
-                BFieldElement::new(927166763011592563),
-                BFieldElement::new(1017721141586418898),
-                BFieldElement::new(14149577177119432718),
-                BFieldElement::new(11112535232426569259),
-                BFieldElement::new(6770923340167310082),
+                merkle_tree.get_authentication_path(0)[2][order[0]],
+                merkle_tree.get_authentication_path(0)[2][order[1]],
+                merkle_tree.get_authentication_path(0)[2][order[2]],
+                merkle_tree.get_authentication_path(0)[2][order[3]],
+                merkle_tree.get_authentication_path(0)[2][order[4]],
                 // Merkle Authentication Path 0 Element 3
-                BFieldElement::new(11997402720255929816),
-                BFieldElement::new(7083119985125877931),
-                BFieldElement::new(3583918993470398367),
-                BFieldElement::new(12665589384229632447),
-                BFieldElement::new(4869924221127107207),
+                merkle_tree.get_authentication_path(0)[3][order[0]],
+                merkle_tree.get_authentication_path(0)[3][order[1]],
+                merkle_tree.get_authentication_path(0)[3][order[2]],
+                merkle_tree.get_authentication_path(0)[3][order[3]],
+                merkle_tree.get_authentication_path(0)[3][order[4]],
                 // Merkle Authentication Path 0 Element 4
-                BFieldElement::new(4108830855587634814),
-                BFieldElement::new(11363551275926927759),
-                BFieldElement::new(8897943612193465442),
-                BFieldElement::new(18175199505544299571),
-                BFieldElement::new(5933081913383911549),
+                merkle_tree.get_authentication_path(0)[4][order[0]],
+                merkle_tree.get_authentication_path(0)[4][order[1]],
+                merkle_tree.get_authentication_path(0)[4][order[2]],
+                merkle_tree.get_authentication_path(0)[4][order[3]],
+                merkle_tree.get_authentication_path(0)[4][order[4]],
                 // Merkle Authentication Path 0 Element 5
-                BFieldElement::new(239086846863014618),
-                BFieldElement::new(18353654918351264251),
-                BFieldElement::new(1162413056004073118),
-                BFieldElement::new(63172233802162855),
-                BFieldElement::new(15287652336563130555),
+                merkle_tree.get_authentication_path(0)[5][order[0]],
+                merkle_tree.get_authentication_path(0)[5][order[1]],
+                merkle_tree.get_authentication_path(0)[5][order[2]],
+                merkle_tree.get_authentication_path(0)[5][order[3]],
+                merkle_tree.get_authentication_path(0)[5][order[4]],
                 // Merkle Authentication Path 1
                 // Merkle Authentication Path 1 Element 0
-                BFieldElement::new(9199975892950715767),
-                BFieldElement::new(18392437377232084500),
-                BFieldElement::new(7389509101855274876),
-                BFieldElement::new(13193152724141987884),
-                BFieldElement::new(12764531673520060724),
+                merkle_tree.get_authentication_path(28)[0][order[0]],
+                merkle_tree.get_authentication_path(28)[0][order[1]],
+                merkle_tree.get_authentication_path(28)[0][order[2]],
+                merkle_tree.get_authentication_path(28)[0][order[3]],
+                merkle_tree.get_authentication_path(28)[0][order[4]],
                 // Merkle Authentication Path 1 Element 1
-                BFieldElement::new(13265185672483741593),
-                BFieldElement::new(4801722111881156327),
-                BFieldElement::new(297253697970945484),
-                BFieldElement::new(8955967409623509220),
-                BFieldElement::new(10440367450900769517),
+                merkle_tree.get_authentication_path(28)[1][order[0]],
+                merkle_tree.get_authentication_path(28)[1][order[1]],
+                merkle_tree.get_authentication_path(28)[1][order[2]],
+                merkle_tree.get_authentication_path(28)[1][order[3]],
+                merkle_tree.get_authentication_path(28)[1][order[4]],
                 // Merkle Authentication Path 1 Element 2
-                BFieldElement::new(3378320220263195325),
-                BFieldElement::new(17709073937843856976),
-                BFieldElement::new(3737595776877974498),
-                BFieldElement::new(1050267233733511018),
-                BFieldElement::new(18417031760560110797),
+                merkle_tree.get_authentication_path(28)[2][order[0]],
+                merkle_tree.get_authentication_path(28)[2][order[1]],
+                merkle_tree.get_authentication_path(28)[2][order[2]],
+                merkle_tree.get_authentication_path(28)[2][order[3]],
+                merkle_tree.get_authentication_path(28)[2][order[4]],
                 // Merkle Authentication Path 1 Element 3
-                BFieldElement::new(11029368221459961736),
-                BFieldElement::new(2601431810170510531),
-                BFieldElement::new(3845091993529784163),
-                BFieldElement::new(18440963282863373173),
-                BFieldElement::new(15782363319704900162),
+                merkle_tree.get_authentication_path(28)[3][order[0]],
+                merkle_tree.get_authentication_path(28)[3][order[1]],
+                merkle_tree.get_authentication_path(28)[3][order[2]],
+                merkle_tree.get_authentication_path(28)[3][order[3]],
+                merkle_tree.get_authentication_path(28)[3][order[4]],
                 // Merkle Authentication Path 1 Element 4
-                BFieldElement::new(10193657868364591231),
-                BFieldElement::new(10099674955292945516),
-                BFieldElement::new(11861368391420694868),
-                BFieldElement::new(12281343418175235418),
-                BFieldElement::new(4979963636183136673),
+                merkle_tree.get_authentication_path(28)[4][order[0]],
+                merkle_tree.get_authentication_path(28)[4][order[1]],
+                merkle_tree.get_authentication_path(28)[4][order[2]],
+                merkle_tree.get_authentication_path(28)[4][order[3]],
+                merkle_tree.get_authentication_path(28)[4][order[4]],
                 // Merkle Authentication Path 1 Element 5
-                BFieldElement::new(239086846863014618),
-                BFieldElement::new(18353654918351264251),
-                BFieldElement::new(1162413056004073118),
-                BFieldElement::new(63172233802162855),
-                BFieldElement::new(15287652336563130555),
+                merkle_tree.get_authentication_path(28)[5][order[0]],
+                merkle_tree.get_authentication_path(28)[5][order[1]],
+                merkle_tree.get_authentication_path(28)[5][order[2]],
+                merkle_tree.get_authentication_path(28)[5][order[3]],
+                merkle_tree.get_authentication_path(28)[5][order[4]],
                 // Merkle Authentication Path 2
                 // Merkle Authentication Path 2 Element 0
-                BFieldElement::new(4481571126490316833),
-                BFieldElement::new(8911895412157369567),
-                BFieldElement::new(5835492500982839536),
-                BFieldElement::new(7582358620718112504),
-                BFieldElement::new(17844368221186872833),
+                merkle_tree.get_authentication_path(55)[0][order[0]],
+                merkle_tree.get_authentication_path(55)[0][order[1]],
+                merkle_tree.get_authentication_path(55)[0][order[2]],
+                merkle_tree.get_authentication_path(55)[0][order[3]],
+                merkle_tree.get_authentication_path(55)[0][order[4]],
                 // Merkle Authentication Path 2 Element 1
-                BFieldElement::new(14881877338661058963),
-                BFieldElement::new(13193566745649419854),
-                BFieldElement::new(6162692737252551562),
-                BFieldElement::new(11371203176785325596),
-                BFieldElement::new(9217246242682535563),
+                merkle_tree.get_authentication_path(55)[1][order[0]],
+                merkle_tree.get_authentication_path(55)[1][order[1]],
+                merkle_tree.get_authentication_path(55)[1][order[2]],
+                merkle_tree.get_authentication_path(55)[1][order[3]],
+                merkle_tree.get_authentication_path(55)[1][order[4]],
                 // Merkle Authentication Path 2 Element 2
-                BFieldElement::new(13364374456634379783),
-                BFieldElement::new(11904780360815341732),
-                BFieldElement::new(13838542444368435771),
-                BFieldElement::new(3920552087776628004),
-                BFieldElement::new(11527431398195960804),
+                merkle_tree.get_authentication_path(55)[2][order[0]],
+                merkle_tree.get_authentication_path(55)[2][order[1]],
+                merkle_tree.get_authentication_path(55)[2][order[2]],
+                merkle_tree.get_authentication_path(55)[2][order[3]],
+                merkle_tree.get_authentication_path(55)[2][order[4]],
                 // Merkle Authentication Path 2 Element 3
-                BFieldElement::new(1435791031511559365),
-                BFieldElement::new(15545210664684920678),
-                BFieldElement::new(3431133792584929176),
-                BFieldElement::new(8726944733794952298),
-                BFieldElement::new(16054902179813715844),
+                merkle_tree.get_authentication_path(55)[3][order[0]],
+                merkle_tree.get_authentication_path(55)[3][order[1]],
+                merkle_tree.get_authentication_path(55)[3][order[2]],
+                merkle_tree.get_authentication_path(55)[3][order[3]],
+                merkle_tree.get_authentication_path(55)[3][order[4]],
                 // Merkle Authentication Path 2 Element 4
-                BFieldElement::new(6120454613508763402),
-                BFieldElement::new(13046522894794631380),
-                BFieldElement::new(12811925518855679797),
-                BFieldElement::new(17271969057789657726),
-                BFieldElement::new(9660251638518579939),
+                merkle_tree.get_authentication_path(55)[4][order[0]],
+                merkle_tree.get_authentication_path(55)[4][order[1]],
+                merkle_tree.get_authentication_path(55)[4][order[2]],
+                merkle_tree.get_authentication_path(55)[4][order[3]],
+                merkle_tree.get_authentication_path(55)[4][order[4]],
                 // Merkle Authentication Path 2 Element 5
-                BFieldElement::new(15982248888191274947),
-                BFieldElement::new(16924250102716460133),
-                BFieldElement::new(10777256019074274502),
-                BFieldElement::new(5171550821485636583),
-                BFieldElement::new(1372154037340399671),
+                merkle_tree.get_authentication_path(55)[5][order[0]],
+                merkle_tree.get_authentication_path(55)[5][order[1]],
+                merkle_tree.get_authentication_path(55)[5][order[2]],
+                merkle_tree.get_authentication_path(55)[5][order[3]],
+                merkle_tree.get_authentication_path(55)[5][order[4]],
             ],
         );
 
