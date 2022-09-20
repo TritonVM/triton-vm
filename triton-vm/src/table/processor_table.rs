@@ -257,7 +257,7 @@ impl ProcessorTable {
                     Instruction::Div => (
                         extension_row[ST0 as usize], // remainder
                         prow[ST0 as usize].lift(),   // divisor
-                        XFieldElement::one(),        // result of U32 Table's `lt`
+                        XFieldElement::one(),        // result of U32 Table's `lt` (must be 1)
                     ),
                     // Since instruction `reverse` is a unary, not a binary, operation, the right-
                     // hand side is unconstrained.
@@ -1622,11 +1622,6 @@ impl RowPairConstraints {
         // $osp' - osp = 0$
         let osp_does_not_change = self.osp_next() - self.osp();
 
-        // Helper variable hv0 is 1, indicating that r < d.
-        //
-        // $hv0 - 1 = 0$
-        let hv0_is_1 = self.hv0() - self.one();
-
         vec![
             denominator_is_not_zero,
             st1_becomes_quotient_and_st0_becomes_remainder,
@@ -1646,7 +1641,6 @@ impl RowPairConstraints {
             st15_does_not_change,
             osv_does_not_change,
             osp_does_not_change,
-            hv0_is_1,
         ]
     }
 

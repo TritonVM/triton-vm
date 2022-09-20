@@ -519,7 +519,7 @@ A Permutation Argument between [Processor Table](processor-table.md)'s `st0`, `s
 For correct division, it is required that the remainder `r` is smaller than the divisor `d`.
 The result of comparing `r` to `d` is stored in helper variable `hv0`.
 
-A Permutation Argument between [Processor Table](processor-table.md)'s `st0'`, `st0`, `hv0'` and [Uint32 Operations Table](u32-table.md)'s `LHS`, `RHS`, `LT` guarantees that `hv0 = (r < d)`.
+A Permutation Argument between [Processor Table](processor-table.md)'s `st0'` and `st0`, and [Uint32 Operations Table](u32-table.md)'s `LHS`, `RHS`, `LT` guarantees that `r < d`.
 
 ### Description
 
@@ -567,15 +567,7 @@ A Permutation Argument between [Processor Table](processor-table.md)'s `st0'`, `
 
 ### Helper variable definitions for `div`
 
-TODO: Fill this section when `hv0` has been removed for `div`.
-
-```rust
-hvs[0] = 1.into();
-let st1 = self.op_stack.safe_peek(ST1);
-if !st1.is_zero() {
-    hvs[2] = st1.inverse();
-}
-```
+In order to prevent division by zero, helper variable `hv2` holds the inverse of stack element `st0`.
 
 ## Instruction `xxadd`
 

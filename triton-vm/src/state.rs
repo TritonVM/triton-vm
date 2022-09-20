@@ -177,7 +177,6 @@ impl<'pgm> VMState<'pgm> {
                 }
             }
             Div => {
-                hvs[0] = BFieldElement::one();
                 let st0 = self.op_stack.safe_peek(ST0);
                 if !st0.is_zero() {
                     hvs[2] = st0.inverse();
