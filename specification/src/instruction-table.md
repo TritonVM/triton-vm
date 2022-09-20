@@ -41,7 +41,6 @@ Instruction Table:
 
 ## Padding
 
-After the Instruction Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is a direct copy of the Instruction Table's last row, with the exception of the column `address`.
 Column `address` increases by 1 between any two consecutive rows if at least one of the two rows is a padding row.
 

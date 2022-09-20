@@ -5,7 +5,6 @@ Each register is assigned a column in the processor table.
 
 ## Padding
 
-After the Processor Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is a direct copy of the Processor Table's last row, with the exception of the cycle count column `clk`.
 Column `clk` increases by 1 between any two consecutive rows, even padding rows.
 

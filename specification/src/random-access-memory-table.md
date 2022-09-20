@@ -2,19 +2,19 @@
 
 The RAM is accessible through `read_mem` and `write_mem` commands.
 The RAM Table has four columns:
-the cycle counter `clk`, RAM address pointer `ramp`, the value of the memory at that address `ramv`, and helper variable `hv6`.
+the cycle counter `clk`, RAM address pointer `ramp`, the value of the memory at that address `ramv`, and helper variable `InverseOfRampDifference`.
 Columns `clk` and `ramv` correspond to the columns of the same name in the Processor Table.
 Column `ramp` corresponds to the Processor Table's column `st1`.
-Column `hv6` helps with detecting a change of `ramp` across two RAM Table rows.
-In order to explain `hv6` more easily, we first explain how to sort the RAM Table's rows.
+Column `InverseOfRampDifference` helps with detecting a change of `ramp` across two RAM Table rows.
+In order to explain `InverseOfRampDifference` more easily, we first explain how to sort the RAM Table's rows.
 
 Up to order, the rows of the Hash Table in columns `clk`, `ramp`, `ramv` are identical to the rows in the Processor Table in columns `clk`, `st1`, and `ramv`.
 In the Hash Table, the rows are sorted by memory address first, then by cycle counter.
 
-Coming back to `hv6`:
-if the difference between `ramp` in row $i$ and row $i+1$ is 0, then `hv6` in row $i$ is 0.
-Otherwise, `hv6` in row $i$ is the multiplicative inverse of the difference between `ramp` in row $i+1$ and `ramp` in row $i$.
-In the last row, there being no next row, `hv6` is 0.
+Coming back to `InverseOfRampDifference`:
+if the difference between `ramp` in row $i$ and row $i+1$ is 0, then `InverseOfRampDifference` in row $i$ is 0.
+Otherwise, `InverseOfRampDifference` in row $i$ is the multiplicative inverse of the difference between `ramp` in row $i+1$ and `ramp` in row $i$.
+In the last row, there being no next row, `InverseOfRampDifference` is 0.
 
 An example of the mechanics can be found below.
 For illustrative purposes only, we use four stack registers `st0` through `st3` in the example.
@@ -59,48 +59,50 @@ Processor Table:
 
 RAM Table:
 
-| `clk` | `ramp` (≘`st1`) | `ramv` |     `hv6` |
-|------:|----------------:|-------:|----------:|
-|     0 |               0 |      0 |         0 |
-|     1 |               0 |      0 |         0 |
-|     4 |               0 |      0 |         0 |
-|     5 |               0 |      0 |         0 |
-|     6 |               0 |      0 |         0 |
-|     9 |               0 |      0 |         0 |
-|    10 |               0 |      0 |         0 |
-|    11 |               0 |      0 |         0 |
-|    14 |               0 |      0 |         0 |
-|    15 |               0 |      0 |         0 |
-|    16 |               0 |      0 |         0 |
-|    19 |               0 |      0 |         0 |
-|    20 |               0 |      0 |         0 |
-|    21 |               0 |      0 |         0 |
-|    24 |               0 |      0 |         0 |
-|    25 |               0 |      0 |         0 |
-|    26 |               0 |      0 |  $5^{-1}$ |
-|     2 |               5 |      0 |         0 |
-|     3 |               5 |      6 |         0 |
-|    12 |               5 |      6 |         0 |
-|    13 |               5 |      6 |         0 |
-|    22 |               5 |      6 |         0 |
-|    23 |               5 |      7 |         0 |
-|    30 |               5 |      7 |         0 |
-|    31 |               5 |      7 | $10^{-1}$ |
-|     7 |              15 |      0 |         0 |
-|     8 |              15 |     16 |         0 |
-|    17 |              15 |     16 |         0 |
-|    18 |              15 |     16 |         0 |
-|    27 |              15 |     16 |         0 |
-|    28 |              15 |     16 |         1 |
-|    29 |              16 |      0 |         0 |
+| `clk` | `ramp` (≘`st1`) | `ramv` | `InverseOfRampDifference` |
+|------:|----------------:|-------:|--------------------------:|
+|     0 |               0 |      0 |                         0 |
+|     1 |               0 |      0 |                         0 |
+|     4 |               0 |      0 |                         0 |
+|     5 |               0 |      0 |                         0 |
+|     6 |               0 |      0 |                         0 |
+|     9 |               0 |      0 |                         0 |
+|    10 |               0 |      0 |                         0 |
+|    11 |               0 |      0 |                         0 |
+|    14 |               0 |      0 |                         0 |
+|    15 |               0 |      0 |                         0 |
+|    16 |               0 |      0 |                         0 |
+|    19 |               0 |      0 |                         0 |
+|    20 |               0 |      0 |                         0 |
+|    21 |               0 |      0 |                         0 |
+|    24 |               0 |      0 |                         0 |
+|    25 |               0 |      0 |                         0 |
+|    26 |               0 |      0 |                  $5^{-1}$ |
+|     2 |               5 |      0 |                         0 |
+|     3 |               5 |      6 |                         0 |
+|    12 |               5 |      6 |                         0 |
+|    13 |               5 |      6 |                         0 |
+|    22 |               5 |      6 |                         0 |
+|    23 |               5 |      7 |                         0 |
+|    30 |               5 |      7 |                         0 |
+|    31 |               5 |      7 |                 $10^{-1}$ |
+|     7 |              15 |      0 |                         0 |
+|     8 |              15 |     16 |                         0 |
+|    17 |              15 |     16 |                         0 |
+|    18 |              15 |     16 |                         0 |
+|    27 |              15 |     16 |                         0 |
+|    28 |              15 |     16 |                         1 |
+|    29 |              16 |      0 |                         0 |
 
 
 ## Padding
 
-After the RAM Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
-Each padding row is a direct copy of the RAM Table's last row, with the exception of the cycle count column `clk`.
-In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
-This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the RAM Table's `clk` column.
+A padding row is a direct copy of the RAM Table's row with the highest value for column `clk`, called template row, with the exception of the cycle count column `clk`.
+In a padding row, the value of column `clk` is 1 greater than the value of column `clk` in the template row.
+The padding row is inserted right below the template row.
+Finally, the value of column `InverseOfRampDifference` is set to 0 in the template row.
+These steps are repeated until the desired padded height is reached.
+In total, above steps ensure that the Permutation Argument between the RAM Table and the [Processor Table](processor-table.md) holds up.
 
 ## Initial Constraints
 
@@ -120,22 +122,22 @@ None.
 
 ## Transition Constraints
 
-1. If `(ramp - ramp')` is 0, then `hv6` is 0, else `hv6` is the multiplicative inverse of `(ramp' - ramp)`.
+1. If `(ramp - ramp')` is 0, then `InverseOfRampDifference` is 0, else `InverseOfRampDifference` is the multiplicative inverse of `(ramp' - ramp)`.
 1. If the `ramp` changes, then the new `ramv` must be 0.
 1. If the `ramp` does not change and the `ramv` does change, then the cycle counter `clk` must increase by 1.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
-1. `hv6` is 0 or `hv6` is the inverse of `(ramp' - ramp)`.
-1. `(ramp' - ramp)` is zero or `hv6` is the inverse of `(ramp' - ramp)`.
+1. `InverseOfRampDifference` is 0 or `InverseOfRampDifference` is the inverse of `(ramp' - ramp)`.
+1. `(ramp' - ramp)` is zero or `InverseOfRampDifference` is the inverse of `(ramp' - ramp)`.
 1. The `ramp` does not change or the new `ramv` is 0.
 1. The `ramp` does change or the `ramv` does not change or the `clk` increases by 1.
 
 **Transition Constraints as Polynomials**
 
-1. `hv6·(hv6·(ramp' - ramp) - 1)`
-1. `(ramp' - ramp)·(hv6·(ramp' - ramp) - 1)`
+1. `InverseOfRampDifference·(InverseOfRampDifference·(ramp' - ramp) - 1)`
+1. `(ramp' - ramp)·(InverseOfRampDifference·(ramp' - ramp) - 1)`
 1. `(ramp' - ramp)·ramv'`
-1. `(hv6·(ramp' - ramp) - 1)·(ramv' - ramv)·(clk' - (clk + 1))`
+1. `(InverseOfRampDifference·(ramp' - ramp) - 1)·(ramv' - ramv)·(clk' - (clk + 1))`
 
 ## Terminal Constraints
 

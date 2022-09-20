@@ -3,17 +3,17 @@
 The U32 Operations Table is a lookup table for “difficult” 32-bit unsigned integer operations.
 The two inputs to the U32 Operations Table are left-hand side (LHS) and right-hand side (RHS).
 
-| `idc` | `bits` | `32_minus_bits_inv` | `ci`       | LHS (`st0`) | RHS (`st1`) | LT                  | AND                     | XOR                     | REV           | LHS_inv             | RHS_inv             |
+| `idc` | `bits` | `33_minus_bits_inv` | `ci`       | LHS (`st0`) | RHS (`st1`) | LT                  | AND                     | XOR                     | REV           | LHS_inv             | RHS_inv             |
 |------:|-------:|--------------------:|:-----------|:------------|:------------|:--------------------|:------------------------|:------------------------|:--------------|:--------------------|:--------------------|
-|     1 |      0 |           $32^{-1}$ | e.g. `and` | `a`         | `b`         | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      | `a`${}^{-1}$        | `b`${}^{-1}$        |
-|     0 |      1 |           $31^{-1}$ | e.g. `and` | `a >> 1`    | `b >> 1`    | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` | `(a >> 1)`${}^{-1}$ | `(b >> 1)`${}^{-1}$ |
-|     0 |      2 |           $30^{-1}$ | e.g. `and` | `a >> 2`    | `b >> 2`    | …                   | …                       | …                       | …             | …                   | …                   |
+|     1 |      0 |           $33^{-1}$ | e.g. `and` | `a`         | `b`         | `a<b`               | `a and b`               | `a xor b`               | `rev(a)`      | `a`${}^{-1}$        | `b`${}^{-1}$        |
+|     0 |      1 |           $32^{-1}$ | e.g. `and` | `a >> 1`    | `b >> 1`    | `(a >> 1)<(b >> 1)` | `(a >> 1) and (b >> 1)` | `(a >> 1) xor (b >> 1)` | `rev(a >> 1)` | `(a >> 1)`${}^{-1}$ | `(b >> 1)`${}^{-1}$ |
+|     0 |      2 |           $31^{-1}$ | e.g. `and` | `a >> 2`    | `b >> 2`    | …                   | …                       | …                       | …             | …                   | …                   |
 |     … |      … |                   … | …          | …           | …           | …                   | …                       | …                       | …             | …                   | …                   |
-|     0 |    $n$ |       $(32-n)^{-1}$ | e.g. `and` | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
-|     1 |      0 |           $32^{-1}$ | e.g. `lt`  | `c`         | `d`         | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      | `c`${}^{-1}$        | `d`${}^{-1}$        |
-|     0 |      1 |           $31^{-1}$ | e.g. `lt`  | `c >> 1`    | `d >> 1`    | …                   | …                       | …                       | …             | …                   | …                   |
+|     0 |    $n$ |       $(33-n)^{-1}$ | e.g. `and` | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
+|     1 |      0 |           $33^{-1}$ | e.g. `lt`  | `c`         | `d`         | `c<d`               | `c and d`               | `c xor d`               | `rev(c)`      | `c`${}^{-1}$        | `d`${}^{-1}$        |
+|     0 |      1 |           $32^{-1}$ | e.g. `lt`  | `c >> 1`    | `d >> 1`    | …                   | …                       | …                       | …             | …                   | …                   |
 |     … |      … |                   … | …          | …           | …           | …                   | …                       | …                       | …             | …                   | …                   |
-|     0 |    $m$ |       $(32-m)^{-1}$ | e.g. `lt`  | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
+|     0 |    $m$ |       $(33-m)^{-1}$ | e.g. `lt`  | 0           | 0           | 2                   | 0                       | 0                       | 0             | 0                   | 0                   |
 |     … |      … |                   … | …          | …           | …           | …                   | …                       | …                       | …             |                     |                     |
 
 LT can take three possible values:
@@ -32,12 +32,11 @@ For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `re
 
 ## Padding
 
-After the Uint32 Operations Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is the following row:
 
-| `idc` | `bits` | `32_minus_bits_inv` | `ci` | LHS | RHS | LT | AND | XOR | REV | LHS_inv | RHS_inv |
+| `idc` | `bits` | `33_minus_bits_inv` | `ci` | LHS | RHS | LT | AND | XOR | REV | LHS_inv | RHS_inv |
 |:------|-------:|--------------------:|-----:|----:|----:|---:|----:|----:|----:|--------:|--------:|
-| 0     |      0 |           $32^{-1}$ |    0 |   0 |   0 |  2 |   0 |   0 |   0 |       0 |       0 |
+| 0     |      0 |           $33^{-1}$ |    0 |   0 |   0 |  2 |   0 |   0 |   0 |       0 |       0 |
 
 ## Initial Constraints
 
@@ -58,7 +57,7 @@ Each padding row is the following row:
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The indicator `idc` is 0 or 1.
 1. `idc` is 0 or `bits` is 0.
-1. `32_minus_bits_inv` is the multiplicative inverse of (`bits` - 32).
+1. `33_minus_bits_inv` is the multiplicative inverse of (33 - `bits`).
 1. LHS is 0, or LHS_inv is the inverse of LHS.
 1. LHS_inv is 0, or LHS_inv is the inverse of LHS.
 1. RHS is 0, or RHS_inv is the inverse of RHS.

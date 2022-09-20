@@ -15,7 +15,6 @@ The Hash Table has 49 columns:
 
 ## Padding
 
-After the Hash Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is the all-zero row.
 
 ## Initial Constraints
