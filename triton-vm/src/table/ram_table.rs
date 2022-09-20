@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
@@ -9,7 +9,7 @@ use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::RamTableColumn::{self, *};
@@ -45,6 +45,19 @@ pub struct ExtRamTable {
     inherited_table: Table<XFieldElement>,
 }
 
+impl Default for ExtRamTable {
+    fn default() -> Self {
+        Self {
+            inherited_table: Table::new(
+                BASE_WIDTH,
+                FULL_WIDTH,
+                vec![],
+                "EmptyExtRamTable".to_string(),
+            ),
+        }
+    }
+}
+
 impl Evaluable for ExtRamTable {}
 impl Quotientable for ExtRamTable {}
 impl QuotientableExtensionTable for ExtRamTable {}
@@ -60,28 +73,26 @@ impl InheritsFromTable<XFieldElement> for ExtRamTable {
 }
 
 impl RamTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let unpadded_height = matrix.len();
-        let padded_height = base_table::padded_height(unpadded_height);
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "RamTable".to_string(),
-        );
-
+    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
+        let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "RamTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
+    pub fn codeword_table(
+        &self,
+        fri_domain: &FriDomain<BFieldElement>,
+        omicron: BFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(fri_domain, base_columns);
-
+        let codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_columns,
+        );
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
     }
@@ -90,6 +101,7 @@ impl RamTable {
         &self,
         challenges: &RamTableChallenges,
         initials: &RamTableEndpoints,
+        interpolant_degree: Degree,
     ) -> (ExtRamTable, RamTableEndpoints) {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product = initials.processor_perm_product;
@@ -130,6 +142,7 @@ impl RamTable {
 
         let inherited_table = self.extension(
             extension_matrix,
+            interpolant_degree,
             ExtRamTable::ext_initial_constraints(),
             ExtRamTable::ext_consistency_constraints(challenges),
             ExtRamTable::ext_transition_constraints(challenges),
@@ -139,25 +152,16 @@ impl RamTable {
     }
 
     pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
+        interpolant_degree: Degree,
         all_challenges: &AllChallenges,
         all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtRamTable {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtRamTable".to_string(),
-        );
+        let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, vec![], "ExtRamTable".to_string());
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
+            interpolant_degree,
             ExtRamTable::ext_initial_constraints(),
             ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
@@ -174,30 +178,22 @@ impl RamTable {
 }
 
 impl ExtRamTable {
-    pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
-        let matrix: Vec<Vec<XFieldElement>> = vec![];
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "ExtRamTable".to_string(),
-        );
-
-        Self { inherited_table }
-    }
-
     pub fn ext_codeword_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
+        omicron: XFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
         base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);
+        let ext_codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            ext_columns,
+        );
 
         let lifted_base_codewords = base_codewords
             .iter()
@@ -218,9 +214,8 @@ impl Extendable for RamTable {
         panic!("This function should not be called: the Ram Table implements `.pad` directly.")
     }
 
-    fn pad(&mut self) {
+    fn pad(&mut self, padded_height: usize) {
         let max_clock = self.data().len() as u64 - 1;
-        let padded_height = self.padded_height();
         let num_padding_rows = padded_height - self.data().len();
 
         if self.data().is_empty() {

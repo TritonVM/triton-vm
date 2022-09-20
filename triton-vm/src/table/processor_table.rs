@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -11,7 +11,7 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::stark::StarkHasher;
-use crate::table::base_table::{self, Extendable, InheritsFromTable, Table, TableLike};
+use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges_endpoints::{AllChallenges, AllTerminals};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
@@ -46,28 +46,27 @@ impl InheritsFromTable<BFieldElement> for ProcessorTable {
 }
 
 impl ProcessorTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let unpadded_height = matrix.len();
-        let padded_height = base_table::padded_height(unpadded_height);
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "ProcessorTable".to_string(),
-        );
-
+    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
+        let inherited_table =
+            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProcessorTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
+    pub fn codeword_table(
+        &self,
+        fri_domain: &FriDomain<BFieldElement>,
+        omicron: BFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(fri_domain, base_columns);
-
+        let codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_columns,
+        );
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
     }
@@ -76,6 +75,7 @@ impl ProcessorTable {
         &self,
         challenges: &ProcessorTableChallenges,
         initials: &ProcessorTableEndpoints,
+        interpolant_degree: Degree,
     ) -> (ExtProcessorTable, ProcessorTableEndpoints) {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
@@ -317,6 +317,7 @@ impl ProcessorTable {
 
         let inherited_table = self.extension(
             extension_matrix,
+            interpolant_degree,
             ExtProcessorTable::ext_initial_constraints(),
             ExtProcessorTable::ext_consistency_constraints(challenges),
             ExtProcessorTable::ext_transition_constraints(challenges),
@@ -326,18 +327,13 @@ impl ProcessorTable {
     }
 
     pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
+        interpolant_degree: Degree,
         all_challenges: &AllChallenges,
         all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtProcessorTable {
-        let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
             vec![],
             "ExtProcessorTable".to_string(),
         );
@@ -345,6 +341,7 @@ impl ProcessorTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
+            interpolant_degree,
             ExtProcessorTable::ext_initial_constraints(),
             ExtProcessorTable::ext_consistency_constraints(
                 &all_challenges.processor_table_challenges,
@@ -365,30 +362,22 @@ impl ProcessorTable {
 }
 
 impl ExtProcessorTable {
-    pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
-        let matrix: Vec<Vec<XFieldElement>> = vec![];
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "ExtProcessorTable".to_string(),
-        );
-
-        Self::new(inherited_table)
-    }
-
     pub fn ext_codeword_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
+        omicron: XFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
         base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);
+        let ext_codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            ext_columns,
+        );
 
         let lifted_base_codewords = base_codewords
             .iter()
@@ -548,6 +537,19 @@ impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
 
     fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
         &mut self.inherited_table
+    }
+}
+
+impl Default for ExtProcessorTable {
+    fn default() -> Self {
+        Self {
+            inherited_table: Table::new(
+                BASE_WIDTH,
+                FULL_WIDTH,
+                vec![],
+                "EmptyExtProcessorTable".to_string(),
+            ),
+        }
     }
 }
 

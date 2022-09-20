@@ -13,6 +13,7 @@ use twenty_first::timing_reporter::TimingReporter;
 use crate::fri_domain::FriDomain;
 use crate::stark::{Stark, StarkHasher};
 use crate::table::challenges_endpoints::AllTerminals;
+use crate::table::table_collection::interpolant_degree;
 
 use super::base_table::TableLike;
 use super::challenges_endpoints::AllChallenges;
@@ -103,55 +104,59 @@ pub trait Evaluable: ExtensionTable {
 
 pub trait Quotientable: ExtensionTable + Evaluable {
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
-    fn all_degrees_with_origin(&self) -> Vec<DegreeWithOrigin> {
+    fn all_degrees_with_origin(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<DegreeWithOrigin> {
         let initial_degrees_with_origin = self
-            .get_initial_quotient_degree_bounds()
+            .get_initial_quotient_degree_bounds(padded_height, num_trace_randomizers)
             .into_iter()
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
                 origin_table_name: self.name(),
                 origin_index: i,
-                origin_table_height: self.padded_height(),
+                origin_table_height: padded_height,
                 origin_constraint_type: "initial constraint".to_string(),
             })
             .collect_vec();
 
         let consistency_degrees_with_origin = self
-            .get_consistency_quotient_degree_bounds()
+            .get_consistency_quotient_degree_bounds(padded_height, num_trace_randomizers)
             .into_iter()
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
                 origin_table_name: self.name(),
                 origin_index: i,
-                origin_table_height: self.padded_height(),
+                origin_table_height: padded_height,
                 origin_constraint_type: "consistency constraint".to_string(),
             })
             .collect();
 
         let transition_degrees_with_origin = self
-            .get_transition_quotient_degree_bounds()
+            .get_transition_quotient_degree_bounds(padded_height, num_trace_randomizers)
             .into_iter()
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
                 origin_table_name: self.name(),
                 origin_index: i,
-                origin_table_height: self.padded_height(),
+                origin_table_height: padded_height,
                 origin_constraint_type: "transition constraint".to_string(),
             })
             .collect();
 
         let terminal_degrees_with_origin = self
-            .get_terminal_quotient_degree_bounds()
+            .get_terminal_quotient_degree_bounds(padded_height, num_trace_randomizers)
             .into_iter()
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
                 origin_table_name: self.name(),
                 origin_index: i,
-                origin_table_height: self.padded_height(),
+                origin_table_height: padded_height,
                 origin_constraint_type: "terminal constraint".to_string(),
             })
             .collect();
@@ -179,12 +184,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .into_iter()
             .map(|x| x - XFieldElement::one())
             .collect();
-
-        let zerofier_inverse = if self.padded_height() == 0 {
-            zerofier_codeword
-        } else {
-            XFieldElement::batch_inversion(zerofier_codeword)
-        };
+        let zerofier_inverse = XFieldElement::batch_inversion(zerofier_codeword);
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
@@ -208,6 +208,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
@@ -216,14 +217,9 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_codeword = fri_domain
             .domain_values()
             .iter()
-            .map(|x| x.mod_pow_u32(self.padded_height() as u32) - XFieldElement::one())
+            .map(|x| x.mod_pow_u32(padded_height as u32) - XFieldElement::one())
             .collect();
-
-        let zerofier_inverse = if self.padded_height() == 0 {
-            zerofier_codeword
-        } else {
-            XFieldElement::batch_inversion(zerofier_codeword)
-        };
+        let zerofier_inverse = XFieldElement::batch_inversion(zerofier_codeword);
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
@@ -247,31 +243,29 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        omicron: XFieldElement,
+        padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
         }
 
         let one = XFieldElement::one();
-        let height = self.padded_height() as u32;
-        let omicron_inverse = self.omicron().inverse();
+        let omicron_inverse = omicron.inverse();
         let fri_domain_values = fri_domain.domain_values();
 
         let subgroup_zerofier: Vec<_> = fri_domain_values
             .par_iter()
-            .map(|fri_dom_v| fri_dom_v.mod_pow_u32(height) - one)
+            .map(|fri_dom_v| fri_dom_v.mod_pow_u32(padded_height as u32) - one)
             .collect();
-        let subgroup_zerofier_inverse = if height == 0 {
-            subgroup_zerofier
-        } else {
-            XFieldElement::batch_inversion(subgroup_zerofier)
-        };
+        let subgroup_zerofier_inverse = XFieldElement::batch_inversion(subgroup_zerofier);
         let zerofier_inverse: Vec<_> = fri_domain_values
             .into_par_iter()
             .zip_eq(subgroup_zerofier_inverse.into_par_iter())
             .map(|(fri_dom_v, sub_z_inv)| (fri_dom_v - omicron_inverse) * sub_z_inv)
             .collect();
-        let unit_distance = self.unit_distance(fri_domain.length);
+        // the relation between the FRI domain and the omicron domain
+        let unit_distance = fri_domain.length / padded_height;
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
@@ -301,6 +295,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        omicron: XFieldElement,
     ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
@@ -311,14 +306,9 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_codeword = fri_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - self.omicron().inverse())
+            .map(|x| x - omicron.inverse())
             .collect_vec();
-
-        let zerofier_inverse = if self.padded_height() == 0 {
-            zerofier_codeword
-        } else {
-            XFieldElement::batch_inversion(zerofier_codeword)
-        };
+        let zerofier_inverse = XFieldElement::batch_inversion(zerofier_codeword);
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
@@ -342,6 +332,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        omicron: XFieldElement,
+        padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
         let mut timer = TimingReporter::start();
         timer.elapsed(&format!("Table name: {}", self.name()));
@@ -349,13 +341,15 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let initial_quotients = self.initial_quotients(fri_domain, codewords);
         timer.elapsed("initial quotients");
 
-        let consistency_quotients = self.consistency_quotients(fri_domain, codewords);
+        let consistency_quotients =
+            self.consistency_quotients(fri_domain, codewords, padded_height);
         timer.elapsed("Done calculating consistency quotients");
 
-        let transition_quotients = self.transition_quotients(fri_domain, codewords);
+        let transition_quotients =
+            self.transition_quotients(fri_domain, codewords, omicron, padded_height);
         timer.elapsed("transition quotients");
 
-        let terminal_quotients = self.terminal_quotients(fri_domain, codewords);
+        let terminal_quotients = self.terminal_quotients(fri_domain, codewords, omicron);
         timer.elapsed("terminal quotients");
 
         println!("{}", timer.finish());
@@ -400,21 +394,30 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         }
     }
 
-    fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_all_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
         vec![
-            self.get_initial_quotient_degree_bounds(),
-            self.get_consistency_quotient_degree_bounds(),
-            self.get_transition_quotient_degree_bounds(),
-            self.get_terminal_quotient_degree_bounds(),
+            self.get_initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+            self.get_consistency_quotient_degree_bounds(padded_height, num_trace_randomizers),
+            self.get_transition_quotient_degree_bounds(padded_height, num_trace_randomizers),
+            self.get_terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
         ]
         .concat()
     }
 
-    fn get_initial_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_initial_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
         if let Some(db) = &self.inherited_table().initial_quotient_degree_bounds {
             db.to_owned()
         } else {
-            let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
+            let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+            let max_degrees = vec![interpolant_degree; self.full_width()];
             let zerofier_degree = 1;
             self.dynamic_initial_constraints()
                 .iter()
@@ -423,12 +426,17 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         }
     }
 
-    fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_consistency_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
         if let Some(db) = &self.inherited_table().consistency_quotient_degree_bounds {
             db.to_owned()
         } else {
-            let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
-            let zerofier_degree = self.padded_height() as Degree;
+            let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+            let max_degrees = vec![interpolant_degree; self.full_width()];
+            let zerofier_degree = padded_height as Degree;
             self.dynamic_consistency_constraints(&AllChallenges::dummy())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
@@ -436,12 +444,17 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         }
     }
 
-    fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_transition_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
         if let Some(db) = &self.inherited_table().transition_quotient_degree_bounds {
             db.to_owned()
         } else {
-            let max_degrees = vec![(self.padded_height() - 1) as i64; 2 * self.full_width()];
-            let zerofier_degree = self.padded_height() as Degree - 1;
+            let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+            let max_degrees = vec![interpolant_degree; 2 * self.full_width()];
+            let zerofier_degree = padded_height as Degree - 1;
             self.dynamic_transition_constraints(&AllChallenges::dummy())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
@@ -449,11 +462,16 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         }
     }
 
-    fn get_terminal_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_terminal_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
         if let Some(db) = &self.inherited_table().terminal_quotient_degree_bounds {
             db.to_owned()
         } else {
-            let max_degrees = vec![(self.padded_height() - 1) as i64; self.full_width()];
+            let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+            let max_degrees = vec![interpolant_degree; self.full_width()];
             let zerofier_degree = 1 as Degree;
             self.dynamic_terminal_constraints(&AllChallenges::dummy(), &AllTerminals::dummy())
                 .iter()

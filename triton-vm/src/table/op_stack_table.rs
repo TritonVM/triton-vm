@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
@@ -9,7 +9,7 @@ use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::OpStackTableColumn;
@@ -43,6 +43,19 @@ impl InheritsFromTable<BFieldElement> for OpStackTable {
 #[derive(Debug, Clone)]
 pub struct ExtOpStackTable {
     inherited_table: Table<XFieldElement>,
+}
+
+impl Default for ExtOpStackTable {
+    fn default() -> Self {
+        Self {
+            inherited_table: Table::new(
+                BASE_WIDTH,
+                FULL_WIDTH,
+                vec![],
+                "EmptyExtOpStackTable".to_string(),
+            ),
+        }
+    }
 }
 
 impl Evaluable for ExtOpStackTable {}
@@ -156,28 +169,27 @@ impl ExtOpStackTable {
 }
 
 impl OpStackTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let unpadded_height = matrix.len();
-        let padded_height = base_table::padded_height(unpadded_height);
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "OpStackTable".to_string(),
-        );
-
+    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
+        let inherited_table =
+            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "OpStackTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
+    pub fn codeword_table(
+        &self,
+        fri_domain: &FriDomain<BFieldElement>,
+        omicron: BFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(fri_domain, base_columns);
-
+        let codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_columns,
+        );
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
     }
@@ -186,6 +198,7 @@ impl OpStackTable {
         &self,
         challenges: &OpStackTableChallenges,
         initials: &OpStackTableEndpoints,
+        interpolant_degree: Degree,
     ) -> (ExtOpStackTable, OpStackTableEndpoints) {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product = initials.processor_perm_product;
@@ -228,6 +241,7 @@ impl OpStackTable {
 
         let inherited_table = self.extension(
             extension_matrix,
+            interpolant_degree,
             ExtOpStackTable::ext_initial_constraints(),
             ExtOpStackTable::ext_consistency_constraints(challenges),
             ExtOpStackTable::ext_transition_constraints(challenges),
@@ -237,18 +251,13 @@ impl OpStackTable {
     }
 
     pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
+        interpolant_degree: Degree,
         all_challenges: &AllChallenges,
         all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtOpStackTable {
-        let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
             vec![],
             "ExtOpStackTable".to_string(),
         );
@@ -256,6 +265,7 @@ impl OpStackTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
+            interpolant_degree,
             ExtOpStackTable::ext_initial_constraints(),
             ExtOpStackTable::ext_consistency_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
@@ -272,30 +282,22 @@ impl OpStackTable {
 }
 
 impl ExtOpStackTable {
-    pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
-        let matrix: Vec<Vec<XFieldElement>> = vec![];
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "ExtOpStackTable".to_string(),
-        );
-
-        Self { inherited_table }
-    }
-
     pub fn ext_codeword_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
+        omicron: XFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
         base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);
+        let ext_codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            ext_columns,
+        );
 
         let lifted_base_codewords = base_codewords
             .iter()

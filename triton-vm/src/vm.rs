@@ -248,9 +248,11 @@ mod triton_vm_tests {
     use crate::table::challenges_endpoints::{AllChallenges, AllInitials};
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;
+    use crate::table::table_collection::interpolant_degree;
     use num_traits::{One, Zero};
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
+    use twenty_first::shared_math::other::roundup_npo2;
     use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
 
     #[test]
@@ -664,31 +666,33 @@ mod triton_vm_tests {
                 "\n\nChecking transition constraints for program: \"{}\"",
                 &program.source_code
             );
-            let (base_matrices, err, _) = program.simulate();
+            let (aet, err, _) = program.simulate();
 
             if let Some(e) = err {
                 panic!("The VM is not happy: {}", e);
             }
 
-            let num_trace_randomizers = 2;
-            let processor_matrix = base_matrices
+            let processor_matrix = aet
                 .processor_matrix
                 .iter()
                 .map(|row| row.to_vec())
                 .collect_vec();
 
-            let mut processor_table =
-                ProcessorTable::new_prover(num_trace_randomizers, processor_matrix);
-            processor_table.pad();
+            let mut processor_table = ProcessorTable::new_prover(processor_matrix);
+            let padded_height = roundup_npo2(processor_table.data().len() as u64) as usize;
+            processor_table.pad(padded_height);
 
             assert!(
                 other::is_power_of_two(processor_table.data().len()),
                 "Matrix length must be power of 2 after padding"
             );
 
+            let num_trace_randomizers = 2;
+            let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let (ext_processor_table, _) = processor_table.extend(
                 &AllChallenges::dummy().processor_table_challenges,
                 &AllInitials::<StarkHasher>::dummy().processor_table_endpoints,
+                interpolant_degree,
             );
 
             for (row_idx, (row, next_row)) in ext_processor_table
