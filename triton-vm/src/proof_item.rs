@@ -1,10 +1,11 @@
-use super::table::challenges_endpoints::AllTerminals;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 use twenty_first::util_types::simple_hasher::{Hashable, Hasher};
+
+use super::table::challenges_endpoints::AllTerminals;
 
 type FriProof<Digest> = Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>;
 type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
@@ -28,7 +29,7 @@ where
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
     FriProof(FriProof<H::Digest>),
-    PaddedHeights(Vec<BFieldElement>),
+    PaddedHeight(BFieldElement),
 }
 
 impl<H: Hasher> ProofItem<H>
@@ -157,11 +158,11 @@ where
         }
     }
 
-    pub fn as_padded_heights(&self) -> Result<Vec<BFieldElement>, Box<dyn std::error::Error>> {
+    pub fn as_padded_heights(&self) -> Result<BFieldElement, Box<dyn std::error::Error>> {
         match self {
-            Self::PaddedHeights(padded_heights) => Ok(padded_heights.to_owned()),
+            Self::PaddedHeight(padded_height) => Ok(padded_height.to_owned()),
             _ => Err(ProofStreamError::boxed(
-                "expected padded table heights, but got something else",
+                "expected padded table height, but got something else",
             )),
         }
     }
@@ -218,7 +219,7 @@ where
             ProofItem::TransposedExtensionElementVectors(xss) => {
                 bs_to_ts::<H>(&xss.into_iter().map(|xs| xs_to_bs(&xs)).concat()).into_iter()
             }
-            ProofItem::PaddedHeights(padded_heights) => bs_to_ts::<H>(&padded_heights).into_iter(),
+            ProofItem::PaddedHeight(padded_height) => bs_to_ts::<H>(&[padded_height]).into_iter(),
         }
     }
 }

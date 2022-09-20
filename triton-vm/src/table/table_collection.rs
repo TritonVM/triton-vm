@@ -17,6 +17,8 @@ use crate::table::extension_table::DegreeWithOrigin;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
+use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 
@@ -24,6 +26,9 @@ pub const NUM_TABLES: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct BaseTableCollection {
+    /// The number of `data` rows after padding
+    pub padded_height: usize,
+
     pub program_table: ProgramTable,
     pub instruction_table: InstructionTable,
     pub processor_table: ProcessorTable,
@@ -36,6 +41,9 @@ pub struct BaseTableCollection {
 
 #[derive(Debug, Clone)]
 pub struct ExtTableCollection {
+    /// The number of `data` rows after padding
+    pub padded_height: usize,
+
     pub program_table: ExtProgramTable,
     pub instruction_table: ExtInstructionTable,
     pub processor_table: ExtProcessorTable,
@@ -67,49 +75,46 @@ fn to_vec_vecs<T: Sized + Clone, const S: usize>(vector_of_arrays: &[[T; S]]) ->
         .collect_vec()
 }
 
+pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
+    (padded_height + num_trace_randomizers - 1) as Degree
+}
+
+pub fn derive_omicron<DataPF: FiniteField>(padded_height: u64) -> DataPF {
+    debug_assert!(
+        0 == padded_height || is_power_of_two(padded_height),
+        "The padded height was: {}",
+        padded_height
+    );
+    DataPF::primitive_root_of_unity(padded_height).unwrap()
+}
+
+/// Returns the relation between the FRI domain and the omicron domain
+pub fn unit_distance(padded_height: usize, omega_order: usize) -> usize {
+    if padded_height == 0 {
+        0
+    } else {
+        omega_order / padded_height
+    }
+}
+
 impl BaseTableCollection {
-    pub fn from_base_matrices(num_trace_randomizers: usize, base_matrices: &BaseMatrices) -> Self {
-        let program_table = ProgramTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.program_matrix),
-        );
+    pub fn from_base_matrices(base_matrices: &BaseMatrices) -> Self {
+        let padded_height = Self::padded_height(base_matrices);
 
-        let processor_table = ProcessorTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.processor_matrix),
-        );
-
-        let instruction_table = InstructionTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.instruction_matrix),
-        );
-
-        let op_stack_table = OpStackTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.op_stack_matrix),
-        );
-
-        let ram_table = RamTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.ram_matrix),
-        );
-
-        let jump_stack_table = JumpStackTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.jump_stack_matrix),
-        );
-
-        let hash_table = HashTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.hash_matrix),
-        );
-
-        let u32_op_table = U32OpTable::new_prover(
-            num_trace_randomizers,
-            to_vec_vecs(&base_matrices.u32_op_matrix),
-        );
+        let program_table = ProgramTable::new_prover(to_vec_vecs(&base_matrices.program_matrix));
+        let processor_table =
+            ProcessorTable::new_prover(to_vec_vecs(&base_matrices.processor_matrix));
+        let instruction_table =
+            InstructionTable::new_prover(to_vec_vecs(&base_matrices.instruction_matrix));
+        let op_stack_table = OpStackTable::new_prover(to_vec_vecs(&base_matrices.op_stack_matrix));
+        let ram_table = RamTable::new_prover(to_vec_vecs(&base_matrices.ram_matrix));
+        let jump_stack_table =
+            JumpStackTable::new_prover(to_vec_vecs(&base_matrices.jump_stack_matrix));
+        let hash_table = HashTable::new_prover(to_vec_vecs(&base_matrices.hash_matrix));
+        let u32_op_table = U32OpTable::new_prover(to_vec_vecs(&base_matrices.u32_op_matrix));
 
         BaseTableCollection {
+            padded_height,
             program_table,
             instruction_table,
             processor_table,
@@ -121,16 +126,92 @@ impl BaseTableCollection {
         }
     }
 
-    pub fn codeword_tables(&self, fri_domain: &FriDomain<BFieldElement>) -> BaseTableCollection {
+    pub fn padded_height(base_matrices: &BaseMatrices) -> usize {
+        let max_height = [
+            1, // minimum max height
+            base_matrices.program_matrix.len(),
+            base_matrices.processor_matrix.len(),
+            base_matrices.instruction_matrix.len(),
+            base_matrices.op_stack_matrix.len(),
+            base_matrices.ram_matrix.len(),
+            base_matrices.jump_stack_matrix.len(),
+            base_matrices.hash_matrix.len(),
+            base_matrices.u32_op_matrix.len(),
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
+
+        roundup_npo2(max_height as u64) as usize
+    }
+
+    pub fn codeword_tables(
+        &self,
+        fri_domain: &FriDomain<BFieldElement>,
+        num_trace_randomizers: usize,
+    ) -> BaseTableCollection {
+        let padded_height = self.padded_height;
+        let omicron = derive_omicron(padded_height as u64);
+
+        let program_table = self.program_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+        let instruction_table = self.instruction_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+        let processor_table = self.processor_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+        let op_stack_table = self.op_stack_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+        let ram_table = self.ram_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+        let jump_stack_table = self.jump_stack_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+        let hash_table = self.hash_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+        let u32_op_table = self.u32_op_table.codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+        );
+
         BaseTableCollection {
-            program_table: self.program_table.codeword_table(fri_domain),
-            instruction_table: self.instruction_table.codeword_table(fri_domain),
-            processor_table: self.processor_table.codeword_table(fri_domain),
-            op_stack_table: self.op_stack_table.codeword_table(fri_domain),
-            ram_table: self.ram_table.codeword_table(fri_domain),
-            jump_stack_table: self.jump_stack_table.codeword_table(fri_domain),
-            hash_table: self.hash_table.codeword_table(fri_domain),
-            u32_op_table: self.u32_op_table.codeword_table(fri_domain),
+            padded_height,
+            program_table,
+            instruction_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+            u32_op_table,
         }
     }
 
@@ -141,21 +222,21 @@ impl BaseTableCollection {
             .concat()
     }
 
-    pub fn get_base_degree_bounds(&self) -> Vec<Degree> {
-        self.into_iter()
-            .map(|table| vec![table.interpolant_degree(); table.base_width()])
-            .concat()
+    pub fn get_base_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
+        let sum_of_base_widths = self.into_iter().map(|table| table.base_width()).sum();
+        vec![interpolant_degree(self.padded_height, num_trace_randomizers); sum_of_base_widths]
     }
 
     pub fn pad(&mut self) {
-        self.program_table.pad();
-        self.instruction_table.pad();
-        self.processor_table.pad();
-        self.op_stack_table.pad();
-        self.ram_table.pad();
-        self.jump_stack_table.pad();
-        self.hash_table.pad();
-        self.u32_op_table.pad();
+        let padded_height = self.padded_height;
+        self.program_table.pad(padded_height);
+        self.instruction_table.pad(padded_height);
+        self.processor_table.pad(padded_height);
+        self.op_stack_table.pad(padded_height);
+        self.ram_table.pad(padded_height);
+        self.jump_stack_table.pad(padded_height);
+        self.hash_table.pad(padded_height);
+        self.u32_op_table.pad(padded_height);
     }
 }
 
@@ -180,109 +261,44 @@ impl<'a> IntoIterator for &'a BaseTableCollection {
 }
 
 impl ExtTableCollection {
-    pub fn with_padded_heights(num_trace_randomizers: usize, padded_heights: &[usize]) -> Self {
-        // FIXME there must be a better way to access the padded heights
-        let ext_program_table =
-            ExtProgramTable::with_padded_height(num_trace_randomizers, padded_heights[0]);
-
-        let ext_instruction_table =
-            ExtInstructionTable::with_padded_height(num_trace_randomizers, padded_heights[1]);
-
-        let ext_processor_table =
-            ExtProcessorTable::with_padded_height(num_trace_randomizers, padded_heights[2]);
-
-        let ext_op_stack_table =
-            ExtOpStackTable::with_padded_height(num_trace_randomizers, padded_heights[3]);
-
-        let ext_ram_table =
-            ExtRamTable::with_padded_height(num_trace_randomizers, padded_heights[4]);
-
-        let ext_jump_stack_table =
-            ExtJumpStackTable::with_padded_height(num_trace_randomizers, padded_heights[5]);
-
-        let ext_hash_table =
-            ExtHashTable::with_padded_height(num_trace_randomizers, padded_heights[6]);
-
-        let ext_u32_op_table =
-            ExtU32OpTable::with_padded_height(num_trace_randomizers, padded_heights[7]);
-
+    pub fn with_padded_height(padded_height: usize) -> Self {
         ExtTableCollection {
-            program_table: ext_program_table,
-            instruction_table: ext_instruction_table,
-            processor_table: ext_processor_table,
-            op_stack_table: ext_op_stack_table,
-            ram_table: ext_ram_table,
-            jump_stack_table: ext_jump_stack_table,
-            hash_table: ext_hash_table,
-            u32_op_table: ext_u32_op_table,
+            padded_height,
+            program_table: Default::default(),
+            instruction_table: Default::default(),
+            processor_table: Default::default(),
+            op_stack_table: Default::default(),
+            ram_table: Default::default(),
+            jump_stack_table: Default::default(),
+            hash_table: Default::default(),
+            u32_op_table: Default::default(),
         }
     }
 
     pub fn for_verifier(
         num_trace_randomizers: usize,
-        padded_heights: &[usize],
+        padded_height: usize,
         challenges: &AllChallenges,
         terminals: &AllTerminals<StarkHasher>,
     ) -> Self {
-        // TODO: integrate challenges and terminals
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
-        let ext_program_table = ProgramTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[0],
-            challenges,
-            terminals,
-        );
-
-        let ext_instruction_table = InstructionTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[1],
-            challenges,
-            terminals,
-        );
-
-        let ext_processor_table = ProcessorTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[2],
-            challenges,
-            terminals,
-        );
-
-        let ext_op_stack_table = OpStackTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[3],
-            challenges,
-            terminals,
-        );
-
-        let ext_ram_table = RamTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[4],
-            challenges,
-            terminals,
-        );
-
-        let ext_jump_stack_table = JumpStackTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[5],
-            challenges,
-            terminals,
-        );
-
-        let ext_hash_table = HashTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[6],
-            challenges,
-            terminals,
-        );
-
-        let ext_u32_op_table = U32OpTable::for_verifier(
-            num_trace_randomizers,
-            padded_heights[7],
-            challenges,
-            terminals,
-        );
+        let ext_program_table =
+            ProgramTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_instruction_table =
+            InstructionTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_processor_table =
+            ProcessorTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_op_stack_table =
+            OpStackTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_ram_table = RamTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_jump_stack_table =
+            JumpStackTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_hash_table = HashTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_u32_op_table = U32OpTable::for_verifier(interpolant_degree, challenges, terminals);
 
         ExtTableCollection {
+            padded_height,
             program_table: ext_program_table,
             instruction_table: ext_instruction_table,
             processor_table: ext_processor_table,
@@ -294,9 +310,11 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn max_degree_with_origin(&self) -> DegreeWithOrigin {
+    pub fn max_degree_with_origin(&self, num_trace_randomizers: usize) -> DegreeWithOrigin {
         self.into_iter()
-            .map(|ext_table| ext_table.all_degrees_with_origin())
+            .map(|ext_table| {
+                ext_table.all_degrees_with_origin(self.padded_height, num_trace_randomizers)
+            })
             .concat()
             .into_iter()
             .max()
@@ -314,49 +332,62 @@ impl ExtTableCollection {
         base_tables: &BaseTableCollection,
         all_challenges: &AllChallenges,
         all_initials: &AllInitials<StarkHasher>,
+        num_trace_randomizers: usize,
     ) -> (Self, AllTerminals<StarkHasher>) {
+        let padded_height = base_tables.padded_height;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+
         let (program_table, program_table_terminals) = base_tables.program_table.extend(
             &all_challenges.program_table_challenges,
             &all_initials.program_table_endpoints,
+            interpolant_degree,
         );
 
         let (instruction_table, instruction_table_terminals) =
             base_tables.instruction_table.extend(
                 &all_challenges.instruction_table_challenges,
                 &all_initials.instruction_table_endpoints,
+                interpolant_degree,
             );
 
         let (processor_table, processor_table_terminals) = base_tables.processor_table.extend(
             &all_challenges.processor_table_challenges,
             &all_initials.processor_table_endpoints,
+            interpolant_degree,
         );
 
         let (op_stack_table, op_stack_table_terminals) = base_tables.op_stack_table.extend(
             &all_challenges.op_stack_table_challenges,
             &all_initials.op_stack_table_endpoints,
+            interpolant_degree,
         );
 
         let (ram_table, ram_table_terminals) = base_tables.ram_table.extend(
             &all_challenges.ram_table_challenges,
             &all_initials.ram_table_endpoints,
+            interpolant_degree,
         );
 
         let (jump_stack_table, jump_stack_table_terminals) = base_tables.jump_stack_table.extend(
             &all_challenges.jump_stack_table_challenges,
             &all_initials.jump_stack_table_endpoints,
+            interpolant_degree,
         );
 
         let (hash_table, hash_table_terminals) = base_tables.hash_table.extend(
             &all_challenges.hash_table_challenges,
             &all_initials.hash_table_endpoints,
+            interpolant_degree,
         );
 
         let (u32_op_table, u32_op_table_terminals) = base_tables.u32_op_table.extend(
             &all_challenges.u32_op_table_challenges,
             &all_initials.u32_op_table_endpoints,
+            interpolant_degree,
         );
 
         let ext_tables = ExtTableCollection {
+            padded_height,
             program_table,
             instruction_table,
             processor_table,
@@ -386,33 +417,70 @@ impl ExtTableCollection {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         base_codeword_tables: BaseTableCollection,
+        num_trace_randomizers: usize,
     ) -> Self {
-        let program_table = self
-            .program_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.program_table.data());
-        let instruction_table = self
-            .instruction_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.instruction_table.data());
-        let processor_table = self
-            .processor_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.processor_table.data());
-        let op_stack_table = self
-            .op_stack_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.op_stack_table.data());
-        let ram_table = self
-            .ram_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.ram_table.data());
-        let jump_stack_table = self
-            .jump_stack_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.jump_stack_table.data());
-        let hash_table = self
-            .hash_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.hash_table.data());
-        let u32_op_table = self
-            .u32_op_table
-            .ext_codeword_table(fri_domain, base_codeword_tables.u32_op_table.data());
+        let padded_height = self.padded_height;
+        let omicron = derive_omicron(padded_height as u64);
+
+        let program_table = self.program_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.program_table.data(),
+        );
+        let instruction_table = self.instruction_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.instruction_table.data(),
+        );
+        let processor_table = self.processor_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.processor_table.data(),
+        );
+        let op_stack_table = self.op_stack_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.op_stack_table.data(),
+        );
+        let ram_table = self.ram_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.ram_table.data(),
+        );
+        let jump_stack_table = self.jump_stack_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.jump_stack_table.data(),
+        );
+        let hash_table = self.hash_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.hash_table.data(),
+        );
+        let u32_op_table = self.u32_op_table.ext_codeword_table(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_codeword_tables.u32_op_table.data(),
+        );
 
         ExtTableCollection {
+            padded_height,
             program_table,
             instruction_table,
             processor_table,
@@ -450,36 +518,16 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn interpolant_degree(&self, table_id: TableId) -> Degree {
-        use TableId::*;
-
-        match table_id {
-            ProgramTable => self.program_table.interpolant_degree(),
-            InstructionTable => self.instruction_table.interpolant_degree(),
-            ProcessorTable => self.processor_table.interpolant_degree(),
-            OpStackTable => self.op_stack_table.interpolant_degree(),
-            RamTable => self.ram_table.interpolant_degree(),
-            JumpStackTable => self.jump_stack_table.interpolant_degree(),
-            HashTable => self.hash_table.interpolant_degree(),
-            U32OpTable => self.u32_op_table.interpolant_degree(),
-        }
+    pub fn get_all_base_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
+        let sum_base_widths = self.into_iter().map(|table| table.base_width()).sum();
+        vec![interpolant_degree(self.padded_height, num_trace_randomizers); sum_base_widths]
     }
 
-    pub fn get_all_base_degree_bounds(&self) -> Vec<i64> {
-        self.into_iter()
-            .map(|table| vec![table.interpolant_degree(); table.base_width()])
-            .concat()
-    }
-
-    pub fn get_extension_degree_bounds(&self) -> Vec<i64> {
-        self.into_iter()
-            .map(|ext_table| {
-                vec![
-                    ext_table.interpolant_degree();
-                    ext_table.full_width() - ext_table.base_width()
-                ]
-            })
-            .concat()
+    pub fn get_extension_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
+        let sum_base_widths: usize = self.into_iter().map(|table| table.base_width()).sum();
+        let sum_full_widths: usize = self.into_iter().map(|table| table.full_width()).sum();
+        let num_extension_columns = sum_full_widths - sum_base_widths;
+        vec![interpolant_degree(self.padded_height, num_trace_randomizers); num_extension_columns]
     }
 
     pub fn get_all_quotients(
@@ -487,13 +535,21 @@ impl ExtTableCollection {
         fri_domain: &FriDomain<XFieldElement>,
     ) -> Vec<Vec<XFieldElement>> {
         let mut timer = TimingReporter::start();
+        let padded_height = self.padded_height;
+        let omicron = derive_omicron(padded_height as u64);
+
         self.into_iter()
             .map(|ext_codeword_table| {
                 timer.elapsed(&format!(
                     "Start calculating quotient: {}",
                     ext_codeword_table.name()
                 ));
-                let res = ext_codeword_table.all_quotients(fri_domain, ext_codeword_table.data());
+                let res = ext_codeword_table.all_quotients(
+                    fri_domain,
+                    ext_codeword_table.data(),
+                    omicron,
+                    padded_height,
+                );
                 timer.elapsed(&format!(
                     "Ended calculating quotient: {}",
                     ext_codeword_table.name()
@@ -503,9 +559,11 @@ impl ExtTableCollection {
             .concat()
     }
 
-    pub fn get_all_quotient_degree_bounds(&self) -> Vec<Degree> {
+    pub fn get_all_quotient_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
         self.into_iter() // Can we parallelize this? -> implement into_par_iter for TableCollection
-            .map(|ext_table| ext_table.get_all_quotient_degree_bounds())
+            .map(|ext_table| {
+                ext_table.get_all_quotient_degree_bounds(self.padded_height, num_trace_randomizers)
+            })
             .concat()
     }
 }
@@ -539,21 +597,14 @@ mod table_collection_tests {
     };
 
     fn dummy_ext_table_collection() -> ExtTableCollection {
-        let num_trace_randomizers = 2;
         let max_padded_height = 1;
-
-        ExtTableCollection::with_padded_heights(
-            num_trace_randomizers,
-            &[max_padded_height; NUM_TABLES],
-        )
+        ExtTableCollection::with_padded_height(max_padded_height)
     }
 
     #[test]
     fn base_table_width_is_correct() {
-        let num_trace_randomizers = 2;
         let base_matrices = BaseMatrices::default();
-        let base_tables =
-            BaseTableCollection::from_base_matrices(num_trace_randomizers, &base_matrices);
+        let base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
 
         assert_eq!(
             program_table::BASE_WIDTH,

@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -12,7 +12,7 @@ use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_column::U32OpTableColumn::*;
 
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::U32OpTableColumn;
@@ -46,6 +46,19 @@ impl InheritsFromTable<BFieldElement> for U32OpTable {
 #[derive(Debug, Clone)]
 pub struct ExtU32OpTable {
     inherited_table: Table<XFieldElement>,
+}
+
+impl Default for ExtU32OpTable {
+    fn default() -> Self {
+        Self {
+            inherited_table: Table::new(
+                BASE_WIDTH,
+                FULL_WIDTH,
+                vec![],
+                "EmptyExtU32OpTable".to_string(),
+            ),
+        }
+    }
 }
 
 impl TableLike<BFieldElement> for U32OpTable {}
@@ -269,28 +282,26 @@ impl ExtU32OpTable {
 }
 
 impl U32OpTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let unpadded_height = matrix.len();
-        let padded_height = base_table::padded_height(unpadded_height);
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "U32OpTable".to_string(),
-        );
-
+    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
+        let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "U32OpTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
+    pub fn codeword_table(
+        &self,
+        fri_domain: &FriDomain<BFieldElement>,
+        omicron: BFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(fri_domain, base_columns);
-
+        let codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_columns,
+        );
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
     }
@@ -299,6 +310,7 @@ impl U32OpTable {
         &self,
         challenges: &U32OpTableChallenges,
         initials: &U32OpTableEndpoints,
+        interpolant_degree: Degree,
     ) -> (ExtU32OpTable, U32OpTableEndpoints) {
         let mut running_product = initials.processor_perm_product;
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
@@ -352,6 +364,7 @@ impl U32OpTable {
 
         let inherited_table = self.extension(
             extension_matrix,
+            interpolant_degree,
             ExtU32OpTable::ext_initial_constraints(),
             ExtU32OpTable::ext_consistency_constraints(challenges),
             ExtU32OpTable::ext_transition_constraints(challenges),
@@ -361,18 +374,13 @@ impl U32OpTable {
     }
 
     pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
+        interpolant_degree: Degree,
         all_challenges: &AllChallenges,
         all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtU32OpTable {
-        let omicron = base_table::derive_omicron(padded_height as u64);
         let inherited_table = Table::<BFieldElement>::new(
             BASE_WIDTH,
             FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
             vec![],
             "ExtU32OpTable".to_string(),
         );
@@ -380,6 +388,7 @@ impl U32OpTable {
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
+            interpolant_degree,
             ExtU32OpTable::ext_initial_constraints(),
             ExtU32OpTable::ext_consistency_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
@@ -396,29 +405,29 @@ impl U32OpTable {
 }
 
 impl ExtU32OpTable {
-    pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
+    pub fn with_padded_height() -> Self {
         let matrix: Vec<Vec<XFieldElement>> = vec![];
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "ExtU32OpTable".to_string(),
-        );
+        let inherited_table =
+            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ExtU32OpTable".to_string());
         Self { inherited_table }
     }
 
     pub fn ext_codeword_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
+        omicron: XFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
         base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);
+        let ext_codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            ext_columns,
+        );
 
         let lifted_base_codewords = base_codewords
             .iter()

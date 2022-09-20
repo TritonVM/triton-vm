@@ -17,9 +17,10 @@ use crate::fri_domain::FriDomain;
 use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
+use crate::table::table_collection::interpolant_degree;
 use crate::table::table_column::HashTableColumn::*;
 
-use super::base_table::{self, InheritsFromTable, Table, TableLike};
+use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_endpoints::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::HashTableColumn;
@@ -56,6 +57,19 @@ impl InheritsFromTable<BFieldElement> for HashTable {
 #[derive(Debug, Clone)]
 pub struct ExtHashTable {
     inherited_table: Table<XFieldElement>,
+}
+
+impl Default for ExtHashTable {
+    fn default() -> Self {
+        Self {
+            inherited_table: Table::new(
+                BASE_WIDTH,
+                FULL_WIDTH,
+                vec![],
+                "EmptyExtHashTable".to_string(),
+            ),
+        }
+    }
 }
 
 impl Evaluable for ExtHashTable {
@@ -208,23 +222,33 @@ impl Evaluable for ExtHashTable {
 }
 
 impl Quotientable for ExtHashTable {
-    fn get_consistency_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_consistency_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let capacity_degree_bounds =
-            vec![self.interpolant_degree() * (NUM_ROUNDS + 1 + 1) as Degree; CAPACITY];
+            vec![interpolant_degree * (NUM_ROUNDS + 1 + 1) as Degree; CAPACITY];
         let round_constant_degree_bounds =
-            vec![self.interpolant_degree() * (NUM_ROUNDS + 1) as Degree; NUM_ROUND_CONSTANTS];
+            vec![interpolant_degree * (NUM_ROUNDS + 1) as Degree; NUM_ROUND_CONSTANTS];
 
         [capacity_degree_bounds, round_constant_degree_bounds].concat()
     }
 
-    fn get_transition_quotient_degree_bounds(&self) -> Vec<Degree> {
+    fn get_transition_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let round_number_bounds = vec![
-            self.interpolant_degree() * (NUM_ROUNDS + 1 + 1) as Degree,
-            self.interpolant_degree() * (NUM_ROUNDS + 1 + 1 + 1) as Degree,
-            self.interpolant_degree() * 3,
+            interpolant_degree * (NUM_ROUNDS + 1 + 1) as Degree,
+            interpolant_degree * (NUM_ROUNDS + 1 + 1 + 1) as Degree,
+            interpolant_degree * 3,
         ];
         let state_evolution_bounds =
-            vec![self.interpolant_degree() * (ALPHA + 1 + 1) as Degree; STATE_SIZE];
+            vec![interpolant_degree * (ALPHA + 1 + 1) as Degree; STATE_SIZE];
 
         [round_number_bounds, state_evolution_bounds].concat()
     }
@@ -451,28 +475,26 @@ impl ExtHashTable {
 }
 
 impl HashTable {
-    pub fn new_prover(num_trace_randomizers: usize, matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let unpadded_height = matrix.len();
-        let padded_height = base_table::padded_height(unpadded_height);
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "HashTable".to_string(),
-        );
-
+    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
+        let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "HashTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn codeword_table(&self, fri_domain: &FriDomain<BFieldElement>) -> Self {
+    pub fn codeword_table(
+        &self,
+        fri_domain: &FriDomain<BFieldElement>,
+        omicron: BFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(fri_domain, base_columns);
-
+        let codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            base_columns,
+        );
         let inherited_table = self.inherited_table.with_data(codewords);
         Self { inherited_table }
     }
@@ -481,6 +503,7 @@ impl HashTable {
         &self,
         challenges: &HashTableChallenges,
         initials: &HashTableEndpoints,
+        interpolant_degree: Degree,
     ) -> (ExtHashTable, HashTableEndpoints) {
         let mut from_processor_running_sum = initials.from_processor_eval_sum;
         let mut to_processor_running_sum = initials.to_processor_eval_sum;
@@ -554,6 +577,7 @@ impl HashTable {
 
         let extension_table = self.extension(
             extension_matrix,
+            interpolant_degree,
             ExtHashTable::ext_initial_constraints(),
             vec![],
             vec![],
@@ -569,25 +593,17 @@ impl HashTable {
     }
 
     pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
+        interpolant_degree: Degree,
         all_challenges: &AllChallenges,
         all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtHashTable {
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            vec![],
-            "ExtHashTable".to_string(),
-        );
+        let inherited_table =
+            Table::new(BASE_WIDTH, FULL_WIDTH, vec![], "ExtHashTable".to_string());
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
+            interpolant_degree,
             ExtHashTable::ext_initial_constraints(),
             // The Hash Table bypasses the symbolic representation of transition and consistency constraints.
             // As a result, there is nothing to memoize. Since the memoization dictionary is never used, it
@@ -607,19 +623,10 @@ impl HashTable {
 }
 
 impl ExtHashTable {
-    pub fn with_padded_height(num_trace_randomizers: usize, padded_height: usize) -> Self {
+    pub fn with_padded_height() -> Self {
         let matrix: Vec<Vec<XFieldElement>> = vec![];
-
-        let omicron = base_table::derive_omicron(padded_height as u64);
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            padded_height,
-            num_trace_randomizers,
-            omicron,
-            matrix,
-            "ExtHashTable".to_string(),
-        );
+        let inherited_table =
+            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ExtHashTable".to_string());
 
         Self { inherited_table }
     }
@@ -627,10 +634,19 @@ impl ExtHashTable {
     pub fn ext_codeword_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
+        omicron: XFieldElement,
+        padded_height: usize,
+        num_trace_randomizers: usize,
         base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(fri_domain, ext_columns);
+        let ext_codewords = self.low_degree_extension(
+            fri_domain,
+            omicron,
+            padded_height,
+            num_trace_randomizers,
+            ext_columns,
+        );
 
         let lifted_base_codewords = base_codewords
             .iter()
@@ -696,6 +712,8 @@ impl ExtensionTable for ExtHashTable {
 
 #[cfg(test)]
 mod constraint_tests {
+    use twenty_first::shared_math::other::roundup_npo2;
+
     use crate::table::challenges_endpoints::AllInitials;
     use crate::vm::Program;
 
@@ -704,19 +722,18 @@ mod constraint_tests {
     #[test]
     fn table_satisfies_constraints_test() {
         let program = Program::from_code("hash hash hash halt").unwrap();
-        let (base_matrices, _, _) = program.simulate_with_input(&[], &[]);
-        let (ext_hash_table, _) = HashTable::new_prover(
-            0,
-            base_matrices
-                .hash_matrix
-                .iter()
-                .map(|r| r.to_vec())
-                .collect(),
-        )
-        .extend(
-            &AllChallenges::dummy().hash_table_challenges,
-            &AllInitials::<StarkHasher>::dummy().hash_table_endpoints,
-        );
+        let (aet, _, _) = program.simulate_with_input(&[], &[]);
+
+        let padded_height = roundup_npo2(aet.hash_matrix.len() as u64) as usize;
+        let num_trace_randomizers = 0;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+
+        let (ext_hash_table, _) =
+            HashTable::new_prover(aet.hash_matrix.iter().map(|r| r.to_vec()).collect()).extend(
+                &AllChallenges::dummy().hash_table_challenges,
+                &AllInitials::<StarkHasher>::dummy().hash_table_endpoints,
+                interpolant_degree,
+            );
 
         for v in ext_hash_table.evaluate_initial_constraints(&ext_hash_table.data()[0]) {
             assert!(v.is_zero());

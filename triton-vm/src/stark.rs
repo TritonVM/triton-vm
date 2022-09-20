@@ -27,7 +27,9 @@ use crate::cross_table_arguments::{
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
 use crate::table::challenges_endpoints::{AllChallenges, AllInitials};
-use crate::table::table_collection::{BaseTableCollection, ExtTableCollection, NUM_TABLES};
+use crate::table::table_collection::{
+    derive_omicron, unit_distance, BaseTableCollection, ExtTableCollection,
+};
 use crate::triton_xfri::{self, Fri};
 
 use super::table::base_matrix::BaseMatrices;
@@ -77,12 +79,10 @@ impl Stark {
         );
 
         let num_trace_randomizers = Self::num_trace_randomizers(security_level);
-        let empty_table_collection = ExtTableCollection::with_padded_heights(
-            num_trace_randomizers,
-            &[max_height; NUM_TABLES],
-        );
+        let empty_table_collection = ExtTableCollection::with_padded_height(max_height);
 
-        let max_degree_with_origin = empty_table_collection.max_degree_with_origin();
+        let max_degree_with_origin =
+            empty_table_collection.max_degree_with_origin(num_trace_randomizers);
         let max_degree = (other::roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
         let fri_domain_length = ((max_degree as u64 + 1) * expansion_factor) as usize;
         println!("Max Degree: {}", max_degree_with_origin);
@@ -125,7 +125,8 @@ impl Stark {
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
         timer.elapsed("randomizer_codewords");
 
-        let base_codeword_tables = base_tables.codeword_tables(&self.bfri_domain);
+        let base_codeword_tables =
+            base_tables.codeword_tables(&self.bfri_domain, self.num_trace_randomizers);
         let base_codewords = base_codeword_tables.get_all_base_columns();
         let all_base_codewords = vec![b_rand_codewords, base_codewords.clone()].concat();
         timer.elapsed("get_all_base_codewords");
@@ -158,19 +159,24 @@ impl Stark {
         let all_initials = AllInitials::create_endpoints(random_initials);
         timer.elapsed("initials");
 
-        let (ext_tables, all_terminals) =
-            ExtTableCollection::extend_tables(&base_tables, &extension_challenges, &all_initials);
+        let (ext_tables, all_terminals) = ExtTableCollection::extend_tables(
+            &base_tables,
+            &extension_challenges,
+            &all_initials,
+            self.num_trace_randomizers,
+        );
         timer.elapsed("extend + get_terminals");
 
-        let padded_heights = (&ext_tables)
-            .into_iter()
-            .map(|ext_table| BFieldElement::new(ext_table.padded_height() as u64))
-            .collect_vec();
-        proof_stream.enqueue(&ProofItem::PaddedHeights(padded_heights));
+        proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
+            base_tables.padded_height as u64,
+        )));
         timer.elapsed("Sent all padded heights");
 
-        let ext_codeword_tables =
-            ext_tables.codeword_tables(&self.xfri.domain, base_codeword_tables);
+        let ext_codeword_tables = ext_tables.codeword_tables(
+            &self.xfri.domain,
+            base_codeword_tables,
+            self.num_trace_randomizers,
+        );
         let extension_codewords = ext_codeword_tables.get_all_extension_columns();
         timer.elapsed("Calculated extension codewords");
 
@@ -182,22 +188,25 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::Terminals(all_terminals));
         timer.elapsed("extension_tree");
 
-        let base_degree_bounds = base_tables.get_base_degree_bounds();
+        let base_degree_bounds = base_tables.get_base_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated base degree bounds");
 
-        let extension_degree_bounds = ext_tables.get_extension_degree_bounds();
+        let extension_degree_bounds =
+            ext_tables.get_extension_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated extension degree bounds");
 
         let mut quotient_codewords = ext_codeword_tables.get_all_quotients(&self.xfri.domain);
         timer.elapsed("Calculated quotient codewords");
 
-        let mut quotient_degree_bounds = ext_codeword_tables.get_all_quotient_degree_bounds();
+        let mut quotient_degree_bounds =
+            ext_codeword_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
         // Prove equal initial values for the column pairs pertaining to cross table arguments
         for arg in AllCrossTableArgs::default().into_iter() {
             quotient_codewords.push(arg.initial_quotient(&ext_codeword_tables, &self.xfri.domain));
-            quotient_degree_bounds.push(arg.quotient_degree_bound(&ext_codeword_tables));
+            quotient_degree_bounds
+                .push(arg.quotient_degree_bound(&ext_codeword_tables, self.num_trace_randomizers));
         }
 
         let non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
@@ -260,12 +269,10 @@ impl Stark {
         }
         timer.elapsed("fri.prove");
 
-        let unit_distances = self.get_unit_distances(&ext_tables);
-        timer.elapsed("unit_distances");
-
         // Open leafs of zipped codewords at indicated positions
+        let unit_distance = unit_distance(base_tables.padded_height, self.xfri.domain.length);
         let revealed_indices =
-            self.get_revealed_indices(&unit_distances, &cross_codeword_slice_indices);
+            self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
         let revealed_base_elems =
             Self::get_revealed_elements(&transposed_base_codewords, &revealed_indices);
@@ -314,30 +321,17 @@ impl Stark {
 
     fn get_revealed_indices(
         &self,
-        unit_distances: &[usize],
+        unit_distance: usize,
         cross_codeword_slice_indices: &[usize],
     ) -> Vec<usize> {
         let mut revealed_indices: Vec<usize> = vec![];
-        for index in cross_codeword_slice_indices.iter() {
-            for unit_distance in unit_distances.iter() {
-                revealed_indices.push((index + unit_distance) % self.xfri.domain.length);
-            }
+        for &index in cross_codeword_slice_indices.iter() {
+            revealed_indices.push(index);
+            revealed_indices.push((index + unit_distance) % self.xfri.domain.length);
         }
         revealed_indices.sort_unstable();
         revealed_indices.dedup();
         revealed_indices
-    }
-
-    // FIXME: `padded_heights` could be `&[usize; NUM_TABLES]` (but that const doesn't exist yet)
-    fn get_unit_distances(&self, ext_tables: &ExtTableCollection) -> Vec<usize> {
-        let mut unit_distances = ext_tables
-            .into_iter()
-            .map(|table| table.unit_distance(self.xfri.domain.length))
-            .collect_vec();
-        unit_distances.push(0);
-        unit_distances.sort_unstable();
-        unit_distances.dedup();
-        unit_distances
     }
 
     fn get_revealed_elements<PF: FiniteField>(
@@ -579,8 +573,7 @@ impl Stark {
     }
 
     fn get_padded_base_tables(&self, base_matrices: &BaseMatrices) -> BaseTableCollection {
-        let mut base_tables =
-            BaseTableCollection::from_base_matrices(self.num_trace_randomizers, base_matrices);
+        let mut base_tables = BaseTableCollection::from_base_matrices(base_matrices);
         base_tables.pad();
         base_tables
     }
@@ -630,13 +623,8 @@ impl Stark {
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("Create extension challenges");
 
-        let padded_heights = proof_stream
-            .dequeue()?
-            .as_padded_heights()?
-            .iter()
-            .map(|bfe| bfe.value() as usize)
-            .collect_vec();
-        timer.elapsed("Got all padded heights");
+        let padded_height = proof_stream.dequeue()?.as_padded_heights()?.value() as usize;
+        timer.elapsed("Got padded height");
 
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         let all_terminals = proof_stream.dequeue()?.as_terminals()?;
@@ -644,18 +632,21 @@ impl Stark {
 
         let ext_table_collection = ExtTableCollection::for_verifier(
             self.num_trace_randomizers,
-            &padded_heights,
+            padded_height,
             &extension_challenges,
             &all_terminals,
         );
 
-        let base_degree_bounds: Vec<Degree> = ext_table_collection.get_all_base_degree_bounds();
+        let base_degree_bounds =
+            ext_table_collection.get_all_base_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated base degree bounds");
 
-        let extension_degree_bounds = ext_table_collection.get_extension_degree_bounds();
+        let extension_degree_bounds =
+            ext_table_collection.get_extension_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated extension degree bounds");
 
-        let quotient_degree_bounds = ext_table_collection.get_all_quotient_degree_bounds();
+        let quotient_degree_bounds =
+            ext_table_collection.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
         let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
@@ -692,12 +683,10 @@ impl Stark {
         self.xfri.verify(proof_stream, &combination_root)?;
         timer.elapsed("Verified FRI proof");
 
-        let unit_distances = self.get_unit_distances(&ext_table_collection);
-        timer.elapsed("Got unit distances");
-
         // Open leafs of zipped codewords at indicated positions
-        let revealed_indices =
-            self.get_revealed_indices(&unit_distances, &combination_check_indices);
+        let unit_distance =
+            unit_distance(ext_table_collection.padded_height, self.xfri.domain.length);
+        let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
         timer.elapsed("Calculated revealed indices");
 
         // TODO: in the following ~80 lines, we (conceptually) do the same thing three times. DRY.
@@ -799,6 +788,8 @@ impl Stark {
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
         let all_cross_table_args = AllCrossTableArgs::default();
+        let omicron: XFieldElement = derive_omicron(padded_height as u64);
+        let omicron_inverse = omicron.inverse();
         for (combination_check_index, revealed_combination_leaf) in combination_check_indices
             .into_iter()
             .zip_eq(revealed_combination_leafs)
@@ -843,9 +834,8 @@ impl Stark {
                 let table_slice = [base_col_slice, ext_col_slice].concat();
                 cross_slice_by_table.push(table_slice);
 
-                let curr_unit_distance = table.unit_distance(self.xfri.domain.length);
                 let next_cross_slice_index =
-                    (combination_check_index + curr_unit_distance) % self.xfri.domain.length;
+                    (combination_check_index + unit_distance) % self.xfri.domain.length;
                 let next_cross_slice = &index_map_of_revealed_elems[&next_cross_slice_index];
 
                 let next_base_col_slice =
@@ -867,12 +857,25 @@ impl Stark {
                 .zip_eq(next_cross_slice_by_table.iter())
                 .zip_eq(ext_table_collection.into_iter())
             {
-                let table_height = table.padded_height() as u32;
+                let initial_quotient_degree_bounds = table
+                    .get_initial_quotient_degree_bounds(padded_height, self.num_trace_randomizers);
+                let consistency_quotient_degree_bounds = table
+                    .get_consistency_quotient_degree_bounds(
+                        padded_height,
+                        self.num_trace_randomizers,
+                    );
+                let transition_quotient_degree_bounds = table
+                    .get_transition_quotient_degree_bounds(
+                        padded_height,
+                        self.num_trace_randomizers,
+                    );
+                let terminal_quotient_degree_bounds = table
+                    .get_terminal_quotient_degree_bounds(padded_height, self.num_trace_randomizers);
 
                 for (evaluated_bc, degree_bound) in table
                     .evaluate_initial_constraints(table_row)
                     .into_iter()
-                    .zip_eq(table.get_initial_quotient_degree_bounds().iter())
+                    .zip_eq(initial_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_bc / (current_fri_domain_value - 1.into());
@@ -885,11 +888,11 @@ impl Stark {
                 for (evaluated_cc, degree_bound) in table
                     .evaluate_consistency_constraints(table_row)
                     .into_iter()
-                    .zip_eq(table.get_consistency_quotient_degree_bounds().iter())
+                    .zip_eq(consistency_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_cc
-                        / (current_fri_domain_value.mod_pow_u32(table_height) - 1.into());
+                        / (current_fri_domain_value.mod_pow_u32(padded_height as u32) - 1.into());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -900,16 +903,13 @@ impl Stark {
                 for (evaluated_tc, degree_bound) in table
                     .evaluate_transition_constraints(&tc_evaluation_point)
                     .into_iter()
-                    .zip_eq(table.get_transition_quotient_degree_bounds().iter())
+                    .zip_eq(transition_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = if table_height == 0 {
-                        // transition has no meaning on empty table
-                        0.into()
-                    } else {
-                        let numerator = current_fri_domain_value - table.omicron().inverse();
+                    let quotient = {
+                        let numerator = current_fri_domain_value - omicron_inverse;
                         let denominator =
-                            current_fri_domain_value.mod_pow_u32(table_height) - 1.into();
+                            current_fri_domain_value.mod_pow_u32(padded_height as u32) - 1.into();
                         evaluated_tc * numerator / denominator
                     };
                     let quotient_shifted =
@@ -921,11 +921,10 @@ impl Stark {
                 for (evaluated_termc, degree_bound) in table
                     .evaluate_terminal_constraints(table_row)
                     .into_iter()
-                    .zip_eq(table.get_terminal_quotient_degree_bounds().iter())
+                    .zip_eq(terminal_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient =
-                        evaluated_termc / (current_fri_domain_value - table.omicron().inverse());
+                    let quotient = evaluated_termc / (current_fri_domain_value - omicron_inverse);
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -934,7 +933,8 @@ impl Stark {
             }
 
             for arg in all_cross_table_args.into_iter() {
-                let degree_bound = arg.quotient_degree_bound(&ext_table_collection);
+                let degree_bound =
+                    arg.quotient_degree_bound(&ext_table_collection, self.num_trace_randomizers);
                 let shift = self.max_degree - degree_bound;
                 let quotient = arg.evaluate_difference(&cross_slice_by_table)
                     / (current_fri_domain_value - 1.into());
@@ -1032,7 +1032,6 @@ pub(crate) mod triton_stark_tests {
     use crate::instruction::sample_programs;
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
-    use crate::table::base_table;
     use crate::table::challenges_endpoints::AllTerminals;
     use crate::vm::Program;
 
@@ -1053,21 +1052,7 @@ pub(crate) mod triton_stark_tests {
         let num_randomizer_polynomials = 1;
         let log_expansion_factor = 2;
         let security_level = 32;
-
-        let unpadded_height = [
-            base_matrices.program_matrix.len(),
-            base_matrices.processor_matrix.len(),
-            base_matrices.instruction_matrix.len(),
-            base_matrices.op_stack_matrix.len(),
-            base_matrices.ram_matrix.len(),
-            base_matrices.jump_stack_matrix.len(),
-            base_matrices.hash_matrix.len(),
-            base_matrices.u32_op_matrix.len(),
-        ]
-        .into_iter()
-        .max()
-        .unwrap_or(0);
-        let padded_height = base_table::padded_height(unpadded_height);
+        let padded_height = BaseTableCollection::padded_height(&base_matrices);
 
         let stark = Stark::new(
             padded_height,
@@ -1116,13 +1101,13 @@ pub(crate) mod triton_stark_tests {
         AllChallenges,
         AllInitials<RescuePrimeRegular>,
         AllTerminals<RescuePrimeRegular>,
+        usize,
     ) {
         let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
         let base_matrices = BaseMatrices::new(aet, &program);
 
         let num_trace_randomizers = 2;
-        let mut base_tables =
-            BaseTableCollection::from_base_matrices(num_trace_randomizers, &base_matrices);
+        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
 
         let unpadded_base_tables = base_tables.clone();
 
@@ -1130,8 +1115,12 @@ pub(crate) mod triton_stark_tests {
 
         let dummy_challenges = AllChallenges::dummy();
         let dummy_initials = AllInitials::dummy();
-        let (ext_tables, all_terminals) =
-            ExtTableCollection::extend_tables(&base_tables, &dummy_challenges, &dummy_initials);
+        let (ext_tables, all_terminals) = ExtTableCollection::extend_tables(
+            &base_tables,
+            &dummy_challenges,
+            &dummy_initials,
+            num_trace_randomizers,
+        );
 
         (
             stdout,
@@ -1141,16 +1130,21 @@ pub(crate) mod triton_stark_tests {
             dummy_challenges,
             dummy_initials,
             all_terminals,
+            num_trace_randomizers,
         )
     }
 
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
     #[test]
     pub fn print_all_constraint_degrees() {
-        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
+        let (_, _, _, ext_tables, _, _, _, num_trace_randomizers) =
+            parse_simulate_pad_extend("halt", &[], &[]);
+        let padded_height = ext_tables.padded_height;
         let all_degrees = ext_tables
             .into_iter()
-            .map(|ext_table| ext_table.all_degrees_with_origin())
+            .map(|ext_table| {
+                ext_table.all_degrees_with_origin(padded_height, num_trace_randomizers)
+            })
             .concat();
         for deg in all_degrees {
             println!("{}", deg);
@@ -1207,6 +1201,7 @@ pub(crate) mod triton_stark_tests {
             all_challenges,
             _all_initials,
             all_terminals,
+            _num_trace_randomizers,
         ) = parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
 
         let ptie = all_terminals.processor_table_endpoints.input_table_eval_sum;
@@ -1231,7 +1226,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
+        let (_, _, _, ext_tables, _, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
 
         for table in ext_tables.into_iter() {
             let dummy_row = vec![0.into(); table.full_width()];
@@ -1248,7 +1243,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
         let zero = XFieldElement::zero();
-        let (_, _, _, ext_tables, _, _, _) =
+        let (_, _, _, ext_tables, _, _, _, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
 
         for table in (&ext_tables).into_iter() {

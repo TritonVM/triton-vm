@@ -10,7 +10,7 @@ use crate::table::processor_table::PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
 use crate::table::table_collection::TableId::{
     HashTable, InstructionTable, ProcessorTable, ProgramTable,
 };
-use crate::table::table_collection::{ExtTableCollection, TableId};
+use crate::table::table_collection::{interpolant_degree, ExtTableCollection, TableId};
 use crate::table::table_column::{
     ExtHashTableColumn, ExtInstructionTableColumn, ExtJumpStackTableColumn, ExtOpStackTableColumn,
     ExtProcessorTableColumn, ExtProgramTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
@@ -59,14 +59,14 @@ pub trait CrossTableArg {
             .collect_vec()
     }
 
-    fn quotient_degree_bound(&self, ext_codeword_tables: &ExtTableCollection) -> Degree {
-        let (from_table, _) = self.from();
-        let (to_table, _) = self.to();
-        let lhs_interpolant_degree = ext_codeword_tables.interpolant_degree(from_table);
-        let rhs_interpolant_degree = ext_codeword_tables.interpolant_degree(to_table);
-        let degree = std::cmp::max(lhs_interpolant_degree, rhs_interpolant_degree);
-
-        degree - 1
+    fn quotient_degree_bound(
+        &self,
+        ext_codeword_tables: &ExtTableCollection,
+        num_trace_randomizers: usize,
+    ) -> Degree {
+        let interpolant_degree =
+            interpolant_degree(ext_codeword_tables.padded_height, num_trace_randomizers);
+        interpolant_degree - 1
     }
 
     fn evaluate_difference(&self, cross_table_slice: &[Vec<XFieldElement>]) -> XFieldElement {
