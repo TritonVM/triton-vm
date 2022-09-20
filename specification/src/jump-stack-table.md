@@ -97,10 +97,11 @@ Jump Stack Table:
 
 ## Padding
 
-After the Jump Stack Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
-Each padding row is a direct copy of the Jump Stack Table's last row, with the exception of the cycle count column `clk`.
-In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
-This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the Jump Stack Table's `clk` column.
+A padding row is a direct copy of the Jump Stack Table's row with the highest value for column `clk`, called template row, with the exception of the cycle count column `clk`.
+In a padding row, the value of column `clk` is 1 greater than the value of column `clk` in the template row.
+The padding row is inserted right below the template row.
+These steps are repeated until the desired padded height is reached.
+In total, above steps ensure that the Permutation Argument between the Jump Stack Table and the [Processor Table](processor-table.md) holds up.
 
 ## Initial Constraints
 
