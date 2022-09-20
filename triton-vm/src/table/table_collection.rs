@@ -88,15 +88,6 @@ pub fn derive_omicron<DataPF: FiniteField>(padded_height: u64) -> DataPF {
     DataPF::primitive_root_of_unity(padded_height).unwrap()
 }
 
-/// Returns the relation between the FRI domain and the omicron domain
-pub fn unit_distance(padded_height: usize, omega_order: usize) -> usize {
-    if padded_height == 0 {
-        0
-    } else {
-        omega_order / padded_height
-    }
-}
-
 impl BaseTableCollection {
     pub fn from_base_matrices(base_matrices: &BaseMatrices) -> Self {
         let padded_height = Self::padded_height(base_matrices);

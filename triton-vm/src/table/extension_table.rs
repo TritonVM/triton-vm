@@ -13,7 +13,7 @@ use twenty_first::timing_reporter::TimingReporter;
 use crate::fri_domain::FriDomain;
 use crate::stark::{Stark, StarkHasher};
 use crate::table::challenges_endpoints::AllTerminals;
-use crate::table::table_collection::{interpolant_degree, unit_distance};
+use crate::table::table_collection::interpolant_degree;
 
 use super::base_table::TableLike;
 use super::challenges_endpoints::AllChallenges;
@@ -264,7 +264,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .zip_eq(subgroup_zerofier_inverse.into_par_iter())
             .map(|(fri_dom_v, sub_z_inv)| (fri_dom_v - omicron_inverse) * sub_z_inv)
             .collect();
-        let unit_distance = unit_distance(padded_height, fri_domain.length);
+        // the relation between the FRI domain and the omicron domain
+        let unit_distance = fri_domain.length / padded_height;
 
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()

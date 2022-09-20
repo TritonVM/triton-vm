@@ -27,9 +27,7 @@ use crate::cross_table_arguments::{
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
 use crate::table::challenges_endpoints::{AllChallenges, AllInitials};
-use crate::table::table_collection::{
-    derive_omicron, unit_distance, BaseTableCollection, ExtTableCollection,
-};
+use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
 use crate::triton_xfri::{self, Fri};
 
 use super::table::base_matrix::BaseMatrices;
@@ -269,8 +267,9 @@ impl Stark {
         }
         timer.elapsed("fri.prove");
 
+        // the relation between the FRI domain and the omicron domain
+        let unit_distance = self.xfri.domain.length / base_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
-        let unit_distance = unit_distance(base_tables.padded_height, self.xfri.domain.length);
         let revealed_indices =
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
@@ -683,9 +682,9 @@ impl Stark {
         self.xfri.verify(proof_stream, &combination_root)?;
         timer.elapsed("Verified FRI proof");
 
+        // the relation between the FRI domain and the omicron domain
+        let unit_distance = self.xfri.domain.length / ext_table_collection.padded_height;
         // Open leafs of zipped codewords at indicated positions
-        let unit_distance =
-            unit_distance(ext_table_collection.padded_height, self.xfri.domain.length);
         let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
         timer.elapsed("Calculated revealed indices");
 
