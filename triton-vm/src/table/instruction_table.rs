@@ -294,19 +294,6 @@ impl InstructionTable {
 }
 
 impl ExtInstructionTable {
-    pub fn with_padded_height() -> Self {
-        let matrix: Vec<Vec<XFieldElement>> = vec![];
-
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            matrix,
-            "ExtInstructionTable".to_string(),
-        );
-
-        Self { inherited_table }
-    }
-
     pub fn ext_codeword_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,

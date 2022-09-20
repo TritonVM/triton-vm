@@ -282,19 +282,6 @@ impl OpStackTable {
 }
 
 impl ExtOpStackTable {
-    pub fn with_padded_height() -> Self {
-        let matrix: Vec<Vec<XFieldElement>> = vec![];
-
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            matrix,
-            "ExtOpStackTable".to_string(),
-        );
-
-        Self { inherited_table }
-    }
-
     pub fn ext_codeword_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
