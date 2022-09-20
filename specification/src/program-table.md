@@ -12,13 +12,13 @@ The Program Table is static in the sense that it is fixed before the VM runs.
 Moreover, the user can commit to the program by providing the Merkle root of the zipped FRI codeword.
 This commitment assumes that the FRI domain is fixed, which implies an upper bound on program size.
 
-**Padding**
+## Padding
 
 After the Program Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is a direct copy of the Program Table's last row, with the exception of the column `address`.
 Column `address` increases by 1 between any two consecutive rows, even padding rows.
 
-**Initial Constraints**
+## Initial Constraints
 
 1. The first address is 0.
 
@@ -26,11 +26,11 @@ Column `address` increases by 1 between any two consecutive rows, even padding r
 
 1. `addr`
 
-**Consistency Constraints**
+## Consistency Constraints
 
 None.
 
-**Transition Constraints**
+## Transition Constraints
 
 1. The address increases by 1.
 
@@ -38,10 +38,10 @@ None.
 
 1. `addr' - (addr + 1)`
 
-**Terminal Constraints**
+## Terminal Constraints
 
 None.
 
-**Relations to other Tables**
+## Relations to Other Tables
 
 1. An Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the [Instruction Table](instruction-table.md).

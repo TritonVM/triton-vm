@@ -79,14 +79,14 @@ Operational Stack Table:
 |     8 | `pop`  |    11 |    44 |
 
 
-**Padding**
+## Padding
 
 After the Op Stack Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is a direct copy of the Op Stack Table's last row, with the exception of the cycle count column `clk`.
 In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
 This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the Op Stack Table's `clk` column.
 
-**Initial Constraints**
+## Initial Constraints
 
 1. `clk` is 0
 1. `osv` is 0.
@@ -98,11 +98,11 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 1. `osv`
 1. `osp - 16`
 
-**Consistency Constraints**
+## Consistency Constraints
 
 None.
 
-**Transition Constraints**
+## Transition Constraints
 
 1. the `osp` increases by 1, *or*
 1. the `osp` does not change AND the `osv` does not change, *or*
@@ -122,10 +122,10 @@ An instruction is OpStack-shrinking if it is
 1. `(osp' - (osp + 1))·(osp' - osp)`
 1. `(osp' - (osp + 1))·(osv' - osv)·(ci - op_code(pop))·(ci - op_code(skiz))·(ci - op_code(assert))·(ci - op_code(add))·(ci - op_code(mul))·(ci - op_code(eq))·(ci - op_code(lt))·(ci - op_code(and))·(ci - op_code(xor))·(ci - op_code(xbmul))·(ci - op_code(write_io))`
 
-**Terminal Constraints**
+## Terminal Constraints
 
 None.
 
-**Relations to Other Tables**
+## Relations to Other Tables
 
 1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the [Processor Table](processor-table.md).

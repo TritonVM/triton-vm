@@ -13,12 +13,12 @@ The Hash Table has 49 columns:
 - 16 state registers `state0` through `state15` to which the Rescue-XLIX rounds are applied, and
 - 32 helper registers called `constant0A` through `constant15A` and `constant0B` through `constant15B` holding round constants.
 
-**Padding**
+## Padding
 
 After the Hash Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is the all-zero row.
 
-**Initial Constraints**
+## Initial Constraints
 
 1. The round number `rnd_nmbr` starts at 0 or 1.
 
@@ -26,7 +26,7 @@ Each padding row is the all-zero row.
 
 1. `rnd_nmbr·(rnd_nmbr - 1)`
 
-**Consistency Constraints**
+## Consistency Constraints
 
 1. If the round number is 1, register `state10` is 0.
 1. If the round number is 1, register `state11` is 0.
@@ -54,7 +54,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state14`
 1. `(rnd_nmbr - 0)·(rnd_nmbr - 2)·(rnd_nmbr - 3)·(rnd_nmbr - 4)·(rnd_nmbr - 5)·(rnd_nmbr - 6)·(rnd_nmbr - 7)·(rnd_nmbr - 8)·state15`
 
-**Transition Constraints**
+## Transition Constraints
 
 1. If the round number is 0, the next round number is 0.
 1. If the round number is 1, the next round number is 2.
@@ -107,11 +107,11 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The remaining 16 constraints are left as an exercise to the reader.
 For hints, see the [Rescue-Prime Systematization of Knowledge, Sections 2.4 & 2.5](https://eprint.iacr.org/2020/1143.pdf#page=5).
 
-**Terminal Constraints**
+## Terminal Constraints
 
 None.
 
-**Relations to Other Tables**
+## Relations to Other Tables
 
 1. An Evaluation Argument establishes that whenever the [processor](processor-table.md) executes a `hash` instruction, the values of the stack's 12 top-most registers correspond to some row in the Hash Table with round index equal to 1.
 1. An Evaluation Argument establishes that after having executed a `hash` instruction, the top 6 stack registers in the [processor](processor-table.md) correspond to the digest computed in the Hash Coprocessor, i.e., the first six values of the Hash Table's row with round index equal to 8.

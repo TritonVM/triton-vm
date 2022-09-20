@@ -95,14 +95,14 @@ RAM Table:
 |    29 |              16 |      0 |         0 |
 
 
-**Padding**
+## Padding
 
 After the RAM Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is a direct copy of the RAM Table's last row, with the exception of the cycle count column `clk`.
 In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
 This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the RAM Table's `clk` column.
 
-**Initial Constraints**
+## Initial Constraints
 
 1. Cycle count `clk` is 0.
 1. RAM pointer `ramp` is 0.
@@ -114,11 +114,11 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 1. `ramp`
 1. `ramv`
 
-**Consistency Constraints**
+## Consistency Constraints
 
 None.
 
-**Transition Constraints**
+## Transition Constraints
 
 1. If `(ramp - ramp')` is 0, then `hv6` is 0, else `hv6` is the multiplicative inverse of `(ramp' - ramp)`.
 1. If the `ramp` changes, then the new `ramv` must be 0.
@@ -137,10 +137,10 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(ramp' - ramp)·ramv'`
 1. `(hv6·(ramp' - ramp) - 1)·(ramv' - ramv)·(clk' - (clk + 1))`
 
-**Terminal Constraints**
+## Terminal Constraints
 
 None.
 
-**Relations to Other Tables**
+## Relations to Other Tables
 
 1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the [Processor Table](processor-table.md).

@@ -39,21 +39,21 @@ Instruction Table:
 |         4 | add                   | …                         | (from Program Table)   |
 |         … | …                     | …                         | …                      |
 
-**Padding**
+## Padding
 
 After the Instruction Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is a direct copy of the Instruction Table's last row, with the exception of the column `address`.
 Column `address` increases by 1 between any two consecutive rows if at least one of the two rows is a padding row.
 
-**Initial Constraints**
+## Initial Constraints
 
 None.
 
-**Consistency Constraints**
+## Consistency Constraints
 
 None.
 
-**Transition Constraints**
+## Transition Constraints
 
 1. The address increases by 1 or `current_instruction` does not change.
 1. The address increases by 1 or `next_instruction_or_arg` does not change.
@@ -63,11 +63,11 @@ None.
 1. `(address' - (address + 1))·(current_instruction' - current_instruction)`
 1. `(address' - (address + 1))·(next_instruction_or_arg' - next_instruction_or_arg)`
 
-**Terminal Constraints**
+## Terminal Constraints
 
 None.
 
-**Relations to Other Tables**
+## Relations to Other Tables
 
 1. An Evaluation Argument establishes that the set of unique rows corresponds to the instructions as given by the [Program Table](#program-table).
 1. A Permutation Argument establishes that the rows not included in above Evaluation Argument correspond to the values of the registers (`ip, ci, nia`) of the [Processor Table](#processor-table).

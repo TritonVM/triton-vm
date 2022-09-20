@@ -95,14 +95,14 @@ Jump Stack Table:
 | 14    | `bar`    | 2     | `0xB3` | `0xC0` |
 | 15    | `return` | 2     | `0xB3` | `0xC0` |
 
-**Padding**
+## Padding
 
 After the Jump Stack Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is a direct copy of the Jump Stack Table's last row, with the exception of the cycle count column `clk`.
 In a padding row, column `clk` is set to the table's current total length, a value in the interval $[l, 2^{\lceil\log_2 l\rceil})$.
 This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ appears exactly once in the Jump Stack Table's `clk` column.
 
-**Initial Constraints**
+## Initial Constraints
 
 1. Cycle count `clk` is 0.
 1. Jump Stack Pointer `jsp` is 0.
@@ -116,11 +116,11 @@ This ensures that every value in the interval $[0, 2^{\lceil\log_2 l\rceil})$ ap
 1. `jso`
 1. `jsd`
 
-**Consistency Constraints**
+## Consistency Constraints
 
 None.
 
-**Transition Constraints**
+## Transition Constraints
 
 1. The jump stack pointer `jsp` increases by 1, *or*
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the cycle counter `clk` increases by 1), *or*
@@ -140,10 +140,10 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(jsp' - (jsp + 1))·(jsd' - jsd)·(ci - op_code(return))`
 1. `(jsp' - (jsp + 1))·(clk' - (clk + 1))·(ci - op_code(call))·(ci - op_code(return))`
 
-**Terminal Constraints**
+## Terminal Constraints
 
 None.
  
-**Relations to Other Tables**
+## Relations to Other Tables
 
 1. A Permutation Argument establishes that the rows match with the rows in the [Processor Table](processor-table.md).

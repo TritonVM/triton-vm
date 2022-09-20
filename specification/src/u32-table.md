@@ -30,7 +30,7 @@ Copy-constraints, i.e., Permutation Arguments, establish that the result of the 
 
 For every instruction in the `u32_op` instruction group (`lt`, `and`, `xor`, `reverse`, `div`), there is a dedicated Permutation Argument with the [Processor Table](processor-table.md).
 
-**Padding**
+## Padding
 
 After the Uint32 Operations Table is filled in, its length being $l$, the table is padded until a total length of $2^{\lceil\log_2 l\rceil}$ is reached (or 0 if $l=0$).
 Each padding row is the following row:
@@ -39,11 +39,11 @@ Each padding row is the following row:
 |:------|-------:|--------------------:|-----:|----:|----:|---:|----:|----:|----:|--------:|--------:|
 | 0     |      0 |           $32^{-1}$ |    0 |   0 |   0 |  2 |   0 |   0 |   0 |       0 |       0 |
 
-**Initial Constraints**
+## Initial Constraints
 
 1. In the first row, the indicator `idc` is 1.
 
-**Consistency Constraints**
+## Consistency Constraints
 
 1. The indicator `idc` is 0 or 1.
 1. If `idc` is 1, then `bits` is 0.
@@ -68,7 +68,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `idc` is 1 or LHS is not 0 or RHS is not 0 or XOR is 0.
 1. `idc` is 1 or LHS is not 0 or RHS is not 0 or REV is 0.
 
-**Transition Constraints**
+## Transition Constraints
 
 Even though they are never explicitly represented, it is useful to alias the LHS's and RHS's _least-significant bit_, or “lsb.”
 Given two consecutive rows for LHS, the (current) least significant bit can be computed by subtracting twice the next row's LHS from the current row's LHS.
@@ -107,12 +107,12 @@ Written in disjunctive form, the same constraints can be expressed as:
 1. `idc` in the next row is 1 or XOR in the current row equals twice XOR in the next row plus the lsb of LHS plus the lsb of RHS minus (twice the product of the lsb of LHS and the lsb of RHS).
 1. `idc` in the next row is 1 or REV in the current row is (REV in the next row divided by 2) plus ($2^{31}$ times the lsb of LHS).
 
-**Terminal Constraints**
+## Terminal Constraints
 
 1. In the last row, the indicator `idc` is 0.
 1. In the last row, LHS is 0.
 1. In the last row, RHS is 0.
 
-**Relations to Other Tables**
+## Relations to Other Tables
 
 1. A Permutation Argument, conditioned on `ci`, establishes that the correct result is transferred to the [processor](processor-table.md).
