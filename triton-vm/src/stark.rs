@@ -1011,10 +1011,30 @@ pub(crate) mod triton_stark_tests {
     use crate::instruction::sample_programs;
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
+    use crate::table::base_table::InheritsFromTable;
     use crate::table::challenges_terminals::AllTerminals;
     use crate::vm::Program;
 
     use super::*;
+
+    #[test]
+    fn all_tables_pad_to_same_height_test() {
+        let code = "read_io read_io push -1 mul add split push 0 eq swap1 pop "; // simulates LTE
+        let input_symbols = [5_u64.into(), 7_u64.into()];
+        let (aet, _, program) = parse_setup_simulate(code, &input_symbols, &[]);
+        let base_matrices = BaseMatrices::new(aet, &program);
+        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
+        base_tables.pad();
+        let padded_height = base_tables.padded_height;
+        assert_eq!(padded_height, base_tables.program_table.data().len());
+        assert_eq!(padded_height, base_tables.instruction_table.data().len());
+        assert_eq!(padded_height, base_tables.processor_table.data().len());
+        assert_eq!(padded_height, base_tables.op_stack_table.data().len());
+        assert_eq!(padded_height, base_tables.ram_table.data().len());
+        assert_eq!(padded_height, base_tables.jump_stack_table.data().len());
+        assert_eq!(padded_height, base_tables.hash_table.data().len());
+        assert_eq!(padded_height, base_tables.u32_op_table.data().len());
+    }
 
     fn parse_simulate_prove(
         code: &str,
