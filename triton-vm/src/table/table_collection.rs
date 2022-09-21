@@ -1,6 +1,6 @@
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
-use super::challenges_endpoints::{AllChallenges, AllInitials, AllTerminals};
+use super::challenges_terminals::{AllChallenges, AllTerminals};
 use super::extension_table::QuotientableExtensionTable;
 use super::hash_table::{ExtHashTable, HashTable};
 use super::instruction_table::{ExtInstructionTable, InstructionTable};
@@ -312,70 +312,55 @@ impl ExtTableCollection {
             .unwrap_or_default()
     }
 
-    /// Create an ExtTableCollection from a BaseTableCollection by
-    /// `.extend()`ing each base table.
-    ///
+    /// Create an ExtTableCollection from a BaseTableCollection by `.extend()`ing each base table.
     /// The `.extend()` for each table is specific to that table, but always
     /// involves adding some number of columns. Each table only needs their
-    /// own challenges and initials, but `AllChallenges` and `AllInitials`
-    /// are passed everywhere to keep each table's `.extend()` homogenous.
+    /// own challenges, but `AllChallenges` are passed everywhere to keep each table's `.extend()`
+    /// homogenous.
     pub fn extend_tables(
         base_tables: &BaseTableCollection,
         all_challenges: &AllChallenges,
-        all_initials: &AllInitials<StarkHasher>,
         num_trace_randomizers: usize,
     ) -> (Self, AllTerminals<StarkHasher>) {
         let padded_height = base_tables.padded_height;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
-        let (program_table, program_table_terminals) = base_tables.program_table.extend(
-            &all_challenges.program_table_challenges,
-            &all_initials.program_table_endpoints,
-            interpolant_degree,
-        );
+        let (program_table, program_table_terminals) = base_tables
+            .program_table
+            .extend(&all_challenges.program_table_challenges, interpolant_degree);
 
         let (instruction_table, instruction_table_terminals) =
             base_tables.instruction_table.extend(
                 &all_challenges.instruction_table_challenges,
-                &all_initials.instruction_table_endpoints,
                 interpolant_degree,
             );
 
         let (processor_table, processor_table_terminals) = base_tables.processor_table.extend(
             &all_challenges.processor_table_challenges,
-            &all_initials.processor_table_endpoints,
             interpolant_degree,
         );
 
         let (op_stack_table, op_stack_table_terminals) = base_tables.op_stack_table.extend(
             &all_challenges.op_stack_table_challenges,
-            &all_initials.op_stack_table_endpoints,
             interpolant_degree,
         );
 
-        let (ram_table, ram_table_terminals) = base_tables.ram_table.extend(
-            &all_challenges.ram_table_challenges,
-            &all_initials.ram_table_endpoints,
-            interpolant_degree,
-        );
+        let (ram_table, ram_table_terminals) = base_tables
+            .ram_table
+            .extend(&all_challenges.ram_table_challenges, interpolant_degree);
 
         let (jump_stack_table, jump_stack_table_terminals) = base_tables.jump_stack_table.extend(
             &all_challenges.jump_stack_table_challenges,
-            &all_initials.jump_stack_table_endpoints,
             interpolant_degree,
         );
 
-        let (hash_table, hash_table_terminals) = base_tables.hash_table.extend(
-            &all_challenges.hash_table_challenges,
-            &all_initials.hash_table_endpoints,
-            interpolant_degree,
-        );
+        let (hash_table, hash_table_terminals) = base_tables
+            .hash_table
+            .extend(&all_challenges.hash_table_challenges, interpolant_degree);
 
-        let (u32_op_table, u32_op_table_terminals) = base_tables.u32_op_table.extend(
-            &all_challenges.u32_op_table_challenges,
-            &all_initials.u32_op_table_endpoints,
-            interpolant_degree,
-        );
+        let (u32_op_table, u32_op_table_terminals) = base_tables
+            .u32_op_table
+            .extend(&all_challenges.u32_op_table_challenges, interpolant_degree);
 
         let ext_tables = ExtTableCollection {
             padded_height,
@@ -390,14 +375,14 @@ impl ExtTableCollection {
         };
 
         let terminals = AllTerminals {
-            program_table_endpoints: program_table_terminals,
-            instruction_table_endpoints: instruction_table_terminals,
-            processor_table_endpoints: processor_table_terminals,
-            op_stack_table_endpoints: op_stack_table_terminals,
-            ram_table_endpoints: ram_table_terminals,
-            jump_stack_table_endpoints: jump_stack_table_terminals,
-            hash_table_endpoints: hash_table_terminals,
-            u32_op_table_endpoints: u32_op_table_terminals,
+            program_table_terminals,
+            instruction_table_terminals,
+            processor_table_terminals,
+            op_stack_table_terminals,
+            ram_table_terminals,
+            jump_stack_table_terminals,
+            hash_table_terminals,
+            u32_op_table_terminals,
             phantom: std::marker::PhantomData,
         };
 

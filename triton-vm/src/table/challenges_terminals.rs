@@ -9,15 +9,15 @@ use twenty_first::shared_math::traits::GetRandomElements;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::simple_hasher::{Hashable, Hasher};
 
-use super::hash_table::{HashTableChallenges, HashTableEndpoints};
-use super::instruction_table::{InstructionTableChallenges, InstructionTableEndpoints};
-use super::jump_stack_table::{JumpStackTableChallenges, JumpStackTableEndpoints};
-use super::op_stack_table::{OpStackTableChallenges, OpStackTableEndpoints};
+use super::hash_table::{HashTableChallenges, HashTableTerminals};
+use super::instruction_table::{InstructionTableChallenges, InstructionTableTerminals};
+use super::jump_stack_table::{JumpStackTableChallenges, JumpStackTableTerminals};
+use super::op_stack_table::{OpStackTableChallenges, OpStackTableTerminals};
 use super::processor_table::IOChallenges;
-use super::processor_table::{ProcessorTableChallenges, ProcessorTableEndpoints};
-use super::program_table::{ProgramTableChallenges, ProgramTableEndpoints};
-use super::ram_table::{RamTableChallenges, RamTableEndpoints};
-use super::u32_op_table::{U32OpTableChallenges, U32OpTableEndpoints};
+use super::processor_table::{ProcessorTableChallenges, ProcessorTableTerminals};
+use super::program_table::{ProgramTableChallenges, ProgramTableTerminals};
+use super::ram_table::{RamTableChallenges, RamTableTerminals};
+use super::u32_op_table::{U32OpTableChallenges, U32OpTableTerminals};
 
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
@@ -189,34 +189,36 @@ impl AllChallenges {
     }
 }
 
-/// An *endpoint* is the collective term for *initials* and *terminals*.
-pub type AllInitials<T> = AllEndpoints<T>;
-pub type AllTerminals<T> = AllEndpoints<T>;
-
 #[derive(Debug, Clone)]
-pub struct AllEndpoints<H: Hasher>
+pub struct AllTerminals<H: Hasher>
 where
     BFieldElement: Hashable<H::T>,
 {
-    pub program_table_endpoints: ProgramTableEndpoints,
-    pub instruction_table_endpoints: InstructionTableEndpoints,
-    pub processor_table_endpoints: ProcessorTableEndpoints,
-    pub op_stack_table_endpoints: OpStackTableEndpoints,
-    pub ram_table_endpoints: RamTableEndpoints,
-    pub jump_stack_table_endpoints: JumpStackTableEndpoints,
-    pub hash_table_endpoints: HashTableEndpoints,
-    pub u32_op_table_endpoints: U32OpTableEndpoints,
+    pub program_table_terminals: ProgramTableTerminals,
+    pub instruction_table_terminals: InstructionTableTerminals,
+    pub processor_table_terminals: ProcessorTableTerminals,
+    pub op_stack_table_terminals: OpStackTableTerminals,
+    pub ram_table_terminals: RamTableTerminals,
+    pub jump_stack_table_terminals: JumpStackTableTerminals,
+    pub hash_table_terminals: HashTableTerminals,
+    pub u32_op_table_terminals: U32OpTableTerminals,
     pub(crate) phantom: PhantomData<H>,
 }
 
-impl<H: Hasher> AllEndpoints<H>
+impl<H: Hasher> AllTerminals<H>
 where
     BFieldElement: Hashable<H::T>,
 {
-    pub const TOTAL_ENDPOINTS: usize = 10;
+    pub const TOTAL_TERMINALS: usize = 10;
 
-    pub fn create_endpoints(mut weights: Vec<XFieldElement>) -> Self {
-        let processor_table_initials = ProcessorTableEndpoints {
+    /// Only intended for debugging purposes. In a production STARK, don't use this for deriving
+    /// terminals.
+    pub fn dummy() -> Self {
+        let mut rng = thread_rng();
+        let random_challenges = XFieldElement::random_elements(Self::TOTAL_TERMINALS, &mut rng);
+
+        let mut weights = random_challenges;
+        let processor_table_terminals = ProcessorTableTerminals {
             input_table_eval_sum: XFieldElement::zero(),
             output_table_eval_sum: XFieldElement::zero(),
             instruction_table_perm_product: weights.pop().unwrap(),
@@ -227,59 +229,40 @@ where
             from_hash_table_eval_sum: weights.pop().unwrap(),
             u32_table_perm_product: weights.pop().unwrap(),
         };
-
-        let program_table_initials = ProgramTableEndpoints {
+        let program_table_terminals = ProgramTableTerminals {
             instruction_eval_sum: weights.pop().unwrap(),
         };
-
-        let instruction_table_initials = InstructionTableEndpoints {
-            processor_perm_product: processor_table_initials.instruction_table_perm_product,
-            program_eval_sum: program_table_initials.instruction_eval_sum,
+        let instruction_table_terminals = InstructionTableTerminals {
+            processor_perm_product: processor_table_terminals.instruction_table_perm_product,
+            program_eval_sum: program_table_terminals.instruction_eval_sum,
         };
-
-        let op_stack_table_initials = OpStackTableEndpoints {
-            processor_perm_product: processor_table_initials.opstack_table_perm_product,
+        let op_stack_table_terminals = OpStackTableTerminals {
+            processor_perm_product: processor_table_terminals.opstack_table_perm_product,
         };
-
-        let ram_table_initials = RamTableEndpoints {
-            processor_perm_product: processor_table_initials.ram_table_perm_product,
+        let ram_table_terminals = RamTableTerminals {
+            processor_perm_product: processor_table_terminals.ram_table_perm_product,
         };
-
-        let jump_stack_table_initials = JumpStackTableEndpoints {
-            processor_perm_product: processor_table_initials.jump_stack_perm_product,
+        let jump_stack_table_terminals = JumpStackTableTerminals {
+            processor_perm_product: processor_table_terminals.jump_stack_perm_product,
         };
-
-        // hash_table.from_processor <-> processor_table.to_hash, and
-        // hash_table.to_processor   <-> processor_table.from_hash
-        let hash_table_initials = HashTableEndpoints {
-            from_processor_eval_sum: processor_table_initials.to_hash_table_eval_sum,
-            to_processor_eval_sum: processor_table_initials.from_hash_table_eval_sum,
+        let hash_table_terminals = HashTableTerminals {
+            from_processor_eval_sum: processor_table_terminals.to_hash_table_eval_sum,
+            to_processor_eval_sum: processor_table_terminals.from_hash_table_eval_sum,
         };
-
-        let u32_op_table_initials = U32OpTableEndpoints {
-            processor_perm_product: processor_table_initials.u32_table_perm_product,
+        let u32_op_table_terminals = U32OpTableTerminals {
+            processor_perm_product: processor_table_terminals.u32_table_perm_product,
         };
-
-        AllEndpoints {
-            program_table_endpoints: program_table_initials,
-            instruction_table_endpoints: instruction_table_initials,
-            processor_table_endpoints: processor_table_initials,
-            op_stack_table_endpoints: op_stack_table_initials,
-            ram_table_endpoints: ram_table_initials,
-            jump_stack_table_endpoints: jump_stack_table_initials,
-            hash_table_endpoints: hash_table_initials,
-            u32_op_table_endpoints: u32_op_table_initials,
+        AllTerminals {
+            program_table_terminals,
+            instruction_table_terminals,
+            processor_table_terminals,
+            op_stack_table_terminals,
+            ram_table_terminals,
+            jump_stack_table_terminals,
+            hash_table_terminals,
+            u32_op_table_terminals,
             phantom: PhantomData,
         }
-    }
-
-    /// Only intended for debugging purposes. In a production STARK, don't use this for deriving
-    /// terminals.
-    pub fn dummy() -> Self {
-        let mut rng = thread_rng();
-        let random_challenges = XFieldElement::random_elements(Self::TOTAL_ENDPOINTS, &mut rng);
-
-        Self::create_endpoints(random_challenges)
     }
 }
 
@@ -287,7 +270,7 @@ where
 ///
 /// In order for `Stark::verify()` to receive all terminals via `ProofStream`,
 /// they must serialise to a stream of `BFieldElement`s.
-impl<H: Hasher> IntoIterator for AllEndpoints<H>
+impl<H: Hasher> IntoIterator for AllTerminals<H>
 where
     BFieldElement: Hashable<H::T>,
 {
@@ -300,27 +283,27 @@ where
         BFieldElement: Hashable<H::T>,
     {
         vec![
-            &self.program_table_endpoints.instruction_eval_sum,
-            &self.instruction_table_endpoints.processor_perm_product,
-            &self.instruction_table_endpoints.program_eval_sum,
+            &self.program_table_terminals.instruction_eval_sum,
+            &self.instruction_table_terminals.processor_perm_product,
+            &self.instruction_table_terminals.program_eval_sum,
             &self
-                .processor_table_endpoints
+                .processor_table_terminals
                 .instruction_table_perm_product,
-            &self.processor_table_endpoints.opstack_table_perm_product,
-            &self.processor_table_endpoints.ram_table_perm_product,
-            &self.processor_table_endpoints.jump_stack_perm_product,
-            &self.processor_table_endpoints.to_hash_table_eval_sum,
-            &self.processor_table_endpoints.from_hash_table_eval_sum,
-            &self.processor_table_endpoints.u32_table_perm_product,
-            &self.op_stack_table_endpoints.processor_perm_product,
-            &self.ram_table_endpoints.processor_perm_product,
-            &self.jump_stack_table_endpoints.processor_perm_product,
-            &self.hash_table_endpoints.from_processor_eval_sum,
-            &self.hash_table_endpoints.to_processor_eval_sum,
-            &self.u32_op_table_endpoints.processor_perm_product,
+            &self.processor_table_terminals.opstack_table_perm_product,
+            &self.processor_table_terminals.ram_table_perm_product,
+            &self.processor_table_terminals.jump_stack_perm_product,
+            &self.processor_table_terminals.to_hash_table_eval_sum,
+            &self.processor_table_terminals.from_hash_table_eval_sum,
+            &self.processor_table_terminals.u32_table_perm_product,
+            &self.op_stack_table_terminals.processor_perm_product,
+            &self.ram_table_terminals.processor_perm_product,
+            &self.jump_stack_table_terminals.processor_perm_product,
+            &self.hash_table_terminals.from_processor_eval_sum,
+            &self.hash_table_terminals.to_processor_eval_sum,
+            &self.u32_op_table_terminals.processor_perm_product,
         ]
         .into_iter()
-        .map(|endpoint| endpoint.coefficients.to_vec())
+        .map(|terminal| terminal.coefficients.to_vec())
         .concat()
         .iter()
         .flat_map(|b| b.to_sequence())
@@ -330,20 +313,20 @@ where
 }
 
 #[cfg(test)]
-mod challenges_endpoints_tests {
+mod challenges_terminals_tests {
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 
-    use crate::table::challenges_endpoints::AllEndpoints;
+    use crate::table::challenges_terminals::AllTerminals;
     use crate::table::processor_table;
     use crate::table::program_table;
 
     #[test]
     fn total_challenges_equal_permutation_and_evaluation_args_test() {
-        type AEP = AllEndpoints<RescuePrimeRegular>;
+        type AEP = AllTerminals<RescuePrimeRegular>;
         assert_eq!(
             processor_table::PROCESSOR_TABLE_INITIALS_COUNT
                 + program_table::PROGRAM_TABLE_INITIALS_COUNT,
-            AEP::TOTAL_ENDPOINTS,
+            AEP::TOTAL_TERMINALS,
         );
     }
 }

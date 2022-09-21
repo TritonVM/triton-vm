@@ -1,6 +1,6 @@
 pub mod base_matrix;
 pub mod base_table;
-pub mod challenges_endpoints;
+pub mod challenges_terminals;
 pub mod extension_table;
 pub mod hash_table;
 pub mod instruction_table;

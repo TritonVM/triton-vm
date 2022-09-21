@@ -242,10 +242,9 @@ mod triton_vm_tests {
 
     use super::*;
     use crate::instruction::sample_programs;
-    use crate::stark::StarkHasher;
     use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
     use crate::table::base_table::{Extendable, InheritsFromTable};
-    use crate::table::challenges_endpoints::{AllChallenges, AllInitials};
+    use crate::table::challenges_terminals::AllChallenges;
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;
     use crate::table::table_collection::interpolant_degree;
@@ -691,7 +690,6 @@ mod triton_vm_tests {
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let (ext_processor_table, _) = processor_table.extend(
                 &AllChallenges::dummy().processor_table_challenges,
-                &AllInitials::<StarkHasher>::dummy().processor_table_endpoints,
                 interpolant_degree,
             );
 

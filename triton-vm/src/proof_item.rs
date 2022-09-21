@@ -5,7 +5,7 @@ use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 use twenty_first::util_types::simple_hasher::{Hashable, Hasher};
 
-use super::table::challenges_endpoints::AllTerminals;
+use super::table::challenges_terminals::AllTerminals;
 
 type FriProof<Digest> = Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>;
 type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
@@ -80,7 +80,7 @@ where
 
     pub fn as_terminals(&self) -> Result<AllTerminals<H>, Box<dyn std::error::Error>> {
         match self {
-            Self::Terminals(all_endpoints) => Ok(all_endpoints.to_owned()),
+            Self::Terminals(all_terminals) => Ok(all_terminals.to_owned()),
             _ => Err(ProofStreamError::boxed(
                 "expected all terminals, but got something else",
             )),
@@ -180,7 +180,7 @@ where
     fn into_iter(self) -> Self::IntoIter {
         match self {
             ProofItem::MerkleRoot(bs) => bs.to_sequence().into_iter(),
-            ProofItem::Terminals(all_endpoints) => all_endpoints.into_iter(),
+            ProofItem::Terminals(all_terminals) => all_terminals.into_iter(),
             ProofItem::TransposedBaseElements(bs) => bs_to_ts::<H>(&bs).into_iter(),
             ProofItem::TransposedExtensionElements(xs) => bs_to_ts::<H>(&xs_to_bs(&xs)).into_iter(),
             ProofItem::AuthenticationPath(bss) => {

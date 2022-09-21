@@ -12,11 +12,11 @@ use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
 use crate::stark::{Stark, StarkHasher};
-use crate::table::challenges_endpoints::AllTerminals;
+use crate::table::challenges_terminals::AllTerminals;
 use crate::table::table_collection::interpolant_degree;
 
 use super::base_table::TableLike;
-use super::challenges_endpoints::AllChallenges;
+use super::challenges_terminals::AllChallenges;
 
 // Generic methods specifically for tables that have been extended
 

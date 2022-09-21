@@ -12,7 +12,7 @@ use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instru
 use crate::ord_n::Ord7;
 use crate::stark::StarkHasher;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
-use crate::table::challenges_endpoints::{AllChallenges, AllTerminals};
+use crate::table::challenges_terminals::{AllChallenges, AllTerminals};
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorTableColumn::{self, *};
 
@@ -74,31 +74,19 @@ impl ProcessorTable {
     pub fn extend(
         &self,
         challenges: &ProcessorTableChallenges,
-        initials: &ProcessorTableEndpoints,
         interpolant_degree: Degree,
-    ) -> (ExtProcessorTable, ProcessorTableEndpoints) {
+    ) -> (ExtProcessorTable, ProcessorTableTerminals) {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
-        assert_eq!(
-            XFieldElement::zero(),
-            initials.input_table_eval_sum,
-            "The Evaluation Argument's initial for the Input Table must be 0."
-        );
-        assert_eq!(
-            XFieldElement::zero(),
-            initials.output_table_eval_sum,
-            "The Evaluation Argument's initial for the Output Table must be 0."
-        );
-
-        let mut input_table_running_sum = initials.input_table_eval_sum;
-        let mut output_table_running_sum = initials.output_table_eval_sum;
-        let mut instruction_table_running_product = initials.instruction_table_perm_product;
-        let mut opstack_table_running_product = initials.opstack_table_perm_product;
-        let mut ram_table_running_product = initials.ram_table_perm_product;
-        let mut jump_stack_running_product = initials.jump_stack_perm_product;
-        let mut to_hash_table_running_sum = initials.to_hash_table_eval_sum;
-        let mut from_hash_table_running_sum = initials.from_hash_table_eval_sum;
-        let mut u32_table_running_product = initials.u32_table_perm_product;
+        let mut input_table_running_sum = XFieldElement::zero();
+        let mut output_table_running_sum = XFieldElement::zero();
+        let mut instruction_table_running_product = XFieldElement::one();
+        let mut opstack_table_running_product = XFieldElement::one();
+        let mut ram_table_running_product = XFieldElement::one();
+        let mut jump_stack_running_product = XFieldElement::one();
+        let mut to_hash_table_running_sum = XFieldElement::zero();
+        let mut from_hash_table_running_sum = XFieldElement::zero();
+        let mut u32_table_running_product = XFieldElement::one();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {
@@ -303,7 +291,7 @@ impl ProcessorTable {
             extension_matrix.push(extension_row);
         }
 
-        let terminals = ProcessorTableEndpoints {
+        let terminals = ProcessorTableTerminals {
             input_table_eval_sum: input_table_running_sum,
             output_table_eval_sum: output_table_running_sum,
             instruction_table_perm_product: instruction_table_running_product,
@@ -351,7 +339,7 @@ impl ProcessorTable {
             ),
             ExtProcessorTable::ext_terminal_constraints(
                 &all_challenges.processor_table_challenges,
-                &all_terminals.processor_table_endpoints,
+                &all_terminals.processor_table_terminals,
             ),
         );
 
@@ -500,7 +488,7 @@ pub struct ProcessorTableChallenges {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProcessorTableEndpoints {
+pub struct ProcessorTableTerminals {
     pub input_table_eval_sum: XFieldElement,
     pub output_table_eval_sum: XFieldElement,
 
@@ -798,7 +786,7 @@ impl ExtProcessorTable {
 
     fn ext_terminal_constraints(
         _challenges: &ProcessorTableChallenges,
-        _terminals: &ProcessorTableEndpoints,
+        _terminals: &ProcessorTableTerminals,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
 
@@ -2452,19 +2440,19 @@ impl ExtensionTable for ExtProcessorTable {
 
     fn dynamic_transition_constraints(
         &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
+        challenges: &super::challenges_terminals::AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
     }
 
     fn dynamic_terminal_constraints(
         &self,
-        challenges: &super::challenges_endpoints::AllChallenges,
-        terminals: &super::challenges_endpoints::AllTerminals<StarkHasher>,
+        challenges: &super::challenges_terminals::AllChallenges,
+        terminals: &super::challenges_terminals::AllTerminals<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProcessorTable::ext_terminal_constraints(
             &challenges.processor_table_challenges,
-            &terminals.processor_table_endpoints,
+            &terminals.processor_table_terminals,
         )
     }
 }

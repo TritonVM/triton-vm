@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use itertools::{izip, Itertools};
-use rand::{thread_rng, Rng};
+use itertools::Itertools;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -26,7 +25,7 @@ use crate::cross_table_arguments::{
 };
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
-use crate::table::challenges_endpoints::{AllChallenges, AllInitials};
+use crate::table::challenges_terminals::AllChallenges;
 use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
 use crate::triton_xfri::{self, Fri};
 
@@ -153,14 +152,9 @@ impl Stark {
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("challenges");
 
-        let random_initials = Self::sample_initials();
-        let all_initials = AllInitials::create_endpoints(random_initials);
-        timer.elapsed("initials");
-
         let (ext_tables, all_terminals) = ExtTableCollection::extend_tables(
             &base_tables,
             &extension_challenges,
-            &all_initials,
             self.num_trace_randomizers,
         );
         timer.elapsed("extend + get_terminals");
@@ -342,20 +336,6 @@ impl Stark {
             .map(|idx| transposed_base_codewords[*idx].clone())
             .collect_vec();
         revealed_base_elements
-    }
-
-    fn sample_initials() -> Vec<XFieldElement> {
-        let mut rng = thread_rng();
-        let initials_seed_u64_0: [u64; AllInitials::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
-        let initials_seed_u64_1: [u64; AllInitials::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
-        let initials_seed_u64_2: [u64; AllInitials::<StarkHasher>::TOTAL_ENDPOINTS] = rng.gen();
-        izip!(
-            initials_seed_u64_0.into_iter(),
-            initials_seed_u64_1.into_iter(),
-            initials_seed_u64_2.into_iter(),
-        )
-        .map(|(c0, c1, c2)| XFieldElement::new_u64([c0, c1, c2]))
-        .collect()
     }
 
     // TODO try to reduce the number of arguments
@@ -964,7 +944,7 @@ impl Stark {
             extension_challenges
                 .processor_table_challenges
                 .input_table_eval_row_weight,
-            all_terminals.processor_table_endpoints.input_table_eval_sum,
+            all_terminals.processor_table_terminals.input_table_eval_sum,
         ) {
             return Err(Box::new(StarkVerifyError::EvaluationArgument(0)));
         }
@@ -975,7 +955,7 @@ impl Stark {
                 .processor_table_challenges
                 .output_table_eval_row_weight,
             all_terminals
-                .processor_table_endpoints
+                .processor_table_terminals
                 .output_table_eval_sum,
         ) {
             return Err(Box::new(StarkVerifyError::EvaluationArgument(1)));
@@ -1031,7 +1011,7 @@ pub(crate) mod triton_stark_tests {
     use crate::instruction::sample_programs;
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
-    use crate::table::challenges_endpoints::AllTerminals;
+    use crate::table::challenges_terminals::AllTerminals;
     use crate::vm::Program;
 
     use super::*;
@@ -1098,7 +1078,6 @@ pub(crate) mod triton_stark_tests {
         BaseTableCollection,
         ExtTableCollection,
         AllChallenges,
-        AllInitials<RescuePrimeRegular>,
         AllTerminals<RescuePrimeRegular>,
         usize,
     ) {
@@ -1113,11 +1092,9 @@ pub(crate) mod triton_stark_tests {
         base_tables.pad();
 
         let dummy_challenges = AllChallenges::dummy();
-        let dummy_initials = AllInitials::dummy();
         let (ext_tables, all_terminals) = ExtTableCollection::extend_tables(
             &base_tables,
             &dummy_challenges,
-            &dummy_initials,
             num_trace_randomizers,
         );
 
@@ -1127,7 +1104,6 @@ pub(crate) mod triton_stark_tests {
             base_tables,
             ext_tables,
             dummy_challenges,
-            dummy_initials,
             all_terminals,
             num_trace_randomizers,
         )
@@ -1136,7 +1112,7 @@ pub(crate) mod triton_stark_tests {
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
     #[test]
     pub fn print_all_constraint_degrees() {
-        let (_, _, _, ext_tables, _, _, _, num_trace_randomizers) =
+        let (_, _, _, ext_tables, _, _, num_trace_randomizers) =
             parse_simulate_pad_extend("halt", &[], &[]);
         let padded_height = ext_tables.padded_height;
         let all_degrees = ext_tables
@@ -1192,18 +1168,10 @@ pub(crate) mod triton_stark_tests {
             BFieldElement::new(5),
             BFieldElement::new(7),
         ];
-        let (
-            stdout,
-            _unpadded_base_tables,
-            _base_tables,
-            _ext_tables,
-            all_challenges,
-            _all_initials,
-            all_terminals,
-            _num_trace_randomizers,
-        ) = parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
+        let (stdout, _, _, _, all_challenges, all_terminals, _) =
+            parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
 
-        let ptie = all_terminals.processor_table_endpoints.input_table_eval_sum;
+        let ptie = all_terminals.processor_table_terminals.input_table_eval_sum;
         let ine = EvalArg::compute_terminal(
             &input_symbols,
             XFieldElement::zero(),
@@ -1212,7 +1180,7 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
         let ptoe = all_terminals
-            .processor_table_endpoints
+            .processor_table_terminals
             .output_table_eval_sum;
 
         let oute = EvalArg::compute_terminal(
@@ -1225,7 +1193,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let (_, _, _, ext_tables, _, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
+        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
 
         for table in ext_tables.into_iter() {
             let dummy_row = vec![0.into(); table.full_width()];
@@ -1242,7 +1210,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
         let zero = XFieldElement::zero();
-        let (_, _, _, ext_tables, _, _, _, _) =
+        let (_, _, _, ext_tables, _, _, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
 
         for table in (&ext_tables).into_iter() {
