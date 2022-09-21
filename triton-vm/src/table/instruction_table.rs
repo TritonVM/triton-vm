@@ -12,6 +12,7 @@ use crate::table::extension_table::Evaluable;
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_terminals::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::table_column::ExtInstructionTableColumn::*;
 use super::table_column::InstructionTableColumn::{self, *};
 
 pub const INSTRUCTION_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
@@ -94,43 +95,109 @@ impl ExtInstructionTable {
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
         let addr = variables[usize::from(Address)].clone();
+        let compressed_row_for_eval_arg = variables[usize::from(CompressedRowEvalArg)].clone();
+        let running_evaluation = variables[usize::from(RunningSumEvalArg)].clone();
 
-        // The first address is 0.
-        let fst_addr_is_zero = addr;
+        let first_address_is_zero = addr;
 
-        vec![fst_addr_is_zero]
+        let running_evaluation_is_initialized_correctly =
+            compressed_row_for_eval_arg - running_evaluation;
+
+        vec![
+            first_address_is_zero,
+            running_evaluation_is_initialized_correctly,
+        ]
     }
 
     fn ext_consistency_constraints(
-        _challenges: &InstructionTableChallenges,
+        challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        vec![]
+        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
+
+        let addr = variables[Address as usize].clone();
+        let current_instruction = variables[CI as usize].clone();
+        let next_instruction = variables[NIA as usize].clone();
+        let compressed_row_for_eval_arg = variables[usize::from(CompressedRowEvalArg)].clone();
+        let compressed_row_for_perm_arg = variables[usize::from(CompressedRowPermArg)].clone();
+
+        let computed_compressed_row_for_eval_arg = addr.scalar_mul(challenges.address_weight)
+            + current_instruction.scalar_mul(challenges.instruction_weight)
+            + next_instruction.scalar_mul(challenges.next_instruction_weight);
+        let row_compression_for_evaluation_argument_is_correct =
+            computed_compressed_row_for_eval_arg - compressed_row_for_eval_arg.clone();
+
+        let computed_compressed_row_for_perm_arg = addr.scalar_mul(challenges.ip_processor_weight)
+            + current_instruction.scalar_mul(challenges.ci_processor_weight)
+            + next_instruction.scalar_mul(challenges.nia_processor_weight);
+        let row_compression_for_permutation_argument_is_correct =
+            computed_compressed_row_for_perm_arg - compressed_row_for_perm_arg;
+
+        vec![
+            row_compression_for_evaluation_argument_is_correct,
+            row_compression_for_permutation_argument_is_correct,
+        ]
     }
 
     fn ext_transition_constraints(
-        _challenges: &InstructionTableChallenges,
+        challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(2 * FULL_WIDTH, 1.into());
-        let addr = variables[usize::from(Address)].clone();
-        let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();
+        let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
+        let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+
+        let addr = variables[Address as usize].clone();
+        let addr_next = variables[FULL_WIDTH + Address as usize].clone();
         let current_instruction = variables[CI as usize].clone();
         let current_instruction_next = variables[FULL_WIDTH + CI as usize].clone();
         let next_instruction = variables[NIA as usize].clone();
         let next_instruction_next = variables[FULL_WIDTH + NIA as usize].clone();
-        let one = MPolynomial::<XFieldElement>::from_constant(1.into(), 2 * FULL_WIDTH);
 
-        let addr_incr_by_one = addr_next - (addr + one);
+        // Base Table Constraints
+        let address_increases_by_one = addr_next.clone() - (addr.clone() + one);
+        let address_increases_by_one_or_ci_stays =
+            address_increases_by_one.clone() * (current_instruction_next - current_instruction);
+        let address_increases_by_one_or_nia_stays =
+            address_increases_by_one.clone() * (next_instruction_next - next_instruction);
 
-        // The address increases by 1 or `current_instruction` does not change.
-        let addr_incr_by_one_or_ci_stays =
-            addr_incr_by_one.clone() * (current_instruction_next - current_instruction);
+        // Extension Table Constraints
+        let processor_perm_row_weight =
+            MPolynomial::from_constant(challenges.processor_perm_row_weight, 2 * FULL_WIDTH);
+        let compressed_row_for_eval_arg =
+            variables[FULL_WIDTH + usize::from(CompressedRowEvalArg)].clone();
+        let running_evaluation = variables[usize::from(RunningSumEvalArg)].clone();
+        let running_evaluation_next =
+            variables[FULL_WIDTH + usize::from(RunningSumEvalArg)].clone();
+        let compressed_row_for_perm_arg =
+            variables[FULL_WIDTH + usize::from(CompressedRowPermArg)].clone();
+        let running_product = variables[usize::from(RunningProductPermArg)].clone();
+        let running_product_next =
+            variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
 
-        // The address increases by 1 or `next_instruction_or_arg` does not change.
-        let addr_incr_by_one_or_nia_stays =
-            addr_incr_by_one * (next_instruction_next - next_instruction);
+        let address_stays = addr_next - addr;
 
-        vec![addr_incr_by_one_or_ci_stays, addr_incr_by_one_or_nia_stays]
+        // Iff the address changes, then the running evaluation is updated. Stated differently:
+        // 1. the address doesn't change or the running evaluation is updated, and
+        // 2. the address does change or the running evaluation is not updated.
+        let running_evaluation_is_well_formed = address_stays.clone()
+            * (running_evaluation.scalar_mul(challenges.program_eval_row_weight)
+                + compressed_row_for_eval_arg
+                - running_evaluation_next.clone())
+            + address_increases_by_one.clone() * (running_evaluation_next - running_evaluation);
+
+        // Iff the address doesn't change, then the running product is updated. Stated differently:
+        // 1. the address does change or the running product is updated, and
+        // 2. the address doesn't change or the running product is not updated.
+        let running_product_is_well_formed = address_increases_by_one
+            * (running_product_next.clone()
+                - running_product.clone()
+                    * (processor_perm_row_weight - compressed_row_for_perm_arg))
+            + address_stays * (running_product_next - running_product);
+
+        vec![
+            address_increases_by_one_or_ci_stays,
+            address_increases_by_one_or_nia_stays,
+            running_evaluation_is_well_formed,
+            running_product_is_well_formed,
+        ]
     }
 
     fn ext_terminal_constraints(
@@ -183,8 +250,9 @@ impl InstructionTable {
         let mut previous_row: Option<Vec<_>> = None;
 
         for row in self.data().iter() {
-            let mut extension_row = Vec::with_capacity(FULL_WIDTH);
-            extension_row.extend(row.iter().map(|elem| elem.lift()));
+            let mut extension_row = [0.into(); FULL_WIDTH].to_vec();
+            extension_row[..BASE_WIDTH]
+                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             // Is the current row's address different from the previous row's address?
             // Different: update running sum of Evaluation Argument with Program Table.
@@ -195,6 +263,8 @@ impl InstructionTable {
                     is_duplicate_row = true;
                     debug_assert_eq!(prow[CI as usize], row[CI as usize]);
                     debug_assert_eq!(prow[NIA as usize], row[NIA as usize]);
+                } else {
+                    debug_assert_eq!(prow[Address as usize] + 1_u64.into(), row[Address as usize]);
                 }
             }
 
@@ -205,31 +275,30 @@ impl InstructionTable {
             let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
                 + ci * challenges.ci_processor_weight
                 + nia * challenges.nia_processor_weight;
-            extension_row.push(compressed_row_for_permutation_argument);
+            extension_row[usize::from(CompressedRowPermArg)] =
+                compressed_row_for_permutation_argument;
 
             // Update running product for Permutation Argument if same row has been seen before
-            extension_row.push(processor_table_running_product);
             if is_duplicate_row {
                 processor_table_running_product *=
                     challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             }
+            extension_row[usize::from(RunningProductPermArg)] = processor_table_running_product;
 
             // Compress values of current row for Evaluation Argument with Program Table
-            let address = row[Address as usize].lift();
-            let instruction = row[CI as usize].lift();
-            let next_instruction = row[NIA as usize].lift();
-            let compressed_row_for_evaluation_argument = address * challenges.address_weight
-                + instruction * challenges.instruction_weight
-                + next_instruction * challenges.next_instruction_weight;
-            extension_row.push(compressed_row_for_evaluation_argument);
+            let compressed_row_for_evaluation_argument = ip * challenges.address_weight
+                + ci * challenges.instruction_weight
+                + nia * challenges.next_instruction_weight;
+            extension_row[usize::from(CompressedRowEvalArg)] =
+                compressed_row_for_evaluation_argument;
 
             // Update running sum for Evaluation Argument if same row has _not_ been seen before
-            extension_row.push(program_table_running_sum);
             if !is_duplicate_row {
                 program_table_running_sum = program_table_running_sum
                     * challenges.program_eval_row_weight
                     + compressed_row_for_evaluation_argument;
             }
+            extension_row[usize::from(RunningSumEvalArg)] = program_table_running_sum;
 
             debug_assert_eq!(
                 FULL_WIDTH,

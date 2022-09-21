@@ -191,10 +191,10 @@ impl ProgramTable {
             extension_row.push(compressed_row_for_evaluation_argument);
 
             // Update the Evaluation Argument's running sum with the compressed column
-            extension_row.push(instruction_table_running_sum);
             instruction_table_running_sum = instruction_table_running_sum
                 * challenges.instruction_eval_row_weight
                 + compressed_row_for_evaluation_argument;
+            extension_row.push(instruction_table_running_sum);
 
             debug_assert_eq!(
                 FULL_WIDTH,
