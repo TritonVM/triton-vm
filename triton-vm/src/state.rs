@@ -95,7 +95,10 @@ impl<'pgm> VMState<'pgm> {
 
     /// Determine if this is a final state.
     pub fn is_complete(&self) -> bool {
-        self.program.len() <= self.instruction_pointer
+        match self.current_instruction() {
+            Ok(Instruction::Halt) => true,
+            _ => self.program.len() <= self.instruction_pointer,
+        }
     }
 
     /// Given a state, compute `(next_state, vm_output)`.
@@ -481,13 +484,12 @@ impl<'pgm> VMState<'pgm> {
         [ip, ci, nia]
     }
 
-    pub fn to_processor_row(
-        &self,
-        current_instruction: Instruction,
-    ) -> [BFieldElement; processor_table::BASE_WIDTH] {
+    pub fn to_processor_row(&self) -> [BFieldElement; processor_table::BASE_WIDTH] {
+        // todo: is `Instruction::Halt` a good default?
+        let current_instruction = self.current_instruction().unwrap_or(Instruction::Halt);
+
         let clk = BFieldElement::new(self.cycle_count as u64);
         let ip = (self.instruction_pointer as u32).try_into().unwrap();
-        // FIXME either have `nia()` use the argument `current_instruction` or derive `ci` from `ip`
         let ci = current_instruction.opcode_b();
         let nia = self.nia();
         let ib0 = current_instruction.ib(IB0);
@@ -895,8 +897,8 @@ impl<'pgm> VMState<'pgm> {
 impl<'pgm> Display for VMState<'pgm> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.current_instruction() {
-            Ok(instruction) => {
-                let row = self.to_processor_row(instruction);
+            Ok(_) => {
+                let row = self.to_processor_row();
                 write!(f, "{}", ProcessorMatrixRow { row })
             }
             Err(_) => write!(f, "END-OF-FILE"),
@@ -906,15 +908,15 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 mod vm_state_tests {
-
     use rand::thread_rng;
     use twenty_first::shared_math::traits::GetRandomElements;
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::simple_hasher::Hasher;
 
-    use super::*;
     use crate::instruction::sample_programs;
     use crate::op_stack::OP_STACK_REG_COUNT;
+
+    use super::*;
 
     // Property: All instructions increase the cycle count by 1.
     // Property: Most instructions increase the instruction pointer by 1.
@@ -963,7 +965,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 2).unwrap();
+        let last_state = trace.get(trace.len() - 1).unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 
@@ -1029,7 +1031,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 2).unwrap();
+        let last_state = trace.get(trace.len() - 1).unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 
@@ -1224,7 +1226,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 2).unwrap();
+        let last_state = trace.get(trace.len() - 1).unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 
@@ -1251,7 +1253,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 2).unwrap();
+        let last_state = trace.get(trace.len() - 1).unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 

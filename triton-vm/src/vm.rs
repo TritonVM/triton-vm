@@ -1,13 +1,15 @@
+use std::error::Error;
+use std::fmt::Display;
+use std::io::Cursor;
+
+use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+
 use crate::instruction;
 use crate::instruction::{parse, Instruction, LabelledInstruction};
 use crate::state::{VMOutput, VMState};
 use crate::stdio::{InputStream, OutputStream, VecStream};
 use crate::table::base_matrix::AlgebraicExecutionTrace;
-use itertools::Itertools;
-use std::error::Error;
-use std::fmt::Display;
-use std::io::Cursor;
-use twenty_first::shared_math::b_field_element::BFieldElement;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
@@ -105,12 +107,12 @@ impl Program {
             .concat()
     }
 
-    /// Simulate (execute) a `Program` and record every state transition.
+    /// Simulate (execute) a `Program` and record every state transition. Returns an
+    /// `AlgebraicExecutionTrace` recording every intermediate state of the processor and all co-
+    /// processors.
     ///
-    /// Returns a `BaseMatrices` that records the execution.
-    ///
-    /// Optionally returns errors on premature termination, but returns a
-    /// `BaseMatrices` for the execution up to the point of failure.
+    /// On premature termination of the VM, returns the `AlgebraicExecutionTrace` for the execution
+    /// up to the point of failure.
     pub fn simulate<In, Out>(
         &self,
         stdin: &mut In,
@@ -122,26 +124,30 @@ impl Program {
         Out: OutputStream,
     {
         let mut aet = AlgebraicExecutionTrace::default();
-
         let mut state = VMState::new(self);
-        let initial_instruction = state.current_instruction().unwrap();
-
-        aet.append(&state, None, initial_instruction);
+        // record initial state
+        aet.processor_matrix.push(state.to_processor_row());
 
         while !state.is_complete() {
             let vm_output = match state.step_mut(stdin, secret_in) {
                 Err(err) => return (aet, Some(err)),
                 Ok(vm_output) => vm_output,
             };
-            let current_instruction = state.current_instruction().unwrap_or(Instruction::Halt);
 
-            if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
-                if let Err(error) = stdout.write_elem(written_word) {
-                    return (aet, Some(Box::new(error)));
+            match vm_output {
+                Some(VMOutput::XlixTrace(mut hash_trace)) => {
+                    aet.hash_matrix.append(&mut hash_trace)
                 }
+                Some(VMOutput::U32OpTrace(mut trace)) => aet.u32_op_matrix.append(&mut trace),
+                Some(VMOutput::WriteOutputSymbol(written_word)) => {
+                    if let Err(error) = stdout.write_elem(written_word) {
+                        return (aet, Some(Box::new(error)));
+                    }
+                }
+                None => (),
             }
-
-            aet.append(&state, vm_output, current_instruction);
+            // Record next, to be executed state. If `Halt`,
+            aet.processor_matrix.push(state.to_processor_row());
         }
 
         (aet, None)
@@ -240,7 +246,12 @@ impl Program {
 mod triton_vm_tests {
     use std::iter::zip;
 
-    use super::*;
+    use num_traits::{One, Zero};
+    use twenty_first::shared_math::mpolynomial::MPolynomial;
+    use twenty_first::shared_math::other;
+    use twenty_first::shared_math::other::roundup_npo2;
+    use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
+
     use crate::instruction::sample_programs;
     use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
     use crate::table::base_table::{Extendable, InheritsFromTable};
@@ -248,11 +259,8 @@ mod triton_vm_tests {
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;
     use crate::table::table_collection::interpolant_degree;
-    use num_traits::{One, Zero};
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
-    use twenty_first::shared_math::other;
-    use twenty_first::shared_math::other::roundup_npo2;
-    use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
+
+    use super::*;
 
     #[test]
     fn initialise_table_test() {

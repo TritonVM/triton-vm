@@ -7,8 +7,6 @@ use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::instruction::AnInstruction::*;
-use crate::instruction::Instruction;
-use crate::state::{VMOutput, VMState};
 use crate::table::table_column::ExtProcessorTableColumn::*;
 use crate::table::table_column::{
     InstructionTableColumn, OpStackTableColumn, ProgramTableColumn, RamTableColumn,
@@ -26,25 +24,6 @@ pub struct AlgebraicExecutionTrace {
     pub processor_matrix: Vec<[BFieldElement; processor_table::BASE_WIDTH]>,
     pub hash_matrix: Vec<[BFieldElement; hash_table::BASE_WIDTH]>,
     pub u32_op_matrix: Vec<[BFieldElement; u32_op_table::BASE_WIDTH]>,
-}
-
-impl AlgebraicExecutionTrace {
-    pub fn append(
-        &mut self,
-        state: &VMState,
-        vm_output: Option<VMOutput>,
-        current_instruction: Instruction,
-    ) {
-        self.processor_matrix
-            .push(state.to_processor_row(current_instruction));
-
-        match vm_output {
-            Some(VMOutput::WriteOutputSymbol(_)) => (),
-            Some(VMOutput::XlixTrace(mut hash_trace)) => self.hash_matrix.append(&mut hash_trace),
-            Some(VMOutput::U32OpTrace(mut trace)) => self.u32_op_matrix.append(&mut trace),
-            None => (),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default)]
