@@ -1101,6 +1101,7 @@ terminate: pop
 
 #[cfg(test)]
 mod instruction_tests {
+    use itertools::Itertools;
     use num_traits::{One, Zero};
 
     use super::{all_instructions_without_args, parse, sample_programs};
@@ -1134,7 +1135,7 @@ mod instruction_tests {
         for (actual, expected) in actual
             .iter()
             .map(|instr| format!("{}", instr))
-            .zip(sample_programs::all_instructions_displayed())
+            .zip_eq(sample_programs::all_instructions_displayed())
         {
             assert_eq!(expected, actual);
         }

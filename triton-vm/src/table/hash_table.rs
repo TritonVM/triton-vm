@@ -524,12 +524,10 @@ impl HashTable {
                 extension_row[HashTableColumn::STATE7 as usize],
                 extension_row[HashTableColumn::STATE8 as usize],
                 extension_row[HashTableColumn::STATE9 as usize],
-                extension_row[HashTableColumn::STATE10 as usize],
-                extension_row[HashTableColumn::STATE11 as usize],
             ];
             let compressed_state_for_input = state_for_input
                 .iter()
-                .zip(challenges.stack_input_weights.iter())
+                .zip_eq(challenges.stack_input_weights.iter())
                 .map(|(state, weight)| *weight * *state)
                 .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_state_for_input);
@@ -549,11 +547,10 @@ impl HashTable {
                 extension_row[HashTableColumn::STATE2 as usize],
                 extension_row[HashTableColumn::STATE3 as usize],
                 extension_row[HashTableColumn::STATE4 as usize],
-                extension_row[HashTableColumn::STATE5 as usize],
             ];
             let compressed_state_for_output = state_for_output
                 .iter()
-                .zip(challenges.digest_output_weights.iter())
+                .zip_eq(challenges.digest_output_weights.iter())
                 .map(|(state, weight)| *weight * *state)
                 .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_state_for_output);

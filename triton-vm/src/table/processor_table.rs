@@ -187,12 +187,10 @@ impl ProcessorTable {
                 extension_row[ST7 as usize],
                 extension_row[ST8 as usize],
                 extension_row[ST9 as usize],
-                extension_row[ST10 as usize],
-                extension_row[ST11 as usize],
             ];
             let compressed_row_for_hash_input = st_0_through_11
                 .iter()
-                .zip(challenges.hash_table_stack_input_weights.iter())
+                .zip_eq(challenges.hash_table_stack_input_weights.iter())
                 .map(|(st, weight)| *weight * *st)
                 .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_row_for_hash_input);
@@ -205,17 +203,16 @@ impl ProcessorTable {
             }
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
-            let st_0_through_5 = [
-                extension_row[ST0 as usize],
-                extension_row[ST1 as usize],
-                extension_row[ST2 as usize],
-                extension_row[ST3 as usize],
-                extension_row[ST4 as usize],
+            let st_5_through_9 = [
                 extension_row[ST5 as usize],
+                extension_row[ST6 as usize],
+                extension_row[ST7 as usize],
+                extension_row[ST8 as usize],
+                extension_row[ST9 as usize],
             ];
-            let compressed_row_for_hash_digest = st_0_through_5
+            let compressed_row_for_hash_digest = st_5_through_9
                 .iter()
-                .zip(challenges.hash_table_digest_output_weights.iter())
+                .zip_eq(challenges.hash_table_digest_output_weights.iter())
                 .map(|(st, weight)| *weight * *st)
                 .fold(XFieldElement::zero(), |sum, summand| sum + summand);
             extension_row.push(compressed_row_for_hash_digest);
