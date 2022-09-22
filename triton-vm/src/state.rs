@@ -14,8 +14,13 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::vm_err;
+use crate::ord_n::{Ord16, Ord7};
 use crate::table::base_matrix::ProcessorMatrixRow;
 use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
+use crate::table::table_column::{
+    InstructionTableColumn, JumpStackTableColumn, OpStackTableColumn, ProcessorTableColumn,
+    RamTableColumn, U32OpTableColumn,
+};
 
 use super::error::{vm_fail, InstructionError::*};
 use super::instruction::{AnInstruction::*, Instruction};
@@ -477,121 +482,109 @@ impl<'pgm> VMState<'pgm> {
         &self,
         current_instruction: Instruction,
     ) -> [BFieldElement; instruction_table::BASE_WIDTH] {
-        let ip = (self.instruction_pointer as u32).try_into().unwrap();
-        let ci = current_instruction.opcode_b();
-        let nia = self.nia();
+        use InstructionTableColumn::*;
+        let mut row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
 
-        [ip, ci, nia]
+        row[Address as usize] = (self.instruction_pointer as u32).try_into().unwrap();
+        row[CI as usize] = current_instruction.opcode_b();
+        row[NIA as usize] = self.nia();
+
+        row
     }
 
     pub fn to_processor_row(&self) -> [BFieldElement; processor_table::BASE_WIDTH] {
+        use ProcessorTableColumn::*;
+        let mut row = [BFieldElement::zero(); processor_table::BASE_WIDTH];
+
         // todo: is `Instruction::Halt` a good default?
         let current_instruction = self.current_instruction().unwrap_or(Instruction::Halt);
-
-        let clk = BFieldElement::new(self.cycle_count as u64);
-        let ip = (self.instruction_pointer as u32).try_into().unwrap();
-        let ci = current_instruction.opcode_b();
-        let nia = self.nia();
-        let ib0 = current_instruction.ib(IB0);
-        let ib1 = current_instruction.ib(IB1);
-        let ib2 = current_instruction.ib(IB2);
-        let ib3 = current_instruction.ib(IB3);
-        let ib4 = current_instruction.ib(IB4);
-        let ib5 = current_instruction.ib(IB5);
-        let ib6 = current_instruction.ib(IB6);
-        let st0 = self.op_stack.st(ST0);
-        let st1 = self.op_stack.st(ST1);
-        let st2 = self.op_stack.st(ST2);
-        let st3 = self.op_stack.st(ST3);
-        let st4 = self.op_stack.st(ST4);
-        let st5 = self.op_stack.st(ST5);
-        let st6 = self.op_stack.st(ST6);
-        let st7 = self.op_stack.st(ST7);
-        let st8 = self.op_stack.st(ST8);
-        let st9 = self.op_stack.st(ST9);
-        let st10 = self.op_stack.st(ST10);
-        let st11 = self.op_stack.st(ST11);
-        let st12 = self.op_stack.st(ST12);
-        let st13 = self.op_stack.st(ST13);
-        let st14 = self.op_stack.st(ST14);
-        let st15 = self.op_stack.st(ST15);
-        let osp = self.op_stack.osp();
-        let osv = self.op_stack.osv();
-
         let hvs = self.derive_helper_variables();
+        let ramp = self.op_stack.st(Ord16::ST1);
 
-        [
-            clk,
-            ip,
-            ci,
-            nia,
-            ib0,
-            ib1,
-            ib2,
-            ib3,
-            ib4,
-            ib5,
-            ib6,
-            self.jsp(),
-            self.jso(),
-            self.jsd(),
-            st0,
-            st1,
-            st2,
-            st3,
-            st4,
-            st5,
-            st6,
-            st7,
-            st8,
-            st9,
-            st10,
-            st11,
-            st12,
-            st13,
-            st14,
-            st15,
-            osp,
-            osv,
-            hvs[0],
-            hvs[1],
-            hvs[2],
-            hvs[3],
-            *self.ram.get(&st1).unwrap_or(&BFieldElement::new(0)),
-        ]
+        row[CLK as usize] = BFieldElement::new(self.cycle_count as u64);
+        row[IP as usize] = (self.instruction_pointer as u32).try_into().unwrap();
+        row[CI as usize] = current_instruction.opcode_b();
+        row[NIA as usize] = self.nia();
+        row[IB0 as usize] = current_instruction.ib(Ord7::IB0);
+        row[IB1 as usize] = current_instruction.ib(Ord7::IB1);
+        row[IB2 as usize] = current_instruction.ib(Ord7::IB2);
+        row[IB3 as usize] = current_instruction.ib(Ord7::IB3);
+        row[IB4 as usize] = current_instruction.ib(Ord7::IB4);
+        row[IB5 as usize] = current_instruction.ib(Ord7::IB5);
+        row[IB6 as usize] = current_instruction.ib(Ord7::IB6);
+        row[JSP as usize] = self.jsp();
+        row[JSO as usize] = self.jso();
+        row[JSD as usize] = self.jsd();
+        row[ST0 as usize] = self.op_stack.st(Ord16::ST0);
+        row[ST1 as usize] = self.op_stack.st(Ord16::ST1);
+        row[ST2 as usize] = self.op_stack.st(Ord16::ST2);
+        row[ST3 as usize] = self.op_stack.st(Ord16::ST3);
+        row[ST4 as usize] = self.op_stack.st(Ord16::ST4);
+        row[ST5 as usize] = self.op_stack.st(Ord16::ST5);
+        row[ST6 as usize] = self.op_stack.st(Ord16::ST6);
+        row[ST7 as usize] = self.op_stack.st(Ord16::ST7);
+        row[ST8 as usize] = self.op_stack.st(Ord16::ST8);
+        row[ST9 as usize] = self.op_stack.st(Ord16::ST9);
+        row[ST10 as usize] = self.op_stack.st(Ord16::ST10);
+        row[ST11 as usize] = self.op_stack.st(Ord16::ST11);
+        row[ST12 as usize] = self.op_stack.st(Ord16::ST12);
+        row[ST13 as usize] = self.op_stack.st(Ord16::ST13);
+        row[ST14 as usize] = self.op_stack.st(Ord16::ST14);
+        row[ST15 as usize] = self.op_stack.st(Ord16::ST15);
+        row[OSP as usize] = self.op_stack.osp();
+        row[OSV as usize] = self.op_stack.osv();
+        row[HV0 as usize] = hvs[0];
+        row[HV1 as usize] = hvs[1];
+        row[HV2 as usize] = hvs[2];
+        row[HV3 as usize] = hvs[3];
+        row[RAMV as usize] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
+
+        row
     }
 
     pub fn to_op_stack_row(
         &self,
         current_instruction: Instruction,
     ) -> [BFieldElement; op_stack_table::BASE_WIDTH] {
-        let clk = BFieldElement::new(self.cycle_count as u64);
-        let ib1_shrink_stack = current_instruction.ib(IB1);
-        let osp = self.op_stack.osp();
-        let osv = self.op_stack.osv();
+        use OpStackTableColumn::*;
+        let mut row = [BFieldElement::zero(); op_stack_table::BASE_WIDTH];
 
-        [clk, ib1_shrink_stack, osv, osp]
+        row[CLK as usize] = BFieldElement::new(self.cycle_count as u64);
+        row[IB1ShrinkStack as usize] = current_instruction.ib(IB1);
+        row[OSP as usize] = self.op_stack.osp();
+        row[OSV as usize] = self.op_stack.osv();
+
+        row
     }
 
     pub fn to_ram_row(&self) -> [BFieldElement; ram_table::BASE_WIDTH] {
-        let clk = BFieldElement::new(self.cycle_count as u64);
+        use RamTableColumn::*;
         let ramp = self.op_stack.st(ST1);
-        let ramv = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
 
-        // placeholder value – actual value only known after sorting the RAM Table
-        let inverse_of_ramp_diff = BFieldElement::new(0);
+        let mut row = [BFieldElement::zero(); ram_table::BASE_WIDTH];
 
-        [clk, ramp, ramv, inverse_of_ramp_diff]
+        row[CLK as usize] = BFieldElement::new(self.cycle_count as u64);
+        row[RAMP as usize] = ramp;
+        row[RAMV as usize] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
+        // value of InverseOfRampDifference is only known after sorting the RAM Table, thus not set
+
+        row
     }
 
     pub fn to_jump_stack_row(
         &self,
         current_instruction: Instruction,
     ) -> [BFieldElement; jump_stack_table::BASE_WIDTH] {
-        let clk = BFieldElement::new(self.cycle_count as u64);
-        let ci = current_instruction.opcode_b();
+        use JumpStackTableColumn::*;
+        let mut row = [BFieldElement::zero(); jump_stack_table::BASE_WIDTH];
 
-        [clk, ci, self.jsp(), self.jso(), self.jsd()]
+        row[CLK as usize] = BFieldElement::new(self.cycle_count as u64);
+        row[CI as usize] = current_instruction.opcode_b();
+        row[JSP as usize] = self.jsp();
+        row[JSO as usize] = self.jso();
+        row[JSD as usize] = self.jsd();
+
+        row
     }
 
     pub fn u32_op_trace(
@@ -599,6 +592,8 @@ impl<'pgm> VMState<'pgm> {
         mut lhs: u32,
         mut rhs: u32,
     ) -> Vec<[BFieldElement; u32_op_table::BASE_WIDTH]> {
+        use U32OpTableColumn::*;
+
         let inverse_or_zero = |bfe: BFieldElement| {
             if bfe.is_zero() {
                 bfe
@@ -616,20 +611,21 @@ impl<'pgm> VMState<'pgm> {
 
         let thirty_three = BFieldElement::new(33);
         let row = |idc: u32, bits: u32, lhs: u32, rhs: u32| {
-            [
-                BFieldElement::new(idc as u64),
-                BFieldElement::new(bits as u64),
-                inverse_or_zero(thirty_three - BFieldElement::new(bits as u64)),
-                ci,
-                BFieldElement::new(lhs as u64),
-                BFieldElement::new(rhs as u64),
-                Self::possibly_unclear_lt(idc, lhs, rhs),
-                BFieldElement::new((lhs & rhs) as u64),
-                BFieldElement::new((lhs ^ rhs) as u64),
-                BFieldElement::new(lhs.reverse_bits() as u64),
-                inverse_or_zero(BFieldElement::new(lhs as u64)),
-                inverse_or_zero(BFieldElement::new(rhs as u64)),
-            ]
+            let mut row = [BFieldElement::zero(); u32_op_table::BASE_WIDTH];
+            row[IDC as usize] = (idc as u64).into();
+            row[Bits as usize] = (bits as u64).into();
+            row[Inv33MinusBits as usize] = inverse_or_zero(thirty_three - (bits as u64).into());
+            row[CI as usize] = ci;
+            row[LHS as usize] = (lhs as u64).into();
+            row[RHS as usize] = (rhs as u64).into();
+            row[LT as usize] = Self::possibly_unclear_lt(idc, lhs, rhs);
+            row[AND as usize] = ((lhs & rhs) as u64).into();
+            row[XOR as usize] = ((lhs ^ rhs) as u64).into();
+            row[REV as usize] = (lhs.reverse_bits() as u64).into();
+            row[LHSInv as usize] = inverse_or_zero((lhs as u64).into());
+            row[RHSInv as usize] = inverse_or_zero((rhs as u64).into());
+
+            row
         };
 
         let mut rows = vec![];

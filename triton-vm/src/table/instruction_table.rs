@@ -124,7 +124,7 @@ impl ExtInstructionTable {
             + current_instruction.scalar_mul(challenges.instruction_weight)
             + next_instruction.scalar_mul(challenges.next_instruction_weight);
         let row_compression_for_evaluation_argument_is_correct =
-            computed_compressed_row_for_eval_arg - compressed_row_for_eval_arg.clone();
+            computed_compressed_row_for_eval_arg - compressed_row_for_eval_arg;
 
         let computed_compressed_row_for_perm_arg = addr.scalar_mul(challenges.ip_processor_weight)
             + current_instruction.scalar_mul(challenges.ci_processor_weight)
