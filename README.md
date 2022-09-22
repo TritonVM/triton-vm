@@ -6,7 +6,7 @@
 [![Spec: online](https://img.shields.io/badge/Spec-online-success)](https://triton-vm.org/spec/)
 
 Triton is a virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR) for use in combination with a [STARK proof system](https://neptune.cash/learn/stark-anatomy/).
-It defines a Turing complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.md), as well as the corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.md) of the VM.
+It defines a Turing complete [Instruction Set Architecture](https://triton-vm.org/spec/isa.html), as well as the corresponding [arithmetization](https://triton-vm.org/spec/arithmetization.html) of the VM.
 The really cool thing about Triton VM is its efficient _recursive_ verification of the STARKs produced when running Triton VM.
 
 ## Recursive STARKs of Computational Integrity
@@ -42,7 +42,7 @@ Triton VM is specifically designed to allow fast recursive verification.
 Triton VM is still under construction.
 We currently don't recommend using it in production.
 
-Please note that the [Instruction Set Architecture](https://triton-vm.org/spec/isa.md) is not to be considered final.
+Please note that the [Instruction Set Architecture](https://triton-vm.org/spec/isa.html) is not to be considered final.
 However, we don't currently foresee big changes.
 
 ## Specification
