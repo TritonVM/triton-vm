@@ -275,7 +275,7 @@ impl Bounded for ProgramTableColumn {
 pub enum ExtProgramTableColumn {
     BaseColumn(ProgramTableColumn),
     EvalArgCompressedRow,
-    EvalArgRunningSum,
+    RunningEvaluation,
 }
 
 impl From<ExtProgramTableColumn> for usize {
@@ -285,7 +285,7 @@ impl From<ExtProgramTableColumn> for usize {
         match c {
             BaseColumn(base_column) => base_column.into(),
             EvalArgCompressedRow => 3,
-            EvalArgRunningSum => 4,
+            RunningEvaluation => 4,
         }
     }
 }
@@ -296,7 +296,7 @@ impl Bounded for ExtProgramTableColumn {
     }
 
     fn max_value() -> Self {
-        ExtProgramTableColumn::EvalArgRunningSum
+        ExtProgramTableColumn::RunningEvaluation
     }
 }
 
@@ -339,7 +339,7 @@ pub enum ExtInstructionTableColumn {
     CompressedRowPermArg,
     RunningProductPermArg,
     CompressedRowEvalArg,
-    RunningSumEvalArg,
+    RunningEvaluation,
 }
 
 impl From<ExtInstructionTableColumn> for usize {
@@ -351,7 +351,7 @@ impl From<ExtInstructionTableColumn> for usize {
             CompressedRowPermArg => 4,
             RunningProductPermArg => 5,
             CompressedRowEvalArg => 6,
-            RunningSumEvalArg => 7,
+            RunningEvaluation => 7,
         }
     }
 }
@@ -362,7 +362,7 @@ impl Bounded for ExtInstructionTableColumn {
     }
 
     fn max_value() -> Self {
-        ExtInstructionTableColumn::RunningSumEvalArg
+        ExtInstructionTableColumn::RunningEvaluation
     }
 }
 
@@ -738,9 +738,9 @@ impl Bounded for HashTableColumn {
 pub enum ExtHashTableColumn {
     BaseColumn(HashTableColumn),
     CompressedStateForInput,
-    ToProcessorRunningSum,
+    ToProcessorRunningEvaluation,
     CompressedStateForOutput,
-    FromProcessorRunningSum,
+    FromProcessorRunningEvaluation,
 }
 
 impl From<ExtHashTableColumn> for usize {
@@ -750,9 +750,9 @@ impl From<ExtHashTableColumn> for usize {
         match c {
             BaseColumn(base_column) => base_column.into(),
             CompressedStateForInput => 49,
-            FromProcessorRunningSum => 50,
+            FromProcessorRunningEvaluation => 50,
             CompressedStateForOutput => 51,
-            ToProcessorRunningSum => 52,
+            ToProcessorRunningEvaluation => 52,
         }
     }
 }
@@ -763,7 +763,7 @@ impl Bounded for ExtHashTableColumn {
     }
 
     fn max_value() -> Self {
-        ExtHashTableColumn::ToProcessorRunningSum
+        ExtHashTableColumn::ToProcessorRunningEvaluation
     }
 }
 

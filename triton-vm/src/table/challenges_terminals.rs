@@ -207,22 +207,22 @@ where
 
         let mut weights = random_challenges;
         let processor_table_terminals = ProcessorTableTerminals {
-            input_table_eval_sum: XFieldElement::zero(),
-            output_table_eval_sum: XFieldElement::zero(),
+            input_table_eval_arg: XFieldElement::zero(),
+            output_table_eval_arg: XFieldElement::zero(),
             instruction_table_perm_product: weights.pop().unwrap(),
             opstack_table_perm_product: weights.pop().unwrap(),
             ram_table_perm_product: weights.pop().unwrap(),
             jump_stack_perm_product: weights.pop().unwrap(),
-            to_hash_table_eval_sum: weights.pop().unwrap(),
-            from_hash_table_eval_sum: weights.pop().unwrap(),
+            to_hash_table_eval_arg: weights.pop().unwrap(),
+            from_hash_table_eval_arg: weights.pop().unwrap(),
             u32_table_perm_product: weights.pop().unwrap(),
         };
         let program_table_terminals = ProgramTableTerminals {
-            instruction_eval_sum: weights.pop().unwrap(),
+            instruction_eval_arg: weights.pop().unwrap(),
         };
         let instruction_table_terminals = InstructionTableTerminals {
             processor_perm_product: processor_table_terminals.instruction_table_perm_product,
-            program_eval_sum: program_table_terminals.instruction_eval_sum,
+            program_eval_arg: program_table_terminals.instruction_eval_arg,
         };
         let op_stack_table_terminals = OpStackTableTerminals {
             processor_perm_product: processor_table_terminals.opstack_table_perm_product,
@@ -234,8 +234,8 @@ where
             processor_perm_product: processor_table_terminals.jump_stack_perm_product,
         };
         let hash_table_terminals = HashTableTerminals {
-            from_processor_eval_sum: processor_table_terminals.to_hash_table_eval_sum,
-            to_processor_eval_sum: processor_table_terminals.from_hash_table_eval_sum,
+            from_processor_eval_arg: processor_table_terminals.to_hash_table_eval_arg,
+            to_processor_eval_arg: processor_table_terminals.from_hash_table_eval_arg,
         };
         let u32_op_table_terminals = U32OpTableTerminals {
             processor_perm_product: processor_table_terminals.u32_table_perm_product,
@@ -271,23 +271,23 @@ where
         BFieldElement: Hashable<H::T>,
     {
         vec![
-            &self.program_table_terminals.instruction_eval_sum,
+            &self.program_table_terminals.instruction_eval_arg,
             &self.instruction_table_terminals.processor_perm_product,
-            &self.instruction_table_terminals.program_eval_sum,
+            &self.instruction_table_terminals.program_eval_arg,
             &self
                 .processor_table_terminals
                 .instruction_table_perm_product,
             &self.processor_table_terminals.opstack_table_perm_product,
             &self.processor_table_terminals.ram_table_perm_product,
             &self.processor_table_terminals.jump_stack_perm_product,
-            &self.processor_table_terminals.to_hash_table_eval_sum,
-            &self.processor_table_terminals.from_hash_table_eval_sum,
+            &self.processor_table_terminals.to_hash_table_eval_arg,
+            &self.processor_table_terminals.from_hash_table_eval_arg,
             &self.processor_table_terminals.u32_table_perm_product,
             &self.op_stack_table_terminals.processor_perm_product,
             &self.ram_table_terminals.processor_perm_product,
             &self.jump_stack_table_terminals.processor_perm_product,
-            &self.hash_table_terminals.from_processor_eval_sum,
-            &self.hash_table_terminals.to_processor_eval_sum,
+            &self.hash_table_terminals.from_processor_eval_arg,
+            &self.hash_table_terminals.to_processor_eval_arg,
             &self.u32_op_table_terminals.processor_perm_product,
         ]
         .into_iter()

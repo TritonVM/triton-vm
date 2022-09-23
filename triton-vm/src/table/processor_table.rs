@@ -80,14 +80,14 @@ impl ProcessorTable {
     ) -> (ExtProcessorTable, ProcessorTableTerminals) {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
-        let mut input_table_running_sum = XFieldElement::zero();
-        let mut output_table_running_sum = XFieldElement::zero();
+        let mut input_table_running_evaluation = XFieldElement::zero();
+        let mut output_table_running_evaluation = XFieldElement::zero();
         let mut instruction_table_running_product = XFieldElement::one();
         let mut opstack_table_running_product = XFieldElement::one();
         let mut ram_table_running_product = XFieldElement::one();
         let mut jump_stack_running_product = XFieldElement::one();
-        let mut to_hash_table_running_sum = XFieldElement::zero();
-        let mut from_hash_table_running_sum = XFieldElement::zero();
+        let mut to_hash_table_running_evaluation = XFieldElement::zero();
+        let mut from_hash_table_running_evaluation = XFieldElement::zero();
         let mut u32_table_running_product = XFieldElement::one();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
@@ -100,21 +100,21 @@ impl ProcessorTable {
             if let Some(prow) = previous_row.clone() {
                 if prow[CI as usize] == Instruction::ReadIo.opcode_b() {
                     let input_symbol = extension_row[ST0 as usize];
-                    input_table_running_sum = input_table_running_sum
+                    input_table_running_evaluation = input_table_running_evaluation
                         * challenges.input_table_eval_row_weight
                         + input_symbol;
                 }
             }
-            extension_row[usize::from(InputTableEvalArg)] = input_table_running_sum;
+            extension_row[usize::from(InputTableEvalArg)] = input_table_running_evaluation;
 
             // Output table
             if row[CI as usize] == Instruction::WriteIo.opcode_b() {
                 let output_symbol = extension_row[ST0 as usize];
-                output_table_running_sum = output_table_running_sum
+                output_table_running_evaluation = output_table_running_evaluation
                     * challenges.output_table_eval_row_weight
                     + output_symbol;
             }
-            extension_row[usize::from(OutputTableEvalArg)] = output_table_running_sum;
+            extension_row[usize::from(OutputTableEvalArg)] = output_table_running_evaluation;
 
             // Instruction table
             let ip = extension_row[IP as usize];
@@ -206,11 +206,11 @@ impl ProcessorTable {
             extension_row[usize::from(CompressedRowForHashInput)] = compressed_row_for_hash_input;
 
             if row[CI as usize] == Instruction::Hash.opcode_b() {
-                to_hash_table_running_sum = to_hash_table_running_sum
+                to_hash_table_running_evaluation = to_hash_table_running_evaluation
                     * challenges.to_hash_table_eval_row_weight
                     + compressed_row_for_hash_input;
             }
-            extension_row[usize::from(ToHashTableEvalArg)] = to_hash_table_running_sum;
+            extension_row[usize::from(ToHashTableEvalArg)] = to_hash_table_running_evaluation;
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
             let st_5_through_9 = [
@@ -229,12 +229,12 @@ impl ProcessorTable {
 
             if let Some(prow) = previous_row.clone() {
                 if prow[CI as usize] == Instruction::Hash.opcode_b() {
-                    from_hash_table_running_sum = from_hash_table_running_sum
+                    from_hash_table_running_evaluation = from_hash_table_running_evaluation
                         * challenges.from_hash_table_eval_row_weight
                         + compressed_row_for_hash_digest;
                 }
             }
-            extension_row[usize::from(FromHashTableEvalArg)] = from_hash_table_running_sum;
+            extension_row[usize::from(FromHashTableEvalArg)] = from_hash_table_running_evaluation;
 
             // U32 Table
             if let Some(prow) = previous_row {
@@ -295,14 +295,14 @@ impl ProcessorTable {
         }
 
         let terminals = ProcessorTableTerminals {
-            input_table_eval_sum: input_table_running_sum,
-            output_table_eval_sum: output_table_running_sum,
+            input_table_eval_arg: input_table_running_evaluation,
+            output_table_eval_arg: output_table_running_evaluation,
             instruction_table_perm_product: instruction_table_running_product,
             opstack_table_perm_product: opstack_table_running_product,
             ram_table_perm_product: ram_table_running_product,
             jump_stack_perm_product: jump_stack_running_product,
-            to_hash_table_eval_sum: to_hash_table_running_sum,
-            from_hash_table_eval_sum: from_hash_table_running_sum,
+            to_hash_table_eval_arg: to_hash_table_running_evaluation,
+            from_hash_table_eval_arg: from_hash_table_running_evaluation,
             u32_table_perm_product: u32_table_running_product,
         };
 
@@ -492,23 +492,23 @@ pub struct ProcessorTableChallenges {
 
 #[derive(Debug, Clone)]
 pub struct ProcessorTableTerminals {
-    pub input_table_eval_sum: XFieldElement,
-    pub output_table_eval_sum: XFieldElement,
+    pub input_table_eval_arg: XFieldElement,
+    pub output_table_eval_arg: XFieldElement,
 
     pub instruction_table_perm_product: XFieldElement,
     pub opstack_table_perm_product: XFieldElement,
     pub ram_table_perm_product: XFieldElement,
     pub jump_stack_perm_product: XFieldElement,
 
-    pub to_hash_table_eval_sum: XFieldElement,
-    pub from_hash_table_eval_sum: XFieldElement,
+    pub to_hash_table_eval_arg: XFieldElement,
+    pub from_hash_table_eval_arg: XFieldElement,
 
     pub u32_table_perm_product: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
 pub struct IOChallenges {
-    /// The weight that combines the eval arg's running sum with the next i/o symbol in the i/o list
+    /// weight for updating the running evaluation with the next i/o symbol in the i/o list
     pub processor_eval_row_weight: XFieldElement,
 }
 

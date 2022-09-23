@@ -223,7 +223,7 @@ impl CrossTableArg for EvalArg {
         XFieldElement::zero()
     }
 
-    /// Compute the running sum for an evaluation argument as specified by `initial`,
+    /// Compute the running evaluation for an evaluation argument as specified by `initial`,
     /// This amounts to evaluating polynomial `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i` at position
     /// challenge, i.e., returns `f(challenge)`.
     fn compute_terminal(
@@ -231,11 +231,11 @@ impl CrossTableArg for EvalArg {
         initial: XFieldElement,
         challenge: XFieldElement,
     ) -> XFieldElement {
-        let mut running_sum = initial;
+        let mut running_evaluation = initial;
         for s in symbols.iter() {
-            running_sum = challenge * running_sum + s.lift();
+            running_evaluation = challenge * running_evaluation + s.lift();
         }
-        running_sum
+        running_evaluation
     }
 }
 
@@ -244,9 +244,9 @@ impl EvalArg {
     pub fn program_instruction_eval_arg() -> Self {
         Self {
             from_table: ProgramTable,
-            from_column: ExtProgramTableColumn::EvalArgRunningSum.into(),
+            from_column: ExtProgramTableColumn::RunningEvaluation.into(),
             to_table: InstructionTable,
-            to_column: ExtInstructionTableColumn::RunningSumEvalArg.into(),
+            to_column: ExtInstructionTableColumn::RunningEvaluation.into(),
         }
     }
 
@@ -255,14 +255,14 @@ impl EvalArg {
             from_table: ProcessorTable,
             from_column: ExtProcessorTableColumn::ToHashTableEvalArg.into(),
             to_table: HashTable,
-            to_column: ExtHashTableColumn::FromProcessorRunningSum.into(),
+            to_column: ExtHashTableColumn::FromProcessorRunningEvaluation.into(),
         }
     }
 
     pub fn hash_to_processor_eval_arg() -> Self {
         Self {
             from_table: HashTable,
-            from_column: ExtHashTableColumn::ToProcessorRunningSum.into(),
+            from_column: ExtHashTableColumn::ToProcessorRunningEvaluation.into(),
             to_table: ProcessorTable,
             to_column: ExtProcessorTableColumn::FromHashTableEvalArg.into(),
         }

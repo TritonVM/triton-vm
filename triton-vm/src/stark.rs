@@ -948,7 +948,7 @@ impl Stark {
             extension_challenges
                 .processor_table_challenges
                 .input_table_eval_row_weight,
-            all_terminals.processor_table_terminals.input_table_eval_sum,
+            all_terminals.processor_table_terminals.input_table_eval_arg,
         ) {
             return Err(Box::new(StarkVerifyError::EvaluationArgument(0)));
         }
@@ -960,7 +960,7 @@ impl Stark {
                 .output_table_eval_row_weight,
             all_terminals
                 .processor_table_terminals
-                .output_table_eval_sum,
+                .output_table_eval_arg,
         ) {
             return Err(Box::new(StarkVerifyError::EvaluationArgument(1)));
         }
@@ -1196,7 +1196,7 @@ pub(crate) mod triton_stark_tests {
         let (stdout, _, _, _, all_challenges, all_terminals, _) =
             parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
 
-        let ptie = all_terminals.processor_table_terminals.input_table_eval_sum;
+        let ptie = all_terminals.processor_table_terminals.input_table_eval_arg;
         let ine = EvalArg::compute_terminal(
             &input_symbols,
             XFieldElement::zero(),
@@ -1206,7 +1206,7 @@ pub(crate) mod triton_stark_tests {
 
         let ptoe = all_terminals
             .processor_table_terminals
-            .output_table_eval_sum;
+            .output_table_eval_arg;
 
         let oute = EvalArg::compute_terminal(
             &stdout.to_bword_vec(),
@@ -1226,8 +1226,8 @@ pub(crate) mod triton_stark_tests {
             let (_, _, _, _, _, all_terminals, _) =
                 parse_simulate_pad_extend(&code, &input, &secret_input);
             assert_eq!(
-                all_terminals.program_table_terminals.instruction_eval_sum,
-                all_terminals.instruction_table_terminals.program_eval_sum,
+                all_terminals.program_table_terminals.instruction_eval_arg,
+                all_terminals.instruction_table_terminals.program_eval_arg,
                 "Program <=> Instruction failed at TASM snippet with index {code_idx}.",
             );
             assert_eq!(
@@ -1267,15 +1267,15 @@ pub(crate) mod triton_stark_tests {
             assert_eq!(
                 all_terminals
                     .processor_table_terminals
-                    .to_hash_table_eval_sum,
-                all_terminals.hash_table_terminals.from_processor_eval_sum,
+                    .to_hash_table_eval_arg,
+                all_terminals.hash_table_terminals.from_processor_eval_arg,
                 "Processor => Hash failed at TASM snippet with index {code_idx}.",
             );
             assert_eq!(
                 all_terminals
                     .processor_table_terminals
-                    .from_hash_table_eval_sum,
-                all_terminals.hash_table_terminals.to_processor_eval_sum,
+                    .from_hash_table_eval_arg,
+                all_terminals.hash_table_terminals.to_processor_eval_arg,
                 "Hash => Processor failed at TASM snippet with index {code_idx}.",
             );
             assert_eq!(
