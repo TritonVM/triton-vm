@@ -426,7 +426,7 @@ impl<'pgm> VMState<'pgm> {
                 let (quot, rem) = other::div_rem(numerator, denom);
                 self.op_stack.push(BFieldElement::new(quot as u64));
                 self.op_stack.push(BFieldElement::new(rem as u64));
-                let trace = self.u32_op_trace(denom, numerator);
+                let trace = self.u32_op_trace(rem, denom);
                 vm_output = Some(VMOutput::U32OpTrace(trace));
                 self.instruction_pointer += 1;
             }

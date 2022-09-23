@@ -10,6 +10,7 @@ use crate::instruction::Instruction;
 use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
+use crate::table::table_column::ExtU32OpTableColumn::*;
 use crate::table::table_column::U32OpTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
@@ -92,12 +93,7 @@ impl TableLike<XFieldElement> for ExtU32OpTable {}
 
 impl ExtU32OpTable {
     fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
-        // todo: think this through again once all tables use the same padded height.
-        // let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
-        // let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
-        // let idc = variables[IDC as usize].clone();
-        // let idc_is_one = idc - one;
-        // vec![idc_is_one]
+        // todo: check that running product starts with correct initial. Need challenges for that.
         vec![]
     }
 
@@ -315,8 +311,9 @@ impl U32OpTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
         for row in self.data().iter() {
-            let mut extension_row = Vec::with_capacity(FULL_WIDTH);
-            extension_row.extend(row.iter().map(|elem| elem.lift()));
+            let mut extension_row = [0.into(); FULL_WIDTH];
+            extension_row[..BASE_WIDTH]
+                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             let current_instruction: Instruction = row[U32OpTableColumn::CI as usize]
                 .value()
@@ -346,15 +343,15 @@ impl U32OpTable {
                 + lhs * challenges.lhs_weight
                 + rhs * challenges.rhs_weight
                 + result * challenges.result_weight;
-            extension_row.push(compressed_row);
+            extension_row[usize::from(CompressedRow)] = compressed_row;
 
             // Multiply compressed value into running product if indicator is set
-            extension_row.push(running_product);
             if row[U32OpTableColumn::IDC as usize].is_one() {
                 running_product *= challenges.processor_perm_row_weight - compressed_row;
             }
+            extension_row[usize::from(RunningProductPermArg)] = running_product;
 
-            extension_matrix.push(extension_row);
+            extension_matrix.push(extension_row.to_vec());
         }
 
         let terminals = U32OpTableTerminals {

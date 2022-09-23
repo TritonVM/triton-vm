@@ -5,8 +5,9 @@ Each register is assigned a column in the processor table.
 
 ## Padding
 
-Each padding row is a direct copy of the Processor Table's last row, with the exception of the cycle count column `clk`.
-Column `clk` increases by 1 between any two consecutive rows, even padding rows.
+A padding row is a copy of the Processor Table's last row with the following modifications:
+1. column `clk` is increased by 1, and
+1. column `IsPadding` is set to 1.
 
 ## Initial Constraints
 

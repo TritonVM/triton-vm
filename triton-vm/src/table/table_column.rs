@@ -11,6 +11,7 @@ use HashTableColumn::*;
 #[derive(Debug, Clone, Copy)]
 pub enum ProcessorTableColumn {
     CLK,
+    IsPadding,
     IP,
     CI,
     NIA,
@@ -55,6 +56,7 @@ impl Display for ProcessorTableColumn {
 
         match self {
             CLK => write!(f, "CLK"),
+            IsPadding => write!(f, "IsPadding"),
             IP => write!(f, "IP"),
             CI => write!(f, "CI"),
             NIA => write!(f, "NIA"),
@@ -101,42 +103,43 @@ impl From<ProcessorTableColumn> for usize {
 
         match c {
             CLK => 0,
-            IP => 1,
-            CI => 2,
-            NIA => 3,
-            IB0 => 4,
-            IB1 => 5,
-            IB2 => 6,
-            IB3 => 7,
-            IB4 => 8,
-            IB5 => 9,
-            IB6 => 10,
-            JSP => 11,
-            JSO => 12,
-            JSD => 13,
-            ST0 => 14,
-            ST1 => 15,
-            ST2 => 16,
-            ST3 => 17,
-            ST4 => 18,
-            ST5 => 19,
-            ST6 => 20,
-            ST7 => 21,
-            ST8 => 22,
-            ST9 => 23,
-            ST10 => 24,
-            ST11 => 25,
-            ST12 => 26,
-            ST13 => 27,
-            ST14 => 28,
-            ST15 => 29,
-            OSP => 30,
-            OSV => 31,
-            HV0 => 32,
-            HV1 => 33,
-            HV2 => 34,
-            HV3 => 35,
-            RAMV => 36,
+            IsPadding => 1,
+            IP => 2,
+            CI => 3,
+            NIA => 4,
+            IB0 => 5,
+            IB1 => 6,
+            IB2 => 7,
+            IB3 => 8,
+            IB4 => 9,
+            IB5 => 10,
+            IB6 => 11,
+            JSP => 12,
+            JSO => 13,
+            JSD => 14,
+            ST0 => 15,
+            ST1 => 16,
+            ST2 => 17,
+            ST3 => 18,
+            ST4 => 19,
+            ST5 => 20,
+            ST6 => 21,
+            ST7 => 22,
+            ST8 => 23,
+            ST9 => 24,
+            ST10 => 25,
+            ST11 => 26,
+            ST12 => 27,
+            ST13 => 28,
+            ST14 => 29,
+            ST15 => 30,
+            OSP => 31,
+            OSV => 32,
+            HV0 => 33,
+            HV1 => 34,
+            HV2 => 35,
+            HV3 => 36,
+            RAMV => 37,
         }
     }
 }
@@ -207,22 +210,22 @@ impl From<ExtProcessorTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            InputTableEvalArg => 37,
-            OutputTableEvalArg => 38,
-            CompressedRowInstructionTable => 39,
-            InstructionTablePermArg => 40,
-            CompressedRowOpStackTable => 41,
-            OpStackTablePermArg => 42,
-            CompressedRowRamTable => 43,
-            RamTablePermArg => 44,
-            CompressedRowJumpStackTable => 45,
-            JumpStackTablePermArg => 46,
-            CompressedRowForHashInput => 47,
-            ToHashTableEvalArg => 48,
-            CompressedRowForHashDigest => 49,
-            FromHashTableEvalArg => 50,
-            CompressedRowForU32Op => 51,
-            U32OpTablePermArg => 52,
+            InputTableEvalArg => 38,
+            OutputTableEvalArg => 39,
+            CompressedRowInstructionTable => 40,
+            InstructionTablePermArg => 41,
+            CompressedRowOpStackTable => 42,
+            OpStackTablePermArg => 43,
+            CompressedRowRamTable => 44,
+            RamTablePermArg => 45,
+            CompressedRowJumpStackTable => 46,
+            JumpStackTablePermArg => 47,
+            CompressedRowForHashInput => 48,
+            ToHashTableEvalArg => 49,
+            CompressedRowForHashDigest => 50,
+            FromHashTableEvalArg => 51,
+            CompressedRowForU32Op => 52,
+            U32OpTablePermArg => 53,
         }
     }
 }
@@ -243,6 +246,7 @@ impl Bounded for ExtProcessorTableColumn {
 pub enum ProgramTableColumn {
     Address,
     Instruction,
+    IsPadding,
 }
 
 impl From<ProgramTableColumn> for usize {
@@ -252,6 +256,7 @@ impl From<ProgramTableColumn> for usize {
         match c {
             Address => 0,
             Instruction => 1,
+            IsPadding => 2,
         }
     }
 }
@@ -262,7 +267,7 @@ impl Bounded for ProgramTableColumn {
     }
 
     fn max_value() -> Self {
-        ProgramTableColumn::Instruction
+        ProgramTableColumn::IsPadding
     }
 }
 
@@ -279,8 +284,8 @@ impl From<ExtProgramTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            EvalArgCompressedRow => 2,
-            EvalArgRunningSum => 3,
+            EvalArgCompressedRow => 3,
+            EvalArgRunningSum => 4,
         }
     }
 }
@@ -302,6 +307,7 @@ pub enum InstructionTableColumn {
     Address,
     CI,
     NIA,
+    IsPadding,
 }
 
 impl From<InstructionTableColumn> for usize {
@@ -312,6 +318,7 @@ impl From<InstructionTableColumn> for usize {
             Address => 0,
             CI => 1,
             NIA => 2,
+            IsPadding => 3,
         }
     }
 }
@@ -322,7 +329,7 @@ impl Bounded for InstructionTableColumn {
     }
 
     fn max_value() -> Self {
-        InstructionTableColumn::NIA
+        InstructionTableColumn::IsPadding
     }
 }
 
@@ -341,10 +348,10 @@ impl From<ExtInstructionTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            CompressedRowPermArg => 3,
-            RunningProductPermArg => 4,
-            CompressedRowEvalArg => 5,
-            RunningSumEvalArg => 6,
+            CompressedRowPermArg => 4,
+            RunningProductPermArg => 5,
+            CompressedRowEvalArg => 6,
+            RunningSumEvalArg => 7,
         }
     }
 }

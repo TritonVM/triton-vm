@@ -13,7 +13,7 @@ use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_terminals::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::ExtInstructionTableColumn::*;
-use super::table_column::InstructionTableColumn::{self, *};
+use super::table_column::InstructionTableColumn::*;
 
 pub const INSTRUCTION_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
 pub const INSTRUCTION_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 1;
@@ -23,8 +23,8 @@ pub const INSTRUCTION_TABLE_INITIALS_COUNT: usize =
 /// This is 6 because it combines: (ip, ci, nia) and (addr, instruction, next_instruction).
 pub const INSTRUCTION_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 6;
 
-pub const BASE_WIDTH: usize = 3;
-pub const FULL_WIDTH: usize = 7; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const BASE_WIDTH: usize = 4;
+pub const FULL_WIDTH: usize = 8; // BASE_WIDTH + 2 * INITIALS_COUNT
 
 #[derive(Debug, Clone)]
 pub struct InstructionTable {
@@ -77,13 +77,18 @@ impl TableLike<BFieldElement> for InstructionTable {}
 
 impl Extendable for InstructionTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
+        let zero = BFieldElement::zero();
+        let one = BFieldElement::one();
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
             // address keeps increasing
-            padding_row[InstructionTableColumn::Address as usize] += BFieldElement::one();
+            padding_row[Address as usize] += one;
+            padding_row[IsPadding as usize] = one;
             (None, vec![padding_row])
         } else {
-            (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
+            let mut padding_row = [zero; BASE_WIDTH];
+            padding_row[IsPadding as usize] = one;
+            (None, vec![padding_row.to_vec()])
         }
     }
 }
@@ -150,9 +155,11 @@ impl ExtInstructionTable {
         let current_instruction_next = variables[FULL_WIDTH + CI as usize].clone();
         let next_instruction = variables[NIA as usize].clone();
         let next_instruction_next = variables[FULL_WIDTH + NIA as usize].clone();
+        // beware: for polynomials, “0” is true
+        let is_padding_row = one.clone() - variables[FULL_WIDTH + IsPadding as usize].clone();
 
         // Base Table Constraints
-        let address_increases_by_one = addr_next.clone() - (addr.clone() + one);
+        let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
         let address_increases_by_one_or_ci_stays =
             address_increases_by_one.clone() * (current_instruction_next - current_instruction);
         let address_increases_by_one_or_nia_stays =
@@ -172,25 +179,48 @@ impl ExtInstructionTable {
         let running_product_next =
             variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
 
+        // The running evaluation is updated if and only if
+        // 1. the address changes, and
+        // 2. the current row is not a padding row.
+        // Stated differently:
+        // 1. the address doesn't change
+        //      or the current row is a padding row
+        //      or the running evaluation is updated,
+        // 2. the address does change
+        //      or the running evaluation is not updated, and
+        // 3. the current row is not a padding row
+        //      or the running evaluation is not updated.
         let address_stays = addr_next - addr;
+        let running_evaluations_stays =
+            running_evaluation_next.clone() - running_evaluation.clone();
+        let running_evaluation_update = running_evaluation_next
+            - running_evaluation.scalar_mul(challenges.program_eval_row_weight)
+            - compressed_row_for_eval_arg;
 
-        // Iff the address changes, then the running evaluation is updated. Stated differently:
-        // 1. the address doesn't change or the running evaluation is updated, and
-        // 2. the address does change or the running evaluation is not updated.
-        let running_evaluation_is_well_formed = address_stays.clone()
-            * (running_evaluation.scalar_mul(challenges.program_eval_row_weight)
-                + compressed_row_for_eval_arg
-                - running_evaluation_next.clone())
-            + address_increases_by_one.clone() * (running_evaluation_next - running_evaluation);
+        let running_evaluation_is_well_formed =
+            address_stays.clone() * is_padding_row.clone() * running_evaluation_update
+                + address_increases_by_one.clone() * running_evaluations_stays.clone()
+                + (one.clone() - is_padding_row.clone()) * running_evaluations_stays;
 
-        // Iff the address doesn't change, then the running product is updated. Stated differently:
-        // 1. the address does change or the running product is updated, and
-        // 2. the address doesn't change or the running product is not updated.
-        let running_product_is_well_formed = address_increases_by_one
-            * (running_product_next.clone()
-                - running_product.clone()
-                    * (processor_perm_row_weight - compressed_row_for_perm_arg))
-            + address_stays * (running_product_next - running_product);
+        // The running product is updated if and only if
+        // 1. the address doesn't change, and
+        // 2. the current row is not a padding row.
+        // Stated differently:
+        // 1. the address does change
+        //      or the current row is a padding row
+        //      or the running product is updated,
+        // 2. the address doesn't change
+        //      or the running product is not updated, and
+        // 3. the current row is not a padding row
+        //      or the running product is not updated.
+        let running_product_stays = running_product_next.clone() - running_product.clone();
+        let running_product_update = running_product_next
+            - running_product * (processor_perm_row_weight - compressed_row_for_perm_arg);
+
+        let running_product_is_well_formed =
+            address_increases_by_one * is_padding_row.clone() * running_product_update
+                + address_stays * running_product_stays.clone()
+                + (one - is_padding_row) * running_product_stays;
 
         vec![
             address_increases_by_one_or_ci_stays,
@@ -250,7 +280,7 @@ impl InstructionTable {
         let mut previous_row: Option<Vec<_>> = None;
 
         for row in self.data().iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH].to_vec();
+            let mut extension_row = [0.into(); FULL_WIDTH];
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
@@ -278,8 +308,8 @@ impl InstructionTable {
             extension_row[usize::from(CompressedRowPermArg)] =
                 compressed_row_for_permutation_argument;
 
-            // Update running product for Permutation Argument if same row has been seen before
-            if is_duplicate_row {
+            // Update running product if same row has been seen before and not padding row
+            if is_duplicate_row && row[IsPadding as usize].is_zero() {
                 processor_table_running_product *=
                     challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             }
@@ -292,22 +322,16 @@ impl InstructionTable {
             extension_row[usize::from(CompressedRowEvalArg)] =
                 compressed_row_for_evaluation_argument;
 
-            // Update running sum for Evaluation Argument if same row has _not_ been seen before
-            if !is_duplicate_row {
+            // Update running evaluation if same row has _not_ been seen before and not padding row
+            if !is_duplicate_row && row[IsPadding as usize].is_zero() {
                 program_table_running_sum = program_table_running_sum
                     * challenges.program_eval_row_weight
                     + compressed_row_for_evaluation_argument;
             }
             extension_row[usize::from(RunningSumEvalArg)] = program_table_running_sum;
 
-            debug_assert_eq!(
-                FULL_WIDTH,
-                extension_row.len(),
-                "After extending, the row must match the table's full width."
-            );
-
             previous_row = Some(row.clone());
-            extension_matrix.push(extension_row);
+            extension_matrix.push(extension_row.to_vec());
         }
 
         let terminals = InstructionTableTerminals {

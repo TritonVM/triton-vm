@@ -7,6 +7,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | Register             | Name                         | Purpose                                                                                                            |
 |:---------------------|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------|
 | *`clk`               | cycle counter                | counts the number of cycles the program has been running for                                                       |
+| *`IsPadding`         | padding indicator            | indicates whether current state is only recorded to improve on STARK's computational runtime                       |
 | `ip`                 | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
 | `ci`                 | current instruction register | contains the current instruction                                                                                   |
 | `nia`                | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |

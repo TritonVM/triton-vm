@@ -2,7 +2,7 @@ use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::{FiniteField, Inverse};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
@@ -36,10 +36,11 @@ pub trait CrossTableArg {
     where
         Self: Sized;
 
-    fn initial_quotient(
+    fn terminal_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
         fri_domain: &FriDomain<XFieldElement>,
+        omicron: XFieldElement,
     ) -> Vec<XFieldElement> {
         let (from_table, from_column) = self.from();
         let (to_table, to_column) = self.to();
@@ -48,14 +49,14 @@ pub trait CrossTableArg {
         let zerofier = fri_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - 1.into())
+            .map(|x| x - omicron.inverse())
             .collect();
-        let inverse_zerofier = XFieldElement::batch_inversion(zerofier);
+        let zerofier_inverse = XFieldElement::batch_inversion(zerofier);
 
-        inverse_zerofier
+        zerofier_inverse
             .into_iter()
             .zip_eq(lhs_codeword.iter().zip_eq(rhs_codeword.iter()))
-            .map(|(z, (from, to))| (*from - *to) * z)
+            .map(|(z, (&from, &to))| (from - to) * z)
             .collect_vec()
     }
 

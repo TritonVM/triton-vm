@@ -53,7 +53,7 @@ impl AllChallenges {
             instruction_table_nia_weight: weights.pop().unwrap(),
 
             op_stack_table_clk_weight: weights.pop().unwrap(),
-            op_stack_table_ci_weight: weights.pop().unwrap(),
+            op_stack_table_ib1_weight: weights.pop().unwrap(),
             op_stack_table_osv_weight: weights.pop().unwrap(),
             op_stack_table_osp_weight: weights.pop().unwrap(),
 
@@ -114,7 +114,7 @@ impl AllChallenges {
         let op_stack_table_challenges = OpStackTableChallenges {
             processor_perm_row_weight: processor_table_challenges.op_stack_perm_row_weight,
             clk_weight: processor_table_challenges.op_stack_table_clk_weight,
-            ci_weight: processor_table_challenges.op_stack_table_ci_weight,
+            ib1_weight: processor_table_challenges.op_stack_table_ib1_weight,
             osv_weight: processor_table_challenges.op_stack_table_osv_weight,
             osp_weight: processor_table_challenges.op_stack_table_osp_weight,
         };
@@ -135,26 +135,14 @@ impl AllChallenges {
             jsd_weight: processor_table_challenges.jump_stack_table_jsd_weight,
         };
 
-        let stack_input_weights = weights
-            .drain(0..2 * DIGEST_LENGTH)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        let digest_output_weights = weights
-            .drain(0..DIGEST_LENGTH)
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
         let hash_table_challenges = HashTableChallenges {
             from_processor_eval_row_weight: processor_table_challenges
                 .to_hash_table_eval_row_weight,
             to_processor_eval_row_weight: processor_table_challenges
                 .from_hash_table_eval_row_weight,
 
-            stack_input_weights,
-            digest_output_weights,
+            stack_input_weights: processor_table_challenges.hash_table_stack_input_weights,
+            digest_output_weights: processor_table_challenges.hash_table_digest_output_weights,
         };
 
         let u32_op_table_challenges = U32OpTableChallenges {

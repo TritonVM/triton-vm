@@ -243,7 +243,7 @@ impl Program {
 }
 
 #[cfg(test)]
-mod triton_vm_tests {
+pub mod triton_vm_tests {
     use std::iter::zip;
 
     use num_traits::{One, Zero};
@@ -442,10 +442,10 @@ mod triton_vm_tests {
     }
 
     /// Source code and associated input. Primarily for testing of the VM's instructions.
-    struct SourceCodeAndInput {
-        source_code: String,
-        input: Vec<BFieldElement>,
-        secret_input: Vec<BFieldElement>,
+    pub struct SourceCodeAndInput {
+        pub source_code: String,
+        pub input: Vec<BFieldElement>,
+        pub secret_input: Vec<BFieldElement>,
     }
 
     impl SourceCodeAndInput {
@@ -480,7 +480,11 @@ mod triton_vm_tests {
         }
     }
 
-    fn test_program_for_push_pop_dup_swap_nop() -> SourceCodeAndInput {
+    pub fn test_hash_nop_nop_lt() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("hash nop hash nop nop hash push 3 push 2 lt assert halt")
+    }
+
+    pub fn test_program_for_push_pop_dup_swap_nop() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 1 push 2 pop assert \
             push 1 dup0 assert assert \
@@ -489,7 +493,7 @@ mod triton_vm_tests {
         )
     }
 
-    fn test_program_for_divine() -> SourceCodeAndInput {
+    pub fn test_program_for_divine() -> SourceCodeAndInput {
         SourceCodeAndInput {
             source_code: "divine assert halt".to_string(),
             input: vec![],
@@ -497,20 +501,20 @@ mod triton_vm_tests {
         }
     }
 
-    fn test_program_for_skiz() -> SourceCodeAndInput {
+    pub fn test_program_for_skiz() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 1 skiz push 0 skiz assert push 1 skiz halt")
     }
 
-    fn test_program_for_call_recurse_return() -> SourceCodeAndInput {
+    pub fn test_program_for_call_recurse_return() -> SourceCodeAndInput {
         let source_code = "push 2 call label halt label: push -1 add dup0 skiz recurse return";
         SourceCodeAndInput::without_input(source_code)
     }
 
-    fn test_program_for_write_mem_read_mem() -> SourceCodeAndInput {
+    pub fn test_program_for_write_mem_read_mem() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 2 push 1 write_mem pop push 0 read_mem assert halt")
     }
 
-    fn test_program_for_hash() -> SourceCodeAndInput {
+    pub fn test_program_for_hash() -> SourceCodeAndInput {
         let source_code =
             "push 0 push 0 push 0 push 1 push 2 push 3 hash pop pop pop pop pop read_io eq assert halt";
         let mut hash_input = [BFieldElement::zero(); 10];
@@ -525,7 +529,7 @@ mod triton_vm_tests {
         }
     }
 
-    fn test_program_for_divine_sibling_noswitch() -> SourceCodeAndInput {
+    pub fn test_program_for_divine_sibling_noswitch() -> SourceCodeAndInput {
         let source_code = "
             push 3 \
             push 4 push 2 push 2 push 2 push 1 \
@@ -537,7 +541,7 @@ mod triton_vm_tests {
             push -1 add assert \
             push -1 add assert \
             push -3 add assert \
-            assert";
+            assert halt ";
         let one = BFieldElement::one();
         let zero = BFieldElement::zero();
         SourceCodeAndInput {
@@ -547,7 +551,7 @@ mod triton_vm_tests {
         }
     }
 
-    fn test_program_for_divine_sibling_switch() -> SourceCodeAndInput {
+    pub fn test_program_for_divine_sibling_switch() -> SourceCodeAndInput {
         let source_code = "
             push 2 \
             push 4 push 2 push 2 push 2 push 1 \
@@ -559,7 +563,7 @@ mod triton_vm_tests {
             push -1 add assert \
             push -3 add assert \
             push 1 add assert assert assert assert assert \
-            assert";
+            assert halt ";
         let one = BFieldElement::one();
         let zero = BFieldElement::zero();
         SourceCodeAndInput {
@@ -569,7 +573,7 @@ mod triton_vm_tests {
         }
     }
 
-    fn test_program_for_assert_vector() -> SourceCodeAndInput {
+    pub fn test_program_for_assert_vector() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 1 push 2 push 3 push 4 push 5 \
              push 1 push 2 push 3 push 4 push 5 \
@@ -577,7 +581,7 @@ mod triton_vm_tests {
         )
     }
 
-    fn test_program_for_add_mul_invert() -> SourceCodeAndInput {
+    pub fn test_program_for_add_mul_invert() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 2 push -1 add assert \
             push -1 push -1 mul assert \
@@ -586,11 +590,11 @@ mod triton_vm_tests {
         )
     }
 
-    fn test_program_for_instruction_split() -> SourceCodeAndInput {
+    pub fn test_program_for_instruction_split() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push -1 split swap1 lt assert halt ")
     }
 
-    fn test_program_for_eq() -> SourceCodeAndInput {
+    pub fn test_program_for_eq() -> SourceCodeAndInput {
         SourceCodeAndInput {
             source_code: "read_io divine eq assert halt".to_string(),
             input: vec![BFieldElement::new(42)],
@@ -598,43 +602,43 @@ mod triton_vm_tests {
         }
     }
 
-    fn test_program_for_lt() -> SourceCodeAndInput {
+    pub fn test_program_for_lt() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 3 push 2 lt assert halt")
     }
 
-    fn test_program_for_and() -> SourceCodeAndInput {
+    pub fn test_program_for_and() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 3 and assert halt")
     }
 
-    fn test_program_for_xor() -> SourceCodeAndInput {
+    pub fn test_program_for_xor() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 7 push 6 xor assert halt")
     }
 
-    fn test_program_for_reverse() -> SourceCodeAndInput {
+    pub fn test_program_for_reverse() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 2147483648 reverse assert halt")
     }
 
-    fn test_program_for_div() -> SourceCodeAndInput {
+    pub fn test_program_for_div() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 3 push 2 div assert assert halt")
     }
 
-    fn test_program_for_xxadd() -> SourceCodeAndInput {
+    pub fn test_program_for_xxadd() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt")
     }
 
-    fn test_program_for_xxmul() -> SourceCodeAndInput {
+    pub fn test_program_for_xxmul() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 push 9 push 10 xxmul halt")
     }
 
-    fn test_program_for_xinvert() -> SourceCodeAndInput {
+    pub fn test_program_for_xinvert() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 6 push 7 xinvert halt")
     }
 
-    fn test_program_for_xbmul() -> SourceCodeAndInput {
+    pub fn test_program_for_xbmul() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 xbmul halt")
     }
 
-    fn test_program_for_read_io() -> SourceCodeAndInput {
+    pub fn test_program_for_read_io() -> SourceCodeAndInput {
         SourceCodeAndInput {
             source_code: "read_io assert halt".to_string(),
             input: vec![BFieldElement::one()],
@@ -642,9 +646,9 @@ mod triton_vm_tests {
         }
     }
 
-    #[test]
-    fn processor_table_constraints_evaluate_to_zero_test() {
-        let all_programs = vec![
+    pub fn all_tasm_test_programs() -> Vec<SourceCodeAndInput> {
+        vec![
+            test_hash_nop_nop_lt(),
             test_program_for_push_pop_dup_swap_nop(),
             test_program_for_divine(),
             test_program_for_skiz(),
@@ -667,7 +671,12 @@ mod triton_vm_tests {
             test_program_for_xinvert(),
             test_program_for_xbmul(),
             test_program_for_read_io(),
-        ];
+        ]
+    }
+
+    #[test]
+    fn processor_table_constraints_evaluate_to_zero_test() {
+        let all_programs = all_tasm_test_programs();
         for program in all_programs.into_iter() {
             println!(
                 "\n\nChecking transition constraints for program: \"{}\"",

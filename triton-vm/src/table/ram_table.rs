@@ -8,6 +8,7 @@ use crate::fri_domain::FriDomain;
 use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
+use crate::table::table_column::ExtRamTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_terminals::{AllChallenges, AllTerminals};
@@ -106,8 +107,9 @@ impl RamTable {
         let mut running_product = XFieldElement::one();
 
         for row in self.data().iter() {
-            let mut extension_row = Vec::with_capacity(FULL_WIDTH);
-            extension_row.extend(row.iter().map(|elem| elem.lift()));
+            let mut extension_row = [0.into(); FULL_WIDTH];
+            extension_row[..BASE_WIDTH]
+                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             let (clk, ramp, ramv) = (
                 extension_row[CLK as usize],
@@ -124,15 +126,15 @@ impl RamTable {
             // 1. Compress multiple values within one row so they become one value.
             let compressed_row_for_permutation_argument =
                 clk * clk_w + ramp * ramp_w + ramv * ramv_w;
-
-            extension_row.push(compressed_row_for_permutation_argument);
+            extension_row[usize::from(PermArgCompressedRow)] =
+                compressed_row_for_permutation_argument;
 
             // 2. Compute the running *product* of the compressed column (permutation value)
-            extension_row.push(running_product);
             running_product *=
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
+            extension_row[usize::from(RunningProductPermArg)] = running_product;
 
-            extension_matrix.push(extension_row);
+            extension_matrix.push(extension_row.to_vec());
         }
 
         let terminals = RamTableTerminals {

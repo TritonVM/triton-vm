@@ -194,9 +194,13 @@ impl Stark {
             ext_codeword_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
-        // Prove equal initial values for the column pairs pertaining to cross table arguments
+        // Prove equal terminal values for the column pairs pertaining to cross table arguments
         for arg in AllCrossTableArgs::default().into_iter() {
-            quotient_codewords.push(arg.initial_quotient(&ext_codeword_tables, &self.xfri.domain));
+            quotient_codewords.push(arg.terminal_quotient(
+                &ext_codeword_tables,
+                &self.xfri.domain,
+                derive_omicron(ext_codeword_tables.padded_height as u64),
+            ));
             quotient_degree_bounds
                 .push(arg.quotient_degree_bound(&ext_codeword_tables, self.num_trace_randomizers));
         }
@@ -916,7 +920,7 @@ impl Stark {
                     arg.quotient_degree_bound(&ext_table_collection, self.num_trace_randomizers);
                 let shift = self.max_degree - degree_bound;
                 let quotient = arg.evaluate_difference(&cross_slice_by_table)
-                    / (current_fri_domain_value - 1.into());
+                    / (current_fri_domain_value - omicron_inverse);
                 let quotient_shifted =
                     quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                 summands.push(quotient);
@@ -926,7 +930,7 @@ impl Stark {
             let inner_product = non_lin_combi_weights
                 .par_iter()
                 .zip_eq(summands.par_iter())
-                .map(|(weight, summand)| *weight * *summand)
+                .map(|(&weight, &summand)| weight * summand)
                 .sum();
 
             // FIXME: This assert looks like it's for development, but it's the actual integrity
@@ -1013,6 +1017,7 @@ pub(crate) mod triton_stark_tests {
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table::InheritsFromTable;
     use crate::table::challenges_terminals::AllTerminals;
+    use crate::vm::triton_vm_tests::{all_tasm_test_programs, test_hash_nop_nop_lt};
     use crate::vm::Program;
 
     use super::*;
@@ -1178,7 +1183,7 @@ pub(crate) mod triton_stark_tests {
 
     // 1. simulate(), pad(), extend(), test terminals
     #[test]
-    pub fn check_terminals() {
+    pub fn check_io_terminals() {
         let read_nop_code = "
             read_io read_io read_io
             nop nop
@@ -1209,6 +1214,78 @@ pub(crate) mod triton_stark_tests {
             all_challenges.output_challenges.processor_eval_row_weight,
         );
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
+    }
+
+    #[test]
+    pub fn check_all_cross_table_terminals() {
+        let code_collection = all_tasm_test_programs();
+        for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
+            let code = code_with_input.source_code;
+            let input = code_with_input.input;
+            let secret_input = code_with_input.secret_input;
+            let (_, _, _, _, _, all_terminals, _) =
+                parse_simulate_pad_extend(&code, &input, &secret_input);
+            assert_eq!(
+                all_terminals.program_table_terminals.instruction_eval_sum,
+                all_terminals.instruction_table_terminals.program_eval_sum,
+                "Program <=> Instruction failed at TASM snippet with index {code_idx}.",
+            );
+            assert_eq!(
+                all_terminals
+                    .instruction_table_terminals
+                    .processor_perm_product,
+                all_terminals
+                    .processor_table_terminals
+                    .instruction_table_perm_product,
+                "Processor <=> Instruction failed at TASM snippet with index {code_idx}.",
+            );
+            assert_eq!(
+                all_terminals
+                    .processor_table_terminals
+                    .opstack_table_perm_product,
+                all_terminals
+                    .op_stack_table_terminals
+                    .processor_perm_product,
+                "Processor <=> Op Stack failed at TASM snippet with index {code_idx}.",
+            );
+            assert_eq!(
+                all_terminals
+                    .processor_table_terminals
+                    .ram_table_perm_product,
+                all_terminals.ram_table_terminals.processor_perm_product,
+                "Processor <=> RAM failed at TASM snippet with index {code_idx}.",
+            );
+            assert_eq!(
+                all_terminals
+                    .processor_table_terminals
+                    .jump_stack_perm_product,
+                all_terminals
+                    .jump_stack_table_terminals
+                    .processor_perm_product,
+                "Processor <=> Jump Stack failed at TASM snippet with index {code_idx}.",
+            );
+            assert_eq!(
+                all_terminals
+                    .processor_table_terminals
+                    .to_hash_table_eval_sum,
+                all_terminals.hash_table_terminals.from_processor_eval_sum,
+                "Processor => Hash failed at TASM snippet with index {code_idx}.",
+            );
+            assert_eq!(
+                all_terminals
+                    .processor_table_terminals
+                    .from_hash_table_eval_sum,
+                all_terminals.hash_table_terminals.to_processor_eval_sum,
+                "Hash => Processor failed at TASM snippet with index {code_idx}.",
+            );
+            assert_eq!(
+                all_terminals
+                    .processor_table_terminals
+                    .u32_table_perm_product,
+                all_terminals.u32_op_table_terminals.processor_perm_product,
+                "Processor <=> U32 failed at TASM snippet with index {code_idx}.",
+            );
+        }
     }
 
     #[test]
@@ -1296,11 +1373,12 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_test() {
         let co_set_fri_offset = BFieldElement::generator();
+        let code_with_input = test_hash_nop_nop_lt();
         let (stark, mut proof_stream) = parse_simulate_prove(
-            "hash nop hash nop nop hash push 3 push 2 lt assert halt",
+            &code_with_input.source_code,
             co_set_fri_offset,
-            &[],
-            &[],
+            &code_with_input.input,
+            &code_with_input.secret_input,
         );
 
         println!("between prove and verify");

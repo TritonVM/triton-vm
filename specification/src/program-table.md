@@ -1,12 +1,11 @@
 # Program Table
 
 The Virtual Machine's Program Memory is read-only.
-The corresponding Program Table consists of two columns, `address` and `instruction`.
-The latter variable does not correspond to the processor's state but to the value of the memory at the given location.
+The corresponding Program Table consists of three columns, `Address`, `Instruction`, and `IsPadding`.
 
-| Address | Instruction |
-|:--------|:------------|
-| -       | -           |
+| Address | Instruction | IsPadding |
+|:--------|:------------|:----------|
+| -       | -           |           |
 
 The Program Table is static in the sense that it is fixed before the VM runs.
 Moreover, the user can commit to the program by providing the Merkle root of the zipped FRI codeword.
@@ -14,8 +13,10 @@ This commitment assumes that the FRI domain is fixed, which implies an upper bou
 
 ## Padding
 
-Each padding row is a direct copy of the Program Table's last row, with the exception of the column `address`.
-Column `address` increases by 1 between any two consecutive rows, even padding rows.
+A padding row is a copy of the Program Table's last row with the following modifications:
+1. column `Address` is increased by 1,
+1. column `Instruction` is set to 0, and
+1. column `IsPadding` is set to 1.
 
 ## Initial Constraints
 
@@ -23,7 +24,7 @@ Column `address` increases by 1 between any two consecutive rows, even padding r
 
 **Initial Constraints as Polynomials**
 
-1. `addr`
+1. `Address`
 
 ## Consistency Constraints
 
@@ -35,7 +36,7 @@ None.
 
 **Transition Constraints as Polynomials**
 
-1. `addr' - (addr + 1)`
+1. `Address' - (Address + 1)`
 
 ## Terminal Constraints
 
@@ -43,4 +44,4 @@ None.
 
 ## Relations to Other Tables
 
-1. An Evaluation Argument establishes that the rows of the Program Table match with the unique rows of the [Instruction Table](instruction-table.md).
+1. An Evaluation Argument establishes that the non-padding rows of the Program Table match with the unique rows of the [Instruction Table](instruction-table.md).

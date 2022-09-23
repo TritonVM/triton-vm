@@ -8,6 +8,8 @@ use crate::fri_domain::FriDomain;
 use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
+use crate::table::table_column::ExtOpStackTableColumn::*;
+use crate::table::table_column::OpStackTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_terminals::{AllChallenges, AllTerminals};
@@ -103,17 +105,12 @@ impl ExtOpStackTable {
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
         let clk = variables[CLK as usize].clone();
-        let osv = variables[OSV as usize].clone();
         let osp = variables[OSP as usize].clone();
+        let osv = variables[OSV as usize].clone();
         let sixteen = MPolynomial::from_constant(16.into(), FULL_WIDTH);
 
-        // 1. clk is 0.
         let clk_is_0 = clk;
-
-        // 2. osv is 0.
         let osv_is_0 = osv;
-
-        // 3. osp is the number of available stack registers, i.e., 16.
         let osp_is_16 = osp - sixteen;
 
         vec![clk_is_0, osv_is_0, osp_is_16]
@@ -133,12 +130,11 @@ impl ExtOpStackTable {
 
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(2 * FULL_WIDTH, 1.into());
-        // let clk = variables[usize::from(CLK)].clone();
-        let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
-        let osv = variables[usize::from(OSV)].clone();
-        let osp = variables[usize::from(OSP)].clone();
-        let osp_next = variables[FULL_WIDTH + usize::from(OSP)].clone();
-        let osv_next = variables[FULL_WIDTH + usize::from(OSV)].clone();
+        let ib1_shrink_stack = variables[IB1ShrinkStack as usize].clone();
+        let osp = variables[OSP as usize].clone();
+        let osv = variables[OSV as usize].clone();
+        let osp_next = variables[FULL_WIDTH + OSP as usize].clone();
+        let osv_next = variables[FULL_WIDTH + OSV as usize].clone();
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
 
         // the osp increases by 1 or the osp does not change
@@ -203,35 +199,32 @@ impl OpStackTable {
         let mut running_product = XFieldElement::one();
 
         for row in self.data().iter() {
-            let mut extension_row = Vec::with_capacity(FULL_WIDTH);
-            extension_row.extend(row.iter().map(|elem| elem.lift()));
+            let mut extension_row = [0.into(); FULL_WIDTH];
+            extension_row[..BASE_WIDTH]
+                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
-            let (clk, ci, osv, osp) = (
-                extension_row[OpStackTableColumn::CLK as usize],
-                extension_row[OpStackTableColumn::IB1ShrinkStack as usize],
-                extension_row[OpStackTableColumn::OSV as usize],
-                extension_row[OpStackTableColumn::OSP as usize],
-            );
+            let clk = extension_row[CLK as usize];
+            let ib1 = extension_row[IB1ShrinkStack as usize];
+            let osp = extension_row[OSP as usize];
+            let osv = extension_row[OSV as usize];
 
-            let (clk_w, ci_w, osp_w, osv_w) = (
-                challenges.clk_weight,
-                challenges.ci_weight,
-                challenges.osv_weight,
-                challenges.osp_weight,
-            );
+            let clk_w = challenges.clk_weight;
+            let ib1_w = challenges.ib1_weight;
+            let osp_w = challenges.osp_weight;
+            let osv_w = challenges.osv_weight;
 
             // 1. Compress multiple values within one row so they become one value.
             let compressed_row_for_permutation_argument =
-                clk * clk_w + ci * ci_w + osv * osv_w + osp * osp_w;
-
-            extension_row.push(compressed_row_for_permutation_argument);
+                clk * clk_w + ib1 * ib1_w + osp * osp_w + osv * osv_w;
+            extension_row[usize::from(PermArgCompressedRow)] =
+                compressed_row_for_permutation_argument;
 
             // 2. Compute the running *product* of the compressed column (permutation value)
-            extension_row.push(running_product);
             running_product *=
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
+            extension_row[usize::from(RunningProductPermArg)] = running_product;
 
-            extension_matrix.push(extension_row);
+            extension_matrix.push(extension_row.to_vec());
         }
 
         let terminals = OpStackTableTerminals {
@@ -318,7 +311,7 @@ pub struct OpStackTableChallenges {
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
-    pub ci_weight: XFieldElement,
+    pub ib1_weight: XFieldElement,
     pub osv_weight: XFieldElement,
     pub osp_weight: XFieldElement,
 }

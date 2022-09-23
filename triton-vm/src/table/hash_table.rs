@@ -18,6 +18,7 @@ use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_collection::interpolant_degree;
+use crate::table::table_column::ExtHashTableColumn::*;
 use crate::table::table_column::HashTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
@@ -509,8 +510,9 @@ impl HashTable {
 
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         for row in self.data().iter() {
-            let mut extension_row = Vec::with_capacity(FULL_WIDTH);
-            extension_row.extend(row.iter().map(|elem| elem.lift()));
+            let mut extension_row = [0.into(); FULL_WIDTH];
+            extension_row[..BASE_WIDTH]
+                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             // Compress input values into single value (independent of round index)
             let state_for_input = [
@@ -528,17 +530,17 @@ impl HashTable {
             let compressed_state_for_input = state_for_input
                 .iter()
                 .zip_eq(challenges.stack_input_weights.iter())
-                .map(|(state, weight)| *weight * *state)
-                .fold(XFieldElement::zero(), |sum, summand| sum + summand);
-            extension_row.push(compressed_state_for_input);
+                .map(|(&state, &weight)| weight * state)
+                .fold(XFieldElement::zero(), XFieldElement::add);
+            extension_row[usize::from(CompressedStateForInput)] = compressed_state_for_input;
 
             // Add compressed input to running sum if round index marks beginning of hashing
-            extension_row.push(from_processor_running_sum);
             if row[HashTableColumn::ROUNDNUMBER as usize].value() == 1 {
                 from_processor_running_sum = from_processor_running_sum
                     * challenges.from_processor_eval_row_weight
                     + compressed_state_for_input;
             }
+            extension_row[usize::from(FromProcessorRunningSum)] = from_processor_running_sum;
 
             // Compress digest values into single value (independent of round index)
             let state_for_output = [
@@ -551,19 +553,19 @@ impl HashTable {
             let compressed_state_for_output = state_for_output
                 .iter()
                 .zip_eq(challenges.digest_output_weights.iter())
-                .map(|(state, weight)| *weight * *state)
-                .fold(XFieldElement::zero(), |sum, summand| sum + summand);
-            extension_row.push(compressed_state_for_output);
+                .map(|(&state, &weight)| weight * state)
+                .fold(XFieldElement::zero(), XFieldElement::add);
+            extension_row[usize::from(CompressedStateForOutput)] = compressed_state_for_output;
 
             // Add compressed digest to running sum if round index marks end of hashing
-            extension_row.push(to_processor_running_sum);
-            if row[HashTableColumn::ROUNDNUMBER as usize].value() == 8 {
+            if row[HashTableColumn::ROUNDNUMBER as usize].value() == 9 {
                 to_processor_running_sum = to_processor_running_sum
                     * challenges.to_processor_eval_row_weight
                     + compressed_state_for_output;
             }
+            extension_row[usize::from(ToProcessorRunningSum)] = to_processor_running_sum;
 
-            extension_matrix.push(extension_row);
+            extension_matrix.push(extension_row.to_vec());
         }
 
         let terminals = HashTableTerminals {

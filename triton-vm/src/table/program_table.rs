@@ -8,11 +8,12 @@ use crate::fri_domain::FriDomain;
 use crate::stark::StarkHasher;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
+use crate::table::table_column::ExtProgramTableColumn::*;
+use crate::table::table_column::ProgramTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges_terminals::{AllChallenges, AllTerminals};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::ProgramTableColumn;
 
 pub const PROGRAM_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
 pub const PROGRAM_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 1;
@@ -22,8 +23,8 @@ pub const PROGRAM_TABLE_INITIALS_COUNT: usize =
 /// This is 3 because it combines: addr, instruction, instruction in next row
 pub const PROGRAM_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 3;
 
-pub const BASE_WIDTH: usize = 2;
-pub const FULL_WIDTH: usize = 4; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const BASE_WIDTH: usize = 3;
+pub const FULL_WIDTH: usize = 5; // BASE_WIDTH + 2 * INITIALS_COUNT
 
 #[derive(Debug, Clone)]
 pub struct ProgramTable {
@@ -76,14 +77,20 @@ impl TableLike<BFieldElement> for ProgramTable {}
 
 impl Extendable for ProgramTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
+        let zero = BFieldElement::zero();
+        let one = BFieldElement::one();
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
-            padding_row[ProgramTableColumn::Address as usize] += BFieldElement::one();
             // address keeps increasing
+            padding_row[Address as usize] += one;
+            padding_row[Instruction as usize] = zero;
+            padding_row[IsPadding as usize] = one;
             (None, vec![padding_row])
         } else {
             // Not that it makes much sense to run a program with no instructions.
-            (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
+            let mut padding_row = [zero; BASE_WIDTH];
+            padding_row[IsPadding as usize] = one;
+            (None, vec![padding_row.to_vec()])
         }
     }
 }
@@ -92,8 +99,6 @@ impl TableLike<XFieldElement> for ExtProgramTable {}
 
 impl ExtProgramTable {
     fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
-        use ProgramTableColumn::*;
-
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
 
@@ -115,8 +120,6 @@ impl ExtProgramTable {
     fn ext_transition_constraints(
         _challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use ProgramTableColumn::*;
-
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(2 * FULL_WIDTH, 1.into());
 
@@ -124,10 +127,8 @@ impl ExtProgramTable {
         let addr_next = variables[FULL_WIDTH + Address as usize].clone();
         let one = MPolynomial::<XFieldElement>::from_constant(1.into(), 2 * FULL_WIDTH);
 
-        // The address increases by 1.
-        //
-        // $addr' - (addr + 1) = 0$
-        vec![addr_next - (addr + one)]
+        let address_increases_by_one = addr_next - (addr + one);
+        vec![address_increases_by_one]
     }
 
     fn ext_terminal_constraints(
@@ -177,32 +178,30 @@ impl ProgramTable {
         data_with_0.push(vec![BFieldElement::zero(); BASE_WIDTH]);
 
         for (row, next_row) in data_with_0.into_iter().tuple_windows() {
-            let mut extension_row = Vec::with_capacity(FULL_WIDTH);
-            extension_row.extend(row.iter().map(|elem| elem.lift()));
+            let mut extension_row = [0.into(); FULL_WIDTH];
+            extension_row[..BASE_WIDTH]
+                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
-            let address = row[ProgramTableColumn::Address as usize].lift();
-            let instruction = row[ProgramTableColumn::Instruction as usize].lift();
-            let next_instruction = next_row[ProgramTableColumn::Instruction as usize].lift();
+            let address = row[Address as usize].lift();
+            let instruction = row[Instruction as usize].lift();
+            let next_instruction = next_row[Instruction as usize].lift();
 
             // Compress address, instruction, and next instruction (or argument) into single value
             let compressed_row_for_evaluation_argument = address * challenges.address_weight
                 + instruction * challenges.instruction_weight
                 + next_instruction * challenges.next_instruction_weight;
-            extension_row.push(compressed_row_for_evaluation_argument);
+            extension_row[usize::from(EvalArgCompressedRow)] =
+                compressed_row_for_evaluation_argument;
 
-            // Update the Evaluation Argument's running sum with the compressed column
-            instruction_table_running_sum = instruction_table_running_sum
-                * challenges.instruction_eval_row_weight
-                + compressed_row_for_evaluation_argument;
-            extension_row.push(instruction_table_running_sum);
+            // Update the running evaluation if not a padding row
+            if row[IsPadding as usize].is_zero() {
+                instruction_table_running_sum = instruction_table_running_sum
+                    * challenges.instruction_eval_row_weight
+                    + compressed_row_for_evaluation_argument;
+            }
+            extension_row[usize::from(EvalArgRunningSum)] = instruction_table_running_sum;
 
-            debug_assert_eq!(
-                FULL_WIDTH,
-                extension_row.len(),
-                "After extending, the row must match the table's full width."
-            );
-
-            extension_matrix.push(extension_row);
+            extension_matrix.push(extension_row.to_vec());
         }
 
         let terminals = ProgramTableTerminals {
