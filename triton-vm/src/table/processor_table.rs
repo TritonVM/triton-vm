@@ -11,9 +11,8 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
-use crate::stark::StarkHasher;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
-use crate::table::challenges_terminals::{AllChallenges, AllTerminals};
+use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ExtProcessorTableColumn::*;
 use crate::table::table_column::ProcessorTableColumn::{self, *};
@@ -77,7 +76,7 @@ impl ProcessorTable {
         &self,
         challenges: &ProcessorTableChallenges,
         interpolant_degree: Degree,
-    ) -> (ExtProcessorTable, ProcessorTableTerminals) {
+    ) -> ExtProcessorTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
         let mut input_table_running_evaluation = XFieldElement::zero();
@@ -294,33 +293,20 @@ impl ProcessorTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
-        let terminals = ProcessorTableTerminals {
-            input_table_eval_arg: input_table_running_evaluation,
-            output_table_eval_arg: output_table_running_evaluation,
-            instruction_table_perm_product: instruction_table_running_product,
-            opstack_table_perm_product: opstack_table_running_product,
-            ram_table_perm_product: ram_table_running_product,
-            jump_stack_perm_product: jump_stack_running_product,
-            to_hash_table_eval_arg: to_hash_table_running_evaluation,
-            from_hash_table_eval_arg: from_hash_table_running_evaluation,
-            u32_table_perm_product: u32_table_running_product,
-        };
-
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
             ExtProcessorTable::ext_initial_constraints(),
             ExtProcessorTable::ext_consistency_constraints(challenges),
             ExtProcessorTable::ext_transition_constraints(challenges),
-            ExtProcessorTable::ext_terminal_constraints(challenges, &terminals),
+            ExtProcessorTable::ext_terminal_constraints(challenges),
         );
-        (ExtProcessorTable { inherited_table }, terminals)
+        ExtProcessorTable { inherited_table }
     }
 
     pub fn for_verifier(
         interpolant_degree: Degree,
         all_challenges: &AllChallenges,
-        all_terminals: &AllTerminals<StarkHasher>,
     ) -> ExtProcessorTable {
         let inherited_table = Table::new(
             BASE_WIDTH,
@@ -340,10 +326,7 @@ impl ProcessorTable {
             ExtProcessorTable::ext_transition_constraints(
                 &all_challenges.processor_table_challenges,
             ),
-            ExtProcessorTable::ext_terminal_constraints(
-                &all_challenges.processor_table_challenges,
-                &all_terminals.processor_table_terminals,
-            ),
+            ExtProcessorTable::ext_terminal_constraints(&all_challenges.processor_table_challenges),
         );
 
         ExtProcessorTable {
@@ -488,22 +471,6 @@ pub struct ProcessorTableChallenges {
     pub u32_op_table_rhs_weight: XFieldElement,
     pub u32_op_table_ci_weight: XFieldElement,
     pub u32_op_table_result_weight: XFieldElement,
-}
-
-#[derive(Debug, Clone)]
-pub struct ProcessorTableTerminals {
-    pub input_table_eval_arg: XFieldElement,
-    pub output_table_eval_arg: XFieldElement,
-
-    pub instruction_table_perm_product: XFieldElement,
-    pub opstack_table_perm_product: XFieldElement,
-    pub ram_table_perm_product: XFieldElement,
-    pub jump_stack_perm_product: XFieldElement,
-
-    pub to_hash_table_eval_arg: XFieldElement,
-    pub from_hash_table_eval_arg: XFieldElement,
-
-    pub u32_table_perm_product: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
@@ -794,7 +761,6 @@ impl ExtProcessorTable {
 
     fn ext_terminal_constraints(
         _challenges: &ProcessorTableChallenges,
-        _terminals: &ProcessorTableTerminals,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
 
@@ -2448,20 +2414,16 @@ impl ExtensionTable for ExtProcessorTable {
 
     fn dynamic_transition_constraints(
         &self,
-        challenges: &super::challenges_terminals::AllChallenges,
+        challenges: &super::challenges::AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
     }
 
     fn dynamic_terminal_constraints(
         &self,
-        challenges: &super::challenges_terminals::AllChallenges,
-        terminals: &super::challenges_terminals::AllTerminals<StarkHasher>,
+        challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_terminal_constraints(
-            &challenges.processor_table_challenges,
-            &terminals.processor_table_terminals,
-        )
+        ExtProcessorTable::ext_terminal_constraints(&challenges.processor_table_challenges)
     }
 }
 

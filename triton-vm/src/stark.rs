@@ -10,7 +10,6 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
-use twenty_first::shared_math::stark::stark_verify_error::StarkVerifyError;
 use twenty_first::shared_math::traits::{
     FiniteField, GetRandomElements, Inverse, ModPowU32, PrimitiveRootOfUnity,
 };
@@ -21,11 +20,11 @@ use twenty_first::util_types::proof_stream_typed::ProofStream;
 use twenty_first::util_types::simple_hasher::{Hashable, Hasher, SamplableFrom};
 
 use crate::cross_table_arguments::{
-    AllCrossTableArgs, CrossTableArg, EvalArg, NUM_CROSS_TABLE_ARGS,
+    CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
-use crate::table::challenges_terminals::AllChallenges;
+use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
 use crate::triton_xfri::{self, Fri};
 
@@ -152,7 +151,7 @@ impl Stark {
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("challenges");
 
-        let (ext_tables, all_terminals) = ExtTableCollection::extend_tables(
+        let ext_tables = ExtTableCollection::extend_tables(
             &base_tables,
             &extension_challenges,
             self.num_trace_randomizers,
@@ -177,7 +176,6 @@ impl Stark {
         let extension_tree = Self::get_extension_merkle_tree(&hasher, &transposed_ext_codewords);
 
         proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
-        proof_stream.enqueue(&ProofItem::Terminals(all_terminals));
         timer.elapsed("extension_tree");
 
         let base_degree_bounds = base_tables.get_base_degree_bounds(self.num_trace_randomizers);
@@ -195,24 +193,50 @@ impl Stark {
         timer.elapsed("Calculated quotient degree bounds");
 
         // Prove equal terminal values for the column pairs pertaining to cross table arguments
-        for arg in AllCrossTableArgs::default().into_iter() {
-            quotient_codewords.push(arg.terminal_quotient(
-                &ext_codeword_tables,
-                &self.xfri.domain,
-                derive_omicron(ext_codeword_tables.padded_height as u64),
-            ));
-            quotient_degree_bounds
-                .push(arg.quotient_degree_bound(&ext_codeword_tables, self.num_trace_randomizers));
-        }
+        let grand_cross_table_arg_weights_seed = proof_stream.prover_fiat_shamir();
+        let grand_cross_table_arg_weights = Self::sample_weights(
+            grand_cross_table_arg_weights_seed,
+            &hasher,
+            NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS,
+        )
+        .try_into()
+        .expect("Sample exactly as many weights as needed.");
+        let input_terminal = EvalArg::compute_terminal(
+            &self.input_symbols,
+            EvalArg::default_initial(),
+            extension_challenges
+                .processor_table_challenges
+                .input_table_eval_row_weight,
+        );
+        let output_terminal = EvalArg::compute_terminal(
+            &self.output_symbols,
+            EvalArg::default_initial(),
+            extension_challenges
+                .processor_table_challenges
+                .output_table_eval_row_weight,
+        );
+        let grand_cross_table_arg = GrandCrossTableArg::new(
+            &grand_cross_table_arg_weights,
+            input_terminal,
+            output_terminal,
+        );
+        let gcta_quotient_codeword = grand_cross_table_arg.terminal_quotient_codeword(
+            &ext_codeword_tables,
+            &self.xfri.domain,
+            derive_omicron(ext_codeword_tables.padded_height as u64),
+        );
+        quotient_codewords.push(gcta_quotient_codeword);
 
-        let non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
-        timer.elapsed("Fiat-Shamir to get seed for sampling non-linear-combination weights");
+        let gcta_quotient_degree_bound = grand_cross_table_arg
+            .quotient_degree_bound(&ext_codeword_tables, self.num_trace_randomizers);
+        quotient_degree_bounds.push(gcta_quotient_degree_bound);
+        timer.elapsed("Grand Cross Table Argument");
 
+        let non_lin_combi_weights_seed = hasher.hash_sequence(&grand_cross_table_arg_weights_seed);
         let non_lin_combi_weights_count = self.num_randomizer_polynomials
             + 2 * base_codewords.len()
             + 2 * extension_codewords.len()
-            + 2 * quotient_degree_bounds.len()
-            + 2 * NUM_CROSS_TABLE_ARGS;
+            + 2 * quotient_degree_bounds.len();
         let non_lin_combi_weights = Self::sample_weights(
             non_lin_combi_weights_seed,
             &hasher,
@@ -610,14 +634,12 @@ impl Stark {
         timer.elapsed("Got padded height");
 
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
-        let all_terminals = proof_stream.dequeue()?.as_terminals()?;
         timer.elapsed("Get extension tree's root & terminals from proof stream");
 
         let ext_table_collection = ExtTableCollection::for_verifier(
             self.num_trace_randomizers,
             padded_height,
             &extension_challenges,
-            &all_terminals,
         );
 
         let base_degree_bounds =
@@ -632,21 +654,49 @@ impl Stark {
             ext_table_collection.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
-        let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
-        timer.elapsed("Fiat-Shamir to get seed for sampling non-linear-combination weights");
+        let grand_cross_table_arg_weights_seed = proof_stream.verifier_fiat_shamir();
+        let grand_cross_table_arg_weights = Self::sample_weights(
+            grand_cross_table_arg_weights_seed,
+            &hasher,
+            NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS,
+        )
+        .try_into()
+        .expect("Sample exactly as many weights as needed.");
+        let input_terminal = EvalArg::compute_terminal(
+            &self.input_symbols,
+            EvalArg::default_initial(),
+            extension_challenges
+                .processor_table_challenges
+                .input_table_eval_row_weight,
+        );
+        let output_terminal = EvalArg::compute_terminal(
+            &self.output_symbols,
+            EvalArg::default_initial(),
+            extension_challenges
+                .processor_table_challenges
+                .output_table_eval_row_weight,
+        );
+        let grand_cross_table_arg = GrandCrossTableArg::new(
+            &grand_cross_table_arg_weights,
+            input_terminal,
+            output_terminal,
+        );
+        timer.elapsed("Setup for grand cross-table argument");
 
-        // get weights for nonlinear combination
-        //  - 1 randomizer
-        //  - 2 for every other polynomial (base, extension, quotients)
+        // get weights for nonlinear combination:
+        //  - 1 for randomizer polynomials,
+        //  - 2 for {base, extension} polynomials and quotients.
+        // The latter require 2 weights because transition constraints check 2 rows.
+        let non_lin_combi_weights_seed = hasher.hash_sequence(&grand_cross_table_arg_weights_seed);
         let num_base_polynomials = base_degree_bounds.len();
         let num_extension_polynomials = extension_degree_bounds.len();
         let num_quotient_polynomials = quotient_degree_bounds.len();
-        let num_difference_quotients = NUM_CROSS_TABLE_ARGS;
+        let num_grand_cross_table_args = 1;
         let non_lin_combi_weights_count = self.num_randomizer_polynomials
             + 2 * num_base_polynomials
             + 2 * num_extension_polynomials
             + 2 * num_quotient_polynomials
-            + 2 * num_difference_quotients;
+            + 2 * num_grand_cross_table_args;
         let non_lin_combi_weights = Self::sample_weights(
             non_lin_combi_weights_seed,
             &hasher,
@@ -770,7 +820,6 @@ impl Stark {
         let base_offset = self.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
-        let all_cross_table_args = AllCrossTableArgs::default();
         let omicron: XFieldElement = derive_omicron(padded_height as u64);
         let omicron_inverse = omicron.inverse();
         for (combination_check_index, revealed_combination_leaf) in combination_check_indices
@@ -915,17 +964,16 @@ impl Stark {
                 }
             }
 
-            for arg in all_cross_table_args.into_iter() {
-                let degree_bound =
-                    arg.quotient_degree_bound(&ext_table_collection, self.num_trace_randomizers);
-                let shift = self.max_degree - degree_bound;
-                let quotient = arg.evaluate_difference(&cross_slice_by_table)
-                    / (current_fri_domain_value - omicron_inverse);
-                let quotient_shifted =
-                    quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-                summands.push(quotient);
-                summands.push(quotient_shifted);
-            }
+            let gcta_degree_bound = grand_cross_table_arg
+                .quotient_degree_bound(&ext_table_collection, self.num_trace_randomizers);
+            let shift = self.max_degree - gcta_degree_bound;
+            let gcta_evaluated =
+                grand_cross_table_arg.evaluate_non_linear_sum_of_differences(&cross_slice_by_table);
+            let gcta_quotient = gcta_evaluated / (current_fri_domain_value - omicron_inverse);
+            let gcta_quotient_shifted =
+                gcta_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
+            summands.push(gcta_quotient);
+            summands.push(gcta_quotient_shifted);
 
             let inner_product = non_lin_combi_weights
                 .par_iter()
@@ -941,31 +989,6 @@ impl Stark {
             );
         }
         timer.elapsed(&format!("Verified {num_idxs} non-linear combinations"));
-
-        // Verify external terminals
-        if !EvalArg::verify_with_public_data(
-            &self.input_symbols,
-            extension_challenges
-                .processor_table_challenges
-                .input_table_eval_row_weight,
-            all_terminals.processor_table_terminals.input_table_eval_arg,
-        ) {
-            return Err(Box::new(StarkVerifyError::EvaluationArgument(0)));
-        }
-
-        if !EvalArg::verify_with_public_data(
-            &self.output_symbols,
-            extension_challenges
-                .processor_table_challenges
-                .output_table_eval_row_weight,
-            all_terminals
-                .processor_table_terminals
-                .output_table_eval_arg,
-        ) {
-            return Err(Box::new(StarkVerifyError::EvaluationArgument(1)));
-        }
-        timer.elapsed("Verified terminals");
-
         println!("{}", timer.finish());
         Ok(true)
     }
@@ -1016,7 +1039,10 @@ pub(crate) mod triton_stark_tests {
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table::InheritsFromTable;
-    use crate::table::challenges_terminals::AllTerminals;
+    use crate::table::table_collection::TableId::ProcessorTable;
+    use crate::table::table_column::ExtProcessorTableColumn::{
+        InputTableEvalArg, OutputTableEvalArg,
+    };
     use crate::vm::triton_vm_tests::{all_tasm_test_programs, test_hash_nop_nop_lt};
     use crate::vm::Program;
 
@@ -1041,7 +1067,7 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(padded_height, base_tables.u32_op_table.data().len());
     }
 
-    fn parse_simulate_prove(
+    pub fn parse_simulate_prove(
         code: &str,
         co_set_fri_offset: BFieldElement,
         input_symbols: &[BFieldElement],
@@ -1072,7 +1098,7 @@ pub(crate) mod triton_stark_tests {
         (stark, proof_stream)
     }
 
-    fn parse_setup_simulate(
+    pub fn parse_setup_simulate(
         code: &str,
         input_symbols: &[BFieldElement],
         secret_input_symbols: &[BFieldElement],
@@ -1093,7 +1119,7 @@ pub(crate) mod triton_stark_tests {
         (aet, stdout, program)
     }
 
-    fn parse_simulate_pad_extend(
+    pub fn parse_simulate_pad_extend(
         code: &str,
         stdin: &[BFieldElement],
         secret_in: &[BFieldElement],
@@ -1103,7 +1129,6 @@ pub(crate) mod triton_stark_tests {
         BaseTableCollection,
         ExtTableCollection,
         AllChallenges,
-        AllTerminals<RescuePrimeRegular>,
         usize,
     ) {
         let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
@@ -1117,7 +1142,7 @@ pub(crate) mod triton_stark_tests {
         base_tables.pad();
 
         let dummy_challenges = AllChallenges::dummy();
-        let (ext_tables, all_terminals) = ExtTableCollection::extend_tables(
+        let ext_tables = ExtTableCollection::extend_tables(
             &base_tables,
             &dummy_challenges,
             num_trace_randomizers,
@@ -1129,7 +1154,6 @@ pub(crate) mod triton_stark_tests {
             base_tables,
             ext_tables,
             dummy_challenges,
-            all_terminals,
             num_trace_randomizers,
         )
     }
@@ -1137,7 +1161,7 @@ pub(crate) mod triton_stark_tests {
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
     #[test]
     pub fn print_all_constraint_degrees() {
-        let (_, _, _, ext_tables, _, _, num_trace_randomizers) =
+        let (_, _, _, ext_tables, _, num_trace_randomizers) =
             parse_simulate_pad_extend("halt", &[], &[]);
         let padded_height = ext_tables.padded_height;
         let all_degrees = ext_tables
@@ -1187,30 +1211,31 @@ pub(crate) mod triton_stark_tests {
         let read_nop_code = "
             read_io read_io read_io
             nop nop
+            write_io push 17 write_io
         ";
         let input_symbols = vec![
             BFieldElement::new(3),
             BFieldElement::new(5),
             BFieldElement::new(7),
         ];
-        let (stdout, _, _, _, all_challenges, all_terminals, _) =
+        let (stdout, _, _, ext_table_collection, all_challenges, _) =
             parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
 
-        let ptie = all_terminals.processor_table_terminals.input_table_eval_arg;
+        let ptie = ext_table_collection.data(ProcessorTable).last().unwrap()
+            [usize::from(InputTableEvalArg)];
         let ine = EvalArg::compute_terminal(
             &input_symbols,
-            XFieldElement::zero(),
+            EvalArg::default_initial(),
             all_challenges.input_challenges.processor_eval_row_weight,
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
-        let ptoe = all_terminals
-            .processor_table_terminals
-            .output_table_eval_arg;
+        let ptoe = ext_table_collection.data(ProcessorTable).last().unwrap()
+            [usize::from(OutputTableEvalArg)];
 
         let oute = EvalArg::compute_terminal(
             &stdout.to_bword_vec(),
-            XFieldElement::zero(),
+            EvalArg::default_initial(),
             all_challenges.output_challenges.processor_eval_row_weight,
         );
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
@@ -1223,74 +1248,60 @@ pub(crate) mod triton_stark_tests {
             let code = code_with_input.source_code;
             let input = code_with_input.input;
             let secret_input = code_with_input.secret_input;
-            let (_, _, _, _, _, all_terminals, _) =
+            let (output, _, _, ext_table_collection, all_challenges, _) =
                 parse_simulate_pad_extend(&code, &input, &secret_input);
-            assert_eq!(
-                all_terminals.program_table_terminals.instruction_eval_arg,
-                all_terminals.instruction_table_terminals.program_eval_arg,
-                "Program <=> Instruction failed at TASM snippet with index {code_idx}.",
+
+            let input_terminal = EvalArg::compute_terminal(
+                &input,
+                EvalArg::default_initial(),
+                all_challenges
+                    .processor_table_challenges
+                    .input_table_eval_row_weight,
             );
-            assert_eq!(
-                all_terminals
-                    .instruction_table_terminals
-                    .processor_perm_product,
-                all_terminals
-                    .processor_table_terminals
-                    .instruction_table_perm_product,
-                "Processor <=> Instruction failed at TASM snippet with index {code_idx}.",
+
+            let output_terminal = EvalArg::compute_terminal(
+                &output.to_bword_vec(),
+                EvalArg::default_initial(),
+                all_challenges
+                    .processor_table_challenges
+                    .output_table_eval_row_weight,
             );
-            assert_eq!(
-                all_terminals
-                    .processor_table_terminals
-                    .opstack_table_perm_product,
-                all_terminals
-                    .op_stack_table_terminals
-                    .processor_perm_product,
-                "Processor <=> Op Stack failed at TASM snippet with index {code_idx}.",
+
+            let grand_cross_table_arg = GrandCrossTableArg::new(
+                &[XFieldElement::one(); NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS],
+                input_terminal,
+                output_terminal,
             );
+
+            for (idx, (arg, _)) in grand_cross_table_arg.into_iter().enumerate() {
+                let (from_table, from_column) = arg.from();
+                let (to_table, to_column) = arg.to();
+                assert_eq!(
+                    ext_table_collection.data(from_table).last().unwrap()[from_column],
+                    ext_table_collection.data(to_table).last().unwrap()[to_column],
+                    "Cross-table argument #{idx} must match for TASM snipped #{code_idx}."
+                );
+            }
+
+            let ptie = ext_table_collection.data(ProcessorTable).last().unwrap()
+                [usize::from(InputTableEvalArg)];
             assert_eq!(
-                all_terminals
-                    .processor_table_terminals
-                    .ram_table_perm_product,
-                all_terminals.ram_table_terminals.processor_perm_product,
-                "Processor <=> RAM failed at TASM snippet with index {code_idx}.",
+                ptie, input_terminal,
+                "The input terminal must match for TASM snipped #{code_idx}."
             );
+
+            let ptoe = ext_table_collection.data(ProcessorTable).last().unwrap()
+                [usize::from(OutputTableEvalArg)];
             assert_eq!(
-                all_terminals
-                    .processor_table_terminals
-                    .jump_stack_perm_product,
-                all_terminals
-                    .jump_stack_table_terminals
-                    .processor_perm_product,
-                "Processor <=> Jump Stack failed at TASM snippet with index {code_idx}.",
-            );
-            assert_eq!(
-                all_terminals
-                    .processor_table_terminals
-                    .to_hash_table_eval_arg,
-                all_terminals.hash_table_terminals.from_processor_eval_arg,
-                "Processor => Hash failed at TASM snippet with index {code_idx}.",
-            );
-            assert_eq!(
-                all_terminals
-                    .processor_table_terminals
-                    .from_hash_table_eval_arg,
-                all_terminals.hash_table_terminals.to_processor_eval_arg,
-                "Hash => Processor failed at TASM snippet with index {code_idx}.",
-            );
-            assert_eq!(
-                all_terminals
-                    .processor_table_terminals
-                    .u32_table_perm_product,
-                all_terminals.u32_op_table_terminals.processor_perm_product,
-                "Processor <=> U32 failed at TASM snippet with index {code_idx}.",
+                ptoe, output_terminal,
+                "The output terminal must match for TASM snipped #{code_idx}."
             );
         }
     }
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let (_, _, _, ext_tables, _, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
+        let (_, _, _, ext_tables, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
 
         for table in ext_tables.into_iter() {
             let dummy_row = vec![0.into(); table.full_width()];
@@ -1307,7 +1318,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
         let zero = XFieldElement::zero();
-        let (_, _, _, ext_tables, _, _, _) =
+        let (_, _, _, ext_tables, _, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
 
         for table in (&ext_tables).into_iter() {

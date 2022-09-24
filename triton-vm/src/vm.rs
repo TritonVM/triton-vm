@@ -255,7 +255,7 @@ pub mod triton_vm_tests {
     use crate::instruction::sample_programs;
     use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
     use crate::table::base_table::{Extendable, InheritsFromTable};
-    use crate::table::challenges_terminals::AllChallenges;
+    use crate::table::challenges::AllChallenges;
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;
     use crate::table::table_collection::interpolant_degree;
@@ -705,7 +705,7 @@ pub mod triton_vm_tests {
 
             let num_trace_randomizers = 2;
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-            let (ext_processor_table, _) = processor_table.extend(
+            let ext_processor_table = processor_table.extend(
                 &AllChallenges::dummy().processor_table_challenges,
                 interpolant_degree,
             );

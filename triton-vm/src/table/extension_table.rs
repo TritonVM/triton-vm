@@ -11,12 +11,11 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
-use crate::stark::{Stark, StarkHasher};
-use crate::table::challenges_terminals::AllTerminals;
+use crate::stark::Stark;
 use crate::table::table_collection::interpolant_degree;
 
 use super::base_table::TableLike;
-use super::challenges_terminals::AllChallenges;
+use super::challenges::AllChallenges;
 
 // Generic methods specifically for tables that have been extended
 
@@ -36,7 +35,6 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
     fn dynamic_terminal_constraints(
         &self,
         challenges: &AllChallenges,
-        terminals: &AllTerminals<StarkHasher>,
     ) -> Vec<MPolynomial<XFieldElement>>;
 }
 
@@ -473,7 +471,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let max_degrees = vec![interpolant_degree; self.full_width()];
             let zerofier_degree = 1 as Degree;
-            self.dynamic_terminal_constraints(&AllChallenges::dummy(), &AllTerminals::dummy())
+            self.dynamic_terminal_constraints(&AllChallenges::dummy())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()

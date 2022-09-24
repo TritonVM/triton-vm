@@ -1,6 +1,18 @@
+use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
+use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::timing_reporter::TimingReporter;
+
+use crate::fri_domain::FriDomain;
+use crate::table::base_table::{Extendable, InheritsFromTable};
+use crate::table::extension_table::DegreeWithOrigin;
+
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
-use super::challenges_terminals::{AllChallenges, AllTerminals};
+use super::challenges::AllChallenges;
 use super::extension_table::QuotientableExtensionTable;
 use super::hash_table::{ExtHashTable, HashTable};
 use super::instruction_table::{ExtInstructionTable, InstructionTable};
@@ -10,17 +22,6 @@ use super::processor_table::{ExtProcessorTable, ProcessorTable};
 use super::program_table::{ExtProgramTable, ProgramTable};
 use super::ram_table::{ExtRamTable, RamTable};
 use super::u32_op_table::{ExtU32OpTable, U32OpTable};
-use crate::fri_domain::FriDomain;
-use crate::stark::StarkHasher;
-use crate::table::base_table::{Extendable, InheritsFromTable};
-use crate::table::extension_table::DegreeWithOrigin;
-use itertools::Itertools;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
-use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::timing_reporter::TimingReporter;
 
 pub const NUM_TABLES: usize = 8;
 
@@ -270,23 +271,17 @@ impl ExtTableCollection {
         num_trace_randomizers: usize,
         padded_height: usize,
         challenges: &AllChallenges,
-        terminals: &AllTerminals<StarkHasher>,
     ) -> Self {
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
-        let ext_program_table =
-            ProgramTable::for_verifier(interpolant_degree, challenges, terminals);
-        let ext_instruction_table =
-            InstructionTable::for_verifier(interpolant_degree, challenges, terminals);
-        let ext_processor_table =
-            ProcessorTable::for_verifier(interpolant_degree, challenges, terminals);
-        let ext_op_stack_table =
-            OpStackTable::for_verifier(interpolant_degree, challenges, terminals);
-        let ext_ram_table = RamTable::for_verifier(interpolant_degree, challenges, terminals);
-        let ext_jump_stack_table =
-            JumpStackTable::for_verifier(interpolant_degree, challenges, terminals);
-        let ext_hash_table = HashTable::for_verifier(interpolant_degree, challenges, terminals);
-        let ext_u32_op_table = U32OpTable::for_verifier(interpolant_degree, challenges, terminals);
+        let ext_program_table = ProgramTable::for_verifier(interpolant_degree, challenges);
+        let ext_instruction_table = InstructionTable::for_verifier(interpolant_degree, challenges);
+        let ext_processor_table = ProcessorTable::for_verifier(interpolant_degree, challenges);
+        let ext_op_stack_table = OpStackTable::for_verifier(interpolant_degree, challenges);
+        let ext_ram_table = RamTable::for_verifier(interpolant_degree, challenges);
+        let ext_jump_stack_table = JumpStackTable::for_verifier(interpolant_degree, challenges);
+        let ext_hash_table = HashTable::for_verifier(interpolant_degree, challenges);
+        let ext_u32_op_table = U32OpTable::for_verifier(interpolant_degree, challenges);
 
         ExtTableCollection {
             padded_height,
@@ -321,48 +316,47 @@ impl ExtTableCollection {
         base_tables: &BaseTableCollection,
         all_challenges: &AllChallenges,
         num_trace_randomizers: usize,
-    ) -> (Self, AllTerminals<StarkHasher>) {
+    ) -> Self {
         let padded_height = base_tables.padded_height;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
-        let (program_table, program_table_terminals) = base_tables
+        let program_table = base_tables
             .program_table
             .extend(&all_challenges.program_table_challenges, interpolant_degree);
 
-        let (instruction_table, instruction_table_terminals) =
-            base_tables.instruction_table.extend(
-                &all_challenges.instruction_table_challenges,
-                interpolant_degree,
-            );
+        let instruction_table = base_tables.instruction_table.extend(
+            &all_challenges.instruction_table_challenges,
+            interpolant_degree,
+        );
 
-        let (processor_table, processor_table_terminals) = base_tables.processor_table.extend(
+        let processor_table = base_tables.processor_table.extend(
             &all_challenges.processor_table_challenges,
             interpolant_degree,
         );
 
-        let (op_stack_table, op_stack_table_terminals) = base_tables.op_stack_table.extend(
+        let op_stack_table = base_tables.op_stack_table.extend(
             &all_challenges.op_stack_table_challenges,
             interpolant_degree,
         );
 
-        let (ram_table, ram_table_terminals) = base_tables
+        let ram_table = base_tables
             .ram_table
             .extend(&all_challenges.ram_table_challenges, interpolant_degree);
 
-        let (jump_stack_table, jump_stack_table_terminals) = base_tables.jump_stack_table.extend(
+        let jump_stack_table = base_tables.jump_stack_table.extend(
             &all_challenges.jump_stack_table_challenges,
             interpolant_degree,
         );
 
-        let (hash_table, hash_table_terminals) = base_tables
+        let hash_table = base_tables
             .hash_table
             .extend(&all_challenges.hash_table_challenges, interpolant_degree);
 
-        let (u32_op_table, u32_op_table_terminals) = base_tables
+        let u32_op_table = base_tables
             .u32_op_table
             .extend(&all_challenges.u32_op_table_challenges, interpolant_degree);
 
-        let ext_tables = ExtTableCollection {
+        ExtTableCollection {
             padded_height,
             program_table,
             instruction_table,
@@ -372,21 +366,7 @@ impl ExtTableCollection {
             jump_stack_table,
             hash_table,
             u32_op_table,
-        };
-
-        let terminals = AllTerminals {
-            program_table_terminals,
-            instruction_table_terminals,
-            processor_table_terminals,
-            op_stack_table_terminals,
-            ram_table_terminals,
-            jump_stack_table_terminals,
-            hash_table_terminals,
-            u32_op_table_terminals,
-            phantom: std::marker::PhantomData,
-        };
-
-        (ext_tables, terminals)
+        }
     }
 
     pub fn codeword_tables(
@@ -566,11 +546,12 @@ impl<'a> IntoIterator for &'a ExtTableCollection {
 
 #[cfg(test)]
 mod table_collection_tests {
-    use super::*;
     use crate::table::{
         hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
         program_table, ram_table, u32_op_table,
     };
+
+    use super::*;
 
     fn dummy_ext_table_collection() -> ExtTableCollection {
         let max_padded_height = 1;
