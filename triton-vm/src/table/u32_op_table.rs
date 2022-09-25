@@ -17,16 +17,15 @@ use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::U32OpTableColumn;
 
-pub const U32_OP_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
-pub const U32_OP_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;
-pub const U32_OP_TABLE_INITIALS_COUNT: usize =
-    U32_OP_TABLE_PERMUTATION_ARGUMENTS_COUNT + U32_OP_TABLE_EVALUATION_ARGUMENT_COUNT;
+pub const U32_OP_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
+pub const U32_OP_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 
 /// This is 4 because it combines: ci, lhs, rhs, result
-pub const U32_OP_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 4;
+pub const U32_OP_TABLE_NUM_EXTENSION_CHALLENGES: usize = 4;
 
 pub const BASE_WIDTH: usize = 12;
-pub const FULL_WIDTH: usize = 14; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const FULL_WIDTH: usize =
+    BASE_WIDTH + U32_OP_TABLE_NUM_PERMUTATION_ARGUMENTS + U32_OP_TABLE_NUM_EVALUATION_ARGUMENTS;
 
 #[derive(Debug, Clone)]
 pub struct U32OpTable {
@@ -91,7 +90,9 @@ impl Extendable for U32OpTable {
 impl TableLike<XFieldElement> for ExtU32OpTable {}
 
 impl ExtU32OpTable {
-    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints(
+        _challenges: &U32OpTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         // todo: check that running product starts with correct initial. Need challenges for that.
         vec![]
     }
@@ -318,33 +319,30 @@ impl U32OpTable {
                 .try_into()
                 .expect("CI does not correspond to any instruction.");
 
-            // ci, lhs, and rhs are needed for _all_ of U32Table's Permutation Arguments
-            let ci = extension_row[U32OpTableColumn::CI as usize];
-            let lhs = extension_row[U32OpTableColumn::LHS as usize];
-            let rhs = match current_instruction {
-                Instruction::Reverse => 0.into(),
-                _ => extension_row[U32OpTableColumn::RHS as usize],
-            };
-            let result = match current_instruction {
-                Instruction::Lt => extension_row[U32OpTableColumn::LT as usize],
-                Instruction::And => extension_row[U32OpTableColumn::AND as usize],
-                Instruction::Xor => extension_row[U32OpTableColumn::XOR as usize],
-                Instruction::Reverse => extension_row[U32OpTableColumn::REV as usize],
-                Instruction::Div => extension_row[U32OpTableColumn::LT as usize],
-                // halt is used for padding
-                Instruction::Halt => XFieldElement::zero(),
-                x => panic!("Unknown instruction '{x}' in the U32 Table."),
-            };
-
-            // Compress (ci, lhs, rhs, result) into single value
-            let compressed_row = ci * challenges.ci_weight
-                + lhs * challenges.lhs_weight
-                + rhs * challenges.rhs_weight
-                + result * challenges.result_weight;
-            extension_row[usize::from(CompressedRow)] = compressed_row;
-
-            // Multiply compressed value into running product if indicator is set
             if row[U32OpTableColumn::IDC as usize].is_one() {
+                let ci = extension_row[U32OpTableColumn::CI as usize];
+                let lhs = extension_row[U32OpTableColumn::LHS as usize];
+                let rhs = match current_instruction {
+                    Instruction::Reverse => 0.into(),
+                    _ => extension_row[U32OpTableColumn::RHS as usize],
+                };
+                let result = match current_instruction {
+                    Instruction::Lt => extension_row[U32OpTableColumn::LT as usize],
+                    Instruction::And => extension_row[U32OpTableColumn::AND as usize],
+                    Instruction::Xor => extension_row[U32OpTableColumn::XOR as usize],
+                    Instruction::Reverse => extension_row[U32OpTableColumn::REV as usize],
+                    Instruction::Div => extension_row[U32OpTableColumn::LT as usize],
+                    // halt is used for padding
+                    Instruction::Halt => XFieldElement::zero(),
+                    x => panic!("Unknown instruction '{x}' in the U32 Table."),
+                };
+
+                // Compress (ci, lhs, rhs, result) into single value
+                let compressed_row = ci * challenges.ci_weight
+                    + lhs * challenges.lhs_weight
+                    + rhs * challenges.rhs_weight
+                    + result * challenges.result_weight;
+
                 running_product *= challenges.processor_perm_row_weight - compressed_row;
             }
             extension_row[usize::from(RunningProductPermArg)] = running_product;
@@ -355,7 +353,7 @@ impl U32OpTable {
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
-            ExtU32OpTable::ext_initial_constraints(),
+            ExtU32OpTable::ext_initial_constraints(challenges),
             ExtU32OpTable::ext_consistency_constraints(challenges),
             ExtU32OpTable::ext_transition_constraints(challenges),
             ExtU32OpTable::ext_terminal_constraints(challenges),
@@ -378,7 +376,7 @@ impl U32OpTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
-            ExtU32OpTable::ext_initial_constraints(),
+            ExtU32OpTable::ext_initial_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_consistency_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_transition_constraints(&all_challenges.u32_op_table_challenges),
             ExtU32OpTable::ext_terminal_constraints(&all_challenges.u32_op_table_challenges),
@@ -434,8 +432,11 @@ pub struct U32OpTableChallenges {
 }
 
 impl ExtensionTable for ExtU32OpTable {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtU32OpTable::ext_initial_constraints()
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtU32OpTable::ext_initial_constraints(&challenges.u32_op_table_challenges)
     }
 
     fn dynamic_consistency_constraints(

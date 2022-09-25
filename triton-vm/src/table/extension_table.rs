@@ -20,7 +20,10 @@ use super::challenges::AllChallenges;
 // Generic methods specifically for tables that have been extended
 
 pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>>;
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>>;
 
     fn dynamic_consistency_constraints(
         &self,
@@ -417,7 +420,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let max_degrees = vec![interpolant_degree; self.full_width()];
             let zerofier_degree = 1;
-            self.dynamic_initial_constraints()
+            self.dynamic_initial_constraints(&AllChallenges::dummy())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()

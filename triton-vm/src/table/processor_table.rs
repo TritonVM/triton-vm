@@ -19,17 +19,16 @@ use crate::table::table_column::ProcessorTableColumn::{self, *};
 
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
 
-pub const PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 5;
-pub const PROCESSOR_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 4;
-pub const PROCESSOR_TABLE_INITIALS_COUNT: usize =
-    PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT + PROCESSOR_TABLE_EVALUATION_ARGUMENT_COUNT;
+pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
+pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 4;
 
 /// This is 43 because it combines all other tables (except program).
-pub const PROCESSOR_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 43;
+pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = 43;
 
 pub const BASE_WIDTH: usize = 38;
-/// BASE_WIDTH + 2 * INITIALS_COUNT - 2 (because IOSymbols don't need compression)
-pub const FULL_WIDTH: usize = 54;
+pub const FULL_WIDTH: usize = BASE_WIDTH
+    + PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS
+    + PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorTable {
@@ -124,12 +123,9 @@ impl ProcessorTable {
             let ci_w = challenges.instruction_table_ci_processor_weight;
             let nia_w = challenges.instruction_table_nia_weight;
 
-            let compressed_row_for_instruction_table_permutation_argument =
-                ip * ip_w + ci * ci_w + nia * nia_w;
-            extension_row[usize::from(CompressedRowInstructionTable)] =
-                compressed_row_for_instruction_table_permutation_argument;
-
             if row[IsPadding as usize].is_zero() {
+                let compressed_row_for_instruction_table_permutation_argument =
+                    ip * ip_w + ci * ci_w + nia * nia_w;
                 instruction_table_running_product *= challenges.instruction_perm_row_weight
                     - compressed_row_for_instruction_table_permutation_argument;
             }
@@ -146,9 +142,6 @@ impl ProcessorTable {
                 + ib1 * challenges.op_stack_table_ib1_weight
                 + osp * challenges.op_stack_table_osp_weight
                 + osv * challenges.op_stack_table_osv_weight;
-            extension_row[usize::from(CompressedRowOpStackTable)] =
-                compressed_row_for_op_stack_table_permutation_argument;
-
             opstack_table_running_product *= challenges.op_stack_perm_row_weight
                 - compressed_row_for_op_stack_table_permutation_argument;
             extension_row[usize::from(OpStackTablePermArg)] = opstack_table_running_product;
@@ -161,9 +154,6 @@ impl ProcessorTable {
                 * challenges.ram_table_clk_weight
                 + ramv * challenges.ram_table_ramv_weight
                 + ramp * challenges.ram_table_ramp_weight;
-            extension_row[usize::from(CompressedRowRamTable)] =
-                compressed_row_for_ram_table_permutation_argument;
-
             ram_table_running_product *=
                 challenges.ram_perm_row_weight - compressed_row_for_ram_table_permutation_argument;
             extension_row[usize::from(RamTablePermArg)] = ram_table_running_product;
@@ -177,34 +167,29 @@ impl ProcessorTable {
                 + jsp * challenges.jump_stack_table_jsp_weight
                 + jso * challenges.jump_stack_table_jso_weight
                 + jsd * challenges.jump_stack_table_jsd_weight;
-            extension_row[usize::from(CompressedRowJumpStackTable)] =
-                compressed_row_for_jump_stack_table;
-
             jump_stack_running_product *=
                 challenges.jump_stack_perm_row_weight - compressed_row_for_jump_stack_table;
             extension_row[usize::from(JumpStackTablePermArg)] = jump_stack_running_product;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
-            let st_0_through_9 = [
-                extension_row[ST0 as usize],
-                extension_row[ST1 as usize],
-                extension_row[ST2 as usize],
-                extension_row[ST3 as usize],
-                extension_row[ST4 as usize],
-                extension_row[ST5 as usize],
-                extension_row[ST6 as usize],
-                extension_row[ST7 as usize],
-                extension_row[ST8 as usize],
-                extension_row[ST9 as usize],
-            ];
-            let compressed_row_for_hash_input = st_0_through_9
-                .iter()
-                .zip_eq(challenges.hash_table_stack_input_weights.iter())
-                .map(|(&st, &weight)| weight * st)
-                .fold(XFieldElement::zero(), XFieldElement::add);
-            extension_row[usize::from(CompressedRowForHashInput)] = compressed_row_for_hash_input;
-
             if row[CI as usize] == Instruction::Hash.opcode_b() {
+                let st_0_through_9 = [
+                    extension_row[ST0 as usize],
+                    extension_row[ST1 as usize],
+                    extension_row[ST2 as usize],
+                    extension_row[ST3 as usize],
+                    extension_row[ST4 as usize],
+                    extension_row[ST5 as usize],
+                    extension_row[ST6 as usize],
+                    extension_row[ST7 as usize],
+                    extension_row[ST8 as usize],
+                    extension_row[ST9 as usize],
+                ];
+                let compressed_row_for_hash_input = st_0_through_9
+                    .iter()
+                    .zip_eq(challenges.hash_table_stack_input_weights.iter())
+                    .map(|(&st, &weight)| weight * st)
+                    .fold(XFieldElement::zero(), XFieldElement::add);
                 to_hash_table_running_evaluation = to_hash_table_running_evaluation
                     * challenges.to_hash_table_eval_row_weight
                     + compressed_row_for_hash_input;
@@ -212,21 +197,19 @@ impl ProcessorTable {
             extension_row[usize::from(ToHashTableEvalArg)] = to_hash_table_running_evaluation;
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
-            let st_5_through_9 = [
-                extension_row[ST5 as usize],
-                extension_row[ST6 as usize],
-                extension_row[ST7 as usize],
-                extension_row[ST8 as usize],
-                extension_row[ST9 as usize],
-            ];
-            let compressed_row_for_hash_digest = st_5_through_9
-                .iter()
-                .zip_eq(challenges.hash_table_digest_output_weights.iter())
-                .map(|(&st, &weight)| weight * st)
-                .fold(XFieldElement::zero(), XFieldElement::add);
-            extension_row[usize::from(CompressedRowForHashDigest)] = compressed_row_for_hash_digest;
-
             if let Some(prow) = previous_row.clone() {
+                let st_5_through_9 = [
+                    extension_row[ST5 as usize],
+                    extension_row[ST6 as usize],
+                    extension_row[ST7 as usize],
+                    extension_row[ST8 as usize],
+                    extension_row[ST9 as usize],
+                ];
+                let compressed_row_for_hash_digest = st_5_through_9
+                    .iter()
+                    .zip_eq(challenges.hash_table_digest_output_weights.iter())
+                    .map(|(&st, &weight)| weight * st)
+                    .fold(XFieldElement::zero(), XFieldElement::add);
                 if prow[CI as usize] == Instruction::Hash.opcode_b() {
                     from_hash_table_running_evaluation = from_hash_table_running_evaluation
                         * challenges.from_hash_table_eval_row_weight
@@ -242,52 +225,43 @@ impl ProcessorTable {
                     .try_into()
                     .expect("CI does not correspond to any instruction.");
 
-                let (lhs, rhs, u32_op_result) = match previous_instruction {
-                    // The `div` instruction is quite special, since it enforces the remainder be
-                    // smaller than the divisor. The result of the required implicit `lt` operation
-                    // _has_ to be 1, else the `div` instruction was not executed correctly.
-                    // Also, and in contrast to all other u32 instructions, the operands `lhs` and
-                    // `rhs` come from different rows.
-                    Instruction::Div => (
-                        extension_row[ST0 as usize], // remainder
-                        prow[ST0 as usize].lift(),   // divisor
-                        XFieldElement::one(),        // result of U32 Table's `lt` (must be 1)
-                    ),
-                    // Since instruction `reverse` is a unary, not a binary, operation, the right-
-                    // hand side is unconstrained.
-                    Instruction::Reverse => (
-                        prow[ST0 as usize].lift(),
-                        XFieldElement::zero(),
-                        extension_row[ST0 as usize],
-                    ),
-                    _ => (
-                        prow[ST0 as usize].lift(),
-                        prow[ST1 as usize].lift(),
-                        extension_row[ST0 as usize],
-                    ),
-                };
-
-                let pi = prow[CI as usize].lift();
-                let compressed_row_for_u32 = pi * challenges.u32_op_table_ci_weight
-                    + lhs * challenges.u32_op_table_lhs_weight
-                    + rhs * challenges.u32_op_table_rhs_weight
-                    + u32_op_result * challenges.u32_op_table_result_weight;
-                extension_row[usize::from(CompressedRowForU32Op)] = compressed_row_for_u32;
-
                 if previous_instruction.is_u32_op() {
+                    let (lhs, rhs, u32_op_result) = match previous_instruction {
+                        // The `div` instruction is quite special, since it enforces the remainder
+                        // be smaller than the divisor. The result of the required implicit `lt`
+                        // operation _has_ to be 1, else the `div` instruction was not executed
+                        // correctly. Also, and in contrast to all other u32 instructions, the
+                        // operands `lhs` and `rhs` come from different rows.
+                        Instruction::Div => (
+                            extension_row[ST0 as usize], // remainder
+                            prow[ST0 as usize].lift(),   // divisor
+                            XFieldElement::one(),        // result of U32 Table's `lt` (must be 1)
+                        ),
+                        // Since instruction `reverse` is a unary, not a binary, operation, the
+                        // right-hand side is unconstrained.
+                        Instruction::Reverse => (
+                            prow[ST0 as usize].lift(),
+                            XFieldElement::zero(),
+                            extension_row[ST0 as usize],
+                        ),
+                        _ => (
+                            prow[ST0 as usize].lift(),
+                            prow[ST1 as usize].lift(),
+                            extension_row[ST0 as usize],
+                        ),
+                    };
+
+                    let pi = prow[CI as usize].lift();
+                    let compressed_row_for_u32 = pi * challenges.u32_op_table_ci_weight
+                        + lhs * challenges.u32_op_table_lhs_weight
+                        + rhs * challenges.u32_op_table_rhs_weight
+                        + u32_op_result * challenges.u32_op_table_result_weight;
+
                     u32_table_running_product *=
                         challenges.u32_perm_row_weight - compressed_row_for_u32;
                 }
-                extension_row[usize::from(U32OpTablePermArg)] = u32_table_running_product;
-            } else {
-                // If there is no previous row, none of the u32 operations make sense. The extension
-                // columns must still be filled in. All stack registers are initialized to 0, and
-                // the stack in the non-existing previous row can be safely assumed to be all 0.
-                // Thus, the compressed_row-value is 0 for the very first extension_row.
-                // The running product can be used as-is, amounting to pushing the initial, i.e, 1.
-                extension_row[usize::from(CompressedRowForU32Op)] = XFieldElement::zero();
-                extension_row[usize::from(U32OpTablePermArg)] = u32_table_running_product;
             }
+            extension_row[usize::from(U32OpTablePermArg)] = u32_table_running_product;
 
             previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());
@@ -296,7 +270,7 @@ impl ProcessorTable {
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
-            ExtProcessorTable::ext_initial_constraints(),
+            ExtProcessorTable::ext_initial_constraints(challenges),
             ExtProcessorTable::ext_consistency_constraints(challenges),
             ExtProcessorTable::ext_transition_constraints(challenges),
             ExtProcessorTable::ext_terminal_constraints(challenges),
@@ -319,7 +293,7 @@ impl ProcessorTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
-            ExtProcessorTable::ext_initial_constraints(),
+            ExtProcessorTable::ext_initial_constraints(&all_challenges.processor_table_challenges),
             ExtProcessorTable::ext_consistency_constraints(
                 &all_challenges.processor_table_challenges,
             ),
@@ -533,7 +507,9 @@ impl Extendable for ProcessorTable {
 impl TableLike<XFieldElement> for ExtProcessorTable {}
 
 impl ExtProcessorTable {
-    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints(
+        _challenges: &ProcessorTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
 
         // The cycle counter `clk` is 0.
@@ -2401,8 +2377,11 @@ impl InstructionDeselectors {
 }
 
 impl ExtensionTable for ExtProcessorTable {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_initial_constraints()
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProcessorTable::ext_initial_constraints(&challenges.processor_table_challenges)
     }
 
     fn dynamic_consistency_constraints(

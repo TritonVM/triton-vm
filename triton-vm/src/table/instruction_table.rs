@@ -14,16 +14,16 @@ use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtension
 use super::table_column::ExtInstructionTableColumn::*;
 use super::table_column::InstructionTableColumn::*;
 
-pub const INSTRUCTION_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
-pub const INSTRUCTION_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 1;
-pub const INSTRUCTION_TABLE_INITIALS_COUNT: usize =
-    INSTRUCTION_TABLE_PERMUTATION_ARGUMENTS_COUNT + INSTRUCTION_TABLE_EVALUATION_ARGUMENT_COUNT;
+pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
+pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
 
 /// This is 6 because it combines: (ip, ci, nia) and (addr, instruction, next_instruction).
-pub const INSTRUCTION_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 6;
+pub const INSTRUCTION_TABLE_NUM_EXTENSION_CHALLENGES: usize = 6;
 
 pub const BASE_WIDTH: usize = 4;
-pub const FULL_WIDTH: usize = 8; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const FULL_WIDTH: usize = BASE_WIDTH
+    + INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS
+    + INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS;
 
 #[derive(Debug, Clone)]
 pub struct InstructionTable {
@@ -95,51 +95,44 @@ impl Extendable for InstructionTable {
 impl TableLike<XFieldElement> for ExtInstructionTable {}
 
 impl ExtInstructionTable {
-    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints(
+        challenges: &InstructionTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
-        let addr = variables[usize::from(Address)].clone();
-        let compressed_row_for_eval_arg = variables[usize::from(CompressedRowEvalArg)].clone();
-        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
 
-        let first_address_is_zero = addr;
+        let ip = variables[Address as usize].clone();
+        let ci = variables[CI as usize].clone();
+        let nia = variables[NIA as usize].clone();
+        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
+        let running_product = variables[usize::from(RunningProductPermArg)].clone();
+
+        let compressed_row_for_eval_arg = ip.scalar_mul(challenges.address_weight)
+            + ci.scalar_mul(challenges.instruction_weight)
+            + nia.scalar_mul(challenges.next_instruction_weight);
+
+        let first_address_is_zero = ip;
 
         let running_evaluation_is_initialized_correctly =
             compressed_row_for_eval_arg - running_evaluation;
 
+        // due to the way the instruction table is constructed, the running product must always be 1
+        // in the first row
+        let running_product_is_initialized_correctly = running_product - one;
+
         vec![
             first_address_is_zero,
             running_evaluation_is_initialized_correctly,
+            running_product_is_initialized_correctly,
         ]
     }
 
     fn ext_consistency_constraints(
-        challenges: &InstructionTableChallenges,
+        _challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
-
-        let addr = variables[Address as usize].clone();
-        let current_instruction = variables[CI as usize].clone();
-        let next_instruction = variables[NIA as usize].clone();
-        let compressed_row_for_eval_arg = variables[usize::from(CompressedRowEvalArg)].clone();
-        let compressed_row_for_perm_arg = variables[usize::from(CompressedRowPermArg)].clone();
-
-        let computed_compressed_row_for_eval_arg = addr.scalar_mul(challenges.address_weight)
-            + current_instruction.scalar_mul(challenges.instruction_weight)
-            + next_instruction.scalar_mul(challenges.next_instruction_weight);
-        let row_compression_for_evaluation_argument_is_correct =
-            computed_compressed_row_for_eval_arg - compressed_row_for_eval_arg;
-
-        let computed_compressed_row_for_perm_arg = addr.scalar_mul(challenges.ip_processor_weight)
-            + current_instruction.scalar_mul(challenges.ci_processor_weight)
-            + next_instruction.scalar_mul(challenges.nia_processor_weight);
-        let row_compression_for_permutation_argument_is_correct =
-            computed_compressed_row_for_perm_arg - compressed_row_for_perm_arg;
-
-        vec![
-            row_compression_for_evaluation_argument_is_correct,
-            row_compression_for_permutation_argument_is_correct,
-        ]
+        // no further constraints
+        vec![]
     }
 
     fn ext_transition_constraints(
@@ -159,21 +152,18 @@ impl ExtInstructionTable {
 
         // Base Table Constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
-        let address_increases_by_one_or_ci_stays =
-            address_increases_by_one.clone() * (current_instruction_next - current_instruction);
+        let address_increases_by_one_or_ci_stays = address_increases_by_one.clone()
+            * (current_instruction_next.clone() - current_instruction);
         let address_increases_by_one_or_nia_stays =
-            address_increases_by_one.clone() * (next_instruction_next - next_instruction);
+            address_increases_by_one.clone() * (next_instruction_next.clone() - next_instruction);
 
         // Extension Table Constraints
         let processor_perm_row_weight =
             MPolynomial::from_constant(challenges.processor_perm_row_weight, 2 * FULL_WIDTH);
-        let compressed_row_for_eval_arg =
-            variables[FULL_WIDTH + usize::from(CompressedRowEvalArg)].clone();
         let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
         let running_evaluation_next =
             variables[FULL_WIDTH + usize::from(RunningEvaluation)].clone();
-        let compressed_row_for_perm_arg =
-            variables[FULL_WIDTH + usize::from(CompressedRowPermArg)].clone();
+
         let running_product = variables[usize::from(RunningProductPermArg)].clone();
         let running_product_next =
             variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
@@ -189,7 +179,11 @@ impl ExtInstructionTable {
         //      or the running evaluation is not updated, and
         // 3. the current row is not a padding row
         //      or the running evaluation is not updated.
-        let address_stays = addr_next - addr;
+        let compressed_row_for_eval_arg = addr_next.scalar_mul(challenges.address_weight)
+            + current_instruction_next.scalar_mul(challenges.instruction_weight)
+            + next_instruction_next.scalar_mul(challenges.next_instruction_weight);
+
+        let address_stays = addr_next.clone() - addr;
         let running_evaluations_stays =
             running_evaluation_next.clone() - running_evaluation.clone();
         let running_evaluation_update = running_evaluation_next
@@ -212,6 +206,10 @@ impl ExtInstructionTable {
         //      or the running product is not updated, and
         // 3. the current row is not a padding row
         //      or the running product is not updated.
+        let compressed_row_for_perm_arg = addr_next.scalar_mul(challenges.ip_processor_weight)
+            + current_instruction_next.scalar_mul(challenges.ci_processor_weight)
+            + next_instruction_next.scalar_mul(challenges.nia_processor_weight);
+
         let running_product_stays = running_product_next.clone() - running_product.clone();
         let running_product_update = running_product_next
             - running_product * (processor_perm_row_weight - compressed_row_for_perm_arg);
@@ -303,8 +301,6 @@ impl InstructionTable {
             let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
                 + ci * challenges.ci_processor_weight
                 + nia * challenges.nia_processor_weight;
-            extension_row[usize::from(CompressedRowPermArg)] =
-                compressed_row_for_permutation_argument;
 
             // Update running product if same row has been seen before and not padding row
             if is_duplicate_row && row[IsPadding as usize].is_zero() {
@@ -317,8 +313,6 @@ impl InstructionTable {
             let compressed_row_for_evaluation_argument = ip * challenges.address_weight
                 + ci * challenges.instruction_weight
                 + nia * challenges.next_instruction_weight;
-            extension_row[usize::from(CompressedRowEvalArg)] =
-                compressed_row_for_evaluation_argument;
 
             // Update running evaluation if same row has _not_ been seen before and not padding row
             if !is_duplicate_row && row[IsPadding as usize].is_zero() {
@@ -335,7 +329,7 @@ impl InstructionTable {
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
-            ExtInstructionTable::ext_initial_constraints(),
+            ExtInstructionTable::ext_initial_constraints(challenges),
             ExtInstructionTable::ext_consistency_constraints(challenges),
             ExtInstructionTable::ext_transition_constraints(challenges),
             ExtInstructionTable::ext_terminal_constraints(challenges),
@@ -358,7 +352,9 @@ impl InstructionTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
-            ExtInstructionTable::ext_initial_constraints(),
+            ExtInstructionTable::ext_initial_constraints(
+                &all_challenges.instruction_table_challenges,
+            ),
             ExtInstructionTable::ext_consistency_constraints(
                 &all_challenges.instruction_table_challenges,
             ),
@@ -428,8 +424,11 @@ pub struct InstructionTableChallenges {
 }
 
 impl ExtensionTable for ExtInstructionTable {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_initial_constraints()
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtInstructionTable::ext_initial_constraints(&challenges.instruction_table_challenges)
     }
 
     fn dynamic_consistency_constraints(

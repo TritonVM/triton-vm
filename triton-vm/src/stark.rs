@@ -761,12 +761,6 @@ impl Stark {
                     .iter()
                     .map(|x| x.coefficients.clone().to_vec())
                     .concat();
-                // FIXME this is a bad assertion. Come up with something better.
-                debug_assert_eq!(
-                    3 * 34, // 34 is the number of extension columns
-                    bvalues.len(),
-                    "9 X-field elements must become 27 B-field elements"
-                );
                 hasher.hash_sequence(&bvalues)
             })
             .collect();

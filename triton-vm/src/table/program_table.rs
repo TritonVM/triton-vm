@@ -14,16 +14,15 @@ use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
-pub const PROGRAM_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
-pub const PROGRAM_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 1;
-pub const PROGRAM_TABLE_INITIALS_COUNT: usize =
-    PROGRAM_TABLE_PERMUTATION_ARGUMENTS_COUNT + PROGRAM_TABLE_EVALUATION_ARGUMENT_COUNT;
+pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
+pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
 
 /// This is 3 because it combines: addr, instruction, instruction in next row
 pub const PROGRAM_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 3;
 
 pub const BASE_WIDTH: usize = 3;
-pub const FULL_WIDTH: usize = 5; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const FULL_WIDTH: usize =
+    BASE_WIDTH + PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS + PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS;
 
 #[derive(Debug, Clone)]
 pub struct ProgramTable {
@@ -97,16 +96,17 @@ impl Extendable for ProgramTable {
 impl TableLike<XFieldElement> for ExtProgramTable {}
 
 impl ExtProgramTable {
-    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints(
+        _challenges: &ProgramTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
 
-        let addr = variables[Address as usize].clone();
+        let address = variables[Address as usize].clone();
 
-        // The first address is 0.
-        //
-        // $addr - 0 = 0  =>  addr$
-        vec![addr]
+        let first_address_is_zero = address;
+
+        vec![first_address_is_zero]
     }
 
     fn ext_consistency_constraints(
@@ -184,15 +184,13 @@ impl ProgramTable {
             let instruction = row[Instruction as usize].lift();
             let next_instruction = next_row[Instruction as usize].lift();
 
-            // Compress address, instruction, and next instruction (or argument) into single value
-            let compressed_row_for_evaluation_argument = address * challenges.address_weight
-                + instruction * challenges.instruction_weight
-                + next_instruction * challenges.next_instruction_weight;
-            extension_row[usize::from(EvalArgCompressedRow)] =
-                compressed_row_for_evaluation_argument;
-
             // Update the running evaluation if not a padding row
             if row[IsPadding as usize].is_zero() {
+                // Compress address, instruction, and next instruction (or argument) into single value
+                let compressed_row_for_evaluation_argument = address * challenges.address_weight
+                    + instruction * challenges.instruction_weight
+                    + next_instruction * challenges.next_instruction_weight;
+
                 instruction_table_running_evaluation = instruction_table_running_evaluation
                     * challenges.instruction_eval_row_weight
                     + compressed_row_for_evaluation_argument;
@@ -205,7 +203,7 @@ impl ProgramTable {
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
-            ExtProgramTable::ext_initial_constraints(),
+            ExtProgramTable::ext_initial_constraints(challenges),
             ExtProgramTable::ext_consistency_constraints(challenges),
             ExtProgramTable::ext_transition_constraints(challenges),
             ExtProgramTable::ext_terminal_constraints(challenges),
@@ -228,7 +226,7 @@ impl ProgramTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
-            ExtProgramTable::ext_initial_constraints(),
+            ExtProgramTable::ext_initial_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_consistency_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_transition_constraints(&all_challenges.program_table_challenges),
             ExtProgramTable::ext_terminal_constraints(&all_challenges.program_table_challenges),
@@ -283,8 +281,11 @@ pub struct ProgramTableChallenges {
 }
 
 impl ExtensionTable for ExtProgramTable {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProgramTable::ext_initial_constraints()
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtProgramTable::ext_initial_constraints(&challenges.program_table_challenges)
     }
 
     fn dynamic_consistency_constraints(

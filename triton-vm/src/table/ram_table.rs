@@ -14,16 +14,15 @@ use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::RamTableColumn::{self, *};
 
-pub const RAM_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
-pub const RAM_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;
-pub const RAM_TABLE_INITIALS_COUNT: usize =
-    RAM_TABLE_PERMUTATION_ARGUMENTS_COUNT + RAM_TABLE_EVALUATION_ARGUMENT_COUNT;
+pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
+pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 
 /// This is 3 because it combines: clk, ramv, ramp
-pub const RAM_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 3;
+pub const RAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = 3;
 
 pub const BASE_WIDTH: usize = 4;
-pub const FULL_WIDTH: usize = 6; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const FULL_WIDTH: usize =
+    BASE_WIDTH + RAM_TABLE_NUM_PERMUTATION_ARGUMENTS + RAM_TABLE_NUM_EVALUATION_ARGUMENTS;
 
 #[derive(Debug, Clone)]
 pub struct RamTable {
@@ -122,13 +121,11 @@ impl RamTable {
                 challenges.ramv_weight,
             );
 
-            // 1. Compress multiple values within one row so they become one value.
+            // compress multiple values within one row so they become one value
             let compressed_row_for_permutation_argument =
                 clk * clk_w + ramp * ramp_w + ramv * ramv_w;
-            extension_row[usize::from(PermArgCompressedRow)] =
-                compressed_row_for_permutation_argument;
 
-            // 2. Compute the running *product* of the compressed column (permutation value)
+            // compute the running *product* of the compressed column (for permutation argument)
             running_product *=
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
@@ -139,7 +136,7 @@ impl RamTable {
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
-            ExtRamTable::ext_initial_constraints(),
+            ExtRamTable::ext_initial_constraints(challenges),
             ExtRamTable::ext_consistency_constraints(challenges),
             ExtRamTable::ext_transition_constraints(challenges),
             ExtRamTable::ext_terminal_constraints(challenges),
@@ -154,7 +151,7 @@ impl RamTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
-            ExtRamTable::ext_initial_constraints(),
+            ExtRamTable::ext_initial_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_terminal_constraints(&all_challenges.ram_table_challenges),
@@ -250,7 +247,9 @@ impl Extendable for RamTable {
 impl TableLike<XFieldElement> for ExtRamTable {}
 
 impl ExtRamTable {
-    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints(
+        _challenges: &RamTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         use RamTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
@@ -350,8 +349,11 @@ pub struct RamTableChallenges {
 }
 
 impl ExtensionTable for ExtRamTable {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_initial_constraints()
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtRamTable::ext_initial_constraints(&challenges.ram_table_challenges)
     }
 
     fn dynamic_consistency_constraints(

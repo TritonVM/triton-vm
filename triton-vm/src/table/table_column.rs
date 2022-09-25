@@ -160,21 +160,14 @@ pub enum ExtProcessorTableColumn {
 
     InputTableEvalArg,
     OutputTableEvalArg,
-    CompressedRowInstructionTable,
     InstructionTablePermArg,
-    CompressedRowOpStackTable,
     OpStackTablePermArg,
-    CompressedRowRamTable,
     RamTablePermArg,
-    CompressedRowJumpStackTable,
     JumpStackTablePermArg,
 
-    CompressedRowForHashInput,
     ToHashTableEvalArg,
-    CompressedRowForHashDigest,
     FromHashTableEvalArg,
 
-    CompressedRowForU32Op,
     U32OpTablePermArg,
 }
 
@@ -186,19 +179,12 @@ impl std::fmt::Display for ExtProcessorTableColumn {
             BaseColumn(base_column) => write!(f, "{}", *base_column),
             InputTableEvalArg => write!(f, "InputTableEvalArg"),
             OutputTableEvalArg => write!(f, "OutputTableEvalArg"),
-            CompressedRowInstructionTable => write!(f, "CompressedRowInstructionTable"),
             InstructionTablePermArg => write!(f, "InstructionTablePermArg"),
-            CompressedRowOpStackTable => write!(f, "CompressedRowOpStackTable"),
             OpStackTablePermArg => write!(f, "OpStackTablePermArg"),
-            CompressedRowRamTable => write!(f, "CompressedRowRamTable"),
             RamTablePermArg => write!(f, "RamTablePermArg"),
-            CompressedRowJumpStackTable => write!(f, "CompressedRowJumpStackTable"),
             JumpStackTablePermArg => write!(f, "JumpStackTablePermArg"),
-            CompressedRowForHashInput => write!(f, "CompressedRowForHashInput"),
             ToHashTableEvalArg => write!(f, "ToHashTableEvalArg"),
-            CompressedRowForHashDigest => write!(f, "CompressedRowForHashDigest"),
             FromHashTableEvalArg => write!(f, "FromHashTableEvalArg"),
-            CompressedRowForU32Op => write!(f, "CompressedRowForU32Op"),
             U32OpTablePermArg => write!(f, "U32OpTablePermArg"),
         }
     }
@@ -212,20 +198,13 @@ impl From<ExtProcessorTableColumn> for usize {
             BaseColumn(base_column) => base_column.into(),
             InputTableEvalArg => 38,
             OutputTableEvalArg => 39,
-            CompressedRowInstructionTable => 40,
-            InstructionTablePermArg => 41,
-            CompressedRowOpStackTable => 42,
-            OpStackTablePermArg => 43,
-            CompressedRowRamTable => 44,
-            RamTablePermArg => 45,
-            CompressedRowJumpStackTable => 46,
-            JumpStackTablePermArg => 47,
-            CompressedRowForHashInput => 48,
-            ToHashTableEvalArg => 49,
-            CompressedRowForHashDigest => 50,
-            FromHashTableEvalArg => 51,
-            CompressedRowForU32Op => 52,
-            U32OpTablePermArg => 53,
+            InstructionTablePermArg => 40,
+            OpStackTablePermArg => 41,
+            RamTablePermArg => 42,
+            JumpStackTablePermArg => 43,
+            ToHashTableEvalArg => 44,
+            FromHashTableEvalArg => 45,
+            U32OpTablePermArg => 46,
         }
     }
 }
@@ -274,7 +253,6 @@ impl Bounded for ProgramTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtProgramTableColumn {
     BaseColumn(ProgramTableColumn),
-    EvalArgCompressedRow,
     RunningEvaluation,
 }
 
@@ -284,8 +262,7 @@ impl From<ExtProgramTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            EvalArgCompressedRow => 3,
-            RunningEvaluation => 4,
+            RunningEvaluation => 3,
         }
     }
 }
@@ -336,9 +313,7 @@ impl Bounded for InstructionTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtInstructionTableColumn {
     BaseColumn(InstructionTableColumn),
-    CompressedRowPermArg,
     RunningProductPermArg,
-    CompressedRowEvalArg,
     RunningEvaluation,
 }
 
@@ -348,10 +323,8 @@ impl From<ExtInstructionTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            CompressedRowPermArg => 4,
-            RunningProductPermArg => 5,
-            CompressedRowEvalArg => 6,
-            RunningEvaluation => 7,
+            RunningProductPermArg => 4,
+            RunningEvaluation => 5,
         }
     }
 }
@@ -402,7 +375,6 @@ impl Bounded for OpStackTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtOpStackTableColumn {
     BaseColumn(OpStackTableColumn),
-    PermArgCompressedRow,
     RunningProductPermArg,
 }
 
@@ -412,8 +384,7 @@ impl From<ExtOpStackTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            PermArgCompressedRow => 4,
-            RunningProductPermArg => 5,
+            RunningProductPermArg => 4,
         }
     }
 }
@@ -464,7 +435,6 @@ impl Bounded for RamTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtRamTableColumn {
     BaseColumn(RamTableColumn),
-    PermArgCompressedRow,
     RunningProductPermArg,
 }
 
@@ -474,8 +444,7 @@ impl From<ExtRamTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            PermArgCompressedRow => 4,
-            RunningProductPermArg => 5,
+            RunningProductPermArg => 4,
         }
     }
 }
@@ -528,7 +497,6 @@ impl Bounded for JumpStackTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtJumpStackTableColumn {
     BaseColumn(JumpStackTableColumn),
-    PermArgCompressedRow,
     RunningProductPermArg,
 }
 
@@ -538,8 +506,7 @@ impl From<ExtJumpStackTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            PermArgCompressedRow => 5,
-            RunningProductPermArg => 6,
+            RunningProductPermArg => 5,
         }
     }
 }
@@ -737,9 +704,7 @@ impl Bounded for HashTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtHashTableColumn {
     BaseColumn(HashTableColumn),
-    CompressedStateForInput,
     ToProcessorRunningEvaluation,
-    CompressedStateForOutput,
     FromProcessorRunningEvaluation,
 }
 
@@ -749,10 +714,8 @@ impl From<ExtHashTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            CompressedStateForInput => 49,
-            FromProcessorRunningEvaluation => 50,
-            CompressedStateForOutput => 51,
-            ToProcessorRunningEvaluation => 52,
+            FromProcessorRunningEvaluation => 49,
+            ToProcessorRunningEvaluation => 50,
         }
     }
 }
@@ -819,7 +782,6 @@ impl Bounded for U32OpTableColumn {
 #[derive(Debug, Clone, Copy)]
 pub enum ExtU32OpTableColumn {
     BaseColumn(U32OpTableColumn),
-    CompressedRow,
     RunningProductPermArg,
 }
 
@@ -829,8 +791,7 @@ impl From<ExtU32OpTableColumn> for usize {
 
         match c {
             BaseColumn(base_column) => base_column.into(),
-            CompressedRow => 12,
-            RunningProductPermArg => 13,
+            RunningProductPermArg => 12,
         }
     }
 }

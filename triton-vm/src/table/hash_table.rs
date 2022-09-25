@@ -25,16 +25,15 @@ use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::HashTableColumn;
 
-pub const HASH_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 0;
-pub const HASH_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 2;
-pub const HASH_TABLE_INITIALS_COUNT: usize =
-    HASH_TABLE_PERMUTATION_ARGUMENTS_COUNT + HASH_TABLE_EVALUATION_ARGUMENT_COUNT;
+pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
+pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
 
-/// This is 18 because it combines: 12 stack_input_weights and 6 digest_output_weights.
-pub const HASH_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 18;
+/// This is 15 because it combines: 10 stack_input_weights and 5 digest_output_weights.
+pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = 15;
 
 pub const BASE_WIDTH: usize = 49;
-pub const FULL_WIDTH: usize = 53; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const FULL_WIDTH: usize =
+    BASE_WIDTH + HASH_TABLE_NUM_PERMUTATION_ARGUMENTS + HASH_TABLE_NUM_EVALUATION_ARGUMENTS;
 
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE * 2;
 pub const TOTAL_NUM_CONSTANTS: usize = NUM_ROUND_CONSTANTS * NUM_ROUNDS;
@@ -277,7 +276,9 @@ impl Extendable for HashTable {
 impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
-    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints(
+        _challenges: &HashTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
@@ -512,28 +513,26 @@ impl HashTable {
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
-            // Compress input values into single value (independent of round index)
-            let state_for_input = [
-                extension_row[HashTableColumn::STATE0 as usize],
-                extension_row[HashTableColumn::STATE1 as usize],
-                extension_row[HashTableColumn::STATE2 as usize],
-                extension_row[HashTableColumn::STATE3 as usize],
-                extension_row[HashTableColumn::STATE4 as usize],
-                extension_row[HashTableColumn::STATE5 as usize],
-                extension_row[HashTableColumn::STATE6 as usize],
-                extension_row[HashTableColumn::STATE7 as usize],
-                extension_row[HashTableColumn::STATE8 as usize],
-                extension_row[HashTableColumn::STATE9 as usize],
-            ];
-            let compressed_state_for_input = state_for_input
-                .iter()
-                .zip_eq(challenges.stack_input_weights.iter())
-                .map(|(&state, &weight)| weight * state)
-                .fold(XFieldElement::zero(), XFieldElement::add);
-            extension_row[usize::from(CompressedStateForInput)] = compressed_state_for_input;
-
             // Add compressed input to running evaluation if round index marks beginning of hashing
             if row[HashTableColumn::ROUNDNUMBER as usize].value() == 1 {
+                let state_for_input = [
+                    extension_row[HashTableColumn::STATE0 as usize],
+                    extension_row[HashTableColumn::STATE1 as usize],
+                    extension_row[HashTableColumn::STATE2 as usize],
+                    extension_row[HashTableColumn::STATE3 as usize],
+                    extension_row[HashTableColumn::STATE4 as usize],
+                    extension_row[HashTableColumn::STATE5 as usize],
+                    extension_row[HashTableColumn::STATE6 as usize],
+                    extension_row[HashTableColumn::STATE7 as usize],
+                    extension_row[HashTableColumn::STATE8 as usize],
+                    extension_row[HashTableColumn::STATE9 as usize],
+                ];
+                let compressed_state_for_input = state_for_input
+                    .iter()
+                    .zip_eq(challenges.stack_input_weights.iter())
+                    .map(|(&state, &weight)| weight * state)
+                    .fold(XFieldElement::zero(), XFieldElement::add);
+
                 from_processor_running_evaluation = from_processor_running_evaluation
                     * challenges.from_processor_eval_row_weight
                     + compressed_state_for_input;
@@ -541,23 +540,21 @@ impl HashTable {
             extension_row[usize::from(FromProcessorRunningEvaluation)] =
                 from_processor_running_evaluation;
 
-            // Compress digest values into single value (independent of round index)
-            let state_for_output = [
-                extension_row[HashTableColumn::STATE0 as usize],
-                extension_row[HashTableColumn::STATE1 as usize],
-                extension_row[HashTableColumn::STATE2 as usize],
-                extension_row[HashTableColumn::STATE3 as usize],
-                extension_row[HashTableColumn::STATE4 as usize],
-            ];
-            let compressed_state_for_output = state_for_output
-                .iter()
-                .zip_eq(challenges.digest_output_weights.iter())
-                .map(|(&state, &weight)| weight * state)
-                .fold(XFieldElement::zero(), XFieldElement::add);
-            extension_row[usize::from(CompressedStateForOutput)] = compressed_state_for_output;
-
             // Add compressed digest to running evaluation if round index marks end of hashing
             if row[HashTableColumn::ROUNDNUMBER as usize].value() == 9 {
+                let state_for_output = [
+                    extension_row[HashTableColumn::STATE0 as usize],
+                    extension_row[HashTableColumn::STATE1 as usize],
+                    extension_row[HashTableColumn::STATE2 as usize],
+                    extension_row[HashTableColumn::STATE3 as usize],
+                    extension_row[HashTableColumn::STATE4 as usize],
+                ];
+                let compressed_state_for_output = state_for_output
+                    .iter()
+                    .zip_eq(challenges.digest_output_weights.iter())
+                    .map(|(&state, &weight)| weight * state)
+                    .fold(XFieldElement::zero(), XFieldElement::add);
+
                 to_processor_running_evaluation = to_processor_running_evaluation
                     * challenges.to_processor_eval_row_weight
                     + compressed_state_for_output;
@@ -571,7 +568,7 @@ impl HashTable {
         let extension_table = self.extension(
             extension_matrix,
             interpolant_degree,
-            ExtHashTable::ext_initial_constraints(),
+            ExtHashTable::ext_initial_constraints(challenges),
             vec![],
             vec![],
             ExtHashTable::ext_terminal_constraints(challenges),
@@ -593,7 +590,7 @@ impl HashTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
-            ExtHashTable::ext_initial_constraints(),
+            ExtHashTable::ext_initial_constraints(&all_challenges.hash_table_challenges),
             // The Hash Table bypasses the symbolic representation of transition and consistency constraints.
             // As a result, there is nothing to memoize. Since the memoization dictionary is never used, it
             // can't hurt to supply empty databases.
@@ -651,8 +648,11 @@ pub struct HashTableChallenges {
 }
 
 impl ExtensionTable for ExtHashTable {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_initial_constraints()
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtHashTable::ext_initial_constraints(&challenges.hash_table_challenges)
     }
 
     fn dynamic_consistency_constraints(

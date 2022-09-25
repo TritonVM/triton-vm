@@ -6,7 +6,7 @@ use twenty_first::shared_math::traits::{FiniteField, Inverse};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
-use crate::table::processor_table::PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
+use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_collection::TableId::{
     HashTable, InstructionTable, ProcessorTable, ProgramTable,
 };
@@ -16,7 +16,7 @@ use crate::table::table_column::{
     ExtProcessorTableColumn, ExtProgramTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
 };
 
-pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_PERMUTATION_ARGUMENTS_COUNT;
+pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
 pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS;
 pub const NUM_PUBLIC_EVAL_ARGS: usize = 2;

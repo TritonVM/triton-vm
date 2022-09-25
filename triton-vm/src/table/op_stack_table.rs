@@ -15,16 +15,15 @@ use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::OpStackTableColumn;
 
-pub const OP_STACK_TABLE_PERMUTATION_ARGUMENTS_COUNT: usize = 1;
-pub const OP_STACK_TABLE_EVALUATION_ARGUMENT_COUNT: usize = 0;
-pub const OP_STACK_TABLE_INITIALS_COUNT: usize =
-    OP_STACK_TABLE_PERMUTATION_ARGUMENTS_COUNT + OP_STACK_TABLE_EVALUATION_ARGUMENT_COUNT;
+pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
+pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 
 /// This is 4 because it combines: clk, ci, osv, osp
-pub const OP_STACK_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 4;
+pub const OP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = 4;
 
 pub const BASE_WIDTH: usize = 4;
-pub const FULL_WIDTH: usize = 6; // BASE_WIDTH + 2 * INITIALS_COUNT
+pub const FULL_WIDTH: usize =
+    BASE_WIDTH + OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS + OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS;
 
 #[derive(Debug, Clone)]
 pub struct OpStackTable {
@@ -98,7 +97,9 @@ impl Extendable for OpStackTable {
 impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    fn ext_initial_constraints() -> Vec<MPolynomial<XFieldElement>> {
+    fn ext_initial_constraints(
+        _challenges: &OpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         use OpStackTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
@@ -211,13 +212,11 @@ impl OpStackTable {
             let osp_w = challenges.osp_weight;
             let osv_w = challenges.osv_weight;
 
-            // 1. Compress multiple values within one row so they become one value.
+            // compress multiple values within one row so they become one value
             let compressed_row_for_permutation_argument =
                 clk * clk_w + ib1 * ib1_w + osp * osp_w + osv * osv_w;
-            extension_row[usize::from(PermArgCompressedRow)] =
-                compressed_row_for_permutation_argument;
 
-            // 2. Compute the running *product* of the compressed column (permutation value)
+            // compute the running *product* of the compressed column (for permutation argument)
             running_product *=
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
@@ -228,7 +227,7 @@ impl OpStackTable {
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
-            ExtOpStackTable::ext_initial_constraints(),
+            ExtOpStackTable::ext_initial_constraints(challenges),
             ExtOpStackTable::ext_consistency_constraints(challenges),
             ExtOpStackTable::ext_transition_constraints(challenges),
             ExtOpStackTable::ext_terminal_constraints(challenges),
@@ -251,7 +250,7 @@ impl OpStackTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
-            ExtOpStackTable::ext_initial_constraints(),
+            ExtOpStackTable::ext_initial_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_consistency_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_terminal_constraints(&all_challenges.op_stack_table_challenges),
@@ -307,8 +306,11 @@ pub struct OpStackTableChallenges {
 }
 
 impl ExtensionTable for ExtOpStackTable {
-    fn dynamic_initial_constraints(&self) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_initial_constraints()
+    fn dynamic_initial_constraints(
+        &self,
+        challenges: &AllChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        ExtOpStackTable::ext_initial_constraints(&challenges.op_stack_table_challenges)
     }
 
     fn dynamic_consistency_constraints(
