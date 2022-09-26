@@ -192,15 +192,25 @@ impl Stark {
             ext_codeword_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
-        // Prove equal terminal values for the column pairs pertaining to cross table arguments
-        let grand_cross_table_arg_weights_seed = proof_stream.prover_fiat_shamir();
-        let grand_cross_table_arg_weights = Self::sample_weights(
-            grand_cross_table_arg_weights_seed,
+        let num_grand_cross_table_args = 1;
+        let num_non_lin_combi_weights = self.num_randomizer_polynomials
+            + 2 * base_codewords.len()
+            + 2 * extension_codewords.len()
+            + 2 * quotient_degree_bounds.len()
+            + 2 * num_grand_cross_table_args;
+        let num_gcta_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
+
+        let gcta_and_non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
+        let gcta_and_non_lin_combi_weights = Self::sample_weights(
+            gcta_and_non_lin_combi_weights_seed,
             &hasher,
-            NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS,
-        )
-        .try_into()
-        .expect("Sample exactly as many weights as needed.");
+            num_gcta_weights + num_non_lin_combi_weights,
+        );
+        let (grand_cross_table_argument_weights, non_lin_combi_weights) =
+            gcta_and_non_lin_combi_weights.split_at(num_gcta_weights);
+        timer.elapsed("Sample weights for grand cross-table argument and non-linear combination");
+
+        // Prove equal terminal values for the column pairs pertaining to cross table arguments
         let input_terminal = EvalArg::compute_terminal(
             &self.input_symbols,
             EvalArg::default_initial(),
@@ -216,7 +226,7 @@ impl Stark {
                 .output_table_eval_row_weight,
         );
         let grand_cross_table_arg = GrandCrossTableArg::new(
-            &grand_cross_table_arg_weights,
+            grand_cross_table_argument_weights.try_into().unwrap(),
             input_terminal,
             output_terminal,
         );
@@ -232,25 +242,13 @@ impl Stark {
         quotient_degree_bounds.push(gcta_quotient_degree_bound);
         timer.elapsed("Grand Cross Table Argument");
 
-        let non_lin_combi_weights_seed = hasher.hash_sequence(&grand_cross_table_arg_weights_seed);
-        let non_lin_combi_weights_count = self.num_randomizer_polynomials
-            + 2 * base_codewords.len()
-            + 2 * extension_codewords.len()
-            + 2 * quotient_degree_bounds.len();
-        let non_lin_combi_weights = Self::sample_weights(
-            non_lin_combi_weights_seed,
-            &hasher,
-            non_lin_combi_weights_count,
-        );
-        timer.elapsed("Sampled weights for non-linear combination");
-
         let combination_codeword = self.create_combination_codeword(
             &mut timer,
             vec![x_rand_codeword],
             base_codewords,
             extension_codewords,
             quotient_codewords,
-            non_lin_combi_weights,
+            non_lin_combi_weights.to_vec(),
             base_degree_bounds,
             extension_degree_bounds,
             quotient_degree_bounds,
@@ -654,14 +652,30 @@ impl Stark {
             ext_table_collection.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
-        let grand_cross_table_arg_weights_seed = proof_stream.verifier_fiat_shamir();
-        let grand_cross_table_arg_weights = Self::sample_weights(
-            grand_cross_table_arg_weights_seed,
+        // get weights for nonlinear combination:
+        //  - 1 for randomizer polynomials,
+        //  - 2 for {base, extension} polynomials and quotients.
+        // The latter require 2 weights because transition constraints check 2 rows.
+        let num_base_polynomials = base_degree_bounds.len();
+        let num_extension_polynomials = extension_degree_bounds.len();
+        let num_grand_cross_table_args = 1;
+        let num_non_lin_combi_weights = self.num_randomizer_polynomials
+            + 2 * num_base_polynomials
+            + 2 * num_extension_polynomials
+            + 2 * quotient_degree_bounds.len()
+            + 2 * num_grand_cross_table_args;
+        let num_gcta_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
+
+        let gcta_and_non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
+        let gcta_and_non_lin_combi_weights = Self::sample_weights(
+            gcta_and_non_lin_combi_weights_seed,
             &hasher,
-            NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS,
-        )
-        .try_into()
-        .expect("Sample exactly as many weights as needed.");
+            num_gcta_weights + num_non_lin_combi_weights,
+        );
+        let (grand_cross_table_argument_weights, non_lin_combi_weights) =
+            gcta_and_non_lin_combi_weights.split_at(num_gcta_weights);
+        timer.elapsed("Sample weights for grand cross-table argument and non-linear combination");
+
         let input_terminal = EvalArg::compute_terminal(
             &self.input_symbols,
             EvalArg::default_initial(),
@@ -677,32 +691,11 @@ impl Stark {
                 .output_table_eval_row_weight,
         );
         let grand_cross_table_arg = GrandCrossTableArg::new(
-            &grand_cross_table_arg_weights,
+            grand_cross_table_argument_weights.try_into().unwrap(),
             input_terminal,
             output_terminal,
         );
         timer.elapsed("Setup for grand cross-table argument");
-
-        // get weights for nonlinear combination:
-        //  - 1 for randomizer polynomials,
-        //  - 2 for {base, extension} polynomials and quotients.
-        // The latter require 2 weights because transition constraints check 2 rows.
-        let non_lin_combi_weights_seed = hasher.hash_sequence(&grand_cross_table_arg_weights_seed);
-        let num_base_polynomials = base_degree_bounds.len();
-        let num_extension_polynomials = extension_degree_bounds.len();
-        let num_quotient_polynomials = quotient_degree_bounds.len();
-        let num_grand_cross_table_args = 1;
-        let non_lin_combi_weights_count = self.num_randomizer_polynomials
-            + 2 * num_base_polynomials
-            + 2 * num_extension_polynomials
-            + 2 * num_quotient_polynomials
-            + 2 * num_grand_cross_table_args;
-        let non_lin_combi_weights = Self::sample_weights(
-            non_lin_combi_weights_seed,
-            &hasher,
-            non_lin_combi_weights_count,
-        );
-        timer.elapsed("Sampled weights for non-linear combination");
 
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
 
