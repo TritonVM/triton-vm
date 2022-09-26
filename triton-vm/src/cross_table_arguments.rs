@@ -221,7 +221,7 @@ impl CrossTableArg for EvalArg {
     }
 
     fn default_initial() -> XFieldElement {
-        XFieldElement::zero()
+        XFieldElement::one()
     }
 
     /// Compute the running evaluation for an evaluation argument as specified by `initial`,
