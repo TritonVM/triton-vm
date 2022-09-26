@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use std::ops::Mul;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::{FiniteField, Inverse};
@@ -114,17 +115,16 @@ impl CrossTableArg for PermArg {
         XFieldElement::one()
     }
 
-    /// Compute the product for a permutation argument using `initial` and `symbols`.
+    /// Compute the product for a permutation argument using `initial`, `challenge`, and `symbols`.
     fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,
         challenge: XFieldElement,
     ) -> XFieldElement {
-        let mut running_product = initial;
-        for s in symbols.iter() {
-            running_product *= challenge - s.lift();
-        }
-        running_product
+        symbols
+            .iter()
+            .map(|&symbol| challenge - symbol.lift())
+            .fold(initial, XFieldElement::mul)
     }
 }
 
@@ -225,18 +225,17 @@ impl CrossTableArg for EvalArg {
     }
 
     /// Compute the running evaluation for an evaluation argument as specified by `initial`,
-    /// This amounts to evaluating polynomial `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i` at position
-    /// challenge, i.e., returns `f(challenge)`.
+    /// `challenge`, and `symbols`. This amounts to evaluating polynomial
+    /// `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i`
+    /// at position challenge, i.e., returns `f(challenge)`.
     fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,
         challenge: XFieldElement,
     ) -> XFieldElement {
-        let mut running_evaluation = initial;
-        for s in symbols.iter() {
-            running_evaluation = challenge * running_evaluation + s.lift();
-        }
-        running_evaluation
+        symbols.iter().fold(initial, |running_evaluation, &symbol| {
+            challenge * running_evaluation + symbol.lift()
+        })
     }
 }
 
