@@ -4,6 +4,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
@@ -170,7 +171,7 @@ impl ProgramTable {
         interpolant_degree: Degree,
     ) -> ExtProgramTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
-        let mut instruction_table_running_evaluation = XFieldElement::zero();
+        let mut instruction_table_running_evaluation = EvalArg::default_initial();
 
         let mut data_with_0 = self.data().clone();
         data_with_0.push(vec![BFieldElement::zero(); BASE_WIDTH]);

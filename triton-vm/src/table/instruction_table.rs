@@ -4,6 +4,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
@@ -98,9 +99,13 @@ impl ExtInstructionTable {
     fn ext_initial_constraints(
         challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
+
+        let running_evaluation_initial =
+            MPolynomial::from_constant(EvalArg::default_initial(), FULL_WIDTH);
+        let running_product_initial =
+            MPolynomial::from_constant(PermArg::default_initial(), FULL_WIDTH);
 
         let ip = variables[Address as usize].clone();
         let ci = variables[CI as usize].clone();
@@ -114,12 +119,13 @@ impl ExtInstructionTable {
 
         let first_address_is_zero = ip;
 
-        let running_evaluation_is_initialized_correctly =
-            compressed_row_for_eval_arg - running_evaluation;
+        let running_evaluation_is_initialized_correctly = running_evaluation
+            - running_evaluation_initial.scalar_mul(challenges.program_eval_row_weight)
+            - compressed_row_for_eval_arg;
 
-        // due to the way the instruction table is constructed, the running product must always be 1
+        // due to the way the instruction table is constructed, the running product does not update
         // in the first row
-        let running_product_is_initialized_correctly = running_product - one;
+        let running_product_is_initialized_correctly = running_product - running_product_initial;
 
         vec![
             first_address_is_zero,
@@ -271,8 +277,8 @@ impl InstructionTable {
         interpolant_degree: Degree,
     ) -> ExtInstructionTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
-        let mut processor_table_running_product = XFieldElement::one();
-        let mut program_table_running_evaluation = XFieldElement::zero();
+        let mut processor_table_running_product = PermArg::default_initial();
+        let mut program_table_running_evaluation = EvalArg::default_initial();
         let mut previous_row: Option<Vec<_>> = None;
 
         for row in self.data().iter() {

@@ -8,6 +8,7 @@ use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
@@ -78,15 +79,15 @@ impl ProcessorTable {
     ) -> ExtProcessorTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
-        let mut input_table_running_evaluation = XFieldElement::zero();
-        let mut output_table_running_evaluation = XFieldElement::zero();
-        let mut instruction_table_running_product = XFieldElement::one();
-        let mut opstack_table_running_product = XFieldElement::one();
-        let mut ram_table_running_product = XFieldElement::one();
-        let mut jump_stack_running_product = XFieldElement::one();
-        let mut to_hash_table_running_evaluation = XFieldElement::zero();
-        let mut from_hash_table_running_evaluation = XFieldElement::zero();
-        let mut u32_table_running_product = XFieldElement::one();
+        let mut input_table_running_evaluation = EvalArg::default_initial();
+        let mut output_table_running_evaluation = EvalArg::default_initial();
+        let mut instruction_table_running_product = PermArg::default_initial();
+        let mut opstack_table_running_product = PermArg::default_initial();
+        let mut ram_table_running_product = PermArg::default_initial();
+        let mut jump_stack_running_product = PermArg::default_initial();
+        let mut to_hash_table_running_evaluation = EvalArg::default_initial();
+        let mut from_hash_table_running_evaluation = EvalArg::default_initial();
+        let mut u32_table_running_product = PermArg::default_initial();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {

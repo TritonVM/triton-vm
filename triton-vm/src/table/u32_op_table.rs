@@ -1,3 +1,4 @@
+use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -306,8 +307,8 @@ impl U32OpTable {
         challenges: &U32OpTableChallenges,
         interpolant_degree: Degree,
     ) -> ExtU32OpTable {
-        let mut running_product = XFieldElement::one();
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
+        let mut running_product = PermArg::default_initial();
 
         for row in self.data().iter() {
             let mut extension_row = [0.into(); FULL_WIDTH];

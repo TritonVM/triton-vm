@@ -1,6 +1,7 @@
 use std::ops::Add;
 use std::ops::Mul;
 
+use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -504,8 +505,8 @@ impl HashTable {
         challenges: &HashTableChallenges,
         interpolant_degree: Degree,
     ) -> ExtHashTable {
-        let mut from_processor_running_evaluation = XFieldElement::zero();
-        let mut to_processor_running_evaluation = XFieldElement::zero();
+        let mut from_processor_running_evaluation = EvalArg::default_initial();
+        let mut to_processor_running_evaluation = EvalArg::default_initial();
 
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         for row in self.data().iter() {
