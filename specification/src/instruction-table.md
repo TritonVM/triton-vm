@@ -5,7 +5,7 @@ The table consists of four columns:
 1. the instruction's `address`,
 1. the `current_instruction`,
 1. the `next_instruction_or_arg`,
-1. a padding indicator `IsPadding`.
+1. a padding indicator `is_padding`.
 
 It contains
 - one row for every instruction in the [Program Table](#program-table), i.e., one row for every available instruction, and
@@ -18,33 +18,33 @@ For an example, see below.
 
 Program Table:
 
-| Address | Instruction | IsPadding |
-|--------:|:------------|----------:|
-|       0 | push        |         0 |
-|       1 | 10          |         0 |
-|       2 | push        |         0 |
-|       3 | 5           |         0 |
-|       4 | add         |         0 |
-|       … | …           |         … |
+| Address | Instruction | is_padding |
+|--------:|:------------|-----------:|
+|       0 | push        |          0 |
+|       1 | 10          |          0 |
+|       2 | push        |          0 |
+|       3 | 5           |          0 |
+|       4 | add         |          0 |
+|       … | …           |          … |
 
 Instruction Table:
 
-| `address` | `current_instruction` | `next_instruction_or_arg` | `IsPadding` | (comment)              |
-|----------:|:----------------------|:--------------------------|------------:|:-----------------------|
-|         0 | push                  | 10                        |           0 | (from Program Table)   |
-|         0 | push                  | 10                        |           0 | (from Processor Table) |
-|         1 | 10                    | push                      |           0 | (from Program Table)   |
-|         2 | push                  | 5                         |           0 | (from Program Table)   |
-|         2 | push                  | 5                         |           0 | (from Processor Table) |
-|         3 | 5                     | add                       |           0 | (from Program Table)   |
-|         4 | add                   | …                         |           0 | (from Program Table)   |
-|         … | …                     | …                         |           … | …                      |
+| `address` | `current_instruction` | `next_instruction_or_arg` | `is_padding` | (comment)              |
+|----------:|:----------------------|:--------------------------|-------------:|:-----------------------|
+|         0 | push                  | 10                        |            0 | (from Program Table)   |
+|         0 | push                  | 10                        |            0 | (from Processor Table) |
+|         1 | 10                    | push                      |            0 | (from Program Table)   |
+|         2 | push                  | 5                         |            0 | (from Program Table)   |
+|         2 | push                  | 5                         |            0 | (from Processor Table) |
+|         3 | 5                     | add                       |            0 | (from Program Table)   |
+|         4 | add                   | …                         |            0 | (from Program Table)   |
+|         … | …                     | …                         |            … | …                      |
 
 ## Padding
 
 A padding row is a copy of the Instruction Table's last row with the following modifications:
 1. column `address` is increased by 1, and
-1. column `IsPadding` is set to 1.
+1. column `is_padding` is set to 1.
 
 ## Initial Constraints
 
