@@ -8,8 +8,8 @@ use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::ExtProgramTableColumn::*;
-use crate::table::table_column::ProgramTableColumn::*;
+use crate::table::table_column::ProgramBaseTableColumn::*;
+use crate::table::table_column::ProgramExtTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
@@ -81,14 +81,14 @@ impl Extendable for ProgramTable {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
             // address keeps increasing
-            padding_row[Address as usize] += one;
-            padding_row[Instruction as usize] = zero;
-            padding_row[IsPadding as usize] = one;
+            padding_row[usize::from(Address)] += one;
+            padding_row[usize::from(Instruction)] = zero;
+            padding_row[usize::from(IsPadding)] = one;
             (None, vec![padding_row])
         } else {
             // Not that it makes much sense to run a program with no instructions.
             let mut padding_row = [zero; BASE_WIDTH];
-            padding_row[IsPadding as usize] = one;
+            padding_row[usize::from(IsPadding)] = one;
             (None, vec![padding_row.to_vec()])
         }
     }
@@ -103,7 +103,7 @@ impl ExtProgramTable {
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
 
-        let address = variables[Address as usize].clone();
+        let address = variables[usize::from(Address)].clone();
 
         let first_address_is_zero = address;
 
@@ -123,8 +123,8 @@ impl ExtProgramTable {
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(2 * FULL_WIDTH, 1.into());
 
-        let addr = variables[Address as usize].clone();
-        let addr_next = variables[FULL_WIDTH + Address as usize].clone();
+        let addr = variables[usize::from(Address)].clone();
+        let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();
         let one = MPolynomial::<XFieldElement>::from_constant(1.into(), 2 * FULL_WIDTH);
 
         let address_increases_by_one = addr_next - (addr + one);
@@ -181,12 +181,12 @@ impl ProgramTable {
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
-            let address = row[Address as usize].lift();
-            let instruction = row[Instruction as usize].lift();
-            let next_instruction = next_row[Instruction as usize].lift();
+            let address = row[usize::from(Address)].lift();
+            let instruction = row[usize::from(Instruction)].lift();
+            let next_instruction = next_row[usize::from(Instruction)].lift();
 
             // Update the running evaluation if not a padding row
-            if row[IsPadding as usize].is_zero() {
+            if row[usize::from(IsPadding)].is_zero() {
                 // Compress address, instruction, and next instruction (or argument) into single value
                 let compressed_row_for_evaluation_argument = address * challenges.address_weight
                     + instruction * challenges.instruction_weight

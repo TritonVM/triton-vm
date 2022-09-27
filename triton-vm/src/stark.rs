@@ -1033,7 +1033,7 @@ pub(crate) mod triton_stark_tests {
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table::InheritsFromTable;
     use crate::table::table_collection::TableId::ProcessorTable;
-    use crate::table::table_column::ExtProcessorTableColumn::{
+    use crate::table::table_column::ProcessorExtTableColumn::{
         InputTableEvalArg, OutputTableEvalArg,
     };
     use crate::vm::triton_vm_tests::{all_tasm_test_programs, test_hash_nop_nop_lt};

@@ -7,13 +7,16 @@ use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::instruction::AnInstruction::*;
-use crate::table::table_column::ExtProcessorTableColumn::*;
+use crate::table::table_column::ProcessorExtTableColumn::*;
 use crate::table::table_column::{
-    InstructionTableColumn, OpStackTableColumn, ProgramTableColumn, RamTableColumn,
+    InstructionBaseTableColumn, OpStackBaseTableColumn, ProcessorBaseTableColumn,
+    ProgramBaseTableColumn, RamBaseTableColumn,
 };
 use crate::vm::Program;
 
-use super::table_column::{ExtProcessorTableColumn, JumpStackTableColumn, ProcessorTableColumn::*};
+use super::table_column::{
+    JumpStackBaseTableColumn, ProcessorBaseTableColumn::*, ProcessorExtTableColumn,
+};
 use super::{
     hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
     program_table, ram_table, u32_op_table,
@@ -59,8 +62,8 @@ impl BaseMatrices {
             .enumerate()
             .map(|(idx, instruction)| {
                 let mut derived_row = [BFieldElement::zero(); program_table::BASE_WIDTH];
-                derived_row[ProgramTableColumn::Address as usize] = (idx as u32).into();
-                derived_row[ProgramTableColumn::Instruction as usize] = instruction;
+                derived_row[usize::from(ProgramBaseTableColumn::Address)] = (idx as u32).into();
+                derived_row[usize::from(ProgramBaseTableColumn::Instruction)] = instruction;
                 derived_row
             })
             .collect_vec()
@@ -70,6 +73,8 @@ impl BaseMatrices {
         aet: &AlgebraicExecutionTrace,
         program: &Program,
     ) -> Vec<[BFieldElement; instruction_table::BASE_WIDTH]> {
+        use InstructionBaseTableColumn::*;
+
         let program_append_0 = [program.to_bwords(), vec![BFieldElement::zero()]].concat();
         let program_part = program_append_0
             .into_iter()
@@ -77,9 +82,9 @@ impl BaseMatrices {
             .enumerate()
             .map(|(idx, (instruction, next_instruction))| {
                 let mut derived_row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
-                derived_row[InstructionTableColumn::Address as usize] = (idx as u32).into();
-                derived_row[InstructionTableColumn::CI as usize] = instruction;
-                derived_row[InstructionTableColumn::NIA as usize] = next_instruction;
+                derived_row[usize::from(Address)] = (idx as u32).into();
+                derived_row[usize::from(CI)] = instruction;
+                derived_row[usize::from(NIA)] = next_instruction;
                 derived_row
             })
             .collect_vec();
@@ -88,38 +93,37 @@ impl BaseMatrices {
             .iter()
             .map(|&row| {
                 let mut derived_row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
-                derived_row[InstructionTableColumn::Address as usize] = row[IP as usize];
-                derived_row[InstructionTableColumn::CI as usize] = row[CI as usize];
-                derived_row[InstructionTableColumn::NIA as usize] = row[NIA as usize];
+                derived_row[usize::from(Address)] = row[usize::from(ProcessorBaseTableColumn::IP)];
+                derived_row[usize::from(CI)] = row[usize::from(ProcessorBaseTableColumn::CI)];
+                derived_row[usize::from(NIA)] = row[usize::from(ProcessorBaseTableColumn::NIA)];
                 derived_row
             })
             .collect_vec();
         let mut instruction_matrix = [program_part, processor_part].concat();
-        instruction_matrix.sort_by_key(|row| row[InstructionTableColumn::Address as usize].value());
+        instruction_matrix.sort_by_key(|row| row[usize::from(Address)].value());
         instruction_matrix
     }
 
     fn derive_op_stack_matrix(
         aet: &AlgebraicExecutionTrace,
     ) -> Vec<[BFieldElement; op_stack_table::BASE_WIDTH]> {
+        use OpStackBaseTableColumn::*;
+
         let mut op_stack_matrix = aet
             .processor_matrix
             .iter()
             .map(|&row| {
                 let mut derived_row = [BFieldElement::zero(); op_stack_table::BASE_WIDTH];
-                derived_row[OpStackTableColumn::CLK as usize] = row[CLK as usize];
-                derived_row[OpStackTableColumn::IB1ShrinkStack as usize] = row[IB1 as usize];
-                derived_row[OpStackTableColumn::OSP as usize] = row[OSP as usize];
-                derived_row[OpStackTableColumn::OSV as usize] = row[OSV as usize];
+                derived_row[usize::from(CLK)] = row[usize::from(ProcessorBaseTableColumn::CLK)];
+                derived_row[usize::from(IB1ShrinkStack)] =
+                    row[usize::from(ProcessorBaseTableColumn::IB1)];
+                derived_row[usize::from(OSP)] = row[usize::from(ProcessorBaseTableColumn::OSP)];
+                derived_row[usize::from(OSV)] = row[usize::from(ProcessorBaseTableColumn::OSV)];
                 derived_row
             })
             .collect_vec();
-        op_stack_matrix.sort_by_key(|row| {
-            (
-                row[OpStackTableColumn::OSP as usize].value(),
-                row[OpStackTableColumn::CLK as usize].value(),
-            )
-        });
+        op_stack_matrix
+            .sort_by_key(|row| (row[usize::from(OSP)].value(), row[usize::from(CLK)].value()));
         op_stack_matrix
     }
 
@@ -131,18 +135,18 @@ impl BaseMatrices {
             .iter()
             .map(|&row| {
                 let mut derived_row = [BFieldElement::zero(); ram_table::BASE_WIDTH];
-                derived_row[RamTableColumn::CLK as usize] = row[CLK as usize];
-                derived_row[RamTableColumn::RAMP as usize] = row[ST1 as usize];
-                derived_row[RamTableColumn::RAMV as usize] = row[RAMV as usize];
-                derived_row[RamTableColumn::InverseOfRampDifference as usize] =
+                derived_row[usize::from(RamBaseTableColumn::CLK)] = row[usize::from(CLK)];
+                derived_row[usize::from(RamBaseTableColumn::RAMP)] = row[usize::from(ST1)];
+                derived_row[usize::from(RamBaseTableColumn::RAMV)] = row[usize::from(RAMV)];
+                derived_row[usize::from(RamBaseTableColumn::InverseOfRampDifference)] =
                     BFieldElement::zero();
                 derived_row
             })
             .collect_vec();
         ram_matrix.sort_by_key(|row| {
             (
-                row[RamTableColumn::RAMP as usize].value(),
-                row[RamTableColumn::CLK as usize].value(),
+                row[usize::from(RamBaseTableColumn::RAMP)].value(),
+                row[usize::from(RamBaseTableColumn::CLK)].value(),
             )
         });
 
@@ -154,8 +158,8 @@ impl BaseMatrices {
             .map(|(idx, (curr_row, next_row))| {
                 (
                     idx,
-                    next_row[RamTableColumn::RAMP as usize]
-                        - curr_row[RamTableColumn::RAMP as usize],
+                    next_row[usize::from(RamBaseTableColumn::RAMP)]
+                        - curr_row[usize::from(RamBaseTableColumn::RAMP)],
                 )
             })
             .filter(|(_, x)| !BFieldElement::is_zero(x))
@@ -170,7 +174,7 @@ impl BaseMatrices {
             .into_iter()
             .zip_eq(inverses.into_iter())
         {
-            ram_matrix[idx][RamTableColumn::InverseOfRampDifference as usize] = inverse;
+            ram_matrix[idx][usize::from(RamBaseTableColumn::InverseOfRampDifference)] = inverse;
         }
         ram_matrix
     }
@@ -183,18 +187,18 @@ impl BaseMatrices {
             .iter()
             .map(|&row| {
                 let mut derived_row = [BFieldElement::zero(); jump_stack_table::BASE_WIDTH];
-                derived_row[JumpStackTableColumn::CLK as usize] = row[CLK as usize];
-                derived_row[JumpStackTableColumn::CI as usize] = row[CI as usize];
-                derived_row[JumpStackTableColumn::JSP as usize] = row[JSP as usize];
-                derived_row[JumpStackTableColumn::JSO as usize] = row[JSO as usize];
-                derived_row[JumpStackTableColumn::JSD as usize] = row[JSD as usize];
+                derived_row[usize::from(JumpStackBaseTableColumn::CLK)] = row[usize::from(CLK)];
+                derived_row[usize::from(JumpStackBaseTableColumn::CI)] = row[usize::from(CI)];
+                derived_row[usize::from(JumpStackBaseTableColumn::JSP)] = row[usize::from(JSP)];
+                derived_row[usize::from(JumpStackBaseTableColumn::JSO)] = row[usize::from(JSO)];
+                derived_row[usize::from(JumpStackBaseTableColumn::JSD)] = row[usize::from(JSD)];
                 derived_row
             })
             .collect_vec();
         jump_stack_matrix.sort_by_key(|row| {
             (
-                row[JumpStackTableColumn::JSP as usize].value(),
-                row[JumpStackTableColumn::CLK as usize].value(),
+                row[usize::from(JumpStackBaseTableColumn::JSP)].value(),
+                row[usize::from(JumpStackBaseTableColumn::CLK)].value(),
             )
         });
         jump_stack_matrix
@@ -215,12 +219,18 @@ impl Display for ProcessorMatrixRow {
             row(f, "".into())
         }
 
-        let instruction = self.row[CI as usize].value().try_into().unwrap();
+        let instruction = self.row[usize::from(CI)].value().try_into().unwrap();
         let instruction_with_arg = match instruction {
-            Push(_) => Push(self.row[NIA as usize]),
-            Call(_) => Call(self.row[NIA as usize]),
-            Dup(_) => Dup((self.row[NIA as usize].value() as u32).try_into().unwrap()),
-            Swap(_) => Swap((self.row[NIA as usize].value() as u32).try_into().unwrap()),
+            Push(_) => Push(self.row[usize::from(NIA)]),
+            Call(_) => Call(self.row[usize::from(NIA)]),
+            Dup(_) => Dup((self.row[usize::from(NIA)].value() as u32)
+                .try_into()
+                .unwrap()),
+            Swap(_) => Swap(
+                (self.row[usize::from(NIA)].value() as u32)
+                    .try_into()
+                    .unwrap(),
+            ),
             _ => instruction,
         };
 
@@ -237,34 +247,34 @@ impl Display for ProcessorMatrixRow {
             f,
             format!(
                 "ip:   {:>width$} ╷ ci:   {:>width$} ╷ nia: {:>width$} │ {:>17}",
-                self.row[IP as usize].value(),
-                self.row[CI as usize].value(),
-                self.row[NIA as usize].value(),
-                self.row[CLK as usize].value(),
+                self.row[usize::from(IP)].value(),
+                self.row[usize::from(CI)].value(),
+                self.row[usize::from(NIA)].value(),
+                self.row[usize::from(CLK)].value(),
             ),
         )?;
 
         writeln!(
             f,
             "│ jsp:  {:>width$} │ jso:  {:>width$} │ jsd: {:>width$} ╰───────────────────┤",
-            self.row[JSP as usize].value(),
-            self.row[JSO as usize].value(),
-            self.row[JSD as usize].value(),
+            self.row[usize::from(JSP)].value(),
+            self.row[usize::from(JSO)].value(),
+            self.row[usize::from(JSD)].value(),
         )?;
         row(
             f,
             format!(
                 "ramp: {:>width$} │ ramv: {:>width$} │",
-                self.row[ST1 as usize].value(),
-                self.row[RAMV as usize].value(),
+                self.row[usize::from(ST1)].value(),
+                self.row[usize::from(RAMV)].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "osp:  {:>width$} │ osv:  {:>width$} ╵",
-                self.row[OSP as usize].value(),
-                self.row[OSV as usize].value(),
+                self.row[usize::from(OSP)].value(),
+                self.row[usize::from(OSV)].value(),
             ),
         )?;
 
@@ -274,40 +284,40 @@ impl Display for ProcessorMatrixRow {
             f,
             format!(
                 "st3-0:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST3 as usize].value(),
-                self.row[ST2 as usize].value(),
-                self.row[ST1 as usize].value(),
-                self.row[ST0 as usize].value(),
+                self.row[usize::from(ST3)].value(),
+                self.row[usize::from(ST2)].value(),
+                self.row[usize::from(ST1)].value(),
+                self.row[usize::from(ST0)].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "st7-4:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST7 as usize].value(),
-                self.row[ST6 as usize].value(),
-                self.row[ST5 as usize].value(),
-                self.row[ST4 as usize].value(),
+                self.row[usize::from(ST7)].value(),
+                self.row[usize::from(ST6)].value(),
+                self.row[usize::from(ST5)].value(),
+                self.row[usize::from(ST4)].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "st11-8:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST11 as usize].value(),
-                self.row[ST10 as usize].value(),
-                self.row[ST9 as usize].value(),
-                self.row[ST8 as usize].value(),
+                self.row[usize::from(ST11)].value(),
+                self.row[usize::from(ST10)].value(),
+                self.row[usize::from(ST9)].value(),
+                self.row[usize::from(ST8)].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "st15-12:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[ST15 as usize].value(),
-                self.row[ST14 as usize].value(),
-                self.row[ST13 as usize].value(),
-                self.row[ST12 as usize].value(),
+                self.row[usize::from(ST15)].value(),
+                self.row[usize::from(ST14)].value(),
+                self.row[usize::from(ST13)].value(),
+                self.row[usize::from(ST12)].value(),
             ),
         )?;
 
@@ -317,22 +327,22 @@ impl Display for ProcessorMatrixRow {
             f,
             format!(
                 "hv3-0:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[HV3 as usize].value(),
-                self.row[HV2 as usize].value(),
-                self.row[HV1 as usize].value(),
-                self.row[HV0 as usize].value(),
+                self.row[usize::from(HV3)].value(),
+                self.row[usize::from(HV2)].value(),
+                self.row[usize::from(HV1)].value(),
+                self.row[usize::from(HV0)].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "ib5-0: [ {:>12} | {:>13} | {:>13} | {:>13} | {:>13} | {:>13} ]",
-                self.row[IB5 as usize].value(),
-                self.row[IB4 as usize].value(),
-                self.row[IB3 as usize].value(),
-                self.row[IB2 as usize].value(),
-                self.row[IB1 as usize].value(),
-                self.row[IB0 as usize].value(),
+                self.row[usize::from(IB5)].value(),
+                self.row[usize::from(IB4)].value(),
+                self.row[usize::from(IB3)].value(),
+                self.row[usize::from(IB2)].value(),
+                self.row[usize::from(IB1)].value(),
+                self.row[usize::from(IB0)].value(),
             ),
         )?;
         write!(
@@ -359,7 +369,7 @@ impl Display for ExtProcessorMatrixRow {
 
         let row = |form: &mut std::fmt::Formatter<'_>,
                    desc: &str,
-                   col: ExtProcessorTableColumn|
+                   col: ProcessorExtTableColumn|
          -> std::fmt::Result {
             // without the extra `format!()`, alignment in `writeln!()` fails
             let formatted_col_elem = format!("{}", self.row[usize::from(col)]);
@@ -400,11 +410,11 @@ impl Display for JumpStackMatrixRow {
             f,
             "│ CLK: {:>width$} │ CI:  {:>width$} │ \
             JSP: {:>width$} │ JSO: {:>width$} │ JSD: {:>width$} │",
-            self.row[JumpStackTableColumn::CLK as usize].value(),
-            self.row[JumpStackTableColumn::CI as usize].value(),
-            self.row[JumpStackTableColumn::JSP as usize].value(),
-            self.row[JumpStackTableColumn::JSO as usize].value(),
-            self.row[JumpStackTableColumn::JSD as usize].value(),
+            self.row[usize::from(JumpStackBaseTableColumn::CLK)].value(),
+            self.row[usize::from(JumpStackBaseTableColumn::CI)].value(),
+            self.row[usize::from(JumpStackBaseTableColumn::JSP)].value(),
+            self.row[usize::from(JumpStackBaseTableColumn::JSO)].value(),
+            self.row[usize::from(JumpStackBaseTableColumn::JSD)].value(),
         )
     }
 }

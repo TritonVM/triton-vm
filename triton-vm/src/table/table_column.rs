@@ -5,11 +5,11 @@
 // --------------------------------------------------------------------
 
 use num_traits::Bounded;
-use std::fmt::{Display, Formatter};
-use HashTableColumn::*;
+use strum::{EnumCount, IntoEnumIterator};
+use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 
-#[derive(Debug, Clone, Copy)]
-pub enum ProcessorTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum ProcessorBaseTableColumn {
     CLK,
     IsPadding,
     IP,
@@ -50,114 +50,28 @@ pub enum ProcessorTableColumn {
     RAMV,
 }
 
-impl Display for ProcessorTableColumn {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        use ProcessorTableColumn::*;
-
-        match self {
-            CLK => write!(f, "CLK"),
-            IsPadding => write!(f, "IsPadding"),
-            IP => write!(f, "IP"),
-            CI => write!(f, "CI"),
-            NIA => write!(f, "NIA"),
-            IB0 => write!(f, "IB0"),
-            IB1 => write!(f, "IB1"),
-            IB2 => write!(f, "IB2"),
-            IB3 => write!(f, "IB3"),
-            IB4 => write!(f, "IB4"),
-            IB5 => write!(f, "IB5"),
-            IB6 => write!(f, "IB6"),
-            JSP => write!(f, "JSP"),
-            JSO => write!(f, "JSO"),
-            JSD => write!(f, "JSD"),
-            ST0 => write!(f, "ST0"),
-            ST1 => write!(f, "ST1"),
-            ST2 => write!(f, "ST2"),
-            ST3 => write!(f, "ST3"),
-            ST4 => write!(f, "ST4"),
-            ST5 => write!(f, "ST5"),
-            ST6 => write!(f, "ST6"),
-            ST7 => write!(f, "ST7"),
-            ST8 => write!(f, "ST8"),
-            ST9 => write!(f, "ST9"),
-            ST10 => write!(f, "ST10"),
-            ST11 => write!(f, "ST11"),
-            ST12 => write!(f, "ST12"),
-            ST13 => write!(f, "ST13"),
-            ST14 => write!(f, "ST14"),
-            ST15 => write!(f, "ST15"),
-            OSP => write!(f, "OSP"),
-            OSV => write!(f, "OSV"),
-            HV0 => write!(f, "HV0"),
-            HV1 => write!(f, "HV1"),
-            HV2 => write!(f, "HV2"),
-            HV3 => write!(f, "HV3"),
-            RAMV => write!(f, "RAMV"),
-        }
+impl From<ProcessorBaseTableColumn> for usize {
+    fn from(column: ProcessorBaseTableColumn) -> Self {
+        ProcessorBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl From<ProcessorTableColumn> for usize {
-    fn from(c: ProcessorTableColumn) -> Self {
-        use ProcessorTableColumn::*;
-
-        match c {
-            CLK => 0,
-            IsPadding => 1,
-            IP => 2,
-            CI => 3,
-            NIA => 4,
-            IB0 => 5,
-            IB1 => 6,
-            IB2 => 7,
-            IB3 => 8,
-            IB4 => 9,
-            IB5 => 10,
-            IB6 => 11,
-            JSP => 12,
-            JSO => 13,
-            JSD => 14,
-            ST0 => 15,
-            ST1 => 16,
-            ST2 => 17,
-            ST3 => 18,
-            ST4 => 19,
-            ST5 => 20,
-            ST6 => 21,
-            ST7 => 22,
-            ST8 => 23,
-            ST9 => 24,
-            ST10 => 25,
-            ST11 => 26,
-            ST12 => 27,
-            ST13 => 28,
-            ST14 => 29,
-            ST15 => 30,
-            OSP => 31,
-            OSV => 32,
-            HV0 => 33,
-            HV1 => 34,
-            HV2 => 35,
-            HV3 => 36,
-            RAMV => 37,
-        }
-    }
-}
-
-impl Bounded for ProcessorTableColumn {
+impl Bounded for ProcessorBaseTableColumn {
     fn min_value() -> Self {
-        ProcessorTableColumn::CLK
+        ProcessorBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ProcessorTableColumn::RAMV
+        ProcessorBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtProcessorTableColumn {
-    BaseColumn(ProcessorTableColumn),
-
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum ProcessorExtTableColumn {
     InputTableEvalArg,
     OutputTableEvalArg,
     InstructionTablePermArg,
@@ -171,298 +85,250 @@ pub enum ExtProcessorTableColumn {
     U32OpTablePermArg,
 }
 
-impl std::fmt::Display for ExtProcessorTableColumn {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ExtProcessorTableColumn::*;
-
-        match self {
-            BaseColumn(base_column) => write!(f, "{}", *base_column),
-            InputTableEvalArg => write!(f, "InputTableEvalArg"),
-            OutputTableEvalArg => write!(f, "OutputTableEvalArg"),
-            InstructionTablePermArg => write!(f, "InstructionTablePermArg"),
-            OpStackTablePermArg => write!(f, "OpStackTablePermArg"),
-            RamTablePermArg => write!(f, "RamTablePermArg"),
-            JumpStackTablePermArg => write!(f, "JumpStackTablePermArg"),
-            ToHashTableEvalArg => write!(f, "ToHashTableEvalArg"),
-            FromHashTableEvalArg => write!(f, "FromHashTableEvalArg"),
-            U32OpTablePermArg => write!(f, "U32OpTablePermArg"),
-        }
+impl From<ProcessorExtTableColumn> for usize {
+    fn from(column: ProcessorExtTableColumn) -> Self {
+        ProcessorExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + ProcessorBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl From<ExtProcessorTableColumn> for usize {
-    fn from(c: ExtProcessorTableColumn) -> Self {
-        use ExtProcessorTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            InputTableEvalArg => 38,
-            OutputTableEvalArg => 39,
-            InstructionTablePermArg => 40,
-            OpStackTablePermArg => 41,
-            RamTablePermArg => 42,
-            JumpStackTablePermArg => 43,
-            ToHashTableEvalArg => 44,
-            FromHashTableEvalArg => 45,
-            U32OpTablePermArg => 46,
-        }
-    }
-}
-
-impl Bounded for ExtProcessorTableColumn {
+impl Bounded for ProcessorExtTableColumn {
     fn min_value() -> Self {
-        ExtProcessorTableColumn::BaseColumn(ProcessorTableColumn::min_value())
+        ProcessorExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtProcessorTableColumn::U32OpTablePermArg
+        ProcessorExtTableColumn::iter().last().unwrap()
     }
 }
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-pub enum ProgramTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum ProgramBaseTableColumn {
     Address,
     Instruction,
     IsPadding,
 }
 
-impl From<ProgramTableColumn> for usize {
-    fn from(c: ProgramTableColumn) -> Self {
-        use ProgramTableColumn::*;
-
-        match c {
-            Address => 0,
-            Instruction => 1,
-            IsPadding => 2,
-        }
+impl From<ProgramBaseTableColumn> for usize {
+    fn from(column: ProgramBaseTableColumn) -> Self {
+        ProgramBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl Bounded for ProgramTableColumn {
+impl Bounded for ProgramBaseTableColumn {
     fn min_value() -> Self {
-        ProgramTableColumn::Address
+        ProgramBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ProgramTableColumn::IsPadding
+        ProgramBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtProgramTableColumn {
-    BaseColumn(ProgramTableColumn),
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum ProgramExtTableColumn {
     RunningEvaluation,
 }
 
-impl From<ExtProgramTableColumn> for usize {
-    fn from(c: ExtProgramTableColumn) -> Self {
-        use ExtProgramTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            RunningEvaluation => 3,
-        }
+impl From<ProgramExtTableColumn> for usize {
+    fn from(column: ProgramExtTableColumn) -> Self {
+        ProgramExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + ProgramBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl Bounded for ExtProgramTableColumn {
+impl Bounded for ProgramExtTableColumn {
     fn min_value() -> Self {
-        ExtProgramTableColumn::BaseColumn(ProgramTableColumn::min_value())
+        ProgramExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtProgramTableColumn::RunningEvaluation
+        ProgramExtTableColumn::iter().last().unwrap()
     }
 }
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-pub enum InstructionTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum InstructionBaseTableColumn {
     Address,
     CI,
     NIA,
     IsPadding,
 }
 
-impl From<InstructionTableColumn> for usize {
-    fn from(c: InstructionTableColumn) -> Self {
-        use InstructionTableColumn::*;
-
-        match c {
-            Address => 0,
-            CI => 1,
-            NIA => 2,
-            IsPadding => 3,
-        }
+impl From<InstructionBaseTableColumn> for usize {
+    fn from(column: InstructionBaseTableColumn) -> Self {
+        InstructionBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl Bounded for InstructionTableColumn {
+impl Bounded for InstructionBaseTableColumn {
     fn min_value() -> Self {
-        InstructionTableColumn::Address
+        InstructionBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        InstructionTableColumn::IsPadding
+        InstructionBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtInstructionTableColumn {
-    BaseColumn(InstructionTableColumn),
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum InstructionExtTableColumn {
     RunningProductPermArg,
     RunningEvaluation,
 }
 
-impl From<ExtInstructionTableColumn> for usize {
-    fn from(c: ExtInstructionTableColumn) -> Self {
-        use ExtInstructionTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            RunningProductPermArg => 4,
-            RunningEvaluation => 5,
-        }
+impl From<InstructionExtTableColumn> for usize {
+    fn from(column: InstructionExtTableColumn) -> Self {
+        InstructionExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + InstructionBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl Bounded for ExtInstructionTableColumn {
+impl Bounded for InstructionExtTableColumn {
     fn min_value() -> Self {
-        ExtInstructionTableColumn::BaseColumn(InstructionTableColumn::min_value())
+        InstructionExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtInstructionTableColumn::RunningEvaluation
+        InstructionExtTableColumn::iter().last().unwrap()
     }
 }
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-pub enum OpStackTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum OpStackBaseTableColumn {
     CLK,
     IB1ShrinkStack,
     OSP,
     OSV,
 }
 
-impl From<OpStackTableColumn> for usize {
-    fn from(c: OpStackTableColumn) -> Self {
-        use OpStackTableColumn::*;
-
-        match c {
-            CLK => 0,
-            IB1ShrinkStack => 1,
-            OSP => 2,
-            OSV => 3,
-        }
+impl From<OpStackBaseTableColumn> for usize {
+    fn from(column: OpStackBaseTableColumn) -> Self {
+        OpStackBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl Bounded for OpStackTableColumn {
+impl Bounded for OpStackBaseTableColumn {
     fn min_value() -> Self {
-        OpStackTableColumn::CLK
+        OpStackBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        OpStackTableColumn::OSV
+        OpStackBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtOpStackTableColumn {
-    BaseColumn(OpStackTableColumn),
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum OpStackExtTableColumn {
     RunningProductPermArg,
 }
 
-impl From<ExtOpStackTableColumn> for usize {
-    fn from(c: ExtOpStackTableColumn) -> Self {
-        use ExtOpStackTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            RunningProductPermArg => 4,
-        }
+impl From<OpStackExtTableColumn> for usize {
+    fn from(column: OpStackExtTableColumn) -> Self {
+        OpStackExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + OpStackBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl Bounded for ExtOpStackTableColumn {
+impl Bounded for OpStackExtTableColumn {
     fn min_value() -> Self {
-        ExtOpStackTableColumn::BaseColumn(OpStackTableColumn::min_value())
+        OpStackExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtOpStackTableColumn::RunningProductPermArg
+        OpStackExtTableColumn::iter().last().unwrap()
     }
 }
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-pub enum RamTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum RamBaseTableColumn {
     CLK,
     RAMP,
     RAMV,
     InverseOfRampDifference,
 }
 
-impl From<RamTableColumn> for usize {
-    fn from(c: RamTableColumn) -> Self {
-        use RamTableColumn::*;
-
-        match c {
-            CLK => 0,
-            RAMP => 1,
-            RAMV => 2,
-            InverseOfRampDifference => 3,
-        }
+impl From<RamBaseTableColumn> for usize {
+    fn from(column: RamBaseTableColumn) -> Self {
+        RamBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl Bounded for RamTableColumn {
+impl Bounded for RamBaseTableColumn {
     fn min_value() -> Self {
-        RamTableColumn::CLK
+        RamBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        RamTableColumn::InverseOfRampDifference
+        RamBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtRamTableColumn {
-    BaseColumn(RamTableColumn),
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum RamExtTableColumn {
     RunningProductPermArg,
 }
 
-impl From<ExtRamTableColumn> for usize {
-    fn from(c: ExtRamTableColumn) -> Self {
-        use ExtRamTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            RunningProductPermArg => 4,
-        }
+impl From<RamExtTableColumn> for usize {
+    fn from(column: RamExtTableColumn) -> Self {
+        RamExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + RamBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl Bounded for ExtRamTableColumn {
+impl Bounded for RamExtTableColumn {
     fn min_value() -> Self {
-        ExtRamTableColumn::BaseColumn(RamTableColumn::min_value())
+        RamExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtRamTableColumn::RunningProductPermArg
+        RamExtTableColumn::iter().last().unwrap()
     }
 }
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-pub enum JumpStackTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum JumpStackBaseTableColumn {
     CLK,
     CI,
     JSP,
@@ -470,61 +336,55 @@ pub enum JumpStackTableColumn {
     JSD,
 }
 
-impl From<JumpStackTableColumn> for usize {
-    fn from(c: JumpStackTableColumn) -> Self {
-        use JumpStackTableColumn::*;
-
-        match c {
-            CLK => 0,
-            CI => 1,
-            JSP => 2,
-            JSO => 3,
-            JSD => 4,
-        }
+impl From<JumpStackBaseTableColumn> for usize {
+    fn from(column: JumpStackBaseTableColumn) -> Self {
+        JumpStackBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl Bounded for JumpStackTableColumn {
+impl Bounded for JumpStackBaseTableColumn {
     fn min_value() -> Self {
-        JumpStackTableColumn::CLK
+        JumpStackBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        JumpStackTableColumn::JSD
+        JumpStackBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtJumpStackTableColumn {
-    BaseColumn(JumpStackTableColumn),
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum JumpStackExtTableColumn {
     RunningProductPermArg,
 }
 
-impl From<ExtJumpStackTableColumn> for usize {
-    fn from(c: ExtJumpStackTableColumn) -> Self {
-        use ExtJumpStackTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            RunningProductPermArg => 5,
-        }
+impl From<JumpStackExtTableColumn> for usize {
+    fn from(column: JumpStackExtTableColumn) -> Self {
+        JumpStackExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + JumpStackBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl Bounded for ExtJumpStackTableColumn {
+impl Bounded for JumpStackExtTableColumn {
     fn min_value() -> Self {
-        ExtJumpStackTableColumn::BaseColumn(JumpStackTableColumn::min_value())
+        JumpStackExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtJumpStackTableColumn::RunningProductPermArg
+        JumpStackExtTableColumn::iter().last().unwrap()
     }
 }
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HashTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum HashBaseTableColumn {
     ROUNDNUMBER,
     STATE0,
     STATE1,
@@ -576,164 +436,64 @@ pub enum HashTableColumn {
     CONSTANT15B,
 }
 
-impl From<HashTableColumn> for usize {
-    fn from(c: HashTableColumn) -> Self {
-        use HashTableColumn::*;
-
-        match c {
-            ROUNDNUMBER => 0,
-            STATE0 => 1,
-            STATE1 => 2,
-            STATE2 => 3,
-            STATE3 => 4,
-            STATE4 => 5,
-            STATE5 => 6,
-            STATE6 => 7,
-            STATE7 => 8,
-            STATE8 => 9,
-            STATE9 => 10,
-            STATE10 => 11,
-            STATE11 => 12,
-            STATE12 => 13,
-            STATE13 => 14,
-            STATE14 => 15,
-            STATE15 => 16,
-            CONSTANT0A => 17,
-            CONSTANT1A => 18,
-            CONSTANT2A => 19,
-            CONSTANT3A => 20,
-            CONSTANT4A => 21,
-            CONSTANT5A => 22,
-            CONSTANT6A => 23,
-            CONSTANT7A => 24,
-            CONSTANT8A => 25,
-            CONSTANT9A => 26,
-            CONSTANT10A => 27,
-            CONSTANT11A => 28,
-            CONSTANT12A => 29,
-            CONSTANT13A => 30,
-            CONSTANT14A => 31,
-            CONSTANT15A => 32,
-            CONSTANT0B => 33,
-            CONSTANT1B => 34,
-            CONSTANT2B => 35,
-            CONSTANT3B => 36,
-            CONSTANT4B => 37,
-            CONSTANT5B => 38,
-            CONSTANT6B => 39,
-            CONSTANT7B => 40,
-            CONSTANT8B => 41,
-            CONSTANT9B => 42,
-            CONSTANT10B => 43,
-            CONSTANT11B => 44,
-            CONSTANT12B => 45,
-            CONSTANT13B => 46,
-            CONSTANT14B => 47,
-            CONSTANT15B => 48,
-        }
+impl From<HashBaseTableColumn> for usize {
+    fn from(column: HashBaseTableColumn) -> Self {
+        HashBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl From<usize> for HashTableColumn {
+impl From<usize> for HashBaseTableColumn {
     fn from(idx: usize) -> Self {
-        match idx {
-            0 => ROUNDNUMBER,
-            1 => STATE0,
-            2 => STATE1,
-            3 => STATE2,
-            4 => STATE3,
-            5 => STATE4,
-            6 => STATE5,
-            7 => STATE6,
-            8 => STATE7,
-            9 => STATE8,
-            10 => STATE9,
-            11 => STATE10,
-            12 => STATE11,
-            13 => STATE12,
-            14 => STATE13,
-            15 => STATE14,
-            16 => STATE15,
-            17 => CONSTANT0A,
-            18 => CONSTANT1A,
-            19 => CONSTANT2A,
-            20 => CONSTANT3A,
-            21 => CONSTANT4A,
-            22 => CONSTANT5A,
-            23 => CONSTANT6A,
-            24 => CONSTANT7A,
-            25 => CONSTANT8A,
-            26 => CONSTANT9A,
-            27 => CONSTANT10A,
-            28 => CONSTANT11A,
-            29 => CONSTANT12A,
-            30 => CONSTANT13A,
-            31 => CONSTANT14A,
-            32 => CONSTANT15A,
-            33 => CONSTANT0B,
-            34 => CONSTANT1B,
-            35 => CONSTANT2B,
-            36 => CONSTANT3B,
-            37 => CONSTANT4B,
-            38 => CONSTANT5B,
-            39 => CONSTANT6B,
-            40 => CONSTANT7B,
-            41 => CONSTANT8B,
-            42 => CONSTANT9B,
-            43 => CONSTANT10B,
-            44 => CONSTANT11B,
-            45 => CONSTANT12B,
-            46 => CONSTANT13B,
-            47 => CONSTANT14B,
-            48 => CONSTANT15B,
-            _ => panic!("No Hash Table column with index {idx} exists."),
-        }
+        HashBaseTableColumn::iter()
+            .get(idx)
+            .expect("No Hash Table column with index {idx} exists.")
     }
 }
 
-impl Bounded for HashTableColumn {
+impl Bounded for HashBaseTableColumn {
     fn min_value() -> Self {
-        HashTableColumn::ROUNDNUMBER
+        HashBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        HashTableColumn::CONSTANT15B
+        HashBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtHashTableColumn {
-    BaseColumn(HashTableColumn),
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum HashExtTableColumn {
     ToProcessorRunningEvaluation,
     FromProcessorRunningEvaluation,
 }
 
-impl From<ExtHashTableColumn> for usize {
-    fn from(c: ExtHashTableColumn) -> Self {
-        use ExtHashTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            FromProcessorRunningEvaluation => 49,
-            ToProcessorRunningEvaluation => 50,
-        }
+impl From<HashExtTableColumn> for usize {
+    fn from(column: HashExtTableColumn) -> Self {
+        HashExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + HashBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl Bounded for ExtHashTableColumn {
+impl Bounded for HashExtTableColumn {
     fn min_value() -> Self {
-        ExtHashTableColumn::BaseColumn(HashTableColumn::min_value())
+        HashExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtHashTableColumn::ToProcessorRunningEvaluation
+        HashExtTableColumn::iter().last().unwrap()
     }
 }
 
 // --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Copy)]
-pub enum U32OpTableColumn {
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum U32OpBaseTableColumn {
     IDC,
     Bits,
     Inv33MinusBits,
@@ -748,61 +508,48 @@ pub enum U32OpTableColumn {
     RHSInv,
 }
 
-impl From<U32OpTableColumn> for usize {
-    fn from(c: U32OpTableColumn) -> Self {
-        use U32OpTableColumn::*;
-
-        match c {
-            IDC => 0,
-            Bits => 1,
-            Inv33MinusBits => 2,
-            CI => 3,
-            LHS => 4,
-            RHS => 5,
-            LT => 6,
-            AND => 7,
-            XOR => 8,
-            REV => 9,
-            LHSInv => 10,
-            RHSInv => 11,
-        }
+impl From<U32OpBaseTableColumn> for usize {
+    fn from(column: U32OpBaseTableColumn) -> Self {
+        U32OpBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
     }
 }
 
-impl Bounded for U32OpTableColumn {
+impl Bounded for U32OpBaseTableColumn {
     fn min_value() -> Self {
-        U32OpTableColumn::IDC
+        U32OpBaseTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        U32OpTableColumn::RHSInv
+        U32OpBaseTableColumn::iter().last().unwrap()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ExtU32OpTableColumn {
-    BaseColumn(U32OpTableColumn),
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+pub enum U32OpExtTableColumn {
     RunningProductPermArg,
 }
 
-impl From<ExtU32OpTableColumn> for usize {
-    fn from(c: ExtU32OpTableColumn) -> Self {
-        use ExtU32OpTableColumn::*;
-
-        match c {
-            BaseColumn(base_column) => base_column.into(),
-            RunningProductPermArg => 12,
-        }
+impl From<U32OpExtTableColumn> for usize {
+    fn from(column: U32OpExtTableColumn) -> Self {
+        U32OpExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + U32OpBaseTableColumn::COUNT)
+            .unwrap()
     }
 }
 
-impl Bounded for ExtU32OpTableColumn {
+impl Bounded for U32OpExtTableColumn {
     fn min_value() -> Self {
-        ExtU32OpTableColumn::BaseColumn(U32OpTableColumn::min_value())
+        U32OpExtTableColumn::iter().next().unwrap()
     }
 
     fn max_value() -> Self {
-        ExtU32OpTableColumn::RunningProductPermArg
+        U32OpExtTableColumn::iter().last().unwrap()
     }
 }
 
@@ -847,57 +594,57 @@ mod table_column_tests {
             TestCase::new(
                 program_table::BASE_WIDTH,
                 program_table::FULL_WIDTH,
-                ProgramTableColumn::max_value().into(),
-                ExtProgramTableColumn::max_value().into(),
+                ProgramBaseTableColumn::max_value().into(),
+                ProgramExtTableColumn::max_value().into(),
                 "ProgramTable",
             ),
             TestCase::new(
                 instruction_table::BASE_WIDTH,
                 instruction_table::FULL_WIDTH,
-                InstructionTableColumn::max_value().into(),
-                ExtInstructionTableColumn::max_value().into(),
+                InstructionBaseTableColumn::max_value().into(),
+                InstructionExtTableColumn::max_value().into(),
                 "InstructionTable",
             ),
             TestCase::new(
                 processor_table::BASE_WIDTH,
                 processor_table::FULL_WIDTH,
-                ProcessorTableColumn::max_value().into(),
-                ExtProcessorTableColumn::max_value().into(),
+                ProcessorBaseTableColumn::max_value().into(),
+                ProcessorExtTableColumn::max_value().into(),
                 "ProcessorTable",
             ),
             TestCase::new(
                 op_stack_table::BASE_WIDTH,
                 op_stack_table::FULL_WIDTH,
-                OpStackTableColumn::max_value().into(),
-                ExtOpStackTableColumn::max_value().into(),
+                OpStackBaseTableColumn::max_value().into(),
+                OpStackExtTableColumn::max_value().into(),
                 "OpStackTable",
             ),
             TestCase::new(
                 ram_table::BASE_WIDTH,
                 ram_table::FULL_WIDTH,
-                RamTableColumn::max_value().into(),
-                ExtRamTableColumn::max_value().into(),
+                RamBaseTableColumn::max_value().into(),
+                RamExtTableColumn::max_value().into(),
                 "RamTable",
             ),
             TestCase::new(
                 jump_stack_table::BASE_WIDTH,
                 jump_stack_table::FULL_WIDTH,
-                JumpStackTableColumn::max_value().into(),
-                ExtJumpStackTableColumn::max_value().into(),
+                JumpStackBaseTableColumn::max_value().into(),
+                JumpStackExtTableColumn::max_value().into(),
                 "JumpStackTable",
             ),
             TestCase::new(
                 hash_table::BASE_WIDTH,
                 hash_table::FULL_WIDTH,
-                HashTableColumn::max_value().into(),
-                ExtHashTableColumn::max_value().into(),
+                HashBaseTableColumn::max_value().into(),
+                HashExtTableColumn::max_value().into(),
                 "HashTable",
             ),
             TestCase::new(
                 u32_op_table::BASE_WIDTH,
                 u32_op_table::FULL_WIDTH,
-                U32OpTableColumn::max_value().into(),
-                ExtU32OpTableColumn::max_value().into(),
+                U32OpBaseTableColumn::max_value().into(),
+                U32OpExtTableColumn::max_value().into(),
                 "U32OpTable",
             ),
         ];
