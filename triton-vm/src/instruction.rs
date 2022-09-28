@@ -1,13 +1,17 @@
-use super::ord_n::{Ord16, Ord16::*, Ord7};
-use num_traits::One;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Display;
 use std::ops::Neg;
 use std::str::SplitWhitespace;
+
+use num_traits::One;
+use strum_macros::EnumCount as EnumCountMacro;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+
 use AnInstruction::*;
 use TokenError::*;
+
+use super::ord_n::{Ord16, Ord16::*, Ord7};
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -37,7 +41,7 @@ impl Display for LabelledInstruction {
 /// https://neptune.builders/core-team/triton-vm/src/branch/master/specification/isa.md
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
 pub enum AnInstruction<Dest> {
     // OpStack manipulation
     Pop,
@@ -70,6 +74,7 @@ pub enum AnInstruction<Dest> {
     Invert,
     Split,
     Eq,
+    Lsb,
     Lt,
     And,
     Xor,
@@ -118,6 +123,7 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
             Invert => write!(f, "invert"),
             Split => write!(f, "split"),
             Eq => write!(f, "eq"),
+            Lsb => write!(f, "lsb"),
             Lt => write!(f, "lt"),
             And => write!(f, "and"),
             Xor => write!(f, "xor"),
@@ -170,6 +176,7 @@ impl<Dest> AnInstruction<Dest> {
             Invert => 40,
             Split => 44,
             Eq => 22,
+            Lsb => 72,
             Lt => 26,
             And => 30,
             Xor => 34,
@@ -226,6 +233,7 @@ impl<Dest> AnInstruction<Dest> {
         F: Fn(&Dest) -> NewDest,
     {
         match self {
+            // Fixme: can we treat everything that doesn't change with the same line of code?
             Pop => Pop,
             Push(x) => Push(*x),
             Divine => Divine,
@@ -248,6 +256,7 @@ impl<Dest> AnInstruction<Dest> {
             Invert => Invert,
             Split => Split,
             Eq => Eq,
+            Lsb => Lsb,
             Lt => Lt,
             And => And,
             Xor => Xor,
@@ -314,6 +323,7 @@ impl TryFrom<u32> for Instruction {
             38 => Ok(XbMul),
             68 => Ok(ReadIo),
             42 => Ok(WriteIo),
+            72 => Ok(Lsb),
             _ => Err(format!("No instruction with opcode {} exists.", opcode)),
         }
     }
@@ -484,6 +494,7 @@ fn parse_token(
         "invert" => vec![Invert],
         "split" => vec![Split],
         "eq" => vec![Eq],
+        "lsb" => vec![Lsb],
         "lt" => vec![Lt],
         "and" => vec![And],
         "xor" => vec![Xor],
@@ -536,7 +547,7 @@ fn parse_label(tokens: &mut SplitWhitespace) -> Result<String, Box<dyn Error>> {
 }
 
 pub fn all_instructions_without_args() -> Vec<Instruction> {
-    vec![
+    let all_instructions = vec![
         Pop,
         Push(Default::default()),
         Divine,
@@ -559,18 +570,15 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         Invert,
         Split,
         Eq,
-        Lt,
-        And,
-        Xor,
-        Reverse,
-        Div,
+        Lsb,
         XxAdd,
         XxMul,
         XInvert,
         XbMul,
         ReadIo,
         WriteIo,
-    ]
+    ];
+    all_instructions
 }
 
 pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
@@ -626,6 +634,7 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Invert,
         Split,
         Eq,
+        Lsb,
         Lt,
         And,
         Xor,
@@ -1023,7 +1032,7 @@ terminate: pop
         call foo
 
         return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
-        add mul invert split eq lt and xor reverse div xxadd xxmul xinvert xbmul
+        add mul invert split eq lsb lt and xor reverse div xxadd xxmul xinvert xbmul
 
         read_io write_io
     ";
@@ -1081,6 +1090,7 @@ terminate: pop
             "invert",
             "split",
             "eq",
+            "lsb",
             "lt",
             "and",
             "xor",
@@ -1104,10 +1114,11 @@ mod instruction_tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
 
-    use super::{all_instructions_without_args, parse, sample_programs};
     use crate::instruction::all_labelled_instructions_with_args;
     use crate::ord_n::Ord7;
     use crate::vm::Program;
+
+    use super::{all_instructions_without_args, parse, sample_programs};
 
     #[test]
     fn parse_display_push_pop_test() {

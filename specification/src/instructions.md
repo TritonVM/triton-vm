@@ -72,22 +72,18 @@ In conjunction with instruction `hash` and `assert_vector`, the instruction `div
 
 ## Arithmetic on Stack
 
-| Instruction | Value | old OpStack     | new OpStack     | Description                                                                                                                                                           |
-|:------------|:------|:----------------|:----------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `add`       | ?     | `_ b a`         | `_ c`           | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                             |
-| `mul`       | ?     | `_ b a`         | `_ c`           | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                         |
-| `invert`    | ?     | `_ a`           | `_ b`           | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                            |
-| `split`     | ?     | `_ a`           | `_ lo hi`       | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                         |
-| `eq`        | ?     | `_ b a`         | `_ (a == b)`    | Tests the top two stack elements for equality.                                                                                                                        |
-| `lt`        | ?     | `_ b a`         | `_ (a < b)`     | Tests if the top element on the stack is less than the one-from top element, assuming both are 32-bit integers.                                                       |
-| `and`       | ?     | `_ b a`         | `_ (a and b)`   | Computes the bitwise-and of the top two stack elements, assuming both are 32-bit integers.                                                                            |
-| `xor`       | ?     | `_ b a`         | `_ (a xor b)`   | Computes the bitwise-xor of the top two stack elements, assuming both are 32-bit integers.                                                                            |
-| `reverse`   | ?     | `_ a`           | `_ b`           | Reverses the bit expansion of the top stack element, assuming it is a 32-bit integer.                                                                                 |
-| `div`       | ?     | `_ d n`         | `_ q r`         | Computes division with remainder of the top two stack elements, assuming both arguments are unsigned 32-bit integers. The result satisfies `n == d·q + r`and `r < d`. |
-| `xxadd`     | ?     | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                |
-| `xxmul`     | ?     | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.          |
-| `xinvert`   | ?     | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                   |
-| `xbmul`     | ?     | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.                    |
+| Instruction | Value | old OpStack     | new OpStack          | Description                                                                                                                                                                     |
+|:------------|:------|:----------------|:---------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `add`       | ?     | `_ b a`         | `_ c`                | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                       |
+| `mul`       | ?     | `_ b a`         | `_ c`                | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                   |
+| `invert`    | ?     | `_ a`           | `_ b`                | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                      |
+| `split`     | ?     | `_ a`           | `_ lo hi`            | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits. Use with care, preferably through [pseudo instructions](pseudo-instructions.md).                  |
+| `eq`        | ?     | `_ b a`         | `_ (a == b)`         | Tests the top two stack elements for equality.                                                                                                                                  |
+| `lsb`       | ?     | `_ a`           | `_ (a >> 1) (a % 2)` | Bit-shifts `a` to the right by 1 bit and pushes the least significant bit of `a` to the stack. Use with care, preferably through [pseudo instructions](pseudo-instructions.md). |
+| `xxadd`     | ?     | `_ z y x b c a` | `_ z y x w v u`      | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                          |
+| `xxmul`     | ?     | `_ z y x b c a` | `_ z y x w v u`      | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                    |
+| `xinvert`   | ?     | `_ z y x`       | `_ w v u`            | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                             |
+| `xbmul`     | ?     | `_ z y x a`     | `_ w v u`            | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.                              |
 
 ## Input/Output
 

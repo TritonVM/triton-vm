@@ -716,11 +716,7 @@ impl ExtProcessorTable {
             (Invert, factory.instruction_invert()),
             (Split, factory.instruction_split()),
             (Eq, factory.instruction_eq()),
-            (Lt, factory.instruction_lt()),
-            (And, factory.instruction_and()),
-            (Xor, factory.instruction_xor()),
-            (Reverse, factory.instruction_reverse()),
-            (Div, factory.instruction_div()),
+            (Lsb, factory.instruction_lsb()),
             (XxAdd, factory.instruction_xxadd()),
             (XxMul, factory.instruction_xxmul()),
             (XInvert, factory.instruction_xinv()),
@@ -1431,6 +1427,20 @@ impl RowPairConstraints {
             hv0_is_inverse_of_diff_or_diff_is_0,
             st0_becomes_1_if_diff_is_not_invertible,
         ]
+    }
+
+    /// 1. The lsb is a bit
+    /// 2. The operand decomposes into right-shifted operand and the lsb
+    pub fn instruction_lsb(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let operand = self.variables[usize::from(ST0)].clone();
+        let shifted_operand = self.variables[FULL_WIDTH + usize::from(ST1)].clone();
+        let lsb = self.variables[FULL_WIDTH + usize::from(ST0)].clone();
+
+        let lsb_is_a_bit = lsb.clone() * (lsb.clone() - self.one());
+
+        let correct_decomposition = self.two() * shifted_operand + lsb - operand;
+
+        vec![lsb_is_a_bit, correct_decomposition]
     }
 
     /// This instruction has no additional transition constraints.
@@ -2474,6 +2484,7 @@ mod constraint_polynomial_tests {
             Invert => tc.instruction_invert(),
             Split => tc.instruction_split(),
             Eq => tc.instruction_eq(),
+            Lsb => tc.instruction_lsb(),
             Lt => tc.instruction_lt(),
             And => tc.instruction_and(),
             Xor => tc.instruction_xor(),
@@ -2631,6 +2642,15 @@ mod constraint_polynomial_tests {
             get_test_row_from_source_code("push 3 push 2 eq push 0 eq assert halt", 2),
         ];
         test_constraints_for_rows_with_debug_info(Eq, &test_rows, &[ST0, ST1, HV0], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_lsb_test() {
+        let test_rows = [get_test_row_from_source_code(
+            "push 3 lsb assert assert halt",
+            1,
+        )];
+        test_constraints_for_rows_with_debug_info(Lsb, &test_rows, &[ST0], &[ST0, ST1]);
     }
 
     #[test]

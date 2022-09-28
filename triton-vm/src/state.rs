@@ -382,6 +382,14 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 1;
             }
 
+            Lsb => {
+                let top = self.op_stack.pop()?;
+                let lsb = BFieldElement::new(top.value() & 1);
+                self.op_stack.push(BFieldElement::new(top.value() >> 1));
+                self.op_stack.push(lsb);
+                self.instruction_pointer += 1;
+            }
+
             Lt => {
                 let lhs: u32 = self.op_stack.pop_u32()?;
                 let rhs: u32 = self.op_stack.pop_u32()?;

@@ -602,6 +602,10 @@ pub mod triton_vm_tests {
         }
     }
 
+    pub fn test_program_for_lsb() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 3 lsb assert assert halt")
+    }
+
     pub fn test_program_for_lt() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 3 push 2 lt assert halt")
     }
@@ -661,6 +665,7 @@ pub mod triton_vm_tests {
             test_program_for_add_mul_invert(),
             test_program_for_instruction_split(),
             test_program_for_eq(),
+            test_program_for_lsb(),
             test_program_for_lt(),
             test_program_for_and(),
             test_program_for_xor(),
