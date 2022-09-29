@@ -162,8 +162,9 @@ impl AllChallenges {
         }
     }
 
-    /// Only intended for debugging purposes. In a production STARK, use Fiat-Shamir instead.
-    pub fn dummy() -> Self {
+    /// Stand-in challenges. Can be used for deriving degree bounds and in tests. For non-
+    /// interactive STARKs, use Fiat-Shamir to derive the actual challenges.
+    pub fn placeholder() -> Self {
         let mut rng = thread_rng();
         let random_challenges = XFieldElement::random_elements(Self::TOTAL_CHALLENGES, &mut rng);
 

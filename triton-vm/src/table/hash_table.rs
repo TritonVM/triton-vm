@@ -697,7 +697,7 @@ mod constraint_tests {
 
         let ext_hash_table =
             HashTable::new_prover(aet.hash_matrix.iter().map(|r| r.to_vec()).collect()).extend(
-                &AllChallenges::dummy().hash_table_challenges,
+                &AllChallenges::placeholder().hash_table_challenges,
                 interpolant_degree,
             );
 

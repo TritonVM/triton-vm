@@ -1134,7 +1134,7 @@ pub(crate) mod triton_stark_tests {
 
         base_tables.pad();
 
-        let dummy_challenges = AllChallenges::dummy();
+        let dummy_challenges = AllChallenges::placeholder();
         let ext_tables = ExtTableCollection::extend_tables(
             &base_tables,
             &dummy_challenges,

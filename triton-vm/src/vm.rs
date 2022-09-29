@@ -706,7 +706,7 @@ pub mod triton_vm_tests {
             let num_trace_randomizers = 2;
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let ext_processor_table = processor_table.extend(
-                &AllChallenges::dummy().processor_table_challenges,
+                &AllChallenges::placeholder().processor_table_challenges,
                 interpolant_degree,
             );
 

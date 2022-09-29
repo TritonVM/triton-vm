@@ -420,7 +420,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let max_degrees = vec![interpolant_degree; self.full_width()];
             let zerofier_degree = 1;
-            self.dynamic_initial_constraints(&AllChallenges::dummy())
+            self.dynamic_initial_constraints(&AllChallenges::placeholder())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()
@@ -438,7 +438,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let max_degrees = vec![interpolant_degree; self.full_width()];
             let zerofier_degree = padded_height as Degree;
-            self.dynamic_consistency_constraints(&AllChallenges::dummy())
+            self.dynamic_consistency_constraints(&AllChallenges::placeholder())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()
@@ -456,7 +456,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let max_degrees = vec![interpolant_degree; 2 * self.full_width()];
             let zerofier_degree = padded_height as Degree - 1;
-            self.dynamic_transition_constraints(&AllChallenges::dummy())
+            self.dynamic_transition_constraints(&AllChallenges::placeholder())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()
@@ -474,7 +474,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let max_degrees = vec![interpolant_degree; self.full_width()];
             let zerofier_degree = 1 as Degree;
-            self.dynamic_terminal_constraints(&AllChallenges::dummy())
+            self.dynamic_terminal_constraints(&AllChallenges::placeholder())
                 .iter()
                 .map(|air| air.symbolic_degree_bound(&max_degrees) - zerofier_degree)
                 .collect()
