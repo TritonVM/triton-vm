@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -12,8 +13,8 @@ use crate::table::extension_table::Evaluable;
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::InstructionBaseTableColumn::*;
-use super::table_column::InstructionExtTableColumn::*;
+use super::table_column::InstructionBaseTableColumn::{self, *};
+use super::table_column::InstructionExtTableColumn::{self, *};
 
 pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
@@ -21,10 +22,8 @@ pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
 /// This is 6 because it combines: (ip, ci, nia) and (addr, instruction, next_instruction).
 pub const INSTRUCTION_TABLE_NUM_EXTENSION_CHALLENGES: usize = 6;
 
-pub const BASE_WIDTH: usize = 4;
-pub const FULL_WIDTH: usize = BASE_WIDTH
-    + INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS
-    + INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS;
+pub const BASE_WIDTH: usize = InstructionBaseTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + InstructionExtTableColumn::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct InstructionTable {

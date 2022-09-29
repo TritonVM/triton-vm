@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -9,13 +10,12 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::JumpStackBaseTableColumn;
-use crate::table::table_column::JumpStackExtTableColumn::*;
+use crate::table::table_column::JumpStackBaseTableColumn::{self, *};
+use crate::table::table_column::JumpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::JumpStackBaseTableColumn::*;
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -23,10 +23,8 @@ pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 /// This is 5 because it combines: clk, ci, jsp, jso, jsd,
 pub const JUMP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = 5;
 
-pub const BASE_WIDTH: usize = 5;
-pub const FULL_WIDTH: usize = BASE_WIDTH
-    + JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS
-    + JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS;
+pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + JumpStackExtTableColumn::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct JumpStackTable {

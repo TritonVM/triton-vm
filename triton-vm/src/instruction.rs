@@ -5,6 +5,7 @@ use std::ops::Neg;
 use std::str::SplitWhitespace;
 
 use num_traits::One;
+use strum::EnumCount;
 use strum_macros::EnumCount as EnumCountMacro;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
@@ -724,6 +725,7 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         ReadIo,
         WriteIo,
     ];
+    assert_eq!(Instruction::COUNT, all_instructions.len());
     all_instructions
 }
 

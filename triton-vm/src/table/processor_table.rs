@@ -3,6 +3,7 @@ use std::ops::Add;
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
@@ -16,7 +17,7 @@ use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::{Evaluable, ExtensionTable};
 use crate::table::table_column::ProcessorBaseTableColumn::{self, *};
-use crate::table::table_column::ProcessorExtTableColumn::*;
+use crate::table::table_column::ProcessorExtTableColumn::{self, *};
 
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
 
@@ -26,10 +27,8 @@ pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 4;
 /// This is 43 because it combines all other tables (except program).
 pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = 43;
 
-pub const BASE_WIDTH: usize = 38;
-pub const FULL_WIDTH: usize = BASE_WIDTH
-    + PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS
-    + PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS;
+pub const BASE_WIDTH: usize = ProcessorBaseTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + ProcessorExtTableColumn::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorTable {
@@ -671,6 +670,10 @@ impl ExtProcessorTable {
             (ReadIo, factory.instruction_read_io()),
             (WriteIo, factory.instruction_write_io()),
         ];
+        assert_eq!(
+            Instruction::COUNT,
+            all_instruction_transition_constraints.len()
+        );
 
         let mut transition_constraints = Self::combine_transition_constraints_with_deselectors(
             all_instruction_transition_constraints,

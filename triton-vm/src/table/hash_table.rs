@@ -1,30 +1,29 @@
 use std::ops::Add;
 use std::ops::Mul;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::{
-    ALPHA, CAPACITY, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
+    ALPHA, CAPACITY, DIGEST_LENGTH, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
 };
 use twenty_first::shared_math::traits::ModPowU64;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_collection::interpolant_degree;
-use crate::table::table_column::HashBaseTableColumn::*;
-use crate::table::table_column::HashExtTableColumn::*;
+use crate::table::table_column::HashBaseTableColumn::{self, *};
+use crate::table::table_column::HashExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::HashBaseTableColumn;
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
@@ -32,9 +31,8 @@ pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
 /// This is 15 because it combines: 10 stack_input_weights and 5 digest_output_weights.
 pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = 15;
 
-pub const BASE_WIDTH: usize = 49;
-pub const FULL_WIDTH: usize =
-    BASE_WIDTH + HASH_TABLE_NUM_PERMUTATION_ARGUMENTS + HASH_TABLE_NUM_EVALUATION_ARGUMENTS;
+pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + HashExtTableColumn::COUNT;
 
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE * 2;
 pub const TOTAL_NUM_CONSTANTS: usize = NUM_ROUND_CONSTANTS * NUM_ROUNDS;

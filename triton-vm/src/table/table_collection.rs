@@ -580,4 +580,35 @@ mod table_collection_tests {
         );
         assert_eq!(hash_table::FULL_WIDTH, ext_tables.hash_table.full_width());
     }
+
+    /// intended use: `cargo t print_all_table_widths -- --nocapture`
+    #[test]
+    fn print_all_table_widths() {
+        println!("| table name         | #base cols | #ext cols | full width |");
+        println!("|:-------------------|-----------:|----------:|-----------:|");
+        for table in dummy_ext_table_collection().into_iter() {
+            println!(
+                "| {:<18} | {:>10} | {:>9} | {:>10} |",
+                table.name().split_off(8),
+                table.base_width(),
+                table.full_width() - table.base_width(),
+                table.full_width(),
+            );
+        }
+        let sum_base_columns: usize = dummy_ext_table_collection()
+            .into_iter()
+            .map(|table| table.base_width())
+            .sum();
+        let sum_full_widths: usize = dummy_ext_table_collection()
+            .into_iter()
+            .map(|table| table.full_width())
+            .sum();
+        println!("|                    |            |           |            |");
+        println!(
+            "| Sum                | {:>10} | {:>9} | {:>10} |",
+            sum_base_columns,
+            sum_full_widths - sum_base_columns,
+            sum_full_widths
+        );
+    }
 }

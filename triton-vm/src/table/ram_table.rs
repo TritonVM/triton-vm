@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::Zero;
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -8,12 +9,12 @@ use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::RamExtTableColumn::*;
+use crate::table::table_column::RamBaseTableColumn::{self, *};
+use crate::table::table_column::RamExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::RamBaseTableColumn::{self, *};
 
 pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -21,9 +22,8 @@ pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 /// This is 3 because it combines: clk, ramv, ramp
 pub const RAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = 3;
 
-pub const BASE_WIDTH: usize = 4;
-pub const FULL_WIDTH: usize =
-    BASE_WIDTH + RAM_TABLE_NUM_PERMUTATION_ARGUMENTS + RAM_TABLE_NUM_EVALUATION_ARGUMENTS;
+pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + RamExtTableColumn::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct RamTable {

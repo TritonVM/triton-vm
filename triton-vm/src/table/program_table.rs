@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -8,8 +9,8 @@ use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::ProgramBaseTableColumn::*;
-use crate::table::table_column::ProgramExtTableColumn::*;
+use crate::table::table_column::ProgramBaseTableColumn::{self, *};
+use crate::table::table_column::ProgramExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
@@ -21,9 +22,8 @@ pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
 /// This is 3 because it combines: addr, instruction, instruction in next row
 pub const PROGRAM_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 3;
 
-pub const BASE_WIDTH: usize = 3;
-pub const FULL_WIDTH: usize =
-    BASE_WIDTH + PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS + PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS;
+pub const BASE_WIDTH: usize = ProgramBaseTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + ProgramExtTableColumn::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct ProgramTable {
