@@ -75,11 +75,7 @@ pub enum AnInstruction<Dest> {
     Split,
     Eq,
     Lsb,
-    Lt,
-    And,
-    Xor,
-    Reverse,
-    Div,
+
     XxAdd,
     XxMul,
     XInvert,
@@ -124,11 +120,7 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
             Split => write!(f, "split"),
             Eq => write!(f, "eq"),
             Lsb => write!(f, "lsb"),
-            Lt => write!(f, "lt"),
-            And => write!(f, "and"),
-            Xor => write!(f, "xor"),
-            Reverse => write!(f, "reverse"),
-            Div => write!(f, "div"),
+
             XxAdd => write!(f, "xxadd"),
             XxMul => write!(f, "xxmul"),
             XInvert => write!(f, "xinvert"),
@@ -177,11 +169,6 @@ impl<Dest> AnInstruction<Dest> {
             Split => 44,
             Eq => 22,
             Lsb => 72,
-            Lt => 26,
-            And => 30,
-            Xor => 34,
-            Reverse => 48,
-            Div => 52,
 
             XxAdd => 56,
             XxMul => 60,
@@ -205,7 +192,7 @@ impl<Dest> AnInstruction<Dest> {
     }
 
     pub fn is_u32_op(&self) -> bool {
-        matches!(self, Lt | And | Xor | Reverse | Div)
+        false
     }
 
     pub fn opcode_b(&self) -> BFieldElement {
@@ -257,11 +244,6 @@ impl<Dest> AnInstruction<Dest> {
             Split => Split,
             Eq => Eq,
             Lsb => Lsb,
-            Lt => Lt,
-            And => And,
-            Xor => Xor,
-            Reverse => Reverse,
-            Div => Div,
             XxAdd => XxAdd,
             XxMul => XxMul,
             XInvert => XInvert,
@@ -312,11 +294,6 @@ impl TryFrom<u32> for Instruction {
             40 => Ok(Invert),
             44 => Ok(Split),
             22 => Ok(Eq),
-            26 => Ok(Lt),
-            30 => Ok(And),
-            34 => Ok(Xor),
-            48 => Ok(Reverse),
-            52 => Ok(Div),
             56 => Ok(XxAdd),
             60 => Ok(XxMul),
             64 => Ok(XInvert),
@@ -495,11 +472,6 @@ fn parse_token(
         "split" => vec![Split],
         "eq" => vec![Eq],
         "lsb" => vec![Lsb],
-        "lt" => vec![Lt],
-        "and" => vec![And],
-        "xor" => vec![Xor],
-        "reverse" => vec![Reverse],
-        "div" => vec![Div],
         "xxadd" => vec![XxAdd],
         "xxmul" => vec![XxMul],
         "xinvert" => vec![XInvert],
@@ -508,6 +480,16 @@ fn parse_token(
         // Pseudo-instructions
         "neg" => vec![Push(BFieldElement::one().neg()), Mul],
         "sub" => vec![Swap(ST1), Push(BFieldElement::one().neg()), Mul, Add],
+
+        "lte" => pseudo_instruction_lte(),
+        "lt" => pseudo_instruction_lt(),
+        "and" => pseudo_instruction_and(),
+        "xor" => pseudo_instruction_xor(),
+        "reverse" => pseudo_instruction_reverse(),
+        "div" => pseudo_instruction_div(),
+
+        "is_u32" => pseudo_instruction_is_u32(),
+        "split_assert" => pseudo_instruction_split_assert(),
 
         // Read/write
         "read_io" => vec![ReadIo],
@@ -522,6 +504,143 @@ fn parse_token(
         .collect();
 
     Ok(labelled_instruction)
+}
+
+fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
+    let mut instructions = vec![Dup(ST0)];
+    for _ in 0..32 {
+        instructions.push(Lsb);
+        instructions.push(Pop);
+    }
+    instructions.push(Push(0_u64.into()));
+    instructions.push(Eq);
+    instructions.push(Assert);
+    instructions
+}
+
+fn pseudo_instruction_split_assert() -> Vec<AnInstruction<String>> {
+    vec![
+        vec![Split],
+        pseudo_instruction_is_u32(),
+        vec![Swap(ST1)],
+        pseudo_instruction_is_u32(),
+        vec![Swap(ST1)],
+    ]
+    .concat()
+}
+
+fn pseudo_instruction_lte() -> Vec<AnInstruction<String>> {
+    vec![
+        vec![Push(-BFieldElement::new(1)), Mul, Add],
+        pseudo_instruction_split_assert(),
+        vec![Push(0_u64.into()), Eq, Swap(ST1), Pop],
+    ]
+    .concat()
+}
+
+fn pseudo_instruction_lt() -> Vec<AnInstruction<String>> {
+    vec![vec![Push(1_u64.into()), Add], pseudo_instruction_lte()].concat()
+}
+
+fn pseudo_instruction_div() -> Vec<AnInstruction<String>> {
+    vec![
+        vec![
+            Divine,
+            Dup(ST2),
+            Dup(ST1),
+            Mul,
+            Dup(ST2),
+            Swap(ST1),
+            Push(-BFieldElement::new(1)),
+            Mul,
+            Add,
+            Dup(ST3),
+            Dup(ST1),
+        ],
+        pseudo_instruction_lt(),
+        vec![Assert, Swap(ST2), Pop, Swap(ST2), Pop],
+    ]
+    .concat()
+}
+
+fn pseudo_instruction_and() -> Vec<AnInstruction<String>> {
+    let mut instructions = vec![];
+
+    // decompose into bits, interleaved
+    for _ in 0..32 {
+        // _ A||a B||b
+        instructions.push(Lsb);
+        // _ A||a B b
+        instructions.push(Swap(ST2));
+        // _ b B A||a
+        instructions.push(Lsb);
+        // _ b B A a
+        instructions.push(Swap(ST2));
+        // _ b a A B
+    }
+
+    // assert u32-ness of A & B
+    instructions.push(Push(0_u64.into()));
+    instructions.push(Eq);
+    instructions.push(Assert);
+    // _ (b a)^32 A
+    instructions.push(Push(0_u64.into()));
+    instructions.push(Eq);
+    instructions.push(Assert);
+    // _ (b a)^32
+
+    // start accumulating
+    instructions.push(Push(0_u64.into()));
+
+    for i in (0..32).rev() {
+        // _ (b a)^i b a acc
+        instructions.push(Swap(ST2));
+        // _ (b a)^i acc a b
+        instructions.push(Mul);
+        // _ (b a)^i acc a&b
+        instructions.push(Push((1_u64 << i).into()));
+        // _ (b a)^i acc (a&b) 2^i
+        instructions.push(Mul);
+        // _ (b a)^i acc (a&b)·2^i
+        instructions.push(Add);
+        // _ (b a)^i acc'
+    }
+
+    instructions
+}
+
+fn pseudo_instruction_xor() -> Vec<AnInstruction<String>> {
+    // a+b = a^b + (a&b)<<1 => a^b = a+b - 2·(a&b)
+    // Credit: Daniel Lubarov
+    vec![
+        vec![Dup(ST1), Dup(ST1)],
+        pseudo_instruction_and(),
+        vec![Push(-BFieldElement::new(2)), Mul, Add, Add],
+    ]
+    .concat()
+}
+
+fn pseudo_instruction_reverse() -> Vec<AnInstruction<String>> {
+    let mut instructions = vec![];
+
+    // decompose into bits
+    for _ in 0..32 {
+        instructions.push(Lsb);
+        instructions.push(Swap(ST1));
+    }
+    instructions.push(Push(0_u64.into()));
+    instructions.push(Eq);
+    instructions.push(Assert);
+
+    // start accumulating
+    instructions.push(Push(0_u64.into()));
+    for i in 0..32 {
+        instructions.push(Swap(ST1));
+        instructions.push(Push((1_u64 << i).into()));
+        instructions.push(Mul);
+        instructions.push(Add);
+    }
+    instructions
 }
 
 fn parse_elem(tokens: &mut SplitWhitespace) -> Result<BFieldElement, Box<dyn Error>> {
@@ -635,11 +754,6 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Split,
         Eq,
         Lsb,
-        Lt,
-        And,
-        Xor,
-        Reverse,
-        Div,
         XxAdd,
         XxMul,
         XInvert,
@@ -1032,7 +1146,7 @@ terminate: pop
         call foo
 
         return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
-        add mul invert split eq lsb lt and xor reverse div xxadd xxmul xinvert xbmul
+        add mul invert split eq lsb xxadd xxmul xinvert xbmul
 
         read_io write_io
     ";
@@ -1091,11 +1205,6 @@ terminate: pop
             "split",
             "eq",
             "lsb",
-            "lt",
-            "and",
-            "xor",
-            "reverse",
-            "div",
             "xxadd",
             "xxmul",
             "xinvert",

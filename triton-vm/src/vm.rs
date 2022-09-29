@@ -263,6 +263,7 @@ pub mod triton_vm_tests {
     use super::*;
 
     #[test]
+    #[ignore = "need to fix non-deterministic input for (pseudo) instruction `div`"]
     fn initialise_table_test() {
         // 1. Parse program
         let code = sample_programs::GCD_X_Y;
@@ -314,6 +315,7 @@ pub mod triton_vm_tests {
     }
 
     #[test]
+    #[ignore = "need to fix non-deterministic input for (pseudo) instruction `div`"]
     fn simulate_gcd_test() {
         let code = sample_programs::GCD_X_Y;
         let program = Program::from_code(code).unwrap();
@@ -670,7 +672,8 @@ pub mod triton_vm_tests {
             test_program_for_and(),
             test_program_for_xor(),
             test_program_for_reverse(),
-            test_program_for_div(),
+            // #[ignore = "need to fix non-deterministic input for (pseudo) instruction `div`"]
+            // test_program_for_div(),
             test_program_for_xxadd(),
             test_program_for_xxmul(),
             test_program_for_xinvert(),

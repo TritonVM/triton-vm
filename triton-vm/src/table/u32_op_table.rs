@@ -323,16 +323,8 @@ impl U32OpTable {
             if row[usize::from(U32OpBaseTableColumn::IDC)].is_one() {
                 let ci = extension_row[usize::from(U32OpBaseTableColumn::CI)];
                 let lhs = extension_row[usize::from(U32OpBaseTableColumn::LHS)];
-                let rhs = match current_instruction {
-                    Instruction::Reverse => 0.into(),
-                    _ => extension_row[usize::from(U32OpBaseTableColumn::RHS)],
-                };
+                let rhs = extension_row[usize::from(U32OpBaseTableColumn::RHS)];
                 let result = match current_instruction {
-                    Instruction::Lt => extension_row[usize::from(U32OpBaseTableColumn::LT)],
-                    Instruction::And => extension_row[usize::from(U32OpBaseTableColumn::AND)],
-                    Instruction::Xor => extension_row[usize::from(U32OpBaseTableColumn::XOR)],
-                    Instruction::Reverse => extension_row[usize::from(U32OpBaseTableColumn::REV)],
-                    Instruction::Div => extension_row[usize::from(U32OpBaseTableColumn::LT)],
                     // halt is used for padding
                     Instruction::Halt => XFieldElement::zero(),
                     x => panic!("Unknown instruction '{x}' in the U32 Table."),

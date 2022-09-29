@@ -227,30 +227,9 @@ impl ProcessorTable {
                     .expect("CI does not correspond to any instruction.");
 
                 if previous_instruction.is_u32_op() {
-                    let (lhs, rhs, u32_op_result) = match previous_instruction {
-                        // The `div` instruction is quite special, since it enforces the remainder
-                        // be smaller than the divisor. The result of the required implicit `lt`
-                        // operation _has_ to be 1, else the `div` instruction was not executed
-                        // correctly. Also, and in contrast to all other u32 instructions, the
-                        // operands `lhs` and `rhs` come from different rows.
-                        Instruction::Div => (
-                            extension_row[usize::from(ST0)], // remainder
-                            prow[usize::from(ST0)].lift(),   // divisor
-                            XFieldElement::one(), // result of U32 Table's `lt` (must be 1)
-                        ),
-                        // Since instruction `reverse` is a unary, not a binary, operation, the
-                        // right-hand side is unconstrained.
-                        Instruction::Reverse => (
-                            prow[usize::from(ST0)].lift(),
-                            XFieldElement::zero(),
-                            extension_row[usize::from(ST0)],
-                        ),
-                        _ => (
-                            prow[usize::from(ST0)].lift(),
-                            prow[usize::from(ST1)].lift(),
-                            extension_row[usize::from(ST0)],
-                        ),
-                    };
+                    let lhs = prow[ST0 as usize].lift();
+                    let rhs = prow[ST1 as usize].lift();
+                    let u32_op_result = extension_row[ST0 as usize];
 
                     let pi = prow[usize::from(CI)].lift();
                     let compressed_row_for_u32 = pi * challenges.u32_op_table_ci_weight
@@ -1349,44 +1328,21 @@ impl RowPairConstraints {
             self.st1_next() * (self.hv0() * diff - self.one())
         };
 
-        // Stack register st1 is moved into st2
-        //
-        // $st2' - st1 = 0$
         let st2_becomes_st1 = self.st2_next() - self.st1();
-
-        // Stack register st2 is moved into st3
-        //
-        // $st3' - st2 = 0$
         let st3_becomes_st2 = self.st3_next() - self.st2();
-
-        // Stack register st3 is moved into st4
-        //
-        // $st4' - st3 = 0$
         let st4_becomes_st3 = self.st4_next() - self.st3();
-
-        // Stack register st4 is moved into st5
-        //
-        // $st5' - st4 = 0$
         let st5_becomes_st4 = self.st5_next() - self.st4();
-
-        // Stack register st5 is moved into st6
-        //
-        // $st6' - st5 = 0$
         let st6_becomes_st5 = self.st6_next() - self.st5();
-
-        // Stack register st6 is moved into st7
-        //
-        // $st7' - st6 = 0$
         let st7_becomes_st6 = self.st7_next() - self.st6();
-
-        // Stack register st7 is moved into osv
-        //
-        // $osv' - st7 = 0$
-        let osv_becomes_st7 = self.osv_next() - self.st7();
-
-        // The stack pointer increases by 1.
-        //
-        // $osp' - (osp + 1) = 0$
+        let st8_becomes_st7 = self.st8_next() - self.st7();
+        let st9_becomes_st8 = self.st9_next() - self.st8();
+        let st10_becomes_st9 = self.st10_next() - self.st9();
+        let st11_becomes_st10 = self.st11_next() - self.st10();
+        let st12_becomes_st11 = self.st12_next() - self.st11();
+        let st13_becomes_st12 = self.st13_next() - self.st12();
+        let st14_becomes_st13 = self.st14_next() - self.st13();
+        let st15_becomes_st14 = self.st15_next() - self.st14();
+        let osv_becomes_st15 = self.osv_next() - self.st15();
         let osp_is_incremented = self.osp_next() - (self.osp() + self.one());
 
         vec![
@@ -1398,7 +1354,15 @@ impl RowPairConstraints {
             st5_becomes_st4,
             st6_becomes_st5,
             st7_becomes_st6,
-            osv_becomes_st7,
+            st8_becomes_st7,
+            st9_becomes_st8,
+            st10_becomes_st9,
+            st11_becomes_st10,
+            st12_becomes_st11,
+            st13_becomes_st12,
+            st14_becomes_st13,
+            st15_becomes_st14,
+            osv_becomes_st15,
             osp_is_incremented,
         ]
     }
@@ -1441,158 +1405,6 @@ impl RowPairConstraints {
         let correct_decomposition = self.two() * shifted_operand + lsb - operand;
 
         vec![lsb_is_a_bit, correct_decomposition]
-    }
-
-    /// This instruction has no additional transition constraints.
-    ///
-    /// A Permutation Argument with the Uint32 Operations Table guarantees correct transition.
-    pub fn instruction_lt(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
-    }
-
-    /// This instruction has no additional transition constraints.
-    ///
-    /// A Permutation Argument with the Uint32 Operations Table guarantees correct transition.
-    pub fn instruction_and(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
-    }
-
-    /// This instruction has no additional transition constraints.
-    ///
-    /// A Permutation Argument with the Uint32 Operations Table guarantees correct transition.
-    pub fn instruction_xor(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
-    }
-
-    /// This instruction has no additional transition constraints.
-    ///
-    /// A Permutation Argument with the Uint32 Operations Table guarantees correct transition.
-    pub fn instruction_reverse(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
-    }
-
-    /// For correct division, it is required that the remainder r is smaller than the divisor d.
-    ///
-    /// The result of comparing r to d is stored in helper variable hv0.
-    ///
-    /// A Permutation Argument with the Uint32 Operations Table guarantees that hv0 = (r < d).
-    pub fn instruction_div(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // Denominator d is not zero.
-        //
-        // $st0·hv2 - 1 = 0$
-        let denominator_is_not_zero = self.st0() * self.hv2() - self.one();
-
-        // Result of division, i.e., quotient q and remainder r, are moved into
-        // st1 and st0 respectively, and match with numerator n and denominator d.
-        //
-        // $st1 - st0·st1' - st0' = 0$
-        let st1_becomes_quotient_and_st0_becomes_remainder =
-            self.st1() - self.st0() * self.st1_next() - self.st0_next();
-
-        // The stack element in st2 does not change.
-        //
-        // $st2' - st2 = 0$
-        let st2_does_not_change = self.st2_next() - self.st2();
-
-        // The stack element in st3 does not change.
-        //
-        // $st3' - st3 = 0$
-        let st3_does_not_change = self.st3_next() - self.st3();
-
-        // The stack element in st4 does not change.
-        //
-        // $st4' - st4 = 0$
-        let st4_does_not_change = self.st4_next() - self.st4();
-
-        // The stack element in st5 does not change.
-        //
-        // $st5' - st5 = 0$
-        let st5_does_not_change = self.st5_next() - self.st5();
-
-        // The stack element in st6 does not change.
-        //
-        // $st6' - st6 = 0$
-        let st6_does_not_change = self.st6_next() - self.st6();
-
-        // The stack element in st7 does not change.
-        //
-        // $st7' - st7 = 0$
-        let st7_does_not_change = self.st7_next() - self.st7();
-
-        // The stack element in st8 does not change.
-        //
-        // $st8' - st8 = 0$
-        let st8_does_not_change = self.st8_next() - self.st8();
-
-        // The stack element in st9 does not change.
-        //
-        // $st9' - st9 = 0$
-        let st9_does_not_change = self.st9_next() - self.st9();
-
-        // The stack element in st10 does not change.
-        //
-        // $st10' - st10 = 0$
-        let st10_does_not_change = self.st10_next() - self.st10();
-
-        // The stack element in st11 does not change.
-        //
-        // $st11' - st11 = 0$
-        let st11_does_not_change = self.st11_next() - self.st11();
-
-        // The stack element in st12 does not change.
-        //
-        // $st12' - st12 = 0$
-        let st12_does_not_change = self.st12_next() - self.st12();
-
-        // The stack element in st13 does not change.
-        //
-        // $st13' - st13 = 0$
-        let st13_does_not_change = self.st13_next() - self.st13();
-
-        // The stack element in st14 does not change.
-        //
-        // $st14' - st14 = 0$
-        let st14_does_not_change = self.st14_next() - self.st14();
-
-        // The stack element in st15 does not change.
-        //
-        // $st15' - st15 = 0$
-        let st15_does_not_change = self.st15_next() - self.st15();
-
-        // The top of the OpStack underflow, i.e., osv, does not change.
-        //
-        // $osv' - osv = 0$
-        let osv_does_not_change = self.osv_next() - self.osv();
-
-        // The OpStack pointer does not change.
-        //
-        // $osp' - osp = 0$
-        let osp_does_not_change = self.osp_next() - self.osp();
-
-        vec![
-            denominator_is_not_zero,
-            st1_becomes_quotient_and_st0_becomes_remainder,
-            st2_does_not_change,
-            st3_does_not_change,
-            st4_does_not_change,
-            st5_does_not_change,
-            st6_does_not_change,
-            st7_does_not_change,
-            st8_does_not_change,
-            st9_does_not_change,
-            st10_does_not_change,
-            st11_does_not_change,
-            st12_does_not_change,
-            st13_does_not_change,
-            st14_does_not_change,
-            st15_does_not_change,
-            osv_does_not_change,
-            osp_does_not_change,
-        ]
     }
 
     pub fn instruction_xxadd(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -2485,11 +2297,6 @@ mod constraint_polynomial_tests {
             Split => tc.instruction_split(),
             Eq => tc.instruction_eq(),
             Lsb => tc.instruction_lsb(),
-            Lt => tc.instruction_lt(),
-            And => tc.instruction_and(),
-            Xor => tc.instruction_xor(),
-            Reverse => tc.instruction_reverse(),
-            Div => tc.instruction_div(),
             XxAdd => tc.instruction_xxadd(),
             XxMul => tc.instruction_xxmul(),
             XInvert => tc.instruction_xinv(),
@@ -2642,6 +2449,27 @@ mod constraint_polynomial_tests {
             get_test_row_from_source_code("push 3 push 2 eq push 0 eq assert halt", 2),
         ];
         test_constraints_for_rows_with_debug_info(Eq, &test_rows, &[ST0, ST1, HV0], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_split_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push -1 split halt", 1),
+            get_test_row_from_source_code("push  0 split halt", 1),
+            get_test_row_from_source_code("push  1 split halt", 1),
+            get_test_row_from_source_code("push  2 split halt", 1),
+            get_test_row_from_source_code("push  3 split halt", 1),
+            // test pushing push 2^32 +- 1
+            get_test_row_from_source_code("push 4294967295 split halt", 1),
+            get_test_row_from_source_code("push 4294967296 split halt", 1),
+            get_test_row_from_source_code("push 4294967297 split halt", 1),
+        ];
+        test_constraints_for_rows_with_debug_info(
+            Split,
+            &test_rows,
+            &[ST0, ST1, HV0],
+            &[ST0, ST1, HV0],
+        );
     }
 
     #[test]
