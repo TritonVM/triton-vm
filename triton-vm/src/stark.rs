@@ -1064,12 +1064,13 @@ pub(crate) mod triton_stark_tests {
         code: &str,
         co_set_fri_offset: BFieldElement,
         input_symbols: &[BFieldElement],
+        secret_input_symbols: &[BFieldElement],
         output_symbols: &[BFieldElement],
     ) -> (
         Stark,
         ProofStream<ProofItem<RescuePrimeRegular>, RescuePrimeRegular>,
     ) {
-        let (aet, _, program) = parse_setup_simulate(code, input_symbols, &[]);
+        let (aet, _, program) = parse_setup_simulate(code, input_symbols, secret_input_symbols);
         let base_matrices = BaseMatrices::new(aet, &program);
 
         let num_randomizer_polynomials = 1;
@@ -1383,11 +1384,35 @@ pub(crate) mod triton_stark_tests {
             co_set_fri_offset,
             &code_with_input.input,
             &code_with_input.secret_input,
+            &[],
         );
 
         println!("between prove and verify");
 
         let result = stark.verify(&mut proof_stream);
+        if let Err(e) = result {
+            panic!("The Verifier is unhappy! {}", e);
+        }
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    #[ignore = "too slow"]
+    fn prove_verify_fibonacci_100_test() {
+        let source_code = sample_programs::FIBONACCI_VIT;
+        let program = Program::from_code(source_code).unwrap();
+
+        let stdin = [100_u64.into()];
+        let secret_in = [];
+        let (_, stdout, _) = program.run_with_input(&stdin, &secret_in);
+
+        let co_set_fri_offset = BFieldElement::generator();
+        let (stark, mut proof) =
+            parse_simulate_prove(source_code, co_set_fri_offset, &stdin, &secret_in, &stdout);
+
+        println!("between prove and verify");
+
+        let result = stark.verify(&mut proof);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {}", e);
         }

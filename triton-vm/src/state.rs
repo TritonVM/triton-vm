@@ -268,9 +268,7 @@ impl<'pgm> VMState<'pgm> {
                     return vm_err(AssertionFailed(
                         self.instruction_pointer,
                         self.cycle_count,
-                        self.op_stack
-                            .peek(0)
-                            .expect("Could not unwrap top of stack."),
+                        elem,
                     ));
                 }
                 self.instruction_pointer += 1;
@@ -1225,15 +1223,16 @@ mod vm_state_tests {
         let code = sample_programs::FIBONACCI_VIT;
         let program = Program::from_code(code).unwrap();
 
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
+        let (trace, out, err) = program.run_with_input(&[7_u64.into()], &[]);
 
-        println!("{}", program);
         for state in trace.iter() {
             println!("{}", state);
         }
+        if let Some(e) = err {
+            panic!("The VM encountered an error: {e}");
+        }
 
-        let last_state = trace.last().unwrap();
-        assert_eq!(BFieldElement::new(21), last_state.op_stack.st(ST0));
+        assert_eq!(Some(&BFieldElement::new(21)), out.get(0));
     }
 
     #[test]
@@ -1252,14 +1251,15 @@ mod vm_state_tests {
     }
 
     #[test]
-    #[ignore = "need to fix non-deterministic input for (pseudo) instruction `div`"]
     fn run_tvm_gcd_test() {
         let code = sample_programs::GCD_X_Y;
         let program = Program::from_code(code).unwrap();
 
         println!("{}", program);
-        let (trace, out, _err) =
-            program.run_with_input(&[BFieldElement::new(42), BFieldElement::new(56)], &[]);
+        let (trace, out, _err) = program.run_with_input(
+            &[42_u64.into(), 56_u64.into()],
+            &[1_u64.into(), 3_u64.into()],
+        );
 
         println!("{}", program);
         for state in trace.iter() {

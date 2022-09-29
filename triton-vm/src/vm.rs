@@ -263,30 +263,27 @@ pub mod triton_vm_tests {
     use super::*;
 
     #[test]
-    #[ignore = "need to fix non-deterministic input for (pseudo) instruction `div`"]
     fn initialise_table_test() {
-        // 1. Parse program
         let code = sample_programs::GCD_X_Y;
         let program = Program::from_code(code).unwrap();
 
-        println!("{}", program);
+        let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
+        let secret_in = vec![1_u64.into(), 3_u64.into()];
 
-        let mut stdin = VecStream::new(&[BFieldElement::new(42), BFieldElement::new(56)]);
-        let mut secret_in = VecStream::new(&[]);
-        let mut stdout = VecStream::new(&[]);
+        let (base_matrices, err, stdout) = program.simulate_with_input(&stdin, &secret_in);
 
-        // 2. Execute program, convert to base matrices
-        let (base_matrices, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
+        print!("VM output: [");
+        for symbol in stdout {
+            print!("{symbol}, ");
+        }
+        println!("]");
 
-        println!("Err: {:?}", err);
+        if let Some(e) = err {
+            panic!("Execution failed: {e}");
+        }
         for row in base_matrices.processor_matrix {
             println!("{}", ProcessorMatrixRow { row });
         }
-
-        println!("Output: {:?}", stdout.to_bword_vec());
-
-        // 3. Extract constraints
-        // 4. Check constraints
     }
 
     #[test]
@@ -315,24 +312,27 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    #[ignore = "need to fix non-deterministic input for (pseudo) instruction `div`"]
-    fn simulate_gcd_test() {
+    fn simulate_tvm_gcd_test() {
         let code = sample_programs::GCD_X_Y;
         let program = Program::from_code(code).unwrap();
 
-        println!("{}", program);
+        let stdin = vec![42_u64.into(), 56_u64.into()];
+        let secret_in = vec![1_u64.into(), 3_u64.into()];
 
-        let mut stdin = VecStream::new(&[BFieldElement::new(42), BFieldElement::new(56)]);
-        let mut secret_in = VecStream::new(&[]);
-        let mut stdout = VecStream::new(&[]);
+        let (_, err, stdout) = program.simulate_with_input(&stdin, &secret_in);
 
-        let (_, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
+        let actually_computed_symbol = stdout[0];
+
+        print!("VM output: [");
+        for symbol in stdout {
+            print!("{symbol}, ");
+        }
+        println!("]");
 
         assert!(err.is_none());
         let expected = BFieldElement::new(14);
-        let actual = stdout.to_bword_vec()[0];
 
-        assert_eq!(expected, actual);
+        assert_eq!(expected, actually_computed_symbol);
     }
 
     #[test]
@@ -609,7 +609,7 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_lt() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 3 push 2 lt assert halt")
+        SourceCodeAndInput::without_input("push 5 push 2 lt assert halt")
     }
 
     pub fn test_program_for_and() -> SourceCodeAndInput {
@@ -624,8 +624,40 @@ pub mod triton_vm_tests {
         SourceCodeAndInput::without_input("push 2147483648 reverse assert halt")
     }
 
+    pub fn test_program_for_lte() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 5 push 2 lte assert halt")
+    }
+
     pub fn test_program_for_div() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 3 push 2 div assert assert halt")
+        SourceCodeAndInput {
+            source_code: "push 2 push 3 div assert assert halt".to_string(),
+            input: vec![],
+            secret_input: vec![BFieldElement::new(1)],
+        }
+    }
+
+    pub fn test_program_for_split() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push -2 split push 4294967294 eq assert push 4294967295 eq assert \
+             push -1 split push 4294967295 eq assert push 0 eq assert \
+             push  0 split push 0 eq assert push 0 eq assert \
+             push  1 split push 0 eq assert push 1 eq assert \
+             push  2 split push 0 eq assert push 2 eq assert \
+             push 4294967297 split assert assert \
+             halt",
+        )
+    }
+
+    pub fn test_program_for_split_assert() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push -2 split_assert push 4294967294 eq assert push 4294967295 eq assert \
+             push -1 split_assert push 4294967295 eq assert push 0 eq assert \
+             push  0 split_assert push 0 eq assert push 0 eq assert \
+             push  1 split_assert push 0 eq assert push 1 eq assert \
+             push  2 split_assert push 0 eq assert push 2 eq assert \
+             push 4294967297 split_assert assert assert \
+             halt",
+        )
     }
 
     pub fn test_program_for_xxadd() -> SourceCodeAndInput {
@@ -672,8 +704,10 @@ pub mod triton_vm_tests {
             test_program_for_and(),
             test_program_for_xor(),
             test_program_for_reverse(),
-            // #[ignore = "need to fix non-deterministic input for (pseudo) instruction `div`"]
-            // test_program_for_div(),
+            test_program_for_lte(),
+            test_program_for_div(),
+            test_program_for_split(),
+            test_program_for_split_assert(),
             test_program_for_xxadd(),
             test_program_for_xxmul(),
             test_program_for_xinvert(),
@@ -690,7 +724,13 @@ pub mod triton_vm_tests {
                 "\n\nChecking transition constraints for program: \"{}\"",
                 &program.source_code
             );
-            let (aet, err, _) = program.simulate();
+            let (aet, err, output) = program.simulate();
+
+            print!("VM output: [");
+            for symbol in output {
+                print!("{symbol}, ");
+            }
+            println!("]");
 
             if let Some(e) = err {
                 panic!("The VM is not happy: {}", e);

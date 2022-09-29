@@ -34,7 +34,7 @@ impl Display for InstructionError {
             AssertionFailed(ip, clk, st0) => {
                 write!(
                     f,
-                    "Assertion failed. ip: {}, clk: {}, st0: {}",
+                    "Assertion failed: st0 must be 1. ip: {}, clk: {}, st0: {}",
                     ip, clk, st0
                 )
             }

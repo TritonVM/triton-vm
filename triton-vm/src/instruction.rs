@@ -507,14 +507,21 @@ fn parse_token(
 }
 
 fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
+    // _ a
     let mut instructions = vec![Dup(ST0)];
+    // _ a a
     for _ in 0..32 {
         instructions.push(Lsb);
+        // _ a (a>>i) b
         instructions.push(Pop);
+        // _ a (a>>i)
     }
     instructions.push(Push(0_u64.into()));
+    // _ a (a>>32) 0
     instructions.push(Eq);
+    // _ a (a>>32)==0
     instructions.push(Assert);
+    // _ a
     instructions
 }
 
@@ -545,20 +552,44 @@ fn pseudo_instruction_lt() -> Vec<AnInstruction<String>> {
 fn pseudo_instruction_div() -> Vec<AnInstruction<String>> {
     vec![
         vec![
+            // _ d n
             Divine,
+            // _ d n q
             Dup(ST2),
+            // _ d n q d
             Dup(ST1),
+            // _ d n q d q
             Mul,
+            // _ d n q d·q
             Dup(ST2),
+            // _ d n q d·q n
             Swap(ST1),
+            // _ d n q n d·q
             Push(-BFieldElement::new(1)),
+            // _ d n q n d·q -1
             Mul,
+            // _ d n q n -d·q
             Add,
+            // _ d n q r
             Dup(ST3),
+            // _ d n q r d
             Dup(ST1),
+            // _ d n q r d r
         ],
         pseudo_instruction_lt(),
-        vec![Assert, Swap(ST2), Pop, Swap(ST2), Pop],
+        // _ d n q r r<d
+        vec![
+            Assert,
+            // _ d n q r
+            Swap(ST2),
+            // _ d r q n
+            Pop,
+            // _ d r q
+            Swap(ST2),
+            // _ q r d
+            Pop,
+        ],
+        // _ q r
     ]
     .concat()
 }
@@ -1008,7 +1039,7 @@ pub mod sample_programs {
     pub const FIBONACCI_VIT: &str = "
         push 0
         push 1
-        push 7
+        read_io
         dup0
         dup0
         dup0
@@ -1019,7 +1050,7 @@ pub mod sample_programs {
         call foo
    foo: call bob
         swap1
-        push 18446744069414584320
+        push -1
         add
         dup0
         skiz
@@ -1031,6 +1062,7 @@ pub mod sample_programs {
         skiz
         pop
    baz: pop
+        write_io
         halt
    bob: dup2
         dup2
@@ -1069,31 +1101,52 @@ pub mod sample_programs {
         return
     ";
 
-    pub const GCD_X_Y: &str = "
-           read_io
-           read_io
-           dup1
-           dup1
-           lt
-           skiz
-           swap1
-loop_cond: dup0
-           push 0
-           eq
-           skiz
-           call terminate
-           dup1
-           dup1
-           div
-           swap2
-           swap3
-           pop
-           pop
-           call loop_cond
-terminate: pop
-           write_io
-           halt
-    ";
+    pub const GCD_X_Y: &str = concat!(
+        // ∅
+        "read_io ",
+        // a
+        "read_io ",
+        // a b
+        "dup1 ",
+        // a b a
+        "dup1 ",
+        // a b a b
+        "lt ",
+        // a b b<a
+        "skiz ",
+        // a b
+        "swap1 ",
+        // d n where n > d
+        // ---
+        "loop_cond: ",
+        "dup1 ",
+        "push 0 ",
+        "eq ",
+        "skiz ",
+        "call terminate ",
+        // _ d n where d != 0
+        "dup1 ",
+        // _ d n d
+        "dup1 ",
+        // _ d n d n
+        "div ",
+        // _ d n q r
+        "swap2 ",
+        // _ d r q n
+        "pop ",
+        // _ d r q
+        "pop ",
+        // _ d r
+        "swap1 ",
+        // _ r d
+        "call loop_cond ",
+        // ---
+        "terminate: ",
+        // _ d n where d == 0
+        "write_io ",
+        // _ d
+        "halt ",
+    );
 
     // This cannot not print because we need to itoa() before write_io.
     // TODO: Swap0-7 are now available and we can continue this implementation.
