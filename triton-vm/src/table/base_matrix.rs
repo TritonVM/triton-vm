@@ -19,14 +19,13 @@ use super::table_column::{
 };
 use super::{
     hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
-    program_table, ram_table, u32_op_table,
+    program_table, ram_table,
 };
 
 #[derive(Debug, Clone, Default)]
 pub struct AlgebraicExecutionTrace {
     pub processor_matrix: Vec<[BFieldElement; processor_table::BASE_WIDTH]>,
     pub hash_matrix: Vec<[BFieldElement; hash_table::BASE_WIDTH]>,
-    pub u32_op_matrix: Vec<[BFieldElement; u32_op_table::BASE_WIDTH]>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -38,7 +37,6 @@ pub struct BaseMatrices {
     pub ram_matrix: Vec<[BFieldElement; ram_table::BASE_WIDTH]>,
     pub jump_stack_matrix: Vec<[BFieldElement; jump_stack_table::BASE_WIDTH]>,
     pub hash_matrix: Vec<[BFieldElement; hash_table::BASE_WIDTH]>,
-    pub u32_op_matrix: Vec<[BFieldElement; u32_op_table::BASE_WIDTH]>,
 }
 
 impl BaseMatrices {
@@ -51,7 +49,6 @@ impl BaseMatrices {
             jump_stack_matrix: Self::derive_jump_stack_matrix(&aet),
             processor_matrix: aet.processor_matrix,
             hash_matrix: aet.hash_matrix,
-            u32_op_matrix: aet.u32_op_matrix,
         }
     }
 
@@ -390,7 +387,6 @@ impl Display for ExtProcessorMatrixRow {
         row(f, "jumpstack_table_pa", JumpStackTablePermArg)?;
         row(f, "to_hash_table_ea", ToHashTableEvalArg)?;
         row(f, "from_hash_table_ea", FromHashTableEvalArg)?;
-        row(f, "u32_lt_pa", U32OpTablePermArg)?;
         write!(
             f,
             "     ╰───────────────────────────────────────────────────────\

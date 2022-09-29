@@ -11,7 +11,6 @@ use super::processor_table::IOChallenges;
 use super::processor_table::ProcessorTableChallenges;
 use super::program_table::ProgramTableChallenges;
 use super::ram_table::RamTableChallenges;
-use super::u32_op_table::U32OpTableChallenges;
 
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
@@ -24,7 +23,6 @@ pub struct AllChallenges {
     pub ram_table_challenges: RamTableChallenges,
     pub jump_stack_table_challenges: JumpStackTableChallenges,
     pub hash_table_challenges: HashTableChallenges,
-    pub u32_op_table_challenges: U32OpTableChallenges,
 }
 
 impl AllChallenges {
@@ -40,7 +38,6 @@ impl AllChallenges {
             op_stack_perm_row_weight: weights.pop().unwrap(),
             ram_perm_row_weight: weights.pop().unwrap(),
             jump_stack_perm_row_weight: weights.pop().unwrap(),
-            u32_perm_row_weight: weights.pop().unwrap(),
 
             instruction_table_ip_weight: weights.pop().unwrap(),
             instruction_table_ci_processor_weight: weights.pop().unwrap(),
@@ -71,11 +68,6 @@ impl AllChallenges {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
-
-            u32_op_table_ci_weight: weights.pop().unwrap(),
-            u32_op_table_lhs_weight: weights.pop().unwrap(),
-            u32_op_table_rhs_weight: weights.pop().unwrap(),
-            u32_op_table_result_weight: weights.pop().unwrap(),
         };
 
         let program_table_challenges = ProgramTableChallenges {
@@ -139,15 +131,6 @@ impl AllChallenges {
             digest_output_weights: processor_table_challenges.hash_table_digest_output_weights,
         };
 
-        let u32_op_table_challenges = U32OpTableChallenges {
-            processor_perm_row_weight: processor_table_challenges.u32_perm_row_weight,
-
-            ci_weight: processor_table_challenges.u32_op_table_ci_weight,
-            lhs_weight: processor_table_challenges.u32_op_table_lhs_weight,
-            rhs_weight: processor_table_challenges.u32_op_table_rhs_weight,
-            result_weight: processor_table_challenges.u32_op_table_result_weight,
-        };
-
         AllChallenges {
             program_table_challenges,
             instruction_table_challenges,
@@ -158,7 +141,6 @@ impl AllChallenges {
             ram_table_challenges,
             jump_stack_table_challenges,
             hash_table_challenges,
-            u32_op_table_challenges,
         }
     }
 

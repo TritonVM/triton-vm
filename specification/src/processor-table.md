@@ -100,5 +100,3 @@ The following constraint applies to every cycle.
 1. A Permutation Argument with the [RAM Table](random-access-memory-table.md).
 1. An Evaluation Argument with the [Hash Table](hash-table.md) for copying the input to the hash function from the Processor to the Hash Coprocessor.
 1. An Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the Hash Coprocessor to the Processor.
-1. A Permutation Argument with the [U32 Table](u32-table.md).
-

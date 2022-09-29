@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
-<ipe version="70218" creator="Ipe 7.2.23">
-<info created="D:20200729150742" modified="D:20220629134345"/>
+<ipe version="70218" creator="Ipe 7.2.24">
+<info created="D:20200729150742" modified="D:20220930012252"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -318,7 +318,7 @@ h
 <layer name="table_names"/>
 <layer name="eval_args"/>
 <layer name="perm_args"/>
-<view layers="bg table_names eval_args perm_args" active="bg"/>
+<view layers="bg table_names eval_args perm_args" active="eval_args"/>
 <path layer="bg" matrix="1 0 0 1 0 12" fill="white">
 108 204 m
 108 32 l
@@ -339,7 +339,6 @@ h
 <text transformations="translations" pos="192 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
 <text transformations="translations" pos="256 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
 <text transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
-<text transformations="translations" pos="224 64" stroke="black" type="label" width="15.11" height="6.531" depth="0" halign="center" valign="baseline">u32</text>
 <path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
 128 184 m
 128 132 l
@@ -372,16 +371,6 @@ h
 256 112 c
 256 108 l
 </path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1">
-200 124 m
-200 112 l
-200 108
-204 108 c
-220 108 l
-224 108
-224 104 c
-224 76 l
-</path>
 <path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
 176 124 m
 176 120 l
@@ -392,15 +381,25 @@ h
 128 112 c
 128 108 l
 </path>
-<path stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small" rarrow="fnormal/small">
-184 124 m
-184 112 l
-184 108
-180 108 c
-164 108 l
-160 108
-160 104 c
-160 76 l
+<path stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
+182 124 m
+182 114 l
+182 110
+178 110 c
+162 110 l
+158 110
+158 106 c
+158 76 l
+</path>
+<path layer="eval_args" stroke="darkred" pen="heavier" cap="1" join="1" rarrow="fnormal/small">
+186 124 m
+186 110 l
+186 106
+182 106 c
+166 106 l
+162 106
+162 102 c
+162 76 l
 </path>
 </page>
 </ipe>

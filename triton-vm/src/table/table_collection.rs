@@ -21,9 +21,8 @@ use super::op_stack_table::{ExtOpStackTable, OpStackTable};
 use super::processor_table::{ExtProcessorTable, ProcessorTable};
 use super::program_table::{ExtProgramTable, ProgramTable};
 use super::ram_table::{ExtRamTable, RamTable};
-use super::u32_op_table::{ExtU32OpTable, U32OpTable};
 
-pub const NUM_TABLES: usize = 8;
+pub const NUM_TABLES: usize = 7;
 
 #[derive(Debug, Clone)]
 pub struct BaseTableCollection {
@@ -37,7 +36,6 @@ pub struct BaseTableCollection {
     pub ram_table: RamTable,
     pub jump_stack_table: JumpStackTable,
     pub hash_table: HashTable,
-    pub u32_op_table: U32OpTable,
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +50,6 @@ pub struct ExtTableCollection {
     pub ram_table: ExtRamTable,
     pub jump_stack_table: ExtJumpStackTable,
     pub hash_table: ExtHashTable,
-    pub u32_op_table: ExtU32OpTable,
 }
 
 /// A `TableId` uniquely determines one of Triton VM's tables.
@@ -65,7 +62,6 @@ pub enum TableId {
     RamTable,
     JumpStackTable,
     HashTable,
-    U32OpTable,
 }
 
 /// Convert vector-of-arrays to vector-of-vectors.
@@ -103,7 +99,6 @@ impl BaseTableCollection {
         let jump_stack_table =
             JumpStackTable::new_prover(to_vec_vecs(&base_matrices.jump_stack_matrix));
         let hash_table = HashTable::new_prover(to_vec_vecs(&base_matrices.hash_matrix));
-        let u32_op_table = U32OpTable::new_prover(to_vec_vecs(&base_matrices.u32_op_matrix));
 
         BaseTableCollection {
             padded_height,
@@ -114,7 +109,6 @@ impl BaseTableCollection {
             ram_table,
             jump_stack_table,
             hash_table,
-            u32_op_table,
         }
     }
 
@@ -128,7 +122,6 @@ impl BaseTableCollection {
             base_matrices.ram_matrix.len(),
             base_matrices.jump_stack_matrix.len(),
             base_matrices.hash_matrix.len(),
-            base_matrices.u32_op_matrix.len(),
         ]
         .into_iter()
         .max()
@@ -187,12 +180,6 @@ impl BaseTableCollection {
             padded_height,
             num_trace_randomizers,
         );
-        let u32_op_table = self.u32_op_table.codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
 
         BaseTableCollection {
             padded_height,
@@ -203,7 +190,6 @@ impl BaseTableCollection {
             ram_table,
             jump_stack_table,
             hash_table,
-            u32_op_table,
         }
     }
 
@@ -228,7 +214,6 @@ impl BaseTableCollection {
         self.ram_table.pad(padded_height);
         self.jump_stack_table.pad(padded_height);
         self.hash_table.pad(padded_height);
-        self.u32_op_table.pad(padded_height);
     }
 }
 
@@ -246,7 +231,6 @@ impl<'a> IntoIterator for &'a BaseTableCollection {
             &self.ram_table as &'a dyn TableLike<BFieldElement>,
             &self.jump_stack_table as &'a dyn TableLike<BFieldElement>,
             &self.hash_table as &'a dyn TableLike<BFieldElement>,
-            &self.u32_op_table as &'a dyn TableLike<BFieldElement>,
         ]
         .into_iter()
     }
@@ -263,7 +247,6 @@ impl ExtTableCollection {
             ram_table: Default::default(),
             jump_stack_table: Default::default(),
             hash_table: Default::default(),
-            u32_op_table: Default::default(),
         }
     }
 
@@ -281,7 +264,6 @@ impl ExtTableCollection {
         let ext_ram_table = RamTable::for_verifier(interpolant_degree, challenges);
         let ext_jump_stack_table = JumpStackTable::for_verifier(interpolant_degree, challenges);
         let ext_hash_table = HashTable::for_verifier(interpolant_degree, challenges);
-        let ext_u32_op_table = U32OpTable::for_verifier(interpolant_degree, challenges);
 
         ExtTableCollection {
             padded_height,
@@ -292,7 +274,6 @@ impl ExtTableCollection {
             ram_table: ext_ram_table,
             jump_stack_table: ext_jump_stack_table,
             hash_table: ext_hash_table,
-            u32_op_table: ext_u32_op_table,
         }
     }
 
@@ -352,10 +333,6 @@ impl ExtTableCollection {
             .hash_table
             .extend(&all_challenges.hash_table_challenges, interpolant_degree);
 
-        let u32_op_table = base_tables
-            .u32_op_table
-            .extend(&all_challenges.u32_op_table_challenges, interpolant_degree);
-
         ExtTableCollection {
             padded_height,
             program_table,
@@ -365,7 +342,6 @@ impl ExtTableCollection {
             ram_table,
             jump_stack_table,
             hash_table,
-            u32_op_table,
         }
     }
 
@@ -427,13 +403,6 @@ impl ExtTableCollection {
             num_trace_randomizers,
             base_codeword_tables.hash_table.data(),
         );
-        let u32_op_table = self.u32_op_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.u32_op_table.data(),
-        );
 
         ExtTableCollection {
             padded_height,
@@ -444,7 +413,6 @@ impl ExtTableCollection {
             ram_table,
             jump_stack_table,
             hash_table,
-            u32_op_table,
         }
     }
 
@@ -470,7 +438,6 @@ impl ExtTableCollection {
             RamTable => self.ram_table.data(),
             JumpStackTable => self.jump_stack_table.data(),
             HashTable => self.hash_table.data(),
-            U32OpTable => self.u32_op_table.data(),
         }
     }
 
@@ -538,7 +505,6 @@ impl<'a> IntoIterator for &'a ExtTableCollection {
             &self.ram_table as &'a dyn QuotientableExtensionTable,
             &self.jump_stack_table as &'a dyn QuotientableExtensionTable,
             &self.hash_table as &'a dyn QuotientableExtensionTable,
-            &self.u32_op_table as &'a dyn QuotientableExtensionTable,
         ]
         .into_iter()
     }
@@ -548,7 +514,7 @@ impl<'a> IntoIterator for &'a ExtTableCollection {
 mod table_collection_tests {
     use crate::table::{
         hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
-        program_table, ram_table, u32_op_table,
+        program_table, ram_table,
     };
 
     use super::*;
@@ -585,10 +551,6 @@ mod table_collection_tests {
             base_tables.jump_stack_table.base_width()
         );
         assert_eq!(hash_table::BASE_WIDTH, base_tables.hash_table.base_width());
-        assert_eq!(
-            u32_op_table::BASE_WIDTH,
-            base_tables.u32_op_table.base_width()
-        );
     }
 
     #[test]
@@ -617,9 +579,5 @@ mod table_collection_tests {
             ext_tables.jump_stack_table.full_width()
         );
         assert_eq!(hash_table::FULL_WIDTH, ext_tables.hash_table.full_width());
-        assert_eq!(
-            u32_op_table::FULL_WIDTH,
-            ext_tables.u32_op_table.full_width()
-        );
     }
 }

@@ -20,7 +20,7 @@ use crate::table::table_column::ProcessorExtTableColumn::*;
 
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
 
-pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
+pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 4;
 pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 4;
 
 /// This is 43 because it combines all other tables (except program).
@@ -87,7 +87,6 @@ impl ProcessorTable {
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut to_hash_table_running_evaluation = EvalArg::default_initial();
         let mut from_hash_table_running_evaluation = EvalArg::default_initial();
-        let mut u32_table_running_product = PermArg::default_initial();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {
@@ -218,30 +217,6 @@ impl ProcessorTable {
                 }
             }
             extension_row[usize::from(FromHashTableEvalArg)] = from_hash_table_running_evaluation;
-
-            // U32 Table
-            if let Some(prow) = previous_row {
-                let previous_instruction: Instruction = prow[usize::from(CI)]
-                    .value()
-                    .try_into()
-                    .expect("CI does not correspond to any instruction.");
-
-                if previous_instruction.is_u32_op() {
-                    let lhs = prow[ST0 as usize].lift();
-                    let rhs = prow[ST1 as usize].lift();
-                    let u32_op_result = extension_row[ST0 as usize];
-
-                    let pi = prow[usize::from(CI)].lift();
-                    let compressed_row_for_u32 = pi * challenges.u32_op_table_ci_weight
-                        + lhs * challenges.u32_op_table_lhs_weight
-                        + rhs * challenges.u32_op_table_rhs_weight
-                        + u32_op_result * challenges.u32_op_table_result_weight;
-
-                    u32_table_running_product *=
-                        challenges.u32_perm_row_weight - compressed_row_for_u32;
-                }
-            }
-            extension_row[usize::from(U32OpTablePermArg)] = u32_table_running_product;
 
             previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());
@@ -396,8 +371,6 @@ pub struct ProcessorTableChallenges {
     pub ram_perm_row_weight: XFieldElement,
     pub jump_stack_perm_row_weight: XFieldElement,
 
-    pub u32_perm_row_weight: XFieldElement,
-
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub instruction_table_ip_weight: XFieldElement,
     pub instruction_table_ci_processor_weight: XFieldElement,
@@ -420,11 +393,6 @@ pub struct ProcessorTableChallenges {
 
     pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
     pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LENGTH],
-
-    pub u32_op_table_lhs_weight: XFieldElement,
-    pub u32_op_table_rhs_weight: XFieldElement,
-    pub u32_op_table_ci_weight: XFieldElement,
-    pub u32_op_table_result_weight: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
@@ -1978,12 +1946,6 @@ impl RowPairConstraints {
         let ip_next = self.ip_next();
 
         vec![ip_next - ip - (one.clone() + one)]
-    }
-
-    /// This group has no constraints. It is used for the Permutation Argument with the uint32 table.
-    pub fn u32_op(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
     }
 
     pub fn grow_stack(&self) -> Vec<MPolynomial<XFieldElement>> {

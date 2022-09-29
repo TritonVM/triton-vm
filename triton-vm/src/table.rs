@@ -11,4 +11,3 @@ pub mod program_table;
 pub mod ram_table;
 pub mod table_collection;
 pub mod table_column;
-pub mod u32_op_table;

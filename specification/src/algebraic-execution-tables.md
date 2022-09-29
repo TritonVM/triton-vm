@@ -1,6 +1,6 @@
 # Algebraic Execution Tables
 
-There are 8 Arithmetic Execution Tables in TritonVM.
+There are 7 Arithmetic Execution Tables in TritonVM.
 Their relation is described by below figure.
 A red arrow indicates an Evaluation Argument, a blue line indicates a Permutation Argument.
 

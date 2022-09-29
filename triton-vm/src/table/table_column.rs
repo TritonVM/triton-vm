@@ -81,8 +81,6 @@ pub enum ProcessorExtTableColumn {
 
     ToHashTableEvalArg,
     FromHashTableEvalArg,
-
-    U32OpTablePermArg,
 }
 
 impl From<ProcessorExtTableColumn> for usize {
@@ -492,74 +490,11 @@ impl Bounded for HashExtTableColumn {
     }
 }
 
-// --------------------------------------------------------------------
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
-pub enum U32OpBaseTableColumn {
-    IDC,
-    Bits,
-    Inv33MinusBits,
-    CI,
-    LHS,
-    RHS,
-    LT,
-    AND,
-    XOR,
-    REV,
-    LHSInv,
-    RHSInv,
-}
-
-impl From<U32OpBaseTableColumn> for usize {
-    fn from(column: U32OpBaseTableColumn) -> Self {
-        U32OpBaseTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for U32OpBaseTableColumn {
-    fn min_value() -> Self {
-        U32OpBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        U32OpBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
-pub enum U32OpExtTableColumn {
-    RunningProductPermArg,
-}
-
-impl From<U32OpExtTableColumn> for usize {
-    fn from(column: U32OpExtTableColumn) -> Self {
-        U32OpExtTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + U32OpBaseTableColumn::COUNT)
-            .unwrap()
-    }
-}
-
-impl Bounded for U32OpExtTableColumn {
-    fn min_value() -> Self {
-        U32OpExtTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        U32OpExtTableColumn::iter().last().unwrap()
-    }
-}
-
 #[cfg(test)]
 mod table_column_tests {
     use crate::table::{
         hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
-        program_table, ram_table, u32_op_table,
+        program_table, ram_table,
     };
 
     use super::*;
@@ -641,13 +576,6 @@ mod table_column_tests {
                 HashBaseTableColumn::max_value().into(),
                 HashExtTableColumn::max_value().into(),
                 "HashTable",
-            ),
-            TestCase::new(
-                u32_op_table::BASE_WIDTH,
-                u32_op_table::FULL_WIDTH,
-                U32OpBaseTableColumn::max_value().into(),
-                U32OpExtTableColumn::max_value().into(),
-                "U32OpTable",
             ),
         ];
 

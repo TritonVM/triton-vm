@@ -138,7 +138,6 @@ impl Program {
                 Some(VMOutput::XlixTrace(mut hash_trace)) => {
                     aet.hash_matrix.append(&mut hash_trace)
                 }
-                Some(VMOutput::U32OpTrace(mut trace)) => aet.u32_op_matrix.append(&mut trace),
                 Some(VMOutput::WriteOutputSymbol(written_word)) => {
                     if let Err(error) = stdout.write_elem(written_word) {
                         return (aet, Some(Box::new(error)));

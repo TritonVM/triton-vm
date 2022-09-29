@@ -18,7 +18,7 @@ use crate::table::base_matrix::ProcessorMatrixRow;
 use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
 use crate::table::table_column::{
     InstructionBaseTableColumn, JumpStackBaseTableColumn, OpStackBaseTableColumn,
-    ProcessorBaseTableColumn, RamBaseTableColumn, U32OpBaseTableColumn,
+    ProcessorBaseTableColumn, RamBaseTableColumn,
 };
 
 use super::error::{vm_fail, InstructionError::*};
@@ -26,7 +26,7 @@ use super::instruction::{AnInstruction::*, Instruction};
 use super::op_stack::OpStack;
 use super::ord_n::{Ord16::*, Ord7::*};
 use super::stdio::InputStream;
-use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table, u32_op_table};
+use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table};
 use super::table::{processor_table, ram_table};
 use super::vm::Program;
 
@@ -75,11 +75,6 @@ pub enum VMOutput {
     ///
     /// One row per round in the XLIX permutation
     XlixTrace(Vec<[BFieldElement; hash_table::BASE_WIDTH]>),
-
-    /// Trace of u32 operations for u32 op table
-    ///
-    /// One row per defined bit
-    U32OpTrace(Vec<[BFieldElement; u32_op_table::BASE_WIDTH]>),
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -535,77 +530,6 @@ impl<'pgm> VMState<'pgm> {
         row[usize::from(JSD)] = self.jsd();
 
         row
-    }
-
-    pub fn u32_op_trace(
-        &self,
-        mut lhs: u32,
-        mut rhs: u32,
-    ) -> Vec<[BFieldElement; u32_op_table::BASE_WIDTH]> {
-        use U32OpBaseTableColumn::*;
-
-        let inverse_or_zero = |bfe: BFieldElement| {
-            if bfe.is_zero() {
-                bfe
-            } else {
-                bfe.inverse()
-            }
-        };
-
-        let mut idc = 1;
-        let mut bits = 0;
-        let ci = self
-            .current_instruction()
-            .expect("U32 trace can only be generated with an instruction.")
-            .opcode_b();
-
-        let thirty_three = BFieldElement::new(33);
-        let row = |idc: u32, bits: u32, lhs: u32, rhs: u32| {
-            let mut row = [BFieldElement::zero(); u32_op_table::BASE_WIDTH];
-            row[usize::from(IDC)] = (idc as u64).into();
-            row[usize::from(Bits)] = (bits as u64).into();
-            row[usize::from(Inv33MinusBits)] = inverse_or_zero(thirty_three - (bits as u64).into());
-            row[usize::from(CI)] = ci;
-            row[usize::from(LHS)] = (lhs as u64).into();
-            row[usize::from(RHS)] = (rhs as u64).into();
-            row[usize::from(LT)] = Self::possibly_unclear_lt(idc, lhs, rhs);
-            row[usize::from(AND)] = ((lhs & rhs) as u64).into();
-            row[usize::from(XOR)] = ((lhs ^ rhs) as u64).into();
-            row[usize::from(REV)] = (lhs.reverse_bits() as u64).into();
-            row[usize::from(LHSInv)] = inverse_or_zero((lhs as u64).into());
-            row[usize::from(RHSInv)] = inverse_or_zero((rhs as u64).into());
-
-            row
-        };
-
-        let mut rows = vec![];
-        let mut write_rows = true;
-        while write_rows {
-            rows.push(row(idc, bits, lhs, rhs));
-            idc = 0;
-            bits += 1;
-            write_rows = lhs != 0 || rhs != 0;
-            lhs >>= 1;
-            rhs >>= 1;
-        }
-
-        rows
-    }
-
-    fn possibly_unclear_lt(idc: u32, lhs: u32, rhs: u32) -> BFieldElement {
-        if idc == 0 && lhs == rhs {
-            BFieldElement::new(2)
-        } else {
-            Self::lt(lhs, rhs)
-        }
-    }
-
-    fn lt(lhs: u32, rhs: u32) -> BFieldElement {
-        if lhs < rhs {
-            BFieldElement::one()
-        } else {
-            BFieldElement::zero()
-        }
     }
 
     fn eq(lhs: BFieldElement, rhs: BFieldElement) -> BFieldElement {

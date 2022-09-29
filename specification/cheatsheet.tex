@@ -22,7 +22,7 @@
 \makeatother
 
 \geometry{a4paper, total={170mm, 257mm}, left=20mm}
-\linespread{1.8}
+\linespread{1.9}
 
 \tcbset{on line, box align=base,
     sharp corners=northwest,sharp corners=southeast,
@@ -39,7 +39,6 @@
 
 \colorlet{instr-arg}{red!30!green!20}
 \colorlet{instr-jsp}{blue!90!green!20}
-\colorlet{instr-u32}{orange!90!black!20}
 \colorlet{instr-shrink-stack}{yellow!50}
 \colorlet{hint}{gray}
 \colorlet{row1}{white}
@@ -96,11 +95,7 @@
     \texttt{40} & $\odot$                          & \texttt{invert}                                    &                \\
     \texttt{44} &                                  & \texttt{split}                                     & \hintsplit     \\
     \texttt{22} & \ssocol                          & \texttt{eq}                                        &                \\
-    \texttt{26} & \ssocol                          & \tcbox[colback=instr-u32]{\texttt{lt}}             & \hintlt        \\
-    \texttt{30} & \ssocol                          & \tcbox[colback=instr-u32]{\texttt{and}}            &                \\
-    \texttt{34} & \ssocol                          & \tcbox[colback=instr-u32]{\texttt{xor}}            &                \\
-    \texttt{48} & $\odot$                          & \tcbox[colback=instr-u32]{\texttt{reverse}}        &                \\
-    \texttt{52} &                                  & \tcbox[colback=instr-u32]{\texttt{div}}            & \hintdiv       \\
+    \texttt{72} &                                  & \texttt{lsb}                                       &                \\
     \texttt{56} &                                  & \texttt{xxadd}                                     &                \\
     \texttt{60} &                                  & \texttt{xxmul}                                     &                \\
     \texttt{64} &                                  & \texttt{xinv}                                      &                \\
@@ -112,7 +107,7 @@
 \begin{minipage}[][0.84\textheight][s]{0.6\textwidth}
     \rowcolors{3}{row1}{row2}
     \hfill
-    \includegraphics[keepaspectratio,width=0.9\textwidth]{img/aet-relations.pdf}
+    \includegraphics[keepaspectratio,width=0.9\textwidth]{src/img/aet-relations.pdf}
     \vfill
 
     \hfill
@@ -132,32 +127,50 @@
     \begin{tabular}{lrrr}
         \toprule
                     & base & ext & $\sum$ \\ \midrule
-        Program     &    2 &   2 &      4 \\
-        Instruction &    3 &   4 &      7 \\
-        Processor   &   37 &  16 &     53 \\
-        OpStack     &    4 &   2 &      6 \\
-        RAM         &    4 &   2 &      6 \\
-        JumpStack   &    5 &   2 &      7 \\
-        Hash        &   49 &   4 &     53 \\
-        U32         &    8 &   2 &     10 \\ \bottomrule\bottomrule
-        $\sum$      &  112 &  34 &    146
+        Program     &    3 &   1 &      4 \\
+        Instruction &    4 &   2 &      6 \\
+        Processor   &   38 &   8 &     46 \\
+        OpStack     &    4 &   1 &      5 \\
+        RAM         &    4 &   1 &      5 \\
+        JumpStack   &    5 &   1 &      6 \\
+        Hash        &   49 &   2 &     51 \\ \bottomrule\bottomrule
+        $\sum$      &  107 &  16 &    123
     \end{tabular}
 \end{minipage}
 
 \newpage
-\begin{landscape}
+\hspace*{-4em}%
+\scalebox{0.8}{
     \rowcolors{2}{row2}{row1}
-\begin{tabular}{lllllllllllllllllllll}
+\begin{tabular}{llllllllllllllllllllll}
     \toprule
-    Table       & \multicolumn{5}{l}{Base Columns}                                        &       &              &              &                         &              &              &              &               &              &                      &              &                      &              &               &               \\ \midrule
-    Program     & \multicolumn{2}{l}{Address} & \multicolumn{3}{l}{Instruction}           &       &              &              &                         &              &              &              &               &              &                      &              &                      &              &               &               \\
-    Instruction & \multicolumn{2}{l}{Address} & \texttt{CI} & \texttt{NIA} &              &       &              &              &                         &              &              &              &               &              &                      &              &                      &              &               &               \\
-    Processor   & \texttt{CLK} & \texttt{IP}  & \texttt{CI} & \texttt{NIA} & \texttt{IB0} & \dots & \texttt{IB6} & \texttt{JSP} & \texttt{JSO}            & \texttt{JSD} & \texttt{ST0} & \dots        & \texttt{ST15} & \texttt{OSP} & \texttt{OSV}         & \texttt{HV0} & \dots                & \texttt{HV3} & \texttt{RAMV} &               \\
-    OpStack     & \texttt{CLK} &              &             &              &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)} &              &              &              &               & \texttt{OSP} & \texttt{OSV}         &              &                      &              &               &               \\
-    RAM         & \texttt{CLK} &              &             &              &              &       &              &              &                         &              &              & \multicolumn{4}{l}{\texttt{RAMP} ($\widehat{=}$ \texttt{ST1})}     &              &                      &              & \texttt{RAMV} & \texttt{IORD} \\
-    JumpStack   & \texttt{CLK} &              & \texttt{CI} &              &              &       &              & \texttt{JSP} & \texttt{JSO}            & \texttt{JSD} &              &              &               &              &                      &              &                      &              &               &               \\
-    Hash        & \multicolumn{4}{l}{RoundNumber}                          &              &       &              &              &                         &              & \texttt{ST0} & \dots        & \texttt{ST15} & \multicolumn{3}{l}{\texttt{CONSTANT0A}}            & \dots                & \multicolumn{3}{l}{\texttt{CONSTANT15B}}     \\
-    U32         & \texttt{IDC} & \multicolumn{2}{l}{Bits}   & \multicolumn{3}{l}{Inv33MinusBits}  & \texttt{CI}  & \texttt{LHS} & \texttt{RHS}            & \texttt{LT}  & \texttt{AND} & \texttt{XOR} & \texttt{REV}  & \multicolumn{2}{l}{\texttt{LHS}Inv} & \multicolumn{2}{l}{\texttt{RHS}Inv} &              &               &               \\ \bottomrule
+    Table       & \multicolumn{5}{l}{Base Columns}                                         &              &       &              &              &                         &              &              &       &               &              &                         &              &       &               &               &          \\ \midrule
+    Program     & \multicolumn{3}{l}{Address}            & \multicolumn{2}{l}{Instruction} & \multicolumn{3}{l}{IsPadding}       &              &                         &              &              &       &               &              &                         &              &       &               &               &          \\
+    Instruction & \multicolumn{3}{l}{Address}            & \texttt{CI} & \texttt{NIA}      & \multicolumn{3}{l}{IsPadding}       &              &                         &              &              &       &               &              &                         &              &       &               &               &          \\
+    Processor   & \texttt{CLK} & IsPadding & \texttt{IP} & \texttt{CI} & \texttt{NIA}      & \texttt{IB0} & \dots & \texttt{IB6} & \texttt{JSP} & \texttt{JSO}            & \texttt{JSD} & \texttt{ST0} & \dots & \texttt{ST15} & \texttt{OSP} & \texttt{OSV}            & \texttt{HV0} & \dots & \texttt{HV3}  & \texttt{RAMV} &          \\
+    OpStack     & \texttt{CLK} &           &             &             &                   &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)} &              &              &       & \texttt{OSP}  & \texttt{OSV} &                         &              &       &               &               &          \\
+    RAM         & \texttt{CLK} &           &             &             &                   &              &       &              &              &                         &              &              & \multicolumn{4}{l}{\texttt{RAMP} ($\widehat{=}$ \texttt{ST1})} &              &       & \texttt{RAMV} & \texttt{IORD} &          \\
+    JumpStack   & \texttt{CLK} &           &             & \texttt{CI} &                   &              &       &              & \texttt{JSP} & \texttt{JSO}            & \texttt{JSD} &              &       &               &              &                         &              &       &               &               &          \\
+    Hash        & \multicolumn{4}{l}{RoundNumber}                      &                   &              &       &              &              &                         &              & \texttt{ST0} & \dots & \texttt{ST15} & \multicolumn{3}{l}{\texttt{CONSTANT0A}}               & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}} \\ \bottomrule
 \end{tabular}
-\end{landscape}
+} %end scalebox
+\vfill%
+\begin{minipage}{0.3\textwidth}
+    \rowcolors{2}{row2}{row1}
+    \begin{tabular}{rl}
+        \toprule
+        \#clk & instruction            \\ \midrule
+            2 & \texttt{neg}           \\
+            4 & \texttt{sub}           \\
+           68 & \texttt{is\_u32}       \\
+          139 & \texttt{split\_assert} \\
+          146 & \texttt{lte}           \\
+          148 & \texttt{lt}            \\
+          295 & \texttt{and}           \\
+          301 & \texttt{xor}           \\
+          195 & \texttt{reverse}       \\
+          164 & \texttt{div}           \\ \bottomrule
+    \end{tabular}
+\end{minipage}
+
 \end{document}

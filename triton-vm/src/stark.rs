@@ -1057,7 +1057,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(padded_height, base_tables.ram_table.data().len());
         assert_eq!(padded_height, base_tables.jump_stack_table.data().len());
         assert_eq!(padded_height, base_tables.hash_table.data().len());
-        assert_eq!(padded_height, base_tables.u32_op_table.data().len());
     }
 
     pub fn parse_simulate_prove(

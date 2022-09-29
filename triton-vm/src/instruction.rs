@@ -191,10 +191,6 @@ impl<Dest> AnInstruction<Dest> {
         )
     }
 
-    pub fn is_u32_op(&self) -> bool {
-        false
-    }
-
     pub fn opcode_b(&self) -> BFieldElement {
         self.opcode().into()
     }

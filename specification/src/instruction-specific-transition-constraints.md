@@ -492,82 +492,17 @@ Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0`
 1. `hv0 = inverse(rhs - lhs)` if `rhs - lhs ≠ 0`.
 1. `hv0 = 0` if `rhs - lhs = 0`.
 
-## Instruction `lt`
-
-This instruction has no additional transition constraints.
-A Permutation Argument between [Processor Table](processor-table.md)'s `st0`, `st1`, `st0'` and [Uint32 Operations Table](u32-table.md)'s `LHS`, `RHS`, `LT` guarantees correct transition.
-
-## Instruction `and`
-
-This instruction has no additional transition constraints.
-A Permutation Argument with the [Uint32 Operations Table](u32-table.md) guarantees correct transition.
-A Permutation Argument between [Processor Table](processor-table.md)'s `st0`, `st1`, `st0'` and [Uint32 Operations Table](u32-table.md)'s `LHS`, `RHS`, `AND` guarantees correct transition.
-
-## Instruction `xor`
-
-This instruction has no additional transition constraints.
-A Permutation Argument between [Processor Table](processor-table.md)'s `st0`, `st1`, `st0'` and [Uint32 Operations Table](u32-table.md)'s `LHS`, `RHS`, `XOR` guarantees correct transition.
-
-## Instruction `reverse`
-
-This instruction has no additional transition constraints.
-In contrast to all other 32-bit unsigned integer instructions, `reverse` only operates on the stack's top-most element, `st0`.
-A Permutation Argument between [Processor Table](processor-table.md)'s `st0`, `st0'` and [Uint32 Operations Table](u32-table.md)'s `LHS`, `REV` guarantees correct transition.
-
-## Instruction `div`
-
-For correct division, it is required that the remainder `r` is smaller than the divisor `d`.
-The result of comparing `r` to `d` is stored in helper variable `hv0`.
-
-A Permutation Argument between [Processor Table](processor-table.md)'s `st0'` and `st0`, and [Uint32 Operations Table](u32-table.md)'s `LHS`, `RHS`, `LT` guarantees that `r < d`.
+## Instruction `lsb`
 
 ### Description
 
-1. Denominator `d` is not zero.
-1. Result of division, i.e., quotient `q` and remainder `r`, are moved into `st1` and `st0` respectively, and match with denominator `d` and numerator `n`.
-1. The stack element in `st2` does not change.
-1. The stack element in `st3` does not change.
-1. The stack element in `st4` does not change.
-1. The stack element in `st5` does not change.
-1. The stack element in `st6` does not change.
-1. The stack element in `st7` does not change.
-1. The stack element in `st8` does not change.
-1. The stack element in `st9` does not change.
-1. The stack element in `st10` does not change.
-1. The stack element in `st11` does not change.
-1. The stack element in `st12` does not change.
-1. The stack element in `st13` does not change.
-1. The stack element in `st14` does not change.
-1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
-1. Helper variable `hv0` is 1, indicating that `r < d`.
+1. The least significant bit is a bit
+1. The operand decomposes into right-shifted operand and the least significant bit
 
 ### Polynomials
 
-1. `st1·hv2 - 1` (i.e. `q·hv2 - 1`)
-1. `st0 - st1·st1' - st0'` (i.e. `n - q·d - r`)
-1. `st2' - st2`
-1. `st3' - st3`
-1. `st4' - st4`
-1. `st5' - st5`
-1. `st6' - st6`
-1. `st7' - st7`
-1. `st8' - st8`
-1. `st9' - st9`
-1. `st10' - st10`
-1. `st11' - st11`
-1. `st12' - st12`
-1. `st13' - st13`
-1. `st14' - st14`
-1. `st15' - st15`
-1. `osv' - osv`
-1. `osp' - osp`
-1. `hv0 - 1`
-
-### Helper variable definitions for `div`
-
-In order to prevent division by zero, helper variable `hv2` holds the inverse of stack element `st0`.
+1. `st0'·(st0' - 1)`
+1. `st0 - 2·st1' + st0'`
 
 ## Instruction `xxadd`
 
