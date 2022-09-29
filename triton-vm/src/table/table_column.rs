@@ -446,11 +446,13 @@ impl From<HashBaseTableColumn> for usize {
     }
 }
 
-impl From<usize> for HashBaseTableColumn {
-    fn from(idx: usize) -> Self {
+impl TryFrom<usize> for HashBaseTableColumn {
+    type Error = String;
+
+    fn try_from(idx: usize) -> Result<Self, Self::Error> {
         HashBaseTableColumn::iter()
             .get(idx)
-            .expect("No Hash Table column with index {idx} exists.")
+            .ok_or_else(|| format!("Column index {} out of bounds", idx))
     }
 }
 

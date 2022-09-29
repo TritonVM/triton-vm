@@ -100,10 +100,11 @@ impl Evaluable for ExtHashTable {
             round_number_is_not_1_or * state15,
         ];
 
-        let round_constant_offset = CONSTANT0A as usize;
+        let round_constant_offset = usize::from(CONSTANT0A);
         for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column: HashBaseTableColumn =
-                (round_constant_idx + round_constant_offset).into();
+                // wrap
+                (round_constant_idx + round_constant_offset).try_into().unwrap();
             evaluated_consistency_constraints.push(
                 round_number
                     * (round_number - XFieldElement::from(9))
@@ -120,6 +121,8 @@ impl Evaluable for ExtHashTable {
         &self,
         evaluation_point: &[XFieldElement],
     ) -> Vec<XFieldElement> {
+        use HashBaseTableColumn::*;
+
         let constant = |c: u64| BFieldElement::new(c).lift();
 
         let round_number = evaluation_point[usize::from(ROUNDNUMBER)];
@@ -164,7 +167,7 @@ impl Evaluable for ExtHashTable {
 
         // left-hand-side, starting at current round and going forward
         let current_state: Vec<XFieldElement> = (0..STATE_SIZE)
-            .map(|i| evaluation_point[HashBaseTableColumn::STATE0 as usize + i])
+            .map(|i| evaluation_point[usize::from(STATE0) + i])
             .collect_vec();
         let after_sbox = current_state
             .into_iter()
@@ -177,9 +180,8 @@ impl Evaluable for ExtHashTable {
                     .fold(constant(0), XFieldElement::add)
             })
             .collect_vec();
-        let round_constants = evaluation_point[(HashBaseTableColumn::CONSTANT0A as usize)
-            ..=(HashBaseTableColumn::CONSTANT15B as usize)]
-            .to_vec();
+        let round_constants =
+            evaluation_point[usize::from(CONSTANT0A)..=usize::from(CONSTANT15B)].to_vec();
         let after_constants = after_mds
             .into_iter()
             .zip_eq(&round_constants[..(NUM_ROUND_CONSTANTS / 2)])
@@ -188,7 +190,7 @@ impl Evaluable for ExtHashTable {
 
         // right hand side; move backwards
         let next_state: Vec<XFieldElement> = (0..STATE_SIZE)
-            .map(|i| evaluation_point[FULL_WIDTH + HashBaseTableColumn::STATE0 as usize + i])
+            .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
         let before_constants = next_state
             .into_iter()
@@ -333,14 +335,15 @@ impl ExtHashTable {
         // if round number is zero, we don't care
         // otherwise, make sure the constant is correct
         let nine = constant(9);
-        let round_constant_offset = CONSTANT0A as usize;
+        let round_constant_offset = usize::from(CONSTANT0A);
         for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column: HashBaseTableColumn =
-                (round_constant_idx + round_constant_offset).into();
+                // wrap
+                (round_constant_idx + round_constant_offset).try_into().unwrap();
             let round_constant = &variables[usize::from(round_constant_column)];
             let interpolant = Self::round_constants_interpolant(round_constant_column);
             let multivariate_interpolant =
-                MPolynomial::lift(interpolant, ROUNDNUMBER as usize, FULL_WIDTH);
+                MPolynomial::lift(interpolant, usize::from(ROUNDNUMBER), FULL_WIDTH);
             consistency_polynomials.push(
                 round_number.clone()
                     * (round_number.clone() - nine)
@@ -354,7 +357,7 @@ impl ExtHashTable {
     fn round_constants_interpolant(
         round_constant: HashBaseTableColumn,
     ) -> Polynomial<XFieldElement> {
-        let round_constant_idx = (round_constant as usize) - (CONSTANT0A as usize);
+        let round_constant_idx = usize::from(round_constant) - usize::from(CONSTANT0A);
         let domain = (1..=NUM_ROUNDS)
             .map(|x| BFieldElement::new(x as u64).lift())
             .collect_vec();
@@ -418,7 +421,7 @@ impl ExtHashTable {
 
         // left-hand-side, starting at current round and going forward
         let current_state: Vec<MPolynomial<XFieldElement>> = (0..STATE_SIZE)
-            .map(|i| variables[HashBaseTableColumn::STATE0 as usize + i].clone())
+            .map(|i| variables[usize::from(STATE0) + i].clone())
             .collect_vec();
         let after_sbox = current_state.iter().map(|c| c.pow(ALPHA)).collect_vec();
         let after_mds = (0..STATE_SIZE)
@@ -428,9 +431,8 @@ impl ExtHashTable {
                     .fold(constant(0), MPolynomial::add)
             })
             .collect_vec();
-        let round_constants = variables[(HashBaseTableColumn::CONSTANT0A as usize)
-            ..=(HashBaseTableColumn::CONSTANT15B as usize)]
-            .to_vec();
+        let round_constants =
+            variables[usize::from(CONSTANT0A)..=usize::from(CONSTANT15B)].to_vec();
         let after_constants = after_mds
             .into_iter()
             .zip_eq(&round_constants[..(NUM_ROUND_CONSTANTS / 2)])
@@ -439,7 +441,7 @@ impl ExtHashTable {
 
         // right hand side; move backwards
         let next_state: Vec<MPolynomial<XFieldElement>> = (0..STATE_SIZE)
-            .map(|i| variables[FULL_WIDTH + HashBaseTableColumn::STATE0 as usize + i].clone())
+            .map(|i| variables[FULL_WIDTH + usize::from(STATE0) + i].clone())
             .collect_vec();
         let before_constants = next_state
             .into_iter()
