@@ -13,8 +13,8 @@ use crate::table::table_collection::TableId::{
 };
 use crate::table::table_collection::{interpolant_degree, ExtTableCollection, TableId};
 use crate::table::table_column::{
-    ExtHashTableColumn, ExtInstructionTableColumn, ExtJumpStackTableColumn, ExtOpStackTableColumn,
-    ExtProcessorTableColumn, ExtProgramTableColumn, ExtRamTableColumn, ExtU32OpTableColumn,
+    HashExtTableColumn, InstructionExtTableColumn, JumpStackExtTableColumn, OpStackExtTableColumn,
+    ProcessorExtTableColumn, ProgramExtTableColumn, RamExtTableColumn, U32OpExtTableColumn,
 };
 
 pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
@@ -146,9 +146,9 @@ impl PermArg {
     pub fn processor_instruction_perm_arg() -> Self {
         Self::new(
             TableId::ProcessorTable,
-            ExtProcessorTableColumn::InstructionTablePermArg.into(),
+            ProcessorExtTableColumn::InstructionTablePermArg.into(),
             TableId::InstructionTable,
-            ExtInstructionTableColumn::RunningProductPermArg.into(),
+            InstructionExtTableColumn::RunningProductPermArg.into(),
         )
     }
 
@@ -156,9 +156,9 @@ impl PermArg {
     pub fn processor_jump_stack_perm_arg() -> Self {
         Self::new(
             TableId::ProcessorTable,
-            ExtProcessorTableColumn::JumpStackTablePermArg.into(),
+            ProcessorExtTableColumn::JumpStackTablePermArg.into(),
             TableId::JumpStackTable,
-            ExtJumpStackTableColumn::RunningProductPermArg.into(),
+            JumpStackExtTableColumn::RunningProductPermArg.into(),
         )
     }
 
@@ -166,9 +166,9 @@ impl PermArg {
     pub fn processor_op_stack_perm_arg() -> Self {
         Self::new(
             TableId::ProcessorTable,
-            ExtProcessorTableColumn::OpStackTablePermArg.into(),
+            ProcessorExtTableColumn::OpStackTablePermArg.into(),
             TableId::OpStackTable,
-            ExtOpStackTableColumn::RunningProductPermArg.into(),
+            OpStackExtTableColumn::RunningProductPermArg.into(),
         )
     }
 
@@ -176,9 +176,9 @@ impl PermArg {
     pub fn processor_ram_perm_arg() -> Self {
         Self::new(
             TableId::ProcessorTable,
-            ExtProcessorTableColumn::RamTablePermArg.into(),
+            ProcessorExtTableColumn::RamTablePermArg.into(),
             TableId::RamTable,
-            ExtRamTableColumn::RunningProductPermArg.into(),
+            RamExtTableColumn::RunningProductPermArg.into(),
         )
     }
 
@@ -186,9 +186,9 @@ impl PermArg {
     pub fn processor_u32_perm_arg() -> Self {
         Self::new(
             TableId::ProcessorTable,
-            ExtProcessorTableColumn::U32OpTablePermArg.into(),
+            ProcessorExtTableColumn::U32OpTablePermArg.into(),
             TableId::U32OpTable,
-            ExtU32OpTableColumn::RunningProductPermArg.into(),
+            U32OpExtTableColumn::RunningProductPermArg.into(),
         )
     }
 
@@ -244,27 +244,27 @@ impl EvalArg {
     pub fn program_instruction_eval_arg() -> Self {
         Self {
             from_table: ProgramTable,
-            from_column: ExtProgramTableColumn::RunningEvaluation.into(),
+            from_column: ProgramExtTableColumn::RunningEvaluation.into(),
             to_table: InstructionTable,
-            to_column: ExtInstructionTableColumn::RunningEvaluation.into(),
+            to_column: InstructionExtTableColumn::RunningEvaluation.into(),
         }
     }
 
     pub fn processor_to_hash_eval_arg() -> Self {
         Self {
             from_table: ProcessorTable,
-            from_column: ExtProcessorTableColumn::ToHashTableEvalArg.into(),
+            from_column: ProcessorExtTableColumn::ToHashTableEvalArg.into(),
             to_table: HashTable,
-            to_column: ExtHashTableColumn::FromProcessorRunningEvaluation.into(),
+            to_column: HashExtTableColumn::FromProcessorRunningEvaluation.into(),
         }
     }
 
     pub fn hash_to_processor_eval_arg() -> Self {
         Self {
             from_table: HashTable,
-            from_column: ExtHashTableColumn::ToProcessorRunningEvaluation.into(),
+            from_column: HashExtTableColumn::ToProcessorRunningEvaluation.into(),
             to_table: ProcessorTable,
-            to_column: ExtProcessorTableColumn::FromHashTableEvalArg.into(),
+            to_column: ProcessorExtTableColumn::FromHashTableEvalArg.into(),
         }
     }
 
@@ -379,14 +379,14 @@ impl GrandCrossTableArg {
             input_terminal,
             input_to_processor: (
                 TableId::ProcessorTable,
-                usize::from(ExtProcessorTableColumn::InputTableEvalArg),
+                usize::from(ProcessorExtTableColumn::InputTableEvalArg),
             ),
             input_to_processor_weight: weights[8],
 
             output_terminal,
             processor_to_output: (
                 TableId::ProcessorTable,
-                usize::from(ExtProcessorTableColumn::OutputTableEvalArg),
+                usize::from(ProcessorExtTableColumn::OutputTableEvalArg),
             ),
             processor_to_output_weight: weights[9],
         }

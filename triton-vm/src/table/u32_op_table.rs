@@ -10,13 +10,13 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::ExtU32OpTableColumn::*;
-use crate::table::table_column::U32OpTableColumn::*;
+use crate::table::table_column::U32OpBaseTableColumn::*;
+use crate::table::table_column::U32OpExtTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::U32OpTableColumn;
+use super::table_column::U32OpBaseTableColumn;
 
 pub const U32_OP_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const U32_OP_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -79,10 +79,10 @@ impl InheritsFromTable<XFieldElement> for ExtU32OpTable {
 impl Extendable for U32OpTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         let mut padding_row = vec![BFieldElement::zero(); BASE_WIDTH];
-        padding_row[LT as usize] = BFieldElement::new(2);
-        padding_row[Inv33MinusBits as usize] = BFieldElement::new(33).inverse();
+        padding_row[usize::from(LT)] = BFieldElement::new(2);
+        padding_row[usize::from(Inv33MinusBits)] = BFieldElement::new(33).inverse();
         if let Some(row) = self.data().last() {
-            padding_row[CI as usize] = row[CI as usize];
+            padding_row[usize::from(CI)] = row[usize::from(CI)];
         }
         (None, vec![padding_row])
     }
@@ -106,17 +106,17 @@ impl ExtU32OpTable {
         let thirty_three = MPolynomial::from_constant(33.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
-        let idc = variables[IDC as usize].clone();
-        let bits = variables[Bits as usize].clone();
-        let inv = variables[Inv33MinusBits as usize].clone();
-        let lhs = variables[LHS as usize].clone();
-        let lhs_inv = variables[LHSInv as usize].clone();
-        let rhs = variables[RHS as usize].clone();
-        let rhs_inv = variables[RHSInv as usize].clone();
-        let lt = variables[LT as usize].clone();
-        let and = variables[AND as usize].clone();
-        let xor = variables[XOR as usize].clone();
-        let rev = variables[REV as usize].clone();
+        let idc = variables[usize::from(IDC)].clone();
+        let bits = variables[usize::from(Bits)].clone();
+        let inv = variables[usize::from(Inv33MinusBits)].clone();
+        let lhs = variables[usize::from(LHS)].clone();
+        let lhs_inv = variables[usize::from(LHSInv)].clone();
+        let rhs = variables[usize::from(RHS)].clone();
+        let rhs_inv = variables[usize::from(RHSInv)].clone();
+        let lt = variables[usize::from(LT)].clone();
+        let and = variables[usize::from(AND)].clone();
+        let xor = variables[usize::from(XOR)].clone();
+        let rev = variables[usize::from(REV)].clone();
 
         let idc_is_0_or_1 = idc.clone() * (idc.clone() - one.clone());
         let idc_is_zero_or_bits_is_zero = idc.clone() * bits.clone();
@@ -169,24 +169,24 @@ impl ExtU32OpTable {
         let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
         assert_eq!(one, half.clone() * two.clone());
 
-        let idc = variables[IDC as usize].clone();
-        let bits = variables[Bits as usize].clone();
-        let ci = variables[CI as usize].clone();
-        let lhs = variables[LHS as usize].clone();
-        let rhs = variables[RHS as usize].clone();
-        let lt = variables[LT as usize].clone();
-        let and = variables[AND as usize].clone();
-        let xor = variables[XOR as usize].clone();
-        let rev = variables[REV as usize].clone();
-        let idc_next = variables[FULL_WIDTH + IDC as usize].clone();
-        let bits_next = variables[FULL_WIDTH + Bits as usize].clone();
-        let ci_next = variables[FULL_WIDTH + CI as usize].clone();
-        let lhs_next = variables[FULL_WIDTH + LHS as usize].clone();
-        let rhs_next = variables[FULL_WIDTH + RHS as usize].clone();
-        let lt_next = variables[FULL_WIDTH + LT as usize].clone();
-        let and_next = variables[FULL_WIDTH + AND as usize].clone();
-        let xor_next = variables[FULL_WIDTH + XOR as usize].clone();
-        let rev_next = variables[FULL_WIDTH + REV as usize].clone();
+        let idc = variables[usize::from(IDC)].clone();
+        let bits = variables[usize::from(Bits)].clone();
+        let ci = variables[usize::from(CI)].clone();
+        let lhs = variables[usize::from(LHS)].clone();
+        let rhs = variables[usize::from(RHS)].clone();
+        let lt = variables[usize::from(LT)].clone();
+        let and = variables[usize::from(AND)].clone();
+        let xor = variables[usize::from(XOR)].clone();
+        let rev = variables[usize::from(REV)].clone();
+        let idc_next = variables[FULL_WIDTH + usize::from(IDC)].clone();
+        let bits_next = variables[FULL_WIDTH + usize::from(Bits)].clone();
+        let ci_next = variables[FULL_WIDTH + usize::from(CI)].clone();
+        let lhs_next = variables[FULL_WIDTH + usize::from(LHS)].clone();
+        let rhs_next = variables[FULL_WIDTH + usize::from(RHS)].clone();
+        let lt_next = variables[FULL_WIDTH + usize::from(LT)].clone();
+        let and_next = variables[FULL_WIDTH + usize::from(AND)].clone();
+        let xor_next = variables[FULL_WIDTH + usize::from(XOR)].clone();
+        let rev_next = variables[FULL_WIDTH + usize::from(REV)].clone();
 
         let lhs_lsb = lhs.clone() - two.clone() * lhs_next;
         let rhs_lsb = rhs.clone() - two.clone() * rhs_next;
@@ -270,9 +270,9 @@ impl ExtU32OpTable {
         _challenges: &U32OpTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
-        let idc = variables[IDC as usize].clone();
-        let lhs = variables[LHS as usize].clone();
-        let rhs = variables[RHS as usize].clone();
+        let idc = variables[usize::from(IDC)].clone();
+        let lhs = variables[usize::from(LHS)].clone();
+        let rhs = variables[usize::from(RHS)].clone();
         vec![idc, lhs, rhs]
     }
 }
@@ -315,24 +315,24 @@ impl U32OpTable {
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
-            let current_instruction: Instruction = row[U32OpTableColumn::CI as usize]
+            let current_instruction: Instruction = row[usize::from(U32OpBaseTableColumn::CI)]
                 .value()
                 .try_into()
                 .expect("CI does not correspond to any instruction.");
 
-            if row[U32OpTableColumn::IDC as usize].is_one() {
-                let ci = extension_row[U32OpTableColumn::CI as usize];
-                let lhs = extension_row[U32OpTableColumn::LHS as usize];
+            if row[usize::from(U32OpBaseTableColumn::IDC)].is_one() {
+                let ci = extension_row[usize::from(U32OpBaseTableColumn::CI)];
+                let lhs = extension_row[usize::from(U32OpBaseTableColumn::LHS)];
                 let rhs = match current_instruction {
                     Instruction::Reverse => 0.into(),
-                    _ => extension_row[U32OpTableColumn::RHS as usize],
+                    _ => extension_row[usize::from(U32OpBaseTableColumn::RHS)],
                 };
                 let result = match current_instruction {
-                    Instruction::Lt => extension_row[U32OpTableColumn::LT as usize],
-                    Instruction::And => extension_row[U32OpTableColumn::AND as usize],
-                    Instruction::Xor => extension_row[U32OpTableColumn::XOR as usize],
-                    Instruction::Reverse => extension_row[U32OpTableColumn::REV as usize],
-                    Instruction::Div => extension_row[U32OpTableColumn::LT as usize],
+                    Instruction::Lt => extension_row[usize::from(U32OpBaseTableColumn::LT)],
+                    Instruction::And => extension_row[usize::from(U32OpBaseTableColumn::AND)],
+                    Instruction::Xor => extension_row[usize::from(U32OpBaseTableColumn::XOR)],
+                    Instruction::Reverse => extension_row[usize::from(U32OpBaseTableColumn::REV)],
+                    Instruction::Div => extension_row[usize::from(U32OpBaseTableColumn::LT)],
                     // halt is used for padding
                     Instruction::Halt => XFieldElement::zero(),
                     x => panic!("Unknown instruction '{x}' in the U32 Table."),

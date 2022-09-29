@@ -9,13 +9,13 @@ use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::ExtJumpStackTableColumn::*;
-use crate::table::table_column::JumpStackTableColumn;
+use crate::table::table_column::JumpStackBaseTableColumn;
+use crate::table::table_column::JumpStackExtTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::JumpStackTableColumn::*;
+use super::table_column::JumpStackBaseTableColumn::*;
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -80,14 +80,13 @@ impl TableLike<BFieldElement> for JumpStackTable {}
 impl Extendable for JumpStackTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         let max_clock = self.data().len() as u64 - 1;
-        if let Some((idx, padding_template)) = self
-            .data()
-            .iter()
-            .enumerate()
-            .find(|(_, row)| row[JumpStackTableColumn::CLK as usize].value() == max_clock)
+        if let Some((idx, padding_template)) =
+            self.data().iter().enumerate().find(|(_, row)| {
+                row[usize::from(JumpStackBaseTableColumn::CLK)].value() == max_clock
+            })
         {
             let mut padding_row = padding_template.clone();
-            padding_row[JumpStackTableColumn::CLK as usize] += BFieldElement::one();
+            padding_row[usize::from(JumpStackBaseTableColumn::CLK)] += BFieldElement::one();
             (Some(idx + 1), vec![padding_row])
         } else {
             (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
@@ -237,11 +236,11 @@ impl JumpStackTable {
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             let (clk, ci, jsp, jso, jsd) = (
-                extension_row[CLK as usize],
-                extension_row[CI as usize],
-                extension_row[JSP as usize],
-                extension_row[JSO as usize],
-                extension_row[JSD as usize],
+                extension_row[usize::from(CLK)],
+                extension_row[usize::from(CI)],
+                extension_row[usize::from(JSP)],
+                extension_row[usize::from(JSO)],
+                extension_row[usize::from(JSD)],
             );
 
             let (clk_w, ci_w, jsp_w, jso_w, jsd_w) = (

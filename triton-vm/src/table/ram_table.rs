@@ -8,12 +8,12 @@ use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::ExtRamTableColumn::*;
+use crate::table::table_column::RamExtTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::RamTableColumn::{self, *};
+use super::table_column::RamBaseTableColumn::{self, *};
 
 pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -111,9 +111,9 @@ impl RamTable {
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             let (clk, ramp, ramv) = (
-                extension_row[CLK as usize],
-                extension_row[RAMP as usize],
-                extension_row[RAMV as usize],
+                extension_row[usize::from(CLK)],
+                extension_row[usize::from(RAMP)],
+                extension_row[usize::from(RAMV)],
             );
 
             let (clk_w, ramp_w, ramv_w) = (
@@ -217,23 +217,26 @@ impl Extendable for RamTable {
             .mut_data()
             .iter()
             .enumerate()
-            .find(|(_, row)| row[RamTableColumn::CLK as usize].value() == max_clock)
+            .find(|(_, row)| row[usize::from(RamBaseTableColumn::CLK)].value() == max_clock)
             .map(|(idx, _)| idx)
             .unwrap();
 
         let padding_template = &mut self.mut_data()[idx];
-        let difference_inverse = padding_template[RamTableColumn::InverseOfRampDifference as usize];
-        padding_template[RamTableColumn::InverseOfRampDifference as usize] = BFieldElement::zero();
+        let difference_inverse =
+            padding_template[usize::from(RamBaseTableColumn::InverseOfRampDifference)];
+        padding_template[usize::from(RamBaseTableColumn::InverseOfRampDifference)] =
+            BFieldElement::zero();
 
         let mut padding_rows = vec![];
         while padding_rows.len() < num_padding_rows {
             let mut padding_row = padding_template.clone();
-            padding_row[RamTableColumn::CLK as usize] += (padding_rows.len() as u32 + 1).into();
+            padding_row[usize::from(RamBaseTableColumn::CLK)] +=
+                (padding_rows.len() as u32 + 1).into();
             padding_rows.push(padding_row)
         }
 
         if let Some(row) = padding_rows.last_mut() {
-            row[RamTableColumn::InverseOfRampDifference as usize] = difference_inverse;
+            row[usize::from(RamBaseTableColumn::InverseOfRampDifference)] = difference_inverse;
         }
 
         let insertion_index = idx + 1;
@@ -251,7 +254,7 @@ impl ExtRamTable {
     fn ext_initial_constraints(
         _challenges: &RamTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use RamTableColumn::*;
+        use RamBaseTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
@@ -281,7 +284,7 @@ impl ExtRamTable {
     fn ext_transition_constraints(
         _challenges: &RamTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use RamTableColumn::*;
+        use RamBaseTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(2 * FULL_WIDTH, 1.into());

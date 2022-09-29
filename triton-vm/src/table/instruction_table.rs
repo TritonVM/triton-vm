@@ -12,8 +12,8 @@ use crate::table::extension_table::Evaluable;
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::ExtInstructionTableColumn::*;
-use super::table_column::InstructionTableColumn::*;
+use super::table_column::InstructionBaseTableColumn::*;
+use super::table_column::InstructionExtTableColumn::*;
 
 pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
@@ -82,12 +82,12 @@ impl Extendable for InstructionTable {
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
             // address keeps increasing
-            padding_row[Address as usize] += one;
-            padding_row[IsPadding as usize] = one;
+            padding_row[usize::from(Address)] += one;
+            padding_row[usize::from(IsPadding)] = one;
             (None, vec![padding_row])
         } else {
             let mut padding_row = [zero; BASE_WIDTH];
-            padding_row[IsPadding as usize] = one;
+            padding_row[usize::from(IsPadding)] = one;
             (None, vec![padding_row.to_vec()])
         }
     }
@@ -107,9 +107,9 @@ impl ExtInstructionTable {
         let running_product_initial =
             MPolynomial::from_constant(PermArg::default_initial(), FULL_WIDTH);
 
-        let ip = variables[Address as usize].clone();
-        let ci = variables[CI as usize].clone();
-        let nia = variables[NIA as usize].clone();
+        let ip = variables[usize::from(Address)].clone();
+        let ci = variables[usize::from(CI)].clone();
+        let nia = variables[usize::from(NIA)].clone();
         let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
         let running_product = variables[usize::from(RunningProductPermArg)].clone();
 
@@ -147,14 +147,14 @@ impl ExtInstructionTable {
         let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
         let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
 
-        let addr = variables[Address as usize].clone();
-        let addr_next = variables[FULL_WIDTH + Address as usize].clone();
-        let current_instruction = variables[CI as usize].clone();
-        let current_instruction_next = variables[FULL_WIDTH + CI as usize].clone();
-        let next_instruction = variables[NIA as usize].clone();
-        let next_instruction_next = variables[FULL_WIDTH + NIA as usize].clone();
+        let addr = variables[usize::from(Address)].clone();
+        let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();
+        let current_instruction = variables[usize::from(CI)].clone();
+        let current_instruction_next = variables[FULL_WIDTH + usize::from(CI)].clone();
+        let next_instruction = variables[usize::from(NIA)].clone();
+        let next_instruction_next = variables[FULL_WIDTH + usize::from(NIA)].clone();
         // beware: for polynomials, “0” is true
-        let is_padding_row = one.clone() - variables[FULL_WIDTH + IsPadding as usize].clone();
+        let is_padding_row = one.clone() - variables[FULL_WIDTH + usize::from(IsPadding)].clone();
 
         // Base Table Constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
@@ -291,25 +291,28 @@ impl InstructionTable {
             // Not different: update running product of Permutation Argument with Processor Table.
             let mut is_duplicate_row = false;
             if let Some(prow) = previous_row {
-                if prow[Address as usize] == row[Address as usize] {
+                if prow[usize::from(Address)] == row[usize::from(Address)] {
                     is_duplicate_row = true;
-                    debug_assert_eq!(prow[CI as usize], row[CI as usize]);
-                    debug_assert_eq!(prow[NIA as usize], row[NIA as usize]);
+                    debug_assert_eq!(prow[usize::from(CI)], row[usize::from(CI)]);
+                    debug_assert_eq!(prow[usize::from(NIA)], row[usize::from(NIA)]);
                 } else {
-                    debug_assert_eq!(prow[Address as usize] + 1_u64.into(), row[Address as usize]);
+                    debug_assert_eq!(
+                        prow[usize::from(Address)] + 1_u64.into(),
+                        row[usize::from(Address)]
+                    );
                 }
             }
 
             // Compress values of current row for Permutation Argument with Processor Table
-            let ip = row[Address as usize].lift();
-            let ci = row[CI as usize].lift();
-            let nia = row[NIA as usize].lift();
+            let ip = row[usize::from(Address)].lift();
+            let ci = row[usize::from(CI)].lift();
+            let nia = row[usize::from(NIA)].lift();
             let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
                 + ci * challenges.ci_processor_weight
                 + nia * challenges.nia_processor_weight;
 
             // Update running product if same row has been seen before and not padding row
-            if is_duplicate_row && row[IsPadding as usize].is_zero() {
+            if is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
                 processor_table_running_product *=
                     challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             }
@@ -321,7 +324,7 @@ impl InstructionTable {
                 + nia * challenges.next_instruction_weight;
 
             // Update running evaluation if same row has _not_ been seen before and not padding row
-            if !is_duplicate_row && row[IsPadding as usize].is_zero() {
+            if !is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
                 program_table_running_evaluation = program_table_running_evaluation
                     * challenges.program_eval_row_weight
                     + compressed_row_for_evaluation_argument;

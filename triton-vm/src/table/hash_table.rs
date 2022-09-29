@@ -18,13 +18,13 @@ use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_collection::interpolant_degree;
-use crate::table::table_column::ExtHashTableColumn::*;
-use crate::table::table_column::HashTableColumn::*;
+use crate::table::table_column::HashBaseTableColumn::*;
+use crate::table::table_column::HashExtTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::HashTableColumn;
+use super::table_column::HashBaseTableColumn;
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
@@ -78,13 +78,13 @@ impl Evaluable for ExtHashTable {
         evaluation_point: &[XFieldElement],
     ) -> Vec<XFieldElement> {
         let constant = |x| BFieldElement::new(x as u64).lift();
-        let round_number = evaluation_point[ROUNDNUMBER as usize];
-        let state10 = evaluation_point[STATE10 as usize];
-        let state11 = evaluation_point[STATE11 as usize];
-        let state12 = evaluation_point[STATE12 as usize];
-        let state13 = evaluation_point[STATE13 as usize];
-        let state14 = evaluation_point[STATE14 as usize];
-        let state15 = evaluation_point[STATE15 as usize];
+        let round_number = evaluation_point[usize::from(ROUNDNUMBER)];
+        let state10 = evaluation_point[usize::from(STATE10)];
+        let state11 = evaluation_point[usize::from(STATE11)];
+        let state12 = evaluation_point[usize::from(STATE12)];
+        let state13 = evaluation_point[usize::from(STATE13)];
+        let state14 = evaluation_point[usize::from(STATE14)];
+        let state15 = evaluation_point[usize::from(STATE15)];
 
         let round_number_is_not_1_or = (0..=NUM_ROUNDS + 1)
             .filter(|&r| r != 1)
@@ -100,16 +100,17 @@ impl Evaluable for ExtHashTable {
             round_number_is_not_1_or * state15,
         ];
 
-        let round_constant_offset = CONSTANT0A as usize;
+        let round_constant_offset = usize::from(CONSTANT0A);
         for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
-            let round_constant_column: HashTableColumn =
-                (round_constant_idx + round_constant_offset).into();
+            let round_constant_column: HashBaseTableColumn =
+                // wrap
+                (round_constant_idx + round_constant_offset).try_into().unwrap();
             evaluated_consistency_constraints.push(
                 round_number
                     * (round_number - XFieldElement::from(9))
                     * (Self::round_constants_interpolant(round_constant_column)
-                        .evaluate(&evaluation_point[ROUNDNUMBER as usize])
-                        - evaluation_point[round_constant_column as usize]),
+                        .evaluate(&evaluation_point[usize::from(ROUNDNUMBER)])
+                        - evaluation_point[usize::from(round_constant_column)]),
             );
         }
 
@@ -120,10 +121,12 @@ impl Evaluable for ExtHashTable {
         &self,
         evaluation_point: &[XFieldElement],
     ) -> Vec<XFieldElement> {
+        use HashBaseTableColumn::*;
+
         let constant = |c: u64| BFieldElement::new(c).lift();
 
-        let round_number = evaluation_point[ROUNDNUMBER as usize];
-        let round_number_next = evaluation_point[FULL_WIDTH + ROUNDNUMBER as usize];
+        let round_number = evaluation_point[usize::from(ROUNDNUMBER)];
+        let round_number_next = evaluation_point[FULL_WIDTH + usize::from(ROUNDNUMBER)];
 
         let mut constraint_evaluations: Vec<XFieldElement> = vec![];
 
@@ -164,7 +167,7 @@ impl Evaluable for ExtHashTable {
 
         // left-hand-side, starting at current round and going forward
         let current_state: Vec<XFieldElement> = (0..STATE_SIZE)
-            .map(|i| evaluation_point[HashTableColumn::STATE0 as usize + i])
+            .map(|i| evaluation_point[usize::from(STATE0) + i])
             .collect_vec();
         let after_sbox = current_state
             .into_iter()
@@ -177,9 +180,8 @@ impl Evaluable for ExtHashTable {
                     .fold(constant(0), XFieldElement::add)
             })
             .collect_vec();
-        let round_constants = evaluation_point
-            [(HashTableColumn::CONSTANT0A as usize)..=(HashTableColumn::CONSTANT15B as usize)]
-            .to_vec();
+        let round_constants =
+            evaluation_point[usize::from(CONSTANT0A)..=usize::from(CONSTANT15B)].to_vec();
         let after_constants = after_mds
             .into_iter()
             .zip_eq(&round_constants[..(NUM_ROUND_CONSTANTS / 2)])
@@ -188,7 +190,7 @@ impl Evaluable for ExtHashTable {
 
         // right hand side; move backwards
         let next_state: Vec<XFieldElement> = (0..STATE_SIZE)
-            .map(|i| evaluation_point[FULL_WIDTH + HashTableColumn::STATE0 as usize + i])
+            .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
         let before_constants = next_state
             .into_iter()
@@ -283,7 +285,7 @@ impl ExtHashTable {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
-        let round_number = variables[ROUNDNUMBER as usize].clone();
+        let round_number = variables[usize::from(ROUNDNUMBER)].clone();
         let round_number_is_0_or_1 = round_number.clone() * (round_number - one);
         vec![round_number_is_0_or_1]
     }
@@ -299,13 +301,13 @@ impl ExtHashTable {
         let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), FULL_WIDTH);
         let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
 
-        let round_number = variables[ROUNDNUMBER as usize].clone();
-        let state10 = variables[STATE10 as usize].clone();
-        let state11 = variables[STATE11 as usize].clone();
-        let state12 = variables[STATE12 as usize].clone();
-        let state13 = variables[STATE13 as usize].clone();
-        let state14 = variables[STATE14 as usize].clone();
-        let state15 = variables[STATE15 as usize].clone();
+        let round_number = variables[usize::from(ROUNDNUMBER)].clone();
+        let state10 = variables[usize::from(STATE10)].clone();
+        let state11 = variables[usize::from(STATE11)].clone();
+        let state12 = variables[usize::from(STATE12)].clone();
+        let state13 = variables[usize::from(STATE13)].clone();
+        let state14 = variables[usize::from(STATE14)].clone();
+        let state15 = variables[usize::from(STATE15)].clone();
 
         // 1. if round number is 1, then capacity is zero
         // DNF: rn =/= 1 \/ cap = 0
@@ -333,14 +335,15 @@ impl ExtHashTable {
         // if round number is zero, we don't care
         // otherwise, make sure the constant is correct
         let nine = constant(9);
-        let round_constant_offset = CONSTANT0A as usize;
+        let round_constant_offset = usize::from(CONSTANT0A);
         for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
-            let round_constant_column: HashTableColumn =
-                (round_constant_idx + round_constant_offset).into();
-            let round_constant = &variables[round_constant_column as usize];
+            let round_constant_column: HashBaseTableColumn =
+                // wrap
+                (round_constant_idx + round_constant_offset).try_into().unwrap();
+            let round_constant = &variables[usize::from(round_constant_column)];
             let interpolant = Self::round_constants_interpolant(round_constant_column);
             let multivariate_interpolant =
-                MPolynomial::lift(interpolant, ROUNDNUMBER as usize, FULL_WIDTH);
+                MPolynomial::lift(interpolant, usize::from(ROUNDNUMBER), FULL_WIDTH);
             consistency_polynomials.push(
                 round_number.clone()
                     * (round_number.clone() - nine)
@@ -351,8 +354,10 @@ impl ExtHashTable {
         consistency_polynomials
     }
 
-    fn round_constants_interpolant(round_constant: HashTableColumn) -> Polynomial<XFieldElement> {
-        let round_constant_idx = (round_constant as usize) - (CONSTANT0A as usize);
+    fn round_constants_interpolant(
+        round_constant: HashBaseTableColumn,
+    ) -> Polynomial<XFieldElement> {
+        let round_constant_idx = usize::from(round_constant) - usize::from(CONSTANT0A);
         let domain = (1..=NUM_ROUNDS)
             .map(|x| BFieldElement::new(x as u64).lift())
             .collect_vec();
@@ -374,8 +379,8 @@ impl ExtHashTable {
         let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), 2 * FULL_WIDTH);
         let variables = MPolynomial::variables(2 * FULL_WIDTH, XFieldElement::one());
 
-        let round_number = variables[ROUNDNUMBER as usize].clone();
-        let round_number_next = variables[FULL_WIDTH + ROUNDNUMBER as usize].clone();
+        let round_number = variables[usize::from(ROUNDNUMBER)].clone();
+        let round_number_next = variables[FULL_WIDTH + usize::from(ROUNDNUMBER)].clone();
 
         let mut constraint_polynomials: Vec<MPolynomial<XFieldElement>> = vec![];
 
@@ -416,7 +421,7 @@ impl ExtHashTable {
 
         // left-hand-side, starting at current round and going forward
         let current_state: Vec<MPolynomial<XFieldElement>> = (0..STATE_SIZE)
-            .map(|i| variables[HashTableColumn::STATE0 as usize + i].clone())
+            .map(|i| variables[usize::from(STATE0) + i].clone())
             .collect_vec();
         let after_sbox = current_state.iter().map(|c| c.pow(ALPHA)).collect_vec();
         let after_mds = (0..STATE_SIZE)
@@ -426,9 +431,8 @@ impl ExtHashTable {
                     .fold(constant(0), MPolynomial::add)
             })
             .collect_vec();
-        let round_constants = variables
-            [(HashTableColumn::CONSTANT0A as usize)..=(HashTableColumn::CONSTANT15B as usize)]
-            .to_vec();
+        let round_constants =
+            variables[usize::from(CONSTANT0A)..=usize::from(CONSTANT15B)].to_vec();
         let after_constants = after_mds
             .into_iter()
             .zip_eq(&round_constants[..(NUM_ROUND_CONSTANTS / 2)])
@@ -437,7 +441,7 @@ impl ExtHashTable {
 
         // right hand side; move backwards
         let next_state: Vec<MPolynomial<XFieldElement>> = (0..STATE_SIZE)
-            .map(|i| variables[FULL_WIDTH + HashTableColumn::STATE0 as usize + i].clone())
+            .map(|i| variables[FULL_WIDTH + usize::from(STATE0) + i].clone())
             .collect_vec();
         let before_constants = next_state
             .into_iter()
@@ -515,18 +519,18 @@ impl HashTable {
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             // Add compressed input to running evaluation if round index marks beginning of hashing
-            if row[HashTableColumn::ROUNDNUMBER as usize].value() == 1 {
+            if row[usize::from(HashBaseTableColumn::ROUNDNUMBER)].value() == 1 {
                 let state_for_input = [
-                    extension_row[HashTableColumn::STATE0 as usize],
-                    extension_row[HashTableColumn::STATE1 as usize],
-                    extension_row[HashTableColumn::STATE2 as usize],
-                    extension_row[HashTableColumn::STATE3 as usize],
-                    extension_row[HashTableColumn::STATE4 as usize],
-                    extension_row[HashTableColumn::STATE5 as usize],
-                    extension_row[HashTableColumn::STATE6 as usize],
-                    extension_row[HashTableColumn::STATE7 as usize],
-                    extension_row[HashTableColumn::STATE8 as usize],
-                    extension_row[HashTableColumn::STATE9 as usize],
+                    extension_row[usize::from(HashBaseTableColumn::STATE0)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE1)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE2)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE3)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE4)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE5)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE6)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE7)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE8)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE9)],
                 ];
                 let compressed_state_for_input = state_for_input
                     .iter()
@@ -542,13 +546,13 @@ impl HashTable {
                 from_processor_running_evaluation;
 
             // Add compressed digest to running evaluation if round index marks end of hashing
-            if row[HashTableColumn::ROUNDNUMBER as usize].value() == 9 {
+            if row[usize::from(HashBaseTableColumn::ROUNDNUMBER)].value() == 9 {
                 let state_for_output = [
-                    extension_row[HashTableColumn::STATE0 as usize],
-                    extension_row[HashTableColumn::STATE1 as usize],
-                    extension_row[HashTableColumn::STATE2 as usize],
-                    extension_row[HashTableColumn::STATE3 as usize],
-                    extension_row[HashTableColumn::STATE4 as usize],
+                    extension_row[usize::from(HashBaseTableColumn::STATE0)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE1)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE2)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE3)],
+                    extension_row[usize::from(HashBaseTableColumn::STATE4)],
                 ];
                 let compressed_state_for_output = state_for_output
                     .iter()

@@ -8,13 +8,13 @@ use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
-use crate::table::table_column::ExtOpStackTableColumn::*;
-use crate::table::table_column::OpStackTableColumn::*;
+use crate::table::table_column::OpStackBaseTableColumn::*;
+use crate::table::table_column::OpStackExtTableColumn::*;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
-use super::table_column::OpStackTableColumn;
+use super::table_column::OpStackBaseTableColumn;
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -82,14 +82,14 @@ impl Extendable for OpStackTable {
             .data()
             .iter()
             .enumerate()
-            .find(|(_, row)| row[OpStackTableColumn::CLK as usize].value() == max_clock)
+            .find(|(_, row)| row[usize::from(OpStackBaseTableColumn::CLK)].value() == max_clock)
         {
             let mut padding_row = padding_template.clone();
-            padding_row[OpStackTableColumn::CLK as usize] += BFieldElement::one();
+            padding_row[usize::from(OpStackBaseTableColumn::CLK)] += BFieldElement::one();
             (Some(idx + 1), vec![padding_row])
         } else {
             let mut padding_row = vec![BFieldElement::zero(); BASE_WIDTH];
-            padding_row[OpStackTableColumn::OSP as usize] = BFieldElement::new(16);
+            padding_row[usize::from(OpStackBaseTableColumn::OSP)] = BFieldElement::new(16);
             (None, vec![padding_row])
         }
     }
@@ -101,13 +101,13 @@ impl ExtOpStackTable {
     fn ext_initial_constraints(
         _challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use OpStackTableColumn::*;
+        use OpStackBaseTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(FULL_WIDTH, 1.into());
-        let clk = variables[CLK as usize].clone();
-        let osp = variables[OSP as usize].clone();
-        let osv = variables[OSV as usize].clone();
+        let clk = variables[usize::from(CLK)].clone();
+        let osp = variables[usize::from(OSP)].clone();
+        let osv = variables[usize::from(OSV)].clone();
         let sixteen = MPolynomial::from_constant(16.into(), FULL_WIDTH);
 
         let clk_is_0 = clk;
@@ -127,15 +127,15 @@ impl ExtOpStackTable {
     fn ext_transition_constraints(
         _challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use OpStackTableColumn::*;
+        use OpStackBaseTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> =
             MPolynomial::variables(2 * FULL_WIDTH, 1.into());
-        let ib1_shrink_stack = variables[IB1ShrinkStack as usize].clone();
-        let osp = variables[OSP as usize].clone();
-        let osv = variables[OSV as usize].clone();
-        let osp_next = variables[FULL_WIDTH + OSP as usize].clone();
-        let osv_next = variables[FULL_WIDTH + OSV as usize].clone();
+        let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
+        let osp = variables[usize::from(OSP)].clone();
+        let osv = variables[usize::from(OSV)].clone();
+        let osp_next = variables[FULL_WIDTH + usize::from(OSP)].clone();
+        let osv_next = variables[FULL_WIDTH + usize::from(OSV)].clone();
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
 
         // the osp increases by 1 or the osp does not change
@@ -203,10 +203,10 @@ impl OpStackTable {
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
-            let clk = extension_row[CLK as usize];
-            let ib1 = extension_row[IB1ShrinkStack as usize];
-            let osp = extension_row[OSP as usize];
-            let osv = extension_row[OSV as usize];
+            let clk = extension_row[usize::from(CLK)];
+            let ib1 = extension_row[usize::from(IB1ShrinkStack)];
+            let osp = extension_row[usize::from(OSP)];
+            let osv = extension_row[usize::from(OSV)];
 
             let clk_w = challenges.clk_weight;
             let ib1_w = challenges.ib1_weight;

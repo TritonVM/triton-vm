@@ -15,8 +15,8 @@ use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::{Evaluable, ExtensionTable};
-use crate::table::table_column::ExtProcessorTableColumn::*;
-use crate::table::table_column::ProcessorTableColumn::{self, *};
+use crate::table::table_column::ProcessorBaseTableColumn::{self, *};
+use crate::table::table_column::ProcessorExtTableColumn::*;
 
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
 
@@ -97,8 +97,8 @@ impl ProcessorTable {
 
             // Input table
             if let Some(prow) = previous_row.clone() {
-                if prow[CI as usize] == Instruction::ReadIo.opcode_b() {
-                    let input_symbol = extension_row[ST0 as usize];
+                if prow[usize::from(CI)] == Instruction::ReadIo.opcode_b() {
+                    let input_symbol = extension_row[usize::from(ST0)];
                     input_table_running_evaluation = input_table_running_evaluation
                         * challenges.input_table_eval_row_weight
                         + input_symbol;
@@ -107,8 +107,8 @@ impl ProcessorTable {
             extension_row[usize::from(InputTableEvalArg)] = input_table_running_evaluation;
 
             // Output table
-            if row[CI as usize] == Instruction::WriteIo.opcode_b() {
-                let output_symbol = extension_row[ST0 as usize];
+            if row[usize::from(CI)] == Instruction::WriteIo.opcode_b() {
+                let output_symbol = extension_row[usize::from(ST0)];
                 output_table_running_evaluation = output_table_running_evaluation
                     * challenges.output_table_eval_row_weight
                     + output_symbol;
@@ -116,15 +116,15 @@ impl ProcessorTable {
             extension_row[usize::from(OutputTableEvalArg)] = output_table_running_evaluation;
 
             // Instruction table
-            let ip = extension_row[IP as usize];
-            let ci = extension_row[CI as usize];
-            let nia = extension_row[NIA as usize];
+            let ip = extension_row[usize::from(IP)];
+            let ci = extension_row[usize::from(CI)];
+            let nia = extension_row[usize::from(NIA)];
 
             let ip_w = challenges.instruction_table_ip_weight;
             let ci_w = challenges.instruction_table_ci_processor_weight;
             let nia_w = challenges.instruction_table_nia_weight;
 
-            if row[IsPadding as usize].is_zero() {
+            if row[usize::from(IsPadding)].is_zero() {
                 let compressed_row_for_instruction_table_permutation_argument =
                     ip * ip_w + ci * ci_w + nia * nia_w;
                 instruction_table_running_product *= challenges.instruction_perm_row_weight
@@ -133,10 +133,10 @@ impl ProcessorTable {
             extension_row[usize::from(InstructionTablePermArg)] = instruction_table_running_product;
 
             // OpStack table
-            let clk = extension_row[CLK as usize];
-            let ib1 = extension_row[IB1 as usize];
-            let osp = extension_row[OSP as usize];
-            let osv = extension_row[OSV as usize];
+            let clk = extension_row[usize::from(CLK)];
+            let ib1 = extension_row[usize::from(IB1)];
+            let osp = extension_row[usize::from(OSP)];
+            let osv = extension_row[usize::from(OSV)];
 
             let compressed_row_for_op_stack_table_permutation_argument = clk
                 * challenges.op_stack_table_clk_weight
@@ -148,8 +148,8 @@ impl ProcessorTable {
             extension_row[usize::from(OpStackTablePermArg)] = opstack_table_running_product;
 
             // RAM Table
-            let ramv = extension_row[RAMV as usize];
-            let ramp = extension_row[ST1 as usize];
+            let ramv = extension_row[usize::from(RAMV)];
+            let ramp = extension_row[usize::from(ST1)];
 
             let compressed_row_for_ram_table_permutation_argument = clk
                 * challenges.ram_table_clk_weight
@@ -160,9 +160,9 @@ impl ProcessorTable {
             extension_row[usize::from(RamTablePermArg)] = ram_table_running_product;
 
             // JumpStack Table
-            let jsp = extension_row[JSP as usize];
-            let jso = extension_row[JSO as usize];
-            let jsd = extension_row[JSD as usize];
+            let jsp = extension_row[usize::from(JSP)];
+            let jso = extension_row[usize::from(JSO)];
+            let jsd = extension_row[usize::from(JSD)];
             let compressed_row_for_jump_stack_table = clk * challenges.jump_stack_table_clk_weight
                 + ci * challenges.jump_stack_table_ci_weight
                 + jsp * challenges.jump_stack_table_jsp_weight
@@ -173,18 +173,18 @@ impl ProcessorTable {
             extension_row[usize::from(JumpStackTablePermArg)] = jump_stack_running_product;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
-            if row[CI as usize] == Instruction::Hash.opcode_b() {
+            if row[usize::from(CI)] == Instruction::Hash.opcode_b() {
                 let st_0_through_9 = [
-                    extension_row[ST0 as usize],
-                    extension_row[ST1 as usize],
-                    extension_row[ST2 as usize],
-                    extension_row[ST3 as usize],
-                    extension_row[ST4 as usize],
-                    extension_row[ST5 as usize],
-                    extension_row[ST6 as usize],
-                    extension_row[ST7 as usize],
-                    extension_row[ST8 as usize],
-                    extension_row[ST9 as usize],
+                    extension_row[usize::from(ST0)],
+                    extension_row[usize::from(ST1)],
+                    extension_row[usize::from(ST2)],
+                    extension_row[usize::from(ST3)],
+                    extension_row[usize::from(ST4)],
+                    extension_row[usize::from(ST5)],
+                    extension_row[usize::from(ST6)],
+                    extension_row[usize::from(ST7)],
+                    extension_row[usize::from(ST8)],
+                    extension_row[usize::from(ST9)],
                 ];
                 let compressed_row_for_hash_input = st_0_through_9
                     .iter()
@@ -200,18 +200,18 @@ impl ProcessorTable {
             // Hash Table – Hash's output from Hash Coprocessor to Processor
             if let Some(prow) = previous_row.clone() {
                 let st_5_through_9 = [
-                    extension_row[ST5 as usize],
-                    extension_row[ST6 as usize],
-                    extension_row[ST7 as usize],
-                    extension_row[ST8 as usize],
-                    extension_row[ST9 as usize],
+                    extension_row[usize::from(ST5)],
+                    extension_row[usize::from(ST6)],
+                    extension_row[usize::from(ST7)],
+                    extension_row[usize::from(ST8)],
+                    extension_row[usize::from(ST9)],
                 ];
                 let compressed_row_for_hash_digest = st_5_through_9
                     .iter()
                     .zip_eq(challenges.hash_table_digest_output_weights.iter())
                     .map(|(&st, &weight)| weight * st)
                     .fold(XFieldElement::zero(), XFieldElement::add);
-                if prow[CI as usize] == Instruction::Hash.opcode_b() {
+                if prow[usize::from(CI)] == Instruction::Hash.opcode_b() {
                     from_hash_table_running_evaluation = from_hash_table_running_evaluation
                         * challenges.from_hash_table_eval_row_weight
                         + compressed_row_for_hash_digest;
@@ -221,7 +221,7 @@ impl ProcessorTable {
 
             // U32 Table
             if let Some(prow) = previous_row {
-                let previous_instruction: Instruction = prow[CI as usize]
+                let previous_instruction: Instruction = prow[usize::from(CI)]
                     .value()
                     .try_into()
                     .expect("CI does not correspond to any instruction.");
@@ -234,25 +234,25 @@ impl ProcessorTable {
                         // correctly. Also, and in contrast to all other u32 instructions, the
                         // operands `lhs` and `rhs` come from different rows.
                         Instruction::Div => (
-                            extension_row[ST0 as usize], // remainder
-                            prow[ST0 as usize].lift(),   // divisor
-                            XFieldElement::one(),        // result of U32 Table's `lt` (must be 1)
+                            extension_row[usize::from(ST0)], // remainder
+                            prow[usize::from(ST0)].lift(),   // divisor
+                            XFieldElement::one(), // result of U32 Table's `lt` (must be 1)
                         ),
                         // Since instruction `reverse` is a unary, not a binary, operation, the
                         // right-hand side is unconstrained.
                         Instruction::Reverse => (
-                            prow[ST0 as usize].lift(),
+                            prow[usize::from(ST0)].lift(),
                             XFieldElement::zero(),
-                            extension_row[ST0 as usize],
+                            extension_row[usize::from(ST0)],
                         ),
                         _ => (
-                            prow[ST0 as usize].lift(),
-                            prow[ST1 as usize].lift(),
-                            extension_row[ST0 as usize],
+                            prow[usize::from(ST0)].lift(),
+                            prow[usize::from(ST1)].lift(),
+                            extension_row[usize::from(ST0)],
                         ),
                     };
 
-                    let pi = prow[CI as usize].lift();
+                    let pi = prow[usize::from(CI)].lift();
                     let compressed_row_for_u32 = pi * challenges.u32_op_table_ci_weight
                         + lhs * challenges.u32_op_table_lhs_weight
                         + rhs * challenges.u32_op_table_rhs_weight
@@ -494,12 +494,12 @@ impl Extendable for ProcessorTable {
         let one = BFieldElement::one();
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
-            padding_row[ProcessorTableColumn::CLK as usize] += one;
-            padding_row[IsPadding as usize] = one;
+            padding_row[usize::from(ProcessorBaseTableColumn::CLK)] += one;
+            padding_row[usize::from(IsPadding)] = one;
             (None, vec![padding_row])
         } else {
             let mut padding_row = vec![zero; BASE_WIDTH];
-            padding_row[IsPadding as usize] = one;
+            padding_row[usize::from(IsPadding)] = one;
             (None, vec![padding_row])
         }
     }
@@ -780,151 +780,151 @@ impl SingleRowConstraints {
     }
 
     pub fn clk(&self) -> MPolynomial<XFieldElement> {
-        self.variables[CLK as usize].clone()
+        self.variables[usize::from(CLK)].clone()
     }
 
     pub fn ip(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IP as usize].clone()
+        self.variables[usize::from(IP)].clone()
     }
 
     pub fn ci(&self) -> MPolynomial<XFieldElement> {
-        self.variables[CI as usize].clone()
+        self.variables[usize::from(CI)].clone()
     }
 
     pub fn nia(&self) -> MPolynomial<XFieldElement> {
-        self.variables[NIA as usize].clone()
+        self.variables[usize::from(NIA)].clone()
     }
 
     pub fn ib0(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB0 as usize].clone()
+        self.variables[usize::from(IB0)].clone()
     }
 
     pub fn ib1(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB1 as usize].clone()
+        self.variables[usize::from(IB1)].clone()
     }
 
     pub fn ib2(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB2 as usize].clone()
+        self.variables[usize::from(IB2)].clone()
     }
 
     pub fn ib3(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB3 as usize].clone()
+        self.variables[usize::from(IB3)].clone()
     }
 
     pub fn ib4(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB4 as usize].clone()
+        self.variables[usize::from(IB4)].clone()
     }
 
     pub fn ib5(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB5 as usize].clone()
+        self.variables[usize::from(IB5)].clone()
     }
 
     pub fn ib6(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB6 as usize].clone()
+        self.variables[usize::from(IB6)].clone()
     }
 
     pub fn jsp(&self) -> MPolynomial<XFieldElement> {
-        self.variables[JSP as usize].clone()
+        self.variables[usize::from(JSP)].clone()
     }
 
     pub fn jsd(&self) -> MPolynomial<XFieldElement> {
-        self.variables[JSD as usize].clone()
+        self.variables[usize::from(JSD)].clone()
     }
 
     pub fn jso(&self) -> MPolynomial<XFieldElement> {
-        self.variables[JSO as usize].clone()
+        self.variables[usize::from(JSO)].clone()
     }
 
     pub fn st0(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST0 as usize].clone()
+        self.variables[usize::from(ST0)].clone()
     }
 
     pub fn st1(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST1 as usize].clone()
+        self.variables[usize::from(ST1)].clone()
     }
 
     pub fn st2(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST2 as usize].clone()
+        self.variables[usize::from(ST2)].clone()
     }
 
     pub fn st3(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST3 as usize].clone()
+        self.variables[usize::from(ST3)].clone()
     }
 
     pub fn st4(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST4 as usize].clone()
+        self.variables[usize::from(ST4)].clone()
     }
 
     pub fn st5(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST5 as usize].clone()
+        self.variables[usize::from(ST5)].clone()
     }
 
     pub fn st6(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST6 as usize].clone()
+        self.variables[usize::from(ST6)].clone()
     }
 
     pub fn st7(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST7 as usize].clone()
+        self.variables[usize::from(ST7)].clone()
     }
 
     pub fn st8(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST8 as usize].clone()
+        self.variables[usize::from(ST8)].clone()
     }
 
     pub fn st9(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST9 as usize].clone()
+        self.variables[usize::from(ST9)].clone()
     }
 
     pub fn st10(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST10 as usize].clone()
+        self.variables[usize::from(ST10)].clone()
     }
 
     pub fn st11(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST11 as usize].clone()
+        self.variables[usize::from(ST11)].clone()
     }
 
     pub fn st12(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST12 as usize].clone()
+        self.variables[usize::from(ST12)].clone()
     }
 
     pub fn st13(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST13 as usize].clone()
+        self.variables[usize::from(ST13)].clone()
     }
 
     pub fn st14(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST14 as usize].clone()
+        self.variables[usize::from(ST14)].clone()
     }
 
     pub fn st15(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST15 as usize].clone()
+        self.variables[usize::from(ST15)].clone()
     }
 
     pub fn osp(&self) -> MPolynomial<XFieldElement> {
-        self.variables[OSP as usize].clone()
+        self.variables[usize::from(OSP)].clone()
     }
 
     pub fn osv(&self) -> MPolynomial<XFieldElement> {
-        self.variables[OSV as usize].clone()
+        self.variables[usize::from(OSV)].clone()
     }
 
     pub fn hv0(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV0 as usize].clone()
+        self.variables[usize::from(HV0)].clone()
     }
 
     pub fn hv1(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV1 as usize].clone()
+        self.variables[usize::from(HV1)].clone()
     }
 
     pub fn hv2(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV2 as usize].clone()
+        self.variables[usize::from(HV2)].clone()
     }
 
     pub fn hv3(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV3 as usize].clone()
+        self.variables[usize::from(HV3)].clone()
     }
 
     pub fn ramv(&self) -> MPolynomial<XFieldElement> {
-        self.variables[RAMV as usize].clone()
+        self.variables[usize::from(RAMV)].clone()
     }
 }
 
@@ -1879,253 +1879,253 @@ impl RowPairConstraints {
     }
 
     pub fn clk(&self) -> MPolynomial<XFieldElement> {
-        self.variables[CLK as usize].clone()
+        self.variables[usize::from(CLK)].clone()
     }
 
     pub fn ip(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IP as usize].clone()
+        self.variables[usize::from(IP)].clone()
     }
 
     pub fn ci(&self) -> MPolynomial<XFieldElement> {
-        self.variables[CI as usize].clone()
+        self.variables[usize::from(CI)].clone()
     }
 
     pub fn nia(&self) -> MPolynomial<XFieldElement> {
-        self.variables[NIA as usize].clone()
+        self.variables[usize::from(NIA)].clone()
     }
 
     pub fn ib0(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB0 as usize].clone()
+        self.variables[usize::from(IB0)].clone()
     }
 
     pub fn ib1(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB1 as usize].clone()
+        self.variables[usize::from(IB1)].clone()
     }
 
     pub fn ib2(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB2 as usize].clone()
+        self.variables[usize::from(IB2)].clone()
     }
 
     pub fn ib3(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB3 as usize].clone()
+        self.variables[usize::from(IB3)].clone()
     }
 
     pub fn ib4(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB4 as usize].clone()
+        self.variables[usize::from(IB4)].clone()
     }
 
     pub fn ib5(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB5 as usize].clone()
+        self.variables[usize::from(IB5)].clone()
     }
 
     pub fn ib6(&self) -> MPolynomial<XFieldElement> {
-        self.variables[IB6 as usize].clone()
+        self.variables[usize::from(IB6)].clone()
     }
 
     pub fn jsp(&self) -> MPolynomial<XFieldElement> {
-        self.variables[JSP as usize].clone()
+        self.variables[usize::from(JSP)].clone()
     }
 
     pub fn jsd(&self) -> MPolynomial<XFieldElement> {
-        self.variables[JSD as usize].clone()
+        self.variables[usize::from(JSD)].clone()
     }
 
     pub fn jso(&self) -> MPolynomial<XFieldElement> {
-        self.variables[JSO as usize].clone()
+        self.variables[usize::from(JSO)].clone()
     }
 
     pub fn st0(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST0 as usize].clone()
+        self.variables[usize::from(ST0)].clone()
     }
 
     pub fn st1(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST1 as usize].clone()
+        self.variables[usize::from(ST1)].clone()
     }
 
     pub fn st2(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST2 as usize].clone()
+        self.variables[usize::from(ST2)].clone()
     }
 
     pub fn st3(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST3 as usize].clone()
+        self.variables[usize::from(ST3)].clone()
     }
 
     pub fn st4(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST4 as usize].clone()
+        self.variables[usize::from(ST4)].clone()
     }
 
     pub fn st5(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST5 as usize].clone()
+        self.variables[usize::from(ST5)].clone()
     }
 
     pub fn st6(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST6 as usize].clone()
+        self.variables[usize::from(ST6)].clone()
     }
 
     pub fn st7(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST7 as usize].clone()
+        self.variables[usize::from(ST7)].clone()
     }
 
     pub fn st8(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST8 as usize].clone()
+        self.variables[usize::from(ST8)].clone()
     }
 
     pub fn st9(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST9 as usize].clone()
+        self.variables[usize::from(ST9)].clone()
     }
 
     pub fn st10(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST10 as usize].clone()
+        self.variables[usize::from(ST10)].clone()
     }
 
     pub fn st11(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST11 as usize].clone()
+        self.variables[usize::from(ST11)].clone()
     }
 
     pub fn st12(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST12 as usize].clone()
+        self.variables[usize::from(ST12)].clone()
     }
 
     pub fn st13(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST13 as usize].clone()
+        self.variables[usize::from(ST13)].clone()
     }
 
     pub fn st14(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST14 as usize].clone()
+        self.variables[usize::from(ST14)].clone()
     }
 
     pub fn st15(&self) -> MPolynomial<XFieldElement> {
-        self.variables[ST15 as usize].clone()
+        self.variables[usize::from(ST15)].clone()
     }
 
     pub fn osp(&self) -> MPolynomial<XFieldElement> {
-        self.variables[OSP as usize].clone()
+        self.variables[usize::from(OSP)].clone()
     }
 
     pub fn osv(&self) -> MPolynomial<XFieldElement> {
-        self.variables[OSV as usize].clone()
+        self.variables[usize::from(OSV)].clone()
     }
 
     pub fn hv0(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV0 as usize].clone()
+        self.variables[usize::from(HV0)].clone()
     }
 
     pub fn hv1(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV1 as usize].clone()
+        self.variables[usize::from(HV1)].clone()
     }
 
     pub fn hv2(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV2 as usize].clone()
+        self.variables[usize::from(HV2)].clone()
     }
 
     pub fn hv3(&self) -> MPolynomial<XFieldElement> {
-        self.variables[HV3 as usize].clone()
+        self.variables[usize::from(HV3)].clone()
     }
 
     pub fn ramv(&self) -> MPolynomial<XFieldElement> {
-        self.variables[RAMV as usize].clone()
+        self.variables[usize::from(RAMV)].clone()
     }
 
     // Property: All polynomial variables that contain '_next' have the same
     // variable position / value as the one without '_next', +/- FULL_WIDTH.
     pub fn clk_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + CLK as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(CLK)].clone()
     }
 
     pub fn ip_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + IP as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(IP)].clone()
     }
 
     pub fn ci_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + CI as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(CI)].clone()
     }
 
     pub fn jsp_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + JSP as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(JSP)].clone()
     }
 
     pub fn jsd_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + JSD as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(JSD)].clone()
     }
 
     pub fn jso_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + JSO as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(JSO)].clone()
     }
 
     pub fn st0_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST0 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST0)].clone()
     }
 
     pub fn st1_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST1 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST1)].clone()
     }
 
     pub fn st2_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST2 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST2)].clone()
     }
 
     pub fn st3_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST3 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST3)].clone()
     }
 
     pub fn st4_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST4 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST4)].clone()
     }
 
     pub fn st5_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST5 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST5)].clone()
     }
 
     pub fn st6_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST6 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST6)].clone()
     }
 
     pub fn st7_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST7 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST7)].clone()
     }
 
     pub fn st8_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST8 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST8)].clone()
     }
 
     pub fn st9_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST9 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST9)].clone()
     }
 
     pub fn st10_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST10 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST10)].clone()
     }
 
     pub fn st11_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST11 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST11)].clone()
     }
 
     pub fn st12_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST12 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST12)].clone()
     }
 
     pub fn st13_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST13 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST13)].clone()
     }
 
     pub fn st14_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST14 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST14)].clone()
     }
 
     pub fn st15_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + ST15 as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(ST15)].clone()
     }
 
     pub fn osp_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + OSP as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(OSP)].clone()
     }
 
     pub fn osv_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + OSV as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(OSV)].clone()
     }
 
     pub fn ramv_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + RAMV as usize].clone()
+        self.variables[FULL_WIDTH + usize::from(RAMV)].clone()
     }
 
     pub fn decompose_arg(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -2491,8 +2491,8 @@ mod constraint_polynomial_tests {
     fn test_constraints_for_rows_with_debug_info(
         instruction: Instruction,
         test_rows: &[Vec<XFieldElement>],
-        debug_cols_curr_row: &[ProcessorTableColumn],
-        debug_cols_next_row: &[ProcessorTableColumn],
+        debug_cols_curr_row: &[ProcessorBaseTableColumn],
+        debug_cols_next_row: &[ProcessorBaseTableColumn],
     ) {
         for (case_idx, test_row) in test_rows.iter().enumerate() {
             // Print debug information
@@ -2501,7 +2501,7 @@ mod constraint_polynomial_tests {
                 instruction, case_idx
             );
             for c in debug_cols_curr_row {
-                print!("{} = {}, ", c, test_row[*c as usize]);
+                print!("{} = {}, ", c, test_row[usize::from(*c)]);
             }
             for c in debug_cols_next_row {
                 print!("{}' = {}, ", c, test_row[*c as usize + FULL_WIDTH]);
@@ -2514,7 +2514,7 @@ mod constraint_polynomial_tests {
             {
                 assert_eq!(
                     instruction.opcode_b().lift(),
-                    test_row[CI as usize],
+                    test_row[usize::from(CI)],
                     "The test is trying to check the wrong constraint polynomials."
                 );
                 assert_eq!(
@@ -2708,7 +2708,7 @@ mod constraint_polynomial_tests {
         let mut row = vec![0.into(); 2 * FULL_WIDTH];
 
         for instruction in all_instructions_without_args() {
-            use ProcessorTableColumn::*;
+            use ProcessorBaseTableColumn::*;
             let deselector = deselectors.get(instruction);
 
             println!(
