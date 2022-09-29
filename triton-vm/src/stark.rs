@@ -198,16 +198,18 @@ impl Stark {
             + 2 * extension_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
-        let num_gcta_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
+        let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
-        let gcta_and_non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
-        let gcta_and_non_lin_combi_weights = Self::sample_weights(
-            gcta_and_non_lin_combi_weights_seed,
+        let grand_cross_table_arg_and_non_lin_combi_weights_seed =
+            proof_stream.prover_fiat_shamir();
+        let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
+            grand_cross_table_arg_and_non_lin_combi_weights_seed,
             &hasher,
-            num_gcta_weights + num_non_lin_combi_weights,
+            num_grand_cross_table_arg_weights + num_non_lin_combi_weights,
         );
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
-            gcta_and_non_lin_combi_weights.split_at(num_gcta_weights);
+            grand_cross_table_arg_and_non_lin_combi_weights
+                .split_at(num_grand_cross_table_arg_weights);
         timer.elapsed("Sample weights for grand cross-table argument and non-linear combination");
 
         // Prove equal terminal values for the column pairs pertaining to cross table arguments
@@ -230,16 +232,17 @@ impl Stark {
             input_terminal,
             output_terminal,
         );
-        let gcta_quotient_codeword = grand_cross_table_arg.terminal_quotient_codeword(
-            &ext_codeword_tables,
-            &self.xfri.domain,
-            derive_omicron(ext_codeword_tables.padded_height as u64),
-        );
-        quotient_codewords.push(gcta_quotient_codeword);
+        let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
+            .terminal_quotient_codeword(
+                &ext_codeword_tables,
+                &self.xfri.domain,
+                derive_omicron(ext_codeword_tables.padded_height as u64),
+            );
+        quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
 
-        let gcta_quotient_degree_bound = grand_cross_table_arg
+        let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(&ext_codeword_tables, self.num_trace_randomizers);
-        quotient_degree_bounds.push(gcta_quotient_degree_bound);
+        quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
         timer.elapsed("Grand Cross Table Argument");
 
         let combination_codeword = self.create_combination_codeword(
@@ -664,16 +667,18 @@ impl Stark {
             + 2 * num_extension_polynomials
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
-        let num_gcta_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
+        let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
-        let gcta_and_non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
-        let gcta_and_non_lin_combi_weights = Self::sample_weights(
-            gcta_and_non_lin_combi_weights_seed,
+        let grand_cross_table_arg_and_non_lin_combi_weights_seed =
+            proof_stream.verifier_fiat_shamir();
+        let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
+            grand_cross_table_arg_and_non_lin_combi_weights_seed,
             &hasher,
-            num_gcta_weights + num_non_lin_combi_weights,
+            num_grand_cross_table_arg_weights + num_non_lin_combi_weights,
         );
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
-            gcta_and_non_lin_combi_weights.split_at(num_gcta_weights);
+            grand_cross_table_arg_and_non_lin_combi_weights
+                .split_at(num_grand_cross_table_arg_weights);
         timer.elapsed("Sample weights for grand cross-table argument and non-linear combination");
 
         let input_terminal = EvalArg::compute_terminal(
@@ -951,16 +956,17 @@ impl Stark {
                 }
             }
 
-            let gcta_degree_bound = grand_cross_table_arg
+            let grand_cross_table_arg_degree_bound = grand_cross_table_arg
                 .quotient_degree_bound(&ext_table_collection, self.num_trace_randomizers);
-            let shift = self.max_degree - gcta_degree_bound;
-            let gcta_evaluated =
+            let shift = self.max_degree - grand_cross_table_arg_degree_bound;
+            let grand_cross_table_arg_evaluated =
                 grand_cross_table_arg.evaluate_non_linear_sum_of_differences(&cross_slice_by_table);
-            let gcta_quotient = gcta_evaluated / (current_fri_domain_value - omicron_inverse);
-            let gcta_quotient_shifted =
-                gcta_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-            summands.push(gcta_quotient);
-            summands.push(gcta_quotient_shifted);
+            let grand_cross_table_arg_quotient =
+                grand_cross_table_arg_evaluated / (current_fri_domain_value - omicron_inverse);
+            let grand_cross_table_arg_quotient_shifted =
+                grand_cross_table_arg_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
+            summands.push(grand_cross_table_arg_quotient);
+            summands.push(grand_cross_table_arg_quotient_shifted);
 
             let inner_product = non_lin_combi_weights
                 .par_iter()

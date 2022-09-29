@@ -233,7 +233,7 @@ impl CrossTableArg for EvalArg {
         initial: XFieldElement,
         challenge: XFieldElement,
     ) -> XFieldElement {
-        symbols.iter().fold(initial, |running_evaluation, &symbol| {
+        symbols.iter().fold(initial, |running_evaluation, symbol| {
             challenge * running_evaluation + symbol.lift()
         })
     }
