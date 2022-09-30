@@ -1036,7 +1036,9 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_column::ProcessorExtTableColumn::{
         InputTableEvalArg, OutputTableEvalArg,
     };
-    use crate::vm::triton_vm_tests::{all_tasm_test_programs, test_hash_nop_nop_lt};
+    use crate::vm::triton_vm_tests::{
+        bigger_tasm_test_programs, small_tasm_test_programs, test_hash_nop_nop_lt,
+    };
     use crate::vm::Program;
 
     use super::*;
@@ -1236,7 +1238,10 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     pub fn check_all_cross_table_terminals() {
-        let code_collection = all_tasm_test_programs();
+        let mut code_collection = small_tasm_test_programs();
+        code_collection.append(&mut bigger_tasm_test_programs());
+        let mut timer = TimingReporter::start();
+
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
             let code = code_with_input.source_code;
             let input = code_with_input.input;
@@ -1289,7 +1294,9 @@ pub(crate) mod triton_stark_tests {
                 ptoe, output_terminal,
                 "The output terminal must match for TASM snipped #{code_idx}."
             );
+            timer.elapsed(format!("Program number {code_idx}").as_str());
         }
+        println!("{}", timer.finish());
     }
 
     #[test]

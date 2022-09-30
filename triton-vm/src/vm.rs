@@ -250,6 +250,7 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::other;
     use twenty_first::shared_math::other::roundup_npo2;
     use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
+    use twenty_first::timing_reporter::TimingReporter;
 
     use crate::instruction::sample_programs;
     use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
@@ -271,11 +272,14 @@ pub mod triton_vm_tests {
 
         let (base_matrices, err, stdout) = program.simulate_with_input(&stdin, &secret_in);
 
-        print!("VM output: [");
-        for symbol in stdout {
-            print!("{symbol}, ");
-        }
-        println!("]");
+        println!(
+            "VM output: [{}]",
+            stdout
+                .iter()
+                .map(|s| format!("{s}"))
+                .collect_vec()
+                .join(", ")
+        );
 
         if let Some(e) = err {
             panic!("Execution failed: {e}");
@@ -320,18 +324,23 @@ pub mod triton_vm_tests {
 
         let (_, err, stdout) = program.simulate_with_input(&stdin, &secret_in);
 
-        let actually_computed_symbol = stdout[0];
+        println!(
+            "VM output: [{}]",
+            stdout
+                .iter()
+                .map(|s| format!("{s}"))
+                .collect_vec()
+                .join(", ")
+        );
 
-        print!("VM output: [");
-        for symbol in stdout {
-            print!("{symbol}, ");
+        if let Some(e) = err {
+            panic!("Execution failed: {e}");
         }
-        println!("]");
 
-        assert!(err.is_none());
-        let expected = BFieldElement::new(14);
+        let expected_symbol = BFieldElement::new(14);
+        let computed_symbol = stdout[0];
 
-        assert_eq!(expected, actually_computed_symbol);
+        assert_eq!(expected_symbol, computed_symbol);
     }
 
     #[test]
@@ -675,17 +684,17 @@ pub mod triton_vm_tests {
         SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 xbmul halt")
     }
 
-    pub fn test_program_for_read_io() -> SourceCodeAndInput {
+    pub fn test_program_for_read_io_write_io() -> SourceCodeAndInput {
         SourceCodeAndInput {
-            source_code: "read_io assert halt".to_string(),
-            input: vec![BFieldElement::one()],
+            source_code: "read_io assert read_io read_io dup1 dup1 add write_io mul write_io halt"
+                .to_string(),
+            input: vec![1_u64.into(), 3_u64.into(), 14_u64.into()],
             secret_input: vec![],
         }
     }
 
-    pub fn all_tasm_test_programs() -> Vec<SourceCodeAndInput> {
+    pub fn small_tasm_test_programs() -> Vec<SourceCodeAndInput> {
         vec![
-            test_hash_nop_nop_lt(),
             test_program_for_push_pop_dup_swap_nop(),
             test_program_for_divine(),
             test_program_for_skiz(),
@@ -696,41 +705,57 @@ pub mod triton_vm_tests {
             test_program_for_divine_sibling_switch(),
             test_program_for_assert_vector(),
             test_program_for_add_mul_invert(),
-            test_program_for_instruction_split(),
             test_program_for_eq(),
             test_program_for_lsb(),
+            test_program_for_split(),
+            test_program_for_xxadd(),
+            test_program_for_xxmul(),
+            test_program_for_xinvert(),
+            test_program_for_xbmul(),
+            test_program_for_read_io_write_io(),
+        ]
+    }
+
+    /// programs with a cycle count of 150 and upwards
+    pub fn bigger_tasm_test_programs() -> Vec<SourceCodeAndInput> {
+        vec![
+            test_hash_nop_nop_lt(),
+            test_program_for_instruction_split(),
             test_program_for_lt(),
             test_program_for_and(),
             test_program_for_xor(),
             test_program_for_reverse(),
             test_program_for_lte(),
             test_program_for_div(),
-            test_program_for_split(),
             test_program_for_split_assert(),
-            test_program_for_xxadd(),
-            test_program_for_xxmul(),
-            test_program_for_xinvert(),
-            test_program_for_xbmul(),
-            test_program_for_read_io(),
         ]
     }
 
     #[test]
-    fn processor_table_constraints_evaluate_to_zero_test() {
-        let all_programs = all_tasm_test_programs();
-        for program in all_programs.into_iter() {
-            println!(
-                "\n\nChecking transition constraints for program: \"{}\"",
-                &program.source_code
-            );
+    fn processor_table_constraints_evaluate_to_zero_for_small_tasm_programs_test() {
+        processor_table_constraints_evaluate_to_zero(&small_tasm_test_programs())
+    }
+
+    #[test]
+    #[ignore = "too slow"]
+    fn processor_table_constraints_evaluate_to_zero_for_bigger_tasm_programs_test() {
+        processor_table_constraints_evaluate_to_zero(&bigger_tasm_test_programs())
+    }
+
+    fn processor_table_constraints_evaluate_to_zero(all_programs: &[SourceCodeAndInput]) {
+        let mut timer = TimingReporter::start();
+        for (code_idx, program) in all_programs.into_iter().enumerate() {
             let (aet, err, output) = program.simulate();
 
-            print!("VM output: [");
-            for symbol in output {
-                print!("{symbol}, ");
-            }
-            println!("]");
-
+            println!("\nChecking transition constraints for program number {code_idx}");
+            println!(
+                "VM output: [{}]",
+                output
+                    .iter()
+                    .map(|s| format!("{s}"))
+                    .collect_vec()
+                    .join(", ")
+            );
             if let Some(e) = err {
                 panic!("The VM is not happy: {}", e);
             }
@@ -740,6 +765,7 @@ pub mod triton_vm_tests {
                 .iter()
                 .map(|row| row.to_vec())
                 .collect_vec();
+            let num_cycles = processor_matrix.len();
 
             let mut processor_table = ProcessorTable::new_prover(processor_matrix);
             let padded_height = roundup_npo2(processor_table.data().len() as u64) as usize;
@@ -779,7 +805,11 @@ pub mod triton_vm_tests {
                     }
                 }
             }
+            timer.elapsed(
+                format!("Program number {code_idx:>2} (cycles: {num_cycles:>4})").as_str(),
+            );
         }
+        println!("{}", timer.finish());
     }
 
     fn _assert_air_constraints_on_matrix(
