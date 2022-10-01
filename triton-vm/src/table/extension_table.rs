@@ -79,7 +79,7 @@ pub trait Evaluable: ExtensionTable {
     ) -> Vec<XFieldElement> {
         if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
             transition_constraints
-                .iter()
+                .par_iter()
                 .map(|tc| tc.evaluate(evaluation_point))
                 .collect()
         } else {
@@ -283,7 +283,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                     .collect_vec();
                 let evaluation_point = vec![current_row, next_row].concat();
                 let evaluated_tcs = self.evaluate_transition_constraints(&evaluation_point);
-                evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
+                evaluated_tcs.par_iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
