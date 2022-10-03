@@ -244,8 +244,12 @@ impl Program {
 #[cfg(test)]
 pub mod triton_vm_tests {
     use std::iter::zip;
+    use std::ops::{BitAnd, BitXor};
 
     use num_traits::{One, Zero};
+    use rand::rngs::ThreadRng;
+    use rand::Rng;
+    use rand_core::RngCore;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
     use twenty_first::shared_math::other::roundup_npo2;
@@ -591,6 +595,32 @@ pub mod triton_vm_tests {
         )
     }
 
+    pub fn property_based_test_program_for_assert_vector() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.gen_range(0..BFieldElement::QUOTIENT);
+        let st1 = rng.gen_range(0..BFieldElement::QUOTIENT);
+        let st2 = rng.gen_range(0..BFieldElement::QUOTIENT);
+        let st3 = rng.gen_range(0..BFieldElement::QUOTIENT);
+        let st4 = rng.gen_range(0..BFieldElement::QUOTIENT);
+
+        let source_code = format!(
+            "push {} push {} push {} push {} push {} \
+            read_io read_io read_io read_io read_io \
+            assert_vector halt",
+            st4.to_string(),
+            st3.to_string(),
+            st2.to_string(),
+            st1.to_string(),
+            st0.to_string(),
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![st4.into(), st3.into(), st2.into(), st1.into(), st0.into()],
+            secret_input: vec![],
+        }
+    }
+
     pub fn test_program_for_add_mul_invert() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 2 push -1 add assert \
@@ -604,6 +634,24 @@ pub mod triton_vm_tests {
         SourceCodeAndInput::without_input("push -1 split swap1 lt assert halt ")
     }
 
+    pub fn property_based_test_program_for_split() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.next_u64() % BFieldElement::QUOTIENT;
+        let hi = st0 >> 32;
+        let lo = st0 & 0xffff_ffff;
+
+        let source_code = format!(
+            "push {} split read_io eq assert read_io eq assert halt",
+            st0.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![hi.into(), lo.into()],
+            secret_input: vec![],
+        }
+    }
+
     pub fn test_program_for_eq() -> SourceCodeAndInput {
         SourceCodeAndInput {
             source_code: "read_io divine eq assert halt".to_string(),
@@ -612,32 +660,204 @@ pub mod triton_vm_tests {
         }
     }
 
+    pub fn property_based_test_program_for_eq() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.next_u64() % BFieldElement::QUOTIENT;
+
+        let source_code = format!(
+            "push {} dup0 read_io eq assert dup0 divine eq assert halt",
+            st0.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![st0.into()],
+            secret_input: vec![st0.into()],
+        }
+    }
+
     pub fn test_program_for_lsb() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 3 lsb assert assert halt")
+    }
+
+    pub fn property_based_test_program_for_lsb() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.next_u32();
+        let lsb = st0 % 2;
+        let st0_shift_right = st0 >> 1;
+
+        let source_code = format!(
+            "push {} lsb read_io eq assert read_io eq assert halt",
+            st0.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![lsb.into(), st0_shift_right.into()],
+            secret_input: vec![],
+        }
     }
 
     pub fn test_program_for_lt() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 2 lt assert halt")
     }
 
+    pub fn property_based_test_program_for_lt() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st1 = rng.next_u32();
+        let st0 = rng.next_u32();
+        let result = if st0 < st1 {
+            1_u64.into()
+        } else {
+            0_u64.into()
+        };
+
+        let source_code = format!(
+            "push {} push {} lt read_io eq assert halt",
+            st1.to_string(),
+            st0.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![result],
+            secret_input: vec![],
+        }
+    }
+
     pub fn test_program_for_and() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 3 and assert halt")
+    }
+
+    pub fn property_based_test_program_for_and() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st1 = rng.next_u32();
+        let st0 = rng.next_u32();
+        let result = st0.bitand(st1);
+
+        let source_code = format!(
+            "push {} push {} and read_io eq assert halt",
+            st1.to_string(),
+            st0.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![result.into()],
+            secret_input: vec![],
+        }
     }
 
     pub fn test_program_for_xor() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 7 push 6 xor assert halt")
     }
 
+    pub fn property_based_test_program_for_xor() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st1 = rng.next_u32();
+        let st0 = rng.next_u32();
+        let result = st0.bitxor(st1);
+
+        let source_code = format!(
+            "push {} push {} xor read_io eq assert halt",
+            st1.to_string(),
+            st0.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![result.into()],
+            secret_input: vec![],
+        }
+    }
+
     pub fn test_program_for_reverse() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 2147483648 reverse assert halt")
+    }
+
+    pub fn property_based_test_program_for_reverse() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.next_u32();
+        let st0_rev = st0.reverse_bits().into();
+
+        let source_code = format!("push {} reverse read_io eq assert halt", st0.to_string());
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![st0_rev],
+            secret_input: vec![],
+        }
     }
 
     pub fn test_program_for_lte() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 2 lte assert halt")
     }
 
+    pub fn property_based_test_program_for_lte() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st1 = rng.next_u32();
+        let st0 = rng.next_u32();
+        let result = if st0 <= st1 {
+            1_u64.into()
+        } else {
+            0_u64.into()
+        };
+
+        let source_code = format!(
+            "push {} push {} lte read_io eq assert halt",
+            st1.to_string(),
+            st0.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![result],
+            secret_input: vec![],
+        }
+    }
+
     pub fn test_program_for_div() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 2 push 3 div assert assert halt")
+    }
+
+    pub fn property_based_test_program_for_div() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let denominator = rng.next_u32();
+        let numerator = rng.next_u32();
+        let quotient = numerator / denominator;
+        let remainder = numerator % denominator;
+
+        let source_code = format!(
+            "push {} push {} div read_io eq assert read_io eq assert halt",
+            denominator.to_string(),
+            numerator.to_string()
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: vec![remainder.into(), quotient.into()],
+            secret_input: vec![],
+        }
+    }
+
+    pub fn property_based_test_program_for_is_u32() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.next_u32();
+
+        let source_code = format!("push {} is_u32 halt", st0.to_string());
+
+        SourceCodeAndInput::without_input(&source_code)
+    }
+
+    #[test]
+    #[should_panic(expected = "st0 must be 1.")]
+    pub fn negative_property_is_u32_test() {
+        let mut rng = ThreadRng::default();
+        let st0 = (rng.next_u32() as u64) << 32;
+
+        let source_code = format!("push {} is_u32 halt", st0.to_string());
+        let program = SourceCodeAndInput::without_input(&source_code);
+        let _ = program.run();
     }
 
     pub fn test_program_for_split() -> SourceCodeAndInput {
@@ -712,6 +932,22 @@ pub mod triton_vm_tests {
         ]
     }
 
+    pub fn property_based_test_programs() -> Vec<SourceCodeAndInput> {
+        vec![
+            property_based_test_program_for_assert_vector(),
+            property_based_test_program_for_split(),
+            property_based_test_program_for_eq(),
+            property_based_test_program_for_lsb(),
+            property_based_test_program_for_lt(),
+            property_based_test_program_for_and(),
+            property_based_test_program_for_xor(),
+            property_based_test_program_for_reverse(),
+            property_based_test_program_for_lte(),
+            property_based_test_program_for_div(),
+            property_based_test_program_for_is_u32(),
+        ]
+    }
+
     /// programs with a cycle count of 150 and upwards
     pub fn bigger_tasm_test_programs() -> Vec<SourceCodeAndInput> {
         vec![
@@ -730,6 +966,11 @@ pub mod triton_vm_tests {
     #[test]
     fn processor_table_constraints_evaluate_to_zero_for_small_tasm_programs_test() {
         processor_table_constraints_evaluate_to_zero(&small_tasm_test_programs())
+    }
+
+    #[test]
+    fn processor_table_constraints_evaluate_to_zero_for_property_based_tasm_programs_test() {
+        processor_table_constraints_evaluate_to_zero(&property_based_test_programs())
     }
 
     #[test]

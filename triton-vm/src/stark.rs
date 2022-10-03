@@ -1037,7 +1037,8 @@ pub(crate) mod triton_stark_tests {
         InputTableEvalArg, OutputTableEvalArg,
     };
     use crate::vm::triton_vm_tests::{
-        bigger_tasm_test_programs, small_tasm_test_programs, test_hash_nop_nop_lt,
+        bigger_tasm_test_programs, property_based_test_programs, small_tasm_test_programs,
+        test_hash_nop_nop_lt,
     };
     use crate::vm::Program;
 
@@ -1240,6 +1241,7 @@ pub(crate) mod triton_stark_tests {
     pub fn check_all_cross_table_terminals() {
         let mut code_collection = small_tasm_test_programs();
         code_collection.append(&mut bigger_tasm_test_programs());
+        code_collection.append(&mut property_based_test_programs());
         let mut timer = TimingReporter::start();
 
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
