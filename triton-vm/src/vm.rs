@@ -268,7 +268,7 @@ pub mod triton_vm_tests {
         let program = Program::from_code(code).unwrap();
 
         let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
-        let secret_in = vec![1_u64.into(), 3_u64.into()];
+        let secret_in = vec![];
 
         let (base_matrices, err, stdout) = program.simulate_with_input(&stdin, &secret_in);
 
@@ -320,7 +320,7 @@ pub mod triton_vm_tests {
         let program = Program::from_code(code).unwrap();
 
         let stdin = vec![42_u64.into(), 56_u64.into()];
-        let secret_in = vec![1_u64.into(), 3_u64.into()];
+        let secret_in = vec![];
 
         let (_, err, stdout) = program.simulate_with_input(&stdin, &secret_in);
 
@@ -637,11 +637,7 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_div() -> SourceCodeAndInput {
-        SourceCodeAndInput {
-            source_code: "push 2 push 3 div assert assert halt".to_string(),
-            input: vec![],
-            secret_input: vec![BFieldElement::new(1)],
-        }
+        SourceCodeAndInput::without_input("push 2 push 3 div assert assert halt")
     }
 
     pub fn test_program_for_split() -> SourceCodeAndInput {

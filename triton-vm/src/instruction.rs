@@ -6,9 +6,10 @@ use std::str::SplitWhitespace;
 
 use num_traits::One;
 use strum::EnumCount;
-use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
+use crate::instruction::DivinationHint::Quotient;
 use AnInstruction::*;
 use TokenError::*;
 
@@ -35,6 +36,11 @@ impl Display for LabelledInstruction {
     }
 }
 
+#[derive(Debug, DisplayMacro, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
+pub enum DivinationHint {
+    Quotient,
+}
+
 /// A Triton VM instruction
 ///
 /// The ISA is defined at:
@@ -47,7 +53,7 @@ pub enum AnInstruction<Dest> {
     // OpStack manipulation
     Pop,
     Push(BFieldElement),
-    Divine,
+    Divine(Option<DivinationHint>),
     Dup(Ord16),
     Swap(Ord16),
 
@@ -93,7 +99,8 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
             // OpStack manipulation
             Pop => write!(f, "pop"),
             Push(arg) => write!(f, "push {}", arg),
-            Divine => write!(f, "divine"),
+            Divine(Some(hint)) => write!(f, "divine_{}", format!("{hint}").to_ascii_lowercase()),
+            Divine(None) => write!(f, "divine"),
             Dup(arg) => write!(f, "dup{}", arg),
             Swap(arg) => write!(f, "swap{}", arg),
             // Control flow
@@ -141,7 +148,7 @@ impl<Dest> AnInstruction<Dest> {
             // OpStack manipulation
             Pop => 2,
             Push(_) => 1,
-            Divine => 4,
+            Divine(_) => 4,
             Dup(_) => 5,
             Swap(_) => 9,
 
@@ -220,7 +227,7 @@ impl<Dest> AnInstruction<Dest> {
             // Fixme: can we treat everything that doesn't change with the same line of code?
             Pop => Pop,
             Push(x) => Push(*x),
-            Divine => Divine,
+            Divine(x) => Divine(*x),
             Dup(x) => Dup(*x),
             Swap(x) => Swap(*x),
             Nop => Nop,
@@ -271,7 +278,7 @@ impl TryFrom<u32> for Instruction {
         match opcode {
             2 => Ok(Pop),
             1 => Ok(Push(Default::default())),
-            4 => Ok(Divine),
+            4 => Ok(Divine(Default::default())),
             5 => Ok(Dup(ST0)),
             9 => Ok(Swap(ST0)),
             8 => Ok(Nop),
@@ -411,7 +418,8 @@ fn parse_token(
         // OpStack manipulation
         "pop" => vec![Pop],
         "push" => vec![Push(parse_elem(tokens)?)],
-        "divine" => vec![Divine],
+        "divine" => vec![Divine(None)],
+        "divine_quotient" => vec![Divine(Some(Quotient))],
         "dup0" => vec![Dup(ST0)],
         "dup1" => vec![Dup(ST1)],
         "dup2" => vec![Dup(ST2)],
@@ -550,7 +558,11 @@ fn pseudo_instruction_div() -> Vec<AnInstruction<String>> {
     vec![
         vec![
             // _ d n
-            Divine,
+            Divine(Some(Quotient)),
+            // _ d n q
+        ],
+        pseudo_instruction_is_u32(),
+        vec![
             // _ d n q
             Dup(ST2),
             // _ d n q d
@@ -574,8 +586,8 @@ fn pseudo_instruction_div() -> Vec<AnInstruction<String>> {
             // _ d n q r d r
         ],
         pseudo_instruction_lt(),
-        // _ d n q r r<d
         vec![
+            // _ d n q r r<d
             Assert,
             // _ d n q r
             Swap(ST2),
@@ -585,8 +597,8 @@ fn pseudo_instruction_div() -> Vec<AnInstruction<String>> {
             Swap(ST2),
             // _ q r d
             Pop,
+            // _ q r
         ],
-        // _ q r
     ]
     .concat()
 }
@@ -697,7 +709,7 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
     let all_instructions = vec![
         Pop,
         Push(Default::default()),
-        Divine,
+        Divine(None),
         Dup(Default::default()),
         Swap(Default::default()),
         Nop,
@@ -733,7 +745,8 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
     vec![
         Pop,
         Push(BFieldElement::new(42)),
-        Divine,
+        Divine(None),
+        Divine(Some(Quotient)),
         Dup(ST0),
         Dup(ST1),
         Dup(ST2),
@@ -1187,7 +1200,7 @@ pub mod sample_programs {
     pub const ALL_INSTRUCTIONS: &str = "
         pop
         push 42
-        divine
+        divine divine_quotient
 
         dup0 dup1 dup2 dup3 dup4 dup5 dup6 dup7 dup8 dup9 dup10 dup11 dup12 dup13 dup14 dup15
         swap1 swap2 swap3 swap4 swap5 swap6 swap7 swap8 swap9 swap10 swap11 swap12 swap13 swap14 swap15
@@ -1207,6 +1220,7 @@ pub mod sample_programs {
             "pop",
             "push 42",
             "divine",
+            "divine_quotient",
             "dup0",
             "dup1",
             "dup2",

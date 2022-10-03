@@ -176,12 +176,13 @@ for i in 0..32 {
 
 ## Pseudo instruction `div`
 
-Program length: 188.
+Program length: 258.
 
-Execution cycle count: 164.
+Execution cycle count: 232.
 
 ```
 divine
+is_u32
 dup 2
 dup 1
 mul

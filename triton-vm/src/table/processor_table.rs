@@ -642,7 +642,7 @@ impl ExtProcessorTable {
         let all_instruction_transition_constraints = vec![
             (Pop, factory.instruction_pop()),
             (Push(Default::default()), factory.instruction_push()),
-            (Divine, factory.instruction_divine()),
+            (Divine(Default::default()), factory.instruction_divine()),
             (Dup(Default::default()), factory.instruction_dup()),
             (Swap(Default::default()), factory.instruction_swap()),
             (Nop, factory.instruction_nop()),
@@ -2241,7 +2241,7 @@ mod constraint_polynomial_tests {
         match instruction {
             Pop => tc.instruction_pop(),
             Push(_) => tc.instruction_push(),
-            Divine => tc.instruction_divine(),
+            Divine(_) => tc.instruction_divine(),
             Dup(_) => tc.instruction_dup(),
             Swap(_) => tc.instruction_swap(),
             Nop => tc.instruction_nop(),

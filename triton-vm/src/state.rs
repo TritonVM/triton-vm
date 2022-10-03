@@ -13,6 +13,7 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::vm_err;
+use crate::instruction::DivinationHint;
 use crate::ord_n::{Ord16, Ord7};
 use crate::table::base_matrix::ProcessorMatrixRow;
 use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
@@ -208,8 +209,30 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 2;
             }
 
-            Divine => {
-                let elem = secret_in.read_elem()?;
+            Divine(hint) => {
+                use DivinationHint::*;
+
+                let elem = if let Some(context) = hint {
+                    match context {
+                        Quotient => {
+                            let numerator: u32 = self
+                                .op_stack
+                                .safe_peek(ST0)
+                                .value()
+                                .try_into()
+                                .expect("Numerator uses more than 32 bits.");
+                            let denominator: u32 = self
+                                .op_stack
+                                .safe_peek(ST1)
+                                .value()
+                                .try_into()
+                                .expect("Denominator uses more than 32 bits.");
+                            BFieldElement::new((numerator / denominator) as u64)
+                        }
+                    }
+                } else {
+                    secret_in.read_elem()?
+                };
                 self.op_stack.push(elem);
                 self.instruction_pointer += 1;
             }
@@ -1180,10 +1203,7 @@ mod vm_state_tests {
         let program = Program::from_code(code).unwrap();
 
         println!("{}", program);
-        let (trace, out, _err) = program.run_with_input(
-            &[42_u64.into(), 56_u64.into()],
-            &[1_u64.into(), 3_u64.into()],
-        );
+        let (trace, out, _err) = program.run_with_input(&[42_u64.into(), 56_u64.into()], &[]);
 
         println!("{}", program);
         for state in trace.iter() {
