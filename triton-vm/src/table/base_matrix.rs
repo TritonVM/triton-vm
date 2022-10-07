@@ -1,13 +1,18 @@
 use std::fmt::{Display, Formatter};
+use std::ops::Mul;
 
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::instruction::AnInstruction::*;
 use crate::table::table_column::ProcessorExtTableColumn::*;
+use crate::table::table_column::RamBaseTableColumn::{
+    BezoutCoefficientPolynomialCoefficient0, BezoutCoefficientPolynomialCoefficient1, RAMP,
+};
 use crate::table::table_column::{
     InstructionBaseTableColumn, OpStackBaseTableColumn, ProcessorBaseTableColumn,
     ProgramBaseTableColumn, RamBaseTableColumn,
@@ -173,6 +178,75 @@ impl BaseMatrices {
         {
             ram_matrix[idx][usize::from(RamBaseTableColumn::InverseOfRampDifference)] = inverse;
         }
+
+        // compute Bézout coefficient polynomials
+        let all_ramps = ram_matrix
+            .iter()
+            .map(|row| row[usize::from(RAMP)])
+            .dedup()
+            .collect_vec();
+        let num_of_different_ramps = all_ramps.len();
+        let polynomial_with_ramps_as_roots = all_ramps
+            .into_iter()
+            .map(|ramp| Polynomial::new(vec![-ramp, BFieldElement::one()]))
+            .fold(
+                Polynomial::from_constant(BFieldElement::one()),
+                Polynomial::mul,
+            );
+
+        let formal_derivative_coefficients = polynomial_with_ramps_as_roots
+            .coefficients
+            .iter()
+            .enumerate()
+            .map(|(i, &coefficient)| BFieldElement::new(i as u64) * coefficient)
+            .skip(1)
+            .collect_vec();
+        let formal_derivative = Polynomial::new(formal_derivative_coefficients);
+
+        let (gcd, bezout_0, bezout_1) =
+            XFieldElement::xgcd(polynomial_with_ramps_as_roots, formal_derivative);
+        assert!(gcd.is_one());
+        assert!(
+            bezout_0.degree() < num_of_different_ramps as isize,
+            "The Bézout coefficient must be of degree at most {}.",
+            num_of_different_ramps - 1
+        );
+        assert!(
+            bezout_1.degree() <= num_of_different_ramps as isize,
+            "The Bézout coefficient must be of degree at most {num_of_different_ramps}."
+        );
+
+        let mut bezout_coefficient_polynomial_coefficient_0 = bezout_0.coefficients;
+        bezout_coefficient_polynomial_coefficient_0
+            .resize(num_of_different_ramps, BFieldElement::zero());
+
+        let mut bezout_coefficient_polynomial_coefficient_1 = bezout_1.coefficients;
+        bezout_coefficient_polynomial_coefficient_1
+            .resize(num_of_different_ramps, BFieldElement::zero());
+
+        // first row
+        let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficient_0.pop().unwrap();
+        let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficient_1.pop().unwrap();
+        ram_matrix.first_mut().unwrap()[usize::from(BezoutCoefficientPolynomialCoefficient0)] =
+            current_bcpc_0;
+        ram_matrix.first_mut().unwrap()[usize::from(BezoutCoefficientPolynomialCoefficient1)] =
+            current_bcpc_1;
+
+        // rest of table
+        let mut previous_ramp = ram_matrix.first().unwrap()[usize::from(RAMP)];
+        for row in ram_matrix.iter_mut().skip(1) {
+            if previous_ramp != row[usize::from(RAMP)] {
+                current_bcpc_0 = bezout_coefficient_polynomial_coefficient_0.pop().unwrap();
+                current_bcpc_1 = bezout_coefficient_polynomial_coefficient_1.pop().unwrap();
+                previous_ramp = row[usize::from(RAMP)]
+            }
+            row[usize::from(BezoutCoefficientPolynomialCoefficient0)] = current_bcpc_0;
+            row[usize::from(BezoutCoefficientPolynomialCoefficient1)] = current_bcpc_1;
+        }
+
+        assert_eq!(0, bezout_coefficient_polynomial_coefficient_0.len());
+        assert_eq!(0, bezout_coefficient_polynomial_coefficient_1.len());
+
         ram_matrix
     }
 
