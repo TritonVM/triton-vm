@@ -276,6 +276,8 @@ pub enum RamBaseTableColumn {
     RAMP,
     RAMV,
     InverseOfRampDifference,
+    BezoutCoefficientPolynomialCoefficient0,
+    BezoutCoefficientPolynomialCoefficient1,
 }
 
 impl From<RamBaseTableColumn> for usize {
@@ -300,6 +302,10 @@ impl Bounded for RamBaseTableColumn {
 
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
 pub enum RamExtTableColumn {
+    RunningProductOfRAMP,
+    FormalDerivative,
+    BezoutCoefficient0,
+    BezoutCoefficient1,
     RunningProductPermArg,
 }
 

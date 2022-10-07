@@ -25,7 +25,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 127;
+    pub const TOTAL_CHALLENGES: usize = 128;
 
     pub fn create_challenges(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_challenges = ProcessorTableChallenges {
@@ -105,6 +105,7 @@ impl AllChallenges {
         };
 
         let ram_table_challenges = RamTableChallenges {
+            bezout_relation_sample_point: weights.pop().unwrap(),
             processor_perm_row_weight: processor_table_challenges.ram_perm_row_weight,
             clk_weight: processor_table_challenges.ram_table_clk_weight,
             ramv_weight: processor_table_challenges.ram_table_ramv_weight,
