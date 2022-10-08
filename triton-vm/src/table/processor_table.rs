@@ -22,7 +22,7 @@ use crate::table::table_column::ProcessorExtTableColumn::{self, *};
 use super::extension_table::{Quotientable, QuotientableExtensionTable};
 
 pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 4;
-pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 4;
+pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
 
 /// This is 43 because it combines all other tables (except program).
 pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = 43;

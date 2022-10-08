@@ -47,6 +47,9 @@ pub enum ProcessorBaseTableColumn {
     HV1,
     HV2,
     HV3,
+    ClockJumpDifference,
+    ClockJumpDifferenceInverse,
+    UniqueClockJumpDifferenceInverse,
     RAMV,
 }
 
@@ -81,6 +84,10 @@ pub enum ProcessorExtTableColumn {
 
     ToHashTableEvalArg,
     FromHashTableEvalArg,
+
+    SelectedClockCyclesEvalArg,
+    UniqueClockJumpDifferencesEvalArg,
+    AllClockJumpDifferencesPermArg,
 }
 
 impl From<ProcessorExtTableColumn> for usize {
@@ -246,6 +253,7 @@ impl Bounded for OpStackBaseTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
 pub enum OpStackExtTableColumn {
     RunningProductPermArg,
+    AllClockJumpDifferencesPermArg,
 }
 
 impl From<OpStackExtTableColumn> for usize {
@@ -307,6 +315,7 @@ pub enum RamExtTableColumn {
     BezoutCoefficient0,
     BezoutCoefficient1,
     RunningProductPermArg,
+    AllClockJumpDifferencesPermArg,
 }
 
 impl From<RamExtTableColumn> for usize {
@@ -363,6 +372,7 @@ impl Bounded for JumpStackBaseTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
 pub enum JumpStackExtTableColumn {
     RunningProductPermArg,
+    AllClockJumpDifferencesPermArg,
 }
 
 impl From<JumpStackExtTableColumn> for usize {
