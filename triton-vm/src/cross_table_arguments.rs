@@ -1,6 +1,7 @@
+use std::ops::Mul;
+
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use std::ops::Mul;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::{FiniteField, Inverse};
@@ -9,7 +10,8 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::fri_domain::FriDomain;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_collection::TableId::{
-    HashTable, InstructionTable, ProcessorTable, ProgramTable,
+    HashTable, InstructionTable, JumpStackTable, OpStackTable, ProcessorTable, ProgramTable,
+    RamTable,
 };
 use crate::table::table_collection::{interpolant_degree, ExtTableCollection, TableId};
 use crate::table::table_column::{
@@ -18,7 +20,7 @@ use crate::table::table_column::{
 };
 
 pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
-pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
+pub const NUM_PRIVATE_EVAL_ARGS: usize = 4;
 pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS;
 pub const NUM_PUBLIC_EVAL_ARGS: usize = 2;
 
@@ -130,57 +132,44 @@ impl CrossTableArg for PermArg {
 }
 
 impl PermArg {
-    pub fn new(
-        from_table: TableId,
-        from_column: usize,
-        to_table: TableId,
-        to_column: usize,
-    ) -> Self {
-        PermArg {
-            from_table,
-            from_column,
-            to_table,
-            to_column,
-        }
-    }
     /// A Permutation Argument between Processor Table and Instruction Table.
     pub fn processor_instruction_perm_arg() -> Self {
-        Self::new(
-            TableId::ProcessorTable,
-            ProcessorExtTableColumn::InstructionTablePermArg.into(),
-            TableId::InstructionTable,
-            InstructionExtTableColumn::RunningProductPermArg.into(),
-        )
+        Self {
+            from_table: ProcessorTable,
+            from_column: usize::from(ProcessorExtTableColumn::InstructionTablePermArg),
+            to_table: InstructionTable,
+            to_column: usize::from(InstructionExtTableColumn::RunningProductPermArg),
+        }
     }
 
     /// A Permutation Argument between Processor Table and Jump-Stack Table.
     pub fn processor_jump_stack_perm_arg() -> Self {
-        Self::new(
-            TableId::ProcessorTable,
-            ProcessorExtTableColumn::JumpStackTablePermArg.into(),
-            TableId::JumpStackTable,
-            JumpStackExtTableColumn::RunningProductPermArg.into(),
-        )
+        Self {
+            from_table: ProcessorTable,
+            from_column: usize::from(ProcessorExtTableColumn::JumpStackTablePermArg),
+            to_table: JumpStackTable,
+            to_column: usize::from(JumpStackExtTableColumn::RunningProductPermArg),
+        }
     }
 
     /// A Permutation Argument between Processor Table and Op-Stack Table.
     pub fn processor_op_stack_perm_arg() -> Self {
-        Self::new(
-            TableId::ProcessorTable,
-            ProcessorExtTableColumn::OpStackTablePermArg.into(),
-            TableId::OpStackTable,
-            OpStackExtTableColumn::RunningProductPermArg.into(),
-        )
+        Self {
+            from_table: ProcessorTable,
+            from_column: usize::from(ProcessorExtTableColumn::OpStackTablePermArg),
+            to_table: OpStackTable,
+            to_column: usize::from(OpStackExtTableColumn::RunningProductPermArg),
+        }
     }
 
     /// A Permutation Argument between Processor Table and RAM Table.
     pub fn processor_ram_perm_arg() -> Self {
-        Self::new(
-            TableId::ProcessorTable,
-            ProcessorExtTableColumn::RamTablePermArg.into(),
-            TableId::RamTable,
-            RamExtTableColumn::RunningProductPermArg.into(),
-        )
+        Self {
+            from_table: ProcessorTable,
+            from_column: usize::from(ProcessorExtTableColumn::RamTablePermArg),
+            to_table: RamTable,
+            to_column: usize::from(RamExtTableColumn::RunningProductPermArg),
+        }
     }
 
     pub fn all_permutation_arguments() -> [Self; NUM_PRIVATE_PERM_ARGS] {
@@ -234,27 +223,36 @@ impl EvalArg {
     pub fn program_instruction_eval_arg() -> Self {
         Self {
             from_table: ProgramTable,
-            from_column: ProgramExtTableColumn::RunningEvaluation.into(),
+            from_column: usize::from(ProgramExtTableColumn::RunningEvaluation),
             to_table: InstructionTable,
-            to_column: InstructionExtTableColumn::RunningEvaluation.into(),
+            to_column: usize::from(InstructionExtTableColumn::RunningEvaluation),
         }
     }
 
     pub fn processor_to_hash_eval_arg() -> Self {
         Self {
             from_table: ProcessorTable,
-            from_column: ProcessorExtTableColumn::ToHashTableEvalArg.into(),
+            from_column: usize::from(ProcessorExtTableColumn::ToHashTableEvalArg),
             to_table: HashTable,
-            to_column: HashExtTableColumn::FromProcessorRunningEvaluation.into(),
+            to_column: usize::from(HashExtTableColumn::FromProcessorRunningEvaluation),
         }
     }
 
     pub fn hash_to_processor_eval_arg() -> Self {
         Self {
             from_table: HashTable,
-            from_column: HashExtTableColumn::ToProcessorRunningEvaluation.into(),
+            from_column: usize::from(HashExtTableColumn::ToProcessorRunningEvaluation),
             to_table: ProcessorTable,
-            to_column: ProcessorExtTableColumn::FromHashTableEvalArg.into(),
+            to_column: usize::from(ProcessorExtTableColumn::FromHashTableEvalArg),
+        }
+    }
+
+    pub fn processor_to_processor_clock_jump_diff_arg() -> Self {
+        Self {
+            from_table: ProcessorTable,
+            from_column: usize::from(ProcessorExtTableColumn::SelectedClockCyclesEvalArg),
+            to_table: ProcessorTable,
+            to_column: usize::from(ProcessorExtTableColumn::UniqueClockJumpDifferencesEvalArg),
         }
     }
 
@@ -263,6 +261,7 @@ impl EvalArg {
             Self::program_instruction_eval_arg(),
             Self::processor_to_hash_eval_arg(),
             Self::hash_to_processor_eval_arg(),
+            Self::processor_to_processor_clock_jump_diff_arg(),
         ]
     }
 }
@@ -284,6 +283,9 @@ pub struct GrandCrossTableArg {
     processor_to_jump_stack_weight: XFieldElement,
     processor_to_hash_weight: XFieldElement,
     hash_to_processor_weight: XFieldElement,
+
+    unique_clock_jumps: EvalArg,
+    unique_clock_jumps_weight: XFieldElement,
 
     input_terminal: XFieldElement,
     input_to_processor: (TableId, usize),
@@ -330,6 +332,10 @@ impl<'a> IntoIterator for &'a GrandCrossTableArg {
                 &self.hash_to_processor as &'a dyn CrossTableArg,
                 self.hash_to_processor_weight,
             ),
+            (
+                &self.unique_clock_jumps as &'a dyn CrossTableArg,
+                self.unique_clock_jumps_weight,
+            ),
         ]
         .into_iter()
     }
@@ -341,6 +347,7 @@ impl GrandCrossTableArg {
         input_terminal: XFieldElement,
         output_terminal: XFieldElement,
     ) -> Self {
+        let mut weights_stack = weights.to_vec();
         Self {
             program_to_instruction: EvalArg::program_instruction_eval_arg(),
             processor_to_instruction: PermArg::processor_instruction_perm_arg(),
@@ -350,27 +357,30 @@ impl GrandCrossTableArg {
             processor_to_hash: EvalArg::processor_to_hash_eval_arg(),
             hash_to_processor: EvalArg::hash_to_processor_eval_arg(),
 
-            program_to_instruction_weight: weights[0],
-            processor_to_instruction_weight: weights[1],
-            processor_to_op_stack_weight: weights[2],
-            processor_to_ram_weight: weights[3],
-            processor_to_jump_stack_weight: weights[4],
-            processor_to_hash_weight: weights[5],
-            hash_to_processor_weight: weights[6],
+            program_to_instruction_weight: weights_stack.pop().unwrap(),
+            processor_to_instruction_weight: weights_stack.pop().unwrap(),
+            processor_to_op_stack_weight: weights_stack.pop().unwrap(),
+            processor_to_ram_weight: weights_stack.pop().unwrap(),
+            processor_to_jump_stack_weight: weights_stack.pop().unwrap(),
+            processor_to_hash_weight: weights_stack.pop().unwrap(),
+            hash_to_processor_weight: weights_stack.pop().unwrap(),
+
+            unique_clock_jumps: EvalArg::processor_to_processor_clock_jump_diff_arg(),
+            unique_clock_jumps_weight: weights_stack.pop().unwrap(),
 
             input_terminal,
             input_to_processor: (
-                TableId::ProcessorTable,
+                ProcessorTable,
                 usize::from(ProcessorExtTableColumn::InputTableEvalArg),
             ),
-            input_to_processor_weight: weights[7],
+            input_to_processor_weight: weights_stack.pop().unwrap(),
 
             output_terminal,
             processor_to_output: (
-                TableId::ProcessorTable,
+                ProcessorTable,
                 usize::from(ProcessorExtTableColumn::OutputTableEvalArg),
             ),
-            processor_to_output_weight: weights[8],
+            processor_to_output_weight: weights_stack.pop().unwrap(),
         }
     }
 
@@ -480,9 +490,10 @@ fn weighted_difference_codeword(
 
 #[cfg(test)]
 mod permutation_argument_tests {
-    use super::*;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
+
+    use super::*;
 
     #[test]
     fn all_permutation_arguments_link_from_processor_table_test() {
