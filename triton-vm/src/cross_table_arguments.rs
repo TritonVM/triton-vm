@@ -217,12 +217,34 @@ impl PermArg {
         Self { from, to }
     }
 
+    pub fn clock_jump_difference_multi_table_perm_arg() -> Self {
+        let from = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::AllClockJumpDifferencesPermArg),
+        )];
+        let to_op_stack = (
+            OpStackTable,
+            usize::from(OpStackExtTableColumn::AllClockJumpDifferencesPermArg),
+        );
+        let to_ram = (
+            RamTable,
+            usize::from(RamExtTableColumn::AllClockJumpDifferencesPermArg),
+        );
+        let to_jump_stack = (
+            JumpStackTable,
+            usize::from(JumpStackExtTableColumn::AllClockJumpDifferencesPermArg),
+        );
+        let to = vec![to_op_stack, to_ram, to_jump_stack];
+        Self { from, to }
+    }
+
     pub fn all_permutation_arguments() -> [Self; NUM_PRIVATE_PERM_ARGS] {
         [
             Self::processor_instruction_perm_arg(),
             Self::processor_jump_stack_perm_arg(),
             Self::processor_op_stack_perm_arg(),
             Self::processor_ram_perm_arg(),
+            Self::clock_jump_difference_multi_table_perm_arg(),
         ]
     }
 }
@@ -342,6 +364,9 @@ pub struct GrandCrossTableArg {
     unique_clock_jumps: EvalArg,
     unique_clock_jumps_weight: XFieldElement,
 
+    all_clock_jump_differences: PermArg,
+    all_clock_jump_differences_weight: XFieldElement,
+
     input_terminal: XFieldElement,
     input_to_processor: (TableId, usize),
     input_to_processor_weight: XFieldElement,
@@ -391,6 +416,10 @@ impl<'a> IntoIterator for &'a GrandCrossTableArg {
                 &self.unique_clock_jumps as &'a dyn CrossTableArg,
                 self.unique_clock_jumps_weight,
             ),
+            (
+                &self.all_clock_jump_differences as &'a dyn CrossTableArg,
+                self.all_clock_jump_differences_weight,
+            ),
         ]
         .into_iter()
     }
@@ -422,6 +451,9 @@ impl GrandCrossTableArg {
 
             unique_clock_jumps: EvalArg::processor_to_processor_clock_jump_diff_arg(),
             unique_clock_jumps_weight: weights_stack.pop().unwrap(),
+
+            all_clock_jump_differences: PermArg::clock_jump_difference_multi_table_perm_arg(),
+            all_clock_jump_differences_weight: weights_stack.pop().unwrap(),
 
             input_terminal,
             input_to_processor: (
