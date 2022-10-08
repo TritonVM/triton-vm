@@ -1,4 +1,5 @@
-use std::ops::Mul;
+use std::cmp::max;
+use std::ops::{Add, Mul};
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
@@ -25,8 +26,8 @@ pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL
 pub const NUM_PUBLIC_EVAL_ARGS: usize = 2;
 
 pub trait CrossTableArg {
-    fn from(&self) -> (TableId, usize);
-    fn to(&self) -> (TableId, usize);
+    fn from(&self) -> Vec<(TableId, usize)>;
+    fn to(&self) -> Vec<(TableId, usize)>;
 
     fn default_initial() -> XFieldElement
     where
@@ -46,10 +47,9 @@ pub trait CrossTableArg {
         fri_domain: &FriDomain<XFieldElement>,
         omicron: XFieldElement,
     ) -> Vec<XFieldElement> {
-        let (from_table, from_column) = self.from();
-        let (to_table, to_column) = self.to();
-        let lhs_codeword = &ext_codeword_tables.data(from_table)[from_column];
-        let rhs_codeword = &ext_codeword_tables.data(to_table)[to_column];
+        let from_codeword = self.combined_from_codeword(ext_codeword_tables);
+        let to_codeword = self.combined_to_codeword(ext_codeword_tables);
+
         let zerofier = fri_domain
             .domain_values()
             .into_iter()
@@ -59,9 +59,36 @@ pub trait CrossTableArg {
 
         zerofier_inverse
             .into_iter()
-            .zip_eq(lhs_codeword.iter().zip_eq(rhs_codeword.iter()))
+            .zip_eq(from_codeword.iter().zip_eq(to_codeword.iter()))
             .map(|(z, (&from, &to))| (from - to) * z)
             .collect_vec()
+    }
+
+    fn combined_from_codeword(
+        &self,
+        ext_codeword_tables: &ExtTableCollection,
+    ) -> Vec<XFieldElement> {
+        let from = self.from();
+        let &(first_from_table, first_from_col) = from.first().unwrap();
+        let codeword_length = ext_codeword_tables.data(first_from_table)[first_from_col].len();
+        from.iter()
+            .map(|&(from_table, from_col)| ext_codeword_tables.data(from_table)[from_col].clone())
+            .fold(
+                vec![XFieldElement::one(); codeword_length],
+                |accumulator, factor| pointwise_operation(accumulator, factor, XFieldElement::mul),
+            )
+    }
+
+    fn combined_to_codeword(&self, ext_codeword_tables: &ExtTableCollection) -> Vec<XFieldElement> {
+        let to = self.to();
+        let &(first_to_table, first_to_col) = to.first().unwrap();
+        let codeword_length = ext_codeword_tables.data(first_to_table)[first_to_col].len();
+        to.iter()
+            .map(|&(to_table, to_col)| ext_codeword_tables.data(to_table)[to_col].clone())
+            .fold(
+                vec![XFieldElement::one(); codeword_length],
+                |accumulator, factor| pointwise_operation(accumulator, factor, XFieldElement::mul),
+            )
     }
 
     fn quotient_degree_bound(
@@ -69,17 +96,25 @@ pub trait CrossTableArg {
         ext_codeword_tables: &ExtTableCollection,
         num_trace_randomizers: usize,
     ) -> Degree {
-        let interpolant_degree =
+        let column_interpolant_degree =
             interpolant_degree(ext_codeword_tables.padded_height, num_trace_randomizers);
+        let lhs_interpolant_degree = column_interpolant_degree * self.from().len() as Degree;
+        let rhs_interpolant_degree = column_interpolant_degree * self.to().len() as Degree;
         let terminal_zerofier_degree = 1;
-        interpolant_degree - terminal_zerofier_degree
+        max(lhs_interpolant_degree, rhs_interpolant_degree) - terminal_zerofier_degree
     }
 
     fn evaluate_difference(&self, cross_table_slice: &[Vec<XFieldElement>]) -> XFieldElement {
-        let (from_table, from_column) = self.from();
-        let (to_table, to_column) = self.to();
-        let lhs = cross_table_slice[from_table as usize][from_column];
-        let rhs = cross_table_slice[to_table as usize][to_column];
+        let lhs = self
+            .from()
+            .iter()
+            .map(|&(from_table, from_col)| cross_table_slice[from_table as usize][from_col])
+            .fold(XFieldElement::one(), XFieldElement::mul);
+        let rhs: XFieldElement = self
+            .to()
+            .iter()
+            .map(|&(to_table, to_col)| cross_table_slice[to_table as usize][to_col])
+            .fold(XFieldElement::one(), XFieldElement::mul);
 
         lhs - rhs
     }
@@ -97,21 +132,19 @@ pub trait CrossTableArg {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PermArg {
-    from_table: TableId,
-    from_column: usize,
-    to_table: TableId,
-    to_column: usize,
+    from: Vec<(TableId, usize)>,
+    to: Vec<(TableId, usize)>,
 }
 
 impl CrossTableArg for PermArg {
-    fn from(&self) -> (TableId, usize) {
-        (self.from_table, self.from_column)
+    fn from(&self) -> Vec<(TableId, usize)> {
+        self.from.clone()
     }
 
-    fn to(&self) -> (TableId, usize) {
-        (self.to_table, self.to_column)
+    fn to(&self) -> Vec<(TableId, usize)> {
+        self.to.clone()
     }
 
     fn default_initial() -> XFieldElement {
@@ -134,42 +167,54 @@ impl CrossTableArg for PermArg {
 impl PermArg {
     /// A Permutation Argument between Processor Table and Instruction Table.
     pub fn processor_instruction_perm_arg() -> Self {
-        Self {
-            from_table: ProcessorTable,
-            from_column: usize::from(ProcessorExtTableColumn::InstructionTablePermArg),
-            to_table: InstructionTable,
-            to_column: usize::from(InstructionExtTableColumn::RunningProductPermArg),
-        }
+        let from = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::InstructionTablePermArg),
+        )];
+        let to = vec![(
+            InstructionTable,
+            usize::from(InstructionExtTableColumn::RunningProductPermArg),
+        )];
+        Self { from, to }
     }
 
     /// A Permutation Argument between Processor Table and Jump-Stack Table.
     pub fn processor_jump_stack_perm_arg() -> Self {
-        Self {
-            from_table: ProcessorTable,
-            from_column: usize::from(ProcessorExtTableColumn::JumpStackTablePermArg),
-            to_table: JumpStackTable,
-            to_column: usize::from(JumpStackExtTableColumn::RunningProductPermArg),
-        }
+        let from = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::JumpStackTablePermArg),
+        )];
+        let to = vec![(
+            JumpStackTable,
+            usize::from(JumpStackExtTableColumn::RunningProductPermArg),
+        )];
+        Self { from, to }
     }
 
     /// A Permutation Argument between Processor Table and Op-Stack Table.
     pub fn processor_op_stack_perm_arg() -> Self {
-        Self {
-            from_table: ProcessorTable,
-            from_column: usize::from(ProcessorExtTableColumn::OpStackTablePermArg),
-            to_table: OpStackTable,
-            to_column: usize::from(OpStackExtTableColumn::RunningProductPermArg),
-        }
+        let from = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::OpStackTablePermArg),
+        )];
+        let to = vec![(
+            OpStackTable,
+            usize::from(OpStackExtTableColumn::RunningProductPermArg),
+        )];
+        Self { from, to }
     }
 
     /// A Permutation Argument between Processor Table and RAM Table.
     pub fn processor_ram_perm_arg() -> Self {
-        Self {
-            from_table: ProcessorTable,
-            from_column: usize::from(ProcessorExtTableColumn::RamTablePermArg),
-            to_table: RamTable,
-            to_column: usize::from(RamExtTableColumn::RunningProductPermArg),
-        }
+        let from = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::RamTablePermArg),
+        )];
+        let to = vec![(
+            RamTable,
+            usize::from(RamExtTableColumn::RunningProductPermArg),
+        )];
+        Self { from, to }
     }
 
     pub fn all_permutation_arguments() -> [Self; NUM_PRIVATE_PERM_ARGS] {
@@ -182,21 +227,19 @@ impl PermArg {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct EvalArg {
-    from_table: TableId,
-    from_column: usize,
-    to_table: TableId,
-    to_column: usize,
+    from: Vec<(TableId, usize)>,
+    to: Vec<(TableId, usize)>,
 }
 
 impl CrossTableArg for EvalArg {
-    fn from(&self) -> (TableId, usize) {
-        (self.from_table, self.from_column)
+    fn from(&self) -> Vec<(TableId, usize)> {
+        self.from.clone()
     }
 
-    fn to(&self) -> (TableId, usize) {
-        (self.to_table, self.to_column)
+    fn to(&self) -> Vec<(TableId, usize)> {
+        self.to.clone()
     }
 
     fn default_initial() -> XFieldElement {
@@ -221,39 +264,51 @@ impl CrossTableArg for EvalArg {
 impl EvalArg {
     /// The Evaluation Argument between the Program Table and the Instruction Table
     pub fn program_instruction_eval_arg() -> Self {
-        Self {
-            from_table: ProgramTable,
-            from_column: usize::from(ProgramExtTableColumn::RunningEvaluation),
-            to_table: InstructionTable,
-            to_column: usize::from(InstructionExtTableColumn::RunningEvaluation),
-        }
+        let from = vec![(
+            ProgramTable,
+            usize::from(ProgramExtTableColumn::RunningEvaluation),
+        )];
+        let to = vec![(
+            InstructionTable,
+            usize::from(InstructionExtTableColumn::RunningEvaluation),
+        )];
+        Self { from, to }
     }
 
     pub fn processor_to_hash_eval_arg() -> Self {
-        Self {
-            from_table: ProcessorTable,
-            from_column: usize::from(ProcessorExtTableColumn::ToHashTableEvalArg),
-            to_table: HashTable,
-            to_column: usize::from(HashExtTableColumn::FromProcessorRunningEvaluation),
-        }
+        let from = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::ToHashTableEvalArg),
+        )];
+        let to = vec![(
+            HashTable,
+            usize::from(HashExtTableColumn::FromProcessorRunningEvaluation),
+        )];
+        Self { from, to }
     }
 
     pub fn hash_to_processor_eval_arg() -> Self {
-        Self {
-            from_table: HashTable,
-            from_column: usize::from(HashExtTableColumn::ToProcessorRunningEvaluation),
-            to_table: ProcessorTable,
-            to_column: usize::from(ProcessorExtTableColumn::FromHashTableEvalArg),
-        }
+        let from = vec![(
+            HashTable,
+            usize::from(HashExtTableColumn::ToProcessorRunningEvaluation),
+        )];
+        let to = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::FromHashTableEvalArg),
+        )];
+        Self { from, to }
     }
 
     pub fn processor_to_processor_clock_jump_diff_arg() -> Self {
-        Self {
-            from_table: ProcessorTable,
-            from_column: usize::from(ProcessorExtTableColumn::SelectedClockCyclesEvalArg),
-            to_table: ProcessorTable,
-            to_column: usize::from(ProcessorExtTableColumn::UniqueClockJumpDifferencesEvalArg),
-        }
+        let from = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::SelectedClockCyclesEvalArg),
+        )];
+        let to = vec![(
+            ProcessorTable,
+            usize::from(ProcessorExtTableColumn::UniqueClockJumpDifferencesEvalArg),
+        )];
+        Self { from, to }
     }
 
     pub fn all_private_evaluation_arguments() -> [Self; NUM_PRIVATE_EVAL_ARGS] {
@@ -266,7 +321,7 @@ impl EvalArg {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct GrandCrossTableArg {
     program_to_instruction: EvalArg,
     processor_to_instruction: PermArg,
@@ -394,14 +449,15 @@ impl GrandCrossTableArg {
 
         // cross-table arguments
         for (arg, weight) in self.into_iter() {
-            let (from_table, from_column) = arg.from();
-            let (to_table, to_column) = arg.to();
-            let from_codeword = &ext_codeword_tables.data(from_table)[from_column];
-            let to_codeword = &ext_codeword_tables.data(to_table)[to_column];
+            let from_codeword = arg.combined_from_codeword(ext_codeword_tables);
+            let to_codeword = arg.combined_to_codeword(ext_codeword_tables);
             let non_linear_summand =
-                weighted_difference_codeword(from_codeword, to_codeword, weight);
-            non_linear_sum_codeword =
-                pointwise_addition(non_linear_sum_codeword, non_linear_summand);
+                weighted_difference_codeword(&from_codeword, &to_codeword, weight);
+            non_linear_sum_codeword = pointwise_operation(
+                non_linear_sum_codeword,
+                non_linear_summand,
+                XFieldElement::add,
+            );
         }
 
         // input
@@ -411,7 +467,11 @@ impl GrandCrossTableArg {
         let weight = self.input_to_processor_weight;
         let non_linear_summand =
             weighted_difference_codeword(&input_terminal_codeword, to_codeword, weight);
-        non_linear_sum_codeword = pointwise_addition(non_linear_sum_codeword, non_linear_summand);
+        non_linear_sum_codeword = pointwise_operation(
+            non_linear_sum_codeword,
+            non_linear_summand,
+            XFieldElement::add,
+        );
 
         // output
         let (from_table, from_column) = self.processor_to_output;
@@ -420,7 +480,11 @@ impl GrandCrossTableArg {
         let weight = self.processor_to_output_weight;
         let non_linear_summand =
             weighted_difference_codeword(from_codeword, &output_terminal_codeword, weight);
-        non_linear_sum_codeword = pointwise_addition(non_linear_sum_codeword, non_linear_summand);
+        non_linear_sum_codeword = pointwise_operation(
+            non_linear_sum_codeword,
+            non_linear_summand,
+            XFieldElement::add,
+        );
 
         let zerofier = fri_domain
             .domain_values()
@@ -441,8 +505,10 @@ impl GrandCrossTableArg {
         ext_codeword_tables: &ExtTableCollection,
         num_trace_randomizers: usize,
     ) -> Degree {
-        self.program_to_instruction
-            .quotient_degree_bound(ext_codeword_tables, num_trace_randomizers)
+        self.into_iter()
+            .map(|(arg, _)| arg.quotient_degree_bound(ext_codeword_tables, num_trace_randomizers))
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn evaluate_non_linear_sum_of_differences(
@@ -469,10 +535,17 @@ impl GrandCrossTableArg {
     }
 }
 
-fn pointwise_addition(left: Vec<XFieldElement>, right: Vec<XFieldElement>) -> Vec<XFieldElement> {
+fn pointwise_operation<F>(
+    left: Vec<XFieldElement>,
+    right: Vec<XFieldElement>,
+    operation: F,
+) -> Vec<XFieldElement>
+where
+    F: Fn(XFieldElement, XFieldElement) -> XFieldElement,
+{
     left.into_iter()
         .zip_eq(right.into_iter())
-        .map(|(l, r)| l + r)
+        .map(|(l, r)| operation(l, r))
         .collect_vec()
 }
 
@@ -498,12 +571,16 @@ mod permutation_argument_tests {
     #[test]
     fn all_permutation_arguments_link_from_processor_table_test() {
         for perm_arg in PermArg::all_permutation_arguments() {
-            assert_eq!(TableId::ProcessorTable, perm_arg.from_table);
+            assert!(perm_arg
+                .from()
+                .iter()
+                .map(|(table, _)| table)
+                .contains(&TableId::ProcessorTable));
         }
     }
 
     #[test]
-    fn all_quotient_degree_bounds_of_grand_cross_table_argument_are_equal_test() {
+    fn almost_all_quotient_degree_bounds_of_grand_cross_table_argument_are_equal_test() {
         let num_trace_randomizers = 10;
         let code_with_input = test_hash_nop_nop_lt();
         let code = code_with_input.source_code;
@@ -536,7 +613,7 @@ mod permutation_argument_tests {
         let quotient_degree_bound = gxta
             .program_to_instruction
             .quotient_degree_bound(&ext_codeword_tables, num_trace_randomizers);
-        for (arg, _) in gxta.into_iter() {
+        for (arg, _) in gxta.into_iter().take(8) {
             assert_eq!(
                 quotient_degree_bound,
                 arg.quotient_degree_bound(&ext_codeword_tables, num_trace_randomizers)
