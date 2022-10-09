@@ -76,6 +76,7 @@ impl ProcessorTable {
         challenges: &ProcessorTableChallenges,
         interpolant_degree: Degree,
     ) -> ExtProcessorTable {
+        let mut unique_clock_jump_differences = vec![];
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
         let mut input_table_running_evaluation = EvalArg::default_initial();
@@ -86,6 +87,10 @@ impl ProcessorTable {
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut to_hash_table_running_evaluation = EvalArg::default_initial();
         let mut from_hash_table_running_evaluation = EvalArg::default_initial();
+        let mut selected_clock_cycles_running_evaluation = EvalArg::default_initial();
+        let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
+        let mut all_clock_jump_differences_running_product =
+            PermArg::default_initial() * PermArg::default_initial() * PermArg::default_initial();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {
@@ -217,8 +222,41 @@ impl ProcessorTable {
             }
             extension_row[usize::from(FromHashTableEvalArg)] = from_hash_table_running_evaluation;
 
+            // clock jump difference
+            let current_clock_jump_difference = row[usize::from(ClockJumpDifference)].lift();
+            if !current_clock_jump_difference.is_zero() {
+                all_clock_jump_differences_running_product *=
+                    challenges.all_clock_jump_differences_weight - current_clock_jump_difference;
+            }
+            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+                all_clock_jump_differences_running_product;
+
+            if let Some(prow) = previous_row {
+                if prow[usize::from(ClockJumpDifference)].lift() != current_clock_jump_difference {
+                    unique_clock_jump_differences.push(current_clock_jump_difference);
+                    unique_clock_jump_differences_running_evaluation =
+                        unique_clock_jump_differences_running_evaluation
+                            * challenges.unique_clock_jump_differences_weight
+                            + current_clock_jump_difference;
+                }
+            }
+            extension_row[usize::from(UniqueClockJumpDifferencesEvalArg)] =
+                unique_clock_jump_differences_running_evaluation;
+
             previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());
+        }
+
+        // second pass over Processor Table to select all unique clock jump differences
+        for extension_row in extension_matrix.iter_mut() {
+            let potentially_selected_clk_cycle = extension_row[usize::from(CLK)];
+            if unique_clock_jump_differences.contains(&potentially_selected_clk_cycle) {
+                selected_clock_cycles_running_evaluation *= selected_clock_cycles_running_evaluation
+                    * challenges.unique_clock_jump_differences_weight
+                    + potentially_selected_clk_cycle;
+            }
+            extension_row[usize::from(SelectedClockCyclesEvalArg)] =
+                selected_clock_cycles_running_evaluation;
         }
 
         assert_eq!(self.data().len(), extension_matrix.len());
@@ -397,6 +435,9 @@ pub struct ProcessorTableChallenges {
 
     pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
     pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LENGTH],
+
+    pub unique_clock_jump_differences_weight: XFieldElement,
+    pub all_clock_jump_differences_weight: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
