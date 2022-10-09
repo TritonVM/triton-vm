@@ -7,12 +7,10 @@ use rayon::iter::{
 };
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other;
+use twenty_first::shared_math::other::{self, random_elements};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
-use twenty_first::shared_math::traits::{
-    FiniteField, GetRandomElements, Inverse, ModPowU32, PrimitiveRootOfUnity,
-};
+use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, PrimitiveRootOfUnity};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::merkle_tree::MerkleTree;
@@ -587,9 +585,7 @@ impl Stark {
     }
 
     fn get_randomizer_codewords(&self) -> (Vec<XFieldElement>, Vec<Vec<BFieldElement>>) {
-        let mut rng = rand::thread_rng();
-        let randomizer_coefficients =
-            XFieldElement::random_elements(self.max_degree as usize + 1, &mut rng);
+        let randomizer_coefficients = random_elements(self.max_degree as usize + 1);
         let randomizer_polynomial = Polynomial::new(randomizer_coefficients);
 
         let x_randomizer_codeword = self.xfri.domain.evaluate(&randomizer_polynomial);

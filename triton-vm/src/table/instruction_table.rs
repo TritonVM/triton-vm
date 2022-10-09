@@ -98,8 +98,7 @@ impl ExtInstructionTable {
     fn ext_initial_constraints(
         challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
 
         let running_evaluation_initial =
             MPolynomial::from_constant(EvalArg::default_initial(), FULL_WIDTH);
@@ -144,7 +143,7 @@ impl ExtInstructionTable {
         challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
-        let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        let variables = MPolynomial::variables(2 * FULL_WIDTH);
 
         let addr = variables[usize::from(Address)].clone();
         let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();

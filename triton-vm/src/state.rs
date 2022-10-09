@@ -802,7 +802,8 @@ impl<'pgm> Display for VMState<'pgm> {
 #[cfg(test)]
 mod vm_state_tests {
     use rand::thread_rng;
-    use twenty_first::shared_math::traits::GetRandomElements;
+
+    use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::simple_hasher::Hasher;
 
@@ -934,15 +935,9 @@ mod vm_state_tests {
         type H = RescuePrimeRegular;
         type Digest = <H as Hasher>::Digest;
         let hasher = H::new();
-        let mut rng = thread_rng();
         const NUM_LEAFS: usize = 64;
         let leafs: [Digest; NUM_LEAFS] = (0..NUM_LEAFS)
-            .map(|_| {
-                BFieldElement::random_elements(DIGEST_LENGTH, &mut rng)
-                    .try_into()
-                    .unwrap()
-                // hasher.hash_sequence(&BFieldElement::new(i as u64).to_sequence())
-            })
+            .map(|_| random_elements_array::<BFieldElement, DIGEST_LENGTH>())
             .collect_vec()
             .try_into()
             .unwrap();

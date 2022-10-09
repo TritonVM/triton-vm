@@ -98,8 +98,7 @@ impl ExtJumpStackTable {
     fn ext_initial_constraints(
         _challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
 
         // 1. Cycle count clk is 0.
         let clk = variables[usize::from(CLK)].clone();
@@ -126,8 +125,7 @@ impl ExtJumpStackTable {
     fn ext_transition_constraints(
         _challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
         let one = MPolynomial::<XFieldElement>::from_constant(1.into(), 2 * FULL_WIDTH);
 
         let clk = variables[usize::from(CLK)].clone();
