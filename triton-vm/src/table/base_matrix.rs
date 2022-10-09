@@ -5,7 +5,7 @@ use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::{FiniteField, Inverse};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::instruction::AnInstruction::*;
@@ -46,15 +46,96 @@ pub struct BaseMatrices {
 
 impl BaseMatrices {
     pub fn new(aet: AlgebraicExecutionTrace, program: &Program) -> Self {
+        let program_matrix = Self::derive_program_matrix(program);
+        let instruction_matrix = Self::derive_instruction_matrix(&aet, program);
+        let op_stack_matrix = Self::derive_op_stack_matrix(&aet);
+        let ram_matrix = Self::derive_ram_matrix(&aet);
+        let jump_stack_matrix = Self::derive_jump_stack_matrix(&aet);
+
+        let processor_matrix = Self::add_clock_jump_differences_to_processor_matrix(
+            aet.processor_matrix,
+            &op_stack_matrix,
+            &ram_matrix,
+            &jump_stack_matrix,
+        );
+
         Self {
-            program_matrix: Self::derive_program_matrix(program),
-            instruction_matrix: Self::derive_instruction_matrix(&aet, program),
-            op_stack_matrix: Self::derive_op_stack_matrix(&aet),
-            ram_matrix: Self::derive_ram_matrix(&aet),
-            jump_stack_matrix: Self::derive_jump_stack_matrix(&aet),
-            processor_matrix: aet.processor_matrix,
+            program_matrix,
+            instruction_matrix,
+            processor_matrix,
+            op_stack_matrix,
+            ram_matrix,
+            jump_stack_matrix,
             hash_matrix: aet.hash_matrix,
         }
+    }
+
+    fn add_clock_jump_differences_to_processor_matrix(
+        mut processor_matrix: Vec<[BFieldElement; processor_table::BASE_WIDTH]>,
+        op_stack_matrix: &[[BFieldElement; op_stack_table::BASE_WIDTH]],
+        ram_matrix: &[[BFieldElement; ram_table::BASE_WIDTH]],
+        jump_stack_matrix: &[[BFieldElement; jump_stack_table::BASE_WIDTH]],
+    ) -> Vec<[BFieldElement; processor_table::BASE_WIDTH]> {
+        // get clock jump differences for all 3 memory-like tables
+        let op_stack_mp_column = usize::from(OpStackBaseTableColumn::OSP);
+        let op_stack_clk_column = usize::from(OpStackBaseTableColumn::CLK);
+        let mut all_clk_jump_differences = vec![];
+        for (curr_row, next_row) in op_stack_matrix.iter().tuple_windows() {
+            if next_row[op_stack_mp_column] == curr_row[op_stack_mp_column] {
+                all_clk_jump_differences
+                    .push(next_row[op_stack_clk_column] - curr_row[op_stack_clk_column]);
+            }
+        }
+
+        let ramp_mp_column = usize::from(RamBaseTableColumn::RAMP);
+        let ram_clk_column = usize::from(RamBaseTableColumn::CLK);
+        for (curr_row, next_row) in ram_matrix.iter().tuple_windows() {
+            if next_row[ramp_mp_column] == curr_row[ramp_mp_column] {
+                all_clk_jump_differences.push(next_row[ram_clk_column] - curr_row[ram_clk_column]);
+            }
+        }
+
+        let jump_stack_mp_column = usize::from(JumpStackBaseTableColumn::JSP);
+        let jump_stack_clk_column = usize::from(JumpStackBaseTableColumn::CLK);
+        for (curr_row, next_row) in jump_stack_matrix.iter().tuple_windows() {
+            if next_row[jump_stack_mp_column] == curr_row[jump_stack_mp_column] {
+                all_clk_jump_differences
+                    .push(next_row[jump_stack_clk_column] - curr_row[jump_stack_clk_column]);
+            }
+        }
+        all_clk_jump_differences.sort_by_key(|bfe| std::cmp::Reverse(bfe.value())); // todo: might not need reversal
+
+        // add all clock jump differences and their inverses, as well as inverses of uniques
+        let zero = BFieldElement::zero();
+        let mut previous_row: Option<[BFieldElement; processor_table::BASE_WIDTH]> = None;
+        for row in processor_matrix.iter_mut() {
+            let clk_jump_difference = all_clk_jump_differences.pop().unwrap_or(zero);
+            let clk_jump_difference_inv = if clk_jump_difference.is_zero() {
+                0_u64.into()
+            } else {
+                clk_jump_difference.inverse()
+            };
+            row[usize::from(ClockJumpDifference)] = clk_jump_difference;
+            row[usize::from(ClockJumpDifferenceInverse)] = clk_jump_difference_inv;
+
+            if let Some(prow) = previous_row {
+                let previous_clock_jump_difference = prow[usize::from(ClockJumpDifference)];
+                if previous_clock_jump_difference != clk_jump_difference {
+                    row[usize::from(UniqueClockJumpDifferenceInverse)] =
+                        (previous_clock_jump_difference - clk_jump_difference).inverse();
+                }
+            }
+
+            previous_row = Some(*row);
+        }
+        assert!(
+            all_clk_jump_differences.is_empty(),
+            "Processor Table must record all clock jump differences, \
+            but didn't have enough space for remaining {}.",
+            all_clk_jump_differences.len()
+        );
+
+        processor_matrix
     }
 
     fn derive_program_matrix(program: &Program) -> Vec<[BFieldElement; program_table::BASE_WIDTH]> {
