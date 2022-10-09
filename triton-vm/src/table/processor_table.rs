@@ -703,7 +703,7 @@ pub struct SingleRowConstraints {
 
 impl Default for SingleRowConstraints {
     fn default() -> Self {
-        let variables = MPolynomial::variables(FULL_WIDTH, 1.into())
+        let variables = MPolynomial::variables(FULL_WIDTH)
             .try_into()
             .expect("Create variables for initial/consistency/terminal constraints");
 
@@ -881,7 +881,7 @@ pub struct RowPairConstraints {
 
 impl Default for RowPairConstraints {
     fn default() -> Self {
-        let variables = MPolynomial::variables(2 * FULL_WIDTH, 1.into())
+        let variables = MPolynomial::variables(2 * FULL_WIDTH)
             .try_into()
             .expect("Create variables for transition constraints");
 

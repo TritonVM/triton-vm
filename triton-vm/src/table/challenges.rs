@@ -1,6 +1,5 @@
-use rand::thread_rng;
+use twenty_first::shared_math::other::random_elements;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::traits::GetRandomElements;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::hash_table::HashTableChallenges;
@@ -147,8 +146,7 @@ impl AllChallenges {
     /// Stand-in challenges. Can be used for deriving degree bounds and in tests. For non-
     /// interactive STARKs, use Fiat-Shamir to derive the actual challenges.
     pub fn placeholder() -> Self {
-        let mut rng = thread_rng();
-        let random_challenges = XFieldElement::random_elements(Self::TOTAL_CHALLENGES, &mut rng);
+        let random_challenges = random_elements(Self::TOTAL_CHALLENGES);
 
         Self::create_challenges(random_challenges)
     }

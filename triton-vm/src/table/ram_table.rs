@@ -256,8 +256,7 @@ impl ExtRamTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         use RamBaseTableColumn::*;
 
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
         let clk = variables[usize::from(CLK)].clone();
         let ramp = variables[usize::from(RAMP)].clone();
         let ramv = variables[usize::from(RAMV)].clone();
@@ -286,8 +285,7 @@ impl ExtRamTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         use RamBaseTableColumn::*;
 
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
         let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
 
         let clk = variables[usize::from(CLK)].clone();

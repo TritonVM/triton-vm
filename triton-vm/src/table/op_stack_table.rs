@@ -102,8 +102,7 @@ impl ExtOpStackTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         use OpStackBaseTableColumn::*;
 
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
         let clk = variables[usize::from(CLK)].clone();
         let osp = variables[usize::from(OSP)].clone();
         let osv = variables[usize::from(OSV)].clone();
@@ -128,8 +127,7 @@ impl ExtOpStackTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         use OpStackBaseTableColumn::*;
 
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
         let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
         let osp = variables[usize::from(OSP)].clone();
         let osv = variables[usize::from(OSV)].clone();

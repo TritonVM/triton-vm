@@ -1,11 +1,13 @@
 use super::super::fri_domain::FriDomain;
 use itertools::Itertools;
+use rand_distr::{Distribution, Standard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::ops::Range;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::other::random_elements;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::{FiniteField, GetRandomElements};
+use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -225,7 +227,8 @@ fn disjoint_domain<DataPF: FiniteField>(
 pub trait TableLike<DataPF>: InheritsFromTable<DataPF>
 where
     // Self: Sized,
-    DataPF: FiniteField + GetRandomElements,
+    DataPF: FiniteField,
+    Standard: Distribution<DataPF>,
 {
     // Generic functions common to all tables
 
@@ -265,9 +268,6 @@ where
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Polynomial<DataPF>> {
-        // FIXME: Inject `rng` instead.
-        let mut rng = rand::thread_rng();
-
         // Ensure that `matrix` is set and padded before running this function
         assert_eq!(
             padded_height,
@@ -294,7 +294,7 @@ where
 
         for col in columns {
             let trace = data.iter().map(|row| row[col]).collect();
-            let randomizers = DataPF::random_elements(num_trace_randomizers, &mut rng);
+            let randomizers = random_elements(num_trace_randomizers);
             let randomized_trace = vec![trace, randomizers].concat();
             assert_eq!(
                 randomized_trace.len(),

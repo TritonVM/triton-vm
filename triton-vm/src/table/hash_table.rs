@@ -281,7 +281,7 @@ impl ExtHashTable {
         _challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
-        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables = MPolynomial::variables(FULL_WIDTH);
 
         let round_number = variables[usize::from(ROUNDNUMBER)].clone();
         let round_number_is_0_or_1 = round_number.clone() * (round_number - one);
@@ -297,7 +297,7 @@ impl ExtHashTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         panic!("ext_consistency_constraints should never be called; method is bypassed statically");
         let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), FULL_WIDTH);
-        let variables = MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables = MPolynomial::variables(FULL_WIDTH);
 
         let round_number = variables[usize::from(ROUNDNUMBER)].clone();
         let state10 = variables[usize::from(STATE10)].clone();
@@ -375,7 +375,7 @@ impl ExtHashTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         panic!("ext_transition_constraints should never be called; method is bypassed statically");
         let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), 2 * FULL_WIDTH);
-        let variables = MPolynomial::variables(2 * FULL_WIDTH, XFieldElement::one());
+        let variables = MPolynomial::variables(2 * FULL_WIDTH);
 
         let round_number = variables[usize::from(ROUNDNUMBER)].clone();
         let round_number_next = variables[FULL_WIDTH + usize::from(ROUNDNUMBER)].clone();

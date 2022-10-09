@@ -100,8 +100,7 @@ impl ExtProgramTable {
     fn ext_initial_constraints(
         _challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
 
         let address = variables[usize::from(Address)].clone();
 
@@ -120,8 +119,7 @@ impl ExtProgramTable {
     fn ext_transition_constraints(
         _challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> =
-            MPolynomial::variables(2 * FULL_WIDTH, 1.into());
+        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
 
         let addr = variables[usize::from(Address)].clone();
         let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();
