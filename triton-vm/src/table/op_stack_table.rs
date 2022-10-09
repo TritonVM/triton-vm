@@ -194,7 +194,9 @@ impl OpStackTable {
     ) -> ExtOpStackTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product = PermArg::default_initial();
+        let mut all_clock_jump_differences_running_product = PermArg::default_initial();
 
+        let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {
             let mut extension_row = [0.into(); FULL_WIDTH];
             extension_row[..BASE_WIDTH]
@@ -219,6 +221,20 @@ impl OpStackTable {
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
+            // clock jump difference
+            if let Some(prow) = previous_row {
+                if prow[usize::from(OSP)] == row[usize::from(OSP)] {
+                    // if row[usize::from(IsPadding)] { // todo: we can't recognize padding rows atm
+                    let clock_jump_difference =
+                        (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
+                    all_clock_jump_differences_running_product *=
+                        challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                }
+            }
+            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+                all_clock_jump_differences_running_product;
+
+            previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());
         }
 
@@ -306,6 +322,9 @@ pub struct OpStackTableChallenges {
     pub ib1_weight: XFieldElement,
     pub osv_weight: XFieldElement,
     pub osp_weight: XFieldElement,
+
+    /// Weight for accumulating all clock jump differences
+    pub all_clock_jump_differences_weight: XFieldElement,
 }
 
 impl ExtensionTable for ExtOpStackTable {

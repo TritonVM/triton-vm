@@ -104,6 +104,7 @@ impl RamTable {
     ) -> ExtRamTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product_for_perm_arg = PermArg::default_initial();
+        let mut all_clock_jump_differences_running_product = PermArg::default_initial();
 
         // initialize columns establishing Bézout relation
         let mut running_product_of_ramp = challenges.bezout_relation_sample_point
@@ -126,6 +127,7 @@ impl RamTable {
 
             if let Some(prow) = previous_row {
                 if prow[usize::from(RAMP)] != row[usize::from(RAMP)] {
+                    // accumulate coefficient for Bézout relation, proving new RAMP is unique
                     let bcpc0 = extension_row[usize::from(BezoutCoefficientPolynomialCoefficient0)];
                     let bcpc1 = extension_row[usize::from(BezoutCoefficientPolynomialCoefficient1)];
                     let bezout_challenge = challenges.bezout_relation_sample_point;
@@ -135,6 +137,13 @@ impl RamTable {
                     running_product_of_ramp *= bezout_challenge - ramp;
                     bezout_coefficient_0 = bezout_coefficient_0 * bezout_challenge + bcpc0;
                     bezout_coefficient_1 = bezout_coefficient_1 * bezout_challenge + bcpc1;
+                // } else if row[usize::from(IsPadding)].is_zero() { // todo: we can't recognize padding rows atm
+                } else {
+                    // prove that clock jump is directed forward
+                    let clock_jump_difference =
+                        (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
+                    all_clock_jump_differences_running_product *=
+                        challenges.all_clock_jump_differences_weight - clock_jump_difference;
                 }
             }
 
@@ -142,6 +151,8 @@ impl RamTable {
             extension_row[usize::from(FormalDerivative)] = formal_derivative;
             extension_row[usize::from(BezoutCoefficient0)] = bezout_coefficient_0;
             extension_row[usize::from(BezoutCoefficient1)] = bezout_coefficient_1;
+            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+                all_clock_jump_differences_running_product;
 
             // permutation argument to Processor Table
             let clk_w = challenges.clk_weight;
@@ -156,6 +167,10 @@ impl RamTable {
             running_product_for_perm_arg *=
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product_for_perm_arg;
+
+            // clock jump difference
+            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+                BFieldElement::new(3).lift();
 
             previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());
@@ -451,6 +466,9 @@ pub struct RamTableChallenges {
     pub clk_weight: XFieldElement,
     pub ramv_weight: XFieldElement,
     pub ramp_weight: XFieldElement,
+
+    /// Weight for accumulating all clock jump differences
+    pub all_clock_jump_differences_weight: XFieldElement,
 }
 
 impl ExtensionTable for ExtRamTable {

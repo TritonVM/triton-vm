@@ -25,7 +25,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 128;
+    pub const TOTAL_CHALLENGES: usize = 130;
 
     pub fn create_challenges(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_challenges = ProcessorTableChallenges {
@@ -67,6 +67,9 @@ impl AllChallenges {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
+
+            unique_clock_jump_differences_weight: weights.pop().unwrap(),
+            all_clock_jump_differences_weight: weights.pop().unwrap(),
         };
 
         let program_table_challenges = ProgramTableChallenges {
@@ -102,6 +105,8 @@ impl AllChallenges {
             ib1_weight: processor_table_challenges.op_stack_table_ib1_weight,
             osv_weight: processor_table_challenges.op_stack_table_osv_weight,
             osp_weight: processor_table_challenges.op_stack_table_osp_weight,
+            all_clock_jump_differences_weight: processor_table_challenges
+                .all_clock_jump_differences_weight,
         };
 
         let ram_table_challenges = RamTableChallenges {
@@ -110,6 +115,8 @@ impl AllChallenges {
             clk_weight: processor_table_challenges.ram_table_clk_weight,
             ramv_weight: processor_table_challenges.ram_table_ramv_weight,
             ramp_weight: processor_table_challenges.ram_table_ramp_weight,
+            all_clock_jump_differences_weight: processor_table_challenges
+                .all_clock_jump_differences_weight,
         };
 
         let jump_stack_table_challenges = JumpStackTableChallenges {
@@ -119,6 +126,8 @@ impl AllChallenges {
             jsp_weight: processor_table_challenges.jump_stack_table_jsp_weight,
             jso_weight: processor_table_challenges.jump_stack_table_jso_weight,
             jsd_weight: processor_table_challenges.jump_stack_table_jsd_weight,
+            all_clock_jump_differences_weight: processor_table_challenges
+                .all_clock_jump_differences_weight,
         };
 
         let hash_table_challenges = HashTableChallenges {
