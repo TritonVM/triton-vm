@@ -12,6 +12,7 @@ use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
 use crate::stark::Stark;
+use crate::table::extension_table;
 use crate::table::table_collection::interpolant_degree;
 
 use super::base_table::TableLike;
@@ -116,9 +117,11 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
+                zerofier_degree: 1,
                 origin_table_name: self.name(),
                 origin_index: i,
                 origin_table_height: padded_height,
+                origin_num_trace_randomizers: num_trace_randomizers,
                 origin_constraint_type: "initial constraint".to_string(),
             })
             .collect_vec();
@@ -129,9 +132,11 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
+                zerofier_degree: padded_height as Degree,
                 origin_table_name: self.name(),
                 origin_index: i,
                 origin_table_height: padded_height,
+                origin_num_trace_randomizers: num_trace_randomizers,
                 origin_constraint_type: "consistency constraint".to_string(),
             })
             .collect();
@@ -142,9 +147,11 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
+                zerofier_degree: padded_height as Degree - 1,
                 origin_table_name: self.name(),
                 origin_index: i,
                 origin_table_height: padded_height,
+                origin_num_trace_randomizers: num_trace_randomizers,
                 origin_constraint_type: "transition constraint".to_string(),
             })
             .collect();
@@ -155,9 +162,11 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .enumerate()
             .map(|(i, d)| DegreeWithOrigin {
                 degree: d,
+                zerofier_degree: 1,
                 origin_table_name: self.name(),
                 origin_index: i,
                 origin_table_height: padded_height,
+                origin_num_trace_randomizers: num_trace_randomizers,
                 origin_constraint_type: "terminal constraint".to_string(),
             })
             .collect();
@@ -488,9 +497,11 @@ pub trait QuotientableExtensionTable: ExtensionTable + Quotientable {}
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct DegreeWithOrigin {
     pub degree: Degree,
+    pub zerofier_degree: Degree,
     pub origin_table_name: String,
     pub origin_index: usize,
     pub origin_table_height: usize,
+    pub origin_num_trace_randomizers: usize,
     pub origin_constraint_type: String,
 }
 
@@ -498,9 +509,11 @@ impl Default for DegreeWithOrigin {
     fn default() -> Self {
         DegreeWithOrigin {
             degree: -1,
+            zerofier_degree: -1,
             origin_table_name: "NoTable".to_string(),
             origin_index: usize::MAX,
             origin_table_height: 0,
+            origin_num_trace_randomizers: 0,
             origin_constraint_type: "NoType".to_string(),
         }
     }
@@ -508,15 +521,17 @@ impl Default for DegreeWithOrigin {
 
 impl Display for DegreeWithOrigin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let interpolant_degree = extension_table::interpolant_degree(
+            self.origin_table_height,
+            self.origin_num_trace_randomizers,
+        );
+        let zerofier_corrected_degree = self.degree + self.zerofier_degree;
+        assert_eq!(0, zerofier_corrected_degree % interpolant_degree);
+        let degree = zerofier_corrected_degree / interpolant_degree as Degree;
         write!(
             f,
-            "Degree of poly for table {} (index {:02}) of type {} is {:02}. \
-            Table height was {}.",
-            self.origin_table_name,
-            self.origin_index,
-            self.origin_constraint_type,
-            self.degree,
-            self.origin_table_height,
+            "Degree of poly for table {} (index {:02}) of type {} is {}.",
+            self.origin_table_name, self.origin_index, self.origin_constraint_type, degree,
         )
     }
 }

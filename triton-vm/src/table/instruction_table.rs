@@ -333,9 +333,12 @@ impl InstructionTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
+        assert_eq!(self.data().len(), extension_matrix.len());
+        let padded_height = extension_matrix.len();
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
+            padded_height,
             ExtInstructionTable::ext_initial_constraints(challenges),
             ExtInstructionTable::ext_consistency_constraints(challenges),
             ExtInstructionTable::ext_transition_constraints(challenges),
@@ -346,6 +349,7 @@ impl InstructionTable {
 
     pub fn for_verifier(
         interpolant_degree: Degree,
+        padded_height: usize,
         all_challenges: &AllChallenges,
     ) -> ExtInstructionTable {
         let inherited_table = Table::new(
@@ -359,6 +363,7 @@ impl InstructionTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
+            padded_height,
             ExtInstructionTable::ext_initial_constraints(
                 &all_challenges.instruction_table_challenges,
             ),

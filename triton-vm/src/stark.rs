@@ -1168,6 +1168,61 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    pub fn print_all_coefficient_counts() {
+        let ext_tables = ExtTableCollection::with_padded_height(2);
+        for table in ext_tables
+            .into_iter()
+            .filter(|&table| table.name() != "EmptyExtHashTable")
+        {
+            for (idx, constraint) in table
+                .dynamic_initial_constraints(&AllChallenges::placeholder())
+                .into_iter()
+                .enumerate()
+            {
+                println!(
+                    "{} initial constraint with index {idx} has {} coefficients.",
+                    table.name(),
+                    constraint.coefficients.len()
+                );
+            }
+            for (idx, constraint) in table
+                .dynamic_consistency_constraints(&AllChallenges::placeholder())
+                .into_iter()
+                .enumerate()
+            {
+                println!(
+                    "{} consistency constraint with index {idx} has {} coefficients.",
+                    table.name(),
+                    constraint.coefficients.len()
+                );
+            }
+            for (idx, constraint) in table
+                .dynamic_transition_constraints(&AllChallenges::placeholder())
+                .into_iter()
+                .enumerate()
+            {
+                println!(
+                    "{} transition constraint with index {idx} has {} coefficients.",
+                    table.name(),
+                    constraint.coefficients.len()
+                );
+            }
+            for (idx, constraint) in table
+                .dynamic_terminal_constraints(&AllChallenges::placeholder())
+                .into_iter()
+                .enumerate()
+            {
+                println!(
+                    "{} terminal constraint with index {idx} has {} coefficients.",
+                    table.name(),
+                    constraint.coefficients.len()
+                );
+            }
+        }
+        println!("HashTable AIR's coefficients cannot be counted because they are hardcoded.");
+    }
+
+    #[test]
     pub fn shift_codeword_test() {
         let stark = Stark::new(2, 1, 2, 32, BFieldElement::one(), &[], &[]);
         let fri_x_values = stark.xfri.domain.domain_values();

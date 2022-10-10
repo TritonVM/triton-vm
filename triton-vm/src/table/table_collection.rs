@@ -257,13 +257,18 @@ impl ExtTableCollection {
     ) -> Self {
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
-        let ext_program_table = ProgramTable::for_verifier(interpolant_degree, challenges);
-        let ext_instruction_table = InstructionTable::for_verifier(interpolant_degree, challenges);
-        let ext_processor_table = ProcessorTable::for_verifier(interpolant_degree, challenges);
-        let ext_op_stack_table = OpStackTable::for_verifier(interpolant_degree, challenges);
-        let ext_ram_table = RamTable::for_verifier(interpolant_degree, challenges);
-        let ext_jump_stack_table = JumpStackTable::for_verifier(interpolant_degree, challenges);
-        let ext_hash_table = HashTable::for_verifier(interpolant_degree, challenges);
+        let ext_program_table =
+            ProgramTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_instruction_table =
+            InstructionTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_processor_table =
+            ProcessorTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_op_stack_table =
+            OpStackTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_ram_table = RamTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_jump_stack_table =
+            JumpStackTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_hash_table = HashTable::for_verifier(interpolant_degree, padded_height, challenges);
 
         ExtTableCollection {
             padded_height,

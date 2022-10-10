@@ -259,9 +259,12 @@ impl JumpStackTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
+        assert_eq!(self.data().len(), extension_matrix.len());
+        let padded_height = extension_matrix.len();
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
+            padded_height,
             ExtJumpStackTable::ext_initial_constraints(challenges),
             ExtJumpStackTable::ext_consistency_constraints(challenges),
             ExtJumpStackTable::ext_transition_constraints(challenges),
@@ -272,6 +275,7 @@ impl JumpStackTable {
 
     pub fn for_verifier(
         interpolant_degree: Degree,
+        padded_height: usize,
         all_challenges: &AllChallenges,
     ) -> ExtJumpStackTable {
         let inherited_table = Table::new(
@@ -285,6 +289,7 @@ impl JumpStackTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
+            padded_height,
             ExtJumpStackTable::ext_initial_constraints(&all_challenges.jump_stack_table_challenges),
             ExtJumpStackTable::ext_consistency_constraints(
                 &all_challenges.jump_stack_table_challenges,

@@ -221,9 +221,12 @@ impl ProcessorTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
+        assert_eq!(self.data().len(), extension_matrix.len());
+        let padded_height = extension_matrix.len();
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
+            padded_height,
             ExtProcessorTable::ext_initial_constraints(challenges),
             ExtProcessorTable::ext_consistency_constraints(challenges),
             ExtProcessorTable::ext_transition_constraints(challenges),
@@ -234,6 +237,7 @@ impl ProcessorTable {
 
     pub fn for_verifier(
         interpolant_degree: Degree,
+        padded_height: usize,
         all_challenges: &AllChallenges,
     ) -> ExtProcessorTable {
         let inherited_table = Table::new(
@@ -247,6 +251,7 @@ impl ProcessorTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
+            padded_height,
             ExtProcessorTable::ext_initial_constraints(&all_challenges.processor_table_challenges),
             ExtProcessorTable::ext_consistency_constraints(
                 &all_challenges.processor_table_challenges,

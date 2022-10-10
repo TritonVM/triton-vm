@@ -133,11 +133,14 @@ pub trait Extendable: TableLike<BFieldElement> {
     fn compute_degree_bounds(
         air_constraints: &[MPolynomial<XFieldElement>],
         interpolant_degree: Degree,
+        zerofier_degree: Degree,
         full_width: usize,
     ) -> Vec<Degree> {
         air_constraints
             .iter()
-            .map(|mpo| mpo.symbolic_degree_bound(&vec![interpolant_degree; full_width]) - 1)
+            .map(|mpo| {
+                mpo.symbolic_degree_bound(&vec![interpolant_degree; full_width]) - zerofier_degree
+            })
             .collect()
     }
 
@@ -146,26 +149,46 @@ pub trait Extendable: TableLike<BFieldElement> {
         initial_constraints: &[MPolynomial<XFieldElement>],
         interpolant_degree: Degree,
     ) -> Vec<Degree> {
+        let zerofier_degree = 1;
         let full_width = self.full_width();
-        Self::compute_degree_bounds(initial_constraints, interpolant_degree, full_width)
+        Self::compute_degree_bounds(
+            initial_constraints,
+            interpolant_degree,
+            zerofier_degree,
+            full_width,
+        )
     }
 
     fn get_consistency_quotient_degree_bounds(
         &self,
         consistency_constraints: &[MPolynomial<XFieldElement>],
         interpolant_degree: Degree,
+        padded_height: usize,
     ) -> Vec<Degree> {
+        let zerofier_degree = padded_height as Degree;
         let full_width = self.full_width();
-        Self::compute_degree_bounds(consistency_constraints, interpolant_degree, full_width)
+        Self::compute_degree_bounds(
+            consistency_constraints,
+            interpolant_degree,
+            zerofier_degree,
+            full_width,
+        )
     }
 
     fn get_transition_quotient_degree_bounds(
         &self,
         transition_constraints: &[MPolynomial<XFieldElement>],
         interpolant_degree: Degree,
+        padded_height: usize,
     ) -> Vec<Degree> {
+        let zerofier_degree = (padded_height - 1) as Degree;
         let full_width = self.full_width();
-        Self::compute_degree_bounds(transition_constraints, interpolant_degree, 2 * full_width)
+        Self::compute_degree_bounds(
+            transition_constraints,
+            interpolant_degree,
+            zerofier_degree,
+            2 * full_width,
+        )
     }
 
     fn get_terminal_quotient_degree_bounds(
@@ -173,14 +196,22 @@ pub trait Extendable: TableLike<BFieldElement> {
         terminal_constraints: &[MPolynomial<XFieldElement>],
         interpolant_degree: Degree,
     ) -> Vec<Degree> {
+        let zerofier_degree = 1;
         let full_width = self.full_width();
-        Self::compute_degree_bounds(terminal_constraints, interpolant_degree, full_width)
+        Self::compute_degree_bounds(
+            terminal_constraints,
+            interpolant_degree,
+            zerofier_degree,
+            full_width,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn extension(
         &self,
         extended_matrix: Vec<Vec<XFieldElement>>,
         interpolant_degree: Degree,
+        padded_height: usize,
         initial_constraints: Vec<MPolynomial<XFieldElement>>,
         consistency_constraints: Vec<MPolynomial<XFieldElement>>,
         transition_constraints: Vec<MPolynomial<XFieldElement>>,
@@ -188,10 +219,16 @@ pub trait Extendable: TableLike<BFieldElement> {
     ) -> Table<XFieldElement> {
         let bqdb =
             self.get_initial_quotient_degree_bounds(&initial_constraints, interpolant_degree);
-        let cqdb = self
-            .get_consistency_quotient_degree_bounds(&consistency_constraints, interpolant_degree);
-        let tqdb =
-            self.get_transition_quotient_degree_bounds(&transition_constraints, interpolant_degree);
+        let cqdb = self.get_consistency_quotient_degree_bounds(
+            &consistency_constraints,
+            interpolant_degree,
+            padded_height,
+        );
+        let tqdb = self.get_transition_quotient_degree_bounds(
+            &transition_constraints,
+            interpolant_degree,
+            padded_height,
+        );
         let termqdb =
             self.get_terminal_quotient_degree_bounds(&terminal_constraints, interpolant_degree);
         let new_table = self.new_from_lifted_matrix(extended_matrix);

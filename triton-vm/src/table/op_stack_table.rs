@@ -222,9 +222,12 @@ impl OpStackTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
+        assert_eq!(self.data().len(), extension_matrix.len());
+        let padded_height = extension_matrix.len();
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
+            padded_height,
             ExtOpStackTable::ext_initial_constraints(challenges),
             ExtOpStackTable::ext_consistency_constraints(challenges),
             ExtOpStackTable::ext_transition_constraints(challenges),
@@ -235,6 +238,7 @@ impl OpStackTable {
 
     pub fn for_verifier(
         interpolant_degree: Degree,
+        padded_height: usize,
         all_challenges: &AllChallenges,
     ) -> ExtOpStackTable {
         let inherited_table = Table::new(
@@ -248,6 +252,7 @@ impl OpStackTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
+            padded_height,
             ExtOpStackTable::ext_initial_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_consistency_constraints(&all_challenges.op_stack_table_challenges),
             ExtOpStackTable::ext_transition_constraints(&all_challenges.op_stack_table_challenges),

@@ -69,7 +69,8 @@ pub trait CrossTableArg {
     ) -> Degree {
         let interpolant_degree =
             interpolant_degree(ext_codeword_tables.padded_height, num_trace_randomizers);
-        interpolant_degree - 1
+        let terminal_zerofier_degree = 1;
+        interpolant_degree - terminal_zerofier_degree
     }
 
     fn evaluate_difference(&self, cross_table_slice: &[Vec<XFieldElement>]) -> XFieldElement {

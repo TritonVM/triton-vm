@@ -227,13 +227,18 @@ impl Quotientable for ExtHashTable {
         padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Vec<Degree> {
+        let zerofier_degree = padded_height as Degree;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let capacity_degree_bounds =
             vec![interpolant_degree * (NUM_ROUNDS + 1 + 1) as Degree; CAPACITY];
         let round_constant_degree_bounds =
             vec![interpolant_degree * (NUM_ROUNDS + 1) as Degree; NUM_ROUND_CONSTANTS];
 
-        [capacity_degree_bounds, round_constant_degree_bounds].concat()
+        [capacity_degree_bounds, round_constant_degree_bounds]
+            .concat()
+            .into_iter()
+            .map(|degree_bound| degree_bound - zerofier_degree)
+            .collect_vec()
     }
 
     fn get_transition_quotient_degree_bounds(
@@ -241,6 +246,7 @@ impl Quotientable for ExtHashTable {
         padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Vec<Degree> {
+        let zerofier_degree = padded_height as Degree - 1;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let round_number_bounds = vec![
             interpolant_degree * (NUM_ROUNDS + 1 + 1) as Degree,
@@ -250,7 +256,11 @@ impl Quotientable for ExtHashTable {
         let state_evolution_bounds =
             vec![interpolant_degree * (ALPHA + 1 + 1) as Degree; STATE_SIZE];
 
-        [round_number_bounds, state_evolution_bounds].concat()
+        [round_number_bounds, state_evolution_bounds]
+            .concat()
+            .into_iter()
+            .map(|degree_bound| degree_bound - zerofier_degree)
+            .collect_vec()
     }
 }
 
@@ -568,9 +578,12 @@ impl HashTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
+        assert_eq!(self.data().len(), extension_matrix.len());
+        let padded_height = extension_matrix.len();
         let extension_table = self.extension(
             extension_matrix,
             interpolant_degree,
+            padded_height,
             ExtHashTable::ext_initial_constraints(challenges),
             vec![],
             vec![],
@@ -584,6 +597,7 @@ impl HashTable {
 
     pub fn for_verifier(
         interpolant_degree: Degree,
+        padded_height: usize,
         all_challenges: &AllChallenges,
     ) -> ExtHashTable {
         let inherited_table =
@@ -593,6 +607,7 @@ impl HashTable {
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
+            padded_height,
             ExtHashTable::ext_initial_constraints(&all_challenges.hash_table_challenges),
             // The Hash Table bypasses the symbolic representation of transition and consistency constraints.
             // As a result, there is nothing to memoize. Since the memoization dictionary is never used, it

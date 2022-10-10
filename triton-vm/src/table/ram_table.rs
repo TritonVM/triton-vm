@@ -134,9 +134,12 @@ impl RamTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
+        assert_eq!(self.data().len(), extension_matrix.len());
+        let padded_height = extension_matrix.len();
         let inherited_table = self.extension(
             extension_matrix,
             interpolant_degree,
+            padded_height,
             ExtRamTable::ext_initial_constraints(challenges),
             ExtRamTable::ext_consistency_constraints(challenges),
             ExtRamTable::ext_transition_constraints(challenges),
@@ -145,13 +148,18 @@ impl RamTable {
         ExtRamTable { inherited_table }
     }
 
-    pub fn for_verifier(interpolant_degree: Degree, all_challenges: &AllChallenges) -> ExtRamTable {
+    pub fn for_verifier(
+        interpolant_degree: Degree,
+        padded_height: usize,
+        all_challenges: &AllChallenges,
+    ) -> ExtRamTable {
         let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, vec![], "ExtRamTable".to_string());
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
         let extension_table = base_table.extension(
             empty_matrix,
             interpolant_degree,
+            padded_height,
             ExtRamTable::ext_initial_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
             ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
