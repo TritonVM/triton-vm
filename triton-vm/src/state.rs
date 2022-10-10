@@ -125,16 +125,11 @@ impl<'pgm> VMState<'pgm> {
         }
         let current_instruction = current_instruction.unwrap();
 
-        // Helps preventing OpStack Underflow
-        match current_instruction {
-            Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo => {
-                if self.op_stack.osp() == BFieldElement::new(16) {
-                    hvs[3] = BFieldElement::zero()
-                } else {
-                    hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse()
-                }
-            }
-            _ => (),
+        if matches!(
+            current_instruction,
+            Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo
+        ) {
+            hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse_or_zero();
         }
 
         match current_instruction {
@@ -153,9 +148,7 @@ impl<'pgm> VMState<'pgm> {
                 hvs[0] = BFieldElement::new(nia % 2);
                 hvs[1] = BFieldElement::new(nia / 2);
                 let st0 = self.op_stack.safe_peek(ST0);
-                if !st0.is_zero() {
-                    hvs[2] = st0.inverse();
-                }
+                hvs[2] = st0.inverse_or_zero();
             }
             DivineSibling => {
                 let node_index = self.op_stack.safe_peek(ST10).value();
@@ -169,15 +162,13 @@ impl<'pgm> VMState<'pgm> {
                 let hi = BFieldElement::new(n >> 32);
                 if !lo.is_zero() {
                     let max_val_of_hi = BFieldElement::new(2_u64.pow(32) - 1);
-                    hvs[0] = (hi - max_val_of_hi).inverse();
+                    hvs[0] = (hi - max_val_of_hi).inverse_or_zero();
                 }
             }
             Eq => {
                 let lhs = self.op_stack.safe_peek(ST0);
                 let rhs = self.op_stack.safe_peek(ST1);
-                if !(rhs - lhs).is_zero() {
-                    hvs[0] = (rhs - lhs).inverse();
-                }
+                hvs[0] = (rhs - lhs).inverse_or_zero();
             }
             _ => (),
         }
@@ -415,6 +406,9 @@ impl<'pgm> VMState<'pgm> {
 
             XInvert => {
                 let elem: XFieldElement = self.op_stack.pop_x()?;
+                if elem.is_zero() {
+                    return vm_err(InverseOfZero);
+                }
                 self.op_stack.push_x(elem.inverse());
                 self.instruction_pointer += 1;
             }
