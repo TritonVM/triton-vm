@@ -25,4 +25,4 @@ The motivation and the interplay between the two parts is described and exemplif
 
 ## Jump Stack
 Another last-in;first-out data structure that keeps track of return and destination addresses.
-This stack changes only when control follows a `call` or `return` instruction.
+This stack changes only when control follows a `if_then_call`, `call`, or `return` instruction.

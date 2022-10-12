@@ -231,6 +231,36 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. `hv1 = nia / 2`
 1. `hv2 = inverse(st0)` (if `st0 ≠ 0`)
 
+## Instruction `if_then_call` + `d`
+
+### Description
+
+1. If the top of the stack `st0` is 0, then the jump stack pointer `jsp` is unchanged.
+    Else, the jump stack pointer is incremented by 1.
+1. If the top of the stack `st0` is 0, the the jump stack origin `jso` is unchanged.
+    Else, the new jump stack origin `jso'` is the current instruction pointer `ip` plus 4.
+1. If the top of the stack `st0` is 0, the jump stack destination `jsd` is unchanged.
+    Else, the new jump stack destination `jsd'` is the instruction's argument `nia`.
+1. If the top of the stack `st0` is 0, the instruction pointer is incremented by 2.
+    Else, the new instruction pointer `ip'` is the instruction's argument `nia`.
+
+Written as Disjunctive Normal Form, the constraints can be expressed as:
+1. (`st0` != 0 or `jsp'` == `jsp`) and (`st0` == 0 or `jsp'` = `jsp` + 1)
+1. (`st0` != 0 or `jso'` == `jso`) and (`st0` == 0 or `jso'` = `ip` + 4)
+1. (`st0` != 0 or `jsd'` == `jsd`) and (`st0` == 0 or `jsd'` = `nia`)
+1. (`st0` != 0 or `ip'` = `ip` + 2) and (`st0` == 0 or `ip'` = `nia`)
+
+### Polynomials
+
+1. `(1 - hv0·st0)·(jsp' - jsp) + st0·(jsp' - jsp - 1)`
+1. `(1 - hv0·st0)·(jso' - jso) + st0·(jso' - ip - 4)`
+1. `(1 - hv0·st0)·(jsd' - jsd) + st0·(jsd' - nia)`
+1. `(1 - hv0·st0)·(ip' - ip - 2) + st0·(ip' - nia)`
+
+### Helper variable definitions for `if_then_call`
+
+1. `hv0 = inverse(st0)` (if `st0 ≠ 0`)
+
 ## Instruction `call` + `d`
 
 ### Description

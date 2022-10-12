@@ -60,6 +60,7 @@ pub enum AnInstruction<Dest> {
     // Control flow
     Nop,
     Skiz,
+    IfThenCall(Dest),
     Call(Dest),
     Return,
     Recurse,
@@ -106,6 +107,7 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
             // Control flow
             Nop => write!(f, "nop"),
             Skiz => write!(f, "skiz"),
+            IfThenCall(arg) => write!(f, "if_then_call {}", arg),
             Call(arg) => write!(f, "call {}", arg),
             Return => write!(f, "return"),
             Recurse => write!(f, "recurse"),
@@ -155,6 +157,7 @@ impl<Dest> AnInstruction<Dest> {
             // Control flow
             Nop => 8,
             Skiz => 6,
+            IfThenCall(_) => 17,
             Call(_) => 13,
             Return => 12,
             Recurse => 16,
@@ -195,7 +198,7 @@ impl<Dest> AnInstruction<Dest> {
     pub fn is_op_stack_instruction(&self) -> bool {
         !matches!(
             self,
-            Nop | Call(_) | Return | Recurse | Halt | Hash | AssertVector
+            Nop | IfThenCall(_) | Call(_) | Return | Recurse | Halt | Hash | AssertVector
         )
     }
 
@@ -204,7 +207,7 @@ impl<Dest> AnInstruction<Dest> {
     }
 
     pub fn size(&self) -> usize {
-        if matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)) {
+        if matches!(self, Push(_) | Dup(_) | Swap(_) | IfThenCall(_) | Call(_)) {
             2
         } else {
             1
@@ -232,6 +235,7 @@ impl<Dest> AnInstruction<Dest> {
             Swap(x) => Swap(*x),
             Nop => Nop,
             Skiz => Skiz,
+            IfThenCall(label) => IfThenCall(f(label)),
             Call(label) => Call(f(label)),
             Return => Return,
             Recurse => Recurse,
@@ -265,6 +269,7 @@ impl Instruction {
             Push(arg) => Some(*arg),
             Dup(arg) => Some(ord16_to_bfe(arg)),
             Swap(arg) => Some(ord16_to_bfe(arg)),
+            IfThenCall(arg) => Some(*arg),
             Call(arg) => Some(*arg),
             _ => None,
         }
@@ -283,6 +288,7 @@ impl TryFrom<u32> for Instruction {
             9 => Ok(Swap(ST0)),
             8 => Ok(Nop),
             6 => Ok(Skiz),
+            17 => Ok(IfThenCall(Default::default())),
             13 => Ok(Call(Default::default())),
             12 => Ok(Return),
             16 => Ok(Recurse),
@@ -455,6 +461,8 @@ fn parse_token(
         // Control flow
         "nop" => vec![Nop],
         "skiz" => vec![Skiz],
+        "if_then_call" => vec![IfThenCall(parse_label(tokens)?)],
+        "else" => vec![Call(parse_label(tokens)?)],
         "call" => vec![Call(parse_label(tokens)?)],
         "return" => vec![Return],
         "recurse" => vec![Recurse],
@@ -714,6 +722,7 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         Swap(Default::default()),
         Nop,
         Skiz,
+        IfThenCall(Default::default()),
         Call(Default::default()),
         Return,
         Recurse,
@@ -780,6 +789,7 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Swap(ST15),
         Nop,
         Skiz,
+        IfThenCall("bar".to_string()),
         Call("foo".to_string()),
         Return,
         Recurse,
@@ -1207,6 +1217,7 @@ pub mod sample_programs {
 
         nop
         skiz
+        if_then_call bar
         call foo
 
         return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
@@ -1254,6 +1265,7 @@ pub mod sample_programs {
             "swap15",
             "nop",
             "skiz",
+            "if_then_call bar",
             "call foo",
             "return",
             "recurse",

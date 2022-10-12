@@ -13,37 +13,38 @@
 
 A summary of all instructions and which groups they are part of is given in the following table.
 
-| instruction      | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
-|:-----------------|:-----------|:----------------|:---------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
-| `pop`            |            |                 | x        |          |              |              | x              |        |         |
-| `push` + `a`     | x          |                 |          | x        | x            |              |                |        |         |
-| `divine`         |            |                 | x        |          | x            |              |                |        |         |
-| `dup` + `i`      | x          | x               |          | x        | x            |              |                |        |         |
-| `swap` + `i`     | x          | x               |          | x        |              |              |                |        |         |
-| `nop`            |            |                 | x        |          |              | x            |                |        |         |
-| `skiz`           |            |                 |          |          |              |              | x              |        |         |
-| `call` + `d`     | x          |                 |          |          |              | x            |                |        |         |
-| `return`         |            |                 |          |          |              | x            |                |        |         |
-| `recurse`        |            |                 |          |          |              | x            |                |        |         |
-| `assert`         |            |                 | x        |          |              |              | x              |        |         |
-| `halt`           |            |                 | x        |          |              | x            |                |        |         |
-| `read_mem`       |            |                 | x        |          |              |              |                | x      |         |
-| `write_mem`      |            |                 | x        |          |              | x            |                |        |         |
-| `hash`           |            |                 | x        |          |              |              |                |        |         |
-| `divine_sibling` |            |                 | x        |          |              |              |                |        |         |
-| `assert_vector`  |            |                 | x        |          |              | x            |                |        |         |
-| `add`            |            |                 | x        |          |              |              |                |        | x       |
-| `mul`            |            |                 | x        |          |              |              |                |        | x       |
-| `invert`         |            |                 | x        |          |              |              |                | x      |         |
-| `split`          |            |                 | x        |          |              |              |                |        |         |
-| `eq`             |            |                 | x        |          |              |              |                |        | x       |
-| `lsb`            |            |                 | x        |          |              |              |                |        |         |
-| `xxadd`          |            |                 | x        |          |              |              |                |        |         |
-| `xxmul`          |            |                 | x        |          |              |              |                |        |         |
-| `xinvert`        |            |                 | x        |          |              |              |                |        |         |
-| `xbmul`          |            |                 | x        |          |              |              |                |        |         |
-| `read_io`        |            |                 | x        |          | x            |              |                |        |         |
-| `write_io`       |            |                 | x        |          |              |              | x              |        |         |
+| instruction          | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
+|:---------------------|:-----------|:----------------|:---------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
+| `pop`                |            |                 | x        |          |              |              | x              |        |         |
+| `push` + `a`         | x          |                 |          | x        | x            |              |                |        |         |
+| `divine`             |            |                 | x        |          | x            |              |                |        |         |
+| `dup` + `i`          | x          | x               |          | x        | x            |              |                |        |         |
+| `swap` + `i`         | x          | x               |          | x        |              |              |                |        |         |
+| `nop`                |            |                 | x        |          |              | x            |                |        |         |
+| `skiz`               |            |                 |          |          |              |              | x              |        |         |
+| `if_then_call` + `d` | x          |                 |          |          |              | x            |                |        |         |
+| `call` + `d`         | x          |                 |          |          |              | x            |                |        |         |
+| `return`             |            |                 |          |          |              | x            |                |        |         |
+| `recurse`            |            |                 |          |          |              | x            |                |        |         |
+| `assert`             |            |                 | x        |          |              |              | x              |        |         |
+| `halt`               |            |                 | x        |          |              | x            |                |        |         |
+| `read_mem`           |            |                 | x        |          |              |              |                | x      |         |
+| `write_mem`          |            |                 | x        |          |              | x            |                |        |         |
+| `hash`               |            |                 | x        |          |              |              |                |        |         |
+| `divine_sibling`     |            |                 | x        |          |              |              |                |        |         |
+| `assert_vector`      |            |                 | x        |          |              | x            |                |        |         |
+| `add`                |            |                 | x        |          |              |              |                |        | x       |
+| `mul`                |            |                 | x        |          |              |              |                |        | x       |
+| `invert`             |            |                 | x        |          |              |              |                | x      |         |
+| `split`              |            |                 | x        |          |              |              |                |        |         |
+| `eq`                 |            |                 | x        |          |              |              |                |        | x       |
+| `lsb`                |            |                 | x        |          |              |              |                |        |         |
+| `xxadd`              |            |                 | x        |          |              |              |                |        |         |
+| `xxmul`              |            |                 | x        |          |              |              |                |        |         |
+| `xinvert`            |            |                 | x        |          |              |              |                |        |         |
+| `xbmul`              |            |                 | x        |          |              |              |                |        |         |
+| `read_io`            |            |                 | x        |          | x            |              |                |        |         |
+| `write_io`           |            |                 | x        |          |              |              | x              |        |         |
 
 \*
 Instruction Group `has_arg` is a _virtual_ instruction group.

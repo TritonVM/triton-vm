@@ -652,6 +652,10 @@ impl ExtProcessorTable {
             (Swap(Default::default()), factory.instruction_swap()),
             (Nop, factory.instruction_nop()),
             (Skiz, factory.instruction_skiz()),
+            (
+                IfThenCall(Default::default()),
+                factory.instruction_if_then_call(),
+            ),
             (Call(Default::default()), factory.instruction_call()),
             (Return, factory.instruction_return()),
             (Recurse, factory.instruction_recurse()),
@@ -1087,6 +1091,45 @@ impl RowPairConstraints {
             nia_decomposes_to_hvs,
             hv0_is_0_or_1,
             ip_incr_by_1_or_2_or_3,
+        ]
+    }
+
+    pub fn instruction_if_then_call(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let st0_neq_0 = self.one() - self.st0() * self.hv0();
+
+        // If st0 == 0, then the jump stack pointer jsp is unchanged.
+        // If st0 != 0, then the jump stack pointer is incremented by 1.
+        // In other words:
+        // (st0 != 0 or jsp stays) and (st0 == 0 or jsp increases).
+        let maybe_jsp_incr_1 = st0_neq_0.clone() * (self.jsp_next() - self.jsp())
+            + self.st0() * (self.jsp_next() - (self.jsp() + self.one()));
+
+        // If st0 == 0, then the jump stack origin is unchanged.
+        // If st0 != 0, then the new jump stack origin is the instruction pointer + 4.
+        // In other words:
+        // (st0 != 0 or jso stays) and (st0 == 0 or jso' = ip + 4)
+        let maybe_jso_becomes_ip_plus_4 = st0_neq_0.clone() * (self.jso_next() - self.jso())
+            + self.st0() * (self.jso_next() - (self.ip() + self.constant(4)));
+
+        // If st0 == 0, then the jump stack destination is unchanged.
+        // If st0 != 0, then the new jump stack destination is the instruction's argument.
+        // In other words:
+        // (st0 != 0 or jsd stays) and (st0 == 0 or jsd' = nia)
+        let maybe_jsd_becomes_nia = st0_neq_0.clone() * (self.jsd_next() - self.jsd())
+            + self.st0() * (self.jsd_next() - self.nia());
+
+        // If st0 == 0, then the instruction pointer is incremented by 2.
+        // If st0 != 0, then the new instruction pointer is the instruction's argument.
+        // In other words:
+        // (st0 != 0 or ip' = ip + 2) and (st0 == 0 or ip' = nia)
+        let maybe_call = st0_neq_0 * (self.ip_next() - (self.ip() + self.two()))
+            + self.st0() * (self.ip_next() - self.nia());
+
+        vec![
+            maybe_jsp_incr_1,
+            maybe_jso_becomes_ip_plus_4,
+            maybe_jsd_becomes_nia,
+            maybe_call,
         ]
     }
 
@@ -2251,6 +2294,7 @@ mod constraint_polynomial_tests {
             Swap(_) => tc.instruction_swap(),
             Nop => tc.instruction_nop(),
             Skiz => tc.instruction_skiz(),
+            IfThenCall(_) => tc.instruction_if_then_call(),
             Call(_) => tc.instruction_call(),
             Return => tc.instruction_return(),
             Recurse => tc.instruction_recurse(),
@@ -2371,6 +2415,20 @@ mod constraint_polynomial_tests {
             get_test_row_from_source_code("push 0 skiz push 1 halt", 1),
         ];
         test_constraints_for_rows_with_debug_info(Skiz, &test_rows, &[IP, ST0, HV0, HV1], &[IP]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_if_then_call_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push 1 if_then_call fo else ba fo: halt ba: assert", 1),
+            get_test_row_from_source_code("push 0 if_then_call fo call ba fo: assert ba: halt", 1),
+        ];
+        test_constraints_for_rows_with_debug_info(
+            IfThenCall(Default::default()),
+            &test_rows,
+            &[ST0, IP, CI, NIA, JSP, JSO, JSD],
+            &[ST0, IP, CI, NIA, JSP, JSO, JSD],
+        );
     }
 
     #[test]

@@ -219,6 +219,7 @@ impl Display for ProcessorMatrixRow {
         let instruction = self.row[usize::from(CI)].value().try_into().unwrap();
         let instruction_with_arg = match instruction {
             Push(_) => Push(self.row[usize::from(NIA)]),
+            IfThenCall(_) => IfThenCall(self.row[usize::from(NIA)]),
             Call(_) => Call(self.row[usize::from(NIA)]),
             Dup(_) => Dup((self.row[usize::from(NIA)].value() as u32)
                 .try_into()

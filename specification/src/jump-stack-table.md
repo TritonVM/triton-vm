@@ -8,10 +8,10 @@ TritonVM defines three registers to deal with the Jump Stack:
 
 The Jump Stack Table is a table whose columns are a subset of those of the Processor Table.
 The rows are sorted by jump stack pointer (`jsp`), then by cycle counter (`clk`).
-The column `jsd` contains the destination of stack-extending jump (`call`) as well as of the no-stack-change jump (`recurse`);
-the column `jso` contains the source of the stack-extending jump (`call`) or equivalently the destination of the stack-shrinking jump (`return`).
+The column `jsd` contains the destination of stack-extending jump (`call`-like) as well as of the no-stack-change jump (`recurse`);
+the column `jso` contains the source of the stack-extending jump (`call`-like) or equivalently the destination of the stack-shrinking jump (`return`).
 
-The AIR for this table guarantees that the return address of a single cell of return address memory can change only if there was a `call` instruction.
+The AIR for this table guarantees that the return address of a single cell of return address memory can change only if there was a `call`-like instruction.
 
 An example program, execution trace, and jump stack table are shown below.
 
@@ -125,6 +125,7 @@ None.
 
 1. The jump stack pointer `jsp` increases by 1, *or*
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the cycle counter `clk` increases by 1), *or*
+1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the current instruction `ci` is `if_then_call`), *or*
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the current instruction `ci` is `call`), *or*
 1. (`jsp` does not change and the current instruction `ci` is `return`).
 
@@ -132,14 +133,14 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The jump stack pointer `jsp` increases by 1 or the jump stack pointer `jsp` does not change
 1. The jump stack pointer `jsp` increases by 1 or the jump stack origin `jso` does not change or current instruction `ci` is `return`
 1. The jump stack pointer `jsp` increases by 1 or the jump stack destination `jsd` does not change or current instruction `ci` is `return`
-1. The jump stack pointer `jsp` increases by 1 or the cycle count `clk` increases by 1 or current instruction `ci` is `call` or current instruction `ci` is `return`
+1. The jump stack pointer `jsp` increases by 1 or the cycle count `clk` increases by 1 or current instruction `ci` is `if_then_call` or current instruction `ci` is `call` or current instruction `ci` is `return`
 
 **Transition Constraints as Polynomials**
 
 1. `(jsp' - (jsp + 1))·(jsp' - jsp)`
 1. `(jsp' - (jsp + 1))·(jso' - jso)·(ci - op_code(return))`
 1. `(jsp' - (jsp + 1))·(jsd' - jsd)·(ci - op_code(return))`
-1. `(jsp' - (jsp + 1))·(clk' - (clk + 1))·(ci - op_code(call))·(ci - op_code(return))`
+1. `(jsp' - (jsp + 1))·(clk' - (clk + 1))·(ci - op_code(if_then_call))·(ci - op_code(call))·(ci - op_code(return))`
 
 ## Terminal Constraints
 

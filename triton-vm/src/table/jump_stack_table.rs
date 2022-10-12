@@ -139,11 +139,16 @@ impl ExtJumpStackTable {
         let jso_next = variables[FULL_WIDTH + usize::from(JSO)].clone();
         let jsd_next = variables[FULL_WIDTH + usize::from(JSD)].clone();
 
+        let if_then_call_opcode = MPolynomial::<XFieldElement>::from_constant(
+            Instruction::IfThenCall(Default::default())
+                .opcode_b()
+                .lift(),
+            2 * FULL_WIDTH,
+        );
         let call_opcode = MPolynomial::<XFieldElement>::from_constant(
             Instruction::Call(Default::default()).opcode_b().lift(),
             2 * FULL_WIDTH,
         );
-
         let return_opcode = MPolynomial::<XFieldElement>::from_constant(
             Instruction::Return.opcode_b().lift(),
             2 * FULL_WIDTH,
@@ -170,10 +175,12 @@ impl ExtJumpStackTable {
 
         // 4. The jump stack pointer jsp increases by 1
         //      or the cycle count clk increases by 1
+        //      or current instruction ci is if_then_call
         //      or current instruction ci is call
         //      or current instruction ci is return
         let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next - (jsp + one.clone()))
             * (clk_next - (clk + one))
+            * (ci.clone() - if_then_call_opcode)
             * (ci.clone() - call_opcode)
             * (ci - return_opcode);
 

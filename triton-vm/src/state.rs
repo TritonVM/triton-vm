@@ -150,6 +150,10 @@ impl<'pgm> VMState<'pgm> {
                 let st0 = self.op_stack.safe_peek(ST0);
                 hvs[2] = st0.inverse_or_zero();
             }
+            IfThenCall(_) => {
+                let st0 = self.op_stack.safe_peek(ST0);
+                hvs[0] = st0.inverse_or_zero();
+            }
             DivineSibling => {
                 let node_index = self.op_stack.safe_peek(ST10).value();
                 // set hv0 register to least significant bit of st10
@@ -251,6 +255,18 @@ impl<'pgm> VMState<'pgm> {
                     1 + next_instruction.size()
                 } else {
                     1
+                };
+            }
+
+            IfThenCall(addr) => {
+                let st0 = self.op_stack.safe_peek(ST0);
+                if st0.is_zero() {
+                    self.instruction_pointer += 2;
+                } else {
+                    let jso = self.instruction_pointer as u64 + 4;
+                    let pair = (BFieldElement::new(jso), addr);
+                    self.jump_stack.push(pair);
+                    self.instruction_pointer = addr.value() as usize;
                 };
             }
 
