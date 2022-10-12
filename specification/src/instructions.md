@@ -28,16 +28,15 @@ the value `a` was supplied as a secret input.
 
 ## Control Flow
 
-| Instruction          | Value | old OpStack | new OpStack | old `ip` | new `ip`     | old JumpStack | new JumpStack       | Description                                                                                                                 |
-|:---------------------|:------|:------------|:------------|:---------|:-------------|:--------------|:--------------------|:----------------------------------------------------------------------------------------------------------------------------|
-| `nop`                | ?     | `_`         | `_`         | `ip`     | `ip+1`       | `_`           | `_`                 | Do nothing                                                                                                                  |
-| `skiz`               | ?     | `_ a`       | `_`         | `ip`     | `ip+s`       | `_`           | `_`                 | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether or not next instruction takes an argument. |
-| `if_then_call` + `d` | ?     | `_ a`       | `_ a`       | `o`      | `o+2` or `d` | `_`           | `_` or `_ (o+4, d)` | If `a` ≠ 0, push `(o+4,d)` to the jump stack, and jump to absolute address `d`. Else, do nothing.                           |
-| `call` + `d`         | ?     | `_`         | `_`         | `o`      | `d`          | `_`           | `_ (o+2, d)`        | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                          |
-| `return`             | ?     | `_`         | `_`         | `_`      | `o`          | `_ (o, d)`    | `_`                 | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                        |
-| `recurse`            | ?     | `_`         | `_`         | `_`      | `d`          | `_ (o, d)`    | `_ (o, d)`          | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).           |
-| `assert`             | ?     | `_ a`       | `_`         | `ip`     | `ip+1` or 💥  | `_`           | `_`                 | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                     |
-| `halt`               | 0     | `_`         | `_`         | `ip`     | `ip+1`       | `_`           | `_`                 | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                          |
+| Instruction          | Value | old OpStack | new OpStack | old `ip` | new `ip`     | old JumpStack | new JumpStack       | Description                                                                                                       |
+|:---------------------|:------|:------------|:------------|:---------|:-------------|:--------------|:--------------------|:------------------------------------------------------------------------------------------------------------------|
+| `nop`                | ?     | `_`         | `_`         | `ip`     | `ip+1`       | `_`           | `_`                 | Do nothing                                                                                                        |
+| `if_then_call` + `d` | ?     | `_ a`       | `_ a`       | `o`      | `o+2` or `d` | `_`           | `_` or `_ (o+4, d)` | If `a` ≠ 0, push `(o+4,d)` to the jump stack, and jump to absolute address `d`. Else, do nothing.                 |
+| `call` + `d`         | ?     | `_`         | `_`         | `o`      | `d`          | `_`           | `_ (o+2, d)`        | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                |
+| `return`             | ?     | `_`         | `_`         | `_`      | `o`          | `_ (o, d)`    | `_`                 | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).              |
+| `recurse`            | ?     | `_`         | `_`         | `_`      | `d`          | `_ (o, d)`    | `_ (o, d)`          | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element). |
+| `assert`             | ?     | `_ a`       | `_`         | `ip`     | `ip+1` or 💥  | `_`           | `_`                 | Pops `a` if `a == 1`, else crashes the virtual machine.                                                           |
+| `halt`               | 0     | `_`         | `_`         | `ip`     | `ip+1`       | `_`           | `_`                 | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                |
 
 For instruction `if_then_call`, note the difference between the potential offsets added to instruction pointer `ip` and jump origin `o`.
 Specifically, if the top of the stack `a` is 0, the instruction pointer `ip` is incremented by 2, skipping the instruction's argument `d`.

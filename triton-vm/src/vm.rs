@@ -515,10 +515,6 @@ pub mod triton_vm_tests {
         }
     }
 
-    pub fn test_program_for_skiz() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 1 skiz push 0 skiz assert push 1 skiz halt")
-    }
-
     pub fn test_program_for_if_then_call() -> SourceCodeAndInput {
         let source_code = "push 1 if_then_call if_label call else_label call next_label \
                            if_label: assert return else_label: push 2 assert return \
@@ -528,7 +524,8 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_call_recurse_return() -> SourceCodeAndInput {
-        let source_code = "push 2 call label halt label: push -1 add dup0 skiz recurse return";
+        let source_code = "push 2 call label halt label: push -1 add dup0 push 0 eq \
+                           if_then_call dummy-label pop recurse return dummy-label: return";
         SourceCodeAndInput::without_input(source_code)
     }
 
@@ -921,7 +918,6 @@ pub mod triton_vm_tests {
         vec![
             test_program_for_push_pop_dup_swap_nop(),
             test_program_for_divine(),
-            test_program_for_skiz(),
             test_program_for_if_then_call(),
             test_program_for_call_recurse_return(),
             test_program_for_write_mem_read_mem(),

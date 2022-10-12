@@ -651,7 +651,6 @@ impl ExtProcessorTable {
             (Dup(Default::default()), factory.instruction_dup()),
             (Swap(Default::default()), factory.instruction_swap()),
             (Nop, factory.instruction_nop()),
-            (Skiz, factory.instruction_skiz()),
             (
                 IfThenCall(Default::default()),
                 factory.instruction_if_then_call(),
@@ -1048,50 +1047,6 @@ impl RowPairConstraints {
     pub fn instruction_nop(&self) -> Vec<MPolynomial<XFieldElement>> {
         // no further constraints
         vec![]
-    }
-
-    pub fn instruction_skiz(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // The jump stack pointer jsp does not change.
-        let jsp_does_not_change = self.jsp_next() - self.jsp();
-
-        // The last jump's origin jso does not change.
-        let jso_does_not_change = self.jso_next() - self.jso();
-
-        // The last jump's destination jsd does not change.
-        let jsd_does_not_change = self.jsd_next() - self.jsd();
-
-        // The next instruction nia is decomposed into helper variables hv.
-        let nia_decomposes_to_hvs = self.nia() - (self.hv0() + self.two() * self.hv1());
-
-        // The relevant helper variable hv1 is either 0 or 1.
-        // Here, hv0 == 1 means that nia takes an argument.
-        let hv0_is_0_or_1 = self.hv0() * (self.hv0() - self.one());
-
-        // If `st0` is non-zero, register `ip` is incremented by 1.
-        // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
-        // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
-        //
-        // Written as Disjunctive Normal Form, the last constraint can be expressed as:
-        // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
-        // (`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
-        // (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
-        let ip_case_1 = (self.ip_next() - (self.ip() + self.one())) * self.st0();
-        let ip_case_2 = (self.ip_next() - (self.ip() + self.two()))
-            * (self.st0() * self.hv2() - self.one())
-            * (self.hv0() - self.one());
-        let ip_case_3 = (self.ip_next() - (self.ip() + self.constant(3)))
-            * (self.st0() * self.hv2() - self.one())
-            * self.hv0();
-        let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
-
-        vec![
-            jsp_does_not_change,
-            jso_does_not_change,
-            jsd_does_not_change,
-            nia_decomposes_to_hvs,
-            hv0_is_0_or_1,
-            ip_incr_by_1_or_2_or_3,
-        ]
     }
 
     pub fn instruction_if_then_call(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -2293,7 +2248,6 @@ mod constraint_polynomial_tests {
             Dup(_) => tc.instruction_dup(),
             Swap(_) => tc.instruction_swap(),
             Nop => tc.instruction_nop(),
-            Skiz => tc.instruction_skiz(),
             IfThenCall(_) => tc.instruction_if_then_call(),
             Call(_) => tc.instruction_call(),
             Return => tc.instruction_return(),
@@ -2405,19 +2359,6 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_skiz_test() {
-        // Case 0: ST0 is non-zero
-        // Case 1: ST0 is zero, nia is instruction of size 1
-        // Case 2: ST0 is zero, nia is instruction of size 2
-        let test_rows = [
-            get_test_row_from_source_code("push 1 skiz halt", 1),
-            get_test_row_from_source_code("push 0 skiz assert halt", 1),
-            get_test_row_from_source_code("push 0 skiz push 1 halt", 1),
-        ];
-        test_constraints_for_rows_with_debug_info(Skiz, &test_rows, &[IP, ST0, HV0, HV1], &[IP]);
-    }
-
-    #[test]
     fn transition_constraints_for_instruction_if_then_call_test() {
         let test_rows = [
             get_test_row_from_source_code("push 1 if_then_call fo else ba fo: halt ba: assert", 1),
@@ -2459,8 +2400,10 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_recurse_test() {
         let test_rows = [get_test_row_from_source_code(
-            "push 2 call label halt label: push -1 add dup0 skiz recurse return ",
-            6,
+            "push 3 call label halt \
+            label: push -1 add dup0 push 0 eq if_then_call dummy pop recurse return \
+            dummy: pop return",
+            17,
         )];
         test_constraints_for_rows_with_debug_info(
             Recurse,

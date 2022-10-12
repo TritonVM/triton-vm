@@ -192,45 +192,6 @@ For `swap` + `i`, helper variables contain the binary decomposition of `i`:
 
 This instruction has no additional transition constraints.
 
-## Instruction `skiz`
-
-### Description
-
-1. The jump stack pointer `jsp` does not change.
-1. The last jump's origin `jso` does not change.
-1. The last jump's destination `jsd` does not change.
-1. The next instruction `nia` is decomposed into helper variables `hv`.
-1. The relevant helper variable `hv1` is either 0 or 1.
-    Here, `hv1 == 1` means that `nia` takes an argument.
-1. If `st0` is non-zero, register `ip` is incremented by 1.
-If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
-If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
-
-Written as Disjunctive Normal Form, the last constraint can be expressed as:
-6. (Register `st0` is 0 or `ip` is incremented by 1), and
-(`st0` has a multiplicative inverse or `hv0` is 1 or `ip` is incremented by 2), and
-(`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
-
-Since the three cases are mutually exclusive, the three respective polynomials can be summed up into one.
-
-### Polynomials
-
-1. `jsp' - jsp`
-1. `jso' - jso`
-1. `jsd' - jsd`
-1. `nia - (hv0 + 4·hv1 + 8·hv2)`
-1. `hv1·(hv1 - 1)`
-1. `(ip' - (ip + 1)·st0) + ((ip' - (ip + 2))·(st0·hv2 - 1)·(hv0 - 1)) + ((ip' - (ip + 3))·(st0·hv2 - 1)·hv0)`
-
-### Helper variable definitions for `skiz`
-
-Note:
-The concrete decomposition of `nia` into helper variables `hv` as well as the concretely relevant `hv` determining whether `nia` takes an argument (currently `hv0`) are subject to change.
-
-1. `hv0 = nia % 2`
-1. `hv1 = nia / 2`
-1. `hv2 = inverse(st0)` (if `st0 ≠ 0`)
-
 ## Instruction `if_then_call` + `d`
 
 ### Description

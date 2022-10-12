@@ -59,7 +59,6 @@ pub enum AnInstruction<Dest> {
 
     // Control flow
     Nop,
-    Skiz,
     IfThenCall(Dest),
     Call(Dest),
     Return,
@@ -106,7 +105,6 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
             Swap(arg) => write!(f, "swap{}", arg),
             // Control flow
             Nop => write!(f, "nop"),
-            Skiz => write!(f, "skiz"),
             IfThenCall(arg) => write!(f, "if_then_call {}", arg),
             Call(arg) => write!(f, "call {}", arg),
             Return => write!(f, "return"),
@@ -156,7 +154,6 @@ impl<Dest> AnInstruction<Dest> {
 
             // Control flow
             Nop => 8,
-            Skiz => 6,
             IfThenCall(_) => 17,
             Call(_) => 13,
             Return => 12,
@@ -234,7 +231,6 @@ impl<Dest> AnInstruction<Dest> {
             Dup(x) => Dup(*x),
             Swap(x) => Swap(*x),
             Nop => Nop,
-            Skiz => Skiz,
             IfThenCall(label) => IfThenCall(f(label)),
             Call(label) => Call(f(label)),
             Return => Return,
@@ -287,7 +283,6 @@ impl TryFrom<u32> for Instruction {
             5 => Ok(Dup(ST0)),
             9 => Ok(Swap(ST0)),
             8 => Ok(Nop),
-            6 => Ok(Skiz),
             17 => Ok(IfThenCall(Default::default())),
             13 => Ok(Call(Default::default())),
             12 => Ok(Return),
@@ -460,7 +455,6 @@ fn parse_token(
 
         // Control flow
         "nop" => vec![Nop],
-        "skiz" => vec![Skiz],
         "if_then_call" => vec![IfThenCall(parse_label(tokens)?)],
         "else" => vec![Call(parse_label(tokens)?)],
         "call" => vec![Call(parse_label(tokens)?)],
@@ -721,7 +715,6 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         Dup(Default::default()),
         Swap(Default::default()),
         Nop,
-        Skiz,
         IfThenCall(Default::default()),
         Call(Default::default()),
         Return,
@@ -788,7 +781,6 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Swap(ST14),
         Swap(ST15),
         Nop,
-        Skiz,
         IfThenCall("bar".to_string()),
         Call("foo".to_string()),
         Return,
@@ -851,26 +843,27 @@ pub mod sample_programs {
     ///
     /// output: num_weights-many random weights
     pub const SAMPLE_WEIGHTS: &str = concat!(
-        "push 17 push 13 push 11 ",     // get seed – should be an argument
-        "read_io ",                     // number of weights – should be argument
-        "sample_weights: ",             // proper program starts here
-        "call sample_weights_loop ",    // setup done, start sampling loop
-        "pop pop ",                     // clean up stack: RAM value & pointer
-        "pop pop pop pop ",             // clean up stack: seed & countdown
-        "halt ",                        // done – should be return
-        "",                             //
-        "sample_weights_loop: ",        // subroutine: loop until all weights are sampled
-        "dup0 push 0 eq skiz return ",  // no weights left
-        "push -1 add ",                 // decrease number of weights to still sample
-        "push 0 push 0 push 0 push 0 ", // prepare for hashing
-        "push 0 push 0 push 0 push 0 ", // prepare for hashing
-        "dup11 dup11 dup11 dup11 ",     // prepare for hashing
-        "hash ",                        // hash seed & countdown
-        "swap13 swap10 pop ",           // re-organize stack
-        "swap13 swap10 pop ",           // re-organize stack
-        "swap13 swap10 swap7 ",         // re-organize stack
-        "pop pop pop pop pop pop pop ", // remove unnecessary remnants of digest
-        "recurse ",                     // repeat
+        "push 17 push 13 push 11 ",           // get seed – should be an argument
+        "read_io ",                           // number of weights – should be argument
+        "sample_weights: ",                   // proper program starts here
+        "call sample_weights_loop ",          // setup done, start sampling loop
+        "pop pop ",                           // clean up stack: RAM value & pointer
+        "pop pop pop pop ",                   // clean up stack: seed & countdown
+        "halt ",                              // done – should be return
+        "",                                   //
+        "sample_weights_loop: ",              // subroutine: loop until all weights are sampled
+        "if_then_call nop-label pop return ", // no weights left
+        "push -1 add ",                       // decrease number of weights to still sample
+        "push 0 push 0 push 0 push 0 ",       // prepare for hashing
+        "push 0 push 0 push 0 push 0 ",       // prepare for hashing
+        "dup11 dup11 dup11 dup11 ",           // prepare for hashing
+        "hash ",                              // hash seed & countdown
+        "swap13 swap10 pop ",                 // re-organize stack
+        "swap13 swap10 pop ",                 // re-organize stack
+        "swap13 swap10 swap7 ",               // re-organize stack
+        "pop pop pop pop pop pop pop ",       // remove unnecessary remnants of digest
+        "recurse ",                           // repeat
+        "nop-label: return ",
     );
 
     /// TVM assembly to verify Merkle authentication paths
@@ -891,15 +884,14 @@ pub mod sample_programs {
         "",                                         // stack: []
         "halt ",                                    // done – should be “return”
         "",
-        "",                               // subroutine: check AP one at a time
-        "",                               // stack before: [* r4 r3 r2 r1 r0]
-        "",                               // stack after: [* r4 r3 r2 r1 r0]
-        "check_aps: ",                    // start function description:
-        "push 0 push 0 read_mem dup0 ",   // get number of APs left to check
-        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
-        "push 0 eq ",                     // see if there are authentication paths left
-        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
-        "skiz return ",                   // return if no authentication paths left
+        "",                                   // subroutine: check AP one at a time
+        "",                                   // stack before: [* r4 r3 r2 r1 r0]
+        "",                                   // stack after: [* r4 r3 r2 r1 r0]
+        "check_aps: ",                        // start function description:
+        "push 0 push 0 read_mem ",            // get number of APs left to check
+        "",                                   // to see if there are authentication paths left
+        "",                                   // stack: [* r4 r3 r2 r1 r0 0 num_left]
+        "if_then_call nop-label pop return ", // return if no authentication paths left
         "push -1 add write_mem pop pop ", // decrease number of authentication paths left to check
         "",                               // stack: [* r4 r3 r2 r1 r0]
         "call get_idx_and_hash_leaf ",    //
@@ -919,11 +911,11 @@ pub mod sample_programs {
         "push 0 push 0 push 0 push 0 push 0 ", // pad before fixed-length hash
         "hash return ",            // compute leaf's digest
         "",
-        "",                             // subroutine: go up tree
-        "",                             // stack before: [* idx - - - - - - - - - -]
-        "",                             // stack after: [* idx>>2 - - - - - - - - - -]
-        "traverse_tree: ",              // start function description:
-        "dup10 push 1 eq skiz return ", // break loop if node index is 1
+        "",                                                     // subroutine: go up tree
+        "",                // stack before: [* idx - - - - - - - - - -]
+        "",                // stack after: [* idx>>2 - - - - - - - - - -]
+        "traverse_tree: ", // start function description:
+        "dup10 push -1 add if_then_call pop-label pop return ", // break loop if node index is 1
         "divine_sibling hash recurse ", // move up one level in the Merkle tree
         "",
         "",                     // subroutine: compare digests
@@ -939,6 +931,8 @@ pub mod sample_programs {
         "assert_vector ",       // actually compare to root of tree
         "pop pop pop pop pop ", // clean up stack, leave only one root
         "return ",              //
+        "nop-label: return ",
+        "pop-label: pop return ",
     );
 
     // see also: get_colinear_y in src/shared_math/polynomial.rs
@@ -1020,42 +1014,12 @@ pub mod sample_programs {
    foo: push 18446744069414584320
         add
         dup0
-        skiz
-        recurse
+        push 0 eq
+        if_then_call pop-label
+        pop recurse
         halt
+pop-label: pop return
     ";
-
-    // leave the stack with the n first fibonacci numbers.  f_0 = 0; f_1 = 1
-    // buttom-up approach
-    pub const FIBONACCI_SOURCE: &str = "
-    push 0
-    push 1
-    push n=6
-    -- case: n==0 || n== 1
-    dup0
-    dup0
-    dup0
-    mul
-    eq
-    skiz
-    call $basecase
-    -- case: n>1
-    call $nextline
-    call $fib
-    swap1 - n on top
-    push 18446744069414584320
-    add
-    skiz
-    recurse
-    call $basecase
-    dup0     :basecase
-    push 0
-    eq
-    skiz
-    pop
-    pop - remove 1      :endone
-    halt
-";
 
     pub const FIBONACCI_VIT: &str = "
         push 0
@@ -1066,60 +1030,50 @@ pub mod sample_programs {
         dup0
         mul
         eq
-        skiz
-        call bar
-        call foo
-   foo: call bob
+        if_then_call triv
+        pop call fib
+   fib: dup2
+        dup2
+        add
         swap1
         push -1
         add
-        dup0
-        skiz
+        if_then_call dummy
+        call end
         recurse
-        call baz
-   bar: dup0
-        push 0
-        eq
-        skiz
-        pop
-   baz: pop
+  triv: pop
+        if_then_call dummy
+        pop nop
+   end: pop
         write_io
         halt
-   bob: dup2
-        dup2
-        add
-        return
+ dummy: return
     ";
 
     pub const FIBONACCI_LT: &str = "
         push 0
         push 1
         push 7
-        push 2
+        push 1
         dup1
-        lt
-        skiz
-        call 29
-        call 16
-    16: call 38
+        lte
+        if_then_call triv
+        pop call fib
+   fib: dup2
+        dup2
+        add
         swap1
         push -1
         add
-        dup0
-        skiz
+        if_then_call dummy
+        call end
         recurse
-        call 36
-    29: dup0
-        push 0
-        eq
-        skiz
-        pop
-    36: pop
+  triv: pop
+        if_then_call dummy
+        pop nop
+   end: pop
         halt
-    38: dup2
-        dup2
-        add
-        return
+ dummy: return
     ";
 
     pub const GCD_X_Y: &str = concat!(
@@ -1134,16 +1088,14 @@ pub mod sample_programs {
         // a b a b
         "lt ",
         // a b b<a
-        "skiz ",
-        // a b
-        "swap1 ",
+        "if_then_call pop-label ",
+        "call pop-swap ",
         // d n where n > d
         // ---
         "loop_cond: ",
         "dup1 ",
-        "push 0 ",
-        "eq ",
-        "skiz ",
+        // d n d
+        "if_then_call pop-label ",
         "call terminate ",
         // _ d n where d != 0
         "dup1 ",
@@ -1163,42 +1115,16 @@ pub mod sample_programs {
         "call loop_cond ",
         // ---
         "terminate: ",
+        // _ d n d where d == 0
+        "pop ",
         // _ d n where d == 0
         "write_io ",
         // _ d
         "halt ",
+        "nop-label: return ",
+        "pop-label: pop return ",
+        "pop-swap: pop swap1 return ",
     );
-
-    // This cannot not print because we need to itoa() before write_io.
-    // TODO: Swap0-7 are now available and we can continue this implementation.
-    pub const XGCD: &str = "
-        push 1
-        push 0
-        push 0
-        push 1
-        push 240
-        push 46
-    12: dup1
-        dup1
-        lt
-        skiz
-        swap1
-        dup0
-        push 0
-        eq
-        skiz
-        call 33
-        dup1
-        dup1
-        div
-    33: swap2
-        swap3
-        pop
-        pop
-        call 12
-        pop
-        halt
-    ";
 
     pub const HASH_HASH_HASH_HALT: &str = "
         hash
@@ -1216,7 +1142,6 @@ pub mod sample_programs {
         swap1 swap2 swap3 swap4 swap5 swap6 swap7 swap8 swap9 swap10 swap11 swap12 swap13 swap14 swap15
 
         nop
-        skiz
         if_then_call bar
         call foo
 
@@ -1264,7 +1189,6 @@ pub mod sample_programs {
             "swap14",
             "swap15",
             "nop",
-            "skiz",
             "if_then_call bar",
             "call foo",
             "return",

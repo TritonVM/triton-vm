@@ -127,7 +127,7 @@ impl<'pgm> VMState<'pgm> {
 
         if matches!(
             current_instruction,
-            Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo
+            Pop | Assert | Add | Mul | Eq | XbMul | WriteIo
         ) {
             hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse_or_zero();
         }
@@ -142,13 +142,6 @@ impl<'pgm> VMState<'pgm> {
                 hvs[1] = BFieldElement::new((arg_val >> 1) % 2);
                 hvs[2] = BFieldElement::new((arg_val >> 2) % 2);
                 hvs[3] = BFieldElement::new((arg_val >> 3) % 2);
-            }
-            Skiz => {
-                let nia = self.nia().value();
-                hvs[0] = BFieldElement::new(nia % 2);
-                hvs[1] = BFieldElement::new(nia / 2);
-                let st0 = self.op_stack.safe_peek(ST0);
-                hvs[2] = st0.inverse_or_zero();
             }
             IfThenCall(_) => {
                 let st0 = self.op_stack.safe_peek(ST0);
@@ -246,16 +239,6 @@ impl<'pgm> VMState<'pgm> {
 
             Nop => {
                 self.instruction_pointer += 1;
-            }
-
-            Skiz => {
-                let elem = self.op_stack.pop()?;
-                self.instruction_pointer += if elem.is_zero() {
-                    let next_instruction = self.next_instruction()?;
-                    1 + next_instruction.size()
-                } else {
-                    1
-                };
             }
 
             IfThenCall(addr) => {
@@ -1216,29 +1199,6 @@ mod vm_state_tests {
         let expected = BFieldElement::new(14);
         let actual = *out.last().unwrap();
         assert_eq!(expected, actual);
-    }
-
-    #[test]
-    #[ignore = "assembly not up to date"]
-    fn run_tvm_xgcd_test() {
-        // The XGCD program is work in progress.
-        let code = sample_programs::XGCD;
-        let program = Program::from_code(code).unwrap();
-
-        println!("{}", program);
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
-
-        println!("{}", program);
-        for state in trace.iter() {
-            println!("{}", state);
-        }
-
-        let _last_state = trace.last().unwrap();
-
-        let _expected = BFieldElement::new(14);
-        let _actual = _last_state.op_stack.st(ST0);
-
-        //assert_eq!(expected, actual);
     }
 
     #[test]
