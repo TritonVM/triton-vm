@@ -1,37 +1,39 @@
+use std::ops::MulAssign;
+
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone)]
-pub struct FriDomain<PF>
+pub struct FriDomain<FF>
 where
-    PF: FiniteField,
+    FF: FiniteField,
 {
-    pub offset: PF,
-    pub omega: PF,
+    pub offset: FF,
+    pub omega: FF,
     pub length: usize,
 }
 
-impl<PF> FriDomain<PF>
+impl<FF> FriDomain<FF>
 where
-    PF: FiniteField,
+    FF: FiniteField + MulAssign<BFieldElement>,
 {
-    pub fn evaluate(&self, polynomial: &Polynomial<PF>) -> Vec<PF> {
+    pub fn evaluate(&self, polynomial: &Polynomial<FF>) -> Vec<FF> {
         polynomial.fast_coset_evaluate(&self.offset, self.omega, self.length)
     }
 
-    pub fn interpolate(&self, values: &[PF]) -> Polynomial<PF> {
-        Polynomial::<PF>::fast_coset_interpolate(&self.offset, self.omega, values)
+    pub fn interpolate(&self, values: &[FF]) -> Polynomial<FF> {
+        Polynomial::<FF>::fast_coset_interpolate(&self.offset, self.omega, values)
     }
 
-    pub fn domain_value(&self, index: u32) -> PF {
+    pub fn domain_value(&self, index: u32) -> FF {
         self.omega.mod_pow_u32(index) * self.offset
     }
 
-    pub fn domain_values(&self) -> Vec<PF> {
+    pub fn domain_values(&self) -> Vec<FF> {
         let mut res = Vec::with_capacity(self.length);
-        let mut acc = PF::one();
+        let mut acc = FF::one();
 
         for _ in 0..self.length {
             res.push(acc * self.offset);

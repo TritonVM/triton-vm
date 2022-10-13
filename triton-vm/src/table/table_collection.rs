@@ -76,13 +76,13 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
     (padded_height + num_trace_randomizers - 1) as Degree
 }
 
-pub fn derive_omicron<DataPF: FiniteField>(padded_height: u64) -> DataPF {
+pub fn derive_omicron<FF: FiniteField>(padded_height: u64) -> FF {
     debug_assert!(
         0 == padded_height || is_power_of_two(padded_height),
         "The padded height was: {}",
         padded_height
     );
-    DataPF::primitive_root_of_unity(padded_height).unwrap()
+    FF::primitive_root_of_unity(padded_height).unwrap()
 }
 
 impl BaseTableCollection {
