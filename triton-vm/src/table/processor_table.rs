@@ -232,7 +232,9 @@ impl ProcessorTable {
                 all_clock_jump_differences_running_product;
 
             if let Some(prow) = previous_row {
-                if prow[usize::from(ClockJumpDifference)].lift() != current_clock_jump_difference {
+                if prow[usize::from(ClockJumpDifference)].lift() != current_clock_jump_difference
+                    && !current_clock_jump_difference.is_zero()
+                {
                     unique_clock_jump_differences.push(current_clock_jump_difference);
                     unique_clock_jump_differences_running_evaluation =
                         unique_clock_jump_differences_running_evaluation
@@ -247,11 +249,21 @@ impl ProcessorTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
+        if std::env::var("DEBUG").is_ok() {
+            let mut unique_clock_jump_differences_copy = unique_clock_jump_differences.clone();
+            unique_clock_jump_differences_copy.sort_by_key(|xfe| xfe.unlift().unwrap().value());
+            unique_clock_jump_differences_copy.dedup();
+            assert_eq!(
+                unique_clock_jump_differences_copy,
+                unique_clock_jump_differences
+            );
+        }
+
         // second pass over Processor Table to select all unique clock jump differences
         for extension_row in extension_matrix.iter_mut() {
             let potentially_selected_clk_cycle = extension_row[usize::from(CLK)];
             if unique_clock_jump_differences.contains(&potentially_selected_clk_cycle) {
-                selected_clock_cycles_running_evaluation *= selected_clock_cycles_running_evaluation
+                selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
                     * challenges.unique_clock_jump_differences_weight
                     + potentially_selected_clk_cycle;
             }

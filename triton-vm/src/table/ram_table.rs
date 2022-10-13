@@ -138,13 +138,14 @@ impl RamTable {
                     running_product_of_ramp *= bezout_challenge - ramp;
                     bezout_coefficient_0 = bezout_coefficient_0 * bezout_challenge + bcpc0;
                     bezout_coefficient_1 = bezout_coefficient_1 * bezout_challenge + bcpc1;
-                // } else if row[usize::from(IsPadding)].is_zero() { // todo: we can't recognize padding rows atm
                 } else {
                     // prove that clock jump is directed forward
                     let clock_jump_difference =
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
-                    all_clock_jump_differences_running_product *=
-                        challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                    if clock_jump_difference != XFieldElement::one() {
+                        all_clock_jump_differences_running_product *=
+                            challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                    }
                 }
             }
 
@@ -168,10 +169,6 @@ impl RamTable {
             running_product_for_perm_arg *=
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product_for_perm_arg;
-
-            // clock jump difference
-            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
-                BFieldElement::new(3).lift();
 
             previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());

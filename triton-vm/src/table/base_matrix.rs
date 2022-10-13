@@ -76,14 +76,18 @@ impl BaseMatrices {
         ram_matrix: &[[BFieldElement; ram_table::BASE_WIDTH]],
         jump_stack_matrix: &[[BFieldElement; jump_stack_table::BASE_WIDTH]],
     ) -> Vec<[BFieldElement; processor_table::BASE_WIDTH]> {
+        let one = BFieldElement::one();
+
         // get clock jump differences for all 3 memory-like tables
         let op_stack_mp_column = usize::from(OpStackBaseTableColumn::OSP);
         let op_stack_clk_column = usize::from(OpStackBaseTableColumn::CLK);
         let mut all_clk_jump_differences = vec![];
         for (curr_row, next_row) in op_stack_matrix.iter().tuple_windows() {
             if next_row[op_stack_mp_column] == curr_row[op_stack_mp_column] {
-                all_clk_jump_differences
-                    .push(next_row[op_stack_clk_column] - curr_row[op_stack_clk_column]);
+                let clock_jump_diff = next_row[op_stack_clk_column] - curr_row[op_stack_clk_column];
+                if clock_jump_diff != one {
+                    all_clk_jump_differences.push(clock_jump_diff);
+                }
             }
         }
 
@@ -91,7 +95,10 @@ impl BaseMatrices {
         let ram_clk_column = usize::from(RamBaseTableColumn::CLK);
         for (curr_row, next_row) in ram_matrix.iter().tuple_windows() {
             if next_row[ramp_mp_column] == curr_row[ramp_mp_column] {
-                all_clk_jump_differences.push(next_row[ram_clk_column] - curr_row[ram_clk_column]);
+                let clock_jump_diff = next_row[ram_clk_column] - curr_row[ram_clk_column];
+                if clock_jump_diff != one {
+                    all_clk_jump_differences.push(clock_jump_diff);
+                }
             }
         }
 
@@ -99,8 +106,11 @@ impl BaseMatrices {
         let jump_stack_clk_column = usize::from(JumpStackBaseTableColumn::CLK);
         for (curr_row, next_row) in jump_stack_matrix.iter().tuple_windows() {
             if next_row[jump_stack_mp_column] == curr_row[jump_stack_mp_column] {
-                all_clk_jump_differences
-                    .push(next_row[jump_stack_clk_column] - curr_row[jump_stack_clk_column]);
+                let clock_jump_diff =
+                    next_row[jump_stack_clk_column] - curr_row[jump_stack_clk_column];
+                if clock_jump_diff != one {
+                    all_clk_jump_differences.push(clock_jump_diff);
+                }
             }
         }
         all_clk_jump_differences.sort_by_key(|bfe| std::cmp::Reverse(bfe.value())); // todo: might not need reversal
