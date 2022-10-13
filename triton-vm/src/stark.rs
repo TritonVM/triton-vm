@@ -354,10 +354,10 @@ impl Stark {
         revealed_indices
     }
 
-    fn get_revealed_elements<PF: FiniteField>(
-        transposed_base_codewords: &[Vec<PF>],
+    fn get_revealed_elements<FF: FiniteField>(
+        transposed_base_codewords: &[Vec<FF>],
         revealed_indices: &[usize],
-    ) -> Vec<Vec<PF>> {
+    ) -> Vec<Vec<FF>> {
         let revealed_base_elements = revealed_indices
             .iter()
             .map(|idx| transposed_base_codewords[*idx].clone())

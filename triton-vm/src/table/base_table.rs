@@ -1,8 +1,9 @@
 use super::super::fri_domain::FriDomain;
 use itertools::Itertools;
+use num_traits::Zero;
 use rand_distr::{Distribution, Standard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::ops::Range;
+use std::ops::{MulAssign, Range};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other::random_elements;
@@ -38,13 +39,8 @@ pub struct Table<FieldElement: FiniteField> {
 }
 
 #[allow(clippy::too_many_arguments)]
-impl<DataPF: FiniteField> Table<DataPF> {
-    pub fn new(
-        base_width: usize,
-        full_width: usize,
-        matrix: Vec<Vec<DataPF>>,
-        name: String,
-    ) -> Self {
+impl<FF: FiniteField> Table<FF> {
+    pub fn new(base_width: usize, full_width: usize, matrix: Vec<Vec<FF>>, name: String) -> Self {
         Table {
             base_width,
             full_width,
@@ -61,8 +57,8 @@ impl<DataPF: FiniteField> Table<DataPF> {
         }
     }
 
-    /// Create a `BaseTable<DataPF>` with the same parameters, but new `matrix` data.
-    pub fn with_data(&self, matrix: Vec<Vec<DataPF>>) -> Self {
+    /// Create a `BaseTable<FF>` with the same parameters, but new `matrix` data.
+    pub fn with_data(&self, matrix: Vec<Vec<FF>>) -> Self {
         Table {
             matrix,
             name: format!("{} with data", self.name),
@@ -71,9 +67,9 @@ impl<DataPF: FiniteField> Table<DataPF> {
     }
 }
 
-pub trait InheritsFromTable<DataPF: FiniteField> {
-    fn inherited_table(&self) -> &Table<DataPF>;
-    fn mut_inherited_table(&mut self) -> &mut Table<DataPF>;
+pub trait InheritsFromTable<FF: FiniteField> {
+    fn inherited_table(&self) -> &Table<FF>;
+    fn mut_inherited_table(&mut self) -> &mut Table<FF>;
 
     fn base_width(&self) -> usize {
         self.inherited_table().base_width
@@ -83,11 +79,11 @@ pub trait InheritsFromTable<DataPF: FiniteField> {
         self.inherited_table().full_width
     }
 
-    fn data(&self) -> &Vec<Vec<DataPF>> {
+    fn data(&self) -> &Vec<Vec<FF>> {
         &self.inherited_table().matrix
     }
 
-    fn mut_data(&mut self) -> &mut Vec<Vec<DataPF>> {
+    fn mut_data(&mut self) -> &mut Vec<Vec<FF>> {
         &mut self.mut_inherited_table().matrix
     }
 }
@@ -246,26 +242,22 @@ pub trait Extendable: TableLike<BFieldElement> {
     }
 }
 
-fn disjoint_domain<DataPF: FiniteField>(
-    domain_length: usize,
-    disjoint_domain: &[DataPF],
-) -> Vec<DataPF> {
+fn disjoint_domain<FF: FiniteField>(domain_length: usize, disjoint_domain: &[FF]) -> Vec<FF> {
     let mut domain = Vec::with_capacity(domain_length);
-    let mut elm = DataPF::one();
+    let mut elm = FF::one();
     while domain.len() != domain_length {
         if !disjoint_domain.contains(&elm) {
             domain.push(elm);
         }
-        elm += DataPF::one();
+        elm += FF::one();
     }
     domain
 }
 
-pub trait TableLike<DataPF>: InheritsFromTable<DataPF>
+pub trait TableLike<FF>: InheritsFromTable<FF>
 where
-    // Self: Sized,
-    DataPF: FiniteField,
-    Standard: Distribution<DataPF>,
+    FF: FiniteField + MulAssign<BFieldElement>,
+    Standard: Distribution<FF>,
 {
     // Generic functions common to all tables
 
@@ -275,13 +267,13 @@ where
 
     fn low_degree_extension(
         &self,
-        fri_domain: &FriDomain<DataPF>,
-        omicron: DataPF,
+        fri_domain: &FriDomain<FF>,
+        omicron: FF,
         padded_height: usize,
         num_trace_randomizers: usize,
         columns: Range<usize>,
-    ) -> Vec<Vec<DataPF>> {
-        // FIXME: Table<> supports Vec<[DataPF; WIDTH]>, but FriDomain does not (yet).
+    ) -> Vec<Vec<FF>> {
+        // FIXME: Table<> supports Vec<[FF; WIDTH]>, but FriDomain does not (yet).
         self.interpolate_columns(
             fri_domain,
             omicron,
@@ -299,12 +291,12 @@ where
     /// if it is called with a subset, it *will* fail.
     fn interpolate_columns(
         &self,
-        fri_domain: &FriDomain<DataPF>,
-        omicron: DataPF,
+        fri_domain: &FriDomain<FF>,
+        omicron: FF,
         padded_height: usize,
         num_trace_randomizers: usize,
         columns: Range<usize>,
-    ) -> Vec<Polynomial<DataPF>> {
+    ) -> Vec<Polynomial<FF>> {
         // Ensure that `matrix` is set and padded before running this function
         assert_eq!(
             padded_height,

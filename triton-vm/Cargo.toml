@@ -26,7 +26,7 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", rev = "0f5374fda" }
+twenty-first = { git = "https://github.com/Neptune-Crypto/twenty-first.git", branch = "master" }
 anyhow = "1.0"
 bincode = "1.3"
 blake3 = "1.2"
