@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use num_traits::One;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
@@ -291,11 +292,12 @@ impl JumpStackTable {
             // clock jump difference
             if let Some(prow) = previous_row {
                 if prow[usize::from(JSP)] == row[usize::from(JSP)] {
-                    // if row[usize::from(IsPadding)] { // todo: we can't recognize padding rows atm
                     let clock_jump_difference =
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
-                    all_clock_jump_differences_running_product *=
-                        challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                    if clock_jump_difference != XFieldElement::one() {
+                        all_clock_jump_differences_running_product *=
+                            challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                    }
                 }
             }
             extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
