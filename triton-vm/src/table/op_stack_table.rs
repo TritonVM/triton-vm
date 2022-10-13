@@ -1,8 +1,8 @@
 use itertools::Itertools;
-use num_traits::{One, Zero};
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
@@ -76,21 +76,46 @@ impl TableLike<BFieldElement> for OpStackTable {}
 
 impl Extendable for OpStackTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
+        panic!("This function should not be called: the Op Stack Table implements `.pad` directly.")
+    }
+
+    // todo deduplicate this function. Other copy in jump_stack_table.rs
+    fn pad(&mut self, padded_height: usize) {
         let max_clock = self.data().len() as u64 - 1;
-        if let Some((idx, padding_template)) = self
+        let num_padding_rows = padded_height - self.data().len();
+
+        let template_index = self
             .data()
             .iter()
             .enumerate()
-            .find(|(_, row)| row[usize::from(OpStackBaseTableColumn::CLK)].value() == max_clock)
-        {
+            .find(|(_, row)| row[usize::from(CLK)].value() == max_clock)
+            .map(|(idx, _)| idx)
+            .unwrap();
+        let insertion_index = template_index + 1;
+
+        let padding_template = &mut self.mut_data()[template_index];
+        padding_template[usize::from(InverseOfClkDiffMinusOne)] = 0_u64.into();
+
+        let mut padding_rows = vec![];
+        while padding_rows.len() < num_padding_rows {
             let mut padding_row = padding_template.clone();
-            padding_row[usize::from(OpStackBaseTableColumn::CLK)] += BFieldElement::one();
-            (Some(idx + 1), vec![padding_row])
-        } else {
-            let mut padding_row = vec![BFieldElement::zero(); BASE_WIDTH];
-            padding_row[usize::from(OpStackBaseTableColumn::OSP)] = BFieldElement::new(16);
-            (None, vec![padding_row])
+            padding_row[usize::from(CLK)] += (padding_rows.len() as u32 + 1).into();
+            padding_rows.push(padding_row)
         }
+
+        if let Some(row) = padding_rows.last_mut() {
+            if let Some(next_row) = self.data().get(insertion_index) {
+                let clk_diff = next_row[usize::from(CLK)] - row[usize::from(CLK)];
+                row[usize::from(InverseOfClkDiffMinusOne)] =
+                    (clk_diff - 1_u64.into()).inverse_or_zero();
+            }
+        }
+
+        let old_tail_length = self.data().len() - insertion_index;
+        self.mut_data().append(&mut padding_rows);
+        self.mut_data()[insertion_index..].rotate_left(old_tail_length);
+
+        assert_eq!(padded_height, self.data().len());
     }
 }
 

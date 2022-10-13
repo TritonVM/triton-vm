@@ -207,7 +207,21 @@ impl BaseMatrices {
             .collect_vec();
         op_stack_matrix
             .sort_by_key(|row| (row[usize::from(OSP)].value(), row[usize::from(CLK)].value()));
-        op_stack_matrix
+
+        // set inverse of clock difference - 1
+        let matrix_len = op_stack_matrix.len();
+        let &last_op_stack_matrix_row = op_stack_matrix.last().unwrap();
+        let mut new_op_stack_matrix = vec![];
+        for (mut current_row, next_row) in op_stack_matrix.into_iter().tuple_windows() {
+            current_row[usize::from(OpStackBaseTableColumn::InverseOfClkDiffMinusOne)] = next_row
+                [usize::from(OpStackBaseTableColumn::CLK)]
+                - current_row[usize::from(OpStackBaseTableColumn::CLK)];
+            new_op_stack_matrix.push(current_row);
+        }
+        new_op_stack_matrix.push(last_op_stack_matrix_row);
+        assert_eq!(matrix_len, new_op_stack_matrix.len());
+
+        new_op_stack_matrix
     }
 
     fn derive_ram_matrix(
@@ -259,6 +273,20 @@ impl BaseMatrices {
         {
             ram_matrix[idx][usize::from(RamBaseTableColumn::InverseOfRampDifference)] = inverse;
         }
+
+        // set inverse of clock difference - 1
+        let matrix_len = ram_matrix.len();
+        let &last_ram_matrix_row = ram_matrix.last().unwrap();
+        let mut new_ram_matrix = vec![];
+        for (mut current_row, next_row) in ram_matrix.into_iter().tuple_windows() {
+            current_row[usize::from(RamBaseTableColumn::InverseOfClkDiffMinusOne)] = next_row
+                [usize::from(RamBaseTableColumn::CLK)]
+                - current_row[usize::from(RamBaseTableColumn::CLK)];
+            new_ram_matrix.push(current_row);
+        }
+        new_ram_matrix.push(last_ram_matrix_row);
+        let mut ram_matrix = new_ram_matrix;
+        assert_eq!(matrix_len, ram_matrix.len());
 
         // compute Bézout coefficient polynomials
         let all_ramps = ram_matrix
@@ -353,7 +381,21 @@ impl BaseMatrices {
                 row[usize::from(JumpStackBaseTableColumn::CLK)].value(),
             )
         });
-        jump_stack_matrix
+
+        // set inverse of clock difference - 1
+        let matrix_len = jump_stack_matrix.len();
+        let &last_op_stack_matrix_row = jump_stack_matrix.last().unwrap();
+        let mut new_jump_stack_matrix = vec![];
+        for (mut current_row, next_row) in jump_stack_matrix.into_iter().tuple_windows() {
+            current_row[usize::from(JumpStackBaseTableColumn::InverseOfClkDiffMinusOne)] = next_row
+                [usize::from(JumpStackBaseTableColumn::CLK)]
+                - current_row[usize::from(JumpStackBaseTableColumn::CLK)];
+            new_jump_stack_matrix.push(current_row);
+        }
+        new_jump_stack_matrix.push(last_op_stack_matrix_row);
+        assert_eq!(matrix_len, new_jump_stack_matrix.len());
+
+        new_jump_stack_matrix
     }
 }
 

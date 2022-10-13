@@ -225,6 +225,7 @@ impl Bounded for InstructionExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
 pub enum OpStackBaseTableColumn {
     CLK,
+    InverseOfClkDiffMinusOne,
     IB1ShrinkStack,
     OSP,
     OSV,
@@ -281,6 +282,7 @@ impl Bounded for OpStackExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
 pub enum RamBaseTableColumn {
     CLK,
+    InverseOfClkDiffMinusOne,
     RAMP,
     RAMV,
     InverseOfRampDifference,
@@ -343,6 +345,7 @@ impl Bounded for RamExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
 pub enum JumpStackBaseTableColumn {
     CLK,
+    InverseOfClkDiffMinusOne,
     CI,
     JSP,
     JSO,
