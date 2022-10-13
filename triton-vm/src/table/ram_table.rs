@@ -3,6 +3,7 @@ use num_traits::{One, Zero};
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
@@ -256,40 +257,47 @@ impl Extendable for RamTable {
         let num_padding_rows = padded_height - self.data().len();
 
         if self.data().is_empty() {
-            self.mut_data().append(&mut vec![
-                vec![BFieldElement::zero(); BASE_WIDTH];
-                padded_height
-            ]);
+            let mut all_padding = vec![];
+            for i in 0..padded_height {
+                let mut padding_row = vec![BFieldElement::zero(); BASE_WIDTH];
+                padding_row[usize::from(CLK)] = BFieldElement::new(i as u64);
+                all_padding.push(padding_row);
+            }
+            self.mut_data().append(&mut all_padding);
             return;
         }
 
-        let idx = self
-            .mut_data()
+        let template_index = self
+            .data()
             .iter()
             .enumerate()
-            .find(|(_, row)| row[usize::from(RamBaseTableColumn::CLK)].value() == max_clock)
+            .find(|(_, row)| row[usize::from(CLK)].value() == max_clock)
             .map(|(idx, _)| idx)
             .unwrap();
+        let insertion_index = template_index + 1;
 
-        let padding_template = &mut self.mut_data()[idx];
-        let difference_inverse =
-            padding_template[usize::from(RamBaseTableColumn::InverseOfRampDifference)];
-        padding_template[usize::from(RamBaseTableColumn::InverseOfRampDifference)] =
-            BFieldElement::zero();
+        let padding_template = &mut self.mut_data()[template_index];
+        let difference_inverse = padding_template[usize::from(InverseOfRampDifference)];
+        padding_template[usize::from(InverseOfRampDifference)] = BFieldElement::zero();
+        padding_template[usize::from(InverseOfClkDiffMinusOne)] = 0_u64.into();
 
         let mut padding_rows = vec![];
         while padding_rows.len() < num_padding_rows {
             let mut padding_row = padding_template.clone();
-            padding_row[usize::from(RamBaseTableColumn::CLK)] +=
-                (padding_rows.len() as u32 + 1).into();
+            padding_row[usize::from(CLK)] += (padding_rows.len() as u32 + 1).into();
             padding_rows.push(padding_row)
         }
 
         if let Some(row) = padding_rows.last_mut() {
-            row[usize::from(RamBaseTableColumn::InverseOfRampDifference)] = difference_inverse;
+            row[usize::from(InverseOfRampDifference)] = difference_inverse;
+
+            if let Some(next_row) = self.data().get(insertion_index) {
+                let clk_diff = next_row[usize::from(CLK)] - row[usize::from(CLK)];
+                row[usize::from(InverseOfClkDiffMinusOne)] =
+                    (clk_diff - 1_u64.into()).inverse_or_zero();
+            }
         }
 
-        let insertion_index = idx + 1;
         let old_tail_length = self.data().len() - insertion_index;
         self.mut_data().append(&mut padding_rows);
         self.mut_data()[insertion_index..].rotate_left(old_tail_length);
@@ -302,8 +310,6 @@ impl TableLike<XFieldElement> for ExtRamTable {}
 
 impl ExtRamTable {
     fn ext_initial_constraints(challenges: &RamTableChallenges) -> Vec<MPolynomial<XFieldElement>> {
-        use RamBaseTableColumn::*;
-
         let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
         let bezout_challenge =
             MPolynomial::from_constant(challenges.bezout_relation_sample_point, FULL_WIDTH);
@@ -350,8 +356,6 @@ impl ExtRamTable {
     fn ext_transition_constraints(
         challenges: &RamTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use RamBaseTableColumn::*;
-
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
         let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
 
