@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt::Display;
 use std::ops::Neg;
 use std::str::SplitWhitespace;
+use std::vec;
 
 use num_traits::One;
 use strum::{EnumCount, IntoEnumIterator};
@@ -45,7 +46,7 @@ pub enum DivinationHint {
 ///
 /// The ISA is defined at:
 ///
-/// https://neptune.builders/core-team/triton-vm/src/branch/master/specification/isa.md
+/// https://triton-vm.org/spec/isa.html
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro, EnumIter)]
@@ -141,7 +142,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
     }
 }
 
-#[derive(Debug, EnumIter, EnumCountMacro, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, EnumIter, EnumCountMacro, Clone, Copy)]
 pub enum InstructionBucket {
     HasArg,
     ShrinkStack,
@@ -164,7 +165,46 @@ impl InstructionBucket {
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
+    /// Drop the specific argument in favor of a default one.
+    pub fn strip(&self) -> Self {
+        match self {
+            Push(_) => Push(Default::default()),
+            Divine(_) => Divine(Default::default()),
+            Dup(_) => Dup(Default::default()),
+            Swap(_) => Swap(Default::default()),
+            Call(_) => Call(Default::default()),
+            Pop => Pop,
+            Nop => Nop,
+            Skiz => Skiz,
+            Return => Return,
+            Recurse => Recurse,
+            Assert => Assert,
+            Halt => Halt,
+            ReadMem => ReadMem,
+            WriteMem => WriteMem,
+            Hash => Hash,
+            DivineSibling => DivineSibling,
+            AssertVector => AssertVector,
+            Add => Add,
+            Mul => Mul,
+            Invert => Invert,
+            Split => Split,
+            Eq => Eq,
+            Lsb => Lsb,
+            XxAdd => XxAdd,
+            XxMul => XxMul,
+            XInvert => XInvert,
+            XbMul => XbMul,
+            ReadIo => ReadIo,
+            WriteIo => WriteIo,
+        }
+    }
+
+    /// Test if the instruction is in a given bucket.
     pub fn in_bucket(&self, bucket: InstructionBucket) -> bool {
+        if *self == Halt {
+            return false;
+        }
         use InstructionBucket::*;
         match bucket {
             HasArg => matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)),
@@ -186,12 +226,19 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
 
     /// Assign a unique positive integer to each `Instruction`.
     pub fn opcode(&self) -> u32 {
+        // hardcode halt == 0
+        // These lines are actually not necessary (Halt is automatically assigned 0 already)
+        // but it can't hurt to stress it here.
+        if *self == Halt {
+            return 0;
+        }
+
         // compute the index within flag set
         // by iterating over all instructions and incrementing a counter
         // whenever a fellow flag set member is encountered
         let mut index_within_flag_set = 0;
         for inst in AnInstruction::<Dest>::iter() {
-            if *self == inst {
+            if self.strip() == inst.strip() {
                 break;
             } else if self.flag_set() == inst.flag_set() {
                 index_within_flag_set += 1;
@@ -1274,7 +1321,7 @@ pub mod sample_programs {
 mod instruction_tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
-    use strum::IntoEnumIterator;
+    use strum::{EnumCount, IntoEnumIterator};
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::instruction::all_labelled_instructions_with_args;
@@ -1295,6 +1342,26 @@ mod instruction_tests {
             opcodes.push(instruction.opcode());
         }
 
+        for opc in opcodes.iter() {
+            println!(
+                "opcode {} exists: {}",
+                opc,
+                AnInstruction::<BFieldElement>::try_from(*opc).unwrap()
+            );
+        }
+
+        // assert size of list corresponds to number of opcodes
+        assert!(
+            opcodes.len() == AnInstruction::<BFieldElement>::COUNT,
+            "Mismatch in number of instructions!"
+        );
+
+        // assert iter method also covers push
+        assert!(
+            opcodes.contains(&AnInstruction::<BFieldElement>::Push(Default::default()).opcode()),
+            "list of opcodes needs to contain push"
+        );
+
         // test for width
         let max_opcode: u32 = AnInstruction::<BFieldElement>::iter()
             .map(|inst| inst.opcode())
@@ -1308,6 +1375,14 @@ mod instruction_tests {
             num_bits <= 7,
             "Biggest instruction needs more than 7 bits :("
         );
+
+        // assert consistency
+        for instruction in AnInstruction::<BFieldElement>::iter() {
+            assert!(
+                instruction == instruction.opcode().try_into().unwrap(),
+                "instruction to opcode map must be consistent"
+            );
+        }
     }
 
     #[test]

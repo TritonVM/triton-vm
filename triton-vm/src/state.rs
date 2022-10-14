@@ -864,6 +864,10 @@ mod vm_state_tests {
     #[test]
     fn run_tvm_basic_ram_read_write_test() {
         let program = Program::from_code(sample_programs::BASIC_RAM_READ_WRITE).unwrap();
+
+        for instruction in program.instructions.iter() {
+            println!("Instruction opcode: {}", instruction.opcode());
+        }
         let (trace, _out, err) = program.run_with_input(&[], &[]);
 
         for state in trace.iter() {

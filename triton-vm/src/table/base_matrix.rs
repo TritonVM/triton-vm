@@ -336,7 +336,7 @@ impl BaseMatrices {
         // compute Bézout coefficient polynomials
         let all_ramps = ram_matrix
             .iter()
-            .map(|row| row[usize::from(RAMP)])
+            .map(|row| row[usize::from(RamBaseTableColumn::RAMP)])
             .dedup()
             .collect_vec();
         let num_of_different_ramps = all_ramps.len();
@@ -387,12 +387,12 @@ impl BaseMatrices {
             current_bcpc_1;
 
         // rest of table
-        let mut previous_ramp = ram_matrix.first().unwrap()[usize::from(RAMP)];
+        let mut previous_ramp = ram_matrix.first().unwrap()[usize::from(RamBaseTableColumn::RAMP)];
         for row in ram_matrix.iter_mut().skip(1) {
-            if previous_ramp != row[usize::from(RAMP)] {
+            if previous_ramp != row[usize::from(RamBaseTableColumn::RAMP)] {
                 current_bcpc_0 = bezout_coefficient_polynomial_coefficient_0.pop().unwrap();
                 current_bcpc_1 = bezout_coefficient_polynomial_coefficient_1.pop().unwrap();
-                previous_ramp = row[usize::from(RAMP)]
+                previous_ramp = row[usize::from(RamBaseTableColumn::RAMP)]
             }
             row[usize::from(BezoutCoefficientPolynomialCoefficient0)] = current_bcpc_0;
             row[usize::from(BezoutCoefficientPolynomialCoefficient1)] = current_bcpc_1;
