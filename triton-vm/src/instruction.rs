@@ -201,51 +201,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         (index_within_flag_set << InstructionBucket::COUNT) + self.flag_set()
     }
 
-    //     match self {
-    //         // OpStack manipulation
-    //         Pop => 2,
-    //         Push(_) => 1,
-    //         Divine(_) => 4,
-    //         Dup(_) => 5,
-    //         Swap(_) => 9,
-
-    //         // Control flow
-    //         Nop => 8,
-    //         Skiz => 6,
-    //         Call(_) => 13,
-    //         Return => 12,
-    //         Recurse => 16,
-    //         Assert => 10,
-    //         Halt => 0,
-
-    //         // Memory access
-    //         ReadMem => 20,
-    //         WriteMem => 24,
-
-    //         // Hashing-related instructions
-    //         Hash => 28,
-    //         DivineSibling => 32,
-    //         AssertVector => 36,
-
-    //         // Arithmetic on stack instructions
-    //         Add => 14,
-    //         Mul => 18,
-    //         Invert => 40,
-    //         Split => 44,
-    //         Eq => 22,
-    //         Lsb => 72,
-
-    //         XxAdd => 56,
-    //         XxMul => 60,
-    //         XInvert => 64,
-    //         XbMul => 38,
-
-    //         // Read/write
-    //         ReadIo => 68,
-    //         WriteIo => 42,
-    //     }
-    // }
-
     /// Returns whether a given instruction modifies the op-stack.
     ///
     /// A modification involves any amount of pushing and/or popping.
@@ -332,37 +287,12 @@ impl TryFrom<u32> for Instruction {
     type Error = String;
 
     fn try_from(opcode: u32) -> Result<Self, Self::Error> {
-        match opcode {
-            2 => Ok(Pop),
-            1 => Ok(Push(Default::default())),
-            4 => Ok(Divine(Default::default())),
-            5 => Ok(Dup(ST0)),
-            9 => Ok(Swap(ST0)),
-            8 => Ok(Nop),
-            6 => Ok(Skiz),
-            13 => Ok(Call(Default::default())),
-            12 => Ok(Return),
-            16 => Ok(Recurse),
-            10 => Ok(Assert),
-            0 => Ok(Halt),
-            20 => Ok(ReadMem),
-            24 => Ok(WriteMem),
-            28 => Ok(Hash),
-            32 => Ok(DivineSibling),
-            36 => Ok(AssertVector),
-            14 => Ok(Add),
-            18 => Ok(Mul),
-            40 => Ok(Invert),
-            44 => Ok(Split),
-            22 => Ok(Eq),
-            56 => Ok(XxAdd),
-            60 => Ok(XxMul),
-            64 => Ok(XInvert),
-            38 => Ok(XbMul),
-            68 => Ok(ReadIo),
-            42 => Ok(WriteIo),
-            72 => Ok(Lsb),
-            _ => Err(format!("No instruction with opcode {} exists.", opcode)),
+        if let Some(instruction) =
+            Instruction::iter().find(|instruction| instruction.opcode() == opcode)
+        {
+            Ok(instruction)
+        } else {
+            Err(format!("No instruction with opcode {} exists.", opcode))
         }
     }
 }
