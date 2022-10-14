@@ -152,7 +152,7 @@ impl ProcessorTable {
 
             // RAM Table
             let ramv = extension_row[usize::from(RAMV)];
-            let ramp = extension_row[usize::from(ST1)];
+            let ramp = extension_row[usize::from(RAMP)];
 
             let compressed_row_for_ram_table_permutation_argument = clk
                 * challenges.ram_table_clk_weight

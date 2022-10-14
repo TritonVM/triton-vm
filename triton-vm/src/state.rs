@@ -65,6 +65,9 @@ pub struct VMState<'pgm> {
 
     /// Current instruction's address in program memory
     pub instruction_pointer: usize,
+
+    /// RAM pointer
+    ramp: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -292,12 +295,14 @@ impl<'pgm> VMState<'pgm> {
                 let ramv = self.memory_get(&ramp)?;
                 self.op_stack.pop()?;
                 self.op_stack.push(ramv);
+                self.ramp = ramp.value();
                 self.instruction_pointer += 1;
             }
 
             WriteMem => {
-                let ramv = self.op_stack.safe_peek(ST0);
                 let ramp = self.op_stack.safe_peek(ST1);
+                let ramv = self.op_stack.safe_peek(ST0);
+                self.ramp = ramp.value();
                 self.ram.insert(ramp, ramv);
                 self.instruction_pointer += 1;
             }
@@ -499,6 +504,7 @@ impl<'pgm> VMState<'pgm> {
         row[usize::from(HV1)] = hvs[1];
         row[usize::from(HV2)] = hvs[2];
         row[usize::from(HV3)] = hvs[3];
+        row[usize::from(RAMP)] = self.ramp.into();
         row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
 
         row

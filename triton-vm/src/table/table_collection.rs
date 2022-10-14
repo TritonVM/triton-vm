@@ -9,9 +9,6 @@ use twenty_first::timing_reporter::TimingReporter;
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
-use crate::table::table_column::{
-    JumpStackExtTableColumn, OpStackExtTableColumn, RamExtTableColumn,
-};
 
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
