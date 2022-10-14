@@ -11,7 +11,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::instruction::AnInstruction::*;
 use crate::table::table_column::ProcessorExtTableColumn::*;
 use crate::table::table_column::RamBaseTableColumn::{
-    BezoutCoefficientPolynomialCoefficient0, BezoutCoefficientPolynomialCoefficient1, RAMP,
+    BezoutCoefficientPolynomialCoefficient0, BezoutCoefficientPolynomialCoefficient1,
 };
 use crate::table::table_column::{
     InstructionBaseTableColumn, OpStackBaseTableColumn, ProcessorBaseTableColumn,
@@ -113,7 +113,42 @@ impl BaseMatrices {
                 }
             }
         }
-        all_clk_jump_differences.sort_by_key(|bfe| std::cmp::Reverse(bfe.value())); // todo: might not need reversal
+        all_clk_jump_differences.sort_by_key(|bfe| std::cmp::Reverse(bfe.value()));
+
+        // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+        for row in op_stack_matrix.iter() {
+            let op_stack_row = row
+                .iter()
+                .map(|bfe| format!("{}", bfe.value()))
+                .collect_vec()
+                .join(", ");
+            dbg!(op_stack_row);
+        }
+        for row in ram_matrix.iter() {
+            let ram_row = row
+                .iter()
+                .map(|bfe| format!("{}", bfe.value()))
+                .collect_vec()
+                .join(", ");
+            dbg!(ram_row);
+        }
+        for row in jump_stack_matrix.iter() {
+            let jump_stack_row = row
+                .iter()
+                .map(|bfe| format!("{}", bfe.value()))
+                .collect_vec()
+                .join(", ");
+            dbg!(jump_stack_row);
+        }
+        let all_clk_jump_differences_usize = all_clk_jump_differences
+            .iter()
+            .map(|bfe| format!("{}", bfe.value()))
+            .collect_vec()
+            .join(", ");
+        dbg!(format!("[{}]", all_clk_jump_differences_usize));
+        dbg!(all_clk_jump_differences.len());
+        dbg!(processor_matrix.len());
+        // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 
         // add all clock jump differences and their inverses, as well as inverses of uniques
         let zero = BFieldElement::zero();
@@ -243,7 +278,7 @@ impl BaseMatrices {
             .map(|&row| {
                 let mut derived_row = [BFieldElement::zero(); ram_table::BASE_WIDTH];
                 derived_row[usize::from(RamBaseTableColumn::CLK)] = row[usize::from(CLK)];
-                derived_row[usize::from(RamBaseTableColumn::RAMP)] = row[usize::from(ST1)];
+                derived_row[usize::from(RamBaseTableColumn::RAMP)] = row[usize::from(RAMP)];
                 derived_row[usize::from(RamBaseTableColumn::RAMV)] = row[usize::from(RAMV)];
                 derived_row[usize::from(RamBaseTableColumn::InverseOfRampDifference)] =
                     BFieldElement::zero();

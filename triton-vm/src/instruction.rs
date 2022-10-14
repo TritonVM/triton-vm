@@ -10,6 +10,7 @@ use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction::DivinationHint::Quotient;
+use crate::instruction::InstructionBucket::IB0HasArg;
 use AnInstruction::*;
 use TokenError::*;
 
@@ -141,6 +142,35 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
     }
 }
 
+pub enum InstructionBucket {
+    IB0HasArg,
+    IB1ShrinkStack,
+    IB2KeepRamp,
+}
+
+impl From<InstructionBucket> for usize {
+    fn from(ib: InstructionBucket) -> Self {
+        use InstructionBucket::*;
+        match ib {
+            IB0HasArg => 1,
+            IB1ShrinkStack => 2,
+            IB2KeepRamp => 4,
+        }
+    }
+}
+
+pub fn in_bucket(instr: &Instruction, bucket: InstructionBucket) -> bool {
+    use InstructionBucket::*;
+    match bucket {
+        IB0HasArg => matches!(instr, Push(_) | Dup(_) | Swap(_) | Call(_)),
+        IB1ShrinkStack => matches!(
+            instr,
+            Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo
+        ),
+        IB2KeepRamp => !matches!(instr, ReadMem | WriteMem),
+    }
+}
+
 impl<Dest> AnInstruction<Dest> {
     /// Assign a unique positive integer to each `Instruction`.
     pub fn opcode(&self) -> u32 {
@@ -204,7 +234,7 @@ impl<Dest> AnInstruction<Dest> {
     }
 
     pub fn size(&self) -> usize {
-        if matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)) {
+        if in_bucket(self, IB0HasArg) {
             2
         } else {
             1
