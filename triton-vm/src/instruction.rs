@@ -5,12 +5,11 @@ use std::ops::Neg;
 use std::str::SplitWhitespace;
 
 use num_traits::One;
-use strum::EnumCount;
-use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro};
+use strum::{EnumCount, IntoEnumIterator};
+use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction::DivinationHint::Quotient;
-use crate::instruction::InstructionBucket::IB0HasArg;
 use AnInstruction::*;
 use TokenError::*;
 
@@ -49,8 +48,8 @@ pub enum DivinationHint {
 /// https://neptune.builders/core-team/triton-vm/src/branch/master/specification/isa.md
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
-pub enum AnInstruction<Dest> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro, EnumIter)]
+pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
     Pop,
     Push(BFieldElement),
@@ -94,7 +93,7 @@ pub enum AnInstruction<Dest> {
     WriteIo,
 }
 
-impl<Dest: Display> Display for AnInstruction<Dest> {
+impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             // OpStack manipulation
@@ -142,82 +141,110 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
     }
 }
 
+#[derive(Debug, EnumIter, EnumCountMacro, Clone, Copy)]
 pub enum InstructionBucket {
-    IB0HasArg,
-    IB1ShrinkStack,
-    IB2KeepRamp,
+    HasArg,
+    ShrinkStack,
+    KeepRamp,
 }
 
-impl From<InstructionBucket> for usize {
-    fn from(ib: InstructionBucket) -> Self {
+impl InstructionBucket {
+    fn index(&self) -> u32 {
         use InstructionBucket::*;
-        match ib {
-            IB0HasArg => 1,
-            IB1ShrinkStack => 2,
-            IB2KeepRamp => 4,
+        match self {
+            HasArg => 0,
+            ShrinkStack => 1,
+            KeepRamp => 2,
         }
     }
-}
 
-pub fn in_bucket(instr: &Instruction, bucket: InstructionBucket) -> bool {
-    use InstructionBucket::*;
-    match bucket {
-        IB0HasArg => matches!(instr, Push(_) | Dup(_) | Swap(_) | Call(_)),
-        IB1ShrinkStack => matches!(
-            instr,
-            Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo
-        ),
-        IB2KeepRamp => !matches!(instr, ReadMem | WriteMem),
+    fn flag(&self) -> u32 {
+        1 << self.index()
     }
 }
 
-impl<Dest> AnInstruction<Dest> {
+impl<Dest: PartialEq + Default> AnInstruction<Dest> {
+    pub fn in_bucket(&self, bucket: InstructionBucket) -> bool {
+        use InstructionBucket::*;
+        match bucket {
+            HasArg => matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)),
+            ShrinkStack => {
+                matches!(self, Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo)
+            }
+            KeepRamp => !matches!(self, ReadMem | WriteMem),
+        }
+    }
+
+    /// A *flag set* is the set of buckets an instruction belongs to.
+    /// It is represented as a list of bits, and wrapped in a u32.
+    pub fn flag_set(&self) -> u32 {
+        InstructionBucket::iter()
+            .filter(|bucket| self.in_bucket(*bucket))
+            .map(|bucket| bucket.flag())
+            .fold(0, |x, y| x | y)
+    }
+
     /// Assign a unique positive integer to each `Instruction`.
     pub fn opcode(&self) -> u32 {
-        match self {
-            // OpStack manipulation
-            Pop => 2,
-            Push(_) => 1,
-            Divine(_) => 4,
-            Dup(_) => 5,
-            Swap(_) => 9,
-
-            // Control flow
-            Nop => 8,
-            Skiz => 6,
-            Call(_) => 13,
-            Return => 12,
-            Recurse => 16,
-            Assert => 10,
-            Halt => 0,
-
-            // Memory access
-            ReadMem => 20,
-            WriteMem => 24,
-
-            // Hashing-related instructions
-            Hash => 28,
-            DivineSibling => 32,
-            AssertVector => 36,
-
-            // Arithmetic on stack instructions
-            Add => 14,
-            Mul => 18,
-            Invert => 40,
-            Split => 44,
-            Eq => 22,
-            Lsb => 72,
-
-            XxAdd => 56,
-            XxMul => 60,
-            XInvert => 64,
-            XbMul => 38,
-
-            // Read/write
-            ReadIo => 68,
-            WriteIo => 42,
+        // compute the index within flag set
+        // by iterating over all instructions and incrementing a counter
+        // whenever a fellow flag set member is encountered
+        let mut index_within_flag_set = 0;
+        for inst in AnInstruction::<Dest>::iter() {
+            if *self == inst {
+                break;
+            } else if self.flag_set() == inst.flag_set() {
+                index_within_flag_set += 1;
+            }
         }
+
+        (index_within_flag_set << InstructionBucket::COUNT) + self.flag_set()
     }
+
+    //     match self {
+    //         // OpStack manipulation
+    //         Pop => 2,
+    //         Push(_) => 1,
+    //         Divine(_) => 4,
+    //         Dup(_) => 5,
+    //         Swap(_) => 9,
+
+    //         // Control flow
+    //         Nop => 8,
+    //         Skiz => 6,
+    //         Call(_) => 13,
+    //         Return => 12,
+    //         Recurse => 16,
+    //         Assert => 10,
+    //         Halt => 0,
+
+    //         // Memory access
+    //         ReadMem => 20,
+    //         WriteMem => 24,
+
+    //         // Hashing-related instructions
+    //         Hash => 28,
+    //         DivineSibling => 32,
+    //         AssertVector => 36,
+
+    //         // Arithmetic on stack instructions
+    //         Add => 14,
+    //         Mul => 18,
+    //         Invert => 40,
+    //         Split => 44,
+    //         Eq => 22,
+    //         Lsb => 72,
+
+    //         XxAdd => 56,
+    //         XxMul => 60,
+    //         XInvert => 64,
+    //         XbMul => 38,
+
+    //         // Read/write
+    //         ReadIo => 68,
+    //         WriteIo => 42,
+    //     }
+    // }
 
     /// Returns whether a given instruction modifies the op-stack.
     ///
@@ -234,7 +261,7 @@ impl<Dest> AnInstruction<Dest> {
     }
 
     pub fn size(&self) -> usize {
-        if in_bucket(self, IB0HasArg) {
+        if matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)) {
             2
         } else {
             1
@@ -249,7 +276,7 @@ impl<Dest> AnInstruction<Dest> {
         ((opcode >> bit_number) & 1).into()
     }
 
-    fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
+    fn map_call_address<F, NewDest: PartialEq + Default>(&self, f: F) -> AnInstruction<NewDest>
     where
         F: Fn(&Dest) -> NewDest,
     {
@@ -1317,12 +1344,41 @@ pub mod sample_programs {
 mod instruction_tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use strum::IntoEnumIterator;
+    use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::instruction::all_labelled_instructions_with_args;
     use crate::ord_n::Ord7;
     use crate::vm::Program;
 
-    use super::{all_instructions_without_args, parse, sample_programs};
+    use super::{all_instructions_without_args, parse, sample_programs, AnInstruction};
+
+    #[test]
+    fn opcode_test() {
+        // test for duplicates
+        let mut opcodes = vec![];
+        for instruction in AnInstruction::<BFieldElement>::iter() {
+            assert!(
+                !opcodes.contains(&instruction.opcode()),
+                "Have different instructions with same opcode."
+            );
+            opcodes.push(instruction.opcode());
+        }
+
+        // test for width
+        let max_opcode: u32 = AnInstruction::<BFieldElement>::iter()
+            .map(|inst| inst.opcode())
+            .max()
+            .unwrap();
+        let mut num_bits = 0;
+        while (1 << num_bits) < max_opcode {
+            num_bits += 1;
+        }
+        assert!(
+            num_bits <= 7,
+            "Biggest instruction needs more than 7 bits :("
+        );
+    }
 
     #[test]
     fn parse_display_push_pop_test() {
