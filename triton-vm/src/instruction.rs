@@ -142,7 +142,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, EnumIter, EnumCountMacro, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, EnumIter, EnumCountMacro, Clone, Copy, DisplayMacro)]
 pub enum InstructionBucket {
     HasArg,
     ShrinkStack,
@@ -1324,7 +1324,7 @@ mod instruction_tests {
     use strum::{EnumCount, IntoEnumIterator};
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
-    use crate::instruction::all_labelled_instructions_with_args;
+    use crate::instruction::{all_labelled_instructions_with_args, InstructionBucket};
     use crate::ord_n::Ord7;
     use crate::vm::Program;
 
@@ -1422,7 +1422,7 @@ mod instruction_tests {
         use Ord7::*;
 
         for instruction in all_instructions_without_args() {
-            for ib in [IB0, IB1, IB2, IB3, IB4, IB5] {
+            for ib in [IB0, IB1, IB2, IB3, IB4, IB5, IB6] {
                 let ib_value = instruction.ib(ib);
                 assert!(
                     ib_value.is_zero() || ib_value.is_one(),
@@ -1440,5 +1440,32 @@ mod instruction_tests {
         for instr in all_instructions_without_args() {
             assert_eq!(instr, instr.opcode().try_into().unwrap());
         }
+    }
+
+    #[test]
+    fn print_all_instructions_and_opcodes() {
+        for instr in all_instructions_without_args() {
+            println!("{:>3} {: <10}", instr.opcode(), format!("{instr}"));
+        }
+    }
+
+    #[test]
+    fn print_instruction_bucket_histogram() {
+        for ib in InstructionBucket::iter() {
+            println!(
+                "{ib}: {}",
+                all_instructions_without_args()
+                    .iter()
+                    .filter(|instr| ib.flag() & instr.flag_set() != 0)
+                    .count()
+            );
+        }
+        println!(
+            "no bucket: {}",
+            all_instructions_without_args()
+                .iter()
+                .filter(|instr| instr.flag_set() == 0)
+                .count()
+        );
     }
 }
