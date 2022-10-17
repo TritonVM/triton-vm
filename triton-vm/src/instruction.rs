@@ -14,7 +14,7 @@ use crate::instruction::DivinationHint::Quotient;
 use AnInstruction::*;
 use TokenError::*;
 
-use super::ord_n::{Ord16, Ord16::*, Ord7};
+use super::ord_n::{Ord16, Ord16::*, Ord8};
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -146,7 +146,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
 pub enum InstructionBucket {
     HasArg,
     ShrinkStack,
-    KeepRamp,
+    KeepRam,
 }
 
 impl InstructionBucket {
@@ -155,7 +155,7 @@ impl InstructionBucket {
         match self {
             HasArg => 0,
             ShrinkStack => 1,
-            KeepRamp => 2,
+            KeepRam => 2,
         }
     }
 
@@ -209,9 +209,10 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match bucket {
             HasArg => matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)),
             ShrinkStack => {
-                matches!(self, Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo)
+                matches!(self, Pop | Skiz | Assert | WriteIo)
             }
-            KeepRamp => !matches!(self, ReadMem | WriteMem),
+            KeepRam => !matches!(self, ReadMem | WriteMem),
+            // Binop => matches!(self, Add | Mul | Eq | XbMul),
         }
     }
 
@@ -271,7 +272,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     /// Get the i'th instruction bit
-    pub fn ib(&self, arg: Ord7) -> BFieldElement {
+    pub fn ib(&self, arg: Ord8) -> BFieldElement {
         let opcode = self.opcode();
         let bit_number: usize = arg.into();
 
@@ -1325,7 +1326,7 @@ mod instruction_tests {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::instruction::{all_labelled_instructions_with_args, InstructionBucket};
-    use crate::ord_n::Ord7;
+    use crate::ord_n::Ord8;
     use crate::vm::Program;
 
     use super::{all_instructions_without_args, parse, sample_programs, AnInstruction};
@@ -1372,8 +1373,8 @@ mod instruction_tests {
             num_bits += 1;
         }
         assert!(
-            num_bits <= 7,
-            "Biggest instruction needs more than 7 bits :("
+            num_bits <= 8,
+            "Biggest instruction needs more than 8 bits :("
         );
 
         // assert consistency
@@ -1419,7 +1420,7 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use Ord7::*;
+        use Ord8::*;
 
         for instruction in all_instructions_without_args() {
             for ib in [IB0, IB1, IB2, IB3, IB4, IB5, IB6] {

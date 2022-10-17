@@ -11,8 +11,10 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::fri_domain::FriDomain;
-use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
-use crate::ord_n::Ord7;
+use crate::instruction::{
+    all_instructions_without_args, AnInstruction::*, Instruction, InstructionBucket,
+};
+use crate::ord_n::Ord8;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::{Evaluable, ExtensionTable};
@@ -353,7 +355,7 @@ impl ExtProcessorTable {
         }
     }
 
-    /// Transition constraints are combined with deselectors in such a way
+    /// Instruction-specific transition constraints are combined with deselectors in such a way
     /// that arbitrary sets of mutually exclusive combinations are summed, i.e.,
     ///
     /// ```py
@@ -368,7 +370,7 @@ impl ExtProcessorTable {
     /// For instructions that have fewer transition constraints than the maximal number of
     /// transition constraints among all instructions, the deselector is multiplied with a zero,
     /// causing no additional terms in the final sets of combined transition constraint polynomials.
-    fn combine_transition_constraints_with_deselectors(
+    fn combine_instruction_constraints_with_deselectors(
         instr_tc_polys_tuples: Vec<(Instruction, Vec<MPolynomial<XFieldElement>>)>,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let (all_instructions, all_tc_polys_for_all_instructions): (Vec<_>, Vec<Vec<_>>) =
@@ -637,10 +639,16 @@ impl ExtProcessorTable {
         // $ramv = 0  ⇒  ramv - 0 = 0  ⇒  ramv$
         let ramv_is_0 = factory.ramv();
 
+        // The RAM pointer ramp is 0.
+        //
+        // $ramp = 0  ⇒  ramp - 0 = 0  ⇒  ramp$
+        let ramp_is_0 = factory.ramp();
+
         vec![
             clk_is_0, ip_is_0, jsp_is_0, jso_is_0, jsd_is_0, st0_is_0, st1_is_0, st2_is_0,
             st3_is_0, st4_is_0, st5_is_0, st6_is_0, st7_is_0, st8_is_0, st9_is_0, st10_is_0,
             st11_is_0, st12_is_0, st13_is_0, st14_is_0, st15_is_0, osp_is_16, osv_is_0, ramv_is_0,
+            ramp_is_0,
         ]
     }
 
@@ -653,14 +661,15 @@ impl ExtProcessorTable {
         // The composition of instruction buckets ib0-ib5 corresponds the current instruction ci.
         //
         // $ci - (2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0) = 0$
-        let ci_corresponds_to_ib0_thru_ib5 = {
+        let ci_corresponds_to_ib0_thru_ib7 = {
             let ib_composition = one.clone() * factory.ib0()
                 + factory.constant(2) * factory.ib1()
                 + factory.constant(4) * factory.ib2()
                 + factory.constant(8) * factory.ib3()
                 + factory.constant(16) * factory.ib4()
                 + factory.constant(32) * factory.ib5()
-                + factory.constant(64) * factory.ib6();
+                + factory.constant(64) * factory.ib6()
+                + factory.constant(128) * factory.ib7();
 
             factory.ci() - ib_composition
         };
@@ -678,7 +687,9 @@ impl ExtProcessorTable {
         let ib5 = factory.ib5();
         let ib5_is_bit = ib5.clone() * (ib5 - one.clone());
         let ib6 = factory.ib6();
-        let ib6_is_bit = ib6.clone() * (ib6 - one);
+        let ib6_is_bit = ib6.clone() * (ib6 - one.clone());
+        let ib7 = factory.ib7();
+        let ib7_is_bit = ib7.clone() * (ib7 - one);
 
         vec![
             ib0_is_bit,
@@ -688,7 +699,8 @@ impl ExtProcessorTable {
             ib4_is_bit,
             ib5_is_bit,
             ib6_is_bit,
-            ci_corresponds_to_ib0_thru_ib5,
+            ib7_is_bit,
+            ci_corresponds_to_ib0_thru_ib7,
         ]
     }
 
@@ -697,6 +709,7 @@ impl ExtProcessorTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = RowPairConstraints::default();
 
+        // instruction-specific constraints
         let all_instruction_transition_constraints = vec![
             (Pop, factory.instruction_pop()),
             (Push(Default::default()), factory.instruction_push()),
@@ -733,10 +746,40 @@ impl ExtProcessorTable {
             all_instruction_transition_constraints.len()
         );
 
-        let mut transition_constraints = Self::combine_transition_constraints_with_deselectors(
+        let mut transition_constraints = Self::combine_instruction_constraints_with_deselectors(
             all_instruction_transition_constraints,
         );
+
+        // constraints common to all instructions
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
+
+        // instruction-bucket constraints
+        // We can't combine bucket constraints like instruction
+        // constraints because there is no guarantee for mutual
+        // exclusivity. So we have to list all of them.
+        let all_instruction_bucket_constraints: Vec<(
+            InstructionBucket,
+            Vec<MPolynomial<XFieldElement>>,
+        )> = vec![
+            // (InstructionBucket::HasArg, factory.has_arg()), // no constraints to add for this bucket
+            (InstructionBucket::ShrinkStack, factory.shrink_stack()),
+            (InstructionBucket::KeepRam, factory.keep_ram()),
+        ];
+        for (bucket, constraints) in all_instruction_bucket_constraints.iter() {
+            let bucket_selector = match bucket {
+                InstructionBucket::HasArg => factory.ib0(),
+                InstructionBucket::ShrinkStack => factory.ib1(),
+                InstructionBucket::KeepRam => factory.ib2(),
+            };
+
+            transition_constraints.append(
+                &mut constraints
+                    .iter()
+                    .map(|c| bucket_selector.clone() * c.to_owned())
+                    .collect_vec(),
+            );
+        }
+
         transition_constraints
     }
 
@@ -825,6 +868,10 @@ impl SingleRowConstraints {
 
     pub fn ib6(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(IB6)].clone()
+    }
+
+    pub fn ib7(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(IB7)].clone()
     }
 
     pub fn jsp(&self) -> MPolynomial<XFieldElement> {
@@ -929,6 +976,10 @@ impl SingleRowConstraints {
 
     pub fn ramv(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(RAMV)].clone()
+    }
+
+    pub fn ramp(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(RAMP)].clone()
     }
 }
 
@@ -1773,6 +1824,10 @@ impl RowPairConstraints {
         self.variables[usize::from(IB6)].clone()
     }
 
+    pub fn ib7(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(IB7)].clone()
+    }
+
     pub fn jsp(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(JSP)].clone()
     }
@@ -1871,6 +1926,10 @@ impl RowPairConstraints {
 
     pub fn hv3(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(HV3)].clone()
+    }
+
+    pub fn ramp(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(RAMP)].clone()
     }
 
     pub fn ramv(&self) -> MPolynomial<XFieldElement> {
@@ -1975,6 +2034,10 @@ impl RowPairConstraints {
         self.variables[FULL_WIDTH + usize::from(OSV)].clone()
     }
 
+    pub fn ramp_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(RAMP)].clone()
+    }
+
     pub fn ramv_next(&self) -> MPolynomial<XFieldElement> {
         self.variables[FULL_WIDTH + usize::from(RAMV)].clone()
     }
@@ -2061,8 +2124,6 @@ impl RowPairConstraints {
             self.osv_next() - self.osv(),
             // The operational stack pointer, osp, does not change.
             self.osp_next() - self.osp(),
-            // The RAM value, ramv, does not change.
-            self.ramv_next() - self.ramv(),
         ]
     }
 
@@ -2090,7 +2151,7 @@ impl RowPairConstraints {
             self.st15_next() - self.osv(),
             // The OpStack pointer, osp, is decremented by 1.
             self.osp_next() - (self.osp() - self.one()),
-            // The helper variable register hv4 holds the inverse of (osp - 16).
+            // The helper variable register hv3 holds the inverse of (osp - 16).
             (self.osp() - self.constant(16)) * self.hv3() - self.one(),
         ]
     }
@@ -2119,8 +2180,6 @@ impl RowPairConstraints {
             self.osv_next() - self.osv(),
             // The OpStack pointer, osp, does not change.
             self.osp_next() - self.osp(),
-            // The RAM value, ramv, does not change.
-            self.ramv_next() - self.ramv(),
         ]
     }
 
@@ -2149,6 +2208,13 @@ impl RowPairConstraints {
             self.osp_next() - (self.osp() - self.one()),
             // The helper variable register hv4 holds the inverse of (osp - 16).
             (self.osp() - self.constant(16)) * self.hv3() - self.one(),
+        ]
+    }
+
+    pub fn keep_ram(&self) -> Vec<MPolynomial<XFieldElement>> {
+        vec![
+            self.ramv_next() - self.ramv(),
+            self.ramp_next() - self.ramp(),
         ]
     }
 }
@@ -2189,13 +2255,14 @@ impl InstructionDeselectors {
         let one = XFieldElement::one();
         let num_vars = factory.variables.len();
 
-        let ib0 = instruction.ib(Ord7::IB0).lift();
-        let ib1 = instruction.ib(Ord7::IB1).lift();
-        let ib2 = instruction.ib(Ord7::IB2).lift();
-        let ib3 = instruction.ib(Ord7::IB3).lift();
-        let ib4 = instruction.ib(Ord7::IB4).lift();
-        let ib5 = instruction.ib(Ord7::IB5).lift();
-        let ib6 = instruction.ib(Ord7::IB6).lift();
+        let ib0 = instruction.ib(Ord8::IB0).lift();
+        let ib1 = instruction.ib(Ord8::IB1).lift();
+        let ib2 = instruction.ib(Ord8::IB2).lift();
+        let ib3 = instruction.ib(Ord8::IB3).lift();
+        let ib4 = instruction.ib(Ord8::IB4).lift();
+        let ib5 = instruction.ib(Ord8::IB5).lift();
+        let ib6 = instruction.ib(Ord8::IB6).lift();
+        let ib7 = instruction.ib(Ord8::IB7).lift();
         let deselect_ib0 = MPolynomial::from_constant(one - ib0, num_vars);
         let deselect_ib1 = MPolynomial::from_constant(one - ib1, num_vars);
         let deselect_ib2 = MPolynomial::from_constant(one - ib2, num_vars);
@@ -2203,6 +2270,7 @@ impl InstructionDeselectors {
         let deselect_ib4 = MPolynomial::from_constant(one - ib4, num_vars);
         let deselect_ib5 = MPolynomial::from_constant(one - ib5, num_vars);
         let deselect_ib6 = MPolynomial::from_constant(one - ib6, num_vars);
+        let deselect_ib7 = MPolynomial::from_constant(one - ib7, num_vars);
         (factory.ib0() - deselect_ib0)
             * (factory.ib1() - deselect_ib1)
             * (factory.ib2() - deselect_ib2)
@@ -2210,6 +2278,7 @@ impl InstructionDeselectors {
             * (factory.ib4() - deselect_ib4)
             * (factory.ib5() - deselect_ib5)
             * (factory.ib6() - deselect_ib6)
+            * (factory.ib7() - deselect_ib7)
     }
 
     pub fn create(
@@ -2292,7 +2361,7 @@ mod constraint_polynomial_tests {
         test_row.into_iter().map(|belem| belem.lift()).collect()
     }
 
-    fn get_constraints_for_instruction(
+    fn get_transition_constraints_for_instruction(
         instruction: Instruction,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let tc = RowPairConstraints::default();
@@ -2349,19 +2418,19 @@ mod constraint_polynomial_tests {
             }
             println!();
 
-            for (poly_idx, poly) in get_constraints_for_instruction(instruction)
+            for (poly_idx, poly) in get_transition_constraints_for_instruction(instruction)
                 .iter()
                 .enumerate()
             {
                 assert_eq!(
                     instruction.opcode_b().lift(),
                     test_row[usize::from(CI)],
-                    "The test is trying to check the wrong constraint polynomials."
+                    "The test is trying to check the wrong transition constraint polynomials."
                 );
                 assert_eq!(
                     XFieldElement::zero(),
                     poly.evaluate(&test_row),
-                    "For case {}, polynomial with index {} must evaluate to zero.",
+                    "For case {}, transition constraint polynomial with index {} must evaluate to zero.",
                     case_idx,
                     poly_idx,
                 );
@@ -2592,31 +2661,34 @@ mod constraint_polynomial_tests {
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {
-                row[usize::from(IB0)] = other_instruction.ib(Ord7::IB0).lift();
-                row[usize::from(IB1)] = other_instruction.ib(Ord7::IB1).lift();
-                row[usize::from(IB2)] = other_instruction.ib(Ord7::IB2).lift();
-                row[usize::from(IB3)] = other_instruction.ib(Ord7::IB3).lift();
-                row[usize::from(IB4)] = other_instruction.ib(Ord7::IB4).lift();
-                row[usize::from(IB5)] = other_instruction.ib(Ord7::IB5).lift();
-                row[usize::from(IB6)] = other_instruction.ib(Ord7::IB6).lift();
+                row[usize::from(IB0)] = other_instruction.ib(Ord8::IB0).lift();
+                row[usize::from(IB1)] = other_instruction.ib(Ord8::IB1).lift();
+                row[usize::from(IB2)] = other_instruction.ib(Ord8::IB2).lift();
+                row[usize::from(IB3)] = other_instruction.ib(Ord8::IB3).lift();
+                row[usize::from(IB4)] = other_instruction.ib(Ord8::IB4).lift();
+                row[usize::from(IB5)] = other_instruction.ib(Ord8::IB5).lift();
+                row[usize::from(IB6)] = other_instruction.ib(Ord8::IB6).lift();
+                row[usize::from(IB7)] = other_instruction.ib(Ord8::IB7).lift();
                 let result = deselector.evaluate(&row);
 
                 assert!(
                     result.is_zero(),
-                    "Deselector for {} should return 0 for all other instructions, including {}",
+                    "Deselector for {} should return 0 for all other instructions, including {} whose opcode is {}",
                     instruction,
-                    other_instruction
+                    other_instruction,
+                    other_instruction.opcode()
                 )
             }
 
             // Positive tests
-            row[usize::from(IB0)] = instruction.ib(Ord7::IB0).lift();
-            row[usize::from(IB1)] = instruction.ib(Ord7::IB1).lift();
-            row[usize::from(IB2)] = instruction.ib(Ord7::IB2).lift();
-            row[usize::from(IB3)] = instruction.ib(Ord7::IB3).lift();
-            row[usize::from(IB4)] = instruction.ib(Ord7::IB4).lift();
-            row[usize::from(IB5)] = instruction.ib(Ord7::IB5).lift();
-            row[usize::from(IB6)] = instruction.ib(Ord7::IB6).lift();
+            row[usize::from(IB0)] = instruction.ib(Ord8::IB0).lift();
+            row[usize::from(IB1)] = instruction.ib(Ord8::IB1).lift();
+            row[usize::from(IB2)] = instruction.ib(Ord8::IB2).lift();
+            row[usize::from(IB3)] = instruction.ib(Ord8::IB3).lift();
+            row[usize::from(IB4)] = instruction.ib(Ord8::IB4).lift();
+            row[usize::from(IB5)] = instruction.ib(Ord8::IB5).lift();
+            row[usize::from(IB6)] = instruction.ib(Ord8::IB6).lift();
+            row[usize::from(IB7)] = instruction.ib(Ord8::IB7).lift();
             let result = deselector.evaluate(&row);
             assert!(
                 !result.is_zero(),

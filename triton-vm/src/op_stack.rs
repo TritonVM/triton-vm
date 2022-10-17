@@ -105,11 +105,12 @@ impl OpStack {
         if self.stack.len() <= OP_STACK_REG_COUNT {
             BFieldElement::zero()
         } else {
-            let n = self.stack.len() - OP_STACK_REG_COUNT;
+            let top = self.stack.len() - 1;
+            let osv_index = top - OP_STACK_REG_COUNT;
             self.stack
-                .get(n)
+                .get(osv_index)
                 .copied()
-                .unwrap_or_else(BFieldElement::zero)
+                .expect("Cannot access OSV because stack is too shallow")
         }
     }
 }

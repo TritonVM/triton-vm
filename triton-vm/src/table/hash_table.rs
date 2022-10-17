@@ -706,7 +706,12 @@ mod constraint_tests {
     #[test]
     fn table_satisfies_constraints_test() {
         let program = Program::from_code("hash hash hash halt").unwrap();
-        let (aet, _, _) = program.simulate_with_input(&[], &[]);
+
+        let (aet, maybe_err, _) = program.simulate_with_input(&[], &[]);
+
+        if let Some(e) = maybe_err {
+            panic!("Program execution failed: {}", e);
+        }
 
         let padded_height = roundup_npo2(aet.hash_matrix.len() as u64) as usize;
         let num_trace_randomizers = 0;
