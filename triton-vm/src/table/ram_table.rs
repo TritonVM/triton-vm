@@ -423,6 +423,13 @@ impl ExtRamTable {
             * (bc1_next.clone() - bezout_challenge * bc1.clone() - bcpc1_next)
             + (one - ramp_changes) * (bc1_next - bc1);
 
+        // TODO:
+        //  - clk_di is inverse-or-zero of clk'-clk-1
+        //  - running product for cjd's is updated correctly
+
+        // TODO:
+        // - verify that running product for processor table perm arg is updated correctly
+
         vec![
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
