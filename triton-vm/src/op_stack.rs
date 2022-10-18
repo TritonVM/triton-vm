@@ -114,3 +114,75 @@ impl OpStack {
         }
     }
 }
+
+#[cfg(test)]
+mod op_stack_test {
+
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+
+    use crate::{op_stack::OpStack, ord_n::Ord16};
+
+    #[test]
+    fn test_sanity() {
+        let mut op_stack = OpStack::default();
+
+        // verify height
+        assert_eq!(op_stack.height(), 16);
+        assert_eq!(op_stack.osp().value() as usize, op_stack.height());
+
+        // push elements 1 thru 17
+        for i in 1..=17 {
+            op_stack.push(BFieldElement::new(i as u64));
+        }
+
+        // verify height
+        assert_eq!(op_stack.height(), 33);
+        assert_eq!(op_stack.osp().value() as usize, op_stack.height());
+
+        // verify that all accessible items are different
+        let mut container = vec![];
+        container.push(op_stack.st(Ord16::ST0));
+        container.push(op_stack.st(Ord16::ST1));
+        container.push(op_stack.st(Ord16::ST2));
+        container.push(op_stack.st(Ord16::ST3));
+        container.push(op_stack.st(Ord16::ST4));
+        container.push(op_stack.st(Ord16::ST5));
+        container.push(op_stack.st(Ord16::ST6));
+        container.push(op_stack.st(Ord16::ST7));
+        container.push(op_stack.st(Ord16::ST8));
+        container.push(op_stack.st(Ord16::ST9));
+        container.push(op_stack.st(Ord16::ST10));
+        container.push(op_stack.st(Ord16::ST11));
+        container.push(op_stack.st(Ord16::ST12));
+        container.push(op_stack.st(Ord16::ST13));
+        container.push(op_stack.st(Ord16::ST14));
+        container.push(op_stack.st(Ord16::ST15));
+        container.push(op_stack.osv());
+        let len_before = container.len();
+        container.sort_by_key(|a| a.value());
+        container.dedup();
+        let len_after = container.len();
+        assert_eq!(len_before, len_after);
+
+        // pop 11 elements
+        for _ in 0..11 {
+            op_stack.pop().expect("can't pop");
+        }
+
+        // verify height
+        assert_eq!(op_stack.height(), 22);
+        assert_eq!(op_stack.osp().value() as usize, op_stack.height());
+
+        // pop 2 XFieldElements
+        op_stack.pop_x().expect("can't pop");
+        op_stack.pop_x().expect("can't pop");
+
+        // verify height
+        assert_eq!(op_stack.height(), 16);
+        assert_eq!(op_stack.osp().value() as usize, op_stack.height());
+
+        // verify underflow
+        op_stack.pop().expect("can't pop");
+        assert!(op_stack.is_too_shallow());
+    }
+}
