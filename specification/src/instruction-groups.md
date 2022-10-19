@@ -10,40 +10,41 @@
 | `shrink_stack`  | stack's top-most element is removed, rest of the stack remains unchanged. Needs `hv3`               |
 | `unop`          | stack's top-most element is modified, rest of stack remains unchanged                               |
 | `binop`         | stack shrinks by one element, new top of the stack is modified. Needs `hv3`                         |
+| `keep_ram`      | no memory access: `ramp` and `ramv` do not change.                                                  |
 
 A summary of all instructions and which groups they are part of is given in the following table.
 
-| instruction      | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` |
-|:-----------------|:-----------|:----------------|:---------|:---------|:-------------|:-------------|:---------------|:-------|:--------|
-| `pop`            |            |                 | x        |          |              |              | x              |        |         |
-| `push` + `a`     | x          |                 |          | x        | x            |              |                |        |         |
-| `divine`         |            |                 | x        |          | x            |              |                |        |         |
-| `dup` + `i`      | x          | x               |          | x        | x            |              |                |        |         |
-| `swap` + `i`     | x          | x               |          | x        |              |              |                |        |         |
-| `nop`            |            |                 | x        |          |              | x            |                |        |         |
-| `skiz`           |            |                 |          |          |              |              | x              |        |         |
-| `call` + `d`     | x          |                 |          |          |              | x            |                |        |         |
-| `return`         |            |                 |          |          |              | x            |                |        |         |
-| `recurse`        |            |                 |          |          |              | x            |                |        |         |
-| `assert`         |            |                 | x        |          |              |              | x              |        |         |
-| `halt`           |            |                 | x        |          |              | x            |                |        |         |
-| `read_mem`       |            |                 | x        |          |              |              |                | x      |         |
-| `write_mem`      |            |                 | x        |          |              | x            |                |        |         |
-| `hash`           |            |                 | x        |          |              |              |                |        |         |
-| `divine_sibling` |            |                 | x        |          |              |              |                |        |         |
-| `assert_vector`  |            |                 | x        |          |              | x            |                |        |         |
-| `add`            |            |                 | x        |          |              |              |                |        | x       |
-| `mul`            |            |                 | x        |          |              |              |                |        | x       |
-| `invert`         |            |                 | x        |          |              |              |                | x      |         |
-| `split`          |            |                 | x        |          |              |              |                |        |         |
-| `eq`             |            |                 | x        |          |              |              |                |        | x       |
-| `lsb`            |            |                 | x        |          |              |              |                |        |         |
-| `xxadd`          |            |                 | x        |          |              |              |                |        |         |
-| `xxmul`          |            |                 | x        |          |              |              |                |        |         |
-| `xinvert`        |            |                 | x        |          |              |              |                |        |         |
-| `xbmul`          |            |                 | x        |          |              |              |                |        |         |
-| `read_io`        |            |                 | x        |          | x            |              |                |        |         |
-| `write_io`       |            |                 | x        |          |              |              | x              |        |         |
+| instruction      | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` | `keep_ram` |
+|:-----------------|:-----------|:----------------|:---------|:---------|:-------------|:-------------|:---------------|:-------|:--------|------------|
+| `pop`            |            |                 | x        |          |              |              | x              |        |         | x          |
+| `push` + `a`     | x          |                 |          | x        | x            |              |                |        |         | x          |
+| `divine`         |            |                 | x        |          | x            |              |                |        |         | x          |
+| `dup` + `i`      | x          | x               |          | x        | x            |              |                |        |         | x          |
+| `swap` + `i`     | x          | x               |          | x        |              |              |                |        |         | x          |
+| `nop`            |            |                 | x        |          |              | x            |                |        |         | x          |
+| `skiz`           |            |                 |          |          |              |              | x              |        |         | x          |
+| `call` + `d`     | x          |                 |          |          |              | x            |                |        |         | x          |
+| `return`         |            |                 |          |          |              | x            |                |        |         | x          |
+| `recurse`        |            |                 |          |          |              | x            |                |        |         | x          |
+| `assert`         |            |                 | x        |          |              |              | x              |        |         | x          |
+| `halt`           |            |                 | x        |          |              | x            |                |        |         | x          |
+| `read_mem`       |            |                 | x        |          |              |              |                | x      |         |            |
+| `write_mem`      |            |                 | x        |          |              | x            |                |        |         |            |
+| `hash`           |            |                 | x        |          |              |              |                |        |         | x          |
+| `divine_sibling` |            |                 | x        |          |              |              |                |        |         | x          |
+| `assert_vector`  |            |                 | x        |          |              | x            |                |        |         | x          |
+| `add`            |            |                 | x        |          |              |              |                |        | x       | x          |
+| `mul`            |            |                 | x        |          |              |              |                |        | x       | x          |
+| `invert`         |            |                 | x        |          |              |              |                | x      |         | x          |
+| `split`          |            |                 | x        |          |              |              |                |        |         | x          |
+| `eq`             |            |                 | x        |          |              |              |                |        | x       | x          |
+| `lsb`            |            |                 | x        |          |              |              |                |        |         | x          |
+| `xxadd`          |            |                 | x        |          |              |              |                |        |         | x          |
+| `xxmul`          |            |                 | x        |          |              |              |                |        |         | x          |
+| `xinvert`        |            |                 | x        |          |              |              |                |        |         | x          |
+| `xbmul`          |            |                 | x        |          |              |              |                |        |         | x          |
+| `read_io`        |            |                 | x        |          | x            |              |                |        |         | x          |
+| `write_io`       |            |                 | x        |          |              |              | x              |        |         | x          |
 
 \*
 Instruction Group `has_arg` is a _virtual_ instruction group.
@@ -193,7 +194,6 @@ Below, you can find a list of all 16 indicator polynomials.
 1. The stack element in `st15` does not change.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
-1. The RAM value `ramv` does not change.
 
 ### Polynomials
 
@@ -215,7 +215,6 @@ Below, you can find a list of all 16 indicator polynomials.
 1. `st15' - st15`
 1. `osv' - osv`
 1. `osp' - osp`
-1. `ramv' - ramv`
 
 ## Group `shrink_stack`
 
@@ -286,7 +285,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. The stack element in `st15` does not change.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
-1. The RAM value `ramv` does not change.
 
 ### Polynomials
 
@@ -307,7 +305,6 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st15' - st15`
 1. `osv' - osv`
 1. `osp' - osp`
-1. `ramv' - ramv`
 
 ## Group `binop`
 
@@ -350,3 +347,15 @@ Since the stack can only change by one element at a time, this prevents stack un
 1. `st15' - osv`
 1. `osp' - (osp - 1)`
 1. `(osp - 16)·hv3 - 1`
+
+## Group `keep_ram`
+
+### Description
+
+1. The RAM pointer stays the same.
+2. The RAM value stays the same.
+
+### Polynomials
+
+1. `ramp' - ramp`
+2. `ramv' - ramv`

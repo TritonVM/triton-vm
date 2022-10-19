@@ -13,8 +13,8 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::vm_err;
-use crate::instruction::DivinationHint;
-use crate::ord_n::{Ord16, Ord7};
+use crate::instruction::{DivinationHint, InstructionBucket};
+use crate::ord_n::{Ord16, Ord8};
 use crate::table::base_matrix::ProcessorMatrixRow;
 use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
 use crate::table::table_column::{
@@ -25,7 +25,7 @@ use crate::table::table_column::{
 use super::error::{vm_fail, InstructionError::*};
 use super::instruction::{AnInstruction::*, Instruction};
 use super::op_stack::OpStack;
-use super::ord_n::{Ord16::*, Ord7::*};
+use super::ord_n::{Ord16::*, Ord8::*};
 use super::stdio::InputStream;
 use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table};
 use super::table::{processor_table, ram_table};
@@ -65,6 +65,9 @@ pub struct VMState<'pgm> {
 
     /// Current instruction's address in program memory
     pub instruction_pointer: usize,
+
+    /// RAM pointer
+    ramp: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -125,10 +128,9 @@ impl<'pgm> VMState<'pgm> {
         }
         let current_instruction = current_instruction.unwrap();
 
-        if matches!(
-            current_instruction,
-            Pop | Skiz | Assert | Add | Mul | Eq | XbMul | WriteIo
-        ) {
+        if current_instruction.in_bucket(InstructionBucket::ShrinkStack)
+            || matches!(current_instruction, Add | Mul | Eq | XbMul)
+        {
             hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse_or_zero();
         }
 
@@ -292,12 +294,14 @@ impl<'pgm> VMState<'pgm> {
                 let ramv = self.memory_get(&ramp)?;
                 self.op_stack.pop()?;
                 self.op_stack.push(ramv);
+                self.ramp = ramp.value();
                 self.instruction_pointer += 1;
             }
 
             WriteMem => {
-                let ramv = self.op_stack.safe_peek(ST0);
                 let ramp = self.op_stack.safe_peek(ST1);
+                let ramv = self.op_stack.safe_peek(ST0);
+                self.ramp = ramp.value();
                 self.ram.insert(ramp, ramv);
                 self.instruction_pointer += 1;
             }
@@ -461,19 +465,20 @@ impl<'pgm> VMState<'pgm> {
         // todo: is `Instruction::Halt` a good default?
         let current_instruction = self.current_instruction().unwrap_or(Instruction::Halt);
         let hvs = self.derive_helper_variables();
-        let ramp = self.op_stack.st(Ord16::ST1);
+        let ramp = self.ramp.into();
 
         row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
         row[usize::from(IP)] = (self.instruction_pointer as u32).try_into().unwrap();
         row[usize::from(CI)] = current_instruction.opcode_b();
         row[usize::from(NIA)] = self.nia();
-        row[usize::from(IB0)] = current_instruction.ib(Ord7::IB0);
-        row[usize::from(IB1)] = current_instruction.ib(Ord7::IB1);
-        row[usize::from(IB2)] = current_instruction.ib(Ord7::IB2);
-        row[usize::from(IB3)] = current_instruction.ib(Ord7::IB3);
-        row[usize::from(IB4)] = current_instruction.ib(Ord7::IB4);
-        row[usize::from(IB5)] = current_instruction.ib(Ord7::IB5);
-        row[usize::from(IB6)] = current_instruction.ib(Ord7::IB6);
+        row[usize::from(IB0)] = current_instruction.ib(Ord8::IB0);
+        row[usize::from(IB1)] = current_instruction.ib(Ord8::IB1);
+        row[usize::from(IB2)] = current_instruction.ib(Ord8::IB2);
+        row[usize::from(IB3)] = current_instruction.ib(Ord8::IB3);
+        row[usize::from(IB4)] = current_instruction.ib(Ord8::IB4);
+        row[usize::from(IB5)] = current_instruction.ib(Ord8::IB5);
+        row[usize::from(IB6)] = current_instruction.ib(Ord8::IB6);
+        row[usize::from(IB7)] = current_instruction.ib(Ord8::IB7);
         row[usize::from(JSP)] = self.jsp();
         row[usize::from(JSO)] = self.jso();
         row[usize::from(JSD)] = self.jsd();
@@ -499,6 +504,7 @@ impl<'pgm> VMState<'pgm> {
         row[usize::from(HV1)] = hvs[1];
         row[usize::from(HV2)] = hvs[2];
         row[usize::from(HV3)] = hvs[3];
+        row[usize::from(RAMP)] = ramp;
         row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
 
         row
@@ -858,6 +864,10 @@ mod vm_state_tests {
     #[test]
     fn run_tvm_basic_ram_read_write_test() {
         let program = Program::from_code(sample_programs::BASIC_RAM_READ_WRITE).unwrap();
+
+        for instruction in program.instructions.iter() {
+            println!("Instruction opcode: {}", instruction.opcode());
+        }
         let (trace, _out, err) = program.run_with_input(&[], &[]);
 
         for state in trace.iter() {

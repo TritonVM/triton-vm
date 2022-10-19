@@ -1,8 +1,9 @@
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use num_traits::One;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
@@ -77,18 +78,48 @@ impl TableLike<BFieldElement> for JumpStackTable {}
 
 impl Extendable for JumpStackTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
+        panic!(
+            "This function should not be called: the Jump Stack Table implements `.pad` directly."
+        )
+    }
+
+    // todo deduplicate this function. Other copy in op_stack_table.rs
+    fn pad(&mut self, padded_height: usize) {
         let max_clock = self.data().len() as u64 - 1;
-        if let Some((idx, padding_template)) =
-            self.data().iter().enumerate().find(|(_, row)| {
-                row[usize::from(JumpStackBaseTableColumn::CLK)].value() == max_clock
-            })
-        {
+        let num_padding_rows = padded_height - self.data().len();
+
+        let template_index = self
+            .data()
+            .iter()
+            .enumerate()
+            .find(|(_, row)| row[usize::from(CLK)].value() == max_clock)
+            .map(|(idx, _)| idx)
+            .unwrap();
+        let insertion_index = template_index + 1;
+
+        let padding_template = &mut self.mut_data()[template_index];
+        padding_template[usize::from(InverseOfClkDiffMinusOne)] = 0_u64.into();
+
+        let mut padding_rows = vec![];
+        while padding_rows.len() < num_padding_rows {
             let mut padding_row = padding_template.clone();
-            padding_row[usize::from(JumpStackBaseTableColumn::CLK)] += BFieldElement::one();
-            (Some(idx + 1), vec![padding_row])
-        } else {
-            (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
+            padding_row[usize::from(CLK)] += (padding_rows.len() as u32 + 1).into();
+            padding_rows.push(padding_row)
         }
+
+        if let Some(row) = padding_rows.last_mut() {
+            if let Some(next_row) = self.data().get(insertion_index) {
+                let clk_diff = next_row[usize::from(CLK)] - row[usize::from(CLK)];
+                row[usize::from(InverseOfClkDiffMinusOne)] =
+                    (clk_diff - 1_u64.into()).inverse_or_zero();
+            }
+        }
+
+        let old_tail_length = self.data().len() - insertion_index;
+        self.mut_data().append(&mut padding_rows);
+        self.mut_data()[insertion_index..].rotate_left(old_tail_length);
+
+        assert_eq!(padded_height, self.data().len());
     }
 }
 
@@ -225,7 +256,9 @@ impl JumpStackTable {
     ) -> ExtJumpStackTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product = PermArg::default_initial();
+        let mut all_clock_jump_differences_running_product = PermArg::default_initial();
 
+        let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {
             let mut extension_row = [0.into(); FULL_WIDTH];
             extension_row[..BASE_WIDTH]
@@ -256,6 +289,21 @@ impl JumpStackTable {
                 challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
+            // clock jump difference
+            if let Some(prow) = previous_row {
+                if prow[usize::from(JSP)] == row[usize::from(JSP)] {
+                    let clock_jump_difference =
+                        (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
+                    if clock_jump_difference != XFieldElement::one() {
+                        all_clock_jump_differences_running_product *=
+                            challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                    }
+                }
+            }
+            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+                all_clock_jump_differences_running_product;
+
+            previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());
         }
 
@@ -350,6 +398,9 @@ pub struct JumpStackTableChallenges {
     pub jsp_weight: XFieldElement,
     pub jso_weight: XFieldElement,
     pub jsd_weight: XFieldElement,
+
+    /// Weight for accumulating all clock jump differences
+    pub all_clock_jump_differences_weight: XFieldElement,
 }
 
 impl ExtensionTable for ExtJumpStackTable {

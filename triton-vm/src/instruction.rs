@@ -3,17 +3,18 @@ use std::error::Error;
 use std::fmt::Display;
 use std::ops::Neg;
 use std::str::SplitWhitespace;
+use std::vec;
 
 use num_traits::One;
-use strum::EnumCount;
-use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro};
+use strum::{EnumCount, IntoEnumIterator};
+use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction::DivinationHint::Quotient;
 use AnInstruction::*;
 use TokenError::*;
 
-use super::ord_n::{Ord16, Ord16::*, Ord7};
+use super::ord_n::{Ord16, Ord16::*, Ord8};
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -45,11 +46,11 @@ pub enum DivinationHint {
 ///
 /// The ISA is defined at:
 ///
-/// https://neptune.builders/core-team/triton-vm/src/branch/master/specification/isa.md
+/// https://triton-vm.org/spec/isa.html
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
-pub enum AnInstruction<Dest> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro, EnumIter)]
+pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
     Pop,
     Push(BFieldElement),
@@ -93,7 +94,7 @@ pub enum AnInstruction<Dest> {
     WriteIo,
 }
 
-impl<Dest: Display> Display for AnInstruction<Dest> {
+impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             // OpStack manipulation
@@ -141,52 +142,111 @@ impl<Dest: Display> Display for AnInstruction<Dest> {
     }
 }
 
-impl<Dest> AnInstruction<Dest> {
+#[derive(Debug, PartialEq, Eq, EnumIter, EnumCountMacro, Clone, Copy, DisplayMacro)]
+pub enum InstructionBucket {
+    HasArg,
+    ShrinkStack,
+    KeepRam,
+}
+
+impl InstructionBucket {
+    fn index(&self) -> u32 {
+        use InstructionBucket::*;
+        match self {
+            HasArg => 0,
+            ShrinkStack => 1,
+            KeepRam => 2,
+        }
+    }
+
+    fn flag(&self) -> u32 {
+        1 << self.index()
+    }
+}
+
+impl<Dest: PartialEq + Default> AnInstruction<Dest> {
+    /// Drop the specific argument in favor of a default one.
+    pub fn strip(&self) -> Self {
+        match self {
+            Push(_) => Push(Default::default()),
+            Divine(_) => Divine(Default::default()),
+            Dup(_) => Dup(Default::default()),
+            Swap(_) => Swap(Default::default()),
+            Call(_) => Call(Default::default()),
+            Pop => Pop,
+            Nop => Nop,
+            Skiz => Skiz,
+            Return => Return,
+            Recurse => Recurse,
+            Assert => Assert,
+            Halt => Halt,
+            ReadMem => ReadMem,
+            WriteMem => WriteMem,
+            Hash => Hash,
+            DivineSibling => DivineSibling,
+            AssertVector => AssertVector,
+            Add => Add,
+            Mul => Mul,
+            Invert => Invert,
+            Split => Split,
+            Eq => Eq,
+            Lsb => Lsb,
+            XxAdd => XxAdd,
+            XxMul => XxMul,
+            XInvert => XInvert,
+            XbMul => XbMul,
+            ReadIo => ReadIo,
+            WriteIo => WriteIo,
+        }
+    }
+
+    /// Test if the instruction is in a given bucket.
+    pub fn in_bucket(&self, bucket: InstructionBucket) -> bool {
+        if *self == Halt {
+            return false;
+        }
+        use InstructionBucket::*;
+        match bucket {
+            HasArg => matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)),
+            ShrinkStack => {
+                matches!(self, Pop | Skiz | Assert | WriteIo)
+            }
+            KeepRam => !matches!(self, ReadMem | WriteMem),
+            // Binop => matches!(self, Add | Mul | Eq | XbMul),
+        }
+    }
+
+    /// A *flag set* is the set of buckets an instruction belongs to.
+    /// It is represented as a list of bits, and wrapped in a u32.
+    pub fn flag_set(&self) -> u32 {
+        InstructionBucket::iter()
+            .filter(|bucket| self.in_bucket(*bucket))
+            .map(|bucket| bucket.flag())
+            .fold(0, |x, y| x | y)
+    }
+
     /// Assign a unique positive integer to each `Instruction`.
     pub fn opcode(&self) -> u32 {
-        match self {
-            // OpStack manipulation
-            Pop => 2,
-            Push(_) => 1,
-            Divine(_) => 4,
-            Dup(_) => 5,
-            Swap(_) => 9,
-
-            // Control flow
-            Nop => 8,
-            Skiz => 6,
-            Call(_) => 13,
-            Return => 12,
-            Recurse => 16,
-            Assert => 10,
-            Halt => 0,
-
-            // Memory access
-            ReadMem => 20,
-            WriteMem => 24,
-
-            // Hashing-related instructions
-            Hash => 28,
-            DivineSibling => 32,
-            AssertVector => 36,
-
-            // Arithmetic on stack instructions
-            Add => 14,
-            Mul => 18,
-            Invert => 40,
-            Split => 44,
-            Eq => 22,
-            Lsb => 72,
-
-            XxAdd => 56,
-            XxMul => 60,
-            XInvert => 64,
-            XbMul => 38,
-
-            // Read/write
-            ReadIo => 68,
-            WriteIo => 42,
+        // hardcode halt == 0
+        // These lines are actually not necessary (Halt is automatically assigned 0 already)
+        // but it can't hurt to stress it here.
+        if *self == Halt {
+            return 0;
         }
+
+        // compute the index within flag set
+        // by iterating over all instructions and incrementing a counter
+        // whenever a fellow flag set member is encountered
+        let mut index_within_flag_set = 0;
+        for inst in AnInstruction::<Dest>::iter() {
+            if self.strip() == inst.strip() {
+                break;
+            } else if self.flag_set() == inst.flag_set() {
+                index_within_flag_set += 1;
+            }
+        }
+
+        (index_within_flag_set << InstructionBucket::COUNT) + self.flag_set()
     }
 
     /// Returns whether a given instruction modifies the op-stack.
@@ -212,14 +272,14 @@ impl<Dest> AnInstruction<Dest> {
     }
 
     /// Get the i'th instruction bit
-    pub fn ib(&self, arg: Ord7) -> BFieldElement {
+    pub fn ib(&self, arg: Ord8) -> BFieldElement {
         let opcode = self.opcode();
         let bit_number: usize = arg.into();
 
         ((opcode >> bit_number) & 1).into()
     }
 
-    fn map_call_address<F, NewDest>(&self, f: F) -> AnInstruction<NewDest>
+    fn map_call_address<F, NewDest: PartialEq + Default>(&self, f: F) -> AnInstruction<NewDest>
     where
         F: Fn(&Dest) -> NewDest,
     {
@@ -275,37 +335,12 @@ impl TryFrom<u32> for Instruction {
     type Error = String;
 
     fn try_from(opcode: u32) -> Result<Self, Self::Error> {
-        match opcode {
-            2 => Ok(Pop),
-            1 => Ok(Push(Default::default())),
-            4 => Ok(Divine(Default::default())),
-            5 => Ok(Dup(ST0)),
-            9 => Ok(Swap(ST0)),
-            8 => Ok(Nop),
-            6 => Ok(Skiz),
-            13 => Ok(Call(Default::default())),
-            12 => Ok(Return),
-            16 => Ok(Recurse),
-            10 => Ok(Assert),
-            0 => Ok(Halt),
-            20 => Ok(ReadMem),
-            24 => Ok(WriteMem),
-            28 => Ok(Hash),
-            32 => Ok(DivineSibling),
-            36 => Ok(AssertVector),
-            14 => Ok(Add),
-            18 => Ok(Mul),
-            40 => Ok(Invert),
-            44 => Ok(Split),
-            22 => Ok(Eq),
-            56 => Ok(XxAdd),
-            60 => Ok(XxMul),
-            64 => Ok(XInvert),
-            38 => Ok(XbMul),
-            68 => Ok(ReadIo),
-            42 => Ok(WriteIo),
-            72 => Ok(Lsb),
-            _ => Err(format!("No instruction with opcode {} exists.", opcode)),
+        if let Some(instruction) =
+            Instruction::iter().find(|instruction| instruction.opcode() == opcode)
+        {
+            Ok(instruction)
+        } else {
+            Err(format!("No instruction with opcode {} exists.", opcode))
         }
     }
 }
@@ -1287,12 +1322,69 @@ pub mod sample_programs {
 mod instruction_tests {
     use itertools::Itertools;
     use num_traits::{One, Zero};
+    use strum::{EnumCount, IntoEnumIterator};
+    use twenty_first::shared_math::b_field_element::BFieldElement;
 
-    use crate::instruction::all_labelled_instructions_with_args;
-    use crate::ord_n::Ord7;
+    use crate::instruction::{all_labelled_instructions_with_args, InstructionBucket};
+    use crate::ord_n::Ord8;
     use crate::vm::Program;
 
-    use super::{all_instructions_without_args, parse, sample_programs};
+    use super::{all_instructions_without_args, parse, sample_programs, AnInstruction};
+
+    #[test]
+    fn opcode_test() {
+        // test for duplicates
+        let mut opcodes = vec![];
+        for instruction in AnInstruction::<BFieldElement>::iter() {
+            assert!(
+                !opcodes.contains(&instruction.opcode()),
+                "Have different instructions with same opcode."
+            );
+            opcodes.push(instruction.opcode());
+        }
+
+        for opc in opcodes.iter() {
+            println!(
+                "opcode {} exists: {}",
+                opc,
+                AnInstruction::<BFieldElement>::try_from(*opc).unwrap()
+            );
+        }
+
+        // assert size of list corresponds to number of opcodes
+        assert!(
+            opcodes.len() == AnInstruction::<BFieldElement>::COUNT,
+            "Mismatch in number of instructions!"
+        );
+
+        // assert iter method also covers push
+        assert!(
+            opcodes.contains(&AnInstruction::<BFieldElement>::Push(Default::default()).opcode()),
+            "list of opcodes needs to contain push"
+        );
+
+        // test for width
+        let max_opcode: u32 = AnInstruction::<BFieldElement>::iter()
+            .map(|inst| inst.opcode())
+            .max()
+            .unwrap();
+        let mut num_bits = 0;
+        while (1 << num_bits) < max_opcode {
+            num_bits += 1;
+        }
+        assert!(
+            num_bits <= 8,
+            "Biggest instruction needs more than 8 bits :("
+        );
+
+        // assert consistency
+        for instruction in AnInstruction::<BFieldElement>::iter() {
+            assert!(
+                instruction == instruction.opcode().try_into().unwrap(),
+                "instruction to opcode map must be consistent"
+            );
+        }
+    }
 
     #[test]
     fn parse_display_push_pop_test() {
@@ -1328,10 +1420,10 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use Ord7::*;
+        use Ord8::*;
 
         for instruction in all_instructions_without_args() {
-            for ib in [IB0, IB1, IB2, IB3, IB4, IB5] {
+            for ib in [IB0, IB1, IB2, IB3, IB4, IB5, IB6] {
                 let ib_value = instruction.ib(ib);
                 assert!(
                     ib_value.is_zero() || ib_value.is_one(),
@@ -1349,5 +1441,32 @@ mod instruction_tests {
         for instr in all_instructions_without_args() {
             assert_eq!(instr, instr.opcode().try_into().unwrap());
         }
+    }
+
+    #[test]
+    fn print_all_instructions_and_opcodes() {
+        for instr in all_instructions_without_args() {
+            println!("{:>3} {: <10}", instr.opcode(), format!("{instr}"));
+        }
+    }
+
+    #[test]
+    fn print_instruction_bucket_histogram() {
+        for ib in InstructionBucket::iter() {
+            println!(
+                "{ib}: {}",
+                all_instructions_without_args()
+                    .iter()
+                    .filter(|instr| ib.flag() & instr.flag_set() != 0)
+                    .count()
+            );
+        }
+        println!(
+            "no bucket: {}",
+            all_instructions_without_args()
+                .iter()
+                .filter(|instr| instr.flag_set() == 0)
+                .count()
+        );
     }
 }
