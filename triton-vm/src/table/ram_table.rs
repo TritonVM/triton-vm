@@ -144,7 +144,7 @@ impl RamTable {
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
                     if clock_jump_difference != XFieldElement::one() {
                         all_clock_jump_differences_running_product *=
-                            challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                            challenges.all_clock_jump_differences_point - clock_jump_difference;
                     }
                 }
             }
@@ -167,7 +167,7 @@ impl RamTable {
 
             // compute the running product of the compressed column for permutation argument
             running_product_for_perm_arg *=
-                challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
+                challenges.processor_perm_row_point - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product_for_perm_arg;
 
             previous_row = Some(row.clone());
@@ -312,6 +312,9 @@ impl ExtRamTable {
             MPolynomial::from_constant(challenges.bezout_relation_sample_point, FULL_WIDTH);
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
 
+        let rppa_challenge =
+            MPolynomial::from_constant(challenges.processor_perm_row_point, FULL_WIDTH);
+
         let clk = variables[usize::from(CLK)].clone();
         let ramp = variables[usize::from(RAMP)].clone();
         let ramv = variables[usize::from(RAMV)].clone();
@@ -321,15 +324,22 @@ impl ExtRamTable {
         let fd = variables[usize::from(FormalDerivative)].clone();
         let bc0 = variables[usize::from(BezoutCoefficient0)].clone();
         let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
+        let rppa = variables[usize::from(RunningProductPermArg)].clone();
 
-        let clk_is_0 = clk;
+        let clk_is_0 = clk.clone();
         let ramp_is_0 = ramp.clone();
-        let ramv_is_0 = ramv;
+        let ramv_is_0 = ramv.clone();
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
-        let formal_derivative_is_1 = fd - one;
-        let running_product_is_initialized_correctly = rp - (bezout_challenge - ramp);
+        let formal_derivative_is_1 = fd - one.clone();
+        let running_product_polynomial_is_initialized_correctly = rp - (bezout_challenge - ramp);
+
+        // let compressed_row_for_permutation_argument = clk.clone() * clk_weight.clone()
+        //     + ramp.clone() * ramp_weight.clone()
+        //     + ramv.clone() * ramv_weight.clone();
+        // all of {clk, ramp, ramv} are zero
+        let running_product_permutation_argument_is_initialized_correctly = rppa - rppa_challenge;
 
         vec![
             clk_is_0,
@@ -339,7 +349,8 @@ impl ExtRamTable {
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
             formal_derivative_is_1,
-            running_product_is_initialized_correctly,
+            running_product_polynomial_is_initialized_correctly,
+            running_product_permutation_argument_is_initialized_correctly,
         ]
     }
 
@@ -357,7 +368,15 @@ impl ExtRamTable {
         let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
 
         let bezout_challenge =
-            MPolynomial::from_constant(challenges.bezout_relation_sample_point, FULL_WIDTH);
+            MPolynomial::from_constant(challenges.bezout_relation_sample_point, 2 * FULL_WIDTH);
+        let cjd_challenge =
+            MPolynomial::from_constant(challenges.all_clock_jump_differences_point, 2 * FULL_WIDTH);
+        let rppa_challenge =
+            MPolynomial::from_constant(challenges.processor_perm_row_point, 2 * FULL_WIDTH);
+
+        let clk_weight = MPolynomial::from_constant(challenges.clk_weight, 2 * FULL_WIDTH);
+        let ramp_weight = MPolynomial::from_constant(challenges.ramp_weight, 2 * FULL_WIDTH);
+        let ramv_weight = MPolynomial::from_constant(challenges.ramv_weight, 2 * FULL_WIDTH);
 
         let clk = variables[usize::from(CLK)].clone();
         let ramp = variables[usize::from(RAMP)].clone();
@@ -369,6 +388,9 @@ impl ExtRamTable {
         let fd = variables[usize::from(FormalDerivative)].clone();
         let bc0 = variables[usize::from(BezoutCoefficient0)].clone();
         let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
+        let clk_di = variables[usize::from(InverseOfClkDiffMinusOne)].clone();
+        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
+        let rppa = variables[usize::from(RunningProductPermArg)].clone();
 
         let clk_next = variables[FULL_WIDTH + usize::from(CLK)].clone();
         let ramp_next = variables[FULL_WIDTH + usize::from(RAMP)].clone();
@@ -381,12 +403,16 @@ impl ExtRamTable {
         let fd_next = variables[FULL_WIDTH + usize::from(FormalDerivative)].clone();
         let bc0_next = variables[FULL_WIDTH + usize::from(BezoutCoefficient0)].clone();
         let bc1_next = variables[FULL_WIDTH + usize::from(BezoutCoefficient1)].clone();
+        let rpcjd_next =
+            variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
+        let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
 
-        let ramp_diff = ramp_next.clone() - ramp;
+        let ramp_diff = ramp_next.clone() - ramp.clone();
         let ramp_changes = ramp_diff.clone() * iord.clone();
 
         // iord is 0 or iord is the inverse of (ramp' - ramp)
-        let iord_is_0_or_iord_is_inverse_of_ramp_diff = iord * (ramp_changes.clone() - one.clone());
+        let iord_is_0_or_iord_is_inverse_of_ramp_diff =
+            iord.clone() * (ramp_changes.clone() - one.clone());
 
         // (ramp' - ramp) is zero or iord is the inverse of (ramp' - ramp)
         let ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff =
@@ -398,8 +424,8 @@ impl ExtRamTable {
         // The ramp does change or the ramv does not change or the clk increases by 1
         let ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1 =
             (ramp_changes.clone() - one.clone())
-                * (ramv_next - ramv)
-                * (clk_next - (clk + one.clone()));
+                * (ramv_next.clone() - ramv.clone())
+                * (clk_next.clone() - (clk.clone() + one.clone()));
 
         let bcbp0_only_changes_if_ramp_changes =
             (one.clone() - ramp_changes.clone()) * (bcpc0_next.clone() - bcpc0);
@@ -412,7 +438,7 @@ impl ExtRamTable {
             + (one.clone() - ramp_changes.clone()) * (rp_next - rp.clone());
 
         let formal_derivative_updates_correctly = ramp_diff.clone()
-            * (fd_next.clone() - rp - (bezout_challenge.clone() - ramp_next) * fd.clone())
+            * (fd_next.clone() - rp - (bezout_challenge.clone() - ramp_next.clone()) * fd.clone())
             + (one.clone() - ramp_changes.clone()) * (fd_next - fd);
 
         let bezout_coefficient_0_is_constructed_correctly = ramp_diff.clone()
@@ -421,14 +447,27 @@ impl ExtRamTable {
 
         let bezout_coefficient_1_is_constructed_correctly = ramp_diff
             * (bc1_next.clone() - bezout_challenge * bc1.clone() - bcpc1_next)
-            + (one - ramp_changes) * (bc1_next - bc1);
+            + (one.clone() - ramp_changes) * (bc1_next - bc1);
 
-        // TODO:
-        //  - clk_di is inverse-or-zero of clk'-clk-1
-        //  - running product for cjd's is updated correctly
+        let clk_di_is_inverse_of_clkd =
+            clk_di.clone() * (clk_next.clone() - clk.clone() - one.clone());
+        let clk_di_is_zero_or_inverse_of_clkd = clk_di.clone() * clk_di_is_inverse_of_clkd.clone();
+        let clkd_is_zero_or_inverse_of_clk_di =
+            (clk_next.clone() - clk.clone() - one.clone()) * clk_di_is_inverse_of_clkd;
 
-        // TODO:
-        // - verify that running product for processor table perm arg is updated correctly
+        let rpcjd_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
+            * (rpcjd_next.clone() - rpcjd.clone())
+            + (one.clone() - (ramp_next.clone() - ramp.clone()) * iord.clone())
+                * (rpcjd_next.clone() - rpcjd.clone())
+            + (one.clone() - (clk_next.clone() - clk.clone() - one.clone()) * clk_di)
+                * ramp.clone()
+                * (rpcjd_next.clone() - rpcjd.clone() * (cjd_challenge - ramp.clone()));
+
+        let compressed_row_for_permutation_argument = clk_next.clone() * clk_weight.clone()
+            + ramp_next.clone() * ramp_weight.clone()
+            + ramv_next.clone() * ramv_weight.clone();
+        let rppa_updates_correctly = rppa_next.clone()
+            - rppa.clone() * (rppa_challenge - compressed_row_for_permutation_argument);
 
         vec![
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
@@ -441,6 +480,10 @@ impl ExtRamTable {
             formal_derivative_updates_correctly,
             bezout_coefficient_0_is_constructed_correctly,
             bezout_coefficient_1_is_constructed_correctly,
+            clk_di_is_zero_or_inverse_of_clkd,
+            clkd_is_zero_or_inverse_of_clk_di,
+            rpcjd_updates_correctly,
+            rppa_updates_correctly,
         ]
     }
 
@@ -466,17 +509,16 @@ pub struct RamTableChallenges {
     /// The point in which the Bézout relation establishing contiguous memory regions is queried.
     pub bezout_relation_sample_point: XFieldElement,
 
-    /// The weight that combines two consecutive rows in the
-    /// permutation/evaluation column of the op-stack table.
-    pub processor_perm_row_weight: XFieldElement,
+    /// Point of evaluation for the row set equality argument between RAM and Processor Tables
+    pub processor_perm_row_point: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
     pub ramv_weight: XFieldElement,
     pub ramp_weight: XFieldElement,
 
-    /// Weight for accumulating all clock jump differences
-    pub all_clock_jump_differences_weight: XFieldElement,
+    /// Point of evaluation for accumulating all clock jump differences into a running product
+    pub all_clock_jump_differences_point: XFieldElement,
 }
 
 impl ExtensionTable for ExtRamTable {
