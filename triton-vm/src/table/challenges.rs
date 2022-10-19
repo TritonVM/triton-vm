@@ -111,11 +111,11 @@ impl AllChallenges {
 
         let ram_table_challenges = RamTableChallenges {
             bezout_relation_sample_point: weights.pop().unwrap(),
-            processor_perm_row_weight: processor_table_challenges.ram_perm_row_weight,
+            processor_perm_row_point: processor_table_challenges.ram_perm_row_weight,
             clk_weight: processor_table_challenges.ram_table_clk_weight,
             ramv_weight: processor_table_challenges.ram_table_ramv_weight,
             ramp_weight: processor_table_challenges.ram_table_ramp_weight,
-            all_clock_jump_differences_weight: processor_table_challenges
+            all_clock_jump_differences_point: processor_table_challenges
                 .all_clock_jump_differences_weight,
         };
 
