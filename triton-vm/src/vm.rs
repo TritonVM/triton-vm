@@ -256,13 +256,14 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
     use twenty_first::timing_reporter::TimingReporter;
 
-    use crate::instruction::sample_programs;
+    use crate::instruction::{sample_programs, AnInstruction};
     use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
     use crate::table::base_table::{Extendable, InheritsFromTable};
     use crate::table::challenges::AllChallenges;
     use crate::table::extension_table::Evaluable;
-    use crate::table::processor_table::ProcessorTable;
+    use crate::table::processor_table::{self, ProcessorTable};
     use crate::table::table_collection::interpolant_degree;
+    use crate::table::table_column::ProcessorBaseTableColumn;
 
     use super::*;
 
@@ -1027,6 +1028,7 @@ pub mod triton_vm_tests {
                 .enumerate()
             {
                 let evaluation_point = vec![row.clone(), next_row.clone()].concat();
+
                 for (tc_idx, tc_evaluation_result) in ext_processor_table
                     .evaluate_transition_constraints(&evaluation_point)
                     .iter()
@@ -1036,8 +1038,19 @@ pub mod triton_vm_tests {
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
                             {tc_evaluation_result} but must be 0.\n\
-                            Evaluation Point:   {:?}",
-                            evaluation_point,
+                            Instruction: {:?} – opcode: {:?}\n\
+                            Evaluation Point, first half:   {:?}\n\
+                            Evaluation Point, second half:  {:?}",
+                            AnInstruction::<BFieldElement>::try_from(
+                                evaluation_point[ProcessorBaseTableColumn::CI as usize]
+                                    .coefficients[0]
+                                    .value(),
+                            )
+                            .unwrap(),
+                            evaluation_point[ProcessorBaseTableColumn::CI as usize].coefficients[0]
+                                .value(),
+                            evaluation_point[..processor_table::FULL_WIDTH].to_vec(),
+                            evaluation_point[processor_table::FULL_WIDTH..].to_vec()
                         );
                     }
                 }

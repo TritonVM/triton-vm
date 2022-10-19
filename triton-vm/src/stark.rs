@@ -1019,6 +1019,7 @@ impl Stark {
 #[cfg(test)]
 pub(crate) mod triton_stark_tests {
     use num_traits::{One, Zero};
+    use std::ops::Mul;
     use twenty_first::shared_math::ntt::ntt;
     use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::util_types::proof_stream_typed::ProofStream;
@@ -1325,11 +1326,22 @@ pub(crate) mod triton_stark_tests {
             );
 
             for (idx, (arg, _)) in grand_cross_table_arg.into_iter().enumerate() {
-                let (from_table, from_column) = arg.from();
-                let (to_table, to_column) = arg.to();
+                let from = arg
+                    .from()
+                    .iter()
+                    .map(|&(from_table, from_column)| {
+                        ext_table_collection.data(from_table).last().unwrap()[from_column]
+                    })
+                    .fold(XFieldElement::one(), XFieldElement::mul);
+                let to = arg
+                    .to()
+                    .iter()
+                    .map(|&(to_table, to_column)| {
+                        ext_table_collection.data(to_table).last().unwrap()[to_column]
+                    })
+                    .fold(XFieldElement::one(), XFieldElement::mul);
                 assert_eq!(
-                    ext_table_collection.data(from_table).last().unwrap()[from_column],
-                    ext_table_collection.data(to_table).last().unwrap()[to_column],
+                    from, to,
                     "Cross-table argument #{idx} must match for TASM snipped #{code_idx}."
                 );
             }

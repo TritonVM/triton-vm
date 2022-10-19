@@ -1,9 +1,9 @@
 use std::fmt::Display;
 use Ord16::*;
-use Ord7::*;
+use Ord8::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Ord7 {
+pub enum Ord8 {
     #[default]
     IB0,
     IB1,
@@ -12,17 +12,18 @@ pub enum Ord7 {
     IB4,
     IB5,
     IB6,
+    IB7,
 }
 
-impl Display for Ord7 {
+impl Display for Ord8 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n: usize = (*self).into();
         write!(f, "{}", n)
     }
 }
 
-impl From<Ord7> for usize {
-    fn from(n: Ord7) -> Self {
+impl From<Ord8> for usize {
+    fn from(n: Ord8) -> Self {
         match n {
             IB0 => 0,
             IB1 => 1,
@@ -31,11 +32,12 @@ impl From<Ord7> for usize {
             IB4 => 4,
             IB5 => 5,
             IB6 => 6,
+            IB7 => 7,
         }
     }
 }
 
-impl TryFrom<usize> for Ord7 {
+impl TryFrom<usize> for Ord8 {
     type Error = String;
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
@@ -47,6 +49,7 @@ impl TryFrom<usize> for Ord7 {
             4 => Ok(IB4),
             5 => Ok(IB5),
             6 => Ok(IB6),
+            7 => Ok(IB7),
             _ => Err(format!("{} is out of range for Ord6", value)),
         }
     }
