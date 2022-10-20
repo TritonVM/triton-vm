@@ -394,6 +394,22 @@ impl ExtProcessorTable {
             .map(|instr| instruction_deselectors.get(instr))
             .collect_vec();
 
+        println!(
+            "deselector degrees: {:?}",
+            all_instruction_deselectors
+                .iter()
+                .map(MPolynomial::degree)
+                .collect_vec()
+        );
+
+        println!(
+            "instruction constraint degrees: {:?}",
+            all_tc_polys_for_all_instructions
+                .iter()
+                .flat_map(|l| l.iter().map(MPolynomial::degree).collect_vec())
+                .collect_vec()
+        );
+
         let max_number_of_constraints = all_tc_polys_for_all_instructions
             .iter()
             .map(|tc_polys_for_instr| tc_polys_for_instr.len())

@@ -1035,7 +1035,7 @@ pub(crate) mod triton_stark_tests {
     };
     use crate::vm::triton_vm_tests::{
         bigger_tasm_test_programs, property_based_test_programs, small_tasm_test_programs,
-        test_hash_nop_nop_lt,
+        test_hash_nop_nop, test_hash_nop_nop_lt, test_minimal_lt,
     };
     use crate::vm::Program;
 
@@ -1383,8 +1383,12 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
         let zero = XFieldElement::zero();
-        let (_, _, _, ext_tables, _, _) =
-            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
+        // let code = sample_programs::FIBONACCI_LT;
+        // let code_with_input = test_hash_nop_nop_lt();
+        // let code_with_input = test_hash_nop_nop();
+        let code_with_input = test_minimal_lt();
+        let code = code_with_input.source_code;
+        let (_, _, _, ext_tables, _, _) = parse_simulate_pad_extend(&code, &[], &[]);
 
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
@@ -1418,6 +1422,9 @@ pub(crate) mod triton_stark_tests {
             for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
                 let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
                 let evaluated_tcs = table.evaluate_transition_constraints(&evaluation_point);
+                if evaluated_tcs.len() > 70 {
+                    println!("Have constraint 70: {}", evaluated_tcs[70]);
+                }
                 for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
@@ -1449,7 +1456,9 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_test() {
         let co_set_fri_offset = BFieldElement::generator();
-        let code_with_input = test_hash_nop_nop_lt();
+        // let code_with_input = test_hash_nop_nop_lt();
+        // let code_with_input = test_hash_nop_nop();
+        let code_with_input = test_minimal_lt();
         let (stark, mut proof_stream) = parse_simulate_prove(
             &code_with_input.source_code,
             co_set_fri_offset,

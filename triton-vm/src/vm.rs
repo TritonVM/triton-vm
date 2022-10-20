@@ -499,6 +499,14 @@ pub mod triton_vm_tests {
         SourceCodeAndInput::without_input("hash nop hash nop nop hash push 3 push 2 lt assert halt")
     }
 
+    pub fn test_hash_nop_nop() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("hash nop hash nop nop hash push 3 push 1 assert halt")
+    }
+
+    pub fn test_minimal_lt() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 3 push 2 lt assert halt")
+    }
+
     pub fn test_program_for_push_pop_dup_swap_nop() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 1 push 2 pop assert \

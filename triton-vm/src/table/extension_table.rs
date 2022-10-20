@@ -264,20 +264,27 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let omicron_inverse = omicron.inverse();
         let fri_domain_values = fri_domain.domain_values();
 
-        let subgroup_zerofier: Vec<_> = fri_domain_values
+        // X^n - 1
+        let trace_domain_zerofier_codeword: Vec<_> = fri_domain_values
             .par_iter()
             .map(|fri_dom_v| fri_dom_v.mod_pow_u32(padded_height as u32) - one)
             .collect();
-        let subgroup_zerofier_inverse = XFieldElement::batch_inversion(subgroup_zerofier);
-        let zerofier_inverse: Vec<_> = fri_domain_values
+
+        // 1 / (X^n - 1)
+        let trace_domain_zerofier_codeword_inverse =
+            XFieldElement::batch_inversion(trace_domain_zerofier_codeword);
+
+        // (X - o^-1) / (X^n - 1)
+        let zerofier_codeword_inverse: Vec<_> = fri_domain_values
             .into_par_iter()
-            .zip_eq(subgroup_zerofier_inverse.into_par_iter())
+            .zip_eq(trace_domain_zerofier_codeword_inverse.into_par_iter())
             .map(|(fri_dom_v, sub_z_inv)| (fri_dom_v - omicron_inverse) * sub_z_inv)
             .collect();
+
         // the relation between the FRI domain and the omicron domain
         let unit_distance = fri_domain.length / padded_height;
 
-        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
+        let transposed_quotient_codewords: Vec<_> = zerofier_codeword_inverse
             .par_iter()
             .enumerate()
             .map(|(current_row_idx, &z_inv)| {
@@ -296,7 +303,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect();
         let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
-        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "transition");
+        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "transiition");
 
         quotient_codewords
     }
