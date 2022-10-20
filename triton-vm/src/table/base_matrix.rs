@@ -132,7 +132,7 @@ impl BaseMatrices {
                 let previous_clock_jump_difference = prow[usize::from(ClockJumpDifference)];
                 if previous_clock_jump_difference != clk_jump_difference {
                     row[usize::from(UniqueClockJumpDiffDiffInverse)] =
-                        (previous_clock_jump_difference - clk_jump_difference).inverse();
+                        (clk_jump_difference - previous_clock_jump_difference).inverse();
                 }
             }
 
