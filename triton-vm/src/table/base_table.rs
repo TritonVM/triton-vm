@@ -256,7 +256,7 @@ fn disjoint_domain<FF: FiniteField>(domain_length: usize, disjoint_domain: &[FF]
 
 pub trait TableLike<FF>: InheritsFromTable<FF>
 where
-    FF: FiniteField + MulAssign<BFieldElement>,
+    FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
     Standard: Distribution<FF>,
 {
     // Generic functions common to all tables

@@ -248,8 +248,7 @@ pub mod triton_vm_tests {
 
     use num_traits::{One, Zero};
     use rand::rngs::ThreadRng;
-    use rand::Rng;
-    use rand_core::RngCore;
+    use rand::{Rng, RngCore};
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
     use twenty_first::shared_math::other::roundup_npo2;
@@ -375,7 +374,7 @@ pub mod triton_vm_tests {
             ]
             .into_iter()
             .rev()
-            .map(|x| BFieldElement::new(x));
+            .map(BFieldElement::new);
             let actuals = stdout.to_bword_vec();
 
             assert_eq!(expecteds.len(), actuals.len());
@@ -608,11 +607,7 @@ pub mod triton_vm_tests {
             "push {} push {} push {} push {} push {} \
             read_io read_io read_io read_io read_io \
             assert_vector halt",
-            st4.to_string(),
-            st3.to_string(),
-            st2.to_string(),
-            st1.to_string(),
-            st0.to_string(),
+            st4, st3, st2, st1, st0,
         );
 
         SourceCodeAndInput {
@@ -643,7 +638,7 @@ pub mod triton_vm_tests {
 
         let source_code = format!(
             "push {} split read_io eq assert read_io eq assert halt",
-            st0.to_string()
+            st0
         );
 
         SourceCodeAndInput {
@@ -667,7 +662,7 @@ pub mod triton_vm_tests {
 
         let source_code = format!(
             "push {} dup0 read_io eq assert dup0 divine eq assert halt",
-            st0.to_string()
+            st0
         );
 
         SourceCodeAndInput {
@@ -687,10 +682,7 @@ pub mod triton_vm_tests {
         let lsb = st0 % 2;
         let st0_shift_right = st0 >> 1;
 
-        let source_code = format!(
-            "push {} lsb read_io eq assert read_io eq assert halt",
-            st0.to_string()
-        );
+        let source_code = format!("push {} lsb read_io eq assert read_io eq assert halt", st0);
 
         SourceCodeAndInput {
             source_code,
@@ -713,11 +705,7 @@ pub mod triton_vm_tests {
             0_u64.into()
         };
 
-        let source_code = format!(
-            "push {} push {} lt read_io eq assert halt",
-            st1.to_string(),
-            st0.to_string()
-        );
+        let source_code = format!("push {} push {} lt read_io eq assert halt", st1, st0);
 
         SourceCodeAndInput {
             source_code,
@@ -736,11 +724,7 @@ pub mod triton_vm_tests {
         let st0 = rng.next_u32();
         let result = st0.bitand(st1);
 
-        let source_code = format!(
-            "push {} push {} and read_io eq assert halt",
-            st1.to_string(),
-            st0.to_string()
-        );
+        let source_code = format!("push {} push {} and read_io eq assert halt", st1, st0);
 
         SourceCodeAndInput {
             source_code,
@@ -759,11 +743,7 @@ pub mod triton_vm_tests {
         let st0 = rng.next_u32();
         let result = st0.bitxor(st1);
 
-        let source_code = format!(
-            "push {} push {} xor read_io eq assert halt",
-            st1.to_string(),
-            st0.to_string()
-        );
+        let source_code = format!("push {} push {} xor read_io eq assert halt", st1, st0);
 
         SourceCodeAndInput {
             source_code,
@@ -781,7 +761,7 @@ pub mod triton_vm_tests {
         let st0 = rng.next_u32();
         let st0_rev = st0.reverse_bits().into();
 
-        let source_code = format!("push {} reverse read_io eq assert halt", st0.to_string());
+        let source_code = format!("push {} reverse read_io eq assert halt", st0);
 
         SourceCodeAndInput {
             source_code,
@@ -804,11 +784,7 @@ pub mod triton_vm_tests {
             0_u64.into()
         };
 
-        let source_code = format!(
-            "push {} push {} lte read_io eq assert halt",
-            st1.to_string(),
-            st0.to_string()
-        );
+        let source_code = format!("push {} push {} lte read_io eq assert halt", st1, st0);
 
         SourceCodeAndInput {
             source_code,
@@ -830,8 +806,7 @@ pub mod triton_vm_tests {
 
         let source_code = format!(
             "push {} push {} div read_io eq assert read_io eq assert halt",
-            denominator.to_string(),
-            numerator.to_string()
+            denominator, numerator
         );
 
         SourceCodeAndInput {
@@ -845,7 +820,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
 
-        let source_code = format!("push {} is_u32 halt", st0.to_string());
+        let source_code = format!("push {} is_u32 halt", st0);
 
         SourceCodeAndInput::without_input(&source_code)
     }
@@ -856,7 +831,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let source_code = format!("push {} is_u32 halt", st0.to_string());
+        let source_code = format!("push {} is_u32 halt", st0);
         let program = SourceCodeAndInput::without_input(&source_code);
         let _ = program.run();
     }
@@ -982,7 +957,7 @@ pub mod triton_vm_tests {
 
     fn processor_table_constraints_evaluate_to_zero(all_programs: &[SourceCodeAndInput]) {
         let mut timer = TimingReporter::start();
-        for (code_idx, program) in all_programs.into_iter().enumerate() {
+        for (code_idx, program) in all_programs.iter().enumerate() {
             let (aet, err, output) = program.simulate();
 
             println!("\nChecking transition constraints for program number {code_idx}");
@@ -1067,8 +1042,8 @@ pub mod triton_vm_tests {
         air_constraints: &[MPolynomial<BFieldElement>],
     ) {
         for step in 0..table_data.len() - 1 {
-            let register: Vec<BFieldElement> = table_data[step].clone().into();
-            let next_register: Vec<BFieldElement> = table_data[step + 1].clone().into();
+            let register: Vec<BFieldElement> = table_data[step].clone();
+            let next_register: Vec<BFieldElement> = table_data[step + 1].clone();
             let point: Vec<BFieldElement> = vec![register, next_register].concat();
 
             for air_constraint in air_constraints.iter() {
