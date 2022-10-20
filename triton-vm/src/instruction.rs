@@ -1396,7 +1396,7 @@ mod instruction_tests {
         assert_eq!(pgm_expected, pgm_actual);
 
         let pgm_text = sample_programs::PUSH_PUSH_ADD_POP_S;
-        let instructions_2 = parse(&pgm_text).unwrap();
+        let instructions_2 = parse(pgm_text).unwrap();
         let pgm_actual_2 = Program::new(&instructions_2);
 
         assert_eq!(pgm_expected, pgm_actual_2);
@@ -1446,7 +1446,7 @@ mod instruction_tests {
     #[test]
     fn print_all_instructions_and_opcodes() {
         for instr in all_instructions_without_args() {
-            println!("{:>3} {: <10}", instr.opcode(), format!("{instr}"));
+            println!("{:>3} {: <10}", instr.opcode(), instr);
         }
     }
 

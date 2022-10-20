@@ -451,7 +451,7 @@ impl<'pgm> VMState<'pgm> {
         use InstructionBaseTableColumn::*;
         let mut row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
 
-        row[usize::from(Address)] = (self.instruction_pointer as u32).try_into().unwrap();
+        row[usize::from(Address)] = (self.instruction_pointer as u32).into();
         row[usize::from(CI)] = current_instruction.opcode_b();
         row[usize::from(NIA)] = self.nia();
 
@@ -468,7 +468,7 @@ impl<'pgm> VMState<'pgm> {
         let ramp = self.ramp.into();
 
         row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(IP)] = (self.instruction_pointer as u32).try_into().unwrap();
+        row[usize::from(IP)] = (self.instruction_pointer as u32).into();
         row[usize::from(CI)] = current_instruction.opcode_b();
         row[usize::from(NIA)] = self.nia();
         row[usize::from(IB0)] = current_instruction.ib(Ord8::IB0);
@@ -651,8 +651,10 @@ impl<'pgm> VMState<'pgm> {
     fn assert_vector(&self) -> bool {
         for i in 0..DIGEST_LENGTH {
             // Safe as long as 2 * DIGEST_LEN <= OP_STACK_REG_COUNT
-            let lhs = i.try_into().unwrap();
-            let rhs = (i + DIGEST_LENGTH).try_into().unwrap();
+            let lhs = i.try_into().expect("Digest element position (lhs)");
+            let rhs = (i + DIGEST_LENGTH)
+                .try_into()
+                .expect("Digest element position (rhs)");
 
             if self.op_stack.safe_peek(lhs) != self.op_stack.safe_peek(rhs) {
                 return false;
@@ -689,15 +691,23 @@ impl<'pgm> VMState<'pgm> {
         ];
 
         // st10
-        let node_index: u32 = self.op_stack.pop()?.try_into()?;
+        let node_index_elem: BFieldElement = self.op_stack.pop()?;
+        let node_index: u32 = node_index_elem
+            .try_into()
+            .unwrap_or_else(|_| panic!("{:?} is not a u32", node_index_elem));
 
         // nondeterministic guess, flipped
-        let mut sibling_digest = [BFieldElement::zero(); DIGEST_LENGTH];
-        sibling_digest[4] = secret_in.read_elem()?;
-        sibling_digest[3] = secret_in.read_elem()?;
-        sibling_digest[2] = secret_in.read_elem()?;
-        sibling_digest[1] = secret_in.read_elem()?;
-        sibling_digest[0] = secret_in.read_elem()?;
+        let sibling_digest: [BFieldElement; DIGEST_LENGTH] = {
+            let mut tmp = [
+                secret_in.read_elem()?,
+                secret_in.read_elem()?,
+                secret_in.read_elem()?,
+                secret_in.read_elem()?,
+                secret_in.read_elem()?,
+            ];
+            tmp.reverse();
+            tmp
+        };
 
         // least significant bit
         let hv0 = node_index % 2;
@@ -801,9 +811,11 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 mod vm_state_tests {
+
     use twenty_first::shared_math::other::random_elements_array;
+    use twenty_first::shared_math::rescue_prime_digest::Digest;
+    use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
     use twenty_first::util_types::merkle_tree::MerkleTree;
-    use twenty_first::util_types::simple_hasher::Hasher;
 
     use crate::instruction::sample_programs;
     use crate::op_stack::OP_STACK_REG_COUNT;
@@ -814,6 +826,7 @@ mod vm_state_tests {
     // Property: Most instructions increase the instruction pointer by 1.
 
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn tvm_op_stack_big_enough_test() {
         assert!(
             DIGEST_LENGTH <= OP_STACK_REG_COUNT,
@@ -857,7 +870,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 1).unwrap();
+        let last_state = trace.last().unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 
@@ -927,7 +940,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 1).unwrap();
+        let last_state = trace.last().unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 
@@ -935,178 +948,79 @@ mod vm_state_tests {
     fn run_tvm_mt_ap_verify_test() {
         // generate merkle tree
         type H = RescuePrimeRegular;
-        type Digest = <H as Hasher>::Digest;
-        let hasher = H::new();
+
         const NUM_LEAFS: usize = 64;
-        let leafs: [Digest; NUM_LEAFS] = (0..NUM_LEAFS)
-            .map(|_| random_elements_array::<BFieldElement, DIGEST_LENGTH>())
-            .collect_vec()
-            .try_into()
-            .unwrap();
-        let zero_padding = [BFieldElement::zero(); DIGEST_LENGTH];
+        let leafs: [Digest; NUM_LEAFS] = random_elements_array();
+        let zero_padding: Digest = Digest::new([BFieldElement::zero(); DIGEST_LENGTH]);
         let digests = leafs
             .iter()
-            .map(|l| hasher.hash_pair(&zero_padding, l))
+            .map(|leaf| H::hash_pair(&zero_padding, leaf))
             .collect_vec();
         let merkle_tree = MerkleTree::<H>::from_digests(&digests);
-        let root = merkle_tree.get_root();
+        let root: Digest = merkle_tree.get_root();
 
         // generate program
         let program = Program::from_code(sample_programs::MT_AP_VERIFY).unwrap();
         let order: Vec<usize> = (0..5).rev().collect();
-        let (trace, _out, err) = program.run_with_input(
-            &[
-                // number of path tests
-                BFieldElement::new(3),
-                // Merkle root
-                root[order[0]],
-                root[order[1]],
-                root[order[2]],
-                root[order[3]],
-                root[order[4]],
-                // node index 64, leaf index 0
-                BFieldElement::new(64),
-                // value of leaf with index 0
-                leafs[0][order[0]],
-                leafs[0][order[1]],
-                leafs[0][order[2]],
-                leafs[0][order[3]],
-                leafs[0][order[4]],
-                // node index 92, leaf index 28
-                // 92 = 1011100_2
-                // 28 =   11100_2
-                BFieldElement::new(92),
-                // value of leaf with index 28
-                leafs[28][order[0]],
-                leafs[28][order[1]],
-                leafs[28][order[2]],
-                leafs[28][order[3]],
-                leafs[28][order[4]],
-                // node index 119, leaf index 55
-                BFieldElement::new(119),
-                // 119 = 1110111_2
-                // 55  =  110111_2
-                // value of leaf with node 55
-                leafs[55][order[0]],
-                leafs[55][order[1]],
-                leafs[55][order[2]],
-                leafs[55][order[3]],
-                leafs[55][order[4]],
-            ],
-            &[
-                // Merkle Authentication Path 0
-                // Merkle Authentication Path 0 Element 0
-                merkle_tree.get_authentication_path(0)[0][order[0]],
-                merkle_tree.get_authentication_path(0)[0][order[1]],
-                merkle_tree.get_authentication_path(0)[0][order[2]],
-                merkle_tree.get_authentication_path(0)[0][order[3]],
-                merkle_tree.get_authentication_path(0)[0][order[4]],
-                // Merkle Authentication Path 0 Element 1
-                merkle_tree.get_authentication_path(0)[1][order[0]],
-                merkle_tree.get_authentication_path(0)[1][order[1]],
-                merkle_tree.get_authentication_path(0)[1][order[2]],
-                merkle_tree.get_authentication_path(0)[1][order[3]],
-                merkle_tree.get_authentication_path(0)[1][order[4]],
-                // Merkle Authentication Path 0 Element 2
-                merkle_tree.get_authentication_path(0)[2][order[0]],
-                merkle_tree.get_authentication_path(0)[2][order[1]],
-                merkle_tree.get_authentication_path(0)[2][order[2]],
-                merkle_tree.get_authentication_path(0)[2][order[3]],
-                merkle_tree.get_authentication_path(0)[2][order[4]],
-                // Merkle Authentication Path 0 Element 3
-                merkle_tree.get_authentication_path(0)[3][order[0]],
-                merkle_tree.get_authentication_path(0)[3][order[1]],
-                merkle_tree.get_authentication_path(0)[3][order[2]],
-                merkle_tree.get_authentication_path(0)[3][order[3]],
-                merkle_tree.get_authentication_path(0)[3][order[4]],
-                // Merkle Authentication Path 0 Element 4
-                merkle_tree.get_authentication_path(0)[4][order[0]],
-                merkle_tree.get_authentication_path(0)[4][order[1]],
-                merkle_tree.get_authentication_path(0)[4][order[2]],
-                merkle_tree.get_authentication_path(0)[4][order[3]],
-                merkle_tree.get_authentication_path(0)[4][order[4]],
-                // Merkle Authentication Path 0 Element 5
-                merkle_tree.get_authentication_path(0)[5][order[0]],
-                merkle_tree.get_authentication_path(0)[5][order[1]],
-                merkle_tree.get_authentication_path(0)[5][order[2]],
-                merkle_tree.get_authentication_path(0)[5][order[3]],
-                merkle_tree.get_authentication_path(0)[5][order[4]],
-                // Merkle Authentication Path 1
-                // Merkle Authentication Path 1 Element 0
-                merkle_tree.get_authentication_path(28)[0][order[0]],
-                merkle_tree.get_authentication_path(28)[0][order[1]],
-                merkle_tree.get_authentication_path(28)[0][order[2]],
-                merkle_tree.get_authentication_path(28)[0][order[3]],
-                merkle_tree.get_authentication_path(28)[0][order[4]],
-                // Merkle Authentication Path 1 Element 1
-                merkle_tree.get_authentication_path(28)[1][order[0]],
-                merkle_tree.get_authentication_path(28)[1][order[1]],
-                merkle_tree.get_authentication_path(28)[1][order[2]],
-                merkle_tree.get_authentication_path(28)[1][order[3]],
-                merkle_tree.get_authentication_path(28)[1][order[4]],
-                // Merkle Authentication Path 1 Element 2
-                merkle_tree.get_authentication_path(28)[2][order[0]],
-                merkle_tree.get_authentication_path(28)[2][order[1]],
-                merkle_tree.get_authentication_path(28)[2][order[2]],
-                merkle_tree.get_authentication_path(28)[2][order[3]],
-                merkle_tree.get_authentication_path(28)[2][order[4]],
-                // Merkle Authentication Path 1 Element 3
-                merkle_tree.get_authentication_path(28)[3][order[0]],
-                merkle_tree.get_authentication_path(28)[3][order[1]],
-                merkle_tree.get_authentication_path(28)[3][order[2]],
-                merkle_tree.get_authentication_path(28)[3][order[3]],
-                merkle_tree.get_authentication_path(28)[3][order[4]],
-                // Merkle Authentication Path 1 Element 4
-                merkle_tree.get_authentication_path(28)[4][order[0]],
-                merkle_tree.get_authentication_path(28)[4][order[1]],
-                merkle_tree.get_authentication_path(28)[4][order[2]],
-                merkle_tree.get_authentication_path(28)[4][order[3]],
-                merkle_tree.get_authentication_path(28)[4][order[4]],
-                // Merkle Authentication Path 1 Element 5
-                merkle_tree.get_authentication_path(28)[5][order[0]],
-                merkle_tree.get_authentication_path(28)[5][order[1]],
-                merkle_tree.get_authentication_path(28)[5][order[2]],
-                merkle_tree.get_authentication_path(28)[5][order[3]],
-                merkle_tree.get_authentication_path(28)[5][order[4]],
-                // Merkle Authentication Path 2
-                // Merkle Authentication Path 2 Element 0
-                merkle_tree.get_authentication_path(55)[0][order[0]],
-                merkle_tree.get_authentication_path(55)[0][order[1]],
-                merkle_tree.get_authentication_path(55)[0][order[2]],
-                merkle_tree.get_authentication_path(55)[0][order[3]],
-                merkle_tree.get_authentication_path(55)[0][order[4]],
-                // Merkle Authentication Path 2 Element 1
-                merkle_tree.get_authentication_path(55)[1][order[0]],
-                merkle_tree.get_authentication_path(55)[1][order[1]],
-                merkle_tree.get_authentication_path(55)[1][order[2]],
-                merkle_tree.get_authentication_path(55)[1][order[3]],
-                merkle_tree.get_authentication_path(55)[1][order[4]],
-                // Merkle Authentication Path 2 Element 2
-                merkle_tree.get_authentication_path(55)[2][order[0]],
-                merkle_tree.get_authentication_path(55)[2][order[1]],
-                merkle_tree.get_authentication_path(55)[2][order[2]],
-                merkle_tree.get_authentication_path(55)[2][order[3]],
-                merkle_tree.get_authentication_path(55)[2][order[4]],
-                // Merkle Authentication Path 2 Element 3
-                merkle_tree.get_authentication_path(55)[3][order[0]],
-                merkle_tree.get_authentication_path(55)[3][order[1]],
-                merkle_tree.get_authentication_path(55)[3][order[2]],
-                merkle_tree.get_authentication_path(55)[3][order[3]],
-                merkle_tree.get_authentication_path(55)[3][order[4]],
-                // Merkle Authentication Path 2 Element 4
-                merkle_tree.get_authentication_path(55)[4][order[0]],
-                merkle_tree.get_authentication_path(55)[4][order[1]],
-                merkle_tree.get_authentication_path(55)[4][order[2]],
-                merkle_tree.get_authentication_path(55)[4][order[3]],
-                merkle_tree.get_authentication_path(55)[4][order[4]],
-                // Merkle Authentication Path 2 Element 5
-                merkle_tree.get_authentication_path(55)[5][order[0]],
-                merkle_tree.get_authentication_path(55)[5][order[1]],
-                merkle_tree.get_authentication_path(55)[5][order[2]],
-                merkle_tree.get_authentication_path(55)[5][order[3]],
-                merkle_tree.get_authentication_path(55)[5][order[4]],
-            ],
-        );
+
+        let selected_leaf_indices = [0, 28, 55];
+
+        let secret_input: Vec<_> = selected_leaf_indices
+            .iter()
+            .flat_map(|leaf_index| {
+                let auth_path = merkle_tree.get_authentication_path(*leaf_index);
+                let selected_values: Vec<_> = (0..6)
+                    .flat_map(|i| {
+                        let values = auth_path[i].values();
+                        let reordered_values: Vec<BFieldElement> =
+                            order.iter().map(|ord| values[*ord]).collect();
+                        reordered_values
+                    })
+                    .collect();
+                selected_values
+            })
+            .collect();
+
+        let input = [
+            // number of path tests
+            BFieldElement::new(3),
+            // Merkle root
+            root.values()[order[0]],
+            root.values()[order[1]],
+            root.values()[order[2]],
+            root.values()[order[3]],
+            root.values()[order[4]],
+            // node index 64, leaf index 0
+            BFieldElement::new(64),
+            // value of leaf with index 0
+            leafs[0].values()[order[0]],
+            leafs[0].values()[order[1]],
+            leafs[0].values()[order[2]],
+            leafs[0].values()[order[3]],
+            leafs[0].values()[order[4]],
+            // node index 92, leaf index 28
+            // 92 = 1011100_2
+            // 28 =   11100_2
+            BFieldElement::new(92),
+            // value of leaf with index 28
+            leafs[28].values()[order[0]],
+            leafs[28].values()[order[1]],
+            leafs[28].values()[order[2]],
+            leafs[28].values()[order[3]],
+            leafs[28].values()[order[4]],
+            // node index 119, leaf index 55
+            BFieldElement::new(119),
+            // 119 = 1110111_2
+            // 55  =  110111_2
+            // value of leaf with node 55
+            leafs[55].values()[order[0]],
+            leafs[55].values()[order[1]],
+            leafs[55].values()[order[2]],
+            leafs[55].values()[order[3]],
+            leafs[55].values()[order[4]],
+        ];
+
+        let (trace, _out, err) = program.run_with_input(&input, &secret_input);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -1116,7 +1030,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 1).unwrap();
+        let last_state = trace.last().unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 
@@ -1143,7 +1057,7 @@ mod vm_state_tests {
         }
 
         // check for graceful termination
-        let last_state = trace.get(trace.len() - 1).unwrap();
+        let last_state = trace.last().unwrap();
         assert_eq!(last_state.current_instruction().unwrap(), Halt);
     }
 

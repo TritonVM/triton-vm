@@ -10,6 +10,7 @@ use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_regular::{
     ALPHA, CAPACITY, DIGEST_LENGTH, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
 };
+use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::ModPowU64;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -204,7 +205,7 @@ impl Evaluable for ExtHashTable {
             .collect_vec();
         let before_sbox = before_mds
             .iter()
-            .map(|c| (*c).mod_pow_u64(ALPHA))
+            .map(|c| (*c).mod_pow_u32(ALPHA as u32))
             .collect_vec();
 
         // equate left hand side to right hand side
@@ -431,7 +432,10 @@ impl ExtHashTable {
         let current_state: Vec<MPolynomial<XFieldElement>> = (0..STATE_SIZE)
             .map(|i| variables[usize::from(STATE0) + i].clone())
             .collect_vec();
-        let after_sbox = current_state.iter().map(|c| c.pow(ALPHA)).collect_vec();
+        let after_sbox = current_state
+            .iter()
+            .map(|c| c.pow(ALPHA as u8))
+            .collect_vec();
         let after_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
@@ -463,7 +467,7 @@ impl ExtHashTable {
                     .fold(constant(0), MPolynomial::add)
             })
             .collect_vec();
-        let before_sbox = before_mds.iter().map(|c| c.pow(ALPHA)).collect_vec();
+        let before_sbox = before_mds.iter().map(|c| c.pow(ALPHA as u8)).collect_vec();
 
         // equate left hand side to right hand side
         // (and ignore if padding row)
@@ -729,7 +733,7 @@ mod constraint_tests {
 
         for (i, row) in ext_hash_table.data().iter().enumerate() {
             for (j, v) in ext_hash_table
-                .evaluate_consistency_constraints(&row)
+                .evaluate_consistency_constraints(row)
                 .iter()
                 .enumerate()
             {

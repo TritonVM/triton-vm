@@ -140,24 +140,25 @@ mod op_stack_test {
         assert_eq!(op_stack.osp().value() as usize, op_stack.height());
 
         // verify that all accessible items are different
-        let mut container = vec![];
-        container.push(op_stack.st(Ord16::ST0));
-        container.push(op_stack.st(Ord16::ST1));
-        container.push(op_stack.st(Ord16::ST2));
-        container.push(op_stack.st(Ord16::ST3));
-        container.push(op_stack.st(Ord16::ST4));
-        container.push(op_stack.st(Ord16::ST5));
-        container.push(op_stack.st(Ord16::ST6));
-        container.push(op_stack.st(Ord16::ST7));
-        container.push(op_stack.st(Ord16::ST8));
-        container.push(op_stack.st(Ord16::ST9));
-        container.push(op_stack.st(Ord16::ST10));
-        container.push(op_stack.st(Ord16::ST11));
-        container.push(op_stack.st(Ord16::ST12));
-        container.push(op_stack.st(Ord16::ST13));
-        container.push(op_stack.st(Ord16::ST14));
-        container.push(op_stack.st(Ord16::ST15));
-        container.push(op_stack.osv());
+        let mut container = vec![
+            op_stack.st(Ord16::ST0),
+            op_stack.st(Ord16::ST1),
+            op_stack.st(Ord16::ST2),
+            op_stack.st(Ord16::ST3),
+            op_stack.st(Ord16::ST4),
+            op_stack.st(Ord16::ST5),
+            op_stack.st(Ord16::ST6),
+            op_stack.st(Ord16::ST7),
+            op_stack.st(Ord16::ST8),
+            op_stack.st(Ord16::ST9),
+            op_stack.st(Ord16::ST10),
+            op_stack.st(Ord16::ST11),
+            op_stack.st(Ord16::ST12),
+            op_stack.st(Ord16::ST13),
+            op_stack.st(Ord16::ST14),
+            op_stack.st(Ord16::ST15),
+            op_stack.osv(),
+        ];
         let len_before = container.len();
         container.sort_by_key(|a| a.value());
         container.dedup();

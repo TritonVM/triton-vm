@@ -1,24 +1,32 @@
+use std::marker::PhantomData;
 use std::ops::MulAssign;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::traits::{FiniteField, ModPowU32};
 
-#[derive(Debug, Clone)]
-pub struct FriDomain<FF>
-where
-    FF: FiniteField,
-{
-    pub offset: FF,
-    pub omega: FF,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FriDomain<FF> {
+    pub offset: BFieldElement,
+    pub omega: BFieldElement,
     pub length: usize,
+    _field: PhantomData<FF>,
 }
 
 impl<FF> FriDomain<FF>
 where
-    FF: FiniteField + MulAssign<BFieldElement>,
+    FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
 {
+    pub fn new(offset: BFieldElement, omega: BFieldElement, length: usize) -> Self {
+        let _field = PhantomData;
+        Self {
+            offset,
+            omega,
+            length,
+            _field,
+        }
+    }
+
     pub fn evaluate(&self, polynomial: &Polynomial<FF>) -> Vec<FF> {
         polynomial.fast_coset_evaluate(&self.offset, self.omega, self.length)
     }
@@ -28,7 +36,8 @@ where
     }
 
     pub fn domain_value(&self, index: u32) -> FF {
-        self.omega.mod_pow_u32(index) * self.offset
+        let domain_value: BFieldElement = self.omega.mod_pow_u32(index) * self.offset;
+        domain_value.into()
     }
 
     pub fn domain_values(&self) -> Vec<FF> {
@@ -36,7 +45,12 @@ where
         let mut acc = FF::one();
 
         for _ in 0..self.length {
-            res.push(acc * self.offset);
+            let domain_value = {
+                let mut tmp = acc;
+                tmp *= self.offset;
+                tmp
+            };
+            res.push(domain_value);
             acc *= self.omega;
         }
 
@@ -44,51 +58,55 @@ where
     }
 }
 
-pub fn lift_domain(domain: &FriDomain<BFieldElement>) -> FriDomain<XFieldElement> {
-    FriDomain {
-        offset: domain.offset.lift(),
-        omega: domain.omega.lift(),
-        length: domain.length,
-    }
-}
-
 #[cfg(test)]
 mod fri_domain_tests {
     use super::*;
+    use itertools::Itertools;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
     use twenty_first::shared_math::x_field_element::XFieldElement;
 
     #[test]
-    fn x_values_test() {
+    fn domain_values_test() {
         // f(x) = x^3
         let x_squared_coefficients = vec![0u64.into(), 0u64.into(), 0u64.into(), 1u64.into()];
         let poly = Polynomial::<BFieldElement>::new(x_squared_coefficients.clone());
 
         for order in [4, 8, 32] {
             let omega = BFieldElement::primitive_root_of_unity(order).unwrap();
-
             let offset = BFieldElement::generator();
-            let b_domain = FriDomain {
-                offset,
-                omega,
-                length: order as usize,
-            };
+            let b_domain = FriDomain::<BFieldElement>::new(offset, omega, order as usize);
+            let x_domain = FriDomain::<XFieldElement>::new(offset, omega, order as usize);
 
-            let expected_x_values: Vec<BFieldElement> =
+            let expected_b_values: Vec<BFieldElement> =
                 (0..order).map(|i| offset * omega.mod_pow(i)).collect();
+            let actual_b_values_1 = b_domain.domain_values();
+            let actual_b_values_2 = (0..order as u32)
+                .map(|i| b_domain.domain_value(i))
+                .collect_vec();
+            assert_eq!(
+                expected_b_values, actual_b_values_1,
+                "domain_values() generates the FRI domain BFieldElement values"
+            );
+            assert_eq!(
+                expected_b_values, actual_b_values_2,
+                "domain_value() generates the given FRI domain BFieldElement value"
+            );
 
-            let actual_x_values = b_domain.domain_values();
-            assert_eq!(expected_x_values.len(), actual_x_values.len());
-            assert_eq!(expected_x_values, actual_x_values);
-
-            // Verify that `x_value` also returns expected values
-            for i in 0..order {
-                assert_eq!(
-                    expected_x_values[i as usize],
-                    b_domain.domain_value(i as u32)
-                );
-            }
+            let expected_x_values: Vec<XFieldElement> =
+                expected_b_values.iter().map(|bfe| bfe.lift()).collect();
+            let actual_x_values_1 = x_domain.domain_values();
+            let actual_x_values_2 = (0..order as u32)
+                .map(|i| x_domain.domain_value(i))
+                .collect_vec();
+            assert_eq!(
+                expected_x_values, actual_x_values_1,
+                "domain_values() generates the FRI domain XFieldElement values"
+            );
+            assert_eq!(
+                expected_x_values, actual_x_values_2,
+                "domain_value() generates the given FRI domain XFieldElement values"
+            );
 
             let values = b_domain.evaluate(&poly);
             assert_ne!(values, x_squared_coefficients);
@@ -109,7 +127,6 @@ mod fri_domain_tests {
                 .into_iter()
                 .map(|x| x.lift())
                 .collect();
-            let x_domain = lift_domain(&b_domain);
             let xpol = Polynomial::new(x_squared_coefficients_lifted.clone());
 
             let x_field_x_values = x_domain.evaluate(&xpol);

@@ -2429,7 +2429,7 @@ mod constraint_polynomial_tests {
                 );
                 assert_eq!(
                     XFieldElement::zero(),
-                    poly.evaluate(&test_row),
+                    poly.evaluate(test_row),
                     "For case {}, transition constraint polynomial with index {} must evaluate to zero.",
                     case_idx,
                     poly_idx,
