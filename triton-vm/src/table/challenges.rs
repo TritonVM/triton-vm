@@ -68,8 +68,8 @@ impl AllChallenges {
                 .try_into()
                 .unwrap(),
 
-            unique_clock_jump_differences_weight: weights.pop().unwrap(),
-            all_clock_jump_differences_weight: weights.pop().unwrap(),
+            unique_clock_jump_differences_eval_point: weights.pop().unwrap(),
+            all_clock_jump_differences_eval_point: weights.pop().unwrap(),
         };
 
         let program_table_challenges = ProgramTableChallenges {
@@ -106,7 +106,7 @@ impl AllChallenges {
             osv_weight: processor_table_challenges.op_stack_table_osv_weight,
             osp_weight: processor_table_challenges.op_stack_table_osp_weight,
             all_clock_jump_differences_weight: processor_table_challenges
-                .all_clock_jump_differences_weight,
+                .all_clock_jump_differences_eval_point,
         };
 
         let ram_table_challenges = RamTableChallenges {
@@ -116,7 +116,7 @@ impl AllChallenges {
             ramv_weight: processor_table_challenges.ram_table_ramv_weight,
             ramp_weight: processor_table_challenges.ram_table_ramp_weight,
             all_clock_jump_differences_point: processor_table_challenges
-                .all_clock_jump_differences_weight,
+                .all_clock_jump_differences_eval_point,
         };
 
         let jump_stack_table_challenges = JumpStackTableChallenges {
@@ -127,7 +127,7 @@ impl AllChallenges {
             jso_weight: processor_table_challenges.jump_stack_table_jso_weight,
             jsd_weight: processor_table_challenges.jump_stack_table_jsd_weight,
             all_clock_jump_differences_weight: processor_table_challenges
-                .all_clock_jump_differences_weight,
+                .all_clock_jump_differences_eval_point,
         };
 
         let hash_table_challenges = HashTableChallenges {

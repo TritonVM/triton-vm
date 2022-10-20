@@ -7,6 +7,7 @@ use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
@@ -224,25 +225,34 @@ impl ProcessorTable {
             }
             extension_row[usize::from(FromHashTableEvalArg)] = from_hash_table_running_evaluation;
 
-            // clock jump difference
+            // Clock Jump Difference
             let current_clock_jump_difference = row[usize::from(ClockJumpDifference)].lift();
             if !current_clock_jump_difference.is_zero() {
-                all_clock_jump_differences_running_product *=
-                    challenges.all_clock_jump_differences_weight - current_clock_jump_difference;
+                all_clock_jump_differences_running_product *= challenges
+                    .all_clock_jump_differences_eval_point
+                    - current_clock_jump_difference;
             }
             extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
                 all_clock_jump_differences_running_product;
 
             if let Some(prow) = previous_row {
-                if prow[usize::from(ClockJumpDifference)].lift() != current_clock_jump_difference
+                let previous_clock_jump_difference = prow[usize::from(ClockJumpDifference)].lift();
+                if previous_clock_jump_difference != current_clock_jump_difference
                     && !current_clock_jump_difference.is_zero()
                 {
+                    extension_row[usize::from(UniqueClockJumpDiffDiffInverse)] =
+                        (current_clock_jump_difference - previous_clock_jump_difference).inverse();
                     unique_clock_jump_differences.push(current_clock_jump_difference);
                     unique_clock_jump_differences_running_evaluation =
                         unique_clock_jump_differences_running_evaluation
-                            * challenges.unique_clock_jump_differences_weight
+                            * challenges.unique_clock_jump_differences_eval_point
                             + current_clock_jump_difference;
                 }
+            } else {
+                unique_clock_jump_differences.push(current_clock_jump_difference);
+                unique_clock_jump_differences_running_evaluation = challenges
+                    .unique_clock_jump_differences_eval_point
+                    + current_clock_jump_difference;
             }
             extension_row[usize::from(UniqueClockJumpDifferencesEvalArg)] =
                 unique_clock_jump_differences_running_evaluation;
@@ -261,13 +271,14 @@ impl ProcessorTable {
             );
         }
 
-        // second pass over Processor Table to select all unique clock jump differences
+        // second pass over Processor Table to compute evaluation over
+        // all relevant clock cycles
         for extension_row in extension_matrix.iter_mut() {
-            let potentially_selected_clk_cycle = extension_row[usize::from(CLK)];
-            if unique_clock_jump_differences.contains(&potentially_selected_clk_cycle) {
+            let current_clk = extension_row[usize::from(CLK)];
+            if unique_clock_jump_differences.contains(&current_clk) {
                 selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
-                    * challenges.unique_clock_jump_differences_weight
-                    + potentially_selected_clk_cycle;
+                    * challenges.unique_clock_jump_differences_eval_point
+                    + current_clk;
             }
             extension_row[usize::from(SelectedClockCyclesEvalArg)] =
                 selected_clock_cycles_running_evaluation;
@@ -450,8 +461,8 @@ pub struct ProcessorTableChallenges {
     pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
     pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LENGTH],
 
-    pub unique_clock_jump_differences_weight: XFieldElement,
-    pub all_clock_jump_differences_weight: XFieldElement,
+    pub unique_clock_jump_differences_eval_point: XFieldElement,
+    pub all_clock_jump_differences_eval_point: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
@@ -515,7 +526,7 @@ impl TableLike<XFieldElement> for ExtProcessorTable {}
 
 impl ExtProcessorTable {
     fn ext_initial_constraints(
-        _challenges: &ProcessorTableChallenges,
+        challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
 
@@ -627,7 +638,7 @@ impl ExtProcessorTable {
         // The operational stack pointer `osp` is 16.
         //
         // $osp = 16  ⇒  osp - 16 == 0  ⇒  osp - 16$
-        let osp_is_16 = factory.osp() - factory.constant(16);
+        let osp_is_16 = factory.osp() - SingleRowConstraints::constant_from_i32(16);
 
         // The operational stack value `osv` is 0.
         //
@@ -644,11 +655,66 @@ impl ExtProcessorTable {
         // $ramp = 0  ⇒  ramp - 0 = 0  ⇒  ramp$
         let ramp_is_0 = factory.ramp();
 
+        // The inverse of clock jump difference with multiplicity
+        // invm is the inverse-or-zero of the the clock jump
+        // difference cjd.
+        let invm_is_cjd_inverse = factory.cjd() * factory.invm() - factory.one();
+        let invm_is_zero_or_cjd_inverse = factory.invm() * invm_is_cjd_inverse.clone();
+        let cjd_is_zero_or_invm_inverse = factory.cjd() * invm_is_cjd_inverse;
+
+        // The running evaluation of relevant clock cycles `rer` starts
+        //  with one (or whatever the relevant argument defines as the
+        // correct initial).
+        let rer_starts_correctly =
+            factory.rer() - SingleRowConstraints::constant_from_xfe(EvalArg::default_initial());
+
+        // The running evaluation of unique clock jump differences
+        // starts off having applied one evaluation step with the clock
+        // jump difference.
+        let beta = SingleRowConstraints::constant_from_xfe(
+            challenges.unique_clock_jump_differences_eval_point,
+        );
+        let reu_starts_correctly = factory.reu() - beta - factory.cjd();
+
+        // The running product for all clock jump differences
+        // starts off having accumulated the first factor.
+        let rpm_starts_correctly = factory.rpm()
+            - SingleRowConstraints::constant_from_xfe(
+                challenges.all_clock_jump_differences_eval_point,
+            )
+            + factory.cjd();
+
         vec![
-            clk_is_0, ip_is_0, jsp_is_0, jso_is_0, jsd_is_0, st0_is_0, st1_is_0, st2_is_0,
-            st3_is_0, st4_is_0, st5_is_0, st6_is_0, st7_is_0, st8_is_0, st9_is_0, st10_is_0,
-            st11_is_0, st12_is_0, st13_is_0, st14_is_0, st15_is_0, osp_is_16, osv_is_0, ramv_is_0,
+            clk_is_0,
+            ip_is_0,
+            jsp_is_0,
+            jso_is_0,
+            jsd_is_0,
+            st0_is_0,
+            st1_is_0,
+            st2_is_0,
+            st3_is_0,
+            st4_is_0,
+            st5_is_0,
+            st6_is_0,
+            st7_is_0,
+            st8_is_0,
+            st9_is_0,
+            st10_is_0,
+            st11_is_0,
+            st12_is_0,
+            st13_is_0,
+            st14_is_0,
+            st15_is_0,
+            osp_is_16,
+            osv_is_0,
+            ramv_is_0,
             ramp_is_0,
+            invm_is_zero_or_cjd_inverse,
+            cjd_is_zero_or_invm_inverse,
+            rer_starts_correctly,
+            reu_starts_correctly,
+            rpm_starts_correctly,
         ]
     }
 
@@ -663,13 +729,13 @@ impl ExtProcessorTable {
         // $ci - (2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0) = 0$
         let ci_corresponds_to_ib0_thru_ib7 = {
             let ib_composition = one.clone() * factory.ib0()
-                + factory.constant(2) * factory.ib1()
-                + factory.constant(4) * factory.ib2()
-                + factory.constant(8) * factory.ib3()
-                + factory.constant(16) * factory.ib4()
-                + factory.constant(32) * factory.ib5()
-                + factory.constant(64) * factory.ib6()
-                + factory.constant(128) * factory.ib7();
+                + SingleRowConstraints::constant_from_i32(2) * factory.ib1()
+                + SingleRowConstraints::constant_from_i32(4) * factory.ib2()
+                + SingleRowConstraints::constant_from_i32(8) * factory.ib3()
+                + SingleRowConstraints::constant_from_i32(16) * factory.ib4()
+                + SingleRowConstraints::constant_from_i32(32) * factory.ib5()
+                + SingleRowConstraints::constant_from_i32(64) * factory.ib6()
+                + SingleRowConstraints::constant_from_i32(128) * factory.ib7();
 
             factory.ci() - ib_composition
         };
@@ -691,6 +757,13 @@ impl ExtProcessorTable {
         let ib7 = factory.ib7();
         let ib7_is_bit = ib7.clone() * (ib7 - one);
 
+        // The inverse of clock jump difference with multiplicity
+        // `invm` is the inverse-or-zero of the the clock jump
+        // difference `cjd`.
+        let invm_is_cjd_inverse = factory.invm() * factory.cjd() - factory.one();
+        let invm_is_zero_or_cjd_inverse = factory.invm() * invm_is_cjd_inverse.clone();
+        let cjd_is_zero_or_invm_inverse = factory.cjd() * invm_is_cjd_inverse;
+
         vec![
             ib0_is_bit,
             ib1_is_bit,
@@ -701,11 +774,13 @@ impl ExtProcessorTable {
             ib6_is_bit,
             ib7_is_bit,
             ci_corresponds_to_ib0_thru_ib7,
+            invm_is_zero_or_cjd_inverse,
+            cjd_is_zero_or_invm_inverse,
         ]
     }
 
     fn ext_transition_constraints(
-        _challenges: &ProcessorTableChallenges,
+        challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = RowPairConstraints::default();
 
@@ -750,6 +825,11 @@ impl ExtProcessorTable {
             all_instruction_transition_constraints,
         );
 
+        println!(
+            "length of transition constraints now: {}",
+            transition_constraints.len()
+        );
+
         // constraints common to all instructions
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
 
@@ -780,6 +860,60 @@ impl ExtProcessorTable {
             );
         }
 
+        // constraints related to clock jump difference argument
+
+        // The unique inverse column `invu` holds the inverse-or-zero
+        // of the difference of consecutive `cjd`'s.
+        // invu' = (cjd' - cjd)^(p-2)
+        let cjdd = factory.cjd_next() - factory.cjd();
+        let invu_next_is_cjdd_inverse = factory.invu_next() * cjdd.clone() - factory.one();
+        let invu_next_is_zero_or_cjdd_inverse =
+            factory.invu_next() * invu_next_is_cjdd_inverse.clone();
+        let cjdd_is_zero_if_invu_inverse = cjdd.clone() * invu_next_is_cjdd_inverse.clone();
+
+        // The running product `rpm` of cjd's with multiplicities
+        // accumulates a factor α - cjd' in every row, provided that
+        // `cjd'` is nonzero.
+        // cjd' · (rpm' - rpm · (α - cjd')) + (cjd' · invm' - 1) · (rpm' - rpm)
+        let alpha =
+            RowPairConstraints::constant_from_xfe(challenges.all_clock_jump_differences_eval_point);
+        let rpm_updates_correctly = factory.cjd_next()
+            * (factory.rpm_next() - factory.rpm() * (alpha - factory.cjd_next()))
+            + (factory.cjd_next() * factory.invm_next() - factory.one())
+                * (factory.rpm_next() - factory.rpm());
+
+        // The running evaluation `reu` of unique `cjd`'s is updated
+        // relative to evaluation point β whenever the difference of
+        // `cjd`'s is nonzero *and* `cjd'` is nonzero.
+        // `(1 - (cjd' - cjd) · invu) · (reu' - reu)
+        //  + · (1 - cjd' · invm) · (reu' - reu)
+        //  + cjd' · (cjd' - cjd) · (reu' - β · reu - cjd')`
+        let beta = RowPairConstraints::constant_from_xfe(
+            challenges.unique_clock_jump_differences_eval_point,
+        );
+        let reu_updates_correctly = invu_next_is_cjdd_inverse.clone()
+            * (factory.reu_next() - factory.reu())
+            + (factory.one() - factory.invm_next() * factory.cjd_next())
+                * (factory.reu_next() - factory.reu())
+            + factory.cjd_next()
+                * cjdd.clone()
+                * (factory.reu_next() - beta.clone() * factory.reu() - factory.cjd_next());
+
+        // The running evaluation `rer` of relevant clock cycles is
+        // updated relative to evaluation point β or not at all.
+        // (rer' - rer · β - clk') · (rer' - rer)
+        let rer_updates_correctly =
+            (factory.rer_next() - factory.rer() * beta - factory.clk_next())
+                * (factory.rer_next() - factory.rer());
+
+        transition_constraints.append(&mut vec![
+            invu_next_is_zero_or_cjdd_inverse * factory.cjd_next(), // index 70
+            cjdd_is_zero_if_invu_inverse * factory.cjd_next(),
+            rpm_updates_correctly,
+            reu_updates_correctly,
+            rer_updates_correctly,
+        ]);
+
         transition_constraints
     }
 
@@ -793,7 +927,11 @@ impl ExtProcessorTable {
         // $ci - halt = 0  =>  ci - 0 = 0  =>  ci$
         let last_ci_is_halt = factory.ci();
 
-        vec![last_ci_is_halt]
+        // In the last row, the completed evaluations of a) relevant
+        // clock cycles, and b) unique clock jump differences are equal.
+        let rer_equals_reu = factory.rer() - factory.reu();
+
+        vec![last_ci_is_halt, rer_equals_reu]
     }
 }
 
@@ -813,17 +951,24 @@ impl Default for SingleRowConstraints {
 }
 
 impl SingleRowConstraints {
-    // FIXME: This does not need a self reference.
-    pub fn constant(&self, constant: u32) -> MPolynomial<XFieldElement> {
+    pub fn constant_from_xfe(constant: XFieldElement) -> MPolynomial<XFieldElement> {
         MPolynomial::from_constant(constant.into(), FULL_WIDTH)
+    }
+    pub fn constant_from_i32(constant: i32) -> MPolynomial<XFieldElement> {
+        let bfe = if constant < 0 {
+            BFieldElement::new(BFieldElement::QUOTIENT - ((-constant) as u64))
+        } else {
+            BFieldElement::new(constant as u64)
+        };
+        MPolynomial::from_constant(bfe.lift(), FULL_WIDTH)
     }
 
     pub fn one(&self) -> MPolynomial<XFieldElement> {
-        self.constant(1)
+        SingleRowConstraints::constant_from_i32(1)
     }
 
     pub fn two(&self) -> MPolynomial<XFieldElement> {
-        self.constant(2)
+        SingleRowConstraints::constant_from_i32(2)
     }
 
     pub fn clk(&self) -> MPolynomial<XFieldElement> {
@@ -981,6 +1126,30 @@ impl SingleRowConstraints {
     pub fn ramp(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(RAMP)].clone()
     }
+
+    pub fn cjd(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(ClockJumpDifference)].clone()
+    }
+
+    pub fn invm(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(ClockJumpDifferenceInverse)].clone()
+    }
+
+    pub fn invu(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+    }
+
+    pub fn rer(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(SelectedClockCyclesEvalArg)].clone()
+    }
+
+    pub fn reu(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+    }
+
+    pub fn rpm(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -999,6 +1168,10 @@ impl Default for RowPairConstraints {
 }
 
 impl RowPairConstraints {
+    fn constant_from_xfe(constant: XFieldElement) -> MPolynomial<XFieldElement> {
+        MPolynomial::from_constant(constant, 2 * FULL_WIDTH)
+    }
+
     /// ## The cycle counter (`clk`) always increases by one
     ///
     /// $$
@@ -1936,6 +2109,30 @@ impl RowPairConstraints {
         self.variables[usize::from(RAMV)].clone()
     }
 
+    pub fn cjd(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(ClockJumpDifference)].clone()
+    }
+
+    pub fn invm(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(ClockJumpDifferenceInverse)].clone()
+    }
+
+    pub fn invu(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+    }
+
+    pub fn rer(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(SelectedClockCyclesEvalArg)].clone()
+    }
+
+    pub fn reu(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+    }
+
+    pub fn rpm(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
+    }
+
     // Property: All polynomial variables that contain '_next' have the same
     // variable position / value as the one without '_next', +/- FULL_WIDTH.
     pub fn clk_next(&self) -> MPolynomial<XFieldElement> {
@@ -2040,6 +2237,30 @@ impl RowPairConstraints {
 
     pub fn ramv_next(&self) -> MPolynomial<XFieldElement> {
         self.variables[FULL_WIDTH + usize::from(RAMV)].clone()
+    }
+
+    pub fn cjd_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(ClockJumpDifference)].clone()
+    }
+
+    pub fn invm_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(ClockJumpDifferenceInverse)].clone()
+    }
+
+    pub fn invu_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+    }
+
+    pub fn rer_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(SelectedClockCyclesEvalArg)].clone()
+    }
+
+    pub fn reu_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+    }
+
+    pub fn rpm_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone()
     }
 
     pub fn decompose_arg(&self) -> Vec<MPolynomial<XFieldElement>> {

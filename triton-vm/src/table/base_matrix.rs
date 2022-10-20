@@ -131,7 +131,7 @@ impl BaseMatrices {
             if let Some(prow) = previous_row {
                 let previous_clock_jump_difference = prow[usize::from(ClockJumpDifference)];
                 if previous_clock_jump_difference != clk_jump_difference {
-                    row[usize::from(UniqueClockJumpDifferenceInverse)] =
+                    row[usize::from(UniqueClockJumpDiffDiffInverse)] =
                         (previous_clock_jump_difference - clk_jump_difference).inverse();
                 }
             }
