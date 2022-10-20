@@ -151,3 +151,6 @@ Cargo.lock
 
 # Ignore code-workspaces
 *.code-workspace
+specification/cheatsheet.aux
+specification/cheatsheet.log
+specification/cheatsheet.synctex.gz
