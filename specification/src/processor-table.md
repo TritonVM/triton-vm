@@ -112,7 +112,7 @@ The following constraint applies to every pair of rows.
 
 1. `clk' - (clk + 1)`
 1. `invu' · (invu' · (cjd' - cjd) - 1) · cjd'`
-1. `(cjd - cjd') · (invu' · (cjd' - cjd) - 1) · cjd'`
+1. `(cjd' - cjd) · (invu' · (cjd' - cjd) - 1) · cjd'`
 1. `cjd' · (rpm' - rpm · (α - cjd')) + (cjd' · invm' - 1) · (rpm' - rpm)`
 1. `(1 - (cjd' - cjd) · invu) · (reu' - reu) + (1 - cjd' · invm) · (reu' - reu) + cjd' · (cjd' - cjd) · (reu' - β · reu - cjd')`
 1. `(rer' - rer ·  β - clk') · (rer' - rer)`
