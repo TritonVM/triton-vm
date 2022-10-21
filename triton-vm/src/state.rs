@@ -828,7 +828,6 @@ mod vm_state_tests {
     #[test]
     #[allow(clippy::assertions_on_constants)]
     fn tvm_op_stack_big_enough_test() {
-        #[allow(clippy::assertions_on_constants)]
         assert!(
             DIGEST_LENGTH <= OP_STACK_REG_COUNT,
             "The OpStack must be large enough to hold a single Rescue-Prime digest"

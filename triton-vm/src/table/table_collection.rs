@@ -350,64 +350,31 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn codeword_tables(
-        &self,
-        fri_domain: &FriDomain<XFieldElement>,
-        base_codeword_tables: BaseTableCollection,
-        num_trace_randomizers: usize,
-    ) -> Self {
+    pub fn lde(&self, fri_domain: &FriDomain<XFieldElement>, num_trace_randomizers: usize) -> Self {
         let padded_height = self.padded_height;
         let omicron = derive_omicron(padded_height as u64);
 
-        let program_table = self.program_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.program_table.data(),
-        );
-        let instruction_table = self.instruction_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.instruction_table.data(),
-        );
-        let processor_table = self.processor_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.processor_table.data(),
-        );
-        let op_stack_table = self.op_stack_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.op_stack_table.data(),
-        );
-        let ram_table = self.ram_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.ram_table.data(),
-        );
-        let jump_stack_table = self.jump_stack_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.jump_stack_table.data(),
-        );
-        let hash_table = self.hash_table.ext_codeword_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_codeword_tables.hash_table.data(),
-        );
+        let program_table =
+            self.program_table
+                .lde(fri_domain, omicron, padded_height, num_trace_randomizers);
+        let instruction_table =
+            self.instruction_table
+                .lde(fri_domain, omicron, padded_height, num_trace_randomizers);
+        let processor_table =
+            self.processor_table
+                .lde(fri_domain, omicron, padded_height, num_trace_randomizers);
+        let op_stack_table =
+            self.op_stack_table
+                .lde(fri_domain, omicron, padded_height, num_trace_randomizers);
+        let ram_table =
+            self.ram_table
+                .lde(fri_domain, omicron, padded_height, num_trace_randomizers);
+        let jump_stack_table =
+            self.jump_stack_table
+                .lde(fri_domain, omicron, padded_height, num_trace_randomizers);
+        let hash_table =
+            self.hash_table
+                .lde(fri_domain, omicron, padded_height, num_trace_randomizers);
 
         ExtTableCollection {
             padded_height,
@@ -421,11 +388,11 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn get_all_extension_columns(&self) -> Vec<Vec<XFieldElement>> {
+    pub fn collect_all_columns(&self) -> Vec<Vec<XFieldElement>> {
         let mut all_ext_cols = vec![];
 
         for table in self.into_iter() {
-            for col in table.data().iter().skip(table.base_width()) {
+            for col in table.data().iter() {
                 all_ext_cols.push(col.clone());
             }
         }
@@ -493,6 +460,140 @@ impl ExtTableCollection {
                 ext_table.get_all_quotient_degree_bounds(self.padded_height, num_trace_randomizers)
             })
             .concat()
+    }
+
+    pub(crate) fn join(
+        base_codeword_tables: BaseTableCollection,
+        ext_codeword_tables: ExtTableCollection,
+    ) -> ExtTableCollection {
+        let padded_height = base_codeword_tables.padded_height;
+
+        let program_base_matrix = base_codeword_tables.program_table.data();
+        let lifted_program_base_matrix = program_base_matrix
+            .iter()
+            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
+            .collect_vec();
+        let program_ext_matrix = ext_codeword_tables.program_table.data();
+        let full_program_matrix =
+            vec![lifted_program_base_matrix, program_ext_matrix.to_vec()].concat();
+        let joined_program_table = ext_codeword_tables
+            .program_table
+            .inherited_table()
+            .with_data(full_program_matrix);
+        let program_table = ExtProgramTable {
+            inherited_table: joined_program_table,
+        };
+
+        let instruction_base_matrix = base_codeword_tables.instruction_table.data();
+        let lifted_instruction_base_matrix = instruction_base_matrix
+            .iter()
+            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
+            .collect_vec();
+        let instruction_ext_matrix = ext_codeword_tables.instruction_table.data();
+        let full_instruction_matrix = vec![
+            lifted_instruction_base_matrix,
+            instruction_ext_matrix.to_vec(),
+        ]
+        .concat();
+        let joined_instruction_table = ext_codeword_tables
+            .instruction_table
+            .inherited_table()
+            .with_data(full_instruction_matrix);
+        let instruction_table = ExtInstructionTable {
+            inherited_table: joined_instruction_table,
+        };
+
+        let processor_base_matrix = base_codeword_tables.processor_table.data();
+        let lifted_processor_base_matrix = processor_base_matrix
+            .iter()
+            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
+            .collect_vec();
+        let processor_ext_matrix = ext_codeword_tables.processor_table.data();
+        let full_processor_matrix =
+            vec![lifted_processor_base_matrix, processor_ext_matrix.to_vec()].concat();
+        let joined_processor_table = ext_codeword_tables
+            .processor_table
+            .inherited_table()
+            .with_data(full_processor_matrix);
+        let processor_table = ExtProcessorTable {
+            inherited_table: joined_processor_table,
+        };
+
+        let op_stack_base_matrix = base_codeword_tables.op_stack_table.data();
+        let lifted_op_stack_base_matrix = op_stack_base_matrix
+            .iter()
+            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
+            .collect_vec();
+        let op_stack_ext_matrix = ext_codeword_tables.op_stack_table.data();
+        let full_op_stack_matrix =
+            vec![lifted_op_stack_base_matrix, op_stack_ext_matrix.to_vec()].concat();
+        let joined_op_stack_table = ext_codeword_tables
+            .op_stack_table
+            .inherited_table()
+            .with_data(full_op_stack_matrix);
+        let op_stack_table = ExtOpStackTable {
+            inherited_table: joined_op_stack_table,
+        };
+
+        let ram_base_matrix = base_codeword_tables.ram_table.data();
+        let lifted_ram_base_matrix = ram_base_matrix
+            .iter()
+            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
+            .collect_vec();
+        let ram_ext_matrix = ext_codeword_tables.ram_table.data();
+        let full_ram_matrix = vec![lifted_ram_base_matrix, ram_ext_matrix.to_vec()].concat();
+        let joined_ram_table = ext_codeword_tables
+            .ram_table
+            .inherited_table()
+            .with_data(full_ram_matrix);
+        let ram_table = ExtRamTable {
+            inherited_table: joined_ram_table,
+        };
+
+        let jump_stack_base_matrix = base_codeword_tables.jump_stack_table.data();
+        let lifted_jump_stack_base_matrix = jump_stack_base_matrix
+            .iter()
+            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
+            .collect_vec();
+        let jump_stack_ext_matrix = ext_codeword_tables.jump_stack_table.data();
+        let full_jump_stack_matrix = vec![
+            lifted_jump_stack_base_matrix,
+            jump_stack_ext_matrix.to_vec(),
+        ]
+        .concat();
+        let joined_jump_stack_table = ext_codeword_tables
+            .jump_stack_table
+            .inherited_table()
+            .with_data(full_jump_stack_matrix);
+        let jump_stack_table = ExtJumpStackTable {
+            inherited_table: joined_jump_stack_table,
+        };
+
+        let hash_base_matrix = base_codeword_tables.hash_table.data();
+        let lifted_hash_base_matrix = hash_base_matrix
+            .iter()
+            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
+            .collect_vec();
+        let hash_ext_matrix = ext_codeword_tables.hash_table.data();
+        let full_hash_matrix = vec![lifted_hash_base_matrix, hash_ext_matrix.to_vec()].concat();
+        let joined_hash_table = ext_codeword_tables
+            .hash_table
+            .inherited_table()
+            .with_data(full_hash_matrix);
+        let hash_table = ExtHashTable {
+            inherited_table: joined_hash_table,
+        };
+
+        ExtTableCollection {
+            padded_height,
+            program_table,
+            instruction_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+        }
     }
 }
 

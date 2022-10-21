@@ -208,7 +208,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "initial");
 
         quotient_codewords
@@ -243,7 +243,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "consistency");
 
         quotient_codewords
@@ -295,7 +295,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "transition");
 
         quotient_codewords
@@ -332,7 +332,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose_codewords(&transposed_quotient_codewords);
+        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "terminal");
 
         quotient_codewords

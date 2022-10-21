@@ -44,7 +44,7 @@ impl InheritsFromTable<BFieldElement> for JumpStackTable {
 
 #[derive(Debug, Clone)]
 pub struct ExtJumpStackTable {
-    inherited_table: Table<XFieldElement>,
+    pub(crate) inherited_table: Table<XFieldElement>,
 }
 
 impl Default for ExtJumpStackTable {
@@ -357,13 +357,12 @@ impl JumpStackTable {
 }
 
 impl ExtJumpStackTable {
-    pub fn ext_codeword_table(
+    pub fn lde(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         omicron: XFieldElement,
         padded_height: usize,
         num_trace_randomizers: usize,
-        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
         let ext_codewords = self.low_degree_extension(
@@ -374,14 +373,7 @@ impl ExtJumpStackTable {
             ext_columns,
         );
 
-        let lifted_base_codewords = base_codewords
-            .iter()
-            .map(|base_codeword| base_codeword.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
-        assert_eq!(self.full_width(), all_codewords.len());
-
-        let inherited_table = self.inherited_table.with_data(all_codewords);
+        let inherited_table = self.inherited_table.with_data(ext_codewords);
         ExtJumpStackTable { inherited_table }
     }
 }

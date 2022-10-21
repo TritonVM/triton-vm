@@ -42,7 +42,7 @@ impl InheritsFromTable<BFieldElement> for ProgramTable {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtProgramTable {
-    inherited_table: Table<XFieldElement>,
+    pub(crate) inherited_table: Table<XFieldElement>,
 }
 
 impl Default for ExtProgramTable {
@@ -243,13 +243,12 @@ impl ProgramTable {
 }
 
 impl ExtProgramTable {
-    pub fn ext_codeword_table(
+    pub fn lde(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         omicron: XFieldElement,
         padded_height: usize,
         num_trace_randomizers: usize,
-        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
         let ext_codewords = self.low_degree_extension(
@@ -260,14 +259,7 @@ impl ExtProgramTable {
             ext_columns,
         );
 
-        let lifted_base_codewords = base_codewords
-            .iter()
-            .map(|base_codeword| base_codeword.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
-        assert_eq!(self.full_width(), all_codewords.len());
-
-        let inherited_table = self.inherited_table.with_data(all_codewords);
+        let inherited_table = self.inherited_table.with_data(ext_codewords);
         ExtProgramTable { inherited_table }
     }
 }
