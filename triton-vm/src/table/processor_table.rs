@@ -240,8 +240,6 @@ impl ProcessorTable {
                 if previous_clock_jump_difference != current_clock_jump_difference
                     && !current_clock_jump_difference.is_zero()
                 {
-                    extension_row[usize::from(UniqueClockJumpDiffDiffInverse)] =
-                        (current_clock_jump_difference - previous_clock_jump_difference).inverse();
                     unique_clock_jump_differences.push(current_clock_jump_difference);
                     unique_clock_jump_differences_running_evaluation =
                         unique_clock_jump_differences_running_evaluation
