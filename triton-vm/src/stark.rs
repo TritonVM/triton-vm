@@ -1081,6 +1081,29 @@ pub(crate) mod triton_stark_tests {
         (aet, stdout, program)
     }
 
+    pub fn parse_simulate_pad(
+        code: &str,
+        stdin: &[BFieldElement],
+        secret_in: &[BFieldElement],
+    ) -> (BaseTableCollection, BaseTableCollection, usize, VecStream) {
+        let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
+        let base_matrices = BaseMatrices::new(aet, &program);
+
+        let num_trace_randomizers = 2;
+        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
+
+        let unpadded_base_tables = base_tables.clone();
+
+        base_tables.pad();
+
+        (
+            base_tables,
+            unpadded_base_tables,
+            num_trace_randomizers,
+            stdout,
+        )
+    }
+
     pub fn parse_simulate_pad_extend(
         code: &str,
         stdin: &[BFieldElement],
@@ -1093,15 +1116,8 @@ pub(crate) mod triton_stark_tests {
         AllChallenges,
         usize,
     ) {
-        let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
-        let base_matrices = BaseMatrices::new(aet, &program);
-
-        let num_trace_randomizers = 2;
-        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
-
-        let unpadded_base_tables = base_tables.clone();
-
-        base_tables.pad();
+        let (base_tables, unpadded_base_tables, num_trace_randomizers, stdout) =
+            parse_simulate_pad(code, stdin, secret_in);
 
         let dummy_challenges = AllChallenges::placeholder();
         let ext_tables = ExtTableCollection::extend_tables(
@@ -1346,6 +1362,30 @@ pub(crate) mod triton_stark_tests {
             table.evaluate_consistency_constraints(&dummy_row);
             table.evaluate_transition_constraints(&double_length_dummy_row);
             table.evaluate_terminal_constraints(&dummy_row);
+        }
+    }
+
+    #[test]
+    fn extend_does_not_change_base_table() {
+        let (base_tables, _, num_trace_randomizers, _) =
+            parse_simulate_pad(sample_programs::FIBONACCI_LT, &[], &[]);
+
+        let dummy_challenges = AllChallenges::placeholder();
+        let ext_tables = ExtTableCollection::extend_tables(
+            &base_tables,
+            &dummy_challenges,
+            num_trace_randomizers,
+        );
+
+        for (base_table, extension_table) in base_tables.into_iter().zip(ext_tables.into_iter()) {
+            for column in 0..base_table.base_width() {
+                for row in 0..base_tables.padded_height {
+                    assert_eq!(
+                        base_table.data()[row][column].lift(),
+                        extension_table.data()[row][column]
+                    );
+                }
+            }
         }
     }
 
