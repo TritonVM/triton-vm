@@ -7,7 +7,6 @@ use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
@@ -889,12 +888,12 @@ impl ExtProcessorTable {
         let beta = RowPairConstraints::constant_from_xfe(
             challenges.unique_clock_jump_differences_eval_point,
         );
-        let reu_updates_correctly = invu_next_is_cjdd_inverse.clone()
+        let reu_updates_correctly = invu_next_is_cjdd_inverse
             * (factory.reu_next() - factory.reu())
             + (factory.one() - factory.invm_next() * factory.cjd_next())
                 * (factory.reu_next() - factory.reu())
             + factory.cjd_next()
-                * cjdd.clone()
+                * cjdd
                 * (factory.reu_next() - beta.clone() * factory.reu() - factory.cjd_next());
 
         // The running evaluation `rer` of relevant clock cycles is
@@ -950,7 +949,7 @@ impl Default for SingleRowConstraints {
 
 impl SingleRowConstraints {
     pub fn constant_from_xfe(constant: XFieldElement) -> MPolynomial<XFieldElement> {
-        MPolynomial::from_constant(constant.into(), FULL_WIDTH)
+        MPolynomial::from_constant(constant, FULL_WIDTH)
     }
     pub fn constant_from_i32(constant: i32) -> MPolynomial<XFieldElement> {
         let bfe = if constant < 0 {

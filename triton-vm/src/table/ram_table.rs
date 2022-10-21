@@ -326,13 +326,13 @@ impl ExtRamTable {
         let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
         let rppa = variables[usize::from(RunningProductPermArg)].clone();
 
-        let clk_is_0 = clk.clone();
+        let clk_is_0 = clk;
         let ramp_is_0 = ramp.clone();
-        let ramv_is_0 = ramv.clone();
+        let ramv_is_0 = ramv;
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
-        let formal_derivative_is_1 = fd - one.clone();
+        let formal_derivative_is_1 = fd - one;
         let running_product_polynomial_is_initialized_correctly = rp - (bezout_challenge - ramp);
 
         // let compressed_row_for_permutation_argument = clk.clone() * clk_weight.clone()
@@ -424,7 +424,7 @@ impl ExtRamTable {
         // The ramp does change or the ramv does not change or the clk increases by 1
         let ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1 =
             (ramp_changes.clone() - one.clone())
-                * (ramv_next.clone() - ramv.clone())
+                * (ramv_next.clone() - ramv)
                 * (clk_next.clone() - (clk.clone() + one.clone()));
 
         let bcbp0_only_changes_if_ramp_changes =
@@ -457,17 +457,16 @@ impl ExtRamTable {
 
         let rpcjd_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (rpcjd_next.clone() - rpcjd.clone())
-            + (one.clone() - (ramp_next.clone() - ramp.clone()) * iord.clone())
+            + (one.clone() - (ramp_next.clone() - ramp.clone()) * iord)
                 * (rpcjd_next.clone() - rpcjd.clone())
-            + (one.clone() - (clk_next.clone() - clk.clone() - one.clone()) * clk_di)
+            + (one.clone() - (clk_next.clone() - clk - one) * clk_di)
                 * ramp.clone()
-                * (rpcjd_next.clone() - rpcjd.clone() * (cjd_challenge - ramp.clone()));
+                * (rpcjd_next - rpcjd * (cjd_challenge - ramp));
 
-        let compressed_row_for_permutation_argument = clk_next.clone() * clk_weight.clone()
-            + ramp_next.clone() * ramp_weight.clone()
-            + ramv_next.clone() * ramv_weight.clone();
-        let rppa_updates_correctly = rppa_next.clone()
-            - rppa.clone() * (rppa_challenge - compressed_row_for_permutation_argument);
+        let compressed_row_for_permutation_argument =
+            clk_next * clk_weight + ramp_next * ramp_weight + ramv_next * ramv_weight;
+        let rppa_updates_correctly =
+            rppa_next - rppa * (rppa_challenge - compressed_row_for_permutation_argument);
 
         vec![
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
