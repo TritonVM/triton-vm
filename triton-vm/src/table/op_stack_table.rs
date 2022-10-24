@@ -149,7 +149,7 @@ impl ExtOpStackTable {
             + constant(challenges.ib1_weight) * ib1
             + constant(challenges.osp_weight) * osp
             + constant(challenges.osv_weight) * osv;
-        let alpha = constant(challenges.processor_perm_row_eval_point);
+        let alpha = constant(challenges.processor_perm_row_indeterminate);
         let rppa_initial = alpha - compressed_row;
         let rppa_starts_correctly = rppa - rppa_initial;
 
@@ -233,7 +233,7 @@ impl ExtOpStackTable {
         // + (1 - (clk' - clk - 1) * clk_di) * (cjdrp' - cjdrp)
         // + (osp' - osp) * (cjdrp' - cjdrp)
         let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
-        let beta = constant(challenges.all_clock_jump_differences_eval_point);
+        let beta = constant(challenges.all_clock_jump_differences_indeterminate);
         let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (one.clone() - osp_next.clone() + osp.clone())
             * (rpcjd_next.clone() - rpcjd.clone() * (beta - clk_next.clone() + clk.clone()))
@@ -242,7 +242,7 @@ impl ExtOpStackTable {
             + (osp_next.clone() - osp) * (rpcjd_next - rpcjd);
 
         // The running product for the permutation argument `rppa` is updated correctly.
-        let alpha = constant(challenges.processor_perm_row_eval_point);
+        let alpha = constant(challenges.processor_perm_row_indeterminate);
         let compressed_row = constant(challenges.clk_weight) * clk_next
             + constant(challenges.ib1_weight) * ib1_shrink_stack_next
             + constant(challenges.osp_weight) * osp_next
@@ -323,8 +323,8 @@ impl OpStackTable {
                 clk * clk_w + ib1 * ib1_w + osp * osp_w + osv * osv_w;
 
             // compute the running *product* of the compressed column (for permutation argument)
-            running_product *=
-                challenges.processor_perm_row_eval_point - compressed_row_for_permutation_argument;
+            running_product *= challenges.processor_perm_row_indeterminate
+                - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
             // clock jump difference
@@ -334,7 +334,7 @@ impl OpStackTable {
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
                     if clock_jump_difference != XFieldElement::one() {
                         all_clock_jump_differences_running_product *= challenges
-                            .all_clock_jump_differences_eval_point
+                            .all_clock_jump_differences_indeterminate
                             - clock_jump_difference;
                     }
                 }
@@ -415,7 +415,7 @@ impl ExtOpStackTable {
 pub struct OpStackTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the op-stack table.
-    pub processor_perm_row_eval_point: XFieldElement,
+    pub processor_perm_row_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
@@ -424,7 +424,7 @@ pub struct OpStackTableChallenges {
     pub osp_weight: XFieldElement,
 
     /// Weight for accumulating all clock jump differences
-    pub all_clock_jump_differences_eval_point: XFieldElement,
+    pub all_clock_jump_differences_indeterminate: XFieldElement,
 }
 
 impl ExtensionTable for ExtOpStackTable {

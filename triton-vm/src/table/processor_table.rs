@@ -228,7 +228,7 @@ impl ProcessorTable {
             let current_clock_jump_difference = row[usize::from(ClockJumpDifference)].lift();
             if !current_clock_jump_difference.is_zero() {
                 all_clock_jump_differences_running_product *= challenges
-                    .all_clock_jump_differences_eval_point
+                    .all_clock_jump_differences_indeterminate
                     - current_clock_jump_difference;
             }
             extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
@@ -242,13 +242,13 @@ impl ProcessorTable {
                     unique_clock_jump_differences.push(current_clock_jump_difference);
                     unique_clock_jump_differences_running_evaluation =
                         unique_clock_jump_differences_running_evaluation
-                            * challenges.unique_clock_jump_differences_eval_point
+                            * challenges.unique_clock_jump_differences_indeterminate
                             + current_clock_jump_difference;
                 }
             } else {
                 unique_clock_jump_differences.push(current_clock_jump_difference);
                 unique_clock_jump_differences_running_evaluation = challenges
-                    .unique_clock_jump_differences_eval_point
+                    .unique_clock_jump_differences_indeterminate
                     + current_clock_jump_difference;
             }
             extension_row[usize::from(UniqueClockJumpDifferencesEvalArg)] =
@@ -274,7 +274,7 @@ impl ProcessorTable {
             let current_clk = extension_row[usize::from(CLK)];
             if unique_clock_jump_differences.contains(&current_clk) {
                 selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
-                    * challenges.unique_clock_jump_differences_eval_point
+                    * challenges.unique_clock_jump_differences_indeterminate
                     + current_clk;
             }
             extension_row[usize::from(SelectedClockCyclesEvalArg)] =
@@ -450,8 +450,8 @@ pub struct ProcessorTableChallenges {
     pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
     pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LENGTH],
 
-    pub unique_clock_jump_differences_eval_point: XFieldElement,
-    pub all_clock_jump_differences_eval_point: XFieldElement,
+    pub unique_clock_jump_differences_indeterminate: XFieldElement,
+    pub all_clock_jump_differences_indeterminate: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
@@ -661,7 +661,7 @@ impl ExtProcessorTable {
         // starts off having applied one evaluation step with the clock
         // jump difference.
         let beta = SingleRowConstraints::constant_from_xfe(
-            challenges.unique_clock_jump_differences_eval_point,
+            challenges.unique_clock_jump_differences_indeterminate,
         );
         let reu_starts_correctly = factory.reu() - beta - factory.cjd();
 
@@ -669,7 +669,7 @@ impl ExtProcessorTable {
         // starts off having accumulated the first factor.
         let rpm_starts_correctly = factory.rpm()
             - SingleRowConstraints::constant_from_xfe(
-                challenges.all_clock_jump_differences_eval_point,
+                challenges.all_clock_jump_differences_indeterminate,
             )
             + factory.cjd();
 
@@ -864,8 +864,9 @@ impl ExtProcessorTable {
         // accumulates a factor α - cjd' in every row, provided that
         // `cjd'` is nonzero.
         // cjd' · (rpm' - rpm · (α - cjd')) + (cjd' · invm' - 1) · (rpm' - rpm)
-        let alpha =
-            RowPairConstraints::constant_from_xfe(challenges.all_clock_jump_differences_eval_point);
+        let alpha = RowPairConstraints::constant_from_xfe(
+            challenges.all_clock_jump_differences_indeterminate,
+        );
         let rpm_updates_correctly = factory.cjd_next()
             * (factory.rpm_next() - factory.rpm() * (alpha - factory.cjd_next()))
             + (factory.cjd_next() * factory.invm_next() - factory.one())
@@ -878,7 +879,7 @@ impl ExtProcessorTable {
         //  + · (1 - cjd' · invm) · (reu' - reu)
         //  + cjd' · (cjd' - cjd) · (reu' - β · reu - cjd')`
         let beta = RowPairConstraints::constant_from_xfe(
-            challenges.unique_clock_jump_differences_eval_point,
+            challenges.unique_clock_jump_differences_indeterminate,
         );
         let reu_updates_correctly = invu_next_is_cjdd_inverse
             * (factory.reu_next() - factory.reu())
