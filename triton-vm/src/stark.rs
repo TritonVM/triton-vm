@@ -1425,10 +1425,11 @@ pub(crate) mod triton_stark_tests {
                     assert_eq!(
                         zero,
                         ecc,
-                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}",
+                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}/{}",
                         table.name(),
                         constraint_idx,
                         row_idx,
+                        table.data().len()
                     );
                 }
             }
@@ -1440,10 +1441,11 @@ pub(crate) mod triton_stark_tests {
                     assert_eq!(
                         zero,
                         evaluated_tc,
-                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}",
+                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}/{}",
                         table.name(),
                         constraint_idx,
                         row_idx,
+                        table.data().len()
                     );
                 }
             }

@@ -400,9 +400,12 @@ impl BaseMatrices {
         let &last_op_stack_matrix_row = jump_stack_matrix.last().unwrap();
         let mut new_jump_stack_matrix = vec![];
         for (mut current_row, next_row) in jump_stack_matrix.into_iter().tuple_windows() {
-            current_row[usize::from(JumpStackBaseTableColumn::InverseOfClkDiffMinusOne)] = next_row
-                [usize::from(JumpStackBaseTableColumn::CLK)]
+            let clock_jump_difference = next_row[usize::from(JumpStackBaseTableColumn::CLK)]
                 - current_row[usize::from(JumpStackBaseTableColumn::CLK)];
+            if clock_jump_difference.value() > 1 {
+                current_row[usize::from(JumpStackBaseTableColumn::InverseOfClkDiffMinusOne)] =
+                    (clock_jump_difference - BFieldElement::one()).inverse()
+            }
             new_jump_stack_matrix.push(current_row);
         }
         new_jump_stack_matrix.push(last_op_stack_matrix_row);

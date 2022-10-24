@@ -127,7 +127,7 @@ impl TableLike<XFieldElement> for ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
     fn ext_initial_constraints(
-        _challenges: &JumpStackTableChallenges,
+        challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
 
@@ -143,7 +143,33 @@ impl ExtJumpStackTable {
         // 4. Jump Stack Destination jsd is 0.
         let jsd = variables[usize::from(JSD)].clone();
 
-        vec![clk, jsp, jso, jsd]
+        let ci = variables[usize::from(JumpStackBaseTableColumn::CI)].clone();
+        let rppa = variables[usize::from(JumpStackExtTableColumn::RunningProductPermArg)].clone();
+        let rpcjd =
+            variables[usize::from(JumpStackExtTableColumn::AllClockJumpDifferencesPermArg)].clone();
+
+        // rppa starts off having accumulated the first row
+        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
+        let alpha = constant(challenges.processor_perm_row_indeterminate);
+        let compressed_row = constant(challenges.clk_weight) * clk.clone()
+            + constant(challenges.ci_weight) * ci
+            + constant(challenges.jsp_weight) * jsp.clone()
+            + constant(challenges.jso_weight) * jsp.clone()
+            + constant(challenges.jsd_weight) * jsd.clone();
+        let rppa_starts_correctly = rppa - (alpha - compressed_row);
+
+        // rpcjd starts off as 1
+        let one = constant(XFieldElement::one());
+        let rpcjd_starts_with_one = rpcjd - one;
+
+        vec![
+            clk,
+            jsp,
+            jso,
+            jsd,
+            rppa_starts_correctly,
+            rpcjd_starts_with_one,
+        ]
     }
 
     fn ext_consistency_constraints(
@@ -154,21 +180,28 @@ impl ExtJumpStackTable {
     }
 
     fn ext_transition_constraints(
-        _challenges: &JumpStackTableChallenges,
+        challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
-        let one = MPolynomial::<XFieldElement>::from_constant(1.into(), 2 * FULL_WIDTH);
+        let one = MPolynomial::<XFieldElement>::from_constant(XFieldElement::one(), 2 * FULL_WIDTH);
 
         let clk = variables[usize::from(CLK)].clone();
         let ci = variables[usize::from(CI)].clone();
         let jsp = variables[usize::from(JSP)].clone();
         let jso = variables[usize::from(JSO)].clone();
         let jsd = variables[usize::from(JSD)].clone();
+        let clk_di = variables[usize::from(InverseOfClkDiffMinusOne)].clone();
+        let rppa = variables[usize::from(RunningProductPermArg)].clone();
+        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
         let clk_next = variables[FULL_WIDTH + usize::from(CLK)].clone();
-        let _ci_next = variables[FULL_WIDTH + usize::from(CI)].clone();
+        let ci_next = variables[FULL_WIDTH + usize::from(CI)].clone();
         let jsp_next = variables[FULL_WIDTH + usize::from(JSP)].clone();
         let jso_next = variables[FULL_WIDTH + usize::from(JSO)].clone();
         let jsd_next = variables[FULL_WIDTH + usize::from(JSD)].clone();
+        let clk_di_next = variables[FULL_WIDTH + usize::from(InverseOfClkDiffMinusOne)].clone();
+        let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
+        let rpcjd_next =
+            variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
 
         let call_opcode = MPolynomial::<XFieldElement>::from_constant(
             Instruction::Call(Default::default()).opcode_b().lift(),
@@ -189,30 +222,81 @@ impl ExtJumpStackTable {
         //      or the jump stack origin jso does not change
         //      or current instruction ci is return
         let jsp_inc_or_jso_stays_or_ci_is_ret = (jsp_next.clone() - (jsp.clone() + one.clone()))
-            * (jso_next - jso)
+            * (jso_next.clone() - jso)
             * (ci.clone() - return_opcode.clone());
 
         // 3. The jump stack pointer jsp increases by 1
         //      or the jump stack destination jsd does not change
         //      or current instruction ci is return
         let jsp_inc_or_jsd_stays_or_ci_ret = (jsp_next.clone() - (jsp.clone() + one.clone()))
-            * (jsd_next - jsd)
+            * (jsd_next.clone() - jsd)
             * (ci.clone() - return_opcode.clone());
 
         // 4. The jump stack pointer jsp increases by 1
         //      or the cycle count clk increases by 1
         //      or current instruction ci is call
         //      or current instruction ci is return
-        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next - (jsp + one.clone()))
-            * (clk_next - (clk + one))
+        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next.clone()
+            - (jsp.clone() + one.clone()))
+            * (clk_next.clone() - (clk.clone() + one.clone()))
             * (ci.clone() - call_opcode)
             * (ci - return_opcode);
+
+        // 5. If the memory pointer `jsp` does not change, then
+        // `clk_di'` is the inverse-or-zero of the clock jump
+        // difference minus one.
+        let jsp_changes = jsp_next.clone() - jsp.clone() - one.clone();
+        let cdmo = clk_next.clone() - clk.clone() - one.clone();
+        let clkdi_is_cdmo_inverse = clk_di_next * cdmo.clone();
+        let clkdi_is_zero_or_cdmo_inverse_or_jsp_changes =
+            clk_di.clone() * clkdi_is_cdmo_inverse.clone() * jsp_changes.clone();
+        let cdmo_is_zero_or_clkdi_inverse_or_jsp_changes =
+            cdmo.clone() * clkdi_is_cdmo_inverse * jsp_changes;
+
+        // 6. The running product for the permutation argument `rppa`
+        //  accumulates one row in each row, relative to weights `a`,
+        //  `b`, `c`, `d`, `e`, and indeterminate `α`.
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let compressed_row = constant(challenges.clk_weight) * clk_next.clone()
+            + constant(challenges.ci_weight) * ci_next
+            + constant(challenges.jsp_weight) * jsp_next.clone()
+            + constant(challenges.jso_weight) * jso_next
+            + constant(challenges.jsd_weight) * jsd_next;
+        let alpha = constant(challenges.processor_perm_row_indeterminate);
+        let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
+
+        // 7. The running product for clock jump differences `rpcjd`
+        // accumulates a factor `(clk' - clk - 1)` (relative to
+        // indeterminate `β`) if a) the clock jump difference is
+        // greater than 1, and if b) the jump stack pointer does not
+        // change; and remains the same otherwise.
+        //
+        //   (1 - (clk' - clk - 1) · clk_di) · (rpcjd' - rpcjd)
+        // + (jsp' - jsp) · (rpcjd' - rpcjd)
+        // + (clk' - clk - 1) · (jsp' - jsp - 1)
+        //     · (rpcjd' - rpcjd · (β - clk' + clk))`
+        let beta = constant(challenges.all_clock_jump_differences_indeterminate);
+        let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
+        let jsp_diff = jsp_next - jsp;
+        let rpcjd_update = rpcjd_next - rpcjd * (beta - clk_next.clone() + clk.clone());
+        let rpcjd_remains_if_clk_increments_by_one =
+            (one.clone() - cdmo * clk_di) * rpcjd_remains.clone();
+        let rpcjd_remains_if_jsp_changes = jsp_diff.clone() * rpcjd_remains;
+        let rpcjd_updates_if_jsp_remains_and_clk_jumps =
+            (clk_next - clk - one.clone()) * (jsp_diff - one) * rpcjd_update;
+        let rpcjd_updates_correctly = rpcjd_remains_if_clk_increments_by_one
+            + rpcjd_remains_if_jsp_changes
+            + rpcjd_updates_if_jsp_remains_and_clk_jumps;
 
         vec![
             jsp_inc_or_stays,
             jsp_inc_or_jso_stays_or_ci_is_ret,
             jsp_inc_or_jsd_stays_or_ci_ret,
             jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
+            clkdi_is_zero_or_cdmo_inverse_or_jsp_changes,
+            cdmo_is_zero_or_clkdi_inverse_or_jsp_changes,
+            rppa_updates_correctly,
+            rpcjd_updates_correctly,
         ]
     }
 
@@ -285,8 +369,8 @@ impl JumpStackTable {
                 clk * clk_w + ci * ci_w + jsp * jsp_w + jso * jso_w + jsd * jsd_w;
 
             // compute the running *product* of the compressed column (for permutation argument)
-            running_product *=
-                challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
+            running_product *= challenges.processor_perm_row_indeterminate
+                - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
             // clock jump difference
@@ -295,8 +379,9 @@ impl JumpStackTable {
                     let clock_jump_difference =
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
                     if clock_jump_difference != XFieldElement::one() {
-                        all_clock_jump_differences_running_product *=
-                            challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                        all_clock_jump_differences_running_product *= challenges
+                            .all_clock_jump_differences_indeterminate
+                            - clock_jump_difference;
                     }
                 }
             }
@@ -382,7 +467,7 @@ impl ExtJumpStackTable {
 pub struct JumpStackTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the op-stack table.
-    pub processor_perm_row_weight: XFieldElement,
+    pub processor_perm_row_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
@@ -392,7 +477,7 @@ pub struct JumpStackTableChallenges {
     pub jsd_weight: XFieldElement,
 
     /// Weight for accumulating all clock jump differences
-    pub all_clock_jump_differences_weight: XFieldElement,
+    pub all_clock_jump_differences_indeterminate: XFieldElement,
 }
 
 impl ExtensionTable for ExtJumpStackTable {

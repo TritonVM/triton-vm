@@ -120,13 +120,13 @@ impl AllChallenges {
         };
 
         let jump_stack_table_challenges = JumpStackTableChallenges {
-            processor_perm_row_weight: processor_table_challenges.jump_stack_perm_row_weight,
+            processor_perm_row_indeterminate: processor_table_challenges.jump_stack_perm_row_weight,
             clk_weight: processor_table_challenges.jump_stack_table_clk_weight,
             ci_weight: processor_table_challenges.jump_stack_table_ci_weight,
             jsp_weight: processor_table_challenges.jump_stack_table_jsp_weight,
             jso_weight: processor_table_challenges.jump_stack_table_jso_weight,
             jsd_weight: processor_table_challenges.jump_stack_table_jsd_weight,
-            all_clock_jump_differences_weight: processor_table_challenges
+            all_clock_jump_differences_indeterminate: processor_table_challenges
                 .all_clock_jump_differences_eval_point,
         };
 
