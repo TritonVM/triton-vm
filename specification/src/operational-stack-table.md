@@ -87,17 +87,30 @@ The padding row is inserted right below the template row.
 These steps are repeated until the desired padded height is reached.
 In total, above steps ensure that the Permutation Argument between the Op Stack Table and the [Processor Table](processor-table.md) holds up.
 
+## Memory-Consistency
+
+Memory-consistency follows from two more primitive properties:
+
+ 1. Contiguity of regions of constant memory pointer. Since the memory pointer for the OpStack table, `osp` can change by at most one per cycle, it is possible to enforce a full sorting using AIR constraints.
+ 2. Correct inner-sorting within contiguous regions. Specifically, the rows within each contiguous region of constant memory pointer should be sorted for clock cycle. This property is established by the clock jump difference lookup argument. In a nutshell, every difference of consecutive clock cycles that a) occurs within one contiguous block of constant memory pointer, and b) is greater than 1, is shown itself to be a valid clock cycle through a separate cross-table argument. The construction is described in more details in [TIP-0003](https://github.com/TritonVM/triton-vm/blob/master/tips/tip-0003/tip-0003.md).
+
+
+
 ## Initial Constraints
 
 1. `clk` is 0
 1. `osv` is 0.
 1. `osp` is the number of available stack registers, i.e., 16.
+4. The running product of clock jump differences `rpcjd` starts off with 1.
+5. The running product for the permutation argument `rppa` starts off having accumulated the first row. Let `a`, `b`, `c`, `d` denote the weights for compressing the `clk`, `ib1`, `osp` and `osv` columns respectively, and let `α` be the indeterminate for the running product.
 
 **Initial Constraints as Polynomials**
 
 1. `clk`
 1. `osv`
 1. `osp - 16`
+4. `rpcjd - 1`
+5. `rppa - (α - a · clk - b · ib1 - c · osp - d · osv)`
 
 ## Consistency Constraints
 
@@ -105,13 +118,22 @@ None.
 
 ## Transition Constraints
 
-1. the `osp` increases by 1, *or*
-1. the `osp` does not change AND the `osv` does not change, *or*
-1. the `osp` does not change AND the `ci` shrinks the OpStack.
+ 1.  
+   - the `osp` increases by 1, *or*
+   - the `osp` does not change AND the `osv` does not change, *or*
+   - the `osp` does not change AND the `ci` shrinks the OpStack.
+ 2. The clock jump difference inverse column `clk_di` is the inverse of the clock jump difference minus one if a) the clock jump difference is greater than 1, and b) the op stack pointer remains the same.
+ 3. the running product for the permutation argument `rppa` accumulates one row in each row, relative to weights `a`, `b`, `c`, `d` and indeterminate `α`.
+ 4. The running product for clock jump differences `rpcjd` accumulates a factor `(clk' - clk - 1)` (relative to indeterminate `β`) if a) the clock jump difference is greater than 1, and if b) the op stack pointer does not change; and remains the same otherwise.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
-1. the `osp` increases by 1 or the `osp` does not change
-1. the `osp` increases by 1 or the `osv` does not change or the `ci` shrinks the OpStack
+
+ 1.
+   - the `osp` increases by 1 or the `osp` does not change
+   - the `osp` increases by 1 or the `osv` does not change or the `ci` shrinks the OpStack
+ 2. `osp' - osp = 1` or `clk_di = (clk' - clk - 1)^(p-2)`
+ 3. `rppa' = rppa · (α - a · clk' - b · ib1' - c · osp' - d · osv')`
+ 4. `rpcjd' = rpcjd` and `(clk' - clk - 1) = 0`; or `rpcjd' = rpcjd` and `osp' ≠ osp`; or `rpcjd' = rpcjd · (β - clk' + clk)` and `(clk' - clk - 1) · clk_di = 1` and `osp' = osp`.
 
 An instruction is OpStack-shrinking if it is
 - in instruction group `shrink_stack`, or
@@ -122,6 +144,10 @@ An instruction is OpStack-shrinking if it is
 
 1. `(osp' - (osp + 1))·(osp' - osp)`
 1. `(osp' - (osp + 1))·(osv' - osv)·(ci - op_code(pop))·(ci - op_code(skiz))·(ci - op_code(assert))·(ci - op_code(add))·(ci - op_code(mul))·(ci - op_code(eq))·(ci - op_code(lt))·(ci - op_code(and))·(ci - op_code(xor))·(ci - op_code(xbmul))·(ci - op_code(write_io))`
+1. `clk_di · (osp' - osp - 1) · (1 - clk_di · (clk' - clk - one))`
+1. `(clk' - clk - one) · (osp' - osp - 1) · (1 - clk_di · (clk' - clk - one))`
+1. `rppa' - rppa · (α - a · clk' - b · ib1' - c · osp' - d · osv')`
+1. `(clk' - clk - 1) · (rpcjd' - rpcjd) + (osp' - osp - 1) · (rpcjd' - rpcjd) + (1 - (clk' - clk - 1) · clk_di) · (osp' - osp) · (rpcjd' - rpcjd · (β - clk' + clk))`
 
 ## Terminal Constraints
 
@@ -129,4 +155,5 @@ None.
 
 ## Relations to Other Tables
 
-1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the [Processor Table](processor-table.md).
+1. A Permutation Argument establishes that the rows of the operational stack table correspond to the rows of the [Processor Table](processor-table.md). The running product for this argument is contained in the `rppa` column.
+2. A multi-table Permutation Argument shows that all clock jump differences greater than one, from all memory-like tables (i.e., including the RAM Table and the JumpStack Table), are contained in the `cjd` column of the Processor Table. The running product for this argument is contained in the `rpcjd` column.
