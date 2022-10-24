@@ -100,12 +100,12 @@ impl AllChallenges {
         };
 
         let op_stack_table_challenges = OpStackTableChallenges {
-            processor_perm_row_weight: processor_table_challenges.op_stack_perm_row_weight,
+            processor_perm_row_eval_point: processor_table_challenges.op_stack_perm_row_weight,
             clk_weight: processor_table_challenges.op_stack_table_clk_weight,
             ib1_weight: processor_table_challenges.op_stack_table_ib1_weight,
             osv_weight: processor_table_challenges.op_stack_table_osv_weight,
             osp_weight: processor_table_challenges.op_stack_table_osp_weight,
-            all_clock_jump_differences_weight: processor_table_challenges
+            all_clock_jump_differences_eval_point: processor_table_challenges
                 .all_clock_jump_differences_eval_point,
         };
 

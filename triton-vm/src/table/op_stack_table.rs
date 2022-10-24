@@ -124,21 +124,46 @@ impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
     fn ext_initial_constraints(
-        _challenges: &OpStackTableChallenges,
+        challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         use OpStackBaseTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
         let clk = variables[usize::from(CLK)].clone();
+        let ib1 = variables[usize::from(IB1ShrinkStack)].clone();
         let osp = variables[usize::from(OSP)].clone();
         let osv = variables[usize::from(OSV)].clone();
         let sixteen = MPolynomial::from_constant(16.into(), FULL_WIDTH);
+        let rppa = variables[usize::from(RunningProductPermArg)].clone();
+        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
+        let one = MPolynomial::from_constant(XFieldElement::one(), FULL_WIDTH);
 
-        let clk_is_0 = clk;
-        let osv_is_0 = osv;
-        let osp_is_16 = osp - sixteen;
+        let clk_is_0 = clk.clone();
+        let osv_is_0 = osv.clone();
+        let osp_is_16 = osp.clone() - sixteen;
 
-        vec![clk_is_0, osv_is_0, osp_is_16]
+        // The running product for the permutation argument `rppa`
+        // starts off having accumulated the first row.
+        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
+        let compressed_row = constant(challenges.clk_weight) * clk
+            + constant(challenges.ib1_weight) * ib1
+            + constant(challenges.osp_weight) * osp
+            + constant(challenges.osv_weight) * osv;
+        let alpha = constant(challenges.processor_perm_row_eval_point);
+        let rppa_initial = alpha - compressed_row;
+        let rppa_starts_correctly = rppa - rppa_initial;
+
+        // The running product for clock jump differences starts with
+        // one
+        let rpcjd_starts_correctly = rpcjd - one;
+
+        vec![
+            clk_is_0,
+            osv_is_0,
+            osp_is_16,
+            rppa_starts_correctly,
+            rpcjd_starts_correctly,
+        ]
     }
 
     fn ext_consistency_constraints(
@@ -149,17 +174,28 @@ impl ExtOpStackTable {
     }
 
     fn ext_transition_constraints(
-        _challenges: &OpStackTableChallenges,
+        challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         use OpStackBaseTableColumn::*;
 
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
+
+        let clk = variables[usize::from(CLK)].clone();
         let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
         let osp = variables[usize::from(OSP)].clone();
         let osv = variables[usize::from(OSV)].clone();
+        let clk_di = variables[usize::from(InverseOfClkDiffMinusOne)].clone();
+        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
+        let rppa = variables[usize::from(RunningProductPermArg)].clone();
+
+        let clk_next = variables[FULL_WIDTH + usize::from(CLK)].clone();
+        let ib1_shrink_stack_next = variables[FULL_WIDTH + usize::from(IB1ShrinkStack)].clone();
         let osp_next = variables[FULL_WIDTH + usize::from(OSP)].clone();
         let osv_next = variables[FULL_WIDTH + usize::from(OSV)].clone();
-        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
+        let rpcjd_next =
+            variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
+        let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
+        let one = MPolynomial::from_constant(XFieldElement::one(), 2 * FULL_WIDTH);
 
         // the osp increases by 1 or the osp does not change
         //
@@ -170,12 +206,56 @@ impl ExtOpStackTable {
         // the osp increases by 1 or the osv does not change OR the ci shrinks the OpStack
         //
         // $ (osp' - (osp + 1)) · (osv' - osv) · (1 - ib1) = 0$
-        let osp_increases_by_1_or_osv_does_not_change_or_shrink_stack =
-            (osp_next - (osp + one.clone())) * (osv_next - osv) * (one - ib1_shrink_stack);
+        let osp_increases_by_1_or_osv_does_not_change_or_shrink_stack = (osp_next.clone()
+            - (osp.clone() + one.clone()))
+            * (osv_next.clone() - osv)
+            * (one.clone() - ib1_shrink_stack);
+
+        // The clock jump difference inverse is consistent
+        // with the clock cycles.
+        //     clk_di' = (clk' - clk - 1)^-1 unless osp changes
+        // <=> (osp' - osp - 1) * (1 - clk_di' * (clk' - clk - 1)) * clk_di' = 0
+        //  /\ (osp' - osp - 1) * (1 - clk_di' * (clk' - clk - 1)) * (clk' - clk - 1) = 0
+        let osp_changes = osp_next.clone() - osp.clone() - one.clone();
+        let clk_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
+        let clkdi_is_cdmo_inverse = clk_di.clone() * clk_diff_minus_one.clone() - one.clone();
+        let clk_di_is_zero_or_cdmo_inverse_or_osp_changes =
+            osp_changes.clone() * clkdi_is_cdmo_inverse.clone() * clk_di.clone();
+        let cdmo_is_zero_or_clkdi_inverse_or_osp_changes =
+            osp_changes * clkdi_is_cdmo_inverse * clk_diff_minus_one;
+
+        // The running product for clock jump differences `rpcjd`
+        // accumulates a factor (beta - clk' + clk) if
+        //  - the op stack pointer `osp` remains the same; and
+        //  - the clock jump difference is 2 or greater.
+        //
+        //   (clk' - clk - 1) * (1 - osp' + osp) * (cjdrp' - cjdrp * (beta - clk' + clk))
+        // + (1 - (clk' - clk - 1) * clk_di) * (cjdrp' - cjdrp)
+        // + (osp' - osp) * (cjdrp' - cjdrp)
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let beta = constant(challenges.all_clock_jump_differences_eval_point);
+        let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
+            * (one.clone() - osp_next.clone() + osp.clone())
+            * (rpcjd_next.clone() - rpcjd.clone() * (beta - clk_next.clone() + clk.clone()))
+            + (one.clone() - (clk_next.clone() - clk - one) * clk_di)
+                * (rpcjd_next.clone() - rpcjd.clone())
+            + (osp_next.clone() - osp) * (rpcjd_next - rpcjd);
+
+        // The running product for the permutation argument `rppa` is updated correctly.
+        let alpha = constant(challenges.processor_perm_row_eval_point);
+        let compressed_row = constant(challenges.clk_weight) * clk_next
+            + constant(challenges.ib1_weight) * ib1_shrink_stack_next
+            + constant(challenges.osp_weight) * osp_next
+            + constant(challenges.osv_weight) * osv_next;
+        let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
         vec![
             osp_increases_by_1_or_does_not_change,
             osp_increases_by_1_or_osv_does_not_change_or_shrink_stack,
+            clk_di_is_zero_or_cdmo_inverse_or_osp_changes,
+            cdmo_is_zero_or_clkdi_inverse_or_osp_changes,
+            cjdrp_updates_correctly,
+            rppa_updates_correctly,
         ]
     }
 
@@ -244,7 +324,7 @@ impl OpStackTable {
 
             // compute the running *product* of the compressed column (for permutation argument)
             running_product *=
-                challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
+                challenges.processor_perm_row_eval_point - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
             // clock jump difference
@@ -253,8 +333,9 @@ impl OpStackTable {
                     let clock_jump_difference =
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
                     if clock_jump_difference != XFieldElement::one() {
-                        all_clock_jump_differences_running_product *=
-                            challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                        all_clock_jump_differences_running_product *= challenges
+                            .all_clock_jump_differences_eval_point
+                            - clock_jump_difference;
                     }
                 }
             }
@@ -334,7 +415,7 @@ impl ExtOpStackTable {
 pub struct OpStackTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the op-stack table.
-    pub processor_perm_row_weight: XFieldElement,
+    pub processor_perm_row_eval_point: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
@@ -343,7 +424,7 @@ pub struct OpStackTableChallenges {
     pub osp_weight: XFieldElement,
 
     /// Weight for accumulating all clock jump differences
-    pub all_clock_jump_differences_weight: XFieldElement,
+    pub all_clock_jump_differences_eval_point: XFieldElement,
 }
 
 impl ExtensionTable for ExtOpStackTable {
