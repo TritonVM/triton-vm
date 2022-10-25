@@ -108,7 +108,7 @@ In total, above steps ensure that the Permutation Argument between the Jump Stac
 Memory-consistency follows from two more primitive properties:
 
  1. Contiguity of regions of constant memory pointer. Since the memory pointer for the JumpStack table, `jsp` can change by at most one per cycle, it is possible to enforce a full sorting using AIR constraints.
- 2. Correct inner-sorting within contiguous regions. Specifically, the rows within each contiguous region of constant memory pointer should be sorted for clock cycle. This property is established by the clock jump difference lookup argument. In a nutshell, every difference of consecutive clock cycles that a) occurs within one contiguous block of constant memory pointer, and b) is greater than 1, is shown itself to be a valid clock cycle through a separate cross-table argument. The construction is described in more details in [TIP-0003](https://github.com/TritonVM/triton-vm/blob/master/tips/tip-0003/tip-0003.md).
+ 2. Correct inner-sorting within contiguous regions. Specifically, the rows within each contiguous region of constant memory pointer should be sorted for clock cycle. This property is established by the clock jump difference lookup argument. In a nutshell, every difference of consecutive clock cycles that a) occurs within one contiguous block of constant memory pointer, and b) is greater than 1, is shown itself to be a valid clock cycle through a separate cross-table argument. The construction is described in more details in [Memory Consistency](memory-consistency.md).
 
 ## Initial Constraints
 

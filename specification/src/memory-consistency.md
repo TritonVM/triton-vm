@@ -115,32 +115,255 @@ According to the Schwartz-Zippel lemma, the false positive probability is at mos
 ### Zero-Knowledge.
 Since the contiguity argument is constructed using only AET and AIR, zero-knowledge follows from Triton VM's zk-STNARK engine. $\square$
 
-## Summary of constraints
+### Summary of constraints
 
 We present a summary of all constraints.
 
-### Initial
+#### Initial
 
-- $\mathsf{bcpc0}$
-- $\mathsf{bc0}$
-- $\mathsf{bc1} - \mathsf{bcpc1}$
-- $\mathsf{fd} - 1$
-- $\mathsf{rp} - (X - \mathsf{mp})$
+ - `bcpc0`
+ - `bc0`
+ - `bc1 - bcpc1`
+ - `fd - 1`
+ - `rpp - (α - ramp)`
 
-### Consistency
+#### Consistency
 None.
 
-### Transition
+#### Transition
 
-- $(\mathsf{ramp}^\star - \mathsf{ramp})\cdot((\mathsf{ramp}^\star - \mathsf{ramp}) \cdot \mathsf{di} - 1)$
-- $\mathsf{di}\cdot((\mathsf{ramp}^\star - \mathsf{ramp}) \cdot \mathsf{di} - 1)$
-- $(1 - (\mathsf{ramp}^\star - \mathsf{ramp}) \cdot \mathsf{di}) \cdot (\mathsf{bcpc0}^\star - \mathsf{bcpc0})$
-- $(1 - (\mathsf{ramp}^\star - \mathsf{ramp}) \cdot \mathsf{di}) \cdot (\mathsf{bcpc1}^\star - \mathsf{bcpc1})$
-- $(\mathsf{ramp}^\star - \mathsf{ramp}) \cdot (\mathsf{rp}^\star - \mathsf{rp} \cdot (X - \mathsf{ramp}^\star)) + (1 -(\mathsf{ramp}^\star -\mathsf{ramp}) \cdot \mathsf{di}) \cdot (\mathsf{rp}^\star - \mathsf{rp})$
-- $(\mathsf{ramp}^\star - \mathsf{ramp}) \cdot (\mathsf{fd}^\star - \mathsf{rp} - (X - \mathsf{ramp}^\star) \cdot \mathsf{fd}) + (1 -(\mathsf{ramp}^\star -\mathsf{ramp}) \cdot \mathsf{di}) \cdot (\mathsf{fd}^\star - \mathsf{fd})$
-- $(1 - (\mathsf{ramp}^\star - \mathsf{ramp}) \cdot \mathsf{di}) \cdot (\mathsf{bc0}^\star - \mathsf{bc0}) + (\mathsf{ramp}^\star - \mathsf{ramp}) \cdot (\mathsf{bc0}^\star - X\cdot\mathsf{bc0} - \mathsf{bcpc0}^\star)$
-- $(1 - (\mathsf{ramp}^\star - \mathsf{ramp}) \cdot \mathsf{di}) \cdot (\mathsf{bc1}^\star - \mathsf{bc1}) + (\mathsf{ramp}^\star - \mathsf{ramp}) \cdot (\mathsf{bc1}^\star - X\cdot\mathsf{bc1} - \mathsf{bcpc1}^\star)$
+ - `(ramp' - ramp) ⋅ ((ramp' - ramp) ⋅ iord - 1)`
+ - `iord ⋅ ((ramp' - ramp) ⋅ iord - 1)`
+ - `(1 - (ramp' - ramp) ⋅ iord) ⋅ (bcpc0' - bcpc0)`
+ - `(1 - (ramp' - ramp) ⋅ iord) ⋅ (bcpc1' - bcpc1)` 
+ - `(ramp' - ramp) ⋅ (rpp' - rpp ⋅ (α - ramp')) + (1 - (ramp' - ramp) ⋅ iord) ⋅ (rpp' - rpp)`
+ - `(ramp' - ramp) ⋅ (fd' - rp - (α - ramp') ⋅ fd) + (1 - (ramp' - ramp) ⋅ iord) ⋅ (fd' - fd)`
+ - `(1 - (ramp' - ramp) ⋅ iord) ⋅ (bc0' - bc0) + (ramp' - ramp) ⋅ (bc0' - α ⋅ bc0 - bcpc0')`
+ - `(1 - (ramp' - ramp) ⋅ iord) ⋅ (bc1' - bc1) + (ramp' - ramp) ⋅ (bc1' - α ⋅ bc1 - bcpc1')`
 
-### Terminal
+#### Terminal
 
-- $\mathsf{bc0} \cdot {\mathsf{rp}} + \mathsf{bc1} \cdot {\mathsf{fd}} - 1$
+ - `bc0 * rpp + bc1 * fd - 1`
+
+## Clock Jump Differences and Inner Sorting
+
+The previous sections show how it is proven that in the JumpStack, OpStack, and RAM Tables, the regions of constant memory pointer are contiguous. The next step is to prove that within each contiguous region of constant memory pointer, the rows are sorted for clock cycle. That is the topic of this section.
+
+The problem arises from *clock jumps*, which describes the phenomenon when the clock cycle increases by more than 1 even though the memory pointer does not change. If arbitrary jumps were allowed, nothing would prevent the cheating prover from using a table where higher rows correspond to later states, giving rise to an exploitable attack. So it must be shown that every clock jump is directed forward and not backward.
+
+Our strategy is to show that the *difference*, *i.e.*, the next clock cycle minus the current clock cycle, is itself a clock cycle.
+Recall that the Processor Table's clock cycles run from 0 to $T-1$.
+Therefore, a forward directed clock jump difference is in $F = \lbrace 2, \dots, T - 1 \rbrace \subseteq \mathbb{F}_p$, whereas a backward directed clock jump's difference is in $B = \lbrace -f \mid f \in F \rbrace = \lbrace 1 - T, \dots, -2 \rbrace \subseteq \mathbb{F}_p$.
+No other clock jump difference can occur.
+If $T \ll p/2$, there is no overlap between sets $F$ and $B$.
+As a result, in this regime, showing that a clock jump difference is in $F$ guarantees that the jump is forward-directed.
+
+The set of values in the Processor Table's clock cycle column is $F \cup \lbrace 0,1 \rbrace$.
+Standard subset arguments can show that the clock jump differences are elements of that column.
+However, it is cumbersome to repeat this argument for three separate tables. What is described here is a construction that combines all three memory-like tables and generates one lookup in the Processor Table's `clk` column. It introduces
+
+ - one base column in each memory-like table;
+ - one extension column in each memory-like table;
+ - four extra base columns in the Processor Table; and
+ - three extension columns in the Processor Table.
+
+## Intuition
+
+ - In order to treat clock jump differences of magnitude 1 separately, each memory-like table needs an extra base column `clk_di`, which holds the inverse of two consecutive rows' cycle count minus 1, *i.e.*, `clk' - clk - 1`, if that inverse exists, and 0 otherwise.
+ - A multi-table permutation argument establishes that all clock jump differences (*cjd*s) greater than 1 are contained in a new column `cjd` of the Processor Table.
+ Every memory-like table needs one extension column `rpcjd` and the Processor Table needs one matching extension column `rpm` to effect this permutation argument.
+ - In addition to the extension column computing the running product, the Processor Table needs an inverse column `invm` to help select all *nonzero* `cjd`s, and thus skip padding rows. The abbreviation *invm* is short for inverse-with-multiplicities.
+ - An inverse column `invu` in the Processor Table allows for selecting the first row of every contiguous region of `cjd`.
+ The abbreviation *invu* is short for unique-inverse.
+ - An evaluation argument establishes that a selection of clock cycles and the unique clock jump differences are identical lists.
+ This evaluation argument requires two more extension columns on the Processor Table: `rer` computes the running evaluation for the *relevant* clock cycles, whereas `reu` computes the running evaluation for the *unique* clock jump differences.
+
+![](img/cjd-relations-diagram.svg)
+
+### Memory-like Tables
+
+Here are the constraints for the RAM Table. The constraints for the other two tables are analogous and are therefore omitted from this section. Where necessary, the suffices `_ram`, `_js`, and `_os` disambiguate between the RAM Table, JumpStack Table, and OpStack Table, respectively.
+
+Use `mp` to abstractly refer to the memory pointer. Depending on the table, that would be `ramp`, `jsp`, or `osp`. The first extension column, `rpcjd`, computes a running product. It starts with 1, giving rise to the boundary constraint `rpcjd - 1`.
+
+The transition constraint enforces the accumulation of a factor `(α - clk' + clk)` whenever the memory pointer is the same or the clock jump difference is greater than 1.
+If the memory pointer is changed or the clock jump difference is exactly 1, the same running product is carried to the next row.
+Expressed in Boolean logic:
+
+```
+    clk' - clk ≠ 1 /\ mp' = mp => rpcjd' = rpcjd ⋅ (α - (clk' - clk))
+    clk' - clk = 1 \/ mp' ≠ mp => rp' = rp
+```
+
+The corresponding transition constraint is
+
+```
+(clk' - clk - 1) ⋅ (1 - (mp' - mp) ⋅ iord) ⋅ (rpcjd' - rpcjd ⋅ (α - (clk' - clk)))
+  + (1 - (clk' - clk - 1) ⋅ clk_di) ⋅ (rpcjd' - rpcjd)
+  + (mp' - mp) ⋅ (rpcjd' - rpcjd).
+```
+
+Note that `iord` is the difference inverse of the RAM Table but for the other two tables this factor can be dropped since the corresponding memory pointer can only change by either 0 or 1 between consecutive rows.
+
+The column `clk_di` contains the inverse-or-zero of the two consecutive clocks, minus one.
+This consistency requirement induces two transition constraints:
+
+ - `(clk' - clk - 1) ⋅ (1 - (clk' - clk - 1) ⋅ clk_di)`
+ - `clk_di ⋅ (1 - (clk' - clk - 1) ⋅ clk_di)`
+
+### Clock Jump Differences with Multiplicities in the Processor Table
+
+All clock jump differences (that are greater than 1) of all the memory-like tables are listed in the `cjd` column of the Processor Table.
+The values are sorted and the padding inserts “0” rows at the bottom.
+
+This cross-table relation comes with another extension column, this time in the Processor Table, that computes a running product. This column is denoted by `rpm`.
+This running product accumulates a factor `(α - cjd)` in every row where `cjd ≠ 0`.
+Column `invm` (for *inverse-with-multiplicities*), which is the inverse-or-zero of `cjd`, allows writing inequality `cjd ≠ 0` as a polynomial of low degree.
+
+The first factor is accumulated in the first row, giving rise to boundary constraint `cjd ⋅ (rpm - (α - cjd)) + (1 - invm ⋅ cjd) ⋅ (rpm - 1)`.
+
+The transition constraint is `cjd ⋅ (rpm' - rpm ⋅ (α - cjd)) + (1 - invm ⋅ cjd) ⋅ (rpm' - rpm)`.
+
+The consistency constraints for the inverse are
+
+ - `cjd ⋅ (1 - cjd ⋅ invm)`
+ - `invm ⋅ (1 - cjd ⋅ invm)`.
+
+The terminal value of this column must be equal to the terminal values of the matching running products of the memory-like tables. The cross-table terminal boundary constraint is therefore: `rpm - rpcjd_ram ⋅ rpcjd_js ⋅ rpcjd_os`.
+
+#### Total Number of Clock Jump Differences with Multiplicities
+
+Recall that the Processor Table has length $T$.
+An honest prover can convince the verifier only if the total number of clock jump differences accumulated by the running product `rpm` is no greater than $T$, independent of the executed program.
+
+If, in the Processor Table, some memory pointer does not change between two consecutive clock cycles, the clock jump difference this produces in the corresponding memory-like table is 1.
+Clock jump differences of exactly 1 are treated explicitly and do not require a lookup, *i.e.*, do not contribute a factor to `rpm`.
+Thus, `rpm` accumulates at most $T$ factors if all instructions change at most one of the three memory pointers. This is indeed the case.
+The table [“Modified Memory Pointers by Instruction” in the appendix](#modified-memory-pointers-by-instruction) lists all instructions and the memory pointers they change.
+
+### Unique Clock Jump Differences in the Processor Table
+
+As described earlier, `invu` is used to select the first row of regions of constant `cjd`. The expression `invu * (cjd' - cjd)` is 1 in such rows.
+
+Using this indicator, we build a running evaluation that accumulates one step of evaluation relative to `cjd` for each contiguous region, excluding the padding region. The clock jump differences accumulated in this manner are unique, giving rise to the column's name: `reu`, short for *running evaluation* over *unique* cjd's.
+
+The first clock jump difference is accumulated in the first row, giving rise to the boundary constraint `reu - β - cjd`.
+
+The running evaluation accumulates one step of evaluation whenever the indicator bit is set and the new clock jump difference is not padding.
+Otherwise, the running evaluation does not change.
+Expressed in Boolean logic:
+
+```
+    invu ⋅ (cjd' - cjd) = 1 /\ cjd' ≠ 0 => reu' = β ⋅ reu + cjd'
+           (cjd' - cjd) = 0 \/ cjd' = 0 => reu' = reu
+```
+
+The following transition constraint captures this transition.
+
+```
+    (cjd' - cjd) ⋅ cjd' ⋅ (reu' - β ⋅ reu - cjd')
+  + (1 - invu ⋅ (cjd' - cjd)) ⋅ (reu' - reu)
+  + (1 - cjd' ⋅ invm') ⋅ (reu' - reu)
+```
+
+To verify that the indicator is correctly indicating the first row of every contiguous region, we need `invu` to contain the inverse-or-zero of every consecutive pair of $\mathsf{cjd}$ values. This consistency induces two transition constraints:
+
+ - `invu ⋅ (1 - invu ⋅ (cjd' - cjd))`
+ - `(cjd' - cjd) ⋅ (1 - invu ⋅ (cjd' - cjd))`
+
+### Relevant Clock Cycles in the Processor Table
+
+Assume the prover knows when the clock cycle `clk` is also *some* jump in a memory-like table and when it is not. Then it can apply the right running evaluation step as necessary. The prover computes this running evaluation in a column called `rer`, short for *running evaluation* over *relevant* clock cycles.
+
+Since 0 is never a valid clock jump difference, the initial value is 1, giving rise to the initial boundary constraint: `rer - 1`.
+
+In every row, either the running evaluation step is applied, or else the running evaluation remains the same: `(rer' - rer) ⋅ (rer' - β ⋅ rer - clk)`.
+
+The terminal value must be identical to the running evaluation of "Relevant Clock Jumps". This gives rise to the terminal boundary constraint:  `rer - reu`
+
+Whether to apply the evaluation step or not does not need to be constrained since if the prover fails to include certain rows he will have a harder (not easier) time convincing the verifier.
+
+## Memory-Consistency
+
+Whenever the Processor Table reads a value "from" a memory-like table, this value appears nondeterministically and is unconstrained by the base table AIR constraints. However, there is a permutation argument that links the Processor Table to the memory-like table in question. *The construction satisfies memory-consistency if it guarantees that whenever a memory cell is read, its value is consistent with the last time that cell was written.*
+
+The above is too informal to provide a meaningful proof for. Let's put formal meanings on the proposition and premises, before reducing the former to the latter.
+
+Let $P$ denote the Processor Table and $M$ denote the memory-like table. Both have height $T$. Both have columns `clk`, `mp`, and `val`. For $P$ the column `clk` coincides with the index of the row. $P$ has another column `ci`, which contains the current instruction, which is `write`, `read`, or `any`. Obviously, `mp` and `val` are abstract names that depend on the particular memory-like table, just like `write`, `read`, and `any` are abstract instructions that depend on the type of memory being accessed. In the following math notation we use $\mathtt{col}$ to denote the column name and $\mathit{col}$ to denote the value that the column might take in a given row.
+
+**Definition 1 (contiguity):** The memory-like table is *contiguous* iff all sublists of rows with the same memory pointer `mp` are contiguous. Specifically, for any given memory pointer $\mathit{mp}$, there are no rows with a different memory pointer $\mathit{mp}'$ in between rows with memory pointer $\mathit{mp}$.
+
+$$ \forall i < j < k \in \lbrace 0, \ldots, T-1 \rbrace : \mathit{mp} \stackrel{\triangle}{=} M[i][\mathtt{mp}] = M[k][\mathtt{mp}] \Rightarrow M[j][\mathtt{mp}] = \mathit{mp} $$
+
+**Definition 2 (regional sorting):** The memory-like table is *regionally sorted* iff for every contiguous region of constant memory pointer, the clock cycle increases monotonically.
+
+$$ \forall i < j \in \lbrace 0, \ldots, T-1 \rbrace : M[i][\mathtt{mp}] = M[j][\mathtt{mp}] \Rightarrow M[i][\mathtt{clk}] <_{\mathbb{Z}} M[j][\mathtt{clk}] $$
+
+The symbol $<_{\mathbb{Z}}$ denotes the integer less than operator, after lifting the operands from the finite field to the integers.
+
+**Definition 3 (memory-consistency):** A Processor Table $P$ has *memory-consistency* if whenever a memory cell at location $\mathit{mp}$ is read, its value corresponds to the previous time the memory cell at location $\mathit{mp}$ was written. Specifically, there are no writes in between the write and the read, that give the cell a different value.
+
+$$ \forall k \in \lbrace 0 , \ldots, T-1 \rbrace : P[k][\mathtt{ci}] = \mathit{read} \, \Rightarrow \left( (1) \, \Rightarrow \, (2) \right)$$
+
+$$ (1) \exists i  \in \lbrace 0 , \ldots, k \rbrace : P[i][\mathtt{ci}] = \mathit{write} \, \wedge \, P[i+1][\mathtt{val}] = P[k][\mathtt{val}] \, \wedge \, P[i][\mathtt{mp}] = P[k][\mathtt{mp}]$$
+
+$$ (2) \nexists j \in \lbrace i+1 , \ldots, k-1 \rbrace : P[j][\mathtt{ci}] = \mathit{write} \, \wedge \, P[i][\mathtt{mp}] = P[k][\mathtt{mp}] $$
+
+**Theorem 1 (memory-consistency):** Let $P$ be a Processor Table. If there exists a memory-like table $M$ such that
+
+ - selecting for the columns `clk`, `mp`, `val`, the two tables' lists of rows are permutations of each other; and
+ - $M$ is contiguous and regionally sorted; and
+ - $M$ has no changes in `val` that coincide with clock jumps;
+
+then $P$ has memory-consistency.
+
+*Proof.* For every memory pointer value $\mathit{mp}$, select the sublist of rows $P_{\mathit{mp}} \stackrel{\triangle}{=} \lbrace P[k] \, | \, P[k][\mathtt{mp}] = \mathit{mp} \rbrace$ in order. The way this sublist is constructed guarantees that it coincides with the contiguous region of $M$ where the memory pointer is also $\mathit{mp}$.
+
+Iteratively apply the following procedure to $P_{\mathit{mp}}$: remove the bottom-most row if it does not correspond to a row $k$ that constitutes a counter-example to memory consistency. Specifically, let $i$ be the clock cycle of the previous row in $P_{\mathit{mp}}$.
+
+ - If $i$ satisfies $(1)$ then by construction it also satisfies $(2)$. As a result, row $k$ is not part of a counter-example to memory-consistency. We can therefore remove the bottom-most row and proceed to the next iteration of the outermost loop.
+ - If $P[i][\mathtt{ci}] \neq \mathit{write}$ then we can safely ignore this row: if there is no clock jump, then the absence of a $\mathit{write}$-instruction guarantees that $\mathit{val}$ cannot change; and if there is a clock jump, then by assumption on $M$, $\mathit{val}$ cannot change. So set $i$ to the clock cycle of the row above it in $P_{\mathit{mp}}$ and proceed to the next iteration of the inner loop. If there are no rows left for $i$ to index, then there is no possible counterexample for $k$ and so remove the bottom-most row of $P_{\mathit{mp}}$ and proceed to the next iteration of the outermost loop.
+ - The case $P[i+1][\mathtt{val}] \neq P[k][\mathtt{val}]$ cannot occur because by construction of $i$, $\mathit{val}$ cannot change.
+ - The case $P[i][\mathtt{mp}] \neq P[k][\mathtt{mp}]$ cannot occur because the list was constructed by selecting only elements with the same memory pointer.
+ - This list exhausts the possibilities of condition (1).
+
+When $P_{\mathit{mp}}$ consists of only two rows, it can contain no counter-examples. By applying the above procedure, we can reduce every correctly constructed sublist $P_{\mathit{mp}}$ to a list consisting of two rows. Therefore, for every $\mathit{mp}$, the sublist $P_{\mathit{mp}}$ is free of counter-examples to memory-consistency. Equivalently, $P$ is memory-consistent. $\square$
+
+## Appendix
+
+### Modified Memory Pointers by Instruction
+
+|                  |    `osp`     |    `ramp`    |    `jsp`     |
+|-----------------:|:------------:|:------------:|:------------:|
+|            `pop` | $\mathsf{x}$ |              |              |
+|     `push` + `a` | $\mathsf{x}$ |              |              |
+|         `divine` | $\mathsf{x}$ |              |              |
+|      `dup` + `i` | $\mathsf{x}$ |              |              |
+|     `swap` + `i` |              |              |              |
+|            `nop` |              |              |              |
+|           `skiz` | $\mathsf{x}$ |              |              |
+|     `call` + `d` |              |              | $\mathsf{x}$ |
+|         `return` |              |              | $\mathsf{x}$ |
+|        `recurse` |              |              |              |
+|         `assert` | $\mathsf{x}$ |              |              |
+|           `halt` |              |              |              |
+|       `read_mem` |              | $\mathsf{x}$ |              |
+|      `write_mem` |              | $\mathsf{x}$ |              |
+|           `hash` |              |              |              |
+| `divine_sibling` |              |              |              |
+|  `assert_vector` |              |              |              |
+|            `add` | $\mathsf{x}$ |              |              |
+|            `mul` | $\mathsf{x}$ |              |              |
+|         `invert` |              |              |              |
+|          `split` | $\mathsf{x}$ |              |              |
+|             `eq` | $\mathsf{x}$ |              |              |
+|            `lsb` | $\mathsf{x}$ |              |              |
+|          `xxadd` |              |              |              |
+|          `xxmul` |              |              |              |
+|        `xinvert` |              |              |              |
+|          `xbmul` | $\mathsf{x}$ |              |              |
+|        `read_io` | $\mathsf{x}$ |              |              |
+|       `write_io` | $\mathsf{x}$ |              |              |
+
+
+
