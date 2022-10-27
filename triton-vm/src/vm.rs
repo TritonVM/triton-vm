@@ -256,6 +256,7 @@ pub mod triton_vm_tests {
     use twenty_first::timing_reporter::TimingReporter;
 
     use crate::instruction::{sample_programs, AnInstruction};
+    use crate::shared_tests::SourceCodeAndInput;
     use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
     use crate::table::base_table::{Extendable, InheritsFromTable};
     use crate::table::challenges::AllChallenges;
@@ -453,45 +454,6 @@ pub mod triton_vm_tests {
 
         // 4. The number of output_table rows is equivalent to the number of write_io instructions.
         assert_eq!(0, stdout.to_bword_vec().len());
-    }
-
-    /// Source code and associated input. Primarily for testing of the VM's instructions.
-    pub struct SourceCodeAndInput {
-        pub source_code: String,
-        pub input: Vec<BFieldElement>,
-        pub secret_input: Vec<BFieldElement>,
-    }
-
-    impl SourceCodeAndInput {
-        fn without_input(source_code: &str) -> Self {
-            Self {
-                source_code: source_code.to_string(),
-                input: vec![],
-                secret_input: vec![],
-            }
-        }
-
-        fn run(&self) -> Vec<BFieldElement> {
-            let program =
-                Program::from_code(&self.source_code).expect("Could not load source code");
-            let (_, output, err) = program.run_with_input(&self.input, &self.secret_input);
-            if let Some(e) = err {
-                panic!("Running the program failed: {}", e)
-            }
-            output
-        }
-
-        fn simulate(
-            &self,
-        ) -> (
-            AlgebraicExecutionTrace,
-            Option<Box<dyn Error>>,
-            Vec<BFieldElement>,
-        ) {
-            let program =
-                Program::from_code(&self.source_code).expect("Could not load source code.");
-            program.simulate_with_input(&self.input, &self.secret_input)
-        }
     }
 
     pub fn test_hash_nop_nop_lt() -> SourceCodeAndInput {

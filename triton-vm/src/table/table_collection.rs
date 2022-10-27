@@ -4,11 +4,11 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
+use crate::triton_profiler::TritonProfiler;
 
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
@@ -455,17 +455,16 @@ impl ExtTableCollection {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         challenges: &AllChallenges,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
-        let mut timer = TimingReporter::start();
         let padded_height = self.padded_height;
         let omicron = derive_omicron(padded_height as u64);
 
         self.into_iter()
             .map(|ext_codeword_table| {
-                timer.elapsed(&format!(
-                    "Start calculating quotient: {}",
-                    ext_codeword_table.name()
-                ));
+                if let Some(profiler) = maybe_profiler.as_mut() {
+                    profiler.start(&ext_codeword_table.name());
+                }
                 let res = ext_codeword_table.all_quotients(
                     fri_domain,
                     ext_codeword_table.data(),
@@ -473,10 +472,9 @@ impl ExtTableCollection {
                     omicron,
                     padded_height,
                 );
-                timer.elapsed(&format!(
-                    "Ended calculating quotient: {}",
-                    ext_codeword_table.name()
-                ));
+                if let Some(profiler) = maybe_profiler.as_mut() {
+                    profiler.stop(&ext_codeword_table.name());
+                }
                 res
             })
             .concat()

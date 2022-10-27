@@ -26,6 +26,7 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::{Proof, ProofStream};
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
+use crate::triton_profiler::TritonProfiler;
 
 use super::table::base_matrix::BaseMatrices;
 
@@ -108,93 +109,146 @@ impl Stark {
         }
     }
 
-    pub fn prove(&self, base_matrices: BaseMatrices) -> Proof {
+    pub fn prove(
+        &self,
+        base_matrices: BaseMatrices,
+        maybe_profiler: &mut Option<TritonProfiler>,
+    ) -> Proof {
         let mut timer = TimingReporter::start();
 
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("pad");
+        }
         let base_tables = self.padded(&base_matrices);
-        timer.elapsed("pad");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("pad");
+        }
 
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
-        timer.elapsed("randomizer_codewords");
 
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("LDE 1");
+        }
         let base_fri_domain_tables =
             base_tables.to_fri_domain_tables(&self.bfri_domain, self.num_trace_randomizers);
-        let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
-        let all_base_fri_domain_codewords =
-            vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
-        timer.elapsed("get_all_base_codewords");
+        let base_codewords = base_fri_domain_tables.get_all_base_columns();
+        let base_fri_domain_codewords = vec![b_rand_codewords, base_codewords].concat();
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("LDE 1");
+        }
 
-        // build Merkle tree
-        let transposed_base_fri_domain_codewords = Self::transpose(&all_base_fri_domain_codewords);
-        timer.elapsed("transposed_base_codewords");
-
-        let base_tree = Self::get_merkle_tree(&transposed_base_fri_domain_codewords);
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("Merkle tree 1");
+        }
+        let transposed_base_codewords = Self::transpose(&base_fri_domain_codewords);
+        let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
         let base_merkle_tree_root = base_tree.get_root();
-        timer.elapsed("base_merkle_tree");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("Merkle tree 1");
+        }
 
         // send root for base codewords
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("Fiat-Shamir 1");
+        }
         let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
-        timer.elapsed("proof_stream.enqueue");
-
-        // get challenge from verifier
         let extension_challenge_seed = proof_stream.prover_fiat_shamir();
-        timer.elapsed("prover_fiat_shamir");
-
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
-        timer.elapsed("challenges");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("Fiat-Shamir 1");
+        }
 
-        // extend tables
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("extend");
+        }
         let ext_tables = ExtTableCollection::extend_tables(
             &base_tables,
             &extension_challenges,
             self.num_trace_randomizers,
         );
-        timer.elapsed("extend + get_terminals");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("extend");
+        }
 
         proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
             base_tables.padded_height as u64,
         )));
-        timer.elapsed("Sent all padded heights");
 
-        // LDE, second round
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("LDE 2");
+        }
         let ext_fri_domain_tables =
             ext_tables.to_fri_domain_tables(&self.xfri.domain, self.num_trace_randomizers);
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
-
         let full_fri_domain_tables =
             ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
-        timer.elapsed("Calculated extension codewords");
 
-        // build Merkle tree
-        let transposed_ext_fri_domain_codewords = Self::transpose(&extension_fri_domain_codewords);
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("LDE 2");
+        }
 
-        let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_fri_domain_codewords);
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("Merkle tree 1");
+        }
+        let transposed_ext_codewords = Self::transpose(&extension_fri_domain_codewords);
+        let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("Merkle tree 1");
+        }
 
         // send root for extension codewords
         proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
-        timer.elapsed("extension_tree");
 
-        // compute quotients
-        let mut quotient_codewords =
-            full_fri_domain_tables.get_all_quotients(&self.xfri.domain, &extension_challenges);
-        timer.elapsed("Calculated quotient codewords");
-
-        // get degree bounds
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("degree bounds");
+        }
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("base");
+        }
         let base_degree_bounds = base_tables.get_base_degree_bounds(self.num_trace_randomizers);
-        timer.elapsed("Calculated base degree bounds");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("base");
+        }
 
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("extension");
+        }
         let extension_degree_bounds =
             ext_tables.get_extension_degree_bounds(self.num_trace_randomizers);
-        timer.elapsed("Calculated extension degree bounds");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("extension");
+        }
 
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("quotient");
+        }
         let mut quotient_degree_bounds =
             full_fri_domain_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
-        timer.elapsed("Calculated quotient degree bounds");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("quotient");
+        }
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("degree bounds");
+        }
 
-        // get weights for nonlinear combination from verifier
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("quotient codewords");
+        }
+        let mut quotient_codewords = full_fri_domain_tables.get_all_quotients(
+            &self.xfri.domain,
+            &extension_challenges,
+            maybe_profiler,
+        );
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("quotient codewords");
+        }
+
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("grand cross table");
+        }
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = self.num_randomizer_polynomials
             + 2 * base_fri_domain_codewords.len()
@@ -212,7 +266,6 @@ impl Stark {
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
             grand_cross_table_arg_and_non_lin_combi_weights
                 .split_at(num_grand_cross_table_arg_weights);
-        timer.elapsed("Sample weights for grand cross-table argument and non-linear combination");
 
         // prove equal terminal values for the column tuples pertaining to cross table arguments
         let input_terminal = EvalArg::compute_terminal(
@@ -245,9 +298,13 @@ impl Stark {
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(&full_fri_domain_tables, self.num_trace_randomizers);
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
-        timer.elapsed("Grand Cross Table Argument");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("grand cross table");
+        }
 
-        // compute nonlinear combination codeword
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("nonlinear combination");
+        }
         let combination_codeword = self.create_combination_codeword(
             &mut timer,
             vec![x_rand_codeword],
@@ -259,9 +316,13 @@ impl Stark {
             extension_degree_bounds,
             quotient_degree_bounds,
         );
-        timer.elapsed("non-linear sum");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("nonlinear combination");
+        }
 
-        // TODO use Self::get_extension_merkle_tree (or similar) here?
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("Merkle tree 3");
+        }
         let mut combination_codeword_digests: Vec<Digest> =
             Vec::with_capacity(combination_codeword.len());
         combination_codeword
@@ -275,20 +336,27 @@ impl Stark {
 
         proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root));
 
-        timer.elapsed("combination_tree");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("Merkle tree 3");
+        }
 
         // Get indices of slices that go across codewords to prove nonlinear combination
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("Fiat-Shamir 3");
+        }
         let indices_seed = proof_stream.prover_fiat_shamir();
         let cross_codeword_slice_indices = StarkHasher::sample_indices(
             self.security_level,
             &indices_seed,
             self.xfri.domain.length,
         );
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("Fiat-Shamir 3");
+        }
 
-        timer.elapsed("sample_indices");
-
-        // FRI
-
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("FRI");
+        }
         match self.xfri.prove(&combination_codeword, &mut proof_stream) {
             Ok((_, fri_first_round_merkle_root)) => assert_eq!(
                 combination_root, fri_first_round_merkle_root,
@@ -296,16 +364,21 @@ impl Stark {
             ),
             Err(e) => panic!("The FRI prover failed because of: {}", e),
         }
-        timer.elapsed("fri.prove");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("FRI");
+        }
 
-        // the relation between the FRI domain and the trace domain
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.start("open trace leafs");
+        }
+        // the relation between the FRI domain and the omicron domain
         let unit_distance = self.xfri.domain.length / base_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
         let revealed_base_elems =
-            Self::get_revealed_elements(&transposed_base_fri_domain_codewords, &revealed_indices);
+            Self::get_revealed_elements(&transposed_base_codewords, &revealed_indices);
         let auth_paths_base = base_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedBaseElementVectors(
             revealed_base_elems,
@@ -313,13 +386,12 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
 
         let revealed_ext_elems =
-            Self::get_revealed_elements(&transposed_ext_fri_domain_codewords, &revealed_indices);
+            Self::get_revealed_elements(&transposed_ext_codewords, &revealed_indices);
         let auth_paths_ext = extension_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedExtensionElementVectors(
             revealed_ext_elems,
         ));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_ext));
-        timer.elapsed("open leafs of zipped codewords");
 
         // open combination codeword at the same positions
         // Notice that we need to loop over `indices` here, not `revealed_indices`
@@ -337,10 +409,10 @@ impl Stark {
             revealed_combination_auth_paths,
         ));
 
-        timer.elapsed("open combination codeword at same positions");
+        if let Some(profiler) = maybe_profiler.as_mut() {
+            profiler.stop("open trace leafs");
+        }
 
-        let report = timer.finish();
-        println!("{}", report);
         println!(
             "Created proof containing {} B-field elements",
             proof_stream.transcript_length()
@@ -393,6 +465,7 @@ impl Stark {
 
         let base_codewords_lifted = base_codewords
             .into_iter()
+            .skip(self.num_randomizer_polynomials * 3)
             .map(|base_codeword| {
                 base_codeword
                     .into_iter()
@@ -1013,6 +1086,7 @@ pub(crate) mod triton_stark_tests {
 
     use crate::cross_table_arguments::EvalArg;
     use crate::instruction::sample_programs;
+    use crate::shared_tests::parse_simulate_prove;
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table::InheritsFromTable;
@@ -1044,35 +1118,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(padded_height, base_tables.ram_table.data().len());
         assert_eq!(padded_height, base_tables.jump_stack_table.data().len());
         assert_eq!(padded_height, base_tables.hash_table.data().len());
-    }
-
-    pub fn parse_simulate_prove(
-        code: &str,
-        co_set_fri_offset: BFieldElement,
-        input_symbols: &[BFieldElement],
-        secret_input_symbols: &[BFieldElement],
-        output_symbols: &[BFieldElement],
-    ) -> (Stark, Proof) {
-        let (aet, _, program) = parse_setup_simulate(code, input_symbols, secret_input_symbols);
-        let base_matrices = BaseMatrices::new(aet, &program);
-
-        let num_randomizer_polynomials = 1;
-        let log_expansion_factor = 2;
-        let security_level = 32;
-        let padded_height = BaseTableCollection::padded_height(&base_matrices);
-
-        let stark = Stark::new(
-            padded_height,
-            num_randomizer_polynomials,
-            log_expansion_factor,
-            security_level,
-            co_set_fri_offset,
-            input_symbols,
-            output_symbols,
-        );
-        let proof = stark.prove(base_matrices);
-
-        (stark, proof)
     }
 
     pub fn parse_setup_simulate(
@@ -1609,6 +1654,7 @@ pub(crate) mod triton_stark_tests {
             &code_with_input.input,
             &code_with_input.secret_input,
             &[],
+            &mut None,
         );
 
         println!("between prove and verify");
@@ -1631,8 +1677,14 @@ pub(crate) mod triton_stark_tests {
         let (_, stdout, _) = program.run_with_input(&stdin, &secret_in);
 
         let co_set_fri_offset = BFieldElement::generator();
-        let (stark, proof) =
-            parse_simulate_prove(source_code, co_set_fri_offset, &stdin, &secret_in, &stdout);
+        let (stark, proof) = parse_simulate_prove(
+            source_code,
+            co_set_fri_offset,
+            &stdin,
+            &secret_in,
+            &stdout,
+            &mut None,
+        );
 
         println!("between prove and verify");
 
