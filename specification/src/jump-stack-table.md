@@ -138,7 +138,7 @@ None.
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the cycle counter `clk` increases by 1), *or*
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the current instruction `ci` is `call`), *or*
 1. (`jsp` does not change and the current instruction `ci` is `return`).
-1 The clock jump difference inverse column `clk_di` is the inverse of the clock jump difference minus one if a) the clock jump difference is greater than 1, and b) the jump stack pointer remains the same.
+1. The clock jump difference inverse column `clk_di` is the inverse of the clock jump difference minus one if a) the clock jump difference is greater than 1, and b) the jump stack pointer remains the same.
 1. If the memory pointer `jsp` does not change, then `clk_di` is the inverse-or-zero of the clock jump difference minus one.
 1. The running product for the permutation argument `rppa` accumulates one row in each row, relative to weights `a`, `b`, `c`, `d`, `e`, and indeterminate `α`.
 1. The running product for clock jump differences `rpcjd` accumulates a factor `(clk' - clk - 1)` (relative to indeterminate `β`) if a) the clock jump difference is greater than 1, and if b) the jump stack pointer does not change; and remains the same otherwise.
