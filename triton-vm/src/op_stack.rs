@@ -48,6 +48,14 @@ impl OpStack {
             .map_err(|_| vm_fail(FailedU32Conversion(elem)))
     }
 
+    pub fn pop_n<const N: usize>(&mut self) -> Result<[BFieldElement; N], Box<dyn Error>> {
+        let mut buffer = [BFieldElement::zero(); N];
+        for element in buffer.iter_mut() {
+            *element = self.pop()?;
+        }
+        Ok(buffer)
+    }
+
     pub fn safe_peek_x(&mut self) -> XFieldElement {
         XFieldElement::new([
             self.safe_peek(ST0),
