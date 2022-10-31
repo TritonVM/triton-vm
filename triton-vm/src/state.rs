@@ -307,11 +307,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Hash => {
-                let mut hash_input = [BFieldElement::new(0); 2 * DIGEST_LENGTH];
-                for i in 0..2 * DIGEST_LENGTH {
-                    hash_input[i] = self.op_stack.pop()?;
-                }
-
+                let hash_input: [BFieldElement; 2 * DIGEST_LENGTH] = self.op_stack.pop_n()?;
                 let hash_trace = RescuePrimeRegular::trace(&hash_input);
                 let hash_output = &hash_trace[hash_trace.len() - 1][0..DIGEST_LENGTH];
                 let hash_trace_with_round_constants = Self::inprocess_hash_trace(&hash_trace);
@@ -505,7 +501,7 @@ impl<'pgm> VMState<'pgm> {
         row[usize::from(HV2)] = hvs[2];
         row[usize::from(HV3)] = hvs[3];
         row[usize::from(RAMP)] = ramp;
-        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
+        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
 
         row
     }
@@ -533,7 +529,7 @@ impl<'pgm> VMState<'pgm> {
 
         row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
         row[usize::from(RAMP)] = ramp;
-        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::new(0));
+        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
         // value of InverseOfRampDifference is only known after sorting the RAM Table, thus not set
 
         row
@@ -677,18 +673,10 @@ impl<'pgm> VMState<'pgm> {
         secret_in: &mut In,
     ) -> Result<(), Box<dyn Error>> {
         // st0-st4
-        for _ in 0..DIGEST_LENGTH {
-            self.op_stack.pop()?;
-        }
+        let _ = self.op_stack.pop_n::<DIGEST_LENGTH>()?;
 
         // st5-st9
-        let known_digest: [BFieldElement; DIGEST_LENGTH] = [
-            self.op_stack.pop()?,
-            self.op_stack.pop()?,
-            self.op_stack.pop()?,
-            self.op_stack.pop()?,
-            self.op_stack.pop()?,
-        ];
+        let known_digest = self.op_stack.pop_n::<DIGEST_LENGTH>()?;
 
         // st10
         let node_index_elem: BFieldElement = self.op_stack.pop()?;
@@ -916,7 +904,7 @@ mod vm_state_tests {
         }
 
         let last_state = trace.last().expect("Execution seems to have failed.");
-        let zero = BFieldElement::new(0);
+        let zero = BFieldElement::zero();
         let three = BFieldElement::new(3);
         let five = BFieldElement::new(5);
         assert_eq!(three, last_state.op_stack.st(ST0));
