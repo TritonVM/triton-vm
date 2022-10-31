@@ -1,1 +1,0 @@
-# Processor's Transition Constraints
