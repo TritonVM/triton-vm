@@ -214,7 +214,9 @@ This consistency requirement induces two transition constraints:
 ### Clock Jump Differences with Multiplicities in the Processor Table
 
 All clock jump differences (that are greater than 1) of all the memory-like tables are listed in the `cjd` column of the Processor Table.
-The values are sorted and the padding inserts “0” rows at the bottom.
+The values are sorted and the padding inserts zeros at the bottom of this column.
+
+Note that this CJD padding is independent from the standard padding that is applied to all tables to make them the same height and to make this height a power of two. This CJD padding applies only to the `cjd` column and does not add new rows to the table.
 
 This cross-table relation comes with another extension column, this time in the Processor Table, that computes a running product. This column is denoted by `rpm`.
 This running product accumulates a factor `(α - cjd)` in every row where `cjd ≠ 0`.
