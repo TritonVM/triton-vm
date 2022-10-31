@@ -131,7 +131,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
  1.
    - the `osp` increases by 1 or the `osp` does not change
    - the `osp` increases by 1 or the `osv` does not change or the `ci` shrinks the OpStack
- 2. `osp' - osp = 1` or `clk_di = (clk' - clk - 1)^(p-2)`
+ 2. `osp' - osp = 1` or `clk_di` is the multiplicative inverse of `(clk' - clk - 1)` or `0` if that inverse does not exist.
  3. `rppa' = rppa · (α - a · clk' - b · ib1' - c · osp' - d · osv')`
  4. `rpcjd' = rpcjd` and `(clk' - clk - 1) = 0`; or `rpcjd' = rpcjd` and `osp' ≠ osp`; or `rpcjd' = rpcjd · (β - clk' + clk)` and `(clk' - clk - 1) · clk_di = 1` and `osp' = osp`.
 

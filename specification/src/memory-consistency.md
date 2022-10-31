@@ -229,7 +229,7 @@ The consistency constraints for the inverse are
  - `cjd ⋅ (1 - cjd ⋅ invm)`
  - `invm ⋅ (1 - cjd ⋅ invm)`.
 
-The terminal value of this column must be equal to the terminal values of the matching running products of the memory-like tables. The cross-table terminal boundary constraint is therefore: `rpm - rpcjd_ram ⋅ rpcjd_js ⋅ rpcjd_os`.
+The terminal value of this column must be equal to the terminal values of the matching running products of the memory-like tables. The cross-table terminal constraint is therefore: `rpm - rpcjd_ram ⋅ rpcjd_js ⋅ rpcjd_os`.
 
 #### Total Number of Clock Jump Differences with Multiplicities
 
