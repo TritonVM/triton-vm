@@ -897,7 +897,7 @@ impl ExtProcessorTable {
                 * (factory.rer_next() - factory.rer());
 
         transition_constraints.append(&mut vec![
-            invu_next_is_zero_or_cjdd_inverse * factory.cjd_next(), // index 70
+            invu_next_is_zero_or_cjdd_inverse * factory.cjd_next(),
             cjdd_is_zero_if_invu_inverse * factory.cjd_next(),
             rpm_updates_correctly,
             reu_updates_correctly,

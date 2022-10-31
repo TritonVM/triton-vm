@@ -13,13 +13,13 @@ A padding row is a copy of the Processor Table's last row with the following mod
 
 The rows memory-like tables, which are the [RAM Table](random-access-memory-table.md), the [JumpStack Table](jump-stack-table.md), and the [OpStack Table](operational-stack-table.md), need to satisfy as particular ordering in order to establish memory-consistency. In particular, the regions of constant memory pointer need to be contiguous; and the rows in each such contiguous region must be sorted for clock cycle. The contiguity of regions is trivial for the JumpStack and OpStack Table, and for the RAM Table the Contiguity Argument of [TIP 0001](https://github.com/TritonVM/triton-vm/blob/master/tips/tip-0001/tip-0001.md) establishes this fact. The Inner Sorting Argument is described in [TIP 0003](https://github.com/TritonVM/triton-vm/blob/master/tips/tip-0003/tip-0003.md) and impacts the Processor Table quite substantially.
 
-The construction introduces three extra base columns:
+The construction requires three base columns:
 
  - `cjd`, the list of all clock jump differences greater than 1 in all memory-like tables.
  - `invm`, the list of inverses of clock jump differences, counting multiplicities. This column helps to select all nonzero `cjd`'s.
  - `invu`, the list of inverses of unique clock jump differences, *i.e.*, without counting multiplicities. This column helps to select the unique nonzero `cjd`'s.
 
-... and three extra extra extension columns:
+… and three extension columns:
 
  - `rer`, the running evaluation of relevant clock cycles.
  - `reu`, the running evaluation of unique clock cycle differences.
@@ -100,7 +100,7 @@ The construction introduces three extra base columns:
 
 Due to their complexity, instruction-specific constraints are defined [in their own section](processors-instruction-constraints.md).
 
-The following constraint applies to every pair of rows.
+The following constraints apply to every pair of rows.
 
 1. The cycle counter `clk` increases by 1.
 1. The unique inverse column `invu'` holds the inverse-or-zero of the difference of consecutive `cjd`'s, if `cjd'` is nonzero.

@@ -148,7 +148,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. The jump stack pointer `jsp` increases by 1 or the jump stack origin `jso` does not change or current instruction `ci` is `return`
 1. The jump stack pointer `jsp` increases by 1 or the jump stack destination `jsd` does not change or current instruction `ci` is `return`
 1. The jump stack pointer `jsp` increases by 1 or the cycle count `clk` increases by 1 or current instruction `ci` is `call` or current instruction `ci` is `return`
-1. `jsp' - jsp = 1` or `clk_di = (clk' - clk - 1)^(p-2)`
+1. Either `jsp' - jsp = 1` or `clk_di` is the inverse of `clk' - clk - 1` (or 0 if no inverse exists).
 1. `rppa' = rppa · (α - a · clk' - b · ci' - c · jsp' - d · jsp' - e · jsd)`
 1. `rpcjd' = rpcjd` and `(clk' - clk - 1) = 0`; or `rpcjd' = rpcjd` and `jsp' ≠ jsp`; or `rpcjd' = rpcjd · (β - clk' + clk)` and `(clk' - clk - 1) · clk_di = 1` and `jsp' = jsp`.
 

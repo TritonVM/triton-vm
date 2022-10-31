@@ -5,7 +5,7 @@ Triton has three memory-like units: the RAM, the JumpStack, and the OpStack. Eac
  1. Contiguity of regions of constant memory pointer. After selecting from each table all the rows with any given memory pointer, the resulting sublist is contiguous, which is to say, there are no gaps and two such sublists can never interleave.
  2. Inner-sorting within contiguous regions. Within each such contiguous region, the rows are sorted in ascending order by clock cycle.
 
-The contiguity of regions of constant memory pointer is established differently for the RAM Table than for the OpStack or JumpStack Tables. The OpStack and JumpStack Tables enjoy a particular property whereby the memory pointer can only every increase or decrease by one (or stay the same). As a result, simple AIR constraints can enforce the correct sorting by memory pointer. In contrast, the memory pointer for the RAM Table can jump arbitrarily. As explained below, an argument involving formal derivatives and Bézout's relation establishes contiguity.
+The contiguity of regions of constant memory pointer is established differently for the RAM Table than for the OpStack or JumpStack Tables. The OpStack and JumpStack Tables enjoy a particular property whereby the memory pointer can only ever increase or decrease by one (or stay the same). As a result, simple AIR constraints can enforce the correct sorting by memory pointer. In contrast, the memory pointer for the RAM Table can jump arbitrarily. As explained below, an argument involving formal derivatives and Bézout's relation establishes contiguity.
 
 The correct inner sorting is establish the same way for all three memory-like tables. The set of all clock jump differences – differences greater than 1 of clock cycles within regions of constant memory pointer – is shown to be contained in the set of all clock cycles. Under reasonable assumptions about the running time, this fact implies that all clock jumps are directed forwards, as opposed to backwards, which in turn implies that the rows are sorted for clock cycle.
 
@@ -15,35 +15,35 @@ The next sections elaborate on these constructions. Another section shows that t
 
 ## Contiguity for OpStack Table
 
-In each cycle, the memory pointer for the OpStack Table, `osp`, can only ever increase by one, remain the same, or decrease by one. As a result, it is easy to enforce that the entire table is sorted for memory pointer using one initial boundary constraint and one transition constraint.
+In each cycle, the memory pointer for the OpStack Table, `osp`, can only ever increase by one, remain the same, or decrease by one. As a result, it is easy to enforce that the entire table is sorted for memory pointer using one initial constraint and one transition constraint.
 
- - Initial boundary constraint: `osp` starts with zero, so in terms of polynomials the constraint is `osp`.
+ - Initial constraint: `osp` starts with zero, so in terms of polynomials the constraint is `osp`.
  - Transition constraint: the new `osp` is either the same as the previous or one larger. The polynomial representation for this constraint is `(osp' - osp - 1) * (osp' - osp)`.
 
 ## Contiguity for JumpStack Table
 
 Analogously to the OpStack Table, the JumpStack's memory pointer `jsp` can only ever decrease by one, remain the same, or increase by one, within each cycle. As a result, similar constraints establish that the entire table is sorted for memory pointer.
 
- - Initial boundary constraint: `jsp` starts with zero, so in terms of polynomials the constraint is `jsp`.
+ - Initial constraint: `jsp` starts with zero, so in terms of polynomials the constraint is `jsp`.
  - Transition constraint: the new `jsp` is either the same as the previous or one larger. The polynomial representation for this constraint is `(jsp' - jsp - 1) * (jsp' - jsp)`.
 
- ## Contiguity for RAM Table
+## Contiguity for RAM Table
 
- This *contiguity argument* is a collection of three base columns, four extension columns, four deterministic initial constraints, one randomized initial constraint, four deterministic transition constraints, four randomized transition constraints, and one randomized terminal constraint.
+This *contiguity argument* is a collection of several columns and constraints.
 
- - The first base column `iord` and two deterministic transition constraints enable conditioning on a changed memory pointer.
- - The second and third base columns, `bcpc0` and `bcpc1`, and the other two deterministic transition constraints contain and constrain the symbolic Bézout coefficient polynomials' coefficients.
- - The first extension column `rpp` is a running product similar to that of a conditioned permutation argument. The first randomized transition constraint verifies the correct accumulation of factors for updating this column.
- - The second extension column `fd` is the formal derivative of the first. The second randomized transition constraint verifies the correct application of the product rule of differentiation to update this column.
- - The third and fourth extension columns, `bc0` and `bc1`, build up the Bézout coefficient polynomials based on the corresponding base columns.
-The remaining two randomized transition constraints enforce the correct build-up of the Bézout coefficient polynomials.
- - The terminal constraint takes the weighted sum of the running product and the formal derivative, where the weights are the Bézout coefficient polynomials, and equates it to one. This equation asserts the Bézout relation. It can only be satisfied if the greatest common divisor of the running product and its formal derivative is one – implying that no change in the memory pointer resets it to a value used earlier.
+ - Base column `iord` and two deterministic transition constraints enable conditioning on a changed memory pointer.
+ - Base columns `bcpc0` and `bcpc1` and two deterministic transition constraints contain and constrain the symbolic Bézout coefficient polynomials' coefficients.
+ - Extension column `rpp` is a running product similar to that of a conditioned permutation argument. A randomized transition constraint verifies the correct accumulation of factors for updating this column.
+ - Extension column `fd` is the formal derivative of `rpp`. A randomized transition constraint verifies the correct application of the product rule of differentiation to update this column.
+ - Extension columns `bc0` and `bc1` build up the Bézout coefficient polynomials based on the corresponding base columns, `bcpc0` and `bcpc1`.
+Two randomized transition constraints enforce the correct build-up of the Bézout coefficient polynomials.
+ - A terminal constraint takes the weighted sum of the running product and the formal derivative, where the weights are the Bézout coefficient polynomials, and equates it to one. This equation asserts the Bézout relation. It can only be satisfied if the greatest common divisor of the running product and its formal derivative is one – implying that no change in the memory pointer resets it to a value used earlier.
 
 
 The following table illustrates the idea.
 Columns not needed for establishing memory-consistency are not displayed.
 
-| `ramp` | `iord`         | `bcpc0` | `bcpc1` | `rpp`                    | `fd`   | `bc0`    | `bc1`               |
+| `ramp` | `iord`       | `bcpc0` | `bcpc1` | `rpp`                   | `fd`   | `bc0`    | `bc1`               |
 |:-------|:-------------|:--------|:--------|:------------------------|:-------|:---------|:--------------------|
 | $a$    | 0            | $0$     | $\ell$  | $(X - a)$               | $1$    | $0$      | $\ell$              |
 | $a$    | $(b-a)^{-1}$ | $0$     | $\ell$  | $(X - a)$               | $1$    | $0$      | $\ell$              |
@@ -60,7 +60,7 @@ The inverse of RAMP difference `iord` takes the inverse of the difference betwee
  - `(ramp' - ramp) ⋅ ((ramp' - ramp) ⋅ iord - 1)`
  - `iord ⋅ (ramp' - ramp) ⋅ iord - 1)`
 
-The running product `rp` starts with $X - \mathsf{ramp}$ initially, which is enforced by an initial constraint.
+The running product `rpp` starts with $X - \mathsf{ramp}$ initially, which is enforced by an initial constraint.
 It accumulates a factor $X - \mathsf{ramp}'$ in every pair of rows where `ramp ≠ ramp'`. This evolution corresponds to one transition constraint: `(ramp' - ramp) ⋅ (rpp' - rpp ⋅ (α - ramp')) + (1 - (ramp' - ramp) ⋅ di) ⋅ (rpp' - rp)`
 
 Denote by $f_{\mathsf{rp}}(X)$ the polynomial that accumulates all factors $X - \mathsf{ramp}'$ in every pair of rows where $\mathsf{ramp} \neq \mathsf{ramp}'$.
@@ -109,7 +109,7 @@ For honest provers, the gcd is guaranteed to be one. As a result, the protocol h
 ### Soundness.
 If the table has at least one non-contiguous region, then $f_{\mathsf{rp}}(X)$ and $f_{\mathsf{fd}}(X)$ share at least one factor.
 As a result, no Bézout coefficients $f_\mathsf{bc0}(X)$ and $f_\mathsf{bc1}(X)$ can exist such that $f_\mathsf{bc0}(X) \cdot f_{\mathsf{rp}}(X) + f_\mathsf{bc1}(X) \cdot f_{\mathsf{fd}}(X) = 1$.
-The verifier therefore probes unequal polynomials of degree at most $2T - 2$.
+The verifier therefore probes unequal polynomials of degree at most $2T - 2$, where $T$ is the length of the execution trace, which is upper bounded by $2^32$.
 According to the Schwartz-Zippel lemma, the false positive probability is at most $(2T - 2) / \vert \mathbb{F} \vert$. $\square$
 
 ### Zero-Knowledge.
@@ -143,7 +143,7 @@ None.
 
 #### Terminal
 
- - `bc0 * rpp + bc1 * fd - 1`
+ - `bc0 ⋅ rpp + bc1 ⋅ fd - 1`
 
 ## Clock Jump Differences and Inner Sorting
 
@@ -160,18 +160,18 @@ As a result, in this regime, showing that a clock jump difference is in $F$ guar
 
 The set of values in the Processor Table's clock cycle column is $F \cup \lbrace 0,1 \rbrace$.
 Standard subset arguments can show that the clock jump differences are elements of that column.
-However, it is cumbersome to repeat this argument for three separate tables. What is described here is a construction that combines all three memory-like tables and generates one lookup in the Processor Table's `clk` column. It introduces
+However, it is cumbersome to repeat this argument for three separate tables. What is described here is a construction that combines all three memory-like tables and generates one lookup in the Processor Table's `clk` column. It requires
 
  - one base column in each memory-like table;
  - one extension column in each memory-like table;
- - four extra base columns in the Processor Table; and
+ - four base columns in the Processor Table; and
  - three extension columns in the Processor Table.
 
 ## Intuition
 
- - In order to treat clock jump differences of magnitude 1 separately, each memory-like table needs an extra base column `clk_di`, which holds the inverse of two consecutive rows' cycle count minus 1, *i.e.*, `clk' - clk - 1`, if that inverse exists, and 0 otherwise.
+ - In order to treat differences in the clock cycle column of magnitude 1 separately, each memory-like table needs an extra base column `clk_di`, which holds the inverse of two consecutive rows' cycle count minus 1, *i.e.*, `clk' - clk - 1`, if that inverse exists, and 0 otherwise.
  - A multi-table permutation argument establishes that all clock jump differences (*cjd*s) greater than 1 are contained in a new column `cjd` of the Processor Table.
- Every memory-like table needs one extension column `rpcjd` and the Processor Table needs one matching extension column `rpm` to effect this permutation argument.
+ Every memory-like table needs one extension column “running product of clock jump differences” `rpcjd` and the Processor Table needs one matching extension column “running product of clock jump differences with multiplicities” `rpm` to effect this permutation argument.
  - In addition to the extension column computing the running product, the Processor Table needs an inverse column `invm` to help select all *nonzero* `cjd`s, and thus skip padding rows. The abbreviation *invm* is short for inverse-with-multiplicities.
  - An inverse column `invu` in the Processor Table allows for selecting the first row of every contiguous region of `cjd`.
  The abbreviation *invu* is short for unique-inverse.
@@ -184,15 +184,15 @@ However, it is cumbersome to repeat this argument for three separate tables. Wha
 
 Here are the constraints for the RAM Table. The constraints for the other two tables are analogous and are therefore omitted from this section. Where necessary, the suffices `_ram`, `_js`, and `_os` disambiguate between the RAM Table, JumpStack Table, and OpStack Table, respectively.
 
-Use `mp` to abstractly refer to the memory pointer. Depending on the table, that would be `ramp`, `jsp`, or `osp`. The first extension column, `rpcjd`, computes a running product. It starts with 1, giving rise to the boundary constraint `rpcjd - 1`.
+Use `mp` to abstractly refer to the memory pointer. Depending on the table, that would be `ramp`, `jsp`, or `osp`. Extension column `rpcjd` computes a running product. It starts with 1, giving rise to the initial constraint `rpcjd - 1`.
 
 The transition constraint enforces the accumulation of a factor `(α - clk' + clk)` whenever the memory pointer is the same or the clock jump difference is greater than 1.
 If the memory pointer is changed or the clock jump difference is exactly 1, the same running product is carried to the next row.
 Expressed in Boolean logic:
 
 ```
-    clk' - clk ≠ 1 /\ mp' = mp => rpcjd' = rpcjd ⋅ (α - (clk' - clk))
-    clk' - clk = 1 \/ mp' ≠ mp => rp' = rp
+    clk' - clk ≠ 1 ∧ mp' = mp ⇒ rpcjd' = rpcjd ⋅ (α - (clk' - clk))
+    clk' - clk = 1 ∨ mp' ≠ mp ⇒ rp' = rp
 ```
 
 The corresponding transition constraint is
@@ -220,7 +220,7 @@ This cross-table relation comes with another extension column, this time in the 
 This running product accumulates a factor `(α - cjd)` in every row where `cjd ≠ 0`.
 Column `invm` (for *inverse-with-multiplicities*), which is the inverse-or-zero of `cjd`, allows writing inequality `cjd ≠ 0` as a polynomial of low degree.
 
-The first factor is accumulated in the first row, giving rise to boundary constraint `cjd ⋅ (rpm - (α - cjd)) + (1 - invm ⋅ cjd) ⋅ (rpm - 1)`.
+The first factor is accumulated in the first row, giving rise to initial constraint `cjd ⋅ (rpm - (α - cjd)) + (1 - invm ⋅ cjd) ⋅ (rpm - 1)`.
 
 The transition constraint is `cjd ⋅ (rpm' - rpm ⋅ (α - cjd)) + (1 - invm ⋅ cjd) ⋅ (rpm' - rpm)`.
 
@@ -247,15 +247,15 @@ As described earlier, `invu` is used to select the first row of regions of const
 
 Using this indicator, we build a running evaluation that accumulates one step of evaluation relative to `cjd` for each contiguous region, excluding the padding region. The clock jump differences accumulated in this manner are unique, giving rise to the column's name: `reu`, short for *running evaluation* over *unique* cjd's.
 
-The first clock jump difference is accumulated in the first row, giving rise to the boundary constraint `reu - β - cjd`.
+The first clock jump difference is accumulated in the first row, giving rise to the initial constraint `reu - β - cjd`.
 
 The running evaluation accumulates one step of evaluation whenever the indicator bit is set and the new clock jump difference is not padding.
 Otherwise, the running evaluation does not change.
 Expressed in Boolean logic:
 
 ```
-    invu ⋅ (cjd' - cjd) = 1 /\ cjd' ≠ 0 => reu' = β ⋅ reu + cjd'
-           (cjd' - cjd) = 0 \/ cjd' = 0 => reu' = reu
+    cjd' ≠ cjd ∧ cjd' ≠ 0 ⇒ reu' = β ⋅ reu + cjd'
+    cjd' = cjd ∨ cjd' = 0 ⇒ reu' = reu
 ```
 
 The following transition constraint captures this transition.
@@ -275,11 +275,11 @@ To verify that the indicator is correctly indicating the first row of every cont
 
 Assume the prover knows when the clock cycle `clk` is also *some* jump in a memory-like table and when it is not. Then it can apply the right running evaluation step as necessary. The prover computes this running evaluation in a column called `rer`, short for *running evaluation* over *relevant* clock cycles.
 
-Since 0 is never a valid clock jump difference, the initial value is 1, giving rise to the initial boundary constraint: `rer - 1`.
+Since 0 is never a valid clock jump difference, the initial value is 1, giving rise to the initial constraint: `rer - 1`.
 
 In every row, either the running evaluation step is applied, or else the running evaluation remains the same: `(rer' - rer) ⋅ (rer' - β ⋅ rer - clk)`.
 
-The terminal value must be identical to the running evaluation of "Relevant Clock Jumps". This gives rise to the terminal boundary constraint:  `rer - reu`
+The terminal value must be identical to the running evaluation of "Relevant Clock Jumps". This gives rise to the terminal constraint:  `rer - reu`
 
 Whether to apply the evaluation step or not does not need to be constrained since if the prover fails to include certain rows he will have a harder (not easier) time convincing the verifier.
 
