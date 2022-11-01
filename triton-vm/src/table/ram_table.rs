@@ -357,22 +357,17 @@ impl ExtRamTable {
     fn ext_transition_constraints(
         challenges: &RamTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let one = constant(XFieldElement::one());
+        let bezout_challenge = constant(challenges.bezout_relation_indeterminate);
+        let cjd_challenge =
+            constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
+        let rppa_challenge = constant(challenges.processor_perm_indeterminate);
+        let clk_weight = constant(challenges.clk_weight);
+        let ramp_weight = constant(challenges.ramp_weight);
+        let ramv_weight = constant(challenges.ramv_weight);
+
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
-        let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
-
-        let bezout_challenge =
-            MPolynomial::from_constant(challenges.bezout_relation_indeterminate, 2 * FULL_WIDTH);
-        let cjd_challenge = MPolynomial::from_constant(
-            challenges.all_clock_jump_differences_multi_perm_indeterminate,
-            2 * FULL_WIDTH,
-        );
-        let rppa_challenge =
-            MPolynomial::from_constant(challenges.processor_perm_indeterminate, 2 * FULL_WIDTH);
-
-        let clk_weight = MPolynomial::from_constant(challenges.clk_weight, 2 * FULL_WIDTH);
-        let ramp_weight = MPolynomial::from_constant(challenges.ramp_weight, 2 * FULL_WIDTH);
-        let ramv_weight = MPolynomial::from_constant(challenges.ramv_weight, 2 * FULL_WIDTH);
-
         let clk = variables[usize::from(CLK)].clone();
         let ramp = variables[usize::from(RAMP)].clone();
         let ramv = variables[usize::from(RAMV)].clone();
