@@ -628,7 +628,7 @@ mod permutation_argument_tests {
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
-                .input_table_eval_row_weight,
+                .standard_input_eval_indeterminate,
         );
 
         let output_terminal = EvalArg::compute_terminal(
@@ -636,7 +636,7 @@ mod permutation_argument_tests {
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
-                .output_table_eval_row_weight,
+                .standard_output_eval_indeterminate,
         );
 
         let gxta = GrandCrossTableArg::new(

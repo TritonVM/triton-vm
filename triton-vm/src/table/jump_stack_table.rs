@@ -150,7 +150,7 @@ impl ExtJumpStackTable {
 
         // rppa starts off having accumulated the first row
         let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
-        let alpha = constant(challenges.processor_perm_row_indeterminate);
+        let alpha = constant(challenges.processor_perm_indeterminate);
         let compressed_row = constant(challenges.clk_weight) * clk.clone()
             + constant(challenges.ci_weight) * ci
             + constant(challenges.jsp_weight) * jsp.clone()
@@ -262,7 +262,7 @@ impl ExtJumpStackTable {
             + constant(challenges.jsp_weight) * jsp_next.clone()
             + constant(challenges.jso_weight) * jso_next
             + constant(challenges.jsd_weight) * jsd_next;
-        let alpha = constant(challenges.processor_perm_row_indeterminate);
+        let alpha = constant(challenges.processor_perm_indeterminate);
         let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
         // 7. The running product for clock jump differences `rpcjd`
@@ -275,7 +275,7 @@ impl ExtJumpStackTable {
         // + (jsp' - jsp) · (rpcjd' - rpcjd)
         // + (clk' - clk - 1) · (jsp' - jsp - 1)
         //     · (rpcjd' - rpcjd · (β - clk' + clk))`
-        let beta = constant(challenges.all_clock_jump_differences_indeterminate);
+        let beta = constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
         let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
         let jsp_diff = jsp_next - jsp;
         let rpcjd_update = rpcjd_next - rpcjd * (beta - clk_next.clone() + clk.clone());
@@ -369,7 +369,7 @@ impl JumpStackTable {
                 clk * clk_w + ci * ci_w + jsp * jsp_w + jso * jso_w + jsd * jsd_w;
 
             // compute the running *product* of the compressed column (for permutation argument)
-            running_product *= challenges.processor_perm_row_indeterminate
+            running_product *= challenges.processor_perm_indeterminate
                 - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
@@ -380,7 +380,7 @@ impl JumpStackTable {
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
                     if clock_jump_difference != XFieldElement::one() {
                         all_clock_jump_differences_running_product *= challenges
-                            .all_clock_jump_differences_indeterminate
+                            .all_clock_jump_differences_multi_perm_indeterminate
                             - clock_jump_difference;
                     }
                 }
@@ -467,7 +467,7 @@ impl ExtJumpStackTable {
 pub struct JumpStackTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the op-stack table.
-    pub processor_perm_row_indeterminate: XFieldElement,
+    pub processor_perm_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
@@ -477,7 +477,7 @@ pub struct JumpStackTableChallenges {
     pub jsd_weight: XFieldElement,
 
     /// Weight for accumulating all clock jump differences
-    pub all_clock_jump_differences_indeterminate: XFieldElement,
+    pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 }
 
 impl ExtensionTable for ExtJumpStackTable {

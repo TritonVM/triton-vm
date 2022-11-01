@@ -551,7 +551,7 @@ impl HashTable {
                     .fold(XFieldElement::zero(), XFieldElement::add);
 
                 from_processor_running_evaluation = from_processor_running_evaluation
-                    * challenges.from_processor_eval_row_weight
+                    * challenges.from_processor_eval_indeterminate
                     + compressed_state_for_input;
             }
             extension_row[usize::from(FromProcessorRunningEvaluation)] =
@@ -573,7 +573,7 @@ impl HashTable {
                     .fold(XFieldElement::zero(), XFieldElement::add);
 
                 to_processor_running_evaluation = to_processor_running_evaluation
-                    * challenges.to_processor_eval_row_weight
+                    * challenges.to_processor_eval_indeterminate
                     + compressed_state_for_output;
             }
             extension_row[usize::from(ToProcessorRunningEvaluation)] =
@@ -653,8 +653,8 @@ impl ExtHashTable {
 pub struct HashTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the hash table.
-    pub from_processor_eval_row_weight: XFieldElement,
-    pub to_processor_eval_row_weight: XFieldElement,
+    pub from_processor_eval_indeterminate: XFieldElement,
+    pub to_processor_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],

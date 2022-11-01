@@ -191,7 +191,7 @@ impl ProgramTable {
                     + next_instruction * challenges.next_instruction_weight;
 
                 instruction_table_running_evaluation = instruction_table_running_evaluation
-                    * challenges.instruction_eval_row_weight
+                    * challenges.instruction_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
             extension_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
@@ -268,7 +268,7 @@ impl ExtProgramTable {
 pub struct ProgramTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the program table.
-    pub instruction_eval_row_weight: XFieldElement,
+    pub instruction_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to program table.)
     pub address_weight: XFieldElement,

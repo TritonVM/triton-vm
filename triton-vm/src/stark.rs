@@ -217,14 +217,14 @@ impl Stark {
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .input_table_eval_row_weight,
+                .standard_input_eval_indeterminate,
         );
         let output_terminal = EvalArg::compute_terminal(
             &self.output_symbols,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .output_table_eval_row_weight,
+                .standard_output_eval_indeterminate,
         );
         let grand_cross_table_arg = GrandCrossTableArg::new(
             grand_cross_table_argument_weights.try_into().unwrap(),
@@ -660,14 +660,14 @@ impl Stark {
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .input_table_eval_row_weight,
+                .standard_input_eval_indeterminate,
         );
         let output_terminal = EvalArg::compute_terminal(
             &self.output_symbols,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .output_table_eval_row_weight,
+                .standard_output_eval_indeterminate,
         );
         let grand_cross_table_arg = GrandCrossTableArg::new(
             grand_cross_table_argument_weights.try_into().unwrap(),
@@ -1268,7 +1268,7 @@ pub(crate) mod triton_stark_tests {
         let ine = EvalArg::compute_terminal(
             &input_symbols,
             EvalArg::default_initial(),
-            all_challenges.input_challenges.processor_eval_row_weight,
+            all_challenges.input_challenges.processor_eval_indeterminate,
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
@@ -1278,7 +1278,9 @@ pub(crate) mod triton_stark_tests {
         let oute = EvalArg::compute_terminal(
             &stdout.to_bword_vec(),
             EvalArg::default_initial(),
-            all_challenges.output_challenges.processor_eval_row_weight,
+            all_challenges
+                .output_challenges
+                .processor_eval_indeterminate,
         );
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
     }
@@ -1302,7 +1304,7 @@ pub(crate) mod triton_stark_tests {
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges
-                    .input_table_eval_row_weight,
+                    .standard_input_eval_indeterminate,
             );
 
             let output_terminal = EvalArg::compute_terminal(
@@ -1310,7 +1312,7 @@ pub(crate) mod triton_stark_tests {
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges
-                    .output_table_eval_row_weight,
+                    .standard_output_eval_indeterminate,
             );
 
             let grand_cross_table_arg = GrandCrossTableArg::new(

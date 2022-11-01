@@ -105,7 +105,7 @@ impl ProcessorTable {
                 if prow[usize::from(CI)] == Instruction::ReadIo.opcode_b() {
                     let input_symbol = extension_row[usize::from(ST0)];
                     input_table_running_evaluation = input_table_running_evaluation
-                        * challenges.input_table_eval_row_weight
+                        * challenges.standard_input_eval_indeterminate
                         + input_symbol;
                 }
             }
@@ -115,7 +115,7 @@ impl ProcessorTable {
             if row[usize::from(CI)] == Instruction::WriteIo.opcode_b() {
                 let output_symbol = extension_row[usize::from(ST0)];
                 output_table_running_evaluation = output_table_running_evaluation
-                    * challenges.output_table_eval_row_weight
+                    * challenges.standard_output_eval_indeterminate
                     + output_symbol;
             }
             extension_row[usize::from(OutputTableEvalArg)] = output_table_running_evaluation;
@@ -132,7 +132,7 @@ impl ProcessorTable {
             if row[usize::from(IsPadding)].is_zero() {
                 let compressed_row_for_instruction_table_permutation_argument =
                     ip * ip_w + ci * ci_w + nia * nia_w;
-                instruction_table_running_product *= challenges.instruction_perm_row_weight
+                instruction_table_running_product *= challenges.instruction_perm_indeterminate
                     - compressed_row_for_instruction_table_permutation_argument;
             }
             extension_row[usize::from(InstructionTablePermArg)] = instruction_table_running_product;
@@ -148,7 +148,7 @@ impl ProcessorTable {
                 + ib1 * challenges.op_stack_table_ib1_weight
                 + osp * challenges.op_stack_table_osp_weight
                 + osv * challenges.op_stack_table_osv_weight;
-            opstack_table_running_product *= challenges.op_stack_perm_row_weight
+            opstack_table_running_product *= challenges.op_stack_perm_indeterminate
                 - compressed_row_for_op_stack_table_permutation_argument;
             extension_row[usize::from(OpStackTablePermArg)] = opstack_table_running_product;
 
@@ -160,8 +160,8 @@ impl ProcessorTable {
                 * challenges.ram_table_clk_weight
                 + ramv * challenges.ram_table_ramv_weight
                 + ramp * challenges.ram_table_ramp_weight;
-            ram_table_running_product *=
-                challenges.ram_perm_row_weight - compressed_row_for_ram_table_permutation_argument;
+            ram_table_running_product *= challenges.ram_perm_indeterminate
+                - compressed_row_for_ram_table_permutation_argument;
             extension_row[usize::from(RamTablePermArg)] = ram_table_running_product;
 
             // JumpStack Table
@@ -174,7 +174,7 @@ impl ProcessorTable {
                 + jso * challenges.jump_stack_table_jso_weight
                 + jsd * challenges.jump_stack_table_jsd_weight;
             jump_stack_running_product *=
-                challenges.jump_stack_perm_row_weight - compressed_row_for_jump_stack_table;
+                challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
             extension_row[usize::from(JumpStackTablePermArg)] = jump_stack_running_product;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
@@ -197,7 +197,7 @@ impl ProcessorTable {
                     .map(|(&st, &weight)| weight * st)
                     .fold(XFieldElement::zero(), XFieldElement::add);
                 to_hash_table_running_evaluation = to_hash_table_running_evaluation
-                    * challenges.to_hash_table_eval_row_weight
+                    * challenges.to_hash_table_eval_indeterminate
                     + compressed_row_for_hash_input;
             }
             extension_row[usize::from(ToHashTableEvalArg)] = to_hash_table_running_evaluation;
@@ -218,7 +218,7 @@ impl ProcessorTable {
                     .fold(XFieldElement::zero(), XFieldElement::add);
                 if prow[usize::from(CI)] == Instruction::Hash.opcode_b() {
                     from_hash_table_running_evaluation = from_hash_table_running_evaluation
-                        * challenges.from_hash_table_eval_row_weight
+                        * challenges.from_hash_table_eval_indeterminate
                         + compressed_row_for_hash_digest;
                 }
             }
@@ -228,7 +228,7 @@ impl ProcessorTable {
             let current_clock_jump_difference = row[usize::from(ClockJumpDifference)].lift();
             if !current_clock_jump_difference.is_zero() {
                 all_clock_jump_differences_running_product *= challenges
-                    .all_clock_jump_differences_indeterminate
+                    .all_clock_jump_differences_multi_perm_indeterminate
                     - current_clock_jump_difference;
             }
             extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
@@ -242,13 +242,13 @@ impl ProcessorTable {
                     unique_clock_jump_differences.push(current_clock_jump_difference);
                     unique_clock_jump_differences_running_evaluation =
                         unique_clock_jump_differences_running_evaluation
-                            * challenges.unique_clock_jump_differences_indeterminate
+                            * challenges.unique_clock_jump_differences_eval_indeterminate
                             + current_clock_jump_difference;
                 }
             } else {
                 unique_clock_jump_differences.push(current_clock_jump_difference);
                 unique_clock_jump_differences_running_evaluation = challenges
-                    .unique_clock_jump_differences_indeterminate
+                    .unique_clock_jump_differences_eval_indeterminate
                     + current_clock_jump_difference;
             }
             extension_row[usize::from(UniqueClockJumpDifferencesEvalArg)] =
@@ -274,7 +274,7 @@ impl ProcessorTable {
             let current_clk = extension_row[usize::from(CLK)];
             if unique_clock_jump_differences.contains(&current_clk) {
                 selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
-                    * challenges.unique_clock_jump_differences_indeterminate
+                    * challenges.unique_clock_jump_differences_eval_indeterminate
                     + current_clk;
             }
             extension_row[usize::from(SelectedClockCyclesEvalArg)] =
@@ -417,15 +417,15 @@ impl ExtProcessorTable {
 pub struct ProcessorTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the processor table.
-    pub input_table_eval_row_weight: XFieldElement,
-    pub output_table_eval_row_weight: XFieldElement,
-    pub to_hash_table_eval_row_weight: XFieldElement,
-    pub from_hash_table_eval_row_weight: XFieldElement,
+    pub standard_input_eval_indeterminate: XFieldElement,
+    pub standard_output_eval_indeterminate: XFieldElement,
+    pub to_hash_table_eval_indeterminate: XFieldElement,
+    pub from_hash_table_eval_indeterminate: XFieldElement,
 
-    pub instruction_perm_row_weight: XFieldElement,
-    pub op_stack_perm_row_weight: XFieldElement,
-    pub ram_perm_row_weight: XFieldElement,
-    pub jump_stack_perm_row_weight: XFieldElement,
+    pub instruction_perm_indeterminate: XFieldElement,
+    pub op_stack_perm_indeterminate: XFieldElement,
+    pub ram_perm_indeterminate: XFieldElement,
+    pub jump_stack_perm_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub instruction_table_ip_weight: XFieldElement,
@@ -450,14 +450,14 @@ pub struct ProcessorTableChallenges {
     pub hash_table_stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
     pub hash_table_digest_output_weights: [XFieldElement; DIGEST_LENGTH],
 
-    pub unique_clock_jump_differences_indeterminate: XFieldElement,
-    pub all_clock_jump_differences_indeterminate: XFieldElement,
+    pub unique_clock_jump_differences_eval_indeterminate: XFieldElement,
+    pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
 pub struct IOChallenges {
     /// weight for updating the running evaluation with the next i/o symbol in the i/o list
-    pub processor_eval_row_weight: XFieldElement,
+    pub processor_eval_indeterminate: XFieldElement,
 }
 
 #[derive(Debug, Clone)]
@@ -661,7 +661,7 @@ impl ExtProcessorTable {
         // starts off having applied one evaluation step with the clock
         // jump difference.
         let beta = SingleRowConstraints::constant_from_xfe(
-            challenges.unique_clock_jump_differences_indeterminate,
+            challenges.unique_clock_jump_differences_eval_indeterminate,
         );
         let reu_starts_correctly = factory.reu() - beta - factory.cjd();
 
@@ -669,7 +669,7 @@ impl ExtProcessorTable {
         // starts off having accumulated the first factor.
         let rpm_starts_correctly = factory.rpm()
             - SingleRowConstraints::constant_from_xfe(
-                challenges.all_clock_jump_differences_indeterminate,
+                challenges.all_clock_jump_differences_multi_perm_indeterminate,
             )
             + factory.cjd();
 
@@ -865,7 +865,7 @@ impl ExtProcessorTable {
         // `cjd'` is nonzero.
         // cjd' · (rpm' - rpm · (α - cjd')) + (cjd' · invm' - 1) · (rpm' - rpm)
         let alpha = RowPairConstraints::constant_from_xfe(
-            challenges.all_clock_jump_differences_indeterminate,
+            challenges.all_clock_jump_differences_multi_perm_indeterminate,
         );
         let rpm_updates_correctly = factory.cjd_next()
             * (factory.rpm_next() - factory.rpm() * (alpha - factory.cjd_next()))
@@ -879,7 +879,7 @@ impl ExtProcessorTable {
         //  + · (1 - cjd' · invm) · (reu' - reu)
         //  + cjd' · (cjd' - cjd) · (reu' - β · reu - cjd')`
         let beta = RowPairConstraints::constant_from_xfe(
-            challenges.unique_clock_jump_differences_indeterminate,
+            challenges.unique_clock_jump_differences_eval_indeterminate,
         );
         let reu_updates_correctly = invu_next_is_cjdd_inverse
             * (factory.reu_next() - factory.reu())
