@@ -300,14 +300,12 @@ impl TableLike<XFieldElement> for ExtRamTable {}
 
 impl ExtRamTable {
     fn ext_initial_constraints(challenges: &RamTableChallenges) -> Vec<MPolynomial<XFieldElement>> {
-        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
-        let bezout_challenge =
-            MPolynomial::from_constant(challenges.bezout_relation_indeterminate, FULL_WIDTH);
+        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
+        let one = constant(XFieldElement::one());
+        let bezout_challenge = constant(challenges.bezout_relation_indeterminate);
+        let rppa_challenge = constant(challenges.processor_perm_indeterminate);
+
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
-
-        let rppa_challenge =
-            MPolynomial::from_constant(challenges.processor_perm_indeterminate, FULL_WIDTH);
-
         let clk = variables[usize::from(CLK)].clone();
         let ramp = variables[usize::from(RAMP)].clone();
         let ramv = variables[usize::from(RAMV)].clone();
@@ -319,25 +317,22 @@ impl ExtRamTable {
         let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
         let rppa = variables[usize::from(RunningProductPermArg)].clone();
 
-        let clk_is_0 = clk;
-        let ramp_is_0 = ramp.clone();
-        let ramv_is_0 = ramv;
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
         let formal_derivative_is_1 = fd - one;
-        let running_product_polynomial_is_initialized_correctly = rp - (bezout_challenge - ramp);
+        let running_product_polynomial_is_initialized_correctly =
+            rp - (bezout_challenge - ramp.clone());
 
-        // let compressed_row_for_permutation_argument = clk.clone() * clk_weight.clone()
-        //     + ramp.clone() * ramp_weight.clone()
-        //     + ramv.clone() * ramv_weight.clone();
         // all of {clk, ramp, ramv} are zero
+        let compressed_row_for_permutation_argument_is_zero = clk * constant(challenges.clk_weight)
+            + ramp * constant(challenges.ramp_weight)
+            + ramv * constant(challenges.ramv_weight);
+
         let running_product_permutation_argument_is_initialized_correctly = rppa - rppa_challenge;
 
         vec![
-            clk_is_0,
-            ramp_is_0,
-            ramv_is_0,
+            compressed_row_for_permutation_argument_is_zero,
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
