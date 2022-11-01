@@ -182,9 +182,12 @@ impl ExtJumpStackTable {
     fn ext_transition_constraints(
         challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
-        let one = MPolynomial::<XFieldElement>::from_constant(XFieldElement::one(), 2 * FULL_WIDTH);
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let one = constant(XFieldElement::one());
+        let call_opcode = constant(Instruction::Call(Default::default()).opcode_b().lift());
+        let return_opcode = constant(Instruction::Return.opcode_b().lift());
 
+        let variables = MPolynomial::variables(2 * FULL_WIDTH);
         let clk = variables[usize::from(CLK)].clone();
         let ci = variables[usize::from(CI)].clone();
         let jsp = variables[usize::from(JSP)].clone();
@@ -203,34 +206,24 @@ impl ExtJumpStackTable {
         let rpcjd_next =
             variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
 
-        let call_opcode = MPolynomial::<XFieldElement>::from_constant(
-            Instruction::Call(Default::default()).opcode_b().lift(),
-            2 * FULL_WIDTH,
-        );
-
-        let return_opcode = MPolynomial::<XFieldElement>::from_constant(
-            Instruction::Return.opcode_b().lift(),
-            2 * FULL_WIDTH,
-        );
-
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change
         let jsp_inc_or_stays =
             (jsp_next.clone() - (jsp.clone() + one.clone())) * (jsp_next.clone() - jsp.clone());
 
         // 2. The jump stack pointer jsp increases by 1
-        //      or the jump stack origin jso does not change
         //      or current instruction ci is return
-        let jsp_inc_or_jso_stays_or_ci_is_ret = (jsp_next.clone() - (jsp.clone() + one.clone()))
-            * (jso_next.clone() - jso)
-            * (ci.clone() - return_opcode.clone());
+        //      or the jump stack origin jso does not change
+        let jsp_inc_by_one_or_ci_is_return =
+            (jsp_next.clone() - (jsp.clone() + one.clone())) * (ci.clone() - return_opcode.clone());
+        let jsp_inc_or_jso_stays_or_ci_is_ret =
+            jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
 
         // 3. The jump stack pointer jsp increases by 1
-        //      or the jump stack destination jsd does not change
         //      or current instruction ci is return
-        let jsp_inc_or_jsd_stays_or_ci_ret = (jsp_next.clone() - (jsp.clone() + one.clone()))
-            * (jsd_next.clone() - jsd)
-            * (ci.clone() - return_opcode.clone());
+        //      or the jump stack destination jsd does not change
+        let jsp_inc_or_jsd_stays_or_ci_ret =
+            jsp_inc_by_one_or_ci_is_return * (jsd_next.clone() - jsd);
 
         // 4. The jump stack pointer jsp increases by 1
         //      or the cycle count clk increases by 1
@@ -246,24 +239,23 @@ impl ExtJumpStackTable {
         // `clk_di'` is the inverse-or-zero of the clock jump
         // difference minus one.
         let jsp_changes = jsp_next.clone() - jsp.clone() - one.clone();
-        let cdmo = clk_next.clone() - clk.clone() - one.clone();
-        let clkdi_is_cdmo_inverse = clk_di_next * cdmo.clone();
-        let clkdi_is_zero_or_cdmo_inverse_or_jsp_changes =
-            clk_di.clone() * clkdi_is_cdmo_inverse.clone() * jsp_changes.clone();
-        let cdmo_is_zero_or_clkdi_inverse_or_jsp_changes =
-            cdmo.clone() * clkdi_is_cdmo_inverse * jsp_changes;
+        let clock_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
+        let clkdi_is_inverse_of_clock_diff_minus_one = clk_di_next * clock_diff_minus_one.clone();
+        let clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes =
+            clk_di.clone() * clkdi_is_inverse_of_clock_diff_minus_one.clone() * jsp_changes.clone();
+        let clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes =
+            clock_diff_minus_one.clone() * clkdi_is_inverse_of_clock_diff_minus_one * jsp_changes;
 
         // 6. The running product for the permutation argument `rppa`
         //  accumulates one row in each row, relative to weights `a`,
         //  `b`, `c`, `d`, `e`, and indeterminate `α`.
-        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
         let compressed_row = constant(challenges.clk_weight) * clk_next.clone()
             + constant(challenges.ci_weight) * ci_next
             + constant(challenges.jsp_weight) * jsp_next.clone()
             + constant(challenges.jso_weight) * jso_next
             + constant(challenges.jsd_weight) * jsd_next;
-        let alpha = constant(challenges.processor_perm_indeterminate);
-        let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
+        let rppa_updates_correctly =
+            rppa_next - rppa * (constant(challenges.processor_perm_indeterminate) - compressed_row);
 
         // 7. The running product for clock jump differences `rpcjd`
         // accumulates a factor `(clk' - clk - 1)` (relative to
@@ -275,12 +267,13 @@ impl ExtJumpStackTable {
         // + (jsp' - jsp) · (rpcjd' - rpcjd)
         // + (clk' - clk - 1) · (jsp' - jsp - 1)
         //     · (rpcjd' - rpcjd · (β - clk' + clk))`
-        let beta = constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
+        let indeterminate =
+            constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
         let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
         let jsp_diff = jsp_next - jsp;
-        let rpcjd_update = rpcjd_next - rpcjd * (beta - clk_next.clone() + clk.clone());
+        let rpcjd_update = rpcjd_next - rpcjd * (indeterminate - clk_next.clone() + clk.clone());
         let rpcjd_remains_if_clk_increments_by_one =
-            (one.clone() - cdmo * clk_di) * rpcjd_remains.clone();
+            (one.clone() - clock_diff_minus_one * clk_di) * rpcjd_remains.clone();
         let rpcjd_remains_if_jsp_changes = jsp_diff.clone() * rpcjd_remains;
         let rpcjd_updates_if_jsp_remains_and_clk_jumps =
             (clk_next - clk - one.clone()) * (jsp_diff - one) * rpcjd_update;
@@ -293,8 +286,8 @@ impl ExtJumpStackTable {
             jsp_inc_or_jso_stays_or_ci_is_ret,
             jsp_inc_or_jsd_stays_or_ci_ret,
             jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
-            clkdi_is_zero_or_cdmo_inverse_or_jsp_changes,
-            cdmo_is_zero_or_clkdi_inverse_or_jsp_changes,
+            clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes,
+            clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes,
             rppa_updates_correctly,
             rpcjd_updates_correctly,
         ]
@@ -369,8 +362,8 @@ impl JumpStackTable {
                 clk * clk_w + ci * ci_w + jsp * jsp_w + jso * jso_w + jsd * jsd_w;
 
             // compute the running *product* of the compressed column (for permutation argument)
-            running_product *= challenges.processor_perm_indeterminate
-                - compressed_row_for_permutation_argument;
+            running_product *=
+                challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
             // clock jump difference

@@ -397,7 +397,7 @@ impl BaseMatrices {
 
         // set inverse of clock difference - 1
         let matrix_len = jump_stack_matrix.len();
-        let &last_op_stack_matrix_row = jump_stack_matrix.last().unwrap();
+        let &last_jump_stack_matrix_row = jump_stack_matrix.last().unwrap();
         let mut new_jump_stack_matrix = vec![];
         for (mut current_row, next_row) in jump_stack_matrix.into_iter().tuple_windows() {
             let clock_jump_difference = next_row[usize::from(JumpStackBaseTableColumn::CLK)]
@@ -408,7 +408,7 @@ impl BaseMatrices {
             }
             new_jump_stack_matrix.push(current_row);
         }
-        new_jump_stack_matrix.push(last_op_stack_matrix_row);
+        new_jump_stack_matrix.push(last_jump_stack_matrix_row);
         assert_eq!(matrix_len, new_jump_stack_matrix.len());
 
         new_jump_stack_matrix
