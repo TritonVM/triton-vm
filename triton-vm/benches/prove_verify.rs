@@ -2,24 +2,8 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use triton_vm::{
     shared_tests::{parse_simulate_prove, test_halt},
     triton_profiler::{Report, TritonProfiler},
-    vm::Program,
 };
 use twenty_first::shared_math::b_field_element::BFieldElement;
-
-fn simulate(criterion: &mut Criterion) {
-    let mut group = criterion.benchmark_group("prove_verify");
-    group.sample_size(10); // runs
-
-    let program = Program::from_code("halt").unwrap();
-    let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
-    let secret_in = vec![];
-
-    group.bench_function("Simulate Halt", |b| {
-        b.iter(|| program.simulate_with_input(&stdin, &secret_in))
-    });
-
-    group.finish();
-}
 
 fn prove_verify_halt(criterion: &mut Criterion) {
     let mut maybe_profiler = Some(TritonProfiler::new("Halt"));
