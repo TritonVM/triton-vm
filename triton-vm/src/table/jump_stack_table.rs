@@ -307,7 +307,7 @@ impl JumpStackTable {
         Self { inherited_table }
     }
 
-    pub fn codeword_table(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<BFieldElement>,
         omicron: BFieldElement,
@@ -315,14 +315,14 @@ impl JumpStackTable {
         num_trace_randomizers: usize,
     ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(
+        let fri_domain_codewords = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
             num_trace_randomizers,
             base_columns,
         );
-        let inherited_table = self.inherited_table.with_data(codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
         Self { inherited_table }
     }
 
@@ -435,7 +435,7 @@ impl JumpStackTable {
 }
 
 impl ExtJumpStackTable {
-    pub fn lde(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         omicron: XFieldElement,
@@ -443,7 +443,7 @@ impl ExtJumpStackTable {
         num_trace_randomizers: usize,
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(
+        let fri_domain_codewords_ext = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
@@ -451,7 +451,7 @@ impl ExtJumpStackTable {
             ext_columns,
         );
 
-        let inherited_table = self.inherited_table.with_data(ext_codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         ExtJumpStackTable { inherited_table }
     }
 }

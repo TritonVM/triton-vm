@@ -117,17 +117,18 @@ impl Stark {
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
         timer.elapsed("randomizer_codewords");
 
-        let base_codeword_tables =
-            base_tables.codeword_tables(&self.bfri_domain, self.num_trace_randomizers);
-        let base_codewords = base_codeword_tables.get_all_base_columns();
-        let all_base_codewords = vec![b_rand_codewords, base_codewords.clone()].concat();
+        let base_fri_domain_tables =
+            base_tables.to_fri_domain_tables(&self.bfri_domain, self.num_trace_randomizers);
+        let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
+        let all_base_fri_domain_codewords =
+            vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
         timer.elapsed("get_all_base_codewords");
 
         // build Merkle tree
-        let transposed_base_codewords = Self::transpose(&all_base_codewords);
+        let transposed_base_fri_domain_codewords = Self::transpose(&all_base_fri_domain_codewords);
         timer.elapsed("transposed_base_codewords");
 
-        let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
+        let base_tree = Self::get_merkle_tree(&transposed_base_fri_domain_codewords);
         let base_merkle_tree_root = base_tree.get_root();
         timer.elapsed("base_merkle_tree");
 
@@ -159,24 +160,25 @@ impl Stark {
         timer.elapsed("Sent all padded heights");
 
         // LDE, second round
-        let ext_codeword_tables = ext_tables.lde(&self.xfri.domain, self.num_trace_randomizers);
-        let extension_codewords = ext_codeword_tables.collect_all_columns();
+        let ext_fri_domain_tables =
+            ext_tables.to_fri_domain_tables(&self.xfri.domain, self.num_trace_randomizers);
+        let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
 
-        let full_codeword_tables =
-            ExtTableCollection::join(base_codeword_tables, ext_codeword_tables);
+        let full_fri_domain_tables =
+            ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
         timer.elapsed("Calculated extension codewords");
 
         // build Merkle tree
-        let transposed_ext_codewords = Self::transpose(&extension_codewords);
+        let transposed_ext_fri_domain_codewords = Self::transpose(&extension_fri_domain_codewords);
 
-        let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
+        let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_fri_domain_codewords);
 
         // send root for extension codewords
         proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
         timer.elapsed("extension_tree");
 
         // compute quotients
-        let mut quotient_codewords = full_codeword_tables.get_all_quotients(&self.xfri.domain);
+        let mut quotient_codewords = full_fri_domain_tables.get_all_quotients(&self.xfri.domain);
         timer.elapsed("Calculated quotient codewords");
 
         // get degree bounds
@@ -188,14 +190,14 @@ impl Stark {
         timer.elapsed("Calculated extension degree bounds");
 
         let mut quotient_degree_bounds =
-            full_codeword_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
+            full_fri_domain_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
         // get weights for nonlinear combination from verifier
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = self.num_randomizer_polynomials
-            + 2 * base_codewords.len()
-            + 2 * extension_codewords.len()
+            + 2 * base_fri_domain_codewords.len()
+            + 2 * extension_fri_domain_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -233,14 +235,14 @@ impl Stark {
         );
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
-                &full_codeword_tables,
+                &full_fri_domain_tables,
                 &self.xfri.domain,
-                derive_omicron(full_codeword_tables.padded_height as u64),
+                derive_omicron(full_fri_domain_tables.padded_height as u64),
             );
         quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
-            .quotient_degree_bound(&full_codeword_tables, self.num_trace_randomizers);
+            .quotient_degree_bound(&full_fri_domain_tables, self.num_trace_randomizers);
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
         timer.elapsed("Grand Cross Table Argument");
 
@@ -248,8 +250,8 @@ impl Stark {
         let combination_codeword = self.create_combination_codeword(
             &mut timer,
             vec![x_rand_codeword],
-            base_codewords,
-            extension_codewords,
+            base_fri_domain_codewords,
+            extension_fri_domain_codewords,
             quotient_codewords,
             non_lin_combi_weights.to_vec(),
             base_degree_bounds,
@@ -300,7 +302,7 @@ impl Stark {
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
         let revealed_base_elems =
-            Self::get_revealed_elements(&transposed_base_codewords, &revealed_indices);
+            Self::get_revealed_elements(&transposed_base_fri_domain_codewords, &revealed_indices);
         let auth_paths_base = base_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedBaseElementVectors(
             revealed_base_elems,
@@ -308,7 +310,7 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
 
         let revealed_ext_elems =
-            Self::get_revealed_elements(&transposed_ext_codewords, &revealed_indices);
+            Self::get_revealed_elements(&transposed_ext_fri_domain_codewords, &revealed_indices);
         let auth_paths_ext = extension_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedExtensionElementVectors(
             revealed_ext_elems,
