@@ -98,8 +98,10 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `RunningEvaluationToHashTable` has absorbed the first row with respect to challenges 🧄0 through 🧄9 and indeterminate 🪣 if the current instruction is `hash`. Otherwise, it is 1.
 1. `RunningEvaluationFromHashTable` is 1.
 1. The running evaluation of relevant clock cycles is 1.
-1. The running evaluation of unique clock jump differences starts off having applied one evaluation step with the clock jump difference with respect to indeterminate 🛒.
+1. The running evaluation of unique clock jump differences starts off having applied one evaluation step with the clock jump difference with respect to indeterminate 🛒, if the `cjd` column does not start with zero.
 1. The running product of all clock jump differences starts starts off having accumulated the first factor with respect to indeterminate 🚿, but only if the `cjd` column does not start with zero.
+
+(Note that the `cjd` column can start with a zero, but only if all other elements of this column are zero. This event indicates the absence of clock jumps.)
 
 ### Initial Constraints as Polynomials
 
@@ -137,7 +139,7 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `(ci - opcode(hash))·(RunningEvaluationToHashTable - 1) + hash_deselector·(RunningEvaluationToHashTable - 🪣 - 🧄0·st0 - 🧄1·st1 - 🧄2·st2 - 🧄3·st3 - 🧄4·st4 - 🧄5·st5 - 🧄6·st6 - 🧄7·st7 - 🧄8·st8 - 🧄9·st9)`
 1. `RunningEvaluationFromHashTable - 1`
 1. `rer - 1`
-1. `reu - 🛒 - cjd`
+1. `cjd · (reu - 🛒 - cjd)) + (1 - cjd · invm) · (reu - 1)`
 1. `cjd · (rpm - (🚿 - cjd)) + (1 - cjd · invm) · (rpm - 1)`
 
 ## Consistency Constraints

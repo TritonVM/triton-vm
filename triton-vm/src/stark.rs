@@ -497,6 +497,7 @@ impl Stark {
             (extension_codewords, extension_degree_bounds, "ext"),
             (quotient_codewords, quotient_degree_bounds, "quot"),
         ] {
+            println!("{}", identifier);
             // TODO with the DEBUG CODE and enumerate removed, the iterators can be `into_par_iter`
             for (idx, (codeword, degree_bound)) in
                 codewords.into_iter().zip_eq(bounds.iter()).enumerate()
@@ -1586,12 +1587,14 @@ pub(crate) mod triton_stark_tests {
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
                 let evaluated_bcs = table.evaluate_initial_constraints(row, &challenges);
+                let num_initial_constraints = evaluated_bcs.len();
                 for (constraint_idx, ebc) in evaluated_bcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
                         ebc,
-                        "Failed initial constraint on {}. Constraint index: {}. Row index: {}/{}",
+                        "Failed initial constraint on {}. Constraint index: {}/{}. Row index: {}/{}",
                         table.name(),
+                        num_initial_constraints,
                         constraint_idx,
                         0,
                         table.data().len()

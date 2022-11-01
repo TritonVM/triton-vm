@@ -272,7 +272,7 @@ impl ProcessorTable {
                             * challenges.unique_clock_jump_differences_eval_indeterminate
                             + current_clock_jump_difference;
                 }
-            } else {
+            } else if !current_clock_jump_difference.is_zero() {
                 unique_clock_jump_differences.push(current_clock_jump_difference);
                 unique_clock_jump_differences_running_evaluation = challenges
                     .unique_clock_jump_differences_eval_indeterminate
@@ -799,20 +799,21 @@ impl ExtProcessorTable {
         // The running evaluation of relevant clock cycles `rer` starts with the initial.
         let rer_starts_correctly = factory.rer() - constant_x(EvalArg::default_initial());
 
-        // The running evaluation of unique clock jump differences starts off having applied one
-        // evaluation step with the clock jump difference.
+        // The running evaluation of unique clock jump differences
+        // starts off having applied one evaluation step with the clock
+        // jump difference, unless the clock jump difference column
+        // is all zeros.
         let reu_indeterminate =
             constant_x(challenges.unique_clock_jump_differences_eval_indeterminate);
-        let reu_starts_correctly = factory.reu()
-            - (reu_indeterminate * constant_x(EvalArg::default_initial()) + factory.cjd());
-
-        // The running product for all clock jump differences starts off having accumulated the
-        // first factor.
-        let rpm_indeterminate = challenges.all_clock_jump_differences_multi_perm_indeterminate;
+        let reu_starts_correctly = factory.cjd()
+            * (factory.reu() - reu_indeterminate - factory.cjd())
+            + (factory.one() - factory.cjd() * factory.invm())
+                * (factory.reu() - constant_x(PermArg::default_initial()));
 
         // The running product for all clock jump differences
         // starts off having accumulated the first factor, but
         // only if the `cjd` is nonzero
+        let rpm_indeterminate = challenges.all_clock_jump_differences_multi_perm_indeterminate;
         let rpm_starts_correctly = factory.cjd()
             * (factory.rpm() - constant_x(rpm_indeterminate) + factory.cjd())
             + (factory.one() - factory.invm() * factory.cjd())
@@ -965,7 +966,7 @@ impl ExtProcessorTable {
             ramv_is_0,
             ramp_is_0,
             rer_starts_correctly,
-            reu_starts_correctly,
+            reu_starts_correctly, // <- culprit
             rpm_starts_correctly,
             running_evaluation_for_standard_input_is_initialized_correctly,
             running_product_for_instruction_table_is_initialized_correctly,
