@@ -859,11 +859,11 @@ impl ExtProcessorTable {
         // accumulates a factor α - cjd' in every row, provided that
         // `cjd'` is nonzero.
         // cjd' · (rpm' - rpm · (α - cjd')) + (cjd' · invm' - 1) · (rpm' - rpm)
-        let alpha = RowPairConstraints::constant_from_xfe(
+        let indeterminate_alpha = RowPairConstraints::constant_from_xfe(
             challenges.all_clock_jump_differences_multi_perm_indeterminate,
         );
         let rpm_updates_correctly = factory.cjd_next()
-            * (factory.rpm_next() - factory.rpm() * (alpha - factory.cjd_next()))
+            * (factory.rpm_next() - factory.rpm() * (indeterminate_alpha - factory.cjd_next()))
             + (factory.cjd_next() * factory.invm_next() - factory.one())
                 * (factory.rpm_next() - factory.rpm());
 
@@ -873,7 +873,7 @@ impl ExtProcessorTable {
         // `(1 - (cjd' - cjd) · invu) · (reu' - reu)
         //  + · (1 - cjd' · invm) · (reu' - reu)
         //  + cjd' · (cjd' - cjd) · (reu' - β · reu - cjd')`
-        let beta = RowPairConstraints::constant_from_xfe(
+        let indeterminate_beta = RowPairConstraints::constant_from_xfe(
             challenges.unique_clock_jump_differences_eval_indeterminate,
         );
         let reu_updates_correctly = invu_next_is_cjdd_inverse
@@ -882,13 +882,15 @@ impl ExtProcessorTable {
                 * (factory.reu_next() - factory.reu())
             + factory.cjd_next()
                 * cjdd
-                * (factory.reu_next() - beta.clone() * factory.reu() - factory.cjd_next());
+                * (factory.reu_next()
+                    - indeterminate_beta.clone() * factory.reu()
+                    - factory.cjd_next());
 
         // The running evaluation `rer` of relevant clock cycles is
         // updated relative to evaluation point β or not at all.
         // (rer' - rer · β - clk') · (rer' - rer)
         let rer_updates_correctly =
-            (factory.rer_next() - factory.rer() * beta - factory.clk_next())
+            (factory.rer_next() - factory.rer() * indeterminate_beta - factory.clk_next())
                 * (factory.rer_next() - factory.rer());
 
         transition_constraints.append(&mut vec![
