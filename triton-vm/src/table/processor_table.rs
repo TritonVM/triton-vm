@@ -814,11 +814,6 @@ impl ExtProcessorTable {
             all_instruction_transition_constraints,
         );
 
-        println!(
-            "length of transition constraints now: {}",
-            transition_constraints.len()
-        );
-
         // constraints common to all instructions
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
 
