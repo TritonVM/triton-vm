@@ -317,22 +317,20 @@ impl ExtRamTable {
         let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
         let rppa = variables[usize::from(RunningProductPermArg)].clone();
 
+        let clk_is_0 = clk;
+        let ramp_is_0 = ramp.clone();
+        let ramv_is_0 = ramv;
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
         let formal_derivative_is_1 = fd - one;
-        let running_product_polynomial_is_initialized_correctly =
-            rp - (bezout_challenge - ramp.clone());
-
-        // all of {clk, ramp, ramv} are zero
-        let compressed_row_for_permutation_argument_is_zero = clk * constant(challenges.clk_weight)
-            + ramp * constant(challenges.ramp_weight)
-            + ramv * constant(challenges.ramv_weight);
-
+        let running_product_polynomial_is_initialized_correctly = rp - (bezout_challenge - ramp);
         let running_product_permutation_argument_is_initialized_correctly = rppa - rppa_challenge;
 
         vec![
-            compressed_row_for_permutation_argument_is_zero,
+            clk_is_0,
+            ramp_is_0,
+            ramv_is_0,
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
