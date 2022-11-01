@@ -50,7 +50,7 @@ pub enum ProcessorBaseTableColumn {
     HV3,
     ClockJumpDifference,
     ClockJumpDifferenceInverse,
-    UniqueClockJumpDifferenceInverse,
+    UniqueClockJumpDiffDiffInverse,
     RAMP,
     RAMV,
 }

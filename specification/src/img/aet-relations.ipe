@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.24">
-<info created="D:20200729150742" modified="D:20220930012252"/>
+<info created="D:20200729150742" modified="D:20221101133848"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -318,7 +318,9 @@ h
 <layer name="table_names"/>
 <layer name="eval_args"/>
 <layer name="perm_args"/>
-<view layers="bg table_names eval_args perm_args" active="eval_args"/>
+<layer name="multi_perm_arg"/>
+<layer name="bezout_args"/>
+<view layers="bg table_names eval_args perm_args multi_perm_arg bezout_args" active="multi_perm_arg"/>
 <path layer="bg" matrix="1 0 0 1 0 12" fill="white">
 108 204 m
 108 32 l
@@ -326,7 +328,7 @@ h
 280 204 l
 h
 </path>
-<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="pointed/small">
 192 138 m
 192 154 l
 </path>
@@ -335,18 +337,18 @@ h
 <text matrix="1 0 0 1 -16 -32" transformations="translations" pos="208 224" stroke="black" type="label" width="34.343" height="4.407" depth="1.93" halign="center" valign="baseline">program</text>
 <text matrix="1 0 0 1 -16 -32" transformations="translations" pos="272 224" stroke="darkgray" type="label" width="27.618" height="5.756" depth="1.93" halign="center" valign="baseline">output</text>
 <text transformations="translations" pos="128 192" stroke="darkgray" type="label" width="21.42" height="6.538" depth="1.93" halign="center" valign="baseline">input</text>
-<text transformations="translations" pos="128 96" stroke="black" type="label" width="33.347" height="6.926" depth="1.93" halign="center" valign="baseline">opStack</text>
-<text transformations="translations" pos="192 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
-<text transformations="translations" pos="256 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
-<text transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
-<path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
+<text matrix="1 0 0 1 64 -16" transformations="translations" pos="128 96" stroke="black" type="label" width="33.347" height="6.926" depth="1.93" halign="center" valign="baseline">opStack</text>
+<text matrix="1 0 0 1 -48 -16" transformations="translations" pos="192 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
+<text matrix="1 0 0 1 -16 -16" transformations="translations" pos="256 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
+<text matrix="1 0 0 1 -32 32" transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
+<path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small">
 128 184 m
 128 132 l
 128 128
 132 128 c
 168 128 l
 </path>
-<path matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
+<path matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" rarrow="arc/small">
 256 184 m
 256 132 l
 256 128
@@ -357,49 +359,97 @@ h
 192 184 m
 192 168 l
 </path>
-<path layer="perm_args" matrix="1 0 0 1 0 -60" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small">
-192 184 m
-192 168 l
+<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+192 124 m
+192 92 l
 </path>
 <path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+200 124 m
+200 104 l
+200 100
+204 100 c
+228 100 l
+232 100
+232 96 c
+232 92 l
+</path>
+<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+184 124 m
+184 104 l
+184 100
+180 100 c
+148 100 l
+144 100
+144 96 c
+144 92 l
+</path>
+<path layer="eval_args" matrix="1 0 0 1 16 10" stroke="darkred" fill="darkred" pen="heavier" cap="1" join="1">
+1.20123 0 0 1.20123 176 176 e
+</path>
+<path matrix="1 0 0 1 40 -46" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
+1.20123 0 0 1.20123 176 176 e
+</path>
+<path matrix="1 0 0 1 -48 10" stroke="darkred" fill="darkred" pen="heavier" cap="1" join="1">
+1.20123 0 0 1.20123 176 176 e
+</path>
+<path layer="bezout_args" matrix="0.939693 0.34202 -0.34202 0.939693 41.115 -61.1749" stroke="darkgreen" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
+160 100 m
+8 0 0 -8 160 92 152 92 a
+</path>
+<path layer="eval_args" matrix="-0.573576 0.819152 -0.819152 -0.573576 375.134 62.7047" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
+160 100 m
+8 0 0 -8 160 92 152 92 a
+</path>
+<path matrix="1 0 0 1 0 4" stroke="darkred" pen="heavier" cap="1" join="1" rarrow="farc/small">
+176 120 m
+176 116 l
+176 112
+172 112 c
+136 112 l
+132 112
+132 108 c
+132 104 l
+</path>
+<path stroke="darkred" pen="heavier" cap="1" join="1" rarrow="farc/small">
+124 108 m
+124 116 l
+124 120
+128 120 c
+160 120 l
+164 120
+168 124 c
+</path>
+<path matrix="1 0 0 1 -8 -52" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
+1.20123 0 0 1.20123 176 176 e
+</path>
+<path matrix="1 0 0 1 -44 -68" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
+1.20123 0 0 1.20123 176 176 e
+</path>
+<path layer="multi_perm_arg" stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
 208 124 m
 208 120 l
 208 116
 212 116 c
-252 116 l
-256 116
-256 112 c
-256 108 l
+268 116 l
+272 116
+272 112 c
+272 64 l
 </path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
-176 124 m
-176 120 l
-176 116
-172 116 c
-132 116 l
-128 116
-128 112 c
-128 108 l
+<path stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
+240 76 m
+240 64 l
 </path>
-<path stroke="darkred" pen="heavier" cap="1" join="1" arrow="fnormal/small">
-182 124 m
-182 114 l
-182 110
-178 110 c
-162 110 l
-158 110
-158 106 c
-158 76 l
+<path stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
+192 76 m
+192 64 l
 </path>
-<path layer="eval_args" stroke="darkred" pen="heavier" cap="1" join="1" rarrow="fnormal/small">
-186 124 m
-186 110 l
-186 106
-182 106 c
-166 106 l
-162 106
-162 102 c
-162 76 l
+<path stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
+144 76 m
+144 64 l
+</path>
+<path stroke="darkblue" pen="fat" cap="1" join="1">
+140 64 m
+276 64 l
 </path>
 </page>
 </ipe>

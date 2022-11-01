@@ -1,4 +1,4 @@
-# Processor's Transition Constraints
+# Processor's Instruction Constraints
 
 Due to their complexity, the transition constraints for the [Processor Table](processor-table.md) are listed and explained in this section.
 To keep the degrees of the AIR polynomials low, instructions are grouped based on their effect.

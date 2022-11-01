@@ -14,9 +14,10 @@
         * [Random Access Memory Table](random-access-memory-table.md)
         * [Jump Stack Table](jump-stack-table.md)
         * [Hash Table](hash-table.md)
-    + [Processor's Transition Constraints](processors-transition-constraints.md)
+    + [Processor's Instruction Constraints](processors-instruction-constraints.md)
         * [Instruction Groups](instruction-groups.md)
         * [Instruction-Specific Transition Constraints](instruction-specific-transition-constraints.md)
+    + [Memory-Consistency](memory-consistency.md)
 ---
 - [Copy Constraints](copy-constraints.md)
 - [Index Sampling](index-sampling.md)

@@ -44,7 +44,7 @@ impl InheritsFromTable<BFieldElement> for JumpStackTable {
 
 #[derive(Debug, Clone)]
 pub struct ExtJumpStackTable {
-    inherited_table: Table<XFieldElement>,
+    pub(crate) inherited_table: Table<XFieldElement>,
 }
 
 impl Default for ExtJumpStackTable {
@@ -127,7 +127,7 @@ impl TableLike<XFieldElement> for ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
     fn ext_initial_constraints(
-        _challenges: &JumpStackTableChallenges,
+        challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
 
@@ -143,7 +143,33 @@ impl ExtJumpStackTable {
         // 4. Jump Stack Destination jsd is 0.
         let jsd = variables[usize::from(JSD)].clone();
 
-        vec![clk, jsp, jso, jsd]
+        let ci = variables[usize::from(JumpStackBaseTableColumn::CI)].clone();
+        let rppa = variables[usize::from(JumpStackExtTableColumn::RunningProductPermArg)].clone();
+        let rpcjd =
+            variables[usize::from(JumpStackExtTableColumn::AllClockJumpDifferencesPermArg)].clone();
+
+        // rppa starts off having accumulated the first row
+        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
+        let alpha = constant(challenges.processor_perm_indeterminate);
+        let compressed_row = constant(challenges.clk_weight) * clk.clone()
+            + constant(challenges.ci_weight) * ci
+            + constant(challenges.jsp_weight) * jsp.clone()
+            + constant(challenges.jso_weight) * jsp.clone()
+            + constant(challenges.jsd_weight) * jsd.clone();
+        let rppa_starts_correctly = rppa - (alpha - compressed_row);
+
+        // rpcjd starts off as 1
+        let one = constant(XFieldElement::one());
+        let rpcjd_starts_with_one = rpcjd - one;
+
+        vec![
+            clk,
+            jsp,
+            jso,
+            jsd,
+            rppa_starts_correctly,
+            rpcjd_starts_with_one,
+        ]
     }
 
     fn ext_consistency_constraints(
@@ -154,31 +180,31 @@ impl ExtJumpStackTable {
     }
 
     fn ext_transition_constraints(
-        _challenges: &JumpStackTableChallenges,
+        challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
-        let one = MPolynomial::<XFieldElement>::from_constant(1.into(), 2 * FULL_WIDTH);
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let one = constant(XFieldElement::one());
+        let call_opcode = constant(Instruction::Call(Default::default()).opcode_b().lift());
+        let return_opcode = constant(Instruction::Return.opcode_b().lift());
 
+        let variables = MPolynomial::variables(2 * FULL_WIDTH);
         let clk = variables[usize::from(CLK)].clone();
         let ci = variables[usize::from(CI)].clone();
         let jsp = variables[usize::from(JSP)].clone();
         let jso = variables[usize::from(JSO)].clone();
         let jsd = variables[usize::from(JSD)].clone();
+        let clk_di = variables[usize::from(InverseOfClkDiffMinusOne)].clone();
+        let rppa = variables[usize::from(RunningProductPermArg)].clone();
+        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
         let clk_next = variables[FULL_WIDTH + usize::from(CLK)].clone();
-        let _ci_next = variables[FULL_WIDTH + usize::from(CI)].clone();
+        let ci_next = variables[FULL_WIDTH + usize::from(CI)].clone();
         let jsp_next = variables[FULL_WIDTH + usize::from(JSP)].clone();
         let jso_next = variables[FULL_WIDTH + usize::from(JSO)].clone();
         let jsd_next = variables[FULL_WIDTH + usize::from(JSD)].clone();
-
-        let call_opcode = MPolynomial::<XFieldElement>::from_constant(
-            Instruction::Call(Default::default()).opcode_b().lift(),
-            2 * FULL_WIDTH,
-        );
-
-        let return_opcode = MPolynomial::<XFieldElement>::from_constant(
-            Instruction::Return.opcode_b().lift(),
-            2 * FULL_WIDTH,
-        );
+        let clk_di_next = variables[FULL_WIDTH + usize::from(InverseOfClkDiffMinusOne)].clone();
+        let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
+        let rpcjd_next =
+            variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
 
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change
@@ -186,33 +212,84 @@ impl ExtJumpStackTable {
             (jsp_next.clone() - (jsp.clone() + one.clone())) * (jsp_next.clone() - jsp.clone());
 
         // 2. The jump stack pointer jsp increases by 1
-        //      or the jump stack origin jso does not change
         //      or current instruction ci is return
-        let jsp_inc_or_jso_stays_or_ci_is_ret = (jsp_next.clone() - (jsp.clone() + one.clone()))
-            * (jso_next - jso)
-            * (ci.clone() - return_opcode.clone());
+        //      or the jump stack origin jso does not change
+        let jsp_inc_by_one_or_ci_is_return =
+            (jsp_next.clone() - (jsp.clone() + one.clone())) * (ci.clone() - return_opcode.clone());
+        let jsp_inc_or_jso_stays_or_ci_is_ret =
+            jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
 
         // 3. The jump stack pointer jsp increases by 1
-        //      or the jump stack destination jsd does not change
         //      or current instruction ci is return
-        let jsp_inc_or_jsd_stays_or_ci_ret = (jsp_next.clone() - (jsp.clone() + one.clone()))
-            * (jsd_next - jsd)
-            * (ci.clone() - return_opcode.clone());
+        //      or the jump stack destination jsd does not change
+        let jsp_inc_or_jsd_stays_or_ci_ret =
+            jsp_inc_by_one_or_ci_is_return * (jsd_next.clone() - jsd);
 
         // 4. The jump stack pointer jsp increases by 1
         //      or the cycle count clk increases by 1
         //      or current instruction ci is call
         //      or current instruction ci is return
-        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next - (jsp + one.clone()))
-            * (clk_next - (clk + one))
+        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next.clone()
+            - (jsp.clone() + one.clone()))
+            * (clk_next.clone() - (clk.clone() + one.clone()))
             * (ci.clone() - call_opcode)
             * (ci - return_opcode);
+
+        // 5. If the memory pointer `jsp` does not change, then
+        // `clk_di'` is the inverse-or-zero of the clock jump
+        // difference minus one.
+        let jsp_changes = jsp_next.clone() - jsp.clone() - one.clone();
+        let clock_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
+        let clkdi_is_inverse_of_clock_diff_minus_one = clk_di_next * clock_diff_minus_one.clone();
+        let clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes =
+            clk_di.clone() * clkdi_is_inverse_of_clock_diff_minus_one.clone() * jsp_changes.clone();
+        let clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes =
+            clock_diff_minus_one.clone() * clkdi_is_inverse_of_clock_diff_minus_one * jsp_changes;
+
+        // 6. The running product for the permutation argument `rppa`
+        //  accumulates one row in each row, relative to weights `a`,
+        //  `b`, `c`, `d`, `e`, and indeterminate `α`.
+        let compressed_row = constant(challenges.clk_weight) * clk_next.clone()
+            + constant(challenges.ci_weight) * ci_next
+            + constant(challenges.jsp_weight) * jsp_next.clone()
+            + constant(challenges.jso_weight) * jso_next
+            + constant(challenges.jsd_weight) * jsd_next;
+        let rppa_updates_correctly =
+            rppa_next - rppa * (constant(challenges.processor_perm_indeterminate) - compressed_row);
+
+        // 7. The running product for clock jump differences `rpcjd`
+        // accumulates a factor `(clk' - clk - 1)` (relative to
+        // indeterminate `β`) if a) the clock jump difference is
+        // greater than 1, and if b) the jump stack pointer does not
+        // change; and remains the same otherwise.
+        //
+        //   (1 - (clk' - clk - 1) · clk_di) · (rpcjd' - rpcjd)
+        // + (jsp' - jsp) · (rpcjd' - rpcjd)
+        // + (clk' - clk - 1) · (jsp' - jsp - 1)
+        //     · (rpcjd' - rpcjd · (β - clk' + clk))`
+        let indeterminate =
+            constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
+        let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
+        let jsp_diff = jsp_next - jsp;
+        let rpcjd_update = rpcjd_next - rpcjd * (indeterminate - clk_next.clone() + clk.clone());
+        let rpcjd_remains_if_clk_increments_by_one =
+            (one.clone() - clock_diff_minus_one * clk_di) * rpcjd_remains.clone();
+        let rpcjd_remains_if_jsp_changes = jsp_diff.clone() * rpcjd_remains;
+        let rpcjd_updates_if_jsp_remains_and_clk_jumps =
+            (clk_next - clk - one.clone()) * (jsp_diff - one) * rpcjd_update;
+        let rpcjd_updates_correctly = rpcjd_remains_if_clk_increments_by_one
+            + rpcjd_remains_if_jsp_changes
+            + rpcjd_updates_if_jsp_remains_and_clk_jumps;
 
         vec![
             jsp_inc_or_stays,
             jsp_inc_or_jso_stays_or_ci_is_ret,
             jsp_inc_or_jsd_stays_or_ci_ret,
             jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
+            clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes,
+            clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes,
+            rppa_updates_correctly,
+            rpcjd_updates_correctly,
         ]
     }
 
@@ -230,7 +307,7 @@ impl JumpStackTable {
         Self { inherited_table }
     }
 
-    pub fn codeword_table(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<BFieldElement>,
         omicron: BFieldElement,
@@ -238,14 +315,14 @@ impl JumpStackTable {
         num_trace_randomizers: usize,
     ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(
+        let fri_domain_codewords = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
             num_trace_randomizers,
             base_columns,
         );
-        let inherited_table = self.inherited_table.with_data(codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
         Self { inherited_table }
     }
 
@@ -286,7 +363,7 @@ impl JumpStackTable {
 
             // compute the running *product* of the compressed column (for permutation argument)
             running_product *=
-                challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
+                challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
             extension_row[usize::from(RunningProductPermArg)] = running_product;
 
             // clock jump difference
@@ -295,8 +372,9 @@ impl JumpStackTable {
                     let clock_jump_difference =
                         (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
                     if clock_jump_difference != XFieldElement::one() {
-                        all_clock_jump_differences_running_product *=
-                            challenges.all_clock_jump_differences_weight - clock_jump_difference;
+                        all_clock_jump_differences_running_product *= challenges
+                            .all_clock_jump_differences_multi_perm_indeterminate
+                            - clock_jump_difference;
                     }
                 }
             }
@@ -357,16 +435,15 @@ impl JumpStackTable {
 }
 
 impl ExtJumpStackTable {
-    pub fn ext_codeword_table(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         omicron: XFieldElement,
         padded_height: usize,
         num_trace_randomizers: usize,
-        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(
+        let fri_domain_codewords_ext = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
@@ -374,14 +451,7 @@ impl ExtJumpStackTable {
             ext_columns,
         );
 
-        let lifted_base_codewords = base_codewords
-            .iter()
-            .map(|base_codeword| base_codeword.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
-        assert_eq!(self.full_width(), all_codewords.len());
-
-        let inherited_table = self.inherited_table.with_data(all_codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         ExtJumpStackTable { inherited_table }
     }
 }
@@ -390,7 +460,7 @@ impl ExtJumpStackTable {
 pub struct JumpStackTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the op-stack table.
-    pub processor_perm_row_weight: XFieldElement,
+    pub processor_perm_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
@@ -400,7 +470,7 @@ pub struct JumpStackTableChallenges {
     pub jsd_weight: XFieldElement,
 
     /// Weight for accumulating all clock jump differences
-    pub all_clock_jump_differences_weight: XFieldElement,
+    pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 }
 
 impl ExtensionTable for ExtJumpStackTable {

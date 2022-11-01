@@ -9,6 +9,22 @@ A padding row is a copy of the Processor Table's last row with the following mod
 1. column `clk` is increased by 1, and
 1. column `IsPadding` is set to 1.
 
+## Inner Sorting Argument for Memory Consistency
+
+In order to satisfy [Memory-Consistency](memory-consistency.md), the rows of memory-like tables (*i.e.*, [RAM Table](random-access-memory-table.md), [JumpStack Table](jump-stack-table.md), [OpStack Table](operational-stack-table.md)), need to be sorted in a special way. In particular, the regions of constant memory pointer need to be contiguous; and the rows in each such contiguous region must be sorted for clock cycle. The contiguity of regions is trivial for the JumpStack and OpStack Table, and for the RAM Table the [Contiguity Argument](memory-consistency.md#contiguity-for-ram-table) establishes this fact. The [Inner Sorting Argument via Clock Jump Differences](memory-consistency.md#clock-jump-differences-and-inner-sorting) impacts the Processor Table quite substantially.
+
+The construction requires three base columns:
+
+ - `cjd`, the list of all clock jump differences greater than 1 in all memory-like tables.
+ - `invm`, the list of inverses of clock jump differences, counting multiplicities. This column helps to select all nonzero `cjd`'s.
+ - `invu`, the list of inverses of unique clock jump differences, *i.e.*, without counting multiplicities. This column helps to select the unique nonzero `cjd`'s.
+
+… and three extension columns:
+
+ - `rer`, the running evaluation of relevant clock cycles.
+ - `reu`, the running evaluation of unique clock cycle differences.
+ - `rpm`, the running product of all clock jump differences, with multiplicities.
+
 ## Initial Constraints
 
 1. The cycle counter `clk` is 0.
@@ -35,6 +51,9 @@ A padding row is a copy of the Processor Table's last row with the following mod
 1. The operational stack pointer `osp` is 16.
 1. The operational stack value `osv` is 0.
 1. The RAM value `ramv` is 0.
+1. The running evaluation of relevant clock cycles starts with 1.
+1. The running evaluation of unique clock jump differences starts off having applied one evaluation step with the clock jump difference.
+1. The running product of all clock jump differences starts starts off having accumulated the first factor.
 
 **Initial Constraints as Polynomials**
 
@@ -62,33 +81,51 @@ A padding row is a copy of the Processor Table's last row with the following mod
 1. `osp`
 1. `osv`
 1. `ramv`
+1. `rer - 1`
+1. `reu - β - cjd`
+1. `rpm - (alpha - cjd)`
 
 ## Consistency Constraints
 
 1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
+1. The inverse of clock jump difference with multiplicity `invm` is the inverse-or-zero of the the clock jump difference `cjd`.
 
 **Consistency Constraints as Polynomials**
 
 1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
+1. `invm·(invm·cjd - 1)`
+1. `cjd·(invm·cjd - 1)`
 
 ## Transition Constraints
 
-Due to their complexity, instruction-specific constraints are defined [in their own section](processors-transition-constraints.md).
-The following constraint applies to every cycle.
+Due to their complexity, instruction-specific constraints are defined [in their own section](processors-instruction-constraints.md).
+
+The following constraints apply to every pair of rows.
 
 1. The cycle counter `clk` increases by 1.
+1. The unique inverse column `invu'` holds the inverse-or-zero of the difference of consecutive `cjd`'s, if `cjd'` is nonzero.
+1. The running product `rpm` of `cjd`'s with multiplicities is accumulates a factor `α - cjd'` in every row, provided that `cjd'` is nonzero.
+1. The running evaluation `reu` of unique `cjd`'s is updated relative to evaluation point β whenever the difference of `cjd`'s is nonzero *and* the next `cjd` is nonzero.
+1. The running evaluation `rer` or relevant clock cycles is updated relative to evaluation point β or not at all.
 
 **Transition Constraints as Polynomials**
 
 1. `clk' - (clk + 1)`
+1. `invu' · (invu' · (cjd' - cjd) - 1) · cjd'`
+1. `(cjd' - cjd) · (invu' · (cjd' - cjd) - 1) · cjd'`
+1. `cjd' · (rpm' - rpm · (α - cjd')) + (cjd' · invm' - 1) · (rpm' - rpm)`
+1. `(1 - (cjd' - cjd) · invu) · (reu' - reu) + (1 - cjd' · invm) · (reu' - reu) + cjd' · (cjd' - cjd) · (reu' - β · reu - cjd')`
+1. `(rer' - rer ·  β - clk') · (rer' - rer)`
 
 ## Terminal Constraints
 
 1. In the last row, register “current instruction” `ci` is 0, corresponding to instruction `halt`.
+1. In the last row, the running evaluations `rer` and `reu` are equal.
 
 **Terminal Constraints as Polynomials**
 
 1. `ci`
+1. `rer - reu`
 
 ## Relations to Other Tables
 
@@ -100,3 +137,4 @@ The following constraint applies to every cycle.
 1. A Permutation Argument with the [RAM Table](random-access-memory-table.md).
 1. An Evaluation Argument with the [Hash Table](hash-table.md) for copying the input to the hash function from the Processor to the Hash Coprocessor.
 1. An Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the Hash Coprocessor to the Processor.
+1. A Multi-Table Set Equality argument with the [RAM Table](random-access-memory-table.md), the [JumpStack Table](jump-stack-table.md), and the [OpStack Table](operational-stack-table.md).

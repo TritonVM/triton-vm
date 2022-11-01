@@ -131,8 +131,8 @@ impl BaseMatrices {
             if let Some(prow) = previous_row {
                 let previous_clock_jump_difference = prow[usize::from(ClockJumpDifference)];
                 if previous_clock_jump_difference != clk_jump_difference {
-                    row[usize::from(UniqueClockJumpDifferenceInverse)] =
-                        (previous_clock_jump_difference - clk_jump_difference).inverse();
+                    row[usize::from(UniqueClockJumpDiffDiffInverse)] =
+                        (clk_jump_difference - previous_clock_jump_difference).inverse();
                 }
             }
 
@@ -223,9 +223,12 @@ impl BaseMatrices {
         let &last_op_stack_matrix_row = op_stack_matrix.last().unwrap();
         let mut new_op_stack_matrix = vec![];
         for (mut current_row, next_row) in op_stack_matrix.into_iter().tuple_windows() {
-            current_row[usize::from(OpStackBaseTableColumn::InverseOfClkDiffMinusOne)] = next_row
-                [usize::from(OpStackBaseTableColumn::CLK)]
+            let clock_jump_difference = next_row[usize::from(OpStackBaseTableColumn::CLK)]
                 - current_row[usize::from(OpStackBaseTableColumn::CLK)];
+            if clock_jump_difference.value() > 1u64 {
+                current_row[usize::from(OpStackBaseTableColumn::InverseOfClkDiffMinusOne)] =
+                    (clock_jump_difference - BFieldElement::one()).inverse();
+            }
             new_op_stack_matrix.push(current_row);
         }
         new_op_stack_matrix.push(last_op_stack_matrix_row);
@@ -394,15 +397,18 @@ impl BaseMatrices {
 
         // set inverse of clock difference - 1
         let matrix_len = jump_stack_matrix.len();
-        let &last_op_stack_matrix_row = jump_stack_matrix.last().unwrap();
+        let &last_jump_stack_matrix_row = jump_stack_matrix.last().unwrap();
         let mut new_jump_stack_matrix = vec![];
         for (mut current_row, next_row) in jump_stack_matrix.into_iter().tuple_windows() {
-            current_row[usize::from(JumpStackBaseTableColumn::InverseOfClkDiffMinusOne)] = next_row
-                [usize::from(JumpStackBaseTableColumn::CLK)]
+            let clock_jump_difference = next_row[usize::from(JumpStackBaseTableColumn::CLK)]
                 - current_row[usize::from(JumpStackBaseTableColumn::CLK)];
+            if clock_jump_difference.value() > 1 {
+                current_row[usize::from(JumpStackBaseTableColumn::InverseOfClkDiffMinusOne)] =
+                    (clock_jump_difference - BFieldElement::one()).inverse()
+            }
             new_jump_stack_matrix.push(current_row);
         }
-        new_jump_stack_matrix.push(last_op_stack_matrix_row);
+        new_jump_stack_matrix.push(last_jump_stack_matrix_row);
         assert_eq!(matrix_len, new_jump_stack_matrix.len());
 
         new_jump_stack_matrix

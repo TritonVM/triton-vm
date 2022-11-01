@@ -217,6 +217,8 @@ impl PermArg {
         Self { from, to }
     }
 
+    /// Permutation between {OpStack, JumpStack, RAM} Table and
+    /// Processor Table.
     pub fn clock_jump_difference_multi_table_perm_arg() -> Self {
         let from = vec![(
             ProcessorTable,
@@ -492,7 +494,7 @@ impl GrandCrossTableArg {
             );
         }
 
-        // input
+        // standard input
         let input_terminal_codeword = vec![self.input_terminal; fri_domain.length];
         let (to_table, to_column) = self.input_to_processor;
         let to_codeword = &ext_codeword_tables.data(to_table)[to_column];
@@ -505,7 +507,7 @@ impl GrandCrossTableArg {
             XFieldElement::add,
         );
 
-        // output
+        // standard output
         let (from_table, from_column) = self.processor_to_output;
         let from_codeword = &ext_codeword_tables.data(from_table)[from_column];
         let output_terminal_codeword = vec![self.output_terminal; fri_domain.length];
@@ -626,7 +628,7 @@ mod permutation_argument_tests {
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
-                .input_table_eval_row_weight,
+                .standard_input_eval_indeterminate,
         );
 
         let output_terminal = EvalArg::compute_terminal(
@@ -634,7 +636,7 @@ mod permutation_argument_tests {
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
-                .output_table_eval_row_weight,
+                .standard_output_eval_indeterminate,
         );
 
         let gxta = GrandCrossTableArg::new(

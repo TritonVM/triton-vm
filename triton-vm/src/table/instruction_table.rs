@@ -42,7 +42,7 @@ impl InheritsFromTable<BFieldElement> for InstructionTable {
 
 #[derive(Debug, Clone)]
 pub struct ExtInstructionTable {
-    inherited_table: Table<XFieldElement>,
+    pub(crate) inherited_table: Table<XFieldElement>,
 }
 
 impl Default for ExtInstructionTable {
@@ -118,7 +118,7 @@ impl ExtInstructionTable {
         let first_address_is_zero = ip;
 
         let running_evaluation_is_initialized_correctly = running_evaluation
-            - running_evaluation_initial.scalar_mul(challenges.program_eval_row_weight)
+            - running_evaluation_initial.scalar_mul(challenges.program_eval_indeterminate)
             - compressed_row_for_eval_arg;
 
         // due to the way the instruction table is constructed, the running product does not update
@@ -142,9 +142,11 @@ impl ExtInstructionTable {
     fn ext_transition_constraints(
         challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let one = MPolynomial::from_constant(1.into(), 2 * FULL_WIDTH);
-        let variables = MPolynomial::variables(2 * FULL_WIDTH);
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let one = constant(XFieldElement::one());
+        let processor_perm_indeterminate = constant(challenges.processor_perm_indeterminate);
 
+        let variables = MPolynomial::variables(2 * FULL_WIDTH);
         let addr = variables[usize::from(Address)].clone();
         let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();
         let current_instruction = variables[usize::from(CI)].clone();
@@ -162,8 +164,6 @@ impl ExtInstructionTable {
             address_increases_by_one.clone() * (next_instruction_next.clone() - next_instruction);
 
         // Extension Table Constraints
-        let processor_perm_row_weight =
-            MPolynomial::from_constant(challenges.processor_perm_row_weight, 2 * FULL_WIDTH);
         let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
         let running_evaluation_next =
             variables[FULL_WIDTH + usize::from(RunningEvaluation)].clone();
@@ -191,7 +191,7 @@ impl ExtInstructionTable {
         let running_evaluations_stays =
             running_evaluation_next.clone() - running_evaluation.clone();
         let running_evaluation_update = running_evaluation_next
-            - running_evaluation.scalar_mul(challenges.program_eval_row_weight)
+            - running_evaluation.scalar_mul(challenges.program_eval_indeterminate)
             - compressed_row_for_eval_arg;
 
         let running_evaluation_is_well_formed =
@@ -216,7 +216,7 @@ impl ExtInstructionTable {
 
         let running_product_stays = running_product_next.clone() - running_product.clone();
         let running_product_update = running_product_next
-            - running_product * (processor_perm_row_weight - compressed_row_for_perm_arg);
+            - running_product * (processor_perm_indeterminate - compressed_row_for_perm_arg);
 
         let running_product_is_well_formed =
             address_increases_by_one * is_padding_row.clone() * running_product_update
@@ -250,7 +250,7 @@ impl InstructionTable {
         Self { inherited_table }
     }
 
-    pub fn codeword_table(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<BFieldElement>,
         omicron: BFieldElement,
@@ -258,14 +258,14 @@ impl InstructionTable {
         num_trace_randomizers: usize,
     ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(
+        let fri_domain_codewords = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
             num_trace_randomizers,
             base_columns,
         );
-        let inherited_table = self.inherited_table.with_data(codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
         Self { inherited_table }
     }
 
@@ -311,8 +311,8 @@ impl InstructionTable {
 
             // Update running product if same row has been seen before and not padding row
             if is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
-                processor_table_running_product *=
-                    challenges.processor_perm_row_weight - compressed_row_for_permutation_argument;
+                processor_table_running_product *= challenges.processor_perm_indeterminate
+                    - compressed_row_for_permutation_argument;
             }
             extension_row[usize::from(RunningProductPermArg)] = processor_table_running_product;
 
@@ -324,7 +324,7 @@ impl InstructionTable {
             // Update running evaluation if same row has _not_ been seen before and not padding row
             if !is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
                 program_table_running_evaluation = program_table_running_evaluation
-                    * challenges.program_eval_row_weight
+                    * challenges.program_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
             extension_row[usize::from(RunningEvaluation)] = program_table_running_evaluation;
@@ -385,16 +385,15 @@ impl InstructionTable {
 }
 
 impl ExtInstructionTable {
-    pub fn ext_codeword_table(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         omicron: XFieldElement,
         padded_height: usize,
         num_trace_randomizers: usize,
-        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(
+        let fri_domain_codewords_ext = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
@@ -402,14 +401,7 @@ impl ExtInstructionTable {
             ext_columns,
         );
 
-        let lifted_base_codewords = base_codewords
-            .iter()
-            .map(|base_codeword| base_codeword.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
-        assert_eq!(self.full_width(), all_codewords.len());
-
-        let inherited_table = self.inherited_table.with_data(all_codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         ExtInstructionTable { inherited_table }
     }
 }
@@ -418,7 +410,7 @@ impl ExtInstructionTable {
 pub struct InstructionTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the instruction table.
-    pub processor_perm_row_weight: XFieldElement,
+    pub processor_perm_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub ip_processor_weight: XFieldElement,
@@ -427,7 +419,7 @@ pub struct InstructionTableChallenges {
 
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the instruction table.
-    pub program_eval_row_weight: XFieldElement,
+    pub program_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to program table.)
     pub address_weight: XFieldElement,

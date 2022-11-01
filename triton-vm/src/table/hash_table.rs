@@ -55,7 +55,7 @@ impl InheritsFromTable<BFieldElement> for HashTable {
 
 #[derive(Debug, Clone)]
 pub struct ExtHashTable {
-    inherited_table: Table<XFieldElement>,
+    pub(crate) inherited_table: Table<XFieldElement>,
 }
 
 impl Default for ExtHashTable {
@@ -497,7 +497,7 @@ impl HashTable {
         Self { inherited_table }
     }
 
-    pub fn codeword_table(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<BFieldElement>,
         omicron: BFieldElement,
@@ -505,14 +505,14 @@ impl HashTable {
         num_trace_randomizers: usize,
     ) -> Self {
         let base_columns = 0..self.base_width();
-        let codewords = self.low_degree_extension(
+        let fri_domain_codewords = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
             num_trace_randomizers,
             base_columns,
         );
-        let inherited_table = self.inherited_table.with_data(codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
         Self { inherited_table }
     }
 
@@ -551,7 +551,7 @@ impl HashTable {
                     .fold(XFieldElement::zero(), XFieldElement::add);
 
                 from_processor_running_evaluation = from_processor_running_evaluation
-                    * challenges.from_processor_eval_row_weight
+                    * challenges.from_processor_eval_indeterminate
                     + compressed_state_for_input;
             }
             extension_row[usize::from(FromProcessorRunningEvaluation)] =
@@ -573,7 +573,7 @@ impl HashTable {
                     .fold(XFieldElement::zero(), XFieldElement::add);
 
                 to_processor_running_evaluation = to_processor_running_evaluation
-                    * challenges.to_processor_eval_row_weight
+                    * challenges.to_processor_eval_indeterminate
                     + compressed_state_for_output;
             }
             extension_row[usize::from(ToProcessorRunningEvaluation)] =
@@ -628,16 +628,15 @@ impl HashTable {
 }
 
 impl ExtHashTable {
-    pub fn ext_codeword_table(
+    pub fn to_fri_domain_table(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         omicron: XFieldElement,
         padded_height: usize,
         num_trace_randomizers: usize,
-        base_codewords: &[Vec<BFieldElement>],
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let ext_codewords = self.low_degree_extension(
+        let fri_domain_codewords_ext = self.low_degree_extension(
             fri_domain,
             omicron,
             padded_height,
@@ -645,14 +644,7 @@ impl ExtHashTable {
             ext_columns,
         );
 
-        let lifted_base_codewords = base_codewords
-            .iter()
-            .map(|base_codeword| base_codeword.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let all_codewords = vec![lifted_base_codewords, ext_codewords].concat();
-        assert_eq!(self.full_width(), all_codewords.len());
-
-        let inherited_table = self.inherited_table.with_data(all_codewords);
+        let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         ExtHashTable { inherited_table }
     }
 }
@@ -661,8 +653,8 @@ impl ExtHashTable {
 pub struct HashTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the hash table.
-    pub from_processor_eval_row_weight: XFieldElement,
-    pub to_processor_eval_row_weight: XFieldElement,
+    pub from_processor_eval_indeterminate: XFieldElement,
+    pub to_processor_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],

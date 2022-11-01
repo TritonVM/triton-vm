@@ -111,30 +111,33 @@ impl Stark {
     pub fn prove(&self, base_matrices: BaseMatrices) -> StarkProofStream {
         let mut timer = TimingReporter::start();
 
-        let base_tables = self.get_padded_base_tables(&base_matrices);
+        let base_tables = self.padded(&base_matrices);
         timer.elapsed("pad");
 
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
         timer.elapsed("randomizer_codewords");
 
-        let base_codeword_tables =
-            base_tables.codeword_tables(&self.bfri_domain, self.num_trace_randomizers);
-        let base_codewords = base_codeword_tables.get_all_base_columns();
-        let all_base_codewords = vec![b_rand_codewords, base_codewords.clone()].concat();
+        let base_fri_domain_tables =
+            base_tables.to_fri_domain_tables(&self.bfri_domain, self.num_trace_randomizers);
+        let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
+        let all_base_fri_domain_codewords =
+            vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
         timer.elapsed("get_all_base_codewords");
 
-        let transposed_base_codewords = Self::transpose_codewords(&all_base_codewords);
+        // build Merkle tree
+        let transposed_base_fri_domain_codewords = Self::transpose(&all_base_fri_domain_codewords);
         timer.elapsed("transposed_base_codewords");
 
-        let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
+        let base_tree = Self::get_merkle_tree(&transposed_base_fri_domain_codewords);
         let base_merkle_tree_root = base_tree.get_root();
         timer.elapsed("base_merkle_tree");
 
-        // Commit to base codewords
+        // send root for base codewords
         let mut proof_stream = StarkProofStream::default();
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         timer.elapsed("proof_stream.enqueue");
 
+        // get challenge from verifier
         let extension_challenge_seed = proof_stream.prover_fiat_shamir();
         timer.elapsed("prover_fiat_shamir");
 
@@ -143,6 +146,7 @@ impl Stark {
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         timer.elapsed("challenges");
 
+        // extend tables
         let ext_tables = ExtTableCollection::extend_tables(
             &base_tables,
             &extension_challenges,
@@ -155,21 +159,29 @@ impl Stark {
         )));
         timer.elapsed("Sent all padded heights");
 
-        let ext_codeword_tables = ext_tables.codeword_tables(
-            &self.xfri.domain,
-            base_codeword_tables,
-            self.num_trace_randomizers,
-        );
-        let extension_codewords = ext_codeword_tables.get_all_extension_columns();
+        // LDE, second round
+        let ext_fri_domain_tables =
+            ext_tables.to_fri_domain_tables(&self.xfri.domain, self.num_trace_randomizers);
+        let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
+
+        let full_fri_domain_tables =
+            ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
         timer.elapsed("Calculated extension codewords");
 
-        let transposed_ext_codewords = Self::transpose_codewords(&extension_codewords);
+        // build Merkle tree
+        let transposed_ext_fri_domain_codewords = Self::transpose(&extension_fri_domain_codewords);
 
-        let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
+        let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_fri_domain_codewords);
 
+        // send root for extension codewords
         proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
         timer.elapsed("extension_tree");
 
+        // compute quotients
+        let mut quotient_codewords = full_fri_domain_tables.get_all_quotients(&self.xfri.domain);
+        timer.elapsed("Calculated quotient codewords");
+
+        // get degree bounds
         let base_degree_bounds = base_tables.get_base_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated base degree bounds");
 
@@ -177,17 +189,15 @@ impl Stark {
             ext_tables.get_extension_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated extension degree bounds");
 
-        let mut quotient_codewords = ext_codeword_tables.get_all_quotients(&self.xfri.domain);
-        timer.elapsed("Calculated quotient codewords");
-
         let mut quotient_degree_bounds =
-            ext_codeword_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
+            full_fri_domain_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         timer.elapsed("Calculated quotient degree bounds");
 
+        // get weights for nonlinear combination from verifier
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = self.num_randomizer_polynomials
-            + 2 * base_codewords.len()
-            + 2 * extension_codewords.len()
+            + 2 * base_fri_domain_codewords.len()
+            + 2 * extension_fri_domain_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -203,20 +213,20 @@ impl Stark {
                 .split_at(num_grand_cross_table_arg_weights);
         timer.elapsed("Sample weights for grand cross-table argument and non-linear combination");
 
-        // Prove equal terminal values for the column pairs pertaining to cross table arguments
+        // prove equal terminal values for the column tuples pertaining to cross table arguments
         let input_terminal = EvalArg::compute_terminal(
             &self.input_symbols,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .input_table_eval_row_weight,
+                .standard_input_eval_indeterminate,
         );
         let output_terminal = EvalArg::compute_terminal(
             &self.output_symbols,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .output_table_eval_row_weight,
+                .standard_output_eval_indeterminate,
         );
         let grand_cross_table_arg = GrandCrossTableArg::new(
             grand_cross_table_argument_weights.try_into().unwrap(),
@@ -225,22 +235,23 @@ impl Stark {
         );
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
-                &ext_codeword_tables,
+                &full_fri_domain_tables,
                 &self.xfri.domain,
-                derive_omicron(ext_codeword_tables.padded_height as u64),
+                derive_omicron(full_fri_domain_tables.padded_height as u64),
             );
         quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
-            .quotient_degree_bound(&ext_codeword_tables, self.num_trace_randomizers);
+            .quotient_degree_bound(&full_fri_domain_tables, self.num_trace_randomizers);
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
         timer.elapsed("Grand Cross Table Argument");
 
+        // compute nonlinear combination codeword
         let combination_codeword = self.create_combination_codeword(
             &mut timer,
             vec![x_rand_codeword],
-            base_codewords,
-            extension_codewords,
+            base_fri_domain_codewords,
+            extension_fri_domain_codewords,
             quotient_codewords,
             non_lin_combi_weights.to_vec(),
             base_degree_bounds,
@@ -291,7 +302,7 @@ impl Stark {
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
         let revealed_base_elems =
-            Self::get_revealed_elements(&transposed_base_codewords, &revealed_indices);
+            Self::get_revealed_elements(&transposed_base_fri_domain_codewords, &revealed_indices);
         let auth_paths_base = base_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedBaseElementVectors(
             revealed_base_elems,
@@ -299,7 +310,7 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
 
         let revealed_ext_elems =
-            Self::get_revealed_elements(&transposed_ext_codewords, &revealed_indices);
+            Self::get_revealed_elements(&transposed_ext_fri_domain_codewords, &revealed_indices);
         let auth_paths_ext = extension_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedExtensionElementVectors(
             revealed_ext_elems,
@@ -552,13 +563,13 @@ impl Stark {
     /// [c f]
     /// ```
     /// Assumes that input is of rectangular shape.
-    pub fn transpose_codewords<P: Copy>(codewords: &[Vec<P>]) -> Vec<Vec<P>> {
+    pub fn transpose<P: Copy>(codewords: &[Vec<P>]) -> Vec<Vec<P>> {
         (0..codewords[0].len())
             .map(|col_idx| codewords.iter().map(|row| row[col_idx]).collect())
             .collect()
     }
 
-    fn get_padded_base_tables(&self, base_matrices: &BaseMatrices) -> BaseTableCollection {
+    fn padded(&self, base_matrices: &BaseMatrices) -> BaseTableCollection {
         let mut base_tables = BaseTableCollection::from_base_matrices(base_matrices);
         base_tables.pad();
         base_tables
@@ -651,14 +662,14 @@ impl Stark {
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .input_table_eval_row_weight,
+                .standard_input_eval_indeterminate,
         );
         let output_terminal = EvalArg::compute_terminal(
             &self.output_symbols,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
-                .output_table_eval_row_weight,
+                .standard_output_eval_indeterminate,
         );
         let grand_cross_table_arg = GrandCrossTableArg::new(
             grand_cross_table_argument_weights.try_into().unwrap(),
@@ -1081,6 +1092,29 @@ pub(crate) mod triton_stark_tests {
         (aet, stdout, program)
     }
 
+    pub fn parse_simulate_pad(
+        code: &str,
+        stdin: &[BFieldElement],
+        secret_in: &[BFieldElement],
+    ) -> (BaseTableCollection, BaseTableCollection, usize, VecStream) {
+        let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
+        let base_matrices = BaseMatrices::new(aet, &program);
+
+        let num_trace_randomizers = 2;
+        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
+
+        let unpadded_base_tables = base_tables.clone();
+
+        base_tables.pad();
+
+        (
+            base_tables,
+            unpadded_base_tables,
+            num_trace_randomizers,
+            stdout,
+        )
+    }
+
     pub fn parse_simulate_pad_extend(
         code: &str,
         stdin: &[BFieldElement],
@@ -1093,15 +1127,8 @@ pub(crate) mod triton_stark_tests {
         AllChallenges,
         usize,
     ) {
-        let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
-        let base_matrices = BaseMatrices::new(aet, &program);
-
-        let num_trace_randomizers = 2;
-        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
-
-        let unpadded_base_tables = base_tables.clone();
-
-        base_tables.pad();
+        let (base_tables, unpadded_base_tables, num_trace_randomizers, stdout) =
+            parse_simulate_pad(code, stdin, secret_in);
 
         let dummy_challenges = AllChallenges::placeholder();
         let ext_tables = ExtTableCollection::extend_tables(
@@ -1243,7 +1270,7 @@ pub(crate) mod triton_stark_tests {
         let ine = EvalArg::compute_terminal(
             &input_symbols,
             EvalArg::default_initial(),
-            all_challenges.input_challenges.processor_eval_row_weight,
+            all_challenges.input_challenges.processor_eval_indeterminate,
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
@@ -1253,7 +1280,9 @@ pub(crate) mod triton_stark_tests {
         let oute = EvalArg::compute_terminal(
             &stdout.to_bword_vec(),
             EvalArg::default_initial(),
-            all_challenges.output_challenges.processor_eval_row_weight,
+            all_challenges
+                .output_challenges
+                .processor_eval_indeterminate,
         );
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
     }
@@ -1277,7 +1306,7 @@ pub(crate) mod triton_stark_tests {
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges
-                    .input_table_eval_row_weight,
+                    .standard_input_eval_indeterminate,
             );
 
             let output_terminal = EvalArg::compute_terminal(
@@ -1285,7 +1314,7 @@ pub(crate) mod triton_stark_tests {
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges
-                    .output_table_eval_row_weight,
+                    .standard_output_eval_indeterminate,
             );
 
             let grand_cross_table_arg = GrandCrossTableArg::new(
@@ -1350,6 +1379,30 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    fn extend_does_not_change_base_table() {
+        let (base_tables, _, num_trace_randomizers, _) =
+            parse_simulate_pad(sample_programs::FIBONACCI_LT, &[], &[]);
+
+        let dummy_challenges = AllChallenges::placeholder();
+        let ext_tables = ExtTableCollection::extend_tables(
+            &base_tables,
+            &dummy_challenges,
+            num_trace_randomizers,
+        );
+
+        for (base_table, extension_table) in base_tables.into_iter().zip(ext_tables.into_iter()) {
+            for column in 0..base_table.base_width() {
+                for row in 0..base_tables.padded_height {
+                    assert_eq!(
+                        base_table.data()[row][column].lift(),
+                        extension_table.data()[row][column]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
         let zero = XFieldElement::zero();
         let (_, _, _, ext_tables, _, _) =
@@ -1376,10 +1429,11 @@ pub(crate) mod triton_stark_tests {
                     assert_eq!(
                         zero,
                         ecc,
-                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}",
+                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}/{}",
                         table.name(),
                         constraint_idx,
                         row_idx,
+                        table.data().len()
                     );
                 }
             }
@@ -1391,10 +1445,11 @@ pub(crate) mod triton_stark_tests {
                     assert_eq!(
                         zero,
                         evaluated_tc,
-                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}",
+                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}/{}",
                         table.name(),
                         constraint_idx,
                         row_idx,
+                        table.data().len()
                     );
                 }
             }
