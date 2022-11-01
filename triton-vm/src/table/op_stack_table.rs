@@ -126,25 +126,23 @@ impl ExtOpStackTable {
     fn ext_initial_constraints(
         challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use OpStackBaseTableColumn::*;
+        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
+        let one = constant(XFieldElement::one());
 
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
+        let variables = MPolynomial::variables(FULL_WIDTH);
         let clk = variables[usize::from(CLK)].clone();
         let ib1 = variables[usize::from(IB1ShrinkStack)].clone();
         let osp = variables[usize::from(OSP)].clone();
         let osv = variables[usize::from(OSV)].clone();
-        let sixteen = MPolynomial::from_constant(16.into(), FULL_WIDTH);
         let rppa = variables[usize::from(RunningProductPermArg)].clone();
         let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
-        let one = MPolynomial::from_constant(XFieldElement::one(), FULL_WIDTH);
 
         let clk_is_0 = clk.clone();
         let osv_is_0 = osv.clone();
-        let osp_is_16 = osp.clone() - sixteen;
+        let osp_is_16 = osp.clone() - constant(16.into());
 
         // The running product for the permutation argument `rppa`
         // starts off having accumulated the first row.
-        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
         let compressed_row = constant(challenges.clk_weight) * clk
             + constant(challenges.ib1_weight) * ib1
             + constant(challenges.osp_weight) * osp
@@ -176,10 +174,10 @@ impl ExtOpStackTable {
     fn ext_transition_constraints(
         challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        use OpStackBaseTableColumn::*;
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let one = constant(XFieldElement::one());
 
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
-
+        let variables = MPolynomial::variables(2 * FULL_WIDTH);
         let clk = variables[usize::from(CLK)].clone();
         let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
         let osp = variables[usize::from(OSP)].clone();
@@ -195,7 +193,6 @@ impl ExtOpStackTable {
         let rpcjd_next =
             variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
         let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
-        let one = MPolynomial::from_constant(XFieldElement::one(), 2 * FULL_WIDTH);
 
         // the osp increases by 1 or the osp does not change
         //
@@ -232,7 +229,6 @@ impl ExtOpStackTable {
         //   (clk' - clk - 1) * (1 - osp' + osp) * (cjdrp' - cjdrp * (beta - clk' + clk))
         // + (1 - (clk' - clk - 1) * clk_di) * (cjdrp' - cjdrp)
         // + (osp' - osp) * (cjdrp' - cjdrp)
-        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
         let beta = constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
         let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (one.clone() - osp_next.clone() + osp.clone())
