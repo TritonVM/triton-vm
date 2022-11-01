@@ -52,7 +52,7 @@ pub trait Evaluable: ExtensionTable {
         if let Some(initial_constraints) = &self.inherited_table().initial_constraints {
             initial_constraints
                 .iter()
-                .map(|bc| bc.evaluate(evaluation_point))
+                .map(|ic| ic.evaluate(evaluation_point))
                 .collect()
         } else {
             panic!("{} does not have initial constraints!", &self.name());

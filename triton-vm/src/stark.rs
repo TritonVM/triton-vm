@@ -119,7 +119,7 @@ impl Stark {
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.start("pad");
         }
-        let base_tables = self.padded(&base_matrices);
+        let base_trace_tables = self.padded(&base_matrices);
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.stop("pad");
         }
@@ -130,9 +130,10 @@ impl Stark {
             profiler.start("LDE 1");
         }
         let base_fri_domain_tables =
-            base_tables.to_fri_domain_tables(&self.bfri_domain, self.num_trace_randomizers);
-        let base_codewords = base_fri_domain_tables.get_all_base_columns();
-        let base_fri_domain_codewords = vec![b_rand_codewords, base_codewords].concat();
+            base_trace_tables.to_fri_domain_tables(&self.bfri_domain, self.num_trace_randomizers);
+        let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
+        let randomizer_and_base_fri_domain_codewords =
+            vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.stop("LDE 1");
         }
@@ -140,7 +141,7 @@ impl Stark {
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.start("Merkle tree 1");
         }
-        let transposed_base_codewords = Self::transpose(&base_fri_domain_codewords);
+        let transposed_base_codewords = Self::transpose(&randomizer_and_base_fri_domain_codewords);
         let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
         let base_merkle_tree_root = base_tree.get_root();
         if let Some(profiler) = maybe_profiler.as_mut() {
@@ -164,8 +165,8 @@ impl Stark {
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.start("extend");
         }
-        let ext_tables = ExtTableCollection::extend_tables(
-            &base_tables,
+        let ext_trace_tables = ExtTableCollection::extend_tables(
+            &base_trace_tables,
             &extension_challenges,
             self.num_trace_randomizers,
         );
@@ -174,29 +175,27 @@ impl Stark {
         }
 
         proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
-            base_tables.padded_height as u64,
+            base_trace_tables.padded_height as u64,
         )));
 
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.start("LDE 2");
         }
         let ext_fri_domain_tables =
-            ext_tables.to_fri_domain_tables(&self.xfri.domain, self.num_trace_randomizers);
+            ext_trace_tables.to_fri_domain_tables(&self.xfri.domain, self.num_trace_randomizers);
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
-        let full_fri_domain_tables =
-            ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
 
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.stop("LDE 2");
         }
 
         if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("Merkle tree 1");
+            profiler.start("Merkle tree 2");
         }
         let transposed_ext_codewords = Self::transpose(&extension_fri_domain_codewords);
         let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
         if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("Merkle tree 1");
+            profiler.stop("Merkle tree 2");
         }
 
         // send root for extension codewords
@@ -208,7 +207,8 @@ impl Stark {
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.start("base");
         }
-        let base_degree_bounds = base_tables.get_base_degree_bounds(self.num_trace_randomizers);
+        let base_degree_bounds =
+            base_fri_domain_tables.get_base_degree_bounds(self.num_trace_randomizers);
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.stop("base");
         }
@@ -217,7 +217,7 @@ impl Stark {
             profiler.start("extension");
         }
         let extension_degree_bounds =
-            ext_tables.get_extension_degree_bounds(self.num_trace_randomizers);
+            ext_fri_domain_tables.get_extension_degree_bounds(self.num_trace_randomizers);
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.stop("extension");
         }
@@ -225,6 +225,8 @@ impl Stark {
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.start("quotient");
         }
+        let full_fri_domain_tables =
+            ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
         let mut quotient_degree_bounds =
             full_fri_domain_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
         if let Some(profiler) = maybe_profiler.as_mut() {
@@ -372,7 +374,7 @@ impl Stark {
             profiler.start("open trace leafs");
         }
         // the relation between the FRI domain and the omicron domain
-        let unit_distance = self.xfri.domain.length / base_tables.padded_height;
+        let unit_distance = self.xfri.domain.length / base_trace_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
