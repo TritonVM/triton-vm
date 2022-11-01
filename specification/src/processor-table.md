@@ -99,7 +99,7 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `RunningEvaluationFromHashTable` is 1.
 1. The running evaluation of relevant clock cycles is 1.
 1. The running evaluation of unique clock jump differences starts off having applied one evaluation step with the clock jump difference with respect to indeterminate 🛒.
-1. The running product of all clock jump differences starts starts off having accumulated the first factor with respect to indeterminate 🚿.
+1. The running product of all clock jump differences starts starts off having accumulated the first factor with respect to indeterminate 🚿, but only if the `cjd` column does not start with zero.
 
 ### Initial Constraints as Polynomials
 
@@ -138,7 +138,7 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `RunningEvaluationFromHashTable - 1`
 1. `rer - 1`
 1. `reu - 🛒 - cjd`
-1. `rpm - (🚿 - cjd)`
+1. `cjd · (rpm - (🚿 - cjd)) + (1 - cjd · invm) · (rpm - 1)`
 
 ## Consistency Constraints
 

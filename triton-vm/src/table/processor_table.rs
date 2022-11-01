@@ -808,10 +808,18 @@ impl ExtProcessorTable {
 
         // The running product for all clock jump differences starts off having accumulated the
         // first factor.
-        let rpm_indeterminate =
-            constant_x(challenges.all_clock_jump_differences_multi_perm_indeterminate);
-        let rpm_starts_correctly = factory.rpm()
-            - constant_x(PermArg::default_initial()) * (rpm_indeterminate - factory.cjd());
+        let rpm_indeterminate = challenges.all_clock_jump_differences_multi_perm_indeterminate;
+
+        // The running product for all clock jump differences
+        // starts off having accumulated the first factor, but
+        // only if the `cjd` is nonzero
+        let rpm_starts_correctly = factory.cjd()
+            * (factory.rpm() - constant_x(rpm_indeterminate) + factory.cjd())
+            + (factory.one() - factory.invm() * factory.cjd())
+                * (factory.rpm()
+                    - constant_x(PermArg::default_initial())
+                        * constant_x(PermArg::default_initial())
+                        * constant_x(PermArg::default_initial()));
 
         // Permutation and Evaluation Arguments with all tables the Processor Table relates to
 

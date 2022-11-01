@@ -1086,7 +1086,7 @@ pub(crate) mod triton_stark_tests {
 
     use crate::cross_table_arguments::EvalArg;
     use crate::instruction::sample_programs;
-    use crate::shared_tests::parse_simulate_prove;
+    use crate::shared_tests::*;
     use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table::InheritsFromTable;
@@ -1575,7 +1575,78 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_test() {
+    fn triton_table_constraints_evaluate_to_zero_test_on_halt() {
+        let zero = XFieldElement::zero();
+        let source_code_and_input = test_halt();
+        let (_, _, _, ext_tables, challenges, _) =
+            parse_simulate_pad_extend(&source_code_and_input.source_code, &[], &[]);
+
+        for table in (&ext_tables).into_iter() {
+            if let Some(row) = table.data().get(0) {
+                let evaluated_bcs = table.evaluate_initial_constraints(row, &challenges);
+                for (constraint_idx, ebc) in evaluated_bcs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        ebc,
+                        "Failed initial constraint on {}. Constraint index: {}. Row index: {}/{}",
+                        table.name(),
+                        constraint_idx,
+                        0,
+                        table.data().len()
+                    );
+                }
+            }
+
+            for (row_idx, curr_row) in table.data().iter().enumerate() {
+                let evaluated_ccs = table.evaluate_consistency_constraints(curr_row, &challenges);
+                for (constraint_idx, ecc) in evaluated_ccs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        ecc,
+                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}/{}",
+                        table.name(),
+                        constraint_idx,
+                        row_idx,
+                        table.data().len()
+                    );
+                }
+            }
+
+            for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
+                let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
+                let evaluated_tcs =
+                    table.evaluate_transition_constraints(&evaluation_point, &challenges);
+                for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        evaluated_tc,
+                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}/{}",
+                        table.name(),
+                        constraint_idx,
+                        row_idx,
+                        table.data().len()
+                    );
+                }
+            }
+
+            if let Some(row) = table.data().last() {
+                let evaluated_termcs = table.evaluate_terminal_constraints(row, &challenges);
+                for (constraint_idx, etermc) in evaluated_termcs.into_iter().enumerate() {
+                    assert_eq!(
+                        zero,
+                        etermc,
+                        "Failed terminal constraint on {}. Constraint index: {}. Row index: {}",
+                        table.name(),
+                        constraint_idx,
+                        table.data().len() - 1,
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
         let zero = XFieldElement::zero();
         let (_, _, _, ext_tables, _, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
@@ -1645,9 +1716,31 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    fn triton_prove_verify_test() {
+    fn triton_prove_verify_simple_program_test() {
         let co_set_fri_offset = BFieldElement::generator();
         let code_with_input = test_hash_nop_nop_lt();
+        let (stark, proof) = parse_simulate_prove(
+            &code_with_input.source_code,
+            co_set_fri_offset,
+            &code_with_input.input,
+            &code_with_input.secret_input,
+            &[],
+            &mut None,
+        );
+
+        println!("between prove and verify");
+
+        let result = stark.verify(proof);
+        if let Err(e) = result {
+            panic!("The Verifier is unhappy! {}", e);
+        }
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    fn triton_prove_verify_halt_test() {
+        let co_set_fri_offset = BFieldElement::generator();
+        let code_with_input = test_halt();
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             co_set_fri_offset,
