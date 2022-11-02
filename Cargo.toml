@@ -1,5 +1,5 @@
 [workspace]
-members = ["triton-vm"]
+members = ["triton-vm", "triton-profiler"]
 
 [profile.dev]
 opt-level = 0

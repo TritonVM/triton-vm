@@ -17,6 +17,8 @@ use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 
+use triton_profiler::triton_profiler::TritonProfiler;
+
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
@@ -26,7 +28,6 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::{Proof, ProofStream};
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
-use crate::triton_profiler::TritonProfiler;
 
 use super::table::base_matrix::BaseMatrices;
 
@@ -1082,8 +1083,9 @@ impl Stark {
 
 #[cfg(test)]
 pub(crate) mod triton_stark_tests {
-    use num_traits::{One, Zero};
     use std::ops::Mul;
+
+    use num_traits::{One, Zero};
     use twenty_first::shared_math::ntt::ntt;
     use twenty_first::shared_math::other::log_2_floor;
 

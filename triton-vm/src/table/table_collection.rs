@@ -8,7 +8,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
-use crate::triton_profiler::TritonProfiler;
+use triton_profiler::triton_profiler::TritonProfiler;
 
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;

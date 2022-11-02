@@ -2,13 +2,14 @@ use std::error::Error;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
+use triton_profiler::triton_profiler::TritonProfiler;
+
 use crate::proof_stream::Proof;
 use crate::stark::Stark;
 use crate::stdio::VecStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_matrix::BaseMatrices;
 use crate::table::table_collection::BaseTableCollection;
-use crate::triton_profiler::TritonProfiler;
 use crate::vm::Program;
 
 pub fn parse_setup_simulate(

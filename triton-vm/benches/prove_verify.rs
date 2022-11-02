@@ -1,8 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use triton_vm::{
-    shared_tests::{parse_simulate_prove, test_halt},
-    triton_profiler::{Report, TritonProfiler},
-};
+use triton_profiler::triton_profiler::{Report, TritonProfiler};
+use triton_vm::shared_tests::{parse_simulate_prove, test_halt};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 fn prove_verify_halt(criterion: &mut Criterion) {
