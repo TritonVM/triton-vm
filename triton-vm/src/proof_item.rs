@@ -1,7 +1,10 @@
+use std::error::Error;
+
 use itertools::Itertools;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Hashable;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
@@ -26,9 +29,22 @@ pub enum ProofItem {
     FriCodeword(Vec<XFieldElement>),
     FriProof(FriProof),
     PaddedHeight(BFieldElement),
+    Uncast(Vec<BFieldElement>),
 }
 
-impl ProofItem {
+impl ProofItem
+where
+    AuthenticationStructure<Digest>: BFieldCodec,
+    Vec<Vec<BFieldElement>>: BFieldCodec,
+    Vec<Vec<XFieldElement>>: BFieldCodec,
+    Digest: BFieldCodec,
+    Vec<BFieldElement>: BFieldCodec,
+    Vec<XFieldElement>: BFieldCodec,
+    Vec<Digest>: BFieldCodec,
+    BFieldElement: BFieldCodec,
+    XFieldElement: BFieldCodec,
+    FriProof: BFieldCodec,
+{
     pub fn as_compressed_authentication_paths(
         &self,
     ) -> Result<AuthenticationStructure<Digest>, Box<dyn std::error::Error>> {
@@ -37,6 +53,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected compressed authentication paths, but got something else",
             )),
+            Self::Uncast(str) => match AuthenticationStructure::<Digest>::decode(str) {
+                Ok(boxed_auth_struct) => Ok(*boxed_auth_struct),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to authentication structure failed",
+                )),
+            },
         }
     }
 
@@ -48,6 +70,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected transposed base element vectors, but got something else",
             )),
+            Self::Uncast(str) => match Vec::<Vec<BFieldElement>>::decode(str) {
+                Ok(base_element_vectors) => Ok(*base_element_vectors),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to base element vectors failed",
+                )),
+            },
         }
     }
 
@@ -59,6 +87,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected transposed extension element vectors, but got something else",
             )),
+            Self::Uncast(str) => match Vec::<Vec<XFieldElement>>::decode(str) {
+                Ok(ext_element_vectors) => Ok(*ext_element_vectors),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to extension field element vectors failed",
+                )),
+            },
         }
     }
 
@@ -68,6 +102,10 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected merkle root, but got something else",
             )),
+            Self::Uncast(str) => match Digest::decode(str) {
+                Ok(merkle_root) => Ok(*merkle_root),
+                Err(_) => Err(ProofStreamError::boxed("cast to Merkle root failed")),
+            },
         }
     }
 
@@ -79,6 +117,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected tranposed base elements, but got something else",
             )),
+            Self::Uncast(str) => match Vec::<BFieldElement>::decode(str) {
+                Ok(transposed_base_elements) => Ok(*transposed_base_elements),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to transposed base field elements failed",
+                )),
+            },
         }
     }
 
@@ -90,6 +134,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected tranposed extension elements, but got something else",
             )),
+            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
+                Ok(transposed_ext_elements) => Ok(*transposed_ext_elements),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to transposed extension field elements failed",
+                )),
+            },
         }
     }
 
@@ -99,6 +149,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected authentication path, but got something else",
             )),
+            Self::Uncast(str) => match Vec::<Digest>::decode(str) {
+                Ok(authentication_path) => Ok(*authentication_path),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to authentication path failed",
+                )),
+            },
         }
     }
 
@@ -110,6 +166,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected revealed combination element, but got something else",
             )),
+            Self::Uncast(str) => match XFieldElement::decode(str) {
+                Ok(revealed_combination_element) => Ok(*revealed_combination_element),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to revealed combination element failed",
+                )),
+            },
         }
     }
 
@@ -121,6 +183,12 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected revealed combination elements, but got something else",
             )),
+            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
+                Ok(revealed_combination_elements) => Ok(*revealed_combination_elements),
+                Err(_) => Err(ProofStreamError::boxed(
+                    "cast to revealed combination elements failed",
+                )),
+            },
         }
     }
 
@@ -130,6 +198,10 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected FRI codeword, but got something else",
             )),
+            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
+                Ok(fri_codeword) => Ok(*fri_codeword),
+                Err(_) => Err(ProofStreamError::boxed("cast to FRI codeword failed")),
+            },
         }
     }
 
@@ -139,6 +211,10 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected FRI proof, but got something else",
             )),
+            Self::Uncast(str) => match FriProof::decode(str) {
+                Ok(fri_proof) => Ok(*fri_proof),
+                Err(_) => Err(ProofStreamError::boxed("cast to FRI proof failed")),
+            },
         }
     }
 
@@ -148,7 +224,119 @@ impl ProofItem {
             _ => Err(ProofStreamError::boxed(
                 "expected padded table height, but got something else",
             )),
+            Self::Uncast(str) => match BFieldElement::decode(str) {
+                Ok(padded_height) => Ok(*padded_height),
+                Err(_) => Err(ProofStreamError::boxed("cast to padded heights failed")),
+            },
         }
+    }
+}
+
+trait BFieldCodec {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>>;
+    fn encode(&self) -> Vec<BFieldElement>;
+}
+
+impl BFieldCodec for ProofItem {
+    /// Turn the given string of BFieldElements into a ProofItem.
+    /// Ignore the first element, because it denotes the length of
+    /// the encoding.
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn std::error::Error>> {
+        Ok(Box::new(Self::Uncast(str[1..].to_vec())))
+    }
+
+    /// Encode the ProofItem as a string of BFieldElements, with the
+    /// first element denoting the length of the rest.
+    fn encode(&self) -> Vec<BFieldElement> {
+        let mut tail = self.clone().into_iter().collect_vec();
+        let head = BFieldElement::new(tail.len().try_into().unwrap());
+        tail.insert(0, head);
+        tail
+    }
+}
+
+impl BFieldCodec for AuthenticationStructure<Digest> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        todo!()
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        todo!()
+    }
+}
+
+impl BFieldCodec for BFieldElement {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        let maybe_element_zero = str.get(0);
+        match maybe_element_zero {
+            Some(element) => Ok(Box::new(element)),
+            None => Err(ProofStreamError::boxed(
+                "trying to decode empty slice into BFieldElement",
+            )),
+        }
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        [self]
+    }
+}
+
+impl BFieldCodec for XFieldElement {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        if str.len() != 3 {
+            Err(ProofStreamError::boxed(
+                "trying to decode slice of not 3 BFieldElements into XFieldElement",
+            ))
+        } else {
+            Ok(Box::new(XFieldElement {
+                coefficients: str.into(),
+            }))
+        }
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        self.coefficients
+    }
+}
+
+impl BFieldCodec for Digest {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        if str.len() != DIGEST_LENGTH {
+            Err(ProofStreamError::boxed(
+                "trying to decode slice of not DIGEST_LENGTH BFieldElements into Digest",
+            ))
+        } else {
+            Ok(Box::new(Digest { 0: str.into() }))
+        }
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        self.0
+    }
+}
+
+impl<T: BFieldCodec> BFieldCodec for Vec<T> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        if str.len() == 0 {
+            return Err(ProofStreamError::boxed(
+                "trying to decode slice of zero BFieldElements into Vec of generic elements",
+            ));
+        }
+        let num = str[0].value();
+        if (str.len() - 1) % num {
+            return Err(ProofStreamError::boxed("trying to decode slice of BFieldElements using length prepending but lengths mismatch"));
+        }
+        let chunk_size = (str.len()) / num;
+        str.iter().take(chunk_size).map(T::decode).collect_vec()
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        let mut str = vec![];
+        str.push(BFieldElement::new(self.len()));
+        for elem in self.iter() {
+            str.append(&mut elem.encode());
+        }
+        str
     }
 }
 
@@ -200,6 +388,7 @@ impl IntoIterator for ProofItem {
                 xss.into_iter().map(|xs| xs_to_bs(&xs)).concat().into_iter()
             }
             ProofItem::PaddedHeight(padded_height) => vec![padded_height].into_iter(),
+            ProofItem::Uncast(str) => str.into_iter(),
         }
     }
 }
