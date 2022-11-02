@@ -269,14 +269,19 @@ impl Report {
 
 impl Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let max_width = self
+        let max_name_width = self
             .tasks
             .iter()
-            .map(|t| t.name.len() + 2 * t.depth)
+            .map(|t| t.name.width() + 2 * t.depth)
             .max()
             .expect("No tasks to generate report from.");
 
         let title = format!("### {}", self.name).bold();
+        let max_width = if max_name_width > title.width() {
+            max_name_width
+        } else {
+            title.width()
+        };
         let total_time_string = format!("{:.2?}", self.total_time).bold();
         let separation = String::from_utf8(vec![b' '; max_width - title.width()]).unwrap();
         writeln!(f, "{}{}   {}", title, separation, total_time_string)?;
@@ -310,7 +315,7 @@ impl Display for Report {
             assert!(
                 padding_length < (1 << 60),
                 "max width: {}, width: {}",
-                max_width,
+                max_name_width,
                 task.name.len(),
             );
             let task_name_colored = task.name.color(task.weight.color());
