@@ -340,6 +340,24 @@ impl Display for Report {
     }
 }
 
+#[macro_export]
+macro_rules! prof_start {
+    ($p: ident, $s : expr) => {
+        if let Some(profiler) = $p.as_mut() {
+            profiler.start($s);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! prof_stop {
+    ($p: ident, $s : expr) => {
+        if let Some(profiler) = $p.as_mut() {
+            profiler.stop($s);
+        }
+    };
+}
+
 #[cfg(test)]
 pub mod triton_profiler_tests {
     use super::*;

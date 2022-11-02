@@ -18,6 +18,7 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 
 use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_start, prof_stop};
 
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
@@ -117,37 +118,25 @@ impl Stark {
     ) -> Proof {
         let mut timer = TimingReporter::start();
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("pad");
-        }
+        prof_start!(maybe_profiler, "pad");
         let base_trace_tables = self.padded(&base_matrices);
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("pad");
-        }
+        prof_stop!(maybe_profiler, "pad");
 
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("LDE 1");
-        }
+        prof_start!(maybe_profiler, "LDE 1");
         let base_fri_domain_tables =
             base_trace_tables.to_fri_domain_tables(&self.bfri_domain, self.num_trace_randomizers);
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
         let randomizer_and_base_fri_domain_codewords =
             vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("LDE 1");
-        }
+        prof_stop!(maybe_profiler, "LDE 1");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("Merkle tree 1");
-        }
+        prof_start!(maybe_profiler, "Merkle tree 1");
         let transposed_base_codewords = Self::transpose(&randomizer_and_base_fri_domain_codewords);
         let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
         let base_merkle_tree_root = base_tree.get_root();
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("Merkle tree 1");
-        }
+        prof_stop!(maybe_profiler, "Merkle tree 1");
 
         // send root for base codewords
         if let Some(profiler) = maybe_profiler.as_mut() {
@@ -163,95 +152,61 @@ impl Stark {
             profiler.stop("Fiat-Shamir 1");
         }
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("extend");
-        }
+        prof_start!(maybe_profiler, "extend");
         let ext_trace_tables = ExtTableCollection::extend_tables(
             &base_trace_tables,
             &extension_challenges,
             self.num_trace_randomizers,
         );
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("extend");
-        }
+        prof_stop!(maybe_profiler, "extend");
 
         proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
             base_trace_tables.padded_height as u64,
         )));
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("LDE 2");
-        }
+        prof_start!(maybe_profiler, "LDE 2");
         let ext_fri_domain_tables =
             ext_trace_tables.to_fri_domain_tables(&self.xfri.domain, self.num_trace_randomizers);
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("LDE 2");
-        }
+        prof_stop!(maybe_profiler, "LDE 2");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("Merkle tree 2");
-        }
+        prof_start!(maybe_profiler, "Merkle tree 2");
         let transposed_ext_codewords = Self::transpose(&extension_fri_domain_codewords);
         let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("Merkle tree 2");
-        }
+        prof_stop!(maybe_profiler, "Merkle tree 2");
 
         // send root for extension codewords
         proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("degree bounds");
-        }
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("base");
-        }
+        prof_start!(maybe_profiler, "degree bounds");
+        prof_start!(maybe_profiler, "base");
         let base_degree_bounds =
             base_fri_domain_tables.get_base_degree_bounds(self.num_trace_randomizers);
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("base");
-        }
+        prof_stop!(maybe_profiler, "base");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("extension");
-        }
+        prof_start!(maybe_profiler, "extension");
         let extension_degree_bounds =
             ext_fri_domain_tables.get_extension_degree_bounds(self.num_trace_randomizers);
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("extension");
-        }
+        prof_stop!(maybe_profiler, "extension");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("quotient");
-        }
+        prof_start!(maybe_profiler, "quotient");
         let full_fri_domain_tables =
             ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
         let mut quotient_degree_bounds =
             full_fri_domain_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("quotient");
-        }
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("degree bounds");
-        }
+        prof_stop!(maybe_profiler, "quotient");
+        prof_stop!(maybe_profiler, "degree bounds");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("quotient codewords");
-        }
+        prof_start!(maybe_profiler, "quotient codewords");
         let mut quotient_codewords = full_fri_domain_tables.get_all_quotients(
             &self.xfri.domain,
             &extension_challenges,
             maybe_profiler,
         );
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("quotient codewords");
-        }
+        prof_stop!(maybe_profiler, "quotient codewords");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("grand cross table");
-        }
+        prof_start!(maybe_profiler, "grand cross table");
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = self.num_randomizer_polynomials
             + 2 * base_fri_domain_codewords.len()
@@ -301,13 +256,9 @@ impl Stark {
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(&full_fri_domain_tables, self.num_trace_randomizers);
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("grand cross table");
-        }
+        prof_stop!(maybe_profiler, "grand cross table");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("nonlinear combination");
-        }
+        prof_start!(maybe_profiler, "nonlinear combination");
         let combination_codeword = self.create_combination_codeword(
             &mut timer,
             vec![x_rand_codeword],
@@ -319,13 +270,9 @@ impl Stark {
             extension_degree_bounds,
             quotient_degree_bounds,
         );
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("nonlinear combination");
-        }
+        prof_stop!(maybe_profiler, "nonlinear combination");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("Merkle tree 3");
-        }
+        prof_start!(maybe_profiler, "Merkle tree 3");
         let mut combination_codeword_digests: Vec<Digest> =
             Vec::with_capacity(combination_codeword.len());
         combination_codeword
@@ -339,9 +286,7 @@ impl Stark {
 
         proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root));
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("Merkle tree 3");
-        }
+        prof_stop!(maybe_profiler, "Merkle tree 3");
 
         // Get indices of slices that go across codewords to prove nonlinear combination
         if let Some(profiler) = maybe_profiler.as_mut() {
@@ -357,9 +302,7 @@ impl Stark {
             profiler.stop("Fiat-Shamir 3");
         }
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("FRI");
-        }
+        prof_start!(maybe_profiler, "FRI");
         match self.xfri.prove(&combination_codeword, &mut proof_stream) {
             Ok((_, fri_first_round_merkle_root)) => assert_eq!(
                 combination_root, fri_first_round_merkle_root,
@@ -367,13 +310,9 @@ impl Stark {
             ),
             Err(e) => panic!("The FRI prover failed because of: {}", e),
         }
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("FRI");
-        }
+        prof_stop!(maybe_profiler, "FRI");
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("open trace leafs");
-        }
+        prof_start!(maybe_profiler, "open trace leafs");
         // the relation between the FRI domain and the omicron domain
         let unit_distance = self.xfri.domain.length / base_trace_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
@@ -412,9 +351,7 @@ impl Stark {
             revealed_combination_auth_paths,
         ));
 
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("open trace leafs");
-        }
+        prof_stop!(maybe_profiler, "open trace leafs");
 
         println!(
             "Created proof containing {} B-field elements",
