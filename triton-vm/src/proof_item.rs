@@ -1,9 +1,6 @@
-use itertools::Itertools;
-
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::algebraic_hasher::Hashable;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
@@ -231,59 +228,119 @@ where
     }
 }
 
-impl IntoIterator for ProofItem {
-    type Item = BFieldElement;
-    type IntoIter = std::vec::IntoIter<BFieldElement>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            ProofItem::MerkleRoot(bs) => bs.to_sequence().into_iter(),
-            ProofItem::TransposedBaseElements(bs) => bs.into_iter(),
-            ProofItem::TransposedExtensionElements(xs) => xs_to_bs(&xs).into_iter(),
-            ProofItem::AuthenticationPath(bss) => {
-                bss.iter().map(|ap| ap.to_sequence()).concat().into_iter()
+impl BFieldCodec for ProofItem {
+    /// Turn the given string of BFieldElements into a ProofItem.
+    /// The first element denotes the length of the encoding; make
+    /// sure it is correct!
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn std::error::Error>> {
+        if let Some(len) = str.get(0) {
+            if len.value() as usize + 1 != str.len() {
+                return Err(ProofStreamError::boxed("length mismatch"));
+            } else {
+                Ok(Box::new(Self::Uncast(str[1..].to_vec())))
             }
-
-            ProofItem::RevealedCombinationElement(x) => xs_to_bs(&[x]).into_iter(),
-            ProofItem::FriCodeword(xs) => xs_to_bs(&xs).into_iter(),
-            ProofItem::RevealedCombinationElements(xs) => xs_to_bs(&xs).into_iter(),
-            ProofItem::FriProof(fri_proof) => {
-                let mut bs = vec![];
-
-                for (partial_auth_path, xfe) in fri_proof.iter() {
-                    let mut elems: Vec<BFieldElement> = partial_auth_path
-                        .0
-                        .iter()
-                        .flatten()
-                        .flat_map(|digest| digest.values())
-                        .collect();
-                    bs.append(&mut elems);
-                    bs.append(&mut xfe.to_sequence());
-                }
-
-                bs.into_iter()
-            }
-            ProofItem::CompressedAuthenticationPaths(partial_auth_paths) => {
-                let mut bs: Vec<BFieldElement> = vec![];
-
-                for partial_auth_path in partial_auth_paths.iter() {
-                    for bs_in_partial_auth_path in partial_auth_path.0.iter().flatten() {
-                        bs.append(&mut bs_in_partial_auth_path.to_sequence());
-                    }
-                }
-
-                bs.into_iter()
-            }
-            ProofItem::TransposedBaseElementVectors(bss) => bss.concat().into_iter(),
-            ProofItem::TransposedExtensionElementVectors(xss) => {
-                xss.into_iter().map(|xs| xs_to_bs(&xs)).concat().into_iter()
-            }
-            ProofItem::PaddedHeight(padded_height) => vec![padded_height].into_iter(),
-            ProofItem::Uncast(str) => str.into_iter(),
+        } else {
+            return Err(ProofStreamError::boxed("empty buffer"));
         }
+    }
+
+    /// Encode the ProofItem as a string of BFieldElements, with the
+    /// first element denoting the length of the rest.
+    fn encode(&self) -> Vec<BFieldElement> {
+        let mut tail = match self {
+            ProofItem::CompressedAuthenticationPaths(something) => something.encode(),
+            ProofItem::TransposedBaseElementVectors(something) => something.encode(),
+            ProofItem::TransposedExtensionElementVectors(something) => something.encode(),
+            ProofItem::MerkleRoot(something) => something.encode(),
+            ProofItem::TransposedBaseElements(something) => something.encode(),
+            ProofItem::TransposedExtensionElements(something) => something.encode(),
+            ProofItem::AuthenticationPath(something) => something.encode(),
+            ProofItem::RevealedCombinationElement(something) => something.encode(),
+            ProofItem::RevealedCombinationElements(something) => something.encode(),
+            ProofItem::FriCodeword(something) => something.encode(),
+            ProofItem::FriProof(something) => something.encode(),
+            ProofItem::PaddedHeight(something) => something.encode(),
+            ProofItem::Uncast(something) => something.encode(),
+        };
+        let head = BFieldElement::new(tail.len().try_into().unwrap());
+        tail.insert(0, head);
+        tail
     }
 }
 
-fn xs_to_bs(xs: &[XFieldElement]) -> Vec<BFieldElement> {
-    xs.iter().map(|x| x.coefficients.to_vec()).concat()
+#[cfg(test)]
+mod proof_item_typed_tests {
+    use itertools::Itertools;
+    use rand::{thread_rng, RngCore};
+
+    use crate::proof_stream::ProofStream;
+
+    use super::*;
+    use twenty_first::shared_math::{
+        b_field_element::BFieldElement, rescue_prime_regular::RescuePrimeRegular,
+        x_field_element::XFieldElement,
+    };
+
+    fn random_bfieldelement() -> BFieldElement {
+        let mut rng = thread_rng();
+        BFieldElement::new(rng.next_u64())
+    }
+
+    fn random_xfieldelement() -> XFieldElement {
+        XFieldElement {
+            coefficients: [
+                random_bfieldelement(),
+                random_bfieldelement(),
+                random_bfieldelement(),
+            ],
+        }
+    }
+
+    #[test]
+    fn serialize_stark_proof_test() {
+        type H = RescuePrimeRegular;
+        let mut proof_stream = ProofStream::<ProofItem, H>::new();
+        let manyb1 = (0..10)
+            .into_iter()
+            .map(|_| random_bfieldelement())
+            .collect_vec();
+        let manyx = (0..13)
+            .into_iter()
+            .map(|_| random_xfieldelement())
+            .collect_vec();
+        let manyb2 = (0..11)
+            .into_iter()
+            .map(|_| random_bfieldelement())
+            .collect_vec();
+
+        proof_stream.enqueue(&ProofItem::TransposedBaseElements(manyb1.clone()));
+        proof_stream.enqueue(&ProofItem::TransposedExtensionElements(manyx.clone()));
+        proof_stream.enqueue(&ProofItem::TransposedBaseElements(manyb2.clone()));
+
+        let proof = proof_stream.to_proof();
+
+        let mut proof_stream =
+            ProofStream::<ProofItem, H>::from_proof(&proof).expect("invalid parsing of proof");
+
+        let manyb1_ = proof_stream
+            .dequeue()
+            .expect("can't dequeue item")
+            .as_transposed_base_elements()
+            .expect("cannot parse dequeued item");
+        assert_eq!(manyb1, manyb1_);
+
+        let manyx_ = proof_stream
+            .dequeue()
+            .expect("can't dequeue item")
+            .as_transposed_extension_elements()
+            .expect("cannot parse dequeued item");
+        assert_eq!(manyx, manyx_);
+
+        let manyb2_ = proof_stream
+            .dequeue()
+            .expect("can't dequeue item")
+            .as_transposed_base_elements()
+            .expect("cannot parse dequeued item");
+        assert_eq!(manyb2, manyb2_);
+    }
 }

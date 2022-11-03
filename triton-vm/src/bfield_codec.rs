@@ -1,6 +1,5 @@
 use std::{error::Error, fmt::Display};
 
-use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::{
     shared_math::{
@@ -9,8 +8,6 @@ use twenty_first::{
     },
     util_types::{algebraic_hasher::Hashable, merkle_tree::PartialAuthenticationPath},
 };
-
-use crate::proof_item::ProofItem;
 
 #[derive(Debug, Clone)]
 pub struct BFieldCodecError {
@@ -47,24 +44,6 @@ impl Error for BFieldCodecError {}
 pub trait BFieldCodec {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>>;
     fn encode(&self) -> Vec<BFieldElement>;
-}
-
-impl BFieldCodec for ProofItem {
-    /// Turn the given string of BFieldElements into a ProofItem.
-    /// Ignore the first element, because it denotes the length of
-    /// the encoding.
-    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn std::error::Error>> {
-        Ok(Box::new(Self::Uncast(str[1..].to_vec())))
-    }
-
-    /// Encode the ProofItem as a string of BFieldElements, with the
-    /// first element denoting the length of the rest.
-    fn encode(&self) -> Vec<BFieldElement> {
-        let mut tail = self.clone().into_iter().collect_vec();
-        let head = BFieldElement::new(tail.len().try_into().unwrap());
-        tail.insert(0, head);
-        tail
-    }
 }
 
 impl BFieldCodec for BFieldElement {
@@ -215,6 +194,11 @@ impl<T: BFieldCodec, S: BFieldCodec> BFieldCodec for (T, S) {
 
 impl BFieldCodec for PartialAuthenticationPath<Digest> {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        if str.is_empty() {
+            return Err(BFieldCodecError::boxed(
+                "cannot decode empty string into PartialAuthenticationPath",
+            ));
+        }
         let mut vect: Vec<Option<Digest>> = vec![];
         let mut index = 0;
         while index < str.len() {
@@ -289,6 +273,7 @@ impl<T: BFieldCodec> BFieldCodec for Option<T> {
 
 #[cfg(test)]
 mod bfield_codec_tests {
+    use itertools::Itertools;
     use rand::{thread_rng, RngCore};
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
@@ -487,53 +472,74 @@ mod bfield_codec_tests {
 
     #[test]
     fn test_decode_random_negative() {
-        for _ in 1..=10 {
+        for _ in 1..=10000 {
             let len = random_length(100);
             let str = (0..len)
                 .into_iter()
                 .map(|_| random_bfieldelement())
                 .collect_vec();
 
+            // Some of the following cases can be triggered by false
+            // positives. This should occur with probability roughly
+            // 2^-60.
+
             if let Ok(_sth) = BFieldElement::decode(&str) {
-                panic!();
+                if str.len() != 1 {
+                    panic!();
+                }
             }
 
             if let Ok(_sth) = XFieldElement::decode(&str) {
-                panic!();
+                if str.len() != 3 {
+                    panic!();
+                }
             }
 
             if let Ok(_sth) = Digest::decode(&str) {
-                panic!();
+                if str.len() != DIGEST_LENGTH {
+                    panic!();
+                }
             }
 
-            if let Ok(_sth) = Vec::<BFieldElement>::decode(&str) {
-                panic!();
+            if let Ok(sth) = Vec::<BFieldElement>::decode(&str) {
+                if !sth.is_empty() {
+                    panic!("{:?}", sth);
+                }
             }
 
-            if let Ok(_sth) = Vec::<XFieldElement>::decode(&str) {
-                panic!();
+            if let Ok(sth) = Vec::<XFieldElement>::decode(&str) {
+                if !sth.is_empty() {
+                    panic!("{:?}", sth);
+                }
             }
 
-            if let Ok(_sth) = Vec::<Digest>::decode(&str) {
-                panic!();
+            if let Ok(sth) = Vec::<Digest>::decode(&str) {
+                if !sth.is_empty() {
+                    panic!("{:?}", sth);
+                }
             }
 
-            if let Ok(_sth) = Vec::<Vec<BFieldElement>>::decode(&str) {
-                panic!();
+            if let Ok(sth) = Vec::<Vec<BFieldElement>>::decode(&str) {
+                if !sth.is_empty() {
+                    panic!("{:?}", sth);
+                }
             }
 
-            if let Ok(_sth) = Vec::<Vec<XFieldElement>>::decode(&str) {
-                panic!();
+            if let Ok(sth) = Vec::<Vec<XFieldElement>>::decode(&str) {
+                if !sth.is_empty() {
+                    panic!("{:?}", sth);
+                }
             }
 
             if let Ok(_sth) = PartialAuthenticationPath::decode(&str) {
                 panic!();
             }
 
-            if let Ok(_sth) =
-                Vec::<(PartialAuthenticationPath<Digest>, XFieldElement)>::decode(&str)
+            if let Ok(sth) = Vec::<(PartialAuthenticationPath<Digest>, XFieldElement)>::decode(&str)
             {
-                panic!();
+                if !sth.is_empty() {
+                    panic!("{:?}", sth);
+                }
             }
         }
     }

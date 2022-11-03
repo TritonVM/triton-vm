@@ -18,10 +18,10 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, Hashable};
 use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
-use twenty_first::util_types::proof_stream_typed::ProofStream;
 
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
+use crate::proof_stream::ProofStream;
 
 impl Error for ValidationError {}
 
@@ -588,7 +588,7 @@ mod triton_xfri_tests {
         let colinearity_check_count = 6;
         let fri: Fri<Hasher> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::default();
+        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
         let subgroup = fri.domain.omega.lift().get_cyclic_group_elements(None);
 
         let (_, merkle_root_of_round_0) = fri.prove(&subgroup, &mut proof_stream).unwrap();
@@ -607,7 +607,7 @@ mod triton_xfri_tests {
         let colinearity_check_count = 6;
         let fri: Fri<Hasher> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::default();
+        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
 
         let zero = XFieldElement::zero();
         let one = XFieldElement::one();
@@ -638,7 +638,7 @@ mod triton_xfri_tests {
             points = subgroup.clone().iter().map(|p| p.mod_pow_u32(n)).collect();
 
             // TODO: Test elsewhere that proof_stream can be re-used for multiple .prove().
-            let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::default();
+            let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
             let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
 
             let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0);
@@ -668,7 +668,7 @@ mod triton_xfri_tests {
         // Negative test with too high degree
         let too_high = subgroup_order as u32 / expansion_factor as u32;
         points = subgroup.iter().map(|p| p.mod_pow_u32(too_high)).collect();
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::default();
+        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
         let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
         let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0);
         assert!(verify_result.is_err());
