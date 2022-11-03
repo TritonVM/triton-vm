@@ -69,13 +69,13 @@ impl BFieldCodec for ProofItem {
 
 impl BFieldCodec for BFieldElement {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
-        let maybe_element_zero = str.get(0);
-        match maybe_element_zero {
-            Some(element) => Ok(Box::new(*element)),
-            None => Err(BFieldCodecError::boxed(
-                "trying to decode empty slice into BFieldElement",
-            )),
+        if str.len() != 1 {
+            return Err(BFieldCodecError::boxed(
+                "trying to decode more or less than one BFieldElements as one BFieldElement",
+            ));
         }
+        let element_zero = str[0];
+        Ok(Box::new(element_zero))
     }
 
     fn encode(&self) -> Vec<BFieldElement> {
@@ -125,6 +125,11 @@ impl<T: BFieldCodec> BFieldCodec for Vec<T> {
             // we don't know ahead of time how wide each T-element is
             // so every element in the list is length-prepended
             let len = str[index].value();
+            if str.len() < index + 1 + len as usize {
+                return Err(BFieldCodecError::boxed(
+                    "cannot decode vec of Ts because of erroneous length prepending",
+                ));
+            }
             let substr = &str[(index + 1)..(index + 1 + len as usize)];
             let decoded = T::decode(substr);
             if let Ok(t) = decoded {
@@ -213,9 +218,12 @@ impl BFieldCodec for PartialAuthenticationPath<Digest> {
         let mut vect: Vec<Option<Digest>> = vec![];
         let mut index = 0;
         while index < str.len() {
-            // we don't know ahead of time how wide each T-element is
-            // so every element in the list is length-prepended
             let len = str[index].value();
+            if str.len() < index + 1 + len as usize {
+                return Err(BFieldCodecError::boxed(
+                    "cannot decode vec of optional digests because of improper length prepending",
+                ));
+            }
             let substr = &str[(index + 1)..(index + 1 + len as usize)];
             let decoded = Option::<Digest>::decode(substr);
             if let Ok(optional_digest) = decoded {
@@ -474,6 +482,59 @@ mod bfield_codec_tests {
             let fri_proof_ =
                 *Vec::<(PartialAuthenticationPath<Digest>, XFieldElement)>::decode(&str).unwrap();
             assert_eq!(fri_proof, fri_proof_)
+        }
+    }
+
+    #[test]
+    fn test_decode_random_negative() {
+        for _ in 1..=10 {
+            let len = random_length(100);
+            let str = (0..len)
+                .into_iter()
+                .map(|_| random_bfieldelement())
+                .collect_vec();
+
+            if let Ok(_sth) = BFieldElement::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = XFieldElement::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = Digest::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = Vec::<BFieldElement>::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = Vec::<XFieldElement>::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = Vec::<Digest>::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = Vec::<Vec<BFieldElement>>::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = Vec::<Vec<XFieldElement>>::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) = PartialAuthenticationPath::decode(&str) {
+                panic!();
+            }
+
+            if let Ok(_sth) =
+                Vec::<(PartialAuthenticationPath<Digest>, XFieldElement)>::decode(&str)
+            {
+                panic!();
+            }
         }
     }
 }
