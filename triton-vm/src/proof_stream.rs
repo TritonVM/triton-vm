@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::error::Error;
 use std::fmt::Display;
 use std::marker::PhantomData;
@@ -6,12 +5,12 @@ use std::marker::PhantomData;
 use twenty_first::shared_math::{b_field_element::BFieldElement, rescue_prime_digest::Digest};
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
+use crate::proof_item::BFieldCodec;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct ProofStream<Item, H: AlgebraicHasher> {
-    items: Vec<(Item, usize)>,
+    items: Vec<Item>,
     items_index: usize,
-    transcript: Vec<BFieldElement>,
-    transcript_index: usize,
     _hasher: PhantomData<H>,
 }
 
@@ -20,8 +19,6 @@ impl<Item, H: AlgebraicHasher> Default for ProofStream<Item, H> {
         Self {
             items: vec![],
             items_index: 0,
-            transcript: vec![],
-            transcript_index: 0,
             _hasher: PhantomData,
         }
     }
@@ -56,7 +53,7 @@ pub struct Proof(Vec<BFieldElement>);
 
 impl<Item, H> ProofStream<Item, H>
 where
-    Item: IntoIterator<Item = BFieldElement> + Clone,
+    Item: IntoIterator<Item = BFieldElement> + Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     /// Candidate for removal. This function does not make any sense.
@@ -64,8 +61,6 @@ where
         ProofStream {
             items: vec![],
             items_index: 0,
-            transcript: vec![],
-            transcript_index: 0,
             _hasher: PhantomData,
         }
     }
@@ -74,7 +69,6 @@ where
     /// we don't have to re-run tests needlessly.
     pub fn reset_for_verifier(&mut self) {
         self.items_index = 0;
-        self.transcript_index = 0;
     }
 
     pub fn is_empty(&self) -> bool {
@@ -86,49 +80,79 @@ where
     }
 
     pub fn transcript_length(&self) -> usize {
-        self.transcript.len()
+        self.to_proof().0.len()
     }
 
     /// Convert the proof stream (or its transcript really) into a
     /// Proof.
     pub fn to_proof(&self) -> Proof {
-        let mut bfes
+        let mut bfes = vec![];
+        for item in self.items.iter() {
+            bfes.append(&mut item.encode());
+        }
+        Proof(bfes)
     }
 
     /// Convert the proof into a proof stream for the verifier.
-    pub fn from_proof(proof: &Proof) -> Self {
-        ProofStream {
-            items: todo!(),
-            items_index: todo!(),
-            transcript: todo!(),
-            transcript_index: todo!(),
-            _hasher: PhantomData,
+    pub fn from_proof(proof: &Proof) -> Result<Self, Box<dyn Error>> {
+        let mut index = 0;
+        let mut items = vec![];
+        while index < proof.0.len() {
+            let len = proof.0[index].value() as usize;
+            if proof.0.len() < index + 1 + len {
+                return Err(ProofStreamError::boxed(
+                    "failed to decode proof; wrong length",
+                ));
+            }
+            let str = &proof.0[(index + 1)..(index + 1 + len)];
+            let maybe_item = Item::decode(str);
+            match maybe_item {
+                Ok(item) => {
+                    items.push(*item);
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+            index += 1 + len;
         }
+        Ok(ProofStream {
+            items,
+            items_index: 0,
+            _hasher: PhantomData,
+        })
     }
 
+    /// Send a proof item as prover to verifier.
     pub fn enqueue(&mut self, item: &Item) {
-        let mut elems = item.clone().into_iter().collect_vec();
-        self.items.push((item.clone(), elems.len()));
-        self.transcript.append(&mut elems);
+        self.items.push(item.clone());
     }
 
+    /// Receive a proof item from prover as verifier.
     pub fn dequeue(&mut self) -> Result<Item, Box<dyn Error>> {
-        let (item, elems_len) = self
+        let item = self
             .items
             .get(self.items_index)
             .ok_or_else(|| ProofStreamError::boxed("Could not dequeue, queue empty"))?;
 
         self.items_index += 1;
-        self.transcript_index += elems_len;
         Ok(item.clone())
     }
 
     pub fn prover_fiat_shamir(&self) -> Digest {
-        H::hash_slice(&self.transcript)
+        let mut transcript = vec![];
+        for item in self.items.iter() {
+            transcript.append(&mut item.encode());
+        }
+        H::hash_slice(&transcript)
     }
 
     pub fn verifier_fiat_shamir(&self) -> Digest {
-        H::hash_slice(&self.transcript[0..self.transcript_index])
+        let mut transcript = vec![];
+        for item in self.items[0..self.items_index].iter() {
+            transcript.append(&mut item.encode());
+        }
+        H::hash_slice(&transcript)
     }
 }
 
@@ -185,6 +209,58 @@ mod proof_stream_typed_tests {
                     .concat()
                     .into_iter(),
             }
+        }
+    }
+
+    impl BFieldCodec for TestItem {
+        fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+            let maybe_element_zero = str.get(0);
+            match maybe_element_zero {
+                None => Err(ProofStreamError::boxed(
+                    "trying to decode empty string into test item",
+                )),
+                Some(bfe) => {
+                    if bfe.is_zero() {
+                        Ok(Box::new(Self::ManyB(str[1..].to_vec())))
+                    } else {
+                        let mut vect = vec![];
+                        for mut chunk in &str[1..].iter().chunks(3) {
+                            let mut xfe = XFieldElement::zero();
+                            xfe.coefficients[0] = *chunk.next().expect(
+                                "cannot cast chunk of BFieldElements into XFieldElements (1)",
+                            );
+                            xfe.coefficients[1] = *chunk.next().expect(
+                                "cannot cast chunk of BFieldElements into XFieldElements (2)",
+                            );
+                            xfe.coefficients[2] = *chunk.next().expect(
+                                "cannot cast chunk of BFieldElements into XFieldElements (3)",
+                            );
+                            vect.push(xfe);
+                        }
+
+                        Ok(Box::new(Self::ManyX(vect)))
+                    }
+                }
+            }
+        }
+
+        fn encode(&self) -> Vec<BFieldElement> {
+            let mut vect = vec![];
+            match self {
+                Self::ManyB(bs) => {
+                    vect.push(BFieldElement::zero());
+                    for b in bs {
+                        vect.append(&mut b.encode());
+                    }
+                }
+                Self::ManyX(xs) => {
+                    vect.push(BFieldElement::one());
+                    for x in xs {
+                        vect.append(&mut x.encode());
+                    }
+                }
+            }
+            vect
         }
     }
 
