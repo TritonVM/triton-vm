@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.24">
-<info created="D:20200729150742" modified="D:20221101133848"/>
+<info created="D:20200729150742" modified="D:20221103102957"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -320,7 +320,7 @@ h
 <layer name="perm_args"/>
 <layer name="multi_perm_arg"/>
 <layer name="bezout_args"/>
-<view layers="bg table_names eval_args perm_args multi_perm_arg bezout_args" active="multi_perm_arg"/>
+<view layers="bg table_names eval_args perm_args multi_perm_arg bezout_args" active="eval_args"/>
 <path layer="bg" matrix="1 0 0 1 0 12" fill="white">
 108 204 m
 108 32 l
@@ -337,9 +337,9 @@ h
 <text matrix="1 0 0 1 -16 -32" transformations="translations" pos="208 224" stroke="black" type="label" width="34.343" height="4.407" depth="1.93" halign="center" valign="baseline">program</text>
 <text matrix="1 0 0 1 -16 -32" transformations="translations" pos="272 224" stroke="darkgray" type="label" width="27.618" height="5.756" depth="1.93" halign="center" valign="baseline">output</text>
 <text transformations="translations" pos="128 192" stroke="darkgray" type="label" width="21.42" height="6.538" depth="1.93" halign="center" valign="baseline">input</text>
-<text matrix="1 0 0 1 64 -16" transformations="translations" pos="128 96" stroke="black" type="label" width="33.347" height="6.926" depth="1.93" halign="center" valign="baseline">opStack</text>
-<text matrix="1 0 0 1 -48 -16" transformations="translations" pos="192 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
-<text matrix="1 0 0 1 -16 -16" transformations="translations" pos="256 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
+<text matrix="1 0 0 1 64 -16" transformations="translations" pos="128 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
+<text matrix="1 0 0 1 -48 -16" transformations="translations" pos="192 96" stroke="black" type="label" width="33.347" height="6.926" depth="1.93" halign="center" valign="baseline">opStack</text>
+<text matrix="1 0 0 1 -16 -16" transformations="translations" pos="256 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
 <text matrix="1 0 0 1 -32 32" transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
 <path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small">
 128 184 m
@@ -392,14 +392,6 @@ h
 <path matrix="1 0 0 1 -48 10" stroke="darkred" fill="darkred" pen="heavier" cap="1" join="1">
 1.20123 0 0 1.20123 176 176 e
 </path>
-<path layer="bezout_args" matrix="0.939693 0.34202 -0.34202 0.939693 41.115 -61.1749" stroke="darkgreen" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
-160 100 m
-8 0 0 -8 160 92 152 92 a
-</path>
-<path layer="eval_args" matrix="-0.573576 0.819152 -0.819152 -0.573576 375.134 62.7047" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
-160 100 m
-8 0 0 -8 160 92 152 92 a
-</path>
 <path matrix="1 0 0 1 0 4" stroke="darkred" pen="heavier" cap="1" join="1" rarrow="farc/small">
 176 120 m
 176 116 l
@@ -430,10 +422,10 @@ h
 208 120 l
 208 116
 212 116 c
-268 116 l
-272 116
-272 112 c
-272 64 l
+252 116 l
+256 116
+256 112 c
+256 64 l
 </path>
 <path stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
 240 76 m
@@ -449,7 +441,15 @@ h
 </path>
 <path stroke="darkblue" pen="fat" cap="1" join="1">
 140 64 m
-276 64 l
+260 64 l
+</path>
+<path layer="bezout_args" matrix="-0.499978 0.499979 -0.499979 -0.499978 369.995 62.0012" stroke="darkgreen" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
+160 100 m
+8 0 0 -8 160 92 152 92 a
+</path>
+<path layer="eval_args" matrix="-0.499978 0.499979 -0.499979 -0.499978 329.995 108.001" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
+160 100 m
+8 0 0 -8 160 92 152 92 a
 </path>
 </page>
 </ipe>
