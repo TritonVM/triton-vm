@@ -16,16 +16,16 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
-use twenty_first::util_types::proof_stream_typed::ProofStream;
 
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
+use crate::fri::{self, Fri};
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
+use crate::proof_stream::{Proof, ProofStream};
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
-use crate::triton_xfri::{self, Fri};
 
 use super::table::base_matrix::BaseMatrices;
 
@@ -88,7 +88,7 @@ impl Stark {
         let bfri_domain: FriDomain<BFieldElement> =
             FriDomain::new(co_set_fri_offset, omega, fri_domain_length);
 
-        let xfri = triton_xfri::Fri::new(
+        let xfri = fri::Fri::new(
             co_set_fri_offset,
             omega,
             fri_domain_length,
@@ -108,7 +108,7 @@ impl Stark {
         }
     }
 
-    pub fn prove(&self, base_matrices: BaseMatrices) -> StarkProofStream {
+    pub fn prove(&self, base_matrices: BaseMatrices) -> Proof {
         let mut timer = TimingReporter::start();
 
         let base_tables = self.padded(&base_matrices);
@@ -133,7 +133,7 @@ impl Stark {
         timer.elapsed("base_merkle_tree");
 
         // send root for base codewords
-        let mut proof_stream = StarkProofStream::default();
+        let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         timer.elapsed("proof_stream.enqueue");
 
@@ -287,6 +287,8 @@ impl Stark {
 
         timer.elapsed("sample_indices");
 
+        // FRI
+
         match self.xfri.prove(&combination_codeword, &mut proof_stream) {
             Ok((_, fri_first_round_merkle_root)) => assert_eq!(
                 combination_root, fri_first_round_merkle_root,
@@ -296,7 +298,7 @@ impl Stark {
         }
         timer.elapsed("fri.prove");
 
-        // the relation between the FRI domain and the omicron domain
+        // the relation between the FRI domain and the trace domain
         let unit_distance = self.xfri.domain.length / base_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
@@ -344,7 +346,7 @@ impl Stark {
             proof_stream.transcript_length()
         );
 
-        proof_stream
+        proof_stream.to_proof()
     }
 
     fn get_revealed_indices(
@@ -597,8 +599,10 @@ impl Stark {
             .collect()
     }
 
-    pub fn verify(&self, proof_stream: &mut StarkProofStream) -> Result<bool, Box<dyn Error>> {
+    pub fn verify(&self, proof: Proof) -> Result<bool, Box<dyn Error>> {
         let mut timer = TimingReporter::start();
+
+        let mut proof_stream = StarkProofStream::from_proof(&proof)?;
 
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
@@ -690,8 +694,8 @@ impl Stark {
         let num_idxs = combination_check_indices.len();
         timer.elapsed("Got indices");
 
-        // Verify low degree of combination polynomial
-        self.xfri.verify(proof_stream, &combination_root)?;
+        // verify low degree of combination polynomial with FRI
+        self.xfri.verify(&mut proof_stream, &combination_root)?;
         timer.elapsed("Verified FRI proof");
 
         // the relation between the FRI domain and the omicron domain
@@ -1006,7 +1010,6 @@ pub(crate) mod triton_stark_tests {
     use std::ops::Mul;
     use twenty_first::shared_math::ntt::ntt;
     use twenty_first::shared_math::other::log_2_floor;
-    use twenty_first::util_types::proof_stream_typed::ProofStream;
 
     use crate::cross_table_arguments::EvalArg;
     use crate::instruction::sample_programs;
@@ -1049,7 +1052,7 @@ pub(crate) mod triton_stark_tests {
         input_symbols: &[BFieldElement],
         secret_input_symbols: &[BFieldElement],
         output_symbols: &[BFieldElement],
-    ) -> (Stark, ProofStream<ProofItem, RescuePrimeRegular>) {
+    ) -> (Stark, Proof) {
         let (aet, _, program) = parse_setup_simulate(code, input_symbols, secret_input_symbols);
         let base_matrices = BaseMatrices::new(aet, &program);
 
@@ -1067,9 +1070,9 @@ pub(crate) mod triton_stark_tests {
             input_symbols,
             output_symbols,
         );
-        let proof_stream = stark.prove(base_matrices);
+        let proof = stark.prove(base_matrices);
 
-        (stark, proof_stream)
+        (stark, proof)
     }
 
     pub fn parse_setup_simulate(
@@ -1600,7 +1603,7 @@ pub(crate) mod triton_stark_tests {
     fn triton_prove_verify_test() {
         let co_set_fri_offset = BFieldElement::generator();
         let code_with_input = test_hash_nop_nop_lt();
-        let (stark, mut proof_stream) = parse_simulate_prove(
+        let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             co_set_fri_offset,
             &code_with_input.input,
@@ -1610,7 +1613,7 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = stark.verify(&mut proof_stream);
+        let result = stark.verify(proof);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {}", e);
         }
@@ -1628,12 +1631,12 @@ pub(crate) mod triton_stark_tests {
         let (_, stdout, _) = program.run_with_input(&stdin, &secret_in);
 
         let co_set_fri_offset = BFieldElement::generator();
-        let (stark, mut proof) =
+        let (stark, proof) =
             parse_simulate_prove(source_code, co_set_fri_offset, &stdin, &secret_in, &stdout);
 
         println!("between prove and verify");
 
-        let result = stark.verify(&mut proof);
+        let result = stark.verify(proof);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {}", e);
         }

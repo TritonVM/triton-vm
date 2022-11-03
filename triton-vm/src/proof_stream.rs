@@ -6,22 +6,13 @@ use twenty_first::shared_math::{b_field_element::BFieldElement, rescue_prime_dig
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::bfield_codec::BFieldCodec;
+use crate::proof_item::MayBeUncast;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ProofStream<Item, H: AlgebraicHasher> {
-    items: Vec<Item>,
+    pub items: Vec<Item>,
     items_index: usize,
     _hasher: PhantomData<H>,
-}
-
-impl<Item, H: AlgebraicHasher> Default for ProofStream<Item, H> {
-    fn default() -> Self {
-        Self {
-            items: vec![],
-            items_index: 0,
-            _hasher: PhantomData,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -53,11 +44,11 @@ pub struct Proof(Vec<BFieldElement>);
 
 impl<Item, H> ProofStream<Item, H>
 where
-    Item: IntoIterator<Item = BFieldElement> + Clone + BFieldCodec,
+    Item: Clone + BFieldCodec + MayBeUncast,
     H: AlgebraicHasher,
 {
-    /// Candidate for removal. This function does not make any sense.
-    pub fn default() -> Self {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         ProofStream {
             items: vec![],
             items_index: 0,
@@ -100,11 +91,13 @@ where
         while index < proof.0.len() {
             let len = proof.0[index].value() as usize;
             if proof.0.len() < index + 1 + len {
-                return Err(ProofStreamError::boxed(
-                    "failed to decode proof; wrong length",
-                ));
+                return Err(ProofStreamError::boxed(&format!(
+                    "failed to decode proof; wrong length: have {} but expected {}",
+                    proof.0.len(),
+                    index + 1 + len
+                )));
             }
-            let str = &proof.0[(index + 1)..(index + 1 + len)];
+            let str = &proof.0[index..(index + 1 + len)];
             let maybe_item = Item::decode(str);
             match maybe_item {
                 Ok(item) => {
@@ -144,14 +137,22 @@ where
         for item in self.items.iter() {
             transcript.append(&mut item.encode());
         }
+        println!(
+            "computing fiat shamir for prover on transcript of length {}",
+            transcript.len()
+        );
         H::hash_slice(&transcript)
     }
 
     pub fn verifier_fiat_shamir(&self) -> Digest {
         let mut transcript = vec![];
         for item in self.items[0..self.items_index].iter() {
-            transcript.append(&mut item.encode());
+            transcript.append(&mut item.uncast());
         }
+        println!(
+            "computing fiat shamir for verifier on transcript of length {}",
+            transcript.len()
+        );
         H::hash_slice(&transcript)
     }
 }
@@ -159,7 +160,8 @@ where
 #[cfg(test)]
 mod proof_stream_typed_tests {
     use itertools::Itertools;
-    use num_traits::{One, Zero};
+    use num_traits::One;
+    use rand::{thread_rng, RngCore};
 
     use super::*;
     use twenty_first::shared_math::{
@@ -171,43 +173,45 @@ mod proof_stream_typed_tests {
     enum TestItem {
         ManyB(Vec<BFieldElement>),
         ManyX(Vec<XFieldElement>),
+        Uncast(Vec<BFieldElement>),
+    }
+
+    impl MayBeUncast for TestItem {
+        fn uncast(&self) -> Vec<BFieldElement> {
+            if let Self::Uncast(vector) = self {
+                let mut str = vec![];
+                str.push(BFieldElement::new(vector.len().try_into().unwrap()));
+                str.append(&mut vector.clone());
+                str
+            } else {
+                self.encode()
+            }
+        }
     }
 
     impl TestItem {
-        pub fn as_bs(&self) -> Option<Vec<BFieldElement>> {
+        pub fn as_bs(&self) -> Self {
             match self {
-                Self::ManyB(bs) => Some(bs.clone()),
-                _ => None,
+                Self::Uncast(bs) => Self::ManyB(bs.to_vec()),
+                _ => panic!("can only cast from Uncast"),
             }
         }
 
-        pub fn as_xs(&self) -> Option<Vec<XFieldElement>> {
+        pub fn as_xs(&self) -> Self {
             match self {
-                Self::ManyX(xs) => Some(xs.clone()),
-                _ => None,
-            }
-        }
-    }
-
-    impl Default for TestItem {
-        fn default() -> Self {
-            TestItem::ManyB(vec![BFieldElement::zero()])
-        }
-    }
-
-    impl IntoIterator for TestItem {
-        type Item = BFieldElement;
-
-        type IntoIter = std::vec::IntoIter<BFieldElement>;
-
-        fn into_iter(self) -> Self::IntoIter {
-            match self {
-                TestItem::ManyB(bs) => bs.into_iter(),
-                TestItem::ManyX(xs) => xs
-                    .into_iter()
-                    .map(|x| x.coefficients.to_vec())
-                    .concat()
-                    .into_iter(),
+                Self::Uncast(bs) => Self::ManyX(
+                    bs.chunks(3)
+                        .collect_vec()
+                        .into_iter()
+                        .map(|bbb| {
+                            XFieldElement::new(
+                                bbb.try_into()
+                                    .expect("cannot unwrap chunk of 3 (?) BFieldElements"),
+                            )
+                        })
+                        .collect_vec(),
+                ),
+                _ => panic!("can only cast from Uncast"),
             }
         }
     }
@@ -220,25 +224,10 @@ mod proof_stream_typed_tests {
                     "trying to decode empty string into test item",
                 )),
                 Some(bfe) => {
-                    if bfe.is_zero() {
-                        Ok(Box::new(Self::ManyB(str[1..].to_vec())))
+                    if str.len() != 1 + (bfe.value() as usize) {
+                        Err(ProofStreamError::boxed("length mismatch"))
                     } else {
-                        let mut vect = vec![];
-                        for mut chunk in &str[1..].iter().chunks(3) {
-                            let mut xfe = XFieldElement::zero();
-                            xfe.coefficients[0] = *chunk.next().expect(
-                                "cannot cast chunk of BFieldElements into XFieldElements (1)",
-                            );
-                            xfe.coefficients[1] = *chunk.next().expect(
-                                "cannot cast chunk of BFieldElements into XFieldElements (2)",
-                            );
-                            xfe.coefficients[2] = *chunk.next().expect(
-                                "cannot cast chunk of BFieldElements into XFieldElements (3)",
-                            );
-                            vect.push(xfe);
-                        }
-
-                        Ok(Box::new(Self::ManyX(vect)))
+                        Ok(Box::new(Self::Uncast(str[1..].to_vec())))
                     }
                 }
             }
@@ -248,78 +237,47 @@ mod proof_stream_typed_tests {
             let mut vect = vec![];
             match self {
                 Self::ManyB(bs) => {
-                    vect.push(BFieldElement::zero());
                     for b in bs {
                         vect.append(&mut b.encode());
                     }
                 }
                 Self::ManyX(xs) => {
-                    vect.push(BFieldElement::one());
                     for x in xs {
                         vect.append(&mut x.encode());
                     }
                 }
+                Self::Uncast(bs) => {
+                    for b in bs {
+                        vect.append(&mut b.encode());
+                    }
+                }
             }
+            vect.insert(0, BFieldElement::new(vect.len().try_into().unwrap()));
+
             vect
         }
     }
 
-    #[test]
-    fn enqueue_dequeue_test() {
-        let mut proof_stream = ProofStream::<TestItem, RescuePrimeRegular>::default();
-        let ps: &mut ProofStream<TestItem, RescuePrimeRegular> = &mut proof_stream;
+    fn random_bfieldelement() -> BFieldElement {
+        let mut rng = thread_rng();
+        BFieldElement::new(rng.next_u64())
+    }
 
-        // Empty
-
-        assert!(ps.dequeue().is_err(), "cannot dequeue empty");
-
-        // B
-
-        let b_one = BFieldElement::one();
-        let bs_expected = vec![b_one; 3];
-        let item_1 = TestItem::ManyB(bs_expected.clone());
-        ps.enqueue(&item_1);
-
-        let item_1_option = ps.dequeue();
-        assert!(item_1_option.is_ok(), "item 1 exists in queue");
-
-        let item_1_actual: TestItem = item_1_option.unwrap();
-        assert!(item_1_actual.as_xs().is_none(), "wrong type of item 1");
-        let bs_option: Option<Vec<BFieldElement>> = item_1_actual.as_bs();
-        assert!(bs_option.is_some(), "item 1 decodes to the right type");
-
-        let bs_actual: Vec<BFieldElement> = bs_option.unwrap();
-        assert_eq!(bs_expected, bs_actual, "enqueue/dequeue item 2");
-
-        // Empty
-
-        assert!(ps.dequeue().is_err(), "queue has become empty");
-
-        // X
-
-        let x_one = XFieldElement::one();
-
-        let xs_expected = vec![x_one; 3];
-        let item_2 = TestItem::ManyX(xs_expected.clone());
-        ps.enqueue(&item_2);
-
-        let item_2_option = ps.dequeue();
-        assert!(item_2_option.is_ok(), "item 2 exists in queue");
-
-        let item_2_actual: TestItem = item_2_option.unwrap();
-        assert!(item_2_actual.as_bs().is_none(), "wrong type of item 2");
-        let xs_option: Option<Vec<XFieldElement>> = item_2_actual.as_xs();
-        assert!(xs_option.is_some(), "item 2 decodes to the right type");
-
-        let xs_actual: Vec<XFieldElement> = xs_option.unwrap();
-        assert_eq!(xs_expected, xs_actual, "enqueue/dequeue item 2");
+    fn random_xfieldelement() -> XFieldElement {
+        XFieldElement {
+            coefficients: [
+                random_bfieldelement(),
+                random_bfieldelement(),
+                random_bfieldelement(),
+            ],
+        }
     }
 
     // Property: prover_fiat_shamir() is equivalent to verifier_fiat_shamir() when the entire stream has been read.
     #[test]
     fn prover_verifier_fiat_shamir_test() {
         type H = RescuePrimeRegular;
-        let mut proof_stream = ProofStream::<TestItem, H>::default();
+        let mut proof_stream = ProofStream::<TestItem, H>::new();
         let ps: &mut ProofStream<TestItem, H> = &mut proof_stream;
 
         let digest_1 = H::hash(&BFieldElement::one());
@@ -348,5 +306,61 @@ mod proof_stream_typed_tests {
             ps.verifier_fiat_shamir(),
             "prover_fiat_shamir() and verifier_fiat_shamir() are equivalent when the entire stream is read again",
         );
+    }
+
+    #[test]
+    fn test_serialize_proof_with_fiat_shamir() {
+        type H = RescuePrimeRegular;
+        let mut proof_stream = ProofStream::<TestItem, H>::new();
+        let manyb1 = (0..10)
+            .into_iter()
+            .map(|_| random_bfieldelement())
+            .collect_vec();
+        let manyx = (0..13)
+            .into_iter()
+            .map(|_| random_xfieldelement())
+            .collect_vec();
+        let manyb2 = (0..11)
+            .into_iter()
+            .map(|_| random_bfieldelement())
+            .collect_vec();
+
+        let fs1 = proof_stream.prover_fiat_shamir();
+        proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()));
+        let fs2 = proof_stream.prover_fiat_shamir();
+        proof_stream.enqueue(&TestItem::ManyX(manyx.clone()));
+        let fs3 = proof_stream.prover_fiat_shamir();
+        proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()));
+        let fs4 = proof_stream.prover_fiat_shamir();
+
+        let proof = proof_stream.to_proof();
+
+        let mut proof_stream =
+            ProofStream::<TestItem, H>::from_proof(&proof).expect("invalid parsing of proof");
+
+        let fs1_ = proof_stream.verifier_fiat_shamir();
+        match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
+            TestItem::ManyB(manyb1_) => assert_eq!(manyb1, manyb1_),
+            TestItem::ManyX(_) => panic!(),
+            TestItem::Uncast(_) => panic!(),
+        };
+        let fs2_ = proof_stream.verifier_fiat_shamir();
+        match proof_stream.dequeue().expect("can't dequeue item").as_xs() {
+            TestItem::ManyB(_) => panic!(),
+            TestItem::ManyX(manyx_) => assert_eq!(manyx, manyx_),
+            TestItem::Uncast(_) => panic!(),
+        };
+        let fs3_ = proof_stream.verifier_fiat_shamir();
+        match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
+            TestItem::ManyB(manyb2_) => assert_eq!(manyb2, manyb2_),
+            TestItem::ManyX(_) => panic!(),
+            TestItem::Uncast(_) => panic!(),
+        };
+        let fs4_ = proof_stream.verifier_fiat_shamir();
+
+        assert_eq!(fs1, fs1_);
+        assert_eq!(fs2, fs2_);
+        assert_eq!(fs3, fs3_);
+        assert_eq!(fs4, fs4_);
     }
 }
