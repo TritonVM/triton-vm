@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use twenty_first::shared_math::{b_field_element::BFieldElement, rescue_prime_digest::Digest};
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
-use crate::proof_item::BFieldCodec;
+use crate::bfield_codec::BFieldCodec;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ProofStream<Item, H: AlgebraicHasher> {
