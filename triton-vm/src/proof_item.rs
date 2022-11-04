@@ -1,15 +1,104 @@
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
 use crate::bfield_codec::BFieldCodec;
 
-type FriProof = Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>;
 type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FriResponse(pub Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>);
+
+impl BFieldCodec for FriResponse {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn std::error::Error>> {
+        let mut index = 0usize;
+        let mut vect: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = vec![];
+        while index < str.len() {
+            // length
+            let len = match str.get(index) {
+                Some(bfe) => bfe.value() as usize,
+                None => {
+                    return Err(ProofStreamError::boxed(
+                        "invalid index counting in decode for FriResponse",
+                    ));
+                }
+            };
+            index += 1;
+
+            // mask
+            let mask = match str.get(index) {
+                Some(bfe) => bfe.value() as u32,
+                None => {
+                    return Err(ProofStreamError::boxed(
+                        "invalid mask decoding in decode for FriResponse",
+                    ));
+                }
+            };
+            index += 1;
+
+            // partial authentication path
+            let mut pap: Vec<Option<Digest>> = vec![];
+            for i in (0..len).rev() {
+                if mask & (1 << i) == 0 {
+                    pap.push(None);
+                } else if let Some(digest) = str.get(index..(index + DIGEST_LENGTH)) {
+                    pap.push(Some(*Digest::decode(digest)?));
+                    index += DIGEST_LENGTH;
+                } else {
+                    return Err(ProofStreamError::boxed(
+                        "length mismatch in decoding FRI response",
+                    ));
+                }
+            }
+
+            // x field element
+            let xfe = match str.get(index..(index + 3)) {
+                Some(substr) => *XFieldElement::decode(substr)?,
+                None => {
+                    return Err(ProofStreamError::boxed(
+                        "could not decode XFieldElement in decode for FriResponse",
+                    ));
+                }
+            };
+            index += 3;
+
+            // push to vector
+            vect.push((PartialAuthenticationPath(pap), xfe));
+        }
+        Ok(Box::new(FriResponse(vect)))
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        let mut str = vec![];
+        for (partial_authentication_path, xfe) in self.0.iter() {
+            str.push(BFieldElement::new(
+                partial_authentication_path.0.len().try_into().unwrap(),
+            ));
+            let mut mask = 0u32;
+            for maybe_digest in partial_authentication_path.0.iter() {
+                mask <<= 1;
+                if maybe_digest.is_some() {
+                    mask |= 1;
+                }
+            }
+            str.push(BFieldElement::new(mask as u64));
+            for digest in partial_authentication_path.0.iter().flatten() {
+                str.append(&mut digest.encode())
+            }
+            str.append(&mut xfe.encode());
+        }
+        str
+    }
+}
+
+pub trait MayBeUncast {
+    fn uncast(&self) -> Vec<BFieldElement>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum ProofItem {
     CompressedAuthenticationPaths(AuthenticationStructure<Digest>),
@@ -23,9 +112,22 @@ pub enum ProofItem {
     RevealedCombinationElement(XFieldElement),
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
-    FriProof(FriProof),
+    FriResponse(FriResponse),
     PaddedHeight(BFieldElement),
     Uncast(Vec<BFieldElement>),
+}
+
+impl MayBeUncast for ProofItem {
+    fn uncast(&self) -> Vec<BFieldElement> {
+        if let Self::Uncast(vector) = self {
+            let mut str = vec![];
+            str.push(BFieldElement::new(vector.len().try_into().unwrap()));
+            str.append(&mut vector.clone());
+            str
+        } else {
+            self.encode()
+        }
+    }
 }
 
 impl ProofItem
@@ -39,7 +141,7 @@ where
     Vec<Digest>: BFieldCodec,
     BFieldElement: BFieldCodec,
     XFieldElement: BFieldCodec,
-    FriProof: BFieldCodec,
+    FriResponse: BFieldCodec,
 {
     pub fn as_compressed_authentication_paths(
         &self,
@@ -201,10 +303,10 @@ where
         }
     }
 
-    pub fn as_fri_proof(&self) -> Result<FriProof, Box<dyn std::error::Error>> {
+    pub fn as_fri_response(&self) -> Result<FriResponse, Box<dyn std::error::Error>> {
         match self {
-            Self::FriProof(fri_proof) => Ok(fri_proof.to_owned()),
-            Self::Uncast(str) => match FriProof::decode(str) {
+            Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
+            Self::Uncast(str) => match FriResponse::decode(str) {
                 Ok(fri_proof) => Ok(*fri_proof),
                 Err(_) => Err(ProofStreamError::boxed("cast to FRI proof failed")),
             },
@@ -258,7 +360,7 @@ impl BFieldCodec for ProofItem {
             ProofItem::RevealedCombinationElement(something) => something.encode(),
             ProofItem::RevealedCombinationElements(something) => something.encode(),
             ProofItem::FriCodeword(something) => something.encode(),
-            ProofItem::FriProof(something) => something.encode(),
+            ProofItem::FriResponse(something) => something.encode(),
             ProofItem::PaddedHeight(something) => something.encode(),
             ProofItem::Uncast(something) => something.encode(),
         };
@@ -281,6 +383,11 @@ mod proof_item_typed_tests {
         x_field_element::XFieldElement,
     };
 
+    fn random_bool() -> bool {
+        let mut rng = thread_rng();
+        rng.next_u32() % 2 == 1
+    }
+
     fn random_bfieldelement() -> BFieldElement {
         let mut rng = thread_rng();
         BFieldElement::new(rng.next_u64())
@@ -296,8 +403,51 @@ mod proof_item_typed_tests {
         }
     }
 
+    fn random_digest() -> Digest {
+        Digest::new([
+            random_bfieldelement(),
+            random_bfieldelement(),
+            random_bfieldelement(),
+            random_bfieldelement(),
+            random_bfieldelement(),
+        ])
+    }
+
+    fn random_fri_response() -> FriResponse {
+        FriResponse(
+            (0..18)
+                .into_iter()
+                .map(|r| {
+                    (
+                        PartialAuthenticationPath(
+                            (0..(20 - r))
+                                .into_iter()
+                                .map(|_| {
+                                    if random_bool() {
+                                        Some(random_digest())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect_vec(),
+                        ),
+                        random_xfieldelement(),
+                    )
+                })
+                .collect_vec(),
+        )
+    }
+
     #[test]
-    fn serialize_stark_proof_test() {
+    fn serialize_fri_response_test() {
+        let fri_response = random_fri_response();
+        let str = fri_response.encode();
+        let fri_response_ = *FriResponse::decode(&str).unwrap();
+        assert_eq!(fri_response, fri_response_);
+    }
+
+    #[test]
+    fn test_serialize_stark_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
         let mut proof_stream = ProofStream::<ProofItem, H>::new();
         let manyb1 = (0..10)
@@ -312,35 +462,109 @@ mod proof_item_typed_tests {
             .into_iter()
             .map(|_| random_bfieldelement())
             .collect_vec();
+        let map = (0..7).into_iter().map(|_| random_digest()).collect_vec();
+        let auth_struct = (0..8)
+            .into_iter()
+            .map(|_| {
+                PartialAuthenticationPath(
+                    (0..11)
+                        .into_iter()
+                        .map(|_| {
+                            if random_bool() {
+                                Some(random_digest())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect_vec(),
+                )
+            })
+            .collect_vec();
+        let root = random_digest();
+        let fri_response = random_fri_response();
 
+        let mut fs = vec![];
+        fs.push(proof_stream.prover_fiat_shamir());
         proof_stream.enqueue(&ProofItem::TransposedBaseElements(manyb1.clone()));
+        fs.push(proof_stream.prover_fiat_shamir());
         proof_stream.enqueue(&ProofItem::TransposedExtensionElements(manyx.clone()));
+        fs.push(proof_stream.prover_fiat_shamir());
         proof_stream.enqueue(&ProofItem::TransposedBaseElements(manyb2.clone()));
+        fs.push(proof_stream.prover_fiat_shamir());
+        proof_stream.enqueue(&ProofItem::AuthenticationPath(map.clone()));
+        fs.push(proof_stream.prover_fiat_shamir());
+        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
+            auth_struct.clone(),
+        ));
+        fs.push(proof_stream.prover_fiat_shamir());
+        proof_stream.enqueue(&ProofItem::MerkleRoot(root));
+        fs.push(proof_stream.prover_fiat_shamir());
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
+        fs.push(proof_stream.prover_fiat_shamir());
 
         let proof = proof_stream.to_proof();
 
-        let mut proof_stream =
+        let mut proof_stream_ =
             ProofStream::<ProofItem, H>::from_proof(&proof).expect("invalid parsing of proof");
 
-        let manyb1_ = proof_stream
+        let mut fs_ = vec![];
+        fs_.push(proof_stream_.verifier_fiat_shamir());
+        let manyb1_ = proof_stream_
             .dequeue()
             .expect("can't dequeue item")
             .as_transposed_base_elements()
             .expect("cannot parse dequeued item");
         assert_eq!(manyb1, manyb1_);
+        fs_.push(proof_stream_.verifier_fiat_shamir());
 
-        let manyx_ = proof_stream
+        let manyx_ = proof_stream_
             .dequeue()
             .expect("can't dequeue item")
             .as_transposed_extension_elements()
             .expect("cannot parse dequeued item");
         assert_eq!(manyx, manyx_);
+        fs_.push(proof_stream_.verifier_fiat_shamir());
 
-        let manyb2_ = proof_stream
+        let manyb2_ = proof_stream_
             .dequeue()
             .expect("can't dequeue item")
             .as_transposed_base_elements()
             .expect("cannot parse dequeued item");
         assert_eq!(manyb2, manyb2_);
+        fs_.push(proof_stream_.verifier_fiat_shamir());
+
+        let map_ = proof_stream_
+            .dequeue()
+            .expect("can't dequeue item")
+            .as_authentication_path()
+            .expect("cannot parse dequeued item");
+        assert_eq!(map, map_);
+        fs_.push(proof_stream_.verifier_fiat_shamir());
+
+        let auth_struct_ = proof_stream_
+            .dequeue()
+            .expect("can't dequeue item")
+            .as_compressed_authentication_paths()
+            .expect("cannot parse dequeued item");
+        assert_eq!(auth_struct, auth_struct_);
+        fs_.push(proof_stream_.verifier_fiat_shamir());
+
+        let root_ = proof_stream_
+            .dequeue()
+            .expect("can't dequeue item")
+            .as_merkle_root()
+            .expect("cannot parse dequeued item");
+        assert_eq!(root, root_);
+        fs_.push(proof_stream_.verifier_fiat_shamir());
+
+        let fri_response_ = proof_stream_
+            .dequeue()
+            .expect("can't dequeue item")
+            .as_fri_response()
+            .expect("cannot parse dequeued item");
+        assert_eq!(fri_response, fri_response_);
+        fs_.push(proof_stream_.verifier_fiat_shamir());
+
+        assert_eq!(fs, fs_);
     }
 }

@@ -6,10 +6,11 @@ use twenty_first::shared_math::{b_field_element::BFieldElement, rescue_prime_dig
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::bfield_codec::BFieldCodec;
+use crate::proof_item::MayBeUncast;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ProofStream<Item, H: AlgebraicHasher> {
-    items: Vec<Item>,
+    pub items: Vec<Item>,
     items_index: usize,
     _hasher: PhantomData<H>,
 }
@@ -43,7 +44,7 @@ pub struct Proof(Vec<BFieldElement>);
 
 impl<Item, H> ProofStream<Item, H>
 where
-    Item: Clone + BFieldCodec,
+    Item: Clone + BFieldCodec + MayBeUncast,
     H: AlgebraicHasher,
 {
     #[allow(clippy::new_without_default)]
@@ -136,14 +137,22 @@ where
         for item in self.items.iter() {
             transcript.append(&mut item.encode());
         }
+        println!(
+            "computing fiat shamir for prover on transcript of length {}",
+            transcript.len()
+        );
         H::hash_slice(&transcript)
     }
 
     pub fn verifier_fiat_shamir(&self) -> Digest {
         let mut transcript = vec![];
         for item in self.items[0..self.items_index].iter() {
-            transcript.append(&mut item.encode());
+            transcript.append(&mut item.uncast());
         }
+        println!(
+            "computing fiat shamir for verifier on transcript of length {}",
+            transcript.len()
+        );
         H::hash_slice(&transcript)
     }
 }
@@ -165,6 +174,19 @@ mod proof_stream_typed_tests {
         ManyB(Vec<BFieldElement>),
         ManyX(Vec<XFieldElement>),
         Uncast(Vec<BFieldElement>),
+    }
+
+    impl MayBeUncast for TestItem {
+        fn uncast(&self) -> Vec<BFieldElement> {
+            if let Self::Uncast(vector) = self {
+                let mut str = vec![];
+                str.push(BFieldElement::new(vector.len().try_into().unwrap()));
+                str.append(&mut vector.clone());
+                str
+            } else {
+                self.encode()
+            }
+        }
     }
 
     impl TestItem {
@@ -287,7 +309,7 @@ mod proof_stream_typed_tests {
     }
 
     #[test]
-    fn serialize_test_proof_test() {
+    fn test_serialize_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
         let mut proof_stream = ProofStream::<TestItem, H>::new();
         let manyb1 = (0..10)
@@ -303,29 +325,42 @@ mod proof_stream_typed_tests {
             .map(|_| random_bfieldelement())
             .collect_vec();
 
+        let fs1 = proof_stream.prover_fiat_shamir();
         proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()));
+        let fs2 = proof_stream.prover_fiat_shamir();
         proof_stream.enqueue(&TestItem::ManyX(manyx.clone()));
+        let fs3 = proof_stream.prover_fiat_shamir();
         proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()));
+        let fs4 = proof_stream.prover_fiat_shamir();
 
         let proof = proof_stream.to_proof();
 
         let mut proof_stream =
             ProofStream::<TestItem, H>::from_proof(&proof).expect("invalid parsing of proof");
 
+        let fs1_ = proof_stream.verifier_fiat_shamir();
         match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
             TestItem::ManyB(manyb1_) => assert_eq!(manyb1, manyb1_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
         };
+        let fs2_ = proof_stream.verifier_fiat_shamir();
         match proof_stream.dequeue().expect("can't dequeue item").as_xs() {
             TestItem::ManyB(_) => panic!(),
             TestItem::ManyX(manyx_) => assert_eq!(manyx, manyx_),
             TestItem::Uncast(_) => panic!(),
         };
+        let fs3_ = proof_stream.verifier_fiat_shamir();
         match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
             TestItem::ManyB(manyb2_) => assert_eq!(manyb2, manyb2_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
         };
+        let fs4_ = proof_stream.verifier_fiat_shamir();
+
+        assert_eq!(fs1, fs1_);
+        assert_eq!(fs2, fs2_);
+        assert_eq!(fs3, fs3_);
+        assert_eq!(fs4, fs4_);
     }
 }

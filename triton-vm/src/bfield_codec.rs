@@ -441,7 +441,7 @@ mod bfield_codec_tests {
     #[test]
     fn test_encode_decode_random_partial_authentication_path() {
         for _ in 1..=10 {
-            let len = random_length(10);
+            let len = 1 + random_length(10);
             let pap = random_partial_authentication_path(len);
             let str = pap.encode();
             let pap_ = *PartialAuthenticationPath::decode(&str).unwrap();

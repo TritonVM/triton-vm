@@ -20,12 +20,12 @@ use twenty_first::util_types::merkle_tree::MerkleTree;
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
+use crate::fri::{self, Fri};
 use crate::fri_domain::FriDomain;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::{Proof, ProofStream};
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
-use crate::triton_xfri::{self, Fri};
 
 use super::table::base_matrix::BaseMatrices;
 
@@ -88,7 +88,7 @@ impl Stark {
         let bfri_domain: FriDomain<BFieldElement> =
             FriDomain::new(co_set_fri_offset, omega, fri_domain_length);
 
-        let xfri = triton_xfri::Fri::new(
+        let xfri = fri::Fri::new(
             co_set_fri_offset,
             omega,
             fri_domain_length,
@@ -286,6 +286,8 @@ impl Stark {
 
         timer.elapsed("sample_indices");
 
+        // FRI
+
         match self.xfri.prove(&combination_codeword, &mut proof_stream) {
             Ok((_, fri_first_round_merkle_root)) => assert_eq!(
                 combination_root, fri_first_round_merkle_root,
@@ -295,7 +297,7 @@ impl Stark {
         }
         timer.elapsed("fri.prove");
 
-        // the relation between the FRI domain and the omicron domain
+        // the relation between the FRI domain and the trace domain
         let unit_distance = self.xfri.domain.length / base_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
@@ -691,7 +693,7 @@ impl Stark {
         let num_idxs = combination_check_indices.len();
         timer.elapsed("Got indices");
 
-        // Verify low degree of combination polynomial
+        // verify low degree of combination polynomial with FRI
         self.xfri.verify(&mut proof_stream, &combination_root)?;
         timer.elapsed("Verified FRI proof");
 

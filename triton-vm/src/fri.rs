@@ -20,7 +20,7 @@ use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, Hashable};
 use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
 
 use crate::fri_domain::FriDomain;
-use crate::proof_item::ProofItem;
+use crate::proof_item::{FriResponse, ProofItem};
 use crate::proof_stream::ProofStream;
 
 impl Error for ValidationError {}
@@ -33,7 +33,7 @@ impl fmt::Display for ValidationError {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum ValidationError {
-    BadMerkleProof,
+    BadMerkleAuthenticationPath,
     BadSizedProof,
     NonPostiveRoundCount,
     MismatchingLastCodeword,
@@ -85,7 +85,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             .zip(indices.iter())
             .map(|(ap, i)| (ap, codeword[*i]))
             .collect_vec();
-        proof_stream.enqueue(&ProofItem::FriProof(value_ap_pairs))
+        proof_stream.enqueue(&ProofItem::FriResponse(FriResponse(value_ap_pairs)))
     }
 
     /// Given a set of `indices`, a merkle `root`, and the (correctly set) `proof_stream`, verify
@@ -96,7 +96,8 @@ impl<H: AlgebraicHasher> Fri<H> {
         root: Digest,
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) -> Result<Vec<XFieldElement>, Box<dyn Error>> {
-        let dequeued_paths_and_leafs = proof_stream.dequeue()?.as_fri_proof()?;
+        let fri_response = proof_stream.dequeue()?.as_fri_response()?;
+        let dequeued_paths_and_leafs = fri_response.0;
         let paths = dequeued_paths_and_leafs.clone().into_iter().map(|(p, _)| p);
         let values: Vec<XFieldElement> = dequeued_paths_and_leafs
             .into_iter()
@@ -107,7 +108,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         if MerkleTree::<H>::verify_authentication_structure(root, indices, &path_digest_pairs) {
             Ok(values)
         } else {
-            Err(Box::new(ValidationError::BadMerkleProof))
+            Err(Box::new(ValidationError::BadMerkleAuthenticationPath))
         }
     }
 
@@ -123,17 +124,17 @@ impl<H: AlgebraicHasher> Fri<H> {
             "Initial codeword length must match that set in FRI object"
         );
 
-        // Commit phase
+        // commit phase
         let mut timer = TimingReporter::start();
         let (codewords, merkle_trees): (Vec<Vec<XFieldElement>>, Vec<MerkleTree<H>>) =
             self.commit(codeword, proof_stream)?.into_iter().unzip();
         timer.elapsed("Commit phase");
 
-        // fiat-shamir phase (get indices)
+        // Fiat-Shamir to get indices
         let top_level_indices: Vec<usize> = self.sample_indices(&proof_stream.prover_fiat_shamir());
         timer.elapsed("Sample indices");
 
-        // Query phase
+        // query phase
         // query step 0: enqueue authentication paths for all points `A` into proof stream
         let initial_a_indices: Vec<usize> = top_level_indices.clone();
         Self::enqueue_auth_pairs(&initial_a_indices, codeword, &merkle_trees[0], proof_stream);
@@ -299,10 +300,6 @@ impl<H: AlgebraicHasher> Fri<H> {
         first_codeword_mt_root: &Digest,
     ) -> Result<(), Box<dyn Error>> {
         let (num_rounds, degree_of_last_round) = self.num_rounds();
-        println!(
-            "(num_rounds, degree_of_last_round) = {:?}",
-            (num_rounds, degree_of_last_round)
-        );
         let num_rounds = num_rounds as usize;
         let mut timer = TimingReporter::start();
 
@@ -694,5 +691,51 @@ mod triton_xfri_tests {
             colinearity_checks,
         );
         fri
+    }
+
+    #[test]
+    fn test_fri_deserialization() {
+        type Hasher = RescuePrimeRegular;
+
+        let subgroup_order = 64;
+        let expansion_factor = 4;
+        let colinearity_check_count = 2;
+        let fri: Fri<Hasher> =
+            get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
+        let mut prover_proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+
+        let zero = XFieldElement::zero();
+        let one = XFieldElement::one();
+        let two = one + one;
+        let poly = Polynomial::<XFieldElement>::new(vec![one, zero, zero, two]);
+        let codeword = fri.domain.evaluate(&poly);
+
+        let (_, merkle_root_of_round_0) = fri.prove(&codeword, &mut prover_proof_stream).unwrap();
+
+        let proof = prover_proof_stream.to_proof();
+
+        let mut verifier_proof_stream: ProofStream<ProofItem, Hasher> =
+            ProofStream::from_proof(&proof).unwrap();
+
+        for (left, right) in prover_proof_stream
+            .items
+            .iter()
+            .zip_eq(verifier_proof_stream.items.iter())
+        {
+            if let ProofItem::MerkleRoot(left_root) = left {
+                assert_eq!(*left_root, right.as_merkle_root().unwrap());
+            } else if let ProofItem::FriResponse(left_response) = left {
+                assert_eq!(*left_response, right.as_fri_response().unwrap());
+            } else if let ProofItem::FriCodeword(left_codeword) = left {
+                assert_eq!(*left_codeword, right.as_fri_codeword().unwrap());
+            } else {
+                panic!("did not recognize FRI proof item");
+            }
+        }
+
+        let verdict = fri.verify(&mut verifier_proof_stream, &merkle_root_of_round_0);
+        if let Err(e) = verdict {
+            panic!("Found error: {}", e);
+        }
     }
 }
