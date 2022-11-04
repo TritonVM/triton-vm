@@ -1,5 +1,6 @@
 use std::{error::Error, fmt::Display};
 
+use itertools::Itertools;
 use num_traits::{One, Zero};
 use twenty_first::{
     shared_math::{
@@ -96,42 +97,42 @@ impl BFieldCodec for Digest {
     }
 }
 
-impl<T: BFieldCodec> BFieldCodec for Vec<T> {
-    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
-        let mut vect: Vec<T> = vec![];
-        let mut index = 0;
-        while index < str.len() {
-            // we don't know ahead of time how wide each T-element is
-            // so every element in the list is length-prepended
-            let len = str[index].value();
-            if str.len() < index + 1 + len as usize {
-                return Err(BFieldCodecError::boxed(
-                    "cannot decode vec of Ts because of erroneous length prepending",
-                ));
-            }
-            let substr = &str[(index + 1)..(index + 1 + len as usize)];
-            let decoded = T::decode(substr);
-            if let Ok(t) = decoded {
-                vect.push(*t);
-            } else {
-                return Err(BFieldCodecError::boxed("cannot decode T element in vec"));
-            }
+// impl<T: BFieldCodec> BFieldCodec for Vec<T> {
+//     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+//         let mut vect: Vec<T> = vec![];
+//         let mut index = 0;
+//         while index < str.len() {
+//             // we don't know ahead of time how wide each T-element is
+//             // so every element in the list is length-prepended
+//             let len = str[index].value();
+//             if str.len() < index + 1 + len as usize {
+//                 return Err(BFieldCodecError::boxed(
+//                     "cannot decode vec of Ts because of erroneous length prepending",
+//                 ));
+//             }
+//             let substr = &str[(index + 1)..(index + 1 + len as usize)];
+//             let decoded = T::decode(substr);
+//             if let Ok(t) = decoded {
+//                 vect.push(*t);
+//             } else {
+//                 return Err(BFieldCodecError::boxed("cannot decode T element in vec"));
+//             }
 
-            index += 1 + len as usize;
-        }
-        Ok(Box::new(vect))
-    }
+//             index += 1 + len as usize;
+//         }
+//         Ok(Box::new(vect))
+//     }
 
-    fn encode(&self) -> Vec<BFieldElement> {
-        let mut str = vec![];
-        for elem in self.iter() {
-            let mut substr = elem.encode();
-            str.push(BFieldElement::new(substr.len().try_into().expect("Generic parameter encoding length (as BFieldElements) does not fit into BFieldElement")));
-            str.append(&mut substr);
-        }
-        str
-    }
-}
+//     fn encode(&self) -> Vec<BFieldElement> {
+//         let mut str = vec![];
+//         for elem in self.iter() {
+//             let mut substr = elem.encode();
+//             str.push(BFieldElement::new(substr.len().try_into().expect("Generic parameter encoding length (as BFieldElements) does not fit into BFieldElement")));
+//             str.append(&mut substr);
+//         }
+//         str
+//     }
+// }
 
 impl<T: BFieldCodec, S: BFieldCodec> BFieldCodec for (T, S) {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
@@ -235,7 +236,6 @@ impl BFieldCodec for PartialAuthenticationPath<Digest> {
         vect
     }
 }
-// impl BFieldCodec for AuthenticationStructure<Digest> {}
 
 impl<T: BFieldCodec> BFieldCodec for Option<T> {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
@@ -266,6 +266,153 @@ impl<T: BFieldCodec> BFieldCodec for Option<T> {
                 str.push(BFieldElement::one());
                 str.append(&mut t.encode());
             }
+        }
+        str
+    }
+}
+
+impl BFieldCodec for Vec<BFieldElement> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        Ok(Box::new(str.to_vec()))
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        self.to_vec()
+    }
+}
+
+impl BFieldCodec for Vec<XFieldElement> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        if str.len() % 3 != 0 {
+            return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements into XFieldElements when string length is not a multiple of 3"));
+        }
+        let mut vector = vec![];
+        for chunk in str.chunks(3) {
+            let coefficients: [BFieldElement; 3] = chunk.try_into().unwrap();
+            vector.push(XFieldElement::new(coefficients));
+        }
+        Ok(Box::new(vector))
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        self.iter().map(|xfe| xfe.coefficients.to_vec()).concat()
+    }
+}
+
+impl BFieldCodec for Vec<Digest> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        if str.len() % DIGEST_LENGTH != 0 {
+            return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements into Digests when string length is not a multiple of DIGEST_LENGTH"));
+        }
+        let mut vector: Vec<Digest> = vec![];
+        for chunk in str.chunks(DIGEST_LENGTH) {
+            let digest: [BFieldElement; DIGEST_LENGTH] = chunk.try_into().unwrap();
+            vector.push(Digest::new(digest));
+        }
+        Ok(Box::new(vector))
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        self.iter().map(|d| d.encode()).concat()
+    }
+}
+
+impl<T> BFieldCodec for Vec<Vec<T>>
+where
+    Vec<T>: BFieldCodec,
+{
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        let mut index = 0;
+        let mut outer_vec: Vec<Vec<T>> = vec![];
+        while index < str.len() {
+            let len = str[index].value() as usize;
+            index += 1;
+
+            if let Some(inner_vec) = str.get(index..(index + len)) {
+                outer_vec.push(*Vec::<T>::decode(inner_vec)?);
+            } else {
+                return Err(BFieldCodecError::boxed(
+                    "cannot decode string BFieldElements into Vec<Vec<T>>; length mismatch",
+                ));
+            }
+            index += len;
+        }
+        Ok(Box::new(outer_vec))
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        let mut str = vec![];
+        for inner_vec in self {
+            let mut encoding = inner_vec.encode();
+            str.push(BFieldElement::new(encoding.len().try_into().unwrap()));
+            str.append(&mut encoding);
+        }
+        str
+    }
+}
+
+impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        let mut index = 0;
+        let mut vector = vec![];
+        while index < str.len() {
+            let len_remaining = str[index].value() as usize;
+            index += 1;
+
+            if len_remaining < 2 || index + len_remaining > str.len() {
+                return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (1)"));
+            }
+
+            let vec_len = str[index].value() as usize;
+            let mask = str[index + 1].value() as u32;
+            index += 2;
+
+            if (vec_len != 0 || mask != 0) && index == str.len() {
+                return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (2)"));
+            }
+
+            if (len_remaining - 2) % DIGEST_LENGTH != 0 {
+                return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (3)"));
+            }
+
+            let mut pap = vec![];
+
+            for i in (0..vec_len).rev() {
+                if mask & (1 << i) == 0 {
+                    pap.push(None);
+                } else if let Some(chunk) = str.get(index..(index + DIGEST_LENGTH)) {
+                    pap.push(Some(*Digest::decode(chunk)?));
+                    index += DIGEST_LENGTH;
+                } else {
+                    return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (3)"));
+                }
+            }
+
+            vector.push(PartialAuthenticationPath(pap));
+        }
+
+        Ok(Box::new(vector))
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        let mut str = vec![];
+        for pap in self.iter() {
+            let len = pap.0.len();
+            let mut mask = 0u32;
+            for maybe_digest in pap.0.iter() {
+                mask <<= 1;
+                if maybe_digest.is_some() {
+                    mask |= 1;
+                }
+            }
+            let mut vector = pap.0.iter().flatten().map(|d| d.to_sequence()).concat();
+
+            str.push(BFieldElement::new(
+                2u64 + std::convert::TryInto::<u64>::try_into(vector.len()).unwrap(),
+            ));
+            str.push(BFieldElement::new(len.try_into().unwrap()));
+            str.push(BFieldElement::new(mask.try_into().unwrap()));
+            str.append(&mut vector);
         }
         str
     }
@@ -450,27 +597,6 @@ mod bfield_codec_tests {
     }
 
     #[test]
-    fn test_encode_decode_random_fri_proof() {
-        for _ in 1..=10 {
-            let num_rounds = random_length(10);
-            let fri_proof: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = (0
-                ..num_rounds)
-                .into_iter()
-                .map(|r| {
-                    (
-                        random_partial_authentication_path(num_rounds - r),
-                        random_xfieldelement(),
-                    )
-                })
-                .collect_vec();
-            let str = fri_proof.encode();
-            let fri_proof_ =
-                *Vec::<(PartialAuthenticationPath<Digest>, XFieldElement)>::decode(&str).unwrap();
-            assert_eq!(fri_proof, fri_proof_)
-        }
-    }
-
-    #[test]
     fn test_decode_random_negative() {
         for _ in 1..=10000 {
             let len = random_length(100);
@@ -501,20 +627,18 @@ mod bfield_codec_tests {
                 }
             }
 
-            if let Ok(sth) = Vec::<BFieldElement>::decode(&str) {
-                if !sth.is_empty() {
+            // if let Ok(sth) = Vec::<BFieldElement>::decode(&str) {
+            //     (should work)
+            // }
+
+            if str.len() % 3 != 0 {
+                if let Ok(sth) = Vec::<XFieldElement>::decode(&str) {
                     panic!("{:?}", sth);
                 }
             }
 
-            if let Ok(sth) = Vec::<XFieldElement>::decode(&str) {
-                if !sth.is_empty() {
-                    panic!("{:?}", sth);
-                }
-            }
-
-            if let Ok(sth) = Vec::<Digest>::decode(&str) {
-                if !sth.is_empty() {
+            if str.len() % DIGEST_LENGTH != 0 {
+                if let Ok(sth) = Vec::<Digest>::decode(&str) {
                     panic!("{:?}", sth);
                 }
             }
@@ -533,13 +657,6 @@ mod bfield_codec_tests {
 
             if let Ok(_sth) = PartialAuthenticationPath::decode(&str) {
                 panic!();
-            }
-
-            if let Ok(sth) = Vec::<(PartialAuthenticationPath<Digest>, XFieldElement)>::decode(&str)
-            {
-                if !sth.is_empty() {
-                    panic!("{:?}", sth);
-                }
             }
         }
     }
