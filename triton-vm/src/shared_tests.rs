@@ -76,12 +76,12 @@ pub fn parse_simulate_prove(
         input_symbols,
         output_symbols,
     );
-    let proof_stream = stark.prove(base_matrices, maybe_profiler);
+    let proof = stark.prove(base_matrices, maybe_profiler);
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.stop("prove")
     }
 
-    (stark, proof_stream)
+    (stark, proof)
 }
 
 /// Source code and associated input. Primarily for testing of the VM's instructions.

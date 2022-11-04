@@ -40,6 +40,7 @@ impl Display for ProofStreamError {
 
 impl Error for ProofStreamError {}
 
+#[derive(Debug, Clone)]
 pub struct Proof(Vec<BFieldElement>);
 
 impl<Item, H> ProofStream<Item, H>

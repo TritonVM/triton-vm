@@ -60,6 +60,11 @@ structopt = { version = "0.3", features = ["paw"] }
 strum = "0.24"
 strum_macros = "0.24"
 
+
 [[bench]]
-name = "prove_verify"
+name = "prove_halt"
+harness = false
+
+[[bench]]
+name = "verify_halt"
 harness = false
