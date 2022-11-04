@@ -25,7 +25,7 @@ fn prove_halt(criterion: &mut Criterion) {
                 &mut maybe_profiler,
             );
 
-            let result = stark.verify(proof);
+            let result = stark.verify(proof, &mut None);
             if let Err(e) = result {
                 panic!("The Verifier is unhappy! {}", e);
             }

@@ -13,7 +13,6 @@ use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, PrimitiveRootOfUnity};
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 
@@ -116,8 +115,6 @@ impl Stark {
         base_matrices: BaseMatrices,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Proof {
-        let mut timer = TimingReporter::start();
-
         prof_start!(maybe_profiler, "pad");
         let base_trace_tables = self.padded(&base_matrices);
         prof_stop!(maybe_profiler, "pad");
@@ -260,7 +257,6 @@ impl Stark {
 
         prof_start!(maybe_profiler, "nonlinear combination");
         let combination_codeword = self.create_combination_codeword(
-            &mut timer,
             vec![x_rand_codeword],
             base_fri_domain_codewords,
             extension_fri_domain_codewords,
@@ -269,6 +265,7 @@ impl Stark {
             base_degree_bounds,
             extension_degree_bounds,
             quotient_degree_bounds,
+            maybe_profiler,
         );
         prof_stop!(maybe_profiler, "nonlinear combination");
 
@@ -391,7 +388,6 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn create_combination_codeword(
         &self,
-        timer: &mut TimingReporter,
         randomizer_codewords: Vec<Vec<XFieldElement>>,
         base_codewords: Vec<Vec<BFieldElement>>,
         extension_codewords: Vec<Vec<XFieldElement>>,
@@ -400,8 +396,11 @@ impl Stark {
         base_degree_bounds: Vec<i64>,
         extension_degree_bounds: Vec<i64>,
         quotient_degree_bounds: Vec<i64>,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<XFieldElement> {
         assert_eq!(self.num_randomizer_polynomials, randomizer_codewords.len());
+
+        prof_start!(maybe_profiler, "create combination codeword");
 
         let base_codewords_lifted = base_codewords
             .into_iter()
@@ -418,7 +417,6 @@ impl Stark {
 
         // TODO don't keep the entire domain's values in memory, create them lazily when needed
         let fri_x_values = self.xfri.domain.domain_values();
-        timer.elapsed("x_domain_values");
 
         for randomizer_codeword in randomizer_codewords {
             combination_codeword = Self::non_linearly_add_to_codeword(
@@ -459,7 +457,6 @@ impl Stark {
                     identifier,
                 );
             }
-            timer.elapsed(&format!("...shift and collect {} codewords", identifier));
         }
 
         if std::env::var("DEBUG").is_ok() {
@@ -468,6 +465,8 @@ impl Stark {
                 self.xfri.domain.interpolate(&combination_codeword).degree()
             );
         }
+
+        prof_stop!(maybe_profiler, "create combination codeword");
 
         combination_codeword
     }
@@ -613,48 +612,58 @@ impl Stark {
             .collect()
     }
 
-    pub fn verify(&self, proof: Proof) -> Result<bool, Box<dyn Error>> {
-        let mut timer = TimingReporter::start();
-
+    pub fn verify(
+        &self,
+        proof: Proof,
+        maybe_profiler: &mut Option<TritonProfiler>,
+    ) -> Result<bool, Box<dyn Error>> {
+        prof_start!(maybe_profiler, "deserialize");
         let mut proof_stream = StarkProofStream::from_proof(&proof)?;
+        prof_stop!(maybe_profiler, "deserialize");
 
+        prof_start!(maybe_profiler, "Fiat-Shamir 1");
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
-        timer.elapsed("Fiat-Shamir seed for extension challenges");
 
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
-        timer.elapsed("Create extension challenges");
+        prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
+        prof_start!(maybe_profiler, "dequeue");
         let padded_height = proof_stream.dequeue()?.as_padded_heights()?.value() as usize;
-        timer.elapsed("Got padded height");
 
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
-        timer.elapsed("Get extension tree's root & terminals from proof stream");
+        prof_stop!(maybe_profiler, "dequeue");
 
+        prof_start!(maybe_profiler, "degree bounds");
         let ext_table_collection = ExtTableCollection::for_verifier(
             self.num_trace_randomizers,
             padded_height,
             &extension_challenges,
         );
 
+        prof_start!(maybe_profiler, "base");
         let base_degree_bounds =
             ext_table_collection.get_all_base_degree_bounds(self.num_trace_randomizers);
-        timer.elapsed("Calculated base degree bounds");
+        prof_stop!(maybe_profiler, "base");
 
+        prof_start!(maybe_profiler, "extension");
         let extension_degree_bounds =
             ext_table_collection.get_extension_degree_bounds(self.num_trace_randomizers);
-        timer.elapsed("Calculated extension degree bounds");
+        prof_stop!(maybe_profiler, "extension");
 
+        prof_start!(maybe_profiler, "quotient");
         let quotient_degree_bounds =
             ext_table_collection.get_all_quotient_degree_bounds(self.num_trace_randomizers);
-        timer.elapsed("Calculated quotient degree bounds");
+        prof_stop!(maybe_profiler, "quotient");
+        prof_stop!(maybe_profiler, "degree bounds");
 
         // get weights for nonlinear combination:
         //  - 1 for randomizer polynomials,
         //  - 2 for {base, extension} polynomials and quotients.
         // The latter require 2 weights because transition constraints check 2 rows.
+        prof_start!(maybe_profiler, "Fiat-Shamir 2");
         let num_base_polynomials = base_degree_bounds.len();
         let num_extension_polynomials = extension_degree_bounds.len();
         let num_grand_cross_table_args = 1;
@@ -674,7 +683,6 @@ impl Stark {
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
             grand_cross_table_arg_and_non_lin_combi_weights
                 .split_at(num_grand_cross_table_arg_weights);
-        timer.elapsed("Sample weights for grand cross-table argument and non-linear combination");
 
         let input_terminal = EvalArg::compute_terminal(
             &self.input_symbols,
@@ -695,8 +703,9 @@ impl Stark {
             input_terminal,
             output_terminal,
         );
-        timer.elapsed("Setup for grand cross-table argument");
+        prof_stop!(maybe_profiler, "Fiat-Shamir 2");
 
+        prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
 
         let indices_seed = proof_stream.verifier_fiat_shamir();
@@ -705,33 +714,36 @@ impl Stark {
             &indices_seed,
             self.xfri.domain.length,
         );
-        let num_idxs = combination_check_indices.len();
-        timer.elapsed("Got indices");
+        prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
         // verify low degree of combination polynomial with FRI
+        prof_start!(maybe_profiler, "FRI");
         self.xfri.verify(&mut proof_stream, &combination_root)?;
-        timer.elapsed("Verified FRI proof");
+        prof_stop!(maybe_profiler, "FRI");
 
+        prof_start!(maybe_profiler, "check leafs");
+        prof_start!(maybe_profiler, "get indices");
         // the relation between the FRI domain and the omicron domain
         let unit_distance = self.xfri.domain.length / ext_table_collection.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
-        timer.elapsed("Calculated revealed indices");
+        prof_stop!(maybe_profiler, "get indices");
 
         // TODO: in the following ~80 lines, we (conceptually) do the same thing three times. DRY.
+        prof_start!(maybe_profiler, "dequeue");
         let revealed_base_elems = proof_stream
             .dequeue()?
             .as_transposed_base_element_vectors()?;
         let auth_paths_base = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
-        timer.elapsed("Read base elements and auth paths from proof stream");
         let leaf_digests_base: Vec<_> = revealed_base_elems
             .par_iter()
             .map(|revealed_base_elem| StarkHasher::hash_slice(revealed_base_elem))
             .collect();
-        timer.elapsed(&format!("Got {num_idxs} leaf digests for base elements"));
+        prof_stop!(maybe_profiler, "dequeue");
 
+        prof_start!(maybe_profiler, "Merkle verify");
         if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
             &revealed_indices,
@@ -741,15 +753,15 @@ impl Stark {
             // TODO: Replace this by a specific error type, or just return `Ok(false)`
             panic!("Failed to verify authentication path for base codeword");
         }
-        timer.elapsed(&format!("Verified auth paths for {num_idxs} base elements"));
+        prof_stop!(maybe_profiler, "Merkle verify");
 
+        prof_start!(maybe_profiler, "dequeue");
         let revealed_ext_elems = proof_stream
             .dequeue()?
             .as_transposed_extension_element_vectors()?;
         let auth_paths_ext = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
-        timer.elapsed("Read extension elements and auth paths from proof stream");
         let leaf_digests_ext: Vec<_> = revealed_ext_elems
             .par_iter()
             .map(|xvalues| {
@@ -760,8 +772,9 @@ impl Stark {
                 StarkHasher::hash_slice(&bvalues)
             })
             .collect();
-        timer.elapsed(&format!("Got {num_idxs} leaf digests for ext elements"));
+        prof_stop!(maybe_profiler, "dequeue");
 
+        prof_start!(maybe_profiler, "Merkle verify (auth struct)");
         if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
             &revealed_indices,
@@ -771,9 +784,10 @@ impl Stark {
             // TODO: Replace this by a specific error type, or just return `Ok(false)`
             panic!("Failed to verify authentication path for extension codeword");
         }
-        timer.elapsed(&format!("Verified auth paths for {num_idxs} ext elements"));
+        prof_stop!(maybe_profiler, "Merkle verify (auth struct)");
 
         // Verify Merkle authentication path for combination elements
+        prof_start!(maybe_profiler, "Merkle verify");
         let revealed_combination_leafs =
             proof_stream.dequeue()?.as_revealed_combination_elements()?;
         let revealed_combination_digests: Vec<_> = revealed_combination_leafs
@@ -792,21 +806,25 @@ impl Stark {
             // TODO: Replace this by a specific error type, or just return `Ok(false)`
             panic!("Failed to verify authentication path for combination codeword");
         }
-        timer.elapsed(&format!("Verified auth paths for {num_idxs} combi elems"));
+        prof_stop!(maybe_profiler, "Merkle verify");
+        prof_stop!(maybe_profiler, "check leafs");
 
         // TODO: we can store the elements mushed into "index_map_of_revealed_elems" separately,
         //  like in "cross_slice_by_table" below, to avoid unmushing later
+        prof_start!(maybe_profiler, "nonlinear combination");
+        prof_start!(maybe_profiler, "restructure");
         let index_map_of_revealed_elems = Self::get_index_map_of_revealed_elems(
             self.num_randomizer_polynomials,
             revealed_indices,
             revealed_base_elems,
             revealed_ext_elems,
         );
-        timer.elapsed(&format!("Collected {num_idxs} values into a hash map"));
+        prof_stop!(maybe_profiler, "restructure");
 
         // =======================================
         // ==== verify non-linear combination ====
         // =======================================
+        prof_start!(maybe_profiler, "main loop");
         let base_offset = self.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
@@ -979,8 +997,8 @@ impl Stark {
                 "The combination leaf must equal the inner product"
             );
         }
-        timer.elapsed(&format!("Verified {num_idxs} non-linear combinations"));
-        println!("{}", timer.finish());
+        prof_stop!(maybe_profiler, "main loop");
+        prof_stop!(maybe_profiler, "nonlinear combination");
         Ok(true)
     }
 
@@ -1283,7 +1301,6 @@ pub(crate) mod triton_stark_tests {
         let mut code_collection = small_tasm_test_programs();
         code_collection.append(&mut bigger_tasm_test_programs());
         code_collection.append(&mut property_based_test_programs());
-        let mut timer = TimingReporter::start();
 
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
             let code = code_with_input.source_code;
@@ -1348,9 +1365,7 @@ pub(crate) mod triton_stark_tests {
                 ptoe, output_terminal,
                 "The output terminal must match for TASM snipped #{code_idx}."
             );
-            timer.elapsed(format!("Program number {code_idx}").as_str());
         }
-        println!("{}", timer.finish());
     }
 
     #[test]
@@ -1674,7 +1689,7 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = stark.verify(proof);
+        let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {}", e);
         }
@@ -1696,7 +1711,7 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = stark.verify(proof);
+        let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {}", e);
         }
@@ -1725,7 +1740,7 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = stark.verify(proof);
+        let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {}", e);
         }

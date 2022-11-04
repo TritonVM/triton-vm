@@ -8,7 +8,6 @@ use rayon::iter::{
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::timing_reporter::TimingReporter;
 
 use crate::fri_domain::FriDomain;
 use crate::stark::Stark;
@@ -355,25 +354,14 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         omicron: XFieldElement,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
-        let mut timer = TimingReporter::start();
-        timer.elapsed(&format!("Table name: {}", self.name()));
-
         let initial_quotients = self.initial_quotients(fri_domain, codewords, challenges);
-        timer.elapsed("initial quotients");
-
         let consistency_quotients =
             self.consistency_quotients(fri_domain, codewords, challenges, padded_height);
-        timer.elapsed("Done calculating consistency quotients");
-
         let transition_quotients =
             self.transition_quotients(fri_domain, codewords, challenges, omicron, padded_height);
-        timer.elapsed("transition quotients");
-
         let terminal_quotients =
             self.terminal_quotients(fri_domain, codewords, challenges, omicron);
-        timer.elapsed("terminal quotients");
 
-        println!("{}", timer.finish());
         vec![
             initial_quotients,
             consistency_quotients,

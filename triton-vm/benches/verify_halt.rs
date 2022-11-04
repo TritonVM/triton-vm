@@ -23,18 +23,18 @@ fn verify_halt(criterion: &mut Criterion) {
         &mut None,
     );
 
-    let mut maybe_profiler = Some(TritonProfiler::new("Verify Halt"));
-    let mut report: Report = Report::placeholder();
-
-    let result = stark.verify(proof.clone());
+    let result = stark.verify(proof.clone(), &mut None);
     if let Err(e) = result {
         panic!("The Verifier is unhappy! {}", e);
     }
 
+    let mut maybe_profiler = Some(TritonProfiler::new("Verify Halt"));
+    let mut report: Report = Report::placeholder();
+
     group.bench_function(halt, |bencher| {
         bencher.iter(|| {
             prof_start!(maybe_profiler, "verify");
-            let _result = stark.verify(proof.clone());
+            let _result = stark.verify(proof.clone(), &mut maybe_profiler);
             prof_stop!(maybe_profiler, "verify");
 
             if let Some(profiler) = maybe_profiler.as_mut() {
