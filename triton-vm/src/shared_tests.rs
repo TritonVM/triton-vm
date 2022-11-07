@@ -3,9 +3,10 @@ use std::error::Error;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_start, prof_stop};
 
-use crate::proof_stream::Proof;
-use crate::stark::Stark;
+use crate::proof::{Claim, Proof};
+use crate::stark::{Stark, StarkParameters};
 use crate::stdio::VecStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_matrix::BaseMatrices;
@@ -43,7 +44,6 @@ pub fn parse_setup_simulate(
 
 pub fn parse_simulate_prove(
     code: &str,
-    co_set_fri_offset: BFieldElement,
     input_symbols: &[BFieldElement],
     secret_input_symbols: &[BFieldElement],
     output_symbols: &[BFieldElement],
@@ -51,35 +51,34 @@ pub fn parse_simulate_prove(
 ) -> (Stark, Proof) {
     let (aet, _, program) =
         parse_setup_simulate(code, input_symbols, secret_input_symbols, maybe_profiler);
-    let base_matrices = BaseMatrices::new(aet, &program);
+    let base_matrices = BaseMatrices::new(aet.clone(), &program.to_bwords());
 
-    if let Some(profiler) = maybe_profiler.as_mut() {
-        profiler.start("padding")
-    }
-    let num_randomizer_polynomials = 1;
+    prof_start!(maybe_profiler, "padding");
     let log_expansion_factor = 2;
     let security_level = 32;
     let padded_height = BaseTableCollection::padded_height(&base_matrices);
-    if let Some(profiler) = maybe_profiler.as_mut() {
-        profiler.stop("padding")
-    }
+    prof_stop!(maybe_profiler, "padding");
 
-    if let Some(profiler) = maybe_profiler.as_mut() {
-        profiler.start("prove")
-    }
-    let stark = Stark::new(
+    prof_start!(maybe_profiler, "prove");
+    let parameters = StarkParameters::new(security_level, 1 << log_expansion_factor);
+    let program = Program::from_code(code);
+    let program = match program {
+        Ok(p) => p.to_bwords(),
+        Err(e) => panic!(
+            "Could not convert program from code to vector of BFieldElements: {}",
+            e
+        ),
+    };
+    let claim = Claim {
+        input: input_symbols.to_vec(),
+        program,
+        output: output_symbols.to_vec(),
         padded_height,
-        num_randomizer_polynomials,
-        log_expansion_factor,
-        security_level,
-        co_set_fri_offset,
-        input_symbols,
-        output_symbols,
-    );
-    let proof = stark.prove(base_matrices, maybe_profiler);
-    if let Some(profiler) = maybe_profiler.as_mut() {
-        profiler.stop("prove")
-    }
+    };
+    let stark = Stark::new(claim, parameters);
+
+    let proof = stark.prove(aet, maybe_profiler);
+    prof_stop!(maybe_profiler, "prove");
 
     (stark, proof)
 }

@@ -1,7 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use triton_profiler::triton_profiler::{Report, TritonProfiler};
 use triton_vm::shared_tests::{parse_simulate_prove, test_halt};
-use twenty_first::shared_math::b_field_element::BFieldElement;
 
 /// cargo criterion --bench prove_halt
 fn prove_halt(criterion: &mut Criterion) {
@@ -10,7 +9,6 @@ fn prove_halt(criterion: &mut Criterion) {
 
     let mut group = criterion.benchmark_group("prove_halt");
     group.sample_size(10); // runs
-    let co_set_fri_offset = BFieldElement::generator();
     let code_with_input = test_halt();
     let halt = BenchmarkId::new("ProveHalt", 0);
 
@@ -18,7 +16,6 @@ fn prove_halt(criterion: &mut Criterion) {
         bencher.iter(|| {
             let (stark, proof) = parse_simulate_prove(
                 &code_with_input.source_code,
-                co_set_fri_offset,
                 &code_with_input.input,
                 &code_with_input.secret_input,
                 &[],

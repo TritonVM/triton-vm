@@ -2,10 +2,11 @@ use std::error::Error;
 use std::fmt::Display;
 use std::marker::PhantomData;
 
-use twenty_first::shared_math::{b_field_element::BFieldElement, rescue_prime_digest::Digest};
+use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::bfield_codec::BFieldCodec;
+use crate::proof::Proof;
 use crate::proof_item::MayBeUncast;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -39,9 +40,6 @@ impl Display for ProofStreamError {
 }
 
 impl Error for ProofStreamError {}
-
-#[derive(Debug, Clone)]
-pub struct Proof(Vec<BFieldElement>);
 
 impl<Item, H> ProofStream<Item, H>
 where

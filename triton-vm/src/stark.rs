@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt;
 
 use itertools::Itertools;
 use rayon::iter::{
@@ -22,10 +23,12 @@ use triton_profiler::{prof_start, prof_stop};
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
-use crate::fri::{self, Fri};
+use crate::fri::{Fri, FriValidationError};
 use crate::fri_domain::FriDomain;
+use crate::proof::{Claim, Proof};
 use crate::proof_item::ProofItem;
-use crate::proof_stream::{Proof, ProofStream};
+use crate::proof_stream::ProofStream;
+use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
 
@@ -34,96 +37,122 @@ use super::table::base_matrix::BaseMatrices;
 pub type StarkHasher = RescuePrimeRegular;
 pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
 
-pub struct Stark {
+pub struct StarkParameters {
+    security_level: usize,
+    fri_expansion_factor: usize,
     num_trace_randomizers: usize,
     num_randomizer_polynomials: usize,
-    security_level: usize,
+    num_colinearity_checks: usize,
+}
+
+impl StarkParameters {
+    pub fn new(security_level: usize, fri_expansion_factor: usize) -> Self {
+        let num_randomizer_polynomials = 1; //security_level / 64;
+
+        assert!(
+            fri_expansion_factor & (fri_expansion_factor - 1) == 0,
+            "FRI expansion factor must be a power of two, but got {}.",
+            fri_expansion_factor
+        );
+        assert!(
+            fri_expansion_factor != 0,
+            "FRI expansion factor must be greater than zero."
+        );
+
+        let mut log2_of_fri_expansion_factor = 0;
+        while (1 << log2_of_fri_expansion_factor) < fri_expansion_factor {
+            log2_of_fri_expansion_factor += 1;
+        }
+        // post-condition: 2^(log2_of_fri_expansion_factor) == fri_expansion_factor
+
+        let num_colinearity_checks = security_level / log2_of_fri_expansion_factor;
+        let num_trace_randomizers = num_colinearity_checks * 2;
+
+        StarkParameters {
+            security_level,
+            fri_expansion_factor,
+            num_trace_randomizers,
+            num_randomizer_polynomials,
+            num_colinearity_checks,
+        }
+    }
+}
+
+impl Default for StarkParameters {
+    fn default() -> Self {
+        let fri_expansion_factor = 4;
+        let security_level = 160;
+
+        Self::new(security_level, fri_expansion_factor)
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum StarkValidationError {
+    CombinationLeafInequality,
+    PaddedHeightInequality,
+    FriValidationError(FriValidationError),
+}
+
+impl Error for StarkValidationError {}
+
+impl fmt::Display for StarkValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "STARK error: {:?}", self)
+    }
+}
+
+pub struct Stark {
+    parameters: StarkParameters,
+    claim: Claim,
     max_degree: Degree,
-    bfri_domain: FriDomain<BFieldElement>,
-    xfri: Fri<StarkHasher>,
-    input_symbols: Vec<BFieldElement>,
-    output_symbols: Vec<BFieldElement>,
+    fri_domain: FriDomain<BFieldElement>,
+    fri: Fri<StarkHasher>,
 }
 
 impl Stark {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        max_height: usize,
-        num_randomizer_polynomials: usize,
-        log_expansion_factor: usize,
-        security_level: usize,
-        co_set_fri_offset: BFieldElement,
-        input_symbols: &[BFieldElement],
-        output_symbols: &[BFieldElement],
-    ) -> Self {
-        assert_eq!(
-            0,
-            security_level % log_expansion_factor,
-            "security_level/log_expansion_factor must be a positive integer"
-        );
-
-        let expansion_factor = 1 << log_expansion_factor;
-        let colinearity_checks = security_level / log_expansion_factor;
-
-        assert!(
-            colinearity_checks > 0,
-            "At least one colinearity check is required"
-        );
-
-        assert!(
-            expansion_factor >= 4,
-            "expansion factor must be at least 4."
-        );
-
-        let num_trace_randomizers = Self::num_trace_randomizers(security_level);
-        let empty_table_collection = ExtTableCollection::with_padded_height(max_height);
-
+    pub fn new(claim: Claim, parameters: StarkParameters) -> Self {
+        let empty_table_collection = ExtTableCollection::with_padded_height(claim.padded_height);
         let max_degree_with_origin =
-            empty_table_collection.max_degree_with_origin(num_trace_randomizers);
+            empty_table_collection.max_degree_with_origin(parameters.num_trace_randomizers);
         let max_degree = (other::roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
-        let fri_domain_length = ((max_degree as u64 + 1) * expansion_factor) as usize;
-        println!("Max Degree: {}", max_degree_with_origin);
-        println!("FRI domain length: {fri_domain_length}, expansion factor: {expansion_factor}");
-
-        let omega = BFieldElement::primitive_root_of_unity(fri_domain_length as u64).unwrap();
-
-        let bfri_domain: FriDomain<BFieldElement> =
-            FriDomain::new(co_set_fri_offset, omega, fri_domain_length);
-
-        let xfri = fri::Fri::new(
-            co_set_fri_offset,
+        let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
+        let omega =
+            BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
+        let coset_offset = BFieldElement::generator();
+        let fri_domain: FriDomain<BFieldElement> =
+            FriDomain::new(coset_offset, omega, fri_domain_length);
+        let fri = Fri::new(
+            coset_offset,
             omega,
             fri_domain_length,
-            expansion_factor as usize,
-            colinearity_checks,
+            parameters.fri_expansion_factor,
+            parameters.num_colinearity_checks,
         );
-
-        Stark {
-            num_trace_randomizers,
-            num_randomizer_polynomials,
-            security_level,
+        Self {
+            parameters,
+            claim,
             max_degree,
-            bfri_domain,
-            xfri,
-            input_symbols: input_symbols.to_vec(),
-            output_symbols: output_symbols.to_vec(),
+            fri_domain,
+            fri,
         }
     }
 
     pub fn prove(
         &self,
-        base_matrices: BaseMatrices,
+        aet: AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Proof {
         prof_start!(maybe_profiler, "pad");
+        let base_matrices = BaseMatrices::new(aet, &self.claim.program);
         let base_trace_tables = self.padded(&base_matrices);
         prof_stop!(maybe_profiler, "pad");
 
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
 
         prof_start!(maybe_profiler, "LDE 1");
-        let base_fri_domain_tables =
-            base_trace_tables.to_fri_domain_tables(&self.bfri_domain, self.num_trace_randomizers);
+        let base_fri_domain_tables = base_trace_tables
+            .to_fri_domain_tables(&self.fri_domain, self.parameters.num_trace_randomizers);
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
         let randomizer_and_base_fri_domain_codewords =
             vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
@@ -135,35 +164,30 @@ impl Stark {
         let base_merkle_tree_root = base_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree 1");
 
-        // send root for base codewords
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("Fiat-Shamir 1");
-        }
+        // send first message
+        prof_start!(maybe_profiler, "Fiat-Shamir 1");
         let mut proof_stream = StarkProofStream::new();
+        proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
+            base_trace_tables.padded_height as u64,
+        )));
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         let extension_challenge_seed = proof_stream.prover_fiat_shamir();
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("Fiat-Shamir 1");
-        }
+        prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "extend");
         let ext_trace_tables = ExtTableCollection::extend_tables(
             &base_trace_tables,
             &extension_challenges,
-            self.num_trace_randomizers,
+            self.parameters.num_trace_randomizers,
         );
         prof_stop!(maybe_profiler, "extend");
 
-        proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
-            base_trace_tables.padded_height as u64,
-        )));
-
         prof_start!(maybe_profiler, "LDE 2");
-        let ext_fri_domain_tables =
-            ext_trace_tables.to_fri_domain_tables(&self.xfri.domain, self.num_trace_randomizers);
+        let ext_fri_domain_tables = ext_trace_tables
+            .to_fri_domain_tables(&self.fri.domain, self.parameters.num_trace_randomizers);
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
 
         prof_stop!(maybe_profiler, "LDE 2");
@@ -179,25 +203,25 @@ impl Stark {
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "base");
         let base_degree_bounds =
-            base_fri_domain_tables.get_base_degree_bounds(self.num_trace_randomizers);
+            base_fri_domain_tables.get_base_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "base");
 
         prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds =
-            ext_fri_domain_tables.get_extension_degree_bounds(self.num_trace_randomizers);
+        let extension_degree_bounds = ext_fri_domain_tables
+            .get_extension_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "extension");
 
         prof_start!(maybe_profiler, "quotient");
         let full_fri_domain_tables =
             ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
-        let mut quotient_degree_bounds =
-            full_fri_domain_tables.get_all_quotient_degree_bounds(self.num_trace_randomizers);
+        let mut quotient_degree_bounds = full_fri_domain_tables
+            .get_all_quotient_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
 
         prof_start!(maybe_profiler, "quotient codewords");
         let mut quotient_codewords = full_fri_domain_tables.get_all_quotients(
-            &self.xfri.domain,
+            &self.fri.domain,
             &extension_challenges,
             maybe_profiler,
         );
@@ -205,7 +229,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "grand cross table");
         let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = self.num_randomizer_polynomials
+        let num_non_lin_combi_weights = self.parameters.num_randomizer_polynomials
             + 2 * base_fri_domain_codewords.len()
             + 2 * extension_fri_domain_codewords.len()
             + 2 * quotient_degree_bounds.len()
@@ -224,14 +248,14 @@ impl Stark {
 
         // prove equal terminal values for the column tuples pertaining to cross table arguments
         let input_terminal = EvalArg::compute_terminal(
-            &self.input_symbols,
+            &self.claim.input,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
                 .standard_input_eval_indeterminate,
         );
         let output_terminal = EvalArg::compute_terminal(
-            &self.output_symbols,
+            &self.claim.output,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
@@ -245,13 +269,16 @@ impl Stark {
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
                 &full_fri_domain_tables,
-                &self.xfri.domain,
+                &self.fri.domain,
                 derive_omicron(full_fri_domain_tables.padded_height as u64),
             );
         quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
-            .quotient_degree_bound(&full_fri_domain_tables, self.num_trace_randomizers);
+            .quotient_degree_bound(
+                &full_fri_domain_tables,
+                self.parameters.num_trace_randomizers,
+            );
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
         prof_stop!(maybe_profiler, "grand cross table");
 
@@ -291,16 +318,16 @@ impl Stark {
         }
         let indices_seed = proof_stream.prover_fiat_shamir();
         let cross_codeword_slice_indices = StarkHasher::sample_indices(
-            self.security_level,
+            self.parameters.security_level,
             &indices_seed,
-            self.xfri.domain.length,
+            self.fri.domain.length,
         );
         if let Some(profiler) = maybe_profiler.as_mut() {
             profiler.stop("Fiat-Shamir 3");
         }
 
         prof_start!(maybe_profiler, "FRI");
-        match self.xfri.prove(&combination_codeword, &mut proof_stream) {
+        match self.fri.prove(&combination_codeword, &mut proof_stream) {
             Ok((_, fri_first_round_merkle_root)) => assert_eq!(
                 combination_root, fri_first_round_merkle_root,
                 "Combination root from STARK and from FRI must agree."
@@ -311,7 +338,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "open trace leafs");
         // the relation between the FRI domain and the omicron domain
-        let unit_distance = self.xfri.domain.length / base_trace_tables.padded_height;
+        let unit_distance = self.fri.domain.length / base_trace_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
@@ -366,7 +393,7 @@ impl Stark {
         let mut revealed_indices: Vec<usize> = vec![];
         for &index in cross_codeword_slice_indices.iter() {
             revealed_indices.push(index);
-            revealed_indices.push((index + unit_distance) % self.xfri.domain.length);
+            revealed_indices.push((index + unit_distance) % self.fri.domain.length);
         }
         revealed_indices.sort_unstable();
         revealed_indices.dedup();
@@ -398,13 +425,17 @@ impl Stark {
         quotient_degree_bounds: Vec<i64>,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<XFieldElement> {
-        assert_eq!(self.num_randomizer_polynomials, randomizer_codewords.len());
+        assert_eq!(
+            self.parameters.num_randomizer_polynomials,
+            randomizer_codewords.len()
+        );
 
         prof_start!(maybe_profiler, "create combination codeword");
 
         let base_codewords_lifted = base_codewords
             .into_iter()
-            .skip(self.num_randomizer_polynomials * 3)
+            // 3 is extension degree of X-field over B-field
+            .skip(self.parameters.num_randomizer_polynomials * 3)
             .map(|base_codeword| {
                 base_codeword
                     .into_iter()
@@ -413,10 +444,10 @@ impl Stark {
             })
             .collect_vec();
         let mut weights_iterator = weights.into_iter();
-        let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); self.xfri.domain.length];
+        let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); self.fri.domain.length];
 
         // TODO don't keep the entire domain's values in memory, create them lazily when needed
-        let fri_x_values = self.xfri.domain.domain_values();
+        let fri_x_values = self.fri.domain.domain_values();
 
         for randomizer_codeword in randomizer_codewords {
             combination_codeword = Self::non_linearly_add_to_codeword(
@@ -462,7 +493,7 @@ impl Stark {
         if std::env::var("DEBUG").is_ok() {
             println!(
                 "The combination codeword corresponds to a polynomial of degree {}",
-                self.xfri.domain.interpolate(&combination_codeword).degree()
+                self.fri.domain.interpolate(&combination_codeword).degree()
             );
         }
 
@@ -484,8 +515,8 @@ impl Stark {
         if std::env::var("DEBUG").is_err() {
             return;
         }
-        let interpolated = self.xfri.domain.interpolate(extension_codeword);
-        let interpolated_shifted = self.xfri.domain.interpolate(extension_codeword_shifted);
+        let interpolated = self.fri.domain.interpolate(extension_codeword);
+        let interpolated_shifted = self.fri.domain.interpolate(extension_codeword_shifted);
         let int_shift_deg = interpolated_shifted.degree();
         let maybe_excl_mark = if int_shift_deg > self.max_degree as isize {
             "!!!"
@@ -595,7 +626,7 @@ impl Stark {
         let randomizer_coefficients = random_elements(self.max_degree as usize + 1);
         let randomizer_polynomial = Polynomial::new(randomizer_coefficients);
 
-        let x_randomizer_codeword = self.xfri.domain.evaluate(&randomizer_polynomial);
+        let x_randomizer_codeword = self.fri.domain.evaluate(&randomizer_polynomial);
         let mut b_randomizer_codewords = vec![vec![], vec![], vec![]];
         for x_elem in x_randomizer_codeword.iter() {
             b_randomizer_codewords[0].push(x_elem.coefficients[0]);
@@ -622,40 +653,44 @@ impl Stark {
         prof_stop!(maybe_profiler, "deserialize");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1");
+        let padded_height = proof_stream.dequeue()?.as_padded_heights()?.value() as usize;
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
+
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
 
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
+        if self.claim.padded_height != padded_height && self.claim.padded_height != 0 {
+            return Err(Box::new(StarkValidationError::PaddedHeightInequality));
+        }
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue");
-        let padded_height = proof_stream.dequeue()?.as_padded_heights()?.value() as usize;
 
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "dequeue");
 
         prof_start!(maybe_profiler, "degree bounds");
         let ext_table_collection = ExtTableCollection::for_verifier(
-            self.num_trace_randomizers,
+            self.parameters.num_trace_randomizers,
             padded_height,
             &extension_challenges,
         );
 
         prof_start!(maybe_profiler, "base");
         let base_degree_bounds =
-            ext_table_collection.get_all_base_degree_bounds(self.num_trace_randomizers);
+            ext_table_collection.get_all_base_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "base");
 
         prof_start!(maybe_profiler, "extension");
         let extension_degree_bounds =
-            ext_table_collection.get_extension_degree_bounds(self.num_trace_randomizers);
+            ext_table_collection.get_extension_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "extension");
 
         prof_start!(maybe_profiler, "quotient");
-        let quotient_degree_bounds =
-            ext_table_collection.get_all_quotient_degree_bounds(self.num_trace_randomizers);
+        let quotient_degree_bounds = ext_table_collection
+            .get_all_quotient_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
 
@@ -667,7 +702,7 @@ impl Stark {
         let num_base_polynomials = base_degree_bounds.len();
         let num_extension_polynomials = extension_degree_bounds.len();
         let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = self.num_randomizer_polynomials
+        let num_non_lin_combi_weights = self.parameters.num_randomizer_polynomials
             + 2 * num_base_polynomials
             + 2 * num_extension_polynomials
             + 2 * quotient_degree_bounds.len()
@@ -685,14 +720,14 @@ impl Stark {
                 .split_at(num_grand_cross_table_arg_weights);
 
         let input_terminal = EvalArg::compute_terminal(
-            &self.input_symbols,
+            &self.claim.input,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
                 .standard_input_eval_indeterminate,
         );
         let output_terminal = EvalArg::compute_terminal(
-            &self.output_symbols,
+            &self.claim.output,
             EvalArg::default_initial(),
             extension_challenges
                 .processor_table_challenges
@@ -710,21 +745,21 @@ impl Stark {
 
         let indices_seed = proof_stream.verifier_fiat_shamir();
         let combination_check_indices = StarkHasher::sample_indices(
-            self.security_level,
+            self.parameters.security_level,
             &indices_seed,
-            self.xfri.domain.length,
+            self.fri.domain.length,
         );
         prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
-        self.xfri.verify(&mut proof_stream, &combination_root)?;
+        self.fri.verify(&mut proof_stream, &combination_root)?;
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "check leafs");
         prof_start!(maybe_profiler, "get indices");
         // the relation between the FRI domain and the omicron domain
-        let unit_distance = self.xfri.domain.length / ext_table_collection.padded_height;
+        let unit_distance = self.fri.domain.length / ext_table_collection.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
         prof_stop!(maybe_profiler, "get indices");
@@ -814,7 +849,7 @@ impl Stark {
         prof_start!(maybe_profiler, "nonlinear combination");
         prof_start!(maybe_profiler, "restructure");
         let index_map_of_revealed_elems = Self::get_index_map_of_revealed_elems(
-            self.num_randomizer_polynomials,
+            self.parameters.num_randomizer_polynomials,
             revealed_indices,
             revealed_base_elems,
             revealed_ext_elems,
@@ -825,7 +860,7 @@ impl Stark {
         // ==== verify non-linear combination ====
         // =======================================
         prof_start!(maybe_profiler, "main loop");
-        let base_offset = self.num_randomizer_polynomials;
+        let base_offset = self.parameters.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
         let omicron: XFieldElement = derive_omicron(padded_height as u64);
@@ -834,10 +869,8 @@ impl Stark {
             .into_iter()
             .zip_eq(revealed_combination_leafs)
         {
-            let current_fri_domain_value = self
-                .xfri
-                .domain
-                .domain_value(combination_check_index as u32);
+            let current_fri_domain_value =
+                self.fri.domain.domain_value(combination_check_index as u32);
             let cross_slice = &index_map_of_revealed_elems[&combination_check_index];
 
             // populate summands with a cross-slice from the randomizer codewords
@@ -875,7 +908,7 @@ impl Stark {
                 cross_slice_by_table.push(table_slice);
 
                 let next_cross_slice_index =
-                    (combination_check_index + unit_distance) % self.xfri.domain.length;
+                    (combination_check_index + unit_distance) % self.fri.domain.length;
                 let next_cross_slice = &index_map_of_revealed_elems[&next_cross_slice_index];
 
                 let next_base_col_slice =
@@ -897,20 +930,24 @@ impl Stark {
                 .zip_eq(next_cross_slice_by_table.iter())
                 .zip_eq(ext_table_collection.into_iter())
             {
-                let initial_quotient_degree_bounds = table
-                    .get_initial_quotient_degree_bounds(padded_height, self.num_trace_randomizers);
+                let initial_quotient_degree_bounds = table.get_initial_quotient_degree_bounds(
+                    padded_height,
+                    self.parameters.num_trace_randomizers,
+                );
                 let consistency_quotient_degree_bounds = table
                     .get_consistency_quotient_degree_bounds(
                         padded_height,
-                        self.num_trace_randomizers,
+                        self.parameters.num_trace_randomizers,
                     );
                 let transition_quotient_degree_bounds = table
                     .get_transition_quotient_degree_bounds(
                         padded_height,
-                        self.num_trace_randomizers,
+                        self.parameters.num_trace_randomizers,
                     );
-                let terminal_quotient_degree_bounds = table
-                    .get_terminal_quotient_degree_bounds(padded_height, self.num_trace_randomizers);
+                let terminal_quotient_degree_bounds = table.get_terminal_quotient_degree_bounds(
+                    padded_height,
+                    self.parameters.num_trace_randomizers,
+                );
 
                 for (evaluated_bc, degree_bound) in table
                     .evaluate_initial_constraints(table_row, &extension_challenges)
@@ -972,8 +1009,10 @@ impl Stark {
                 }
             }
 
-            let grand_cross_table_arg_degree_bound = grand_cross_table_arg
-                .quotient_degree_bound(&ext_table_collection, self.num_trace_randomizers);
+            let grand_cross_table_arg_degree_bound = grand_cross_table_arg.quotient_degree_bound(
+                &ext_table_collection,
+                self.parameters.num_trace_randomizers,
+            );
             let shift = self.max_degree - grand_cross_table_arg_degree_bound;
             let grand_cross_table_arg_evaluated =
                 grand_cross_table_arg.evaluate_non_linear_sum_of_differences(&cross_slice_by_table);
@@ -990,12 +1029,9 @@ impl Stark {
                 .map(|(&weight, &summand)| weight * summand)
                 .sum();
 
-            // FIXME: This assert looks like it's for development, but it's the actual integrity
-            //  check. Change to `if (…) { return Ok(false) }` or whatever is suitable.
-            assert_eq!(
-                revealed_combination_leaf, inner_product,
-                "The combination leaf must equal the inner product"
-            );
+            if revealed_combination_leaf != inner_product {
+                return Err(Box::new(StarkValidationError::CombinationLeafInequality));
+            }
         }
         prof_stop!(maybe_profiler, "main loop");
         prof_stop!(maybe_profiler, "nonlinear combination");
@@ -1030,10 +1066,6 @@ impl Stark {
         }
         index_map
     }
-
-    fn num_trace_randomizers(security_level: usize) -> usize {
-        2 * security_level
-    }
 }
 
 #[cfg(test)]
@@ -1067,7 +1099,7 @@ pub(crate) mod triton_stark_tests {
         let code = "read_io read_io push -1 mul add split push 0 eq swap1 pop "; // simulates LTE
         let input_symbols = [5_u64.into(), 7_u64.into()];
         let (aet, _, program) = parse_setup_simulate(code, &input_symbols, &[]);
-        let base_matrices = BaseMatrices::new(aet, &program);
+        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
         let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
         base_tables.pad();
         let padded_height = base_tables.padded_height;
@@ -1107,7 +1139,7 @@ pub(crate) mod triton_stark_tests {
         secret_in: &[BFieldElement],
     ) -> (BaseTableCollection, BaseTableCollection, usize, VecStream) {
         let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
-        let base_matrices = BaseMatrices::new(aet, &program);
+        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
 
         let num_trace_randomizers = 2;
         let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
@@ -1230,10 +1262,17 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     pub fn shift_codeword_test() {
-        let stark = Stark::new(2, 1, 2, 32, BFieldElement::one(), &[], &[]);
-        let fri_x_values = stark.xfri.domain.domain_values();
+        let claim = Claim {
+            input: vec![],
+            program: vec![],
+            output: vec![],
+            padded_height: 32,
+        };
+        let parameters = StarkParameters::default();
+        let stark = Stark::new(claim, parameters);
+        let fri_x_values = stark.fri.domain.domain_values();
 
-        let mut test_codeword: Vec<XFieldElement> = vec![0.into(); stark.xfri.domain.length];
+        let mut test_codeword: Vec<XFieldElement> = vec![0.into(); stark.fri.domain.length];
         let poly_degree = 4;
         test_codeword[0..=poly_degree].copy_from_slice(&[
             2.into(),
@@ -1245,12 +1284,12 @@ pub(crate) mod triton_stark_tests {
 
         ntt(
             &mut test_codeword,
-            stark.xfri.domain.omega,
-            log_2_floor(stark.xfri.domain.length as u128) as u32,
+            stark.fri.domain.omega,
+            log_2_floor(stark.fri.domain.length as u128) as u32,
         );
         for shift in [0, 1, 5, 17, 63, 121, 128] {
             let shifted_codeword = Stark::shift_codeword(&fri_x_values, &test_codeword, shift);
-            let interpolated_shifted_codeword = stark.xfri.domain.interpolate(&shifted_codeword);
+            let interpolated_shifted_codeword = stark.fri.domain.interpolate(&shifted_codeword);
             assert_eq!(
                 (poly_degree + shift as usize) as isize,
                 interpolated_shifted_codeword.degree()
@@ -1676,11 +1715,9 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_prove_verify_simple_program_test() {
-        let co_set_fri_offset = BFieldElement::generator();
         let code_with_input = test_hash_nop_nop_lt();
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
-            co_set_fri_offset,
             &code_with_input.input,
             &code_with_input.secret_input,
             &[],
@@ -1698,11 +1735,9 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_prove_verify_halt_test() {
-        let co_set_fri_offset = BFieldElement::generator();
         let code_with_input = test_halt();
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
-            co_set_fri_offset,
             &code_with_input.input,
             &code_with_input.secret_input,
             &[],
@@ -1728,15 +1763,8 @@ pub(crate) mod triton_stark_tests {
         let secret_in = [];
         let (_, stdout, _) = program.run_with_input(&stdin, &secret_in);
 
-        let co_set_fri_offset = BFieldElement::generator();
-        let (stark, proof) = parse_simulate_prove(
-            source_code,
-            co_set_fri_offset,
-            &stdin,
-            &secret_in,
-            &stdout,
-            &mut None,
-        );
+        let (stark, proof) =
+            parse_simulate_prove(source_code, &stdin, &secret_in, &stdout, &mut None);
 
         println!("between prove and verify");
 

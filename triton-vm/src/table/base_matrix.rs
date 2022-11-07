@@ -17,7 +17,6 @@ use crate::table::table_column::{
     InstructionBaseTableColumn, OpStackBaseTableColumn, ProcessorBaseTableColumn,
     ProgramBaseTableColumn, RamBaseTableColumn,
 };
-use crate::vm::Program;
 
 use super::table_column::{
     JumpStackBaseTableColumn, ProcessorBaseTableColumn::*, ProcessorExtTableColumn,
@@ -45,7 +44,7 @@ pub struct BaseMatrices {
 }
 
 impl BaseMatrices {
-    pub fn new(aet: AlgebraicExecutionTrace, program: &Program) -> Self {
+    pub fn new(aet: AlgebraicExecutionTrace, program: &[BFieldElement]) -> Self {
         let program_matrix = Self::derive_program_matrix(program);
         let instruction_matrix = Self::derive_instruction_matrix(&aet, program);
         let op_stack_matrix = Self::derive_op_stack_matrix(&aet);
@@ -148,15 +147,16 @@ impl BaseMatrices {
         processor_matrix
     }
 
-    fn derive_program_matrix(program: &Program) -> Vec<[BFieldElement; program_table::BASE_WIDTH]> {
+    fn derive_program_matrix(
+        program: &[BFieldElement],
+    ) -> Vec<[BFieldElement; program_table::BASE_WIDTH]> {
         program
-            .to_bwords()
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(idx, instruction)| {
                 let mut derived_row = [BFieldElement::zero(); program_table::BASE_WIDTH];
                 derived_row[usize::from(ProgramBaseTableColumn::Address)] = (idx as u32).into();
-                derived_row[usize::from(ProgramBaseTableColumn::Instruction)] = instruction;
+                derived_row[usize::from(ProgramBaseTableColumn::Instruction)] = *instruction;
                 derived_row
             })
             .collect_vec()
@@ -164,11 +164,11 @@ impl BaseMatrices {
 
     fn derive_instruction_matrix(
         aet: &AlgebraicExecutionTrace,
-        program: &Program,
+        program: &[BFieldElement],
     ) -> Vec<[BFieldElement; instruction_table::BASE_WIDTH]> {
         use InstructionBaseTableColumn::*;
 
-        let program_append_0 = [program.to_bwords(), vec![BFieldElement::zero()]].concat();
+        let program_append_0 = [program, &[BFieldElement::zero()]].concat();
         let program_part = program_append_0
             .into_iter()
             .tuple_windows()

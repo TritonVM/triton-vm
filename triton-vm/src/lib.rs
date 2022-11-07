@@ -6,6 +6,7 @@ pub mod fri_domain;
 pub mod instruction;
 pub mod op_stack;
 pub mod ord_n;
+pub mod proof;
 pub mod proof_item;
 pub mod proof_stream;
 pub mod shared_tests;

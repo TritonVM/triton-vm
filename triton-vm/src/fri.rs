@@ -23,16 +23,16 @@ use crate::fri_domain::FriDomain;
 use crate::proof_item::{FriResponse, ProofItem};
 use crate::proof_stream::ProofStream;
 
-impl Error for ValidationError {}
+impl Error for FriValidationError {}
 
-impl fmt::Display for ValidationError {
+impl fmt::Display for FriValidationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Deserialization error for LowDegreeProof: {:?}", self)
     }
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub enum ValidationError {
+pub enum FriValidationError {
     BadMerkleAuthenticationPath,
     BadSizedProof,
     NonPostiveRoundCount,
@@ -108,7 +108,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         if MerkleTree::<H>::verify_authentication_structure(root, indices, &path_digest_pairs) {
             Ok(values)
         } else {
-            Err(Box::new(ValidationError::BadMerkleAuthenticationPath))
+            Err(Box::new(FriValidationError::BadMerkleAuthenticationPath))
         }
     }
 
@@ -309,7 +309,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         let first_root: Digest = proof_stream.dequeue()?.as_merkle_root()?;
         if first_root != *first_codeword_mt_root {
-            return Err(Box::new(ValidationError::BadMerkleRootForFirstCodeword));
+            return Err(Box::new(FriValidationError::BadMerkleRootForFirstCodeword));
         }
 
         roots.push(first_root);
@@ -334,7 +334,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         let last_codeword_mt = MerkleTree::<H>::from_digests(&codeword_digests);
         let last_root = roots.last().unwrap();
         if *last_root != last_codeword_mt.get_root() {
-            return Err(Box::new(ValidationError::BadMerkleRootForLastCodeword));
+            return Err(Box::new(FriValidationError::BadMerkleRootForLastCodeword));
         }
 
         // Verify that last codeword is of sufficiently low degree
@@ -365,7 +365,7 @@ impl<H: AlgebraicHasher> Fri<H> {
                 "last_poly_degree is {}, degree_of_last_round is {}",
                 last_poly_degree, degree_of_last_round
             );
-            return Err(Box::new(ValidationError::LastIterationTooHighDegree));
+            return Err(Box::new(FriValidationError::LastIterationTooHighDegree));
         }
         timer.elapsed("Verified last round");
 
@@ -445,7 +445,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // enclosing scope) with last codeword from the proofstream.
         a_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
         if (0..self.colinearity_checks_count).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
-            return Err(Box::new(ValidationError::MismatchingLastCodeword));
+            return Err(Box::new(FriValidationError::MismatchingLastCodeword));
         }
 
         timer.elapsed("LastCodeword comparison");

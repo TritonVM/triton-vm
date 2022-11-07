@@ -152,6 +152,20 @@ impl Program {
         (aet, None)
     }
 
+    /// Wrapper around `.simulate_with_input()` and thus also around
+    /// `.simulate()` for convenience when neither explicit nor non-
+    /// deterministic input is provided. Behavior is the same as that
+    /// of `.simulate_with_input()`
+    pub fn simulate_no_input(
+        &self,
+    ) -> (
+        AlgebraicExecutionTrace,
+        Option<Box<dyn Error>>,
+        Vec<BFieldElement>,
+    ) {
+        self.simulate_with_input(&[], &[])
+    }
+
     /// Wrapper around `.simulate()` for easier i/o handling. Behaviour is that of `.simulate()`,
     /// except the executed program's output is returned instead of modified in-place. Consequently,
     /// takes as arguments only `input` and `secret_input`.
@@ -361,7 +375,7 @@ pub mod triton_vm_tests {
         let mut stdout = VecStream::new(&[]);
 
         let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
-        let base_matrices = BaseMatrices::new(aet, &program);
+        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
 
         println!("{:?}", err);
         for row in base_matrices.processor_matrix.clone() {
@@ -433,7 +447,7 @@ pub mod triton_vm_tests {
         let mut stdout = VecStream::new(&[]);
 
         let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
-        let base_matrices = BaseMatrices::new(aet, &program);
+        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
 
         let jmp_rows_count = base_matrices.jump_stack_matrix.len();
         let prc_rows_count = base_matrices.processor_matrix.len();
