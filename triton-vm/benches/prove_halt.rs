@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use triton_profiler::triton_profiler::{Report, TritonProfiler};
 use triton_vm::{
     proof::Claim,
@@ -8,13 +8,9 @@ use triton_vm::{
 };
 
 /// cargo criterion --bench prove_halt
-fn prove_halt(criterion: &mut Criterion) {
+fn prove_halt(_criterion: &mut Criterion) {
     let mut maybe_profiler = Some(TritonProfiler::new("Prove Halt"));
     let mut report: Report = Report::placeholder();
-
-    let mut group = criterion.benchmark_group("prove_halt");
-    group.sample_size(10); // runs
-    let halt = BenchmarkId::new("ProveHalt", 0);
 
     // stark object
     let program = match Program::from_code("halt") {
@@ -36,29 +32,18 @@ fn prove_halt(criterion: &mut Criterion) {
         panic!("The VM encountered the following problem: {}", error);
     }
 
-    let mut first_iteration = true;
-    group.bench_function(halt, |bencher| {
-        bencher.iter(|| {
-            let proof = stark.prove(aet.clone(), &mut maybe_profiler);
+    let proof = stark.prove(aet, &mut maybe_profiler);
 
-            if let Some(profiler) = maybe_profiler.as_mut() {
-                profiler.finish();
-                report = profiler.report();
-            }
-            maybe_profiler = None;
+    if let Some(profiler) = &mut maybe_profiler {
+        profiler.finish();
+        report = profiler.report();
+    };
 
-            // save proof
-            if first_iteration {
-                first_iteration = false;
-                let filename = "halt.tsp";
-                if let Err(e) = save_proof(filename, proof) {
-                    println!("Error saving proof: {:?}", e);
-                }
-            }
-        });
-    });
-
-    group.finish();
+    // save proof
+    let filename = "halt.tsp";
+    if let Err(e) = save_proof(filename, proof) {
+        println!("Error saving proof: {:?}", e);
+    }
 
     println!("{}", report);
 }
