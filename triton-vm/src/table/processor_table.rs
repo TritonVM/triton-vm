@@ -901,6 +901,11 @@ impl ExtProcessorTable {
             rer_updates_correctly,
         ]);
 
+        // normalize polynomials to speed up evaluation
+        for polynomial in transition_constraints.iter_mut() {
+            polynomial.normalize();
+        }
+
         transition_constraints
     }
 
