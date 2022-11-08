@@ -14,6 +14,15 @@ struct Task {
     parent_index: Option<usize>,
     depth: usize,
     time: Duration,
+    task_type: TaskType,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+
+enum TaskType {
+    Generic,
+    IterationZero,
+    AnyOtherIteration,
 }
 
 pub struct TritonProfiler {
@@ -38,7 +47,7 @@ impl TritonProfiler {
 
     fn ignoring(&self) -> bool {
         if let Some(top) = self.stack.last() {
-            if top.1 == *"all other iterations" {
+            if self.profile[top.0].task_type == TaskType::AnyOtherIteration {
                 return true;
             }
         }
@@ -73,7 +82,7 @@ impl TritonProfiler {
             - self
                 .profile
                 .iter()
-                .filter(|t| t.name == *"all other iterations")
+                .filter(|t| t.task_type == TaskType::AnyOtherIteration)
                 .map(|t| t.time.as_nanos())
                 .sum::<u128>()) as f64
             / 1_000_000_000f64;
@@ -88,7 +97,7 @@ impl TritonProfiler {
                 .parent_index
                 .map(|_| task.time.as_secs_f64() / self.total_time.as_secs_f64());
 
-            let weight = if task.name == *"all other iterations" {
+            let weight = if task.task_type == TaskType::AnyOtherIteration {
                 Weight::Light
             } else {
                 Weight::weigh(task.time.as_secs_f64() / total_tracked_time)
@@ -144,11 +153,11 @@ impl TritonProfiler {
 
     pub fn start(&mut self, name: &str) {
         if !self.ignoring() {
-            self.plain_start(name);
+            self.plain_start(name, TaskType::Generic);
         }
     }
 
-    fn plain_start(&mut self, name: &str) {
+    fn plain_start(&mut self, name: &str, task_type: TaskType) {
         let parent_index = self.stack.last().map(|(u, _)| *u);
         let now = self.timer.elapsed();
 
@@ -159,6 +168,7 @@ impl TritonProfiler {
             parent_index,
             depth: self.stack.len(),
             time: now,
+            task_type,
         });
     }
 
@@ -172,11 +182,12 @@ impl TritonProfiler {
             "Profiler stack is empty; can't iterate."
         );
 
-        let top = self.stack[self.stack.len() - 1].1.clone();
+        let top_index = self.stack[self.stack.len() - 1].0;
+        let top_type = self.profile[top_index].task_type.clone();
 
-        if top != *"iteration 0" && top != *"all other iterations" {
+        if top_type != TaskType::IterationZero && top_type != TaskType::AnyOtherIteration {
             // start
-            self.plain_start("iteration 0");
+            self.plain_start("iteration 0", TaskType::IterationZero);
             return;
         }
 
@@ -193,13 +204,13 @@ impl TritonProfiler {
             "To profile zeroth iteration, name must match with top of stack."
         );
 
-        if top == *"iteration 0" {
+        if top_type == TaskType::IterationZero {
             // switch
             // stop iteration zero
             self.plain_stop();
 
             // start all other iterations
-            self.plain_start("all other iterations");
+            self.plain_start("all other iterations", TaskType::AnyOtherIteration);
         }
 
         // top == *"all other iterations"
