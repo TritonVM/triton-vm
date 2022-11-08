@@ -14,6 +14,7 @@ struct Task {
     parent_index: Option<usize>,
     depth: usize,
     time: Duration,
+    ignored: bool,
 }
 
 pub struct TritonProfiler {
@@ -34,6 +35,15 @@ impl TritonProfiler {
             profile: vec![],
             total_time: Duration::ZERO,
         }
+    }
+
+    fn ignoring(&self) -> bool {
+        if let Some(top) = self.stack.last() {
+            if top.1 == *"all other iterations" {
+                return true;
+            }
+        }
+        false
     }
 
     fn has_younger_sibling(&self, index: usize) -> bool {
@@ -61,11 +71,16 @@ impl TritonProfiler {
 
         let mut report: Vec<TaskReport> = vec![];
         for (task_index, task) in self.profile.iter().enumerate() {
-            let relative_time = task
-                .parent_index
-                .map(|_| task.time.as_secs_f64() / self.total_time.as_secs_f64());
+            // compute this task's time relative to total duration
+            let relative_time = if task.ignored {
+                None
+            } else {
+                task.parent_index
+                    .map(|_| task.time.as_secs_f64() / self.total_time.as_secs_f64())
+            };
             let is_last_sibling = !self.has_younger_sibling(task_index);
 
+            // compute this task's ancestors
             let mut ancestors: Vec<usize> = vec![];
             let mut current_ancestor_index = task.parent_index;
             while let Some(cai) = current_ancestor_index {
@@ -97,8 +112,11 @@ impl TritonProfiler {
                 }
             }
             let mut younger_max_weight: Weight = Weight::Light;
-            for sibling in younger_siblings {
-                younger_max_weight = Weight::max(&younger_max_weight, &report[sibling].weight);
+            for sibling in younger_siblings
+                .iter()
+                .filter(|ys| !self.profile[**ys].ignored)
+            {
+                younger_max_weight = Weight::max(&younger_max_weight, &report[*sibling].weight);
             }
 
             report[task_index].younger_max_weight = younger_max_weight;
@@ -112,6 +130,12 @@ impl TritonProfiler {
     }
 
     pub fn start(&mut self, name: &str) {
+        if !self.ignoring() {
+            self.plain_start(name);
+        }
+    }
+
+    fn plain_start(&mut self, name: &str) {
         let parent_index = self.stack.last().map(|(u, _)| *u);
         let now = self.timer.elapsed();
 
@@ -122,24 +146,87 @@ impl TritonProfiler {
             parent_index,
             depth: self.stack.len(),
             time: now,
+            ignored: false,
         });
+    }
+
+    pub fn iteration_zero(&mut self, name: &str) {
+        if self.ignoring() {
+            return;
+        }
+
+        assert!(
+            !self.stack.is_empty(),
+            "Profiler stack is empty; can't iterate."
+        );
+
+        let top = self.stack[self.stack.len() - 1].1.clone();
+
+        if top != *"iteration 0" && top != *"all other iterations" {
+            // start
+            self.plain_start("iteration 0");
+            return;
+        }
+
+        assert!(
+            self.stack.len() >= 2,
+            "To profile zeroth iteration, stack must be at least 2-high, but got height of {}",
+            self.stack.len()
+        );
+
+        let runner_up = self.stack[self.stack.len() - 2].1.clone();
+
+        assert_eq!(
+            runner_up, name,
+            "To profile zeroth iteration, name must match with top of stack."
+        );
+
+        if top == *"iteration 0" {
+            // switch
+            // stop iteration zero
+            self.plain_stop();
+
+            // start all other iterations
+            self.plain_start("all other iterations");
+        }
+
+        // top == *"all other iterations"
+        // in this case we do nothing
+    }
+
+    fn plain_stop(&mut self) {
+        let index = self.stack.pop().unwrap().0;
+        let now = self.timer.elapsed();
+        let duration = now - self.profile[index].time;
+        self.profile[index].time = duration;
     }
 
     pub fn stop(&mut self, name: &str) {
         assert!(
             !self.stack.is_empty(),
-            "Profiler stack is empty; can't pop."
-        );
-        assert_eq!(
-            name.to_owned(),
-            self.stack.last().unwrap().1,
-            "Profiler stack is LIFO; can't pop in disorder."
+            "Cannot stop any tasks when stack is empty.",
         );
 
-        let index = self.stack.pop().unwrap().0;
-        let now = self.timer.elapsed();
-        let duration = now - self.profile[index].time;
-        self.profile[index].time = duration;
+        let top = self.stack.last().unwrap().1.clone();
+        if top == *"iteration 0" || top == *"all other iterations" {
+            assert!(
+                self.stack.len() >= 2,
+                "To close profiling of zeroth iteration, stack must be at least 2-high, but got stack of height {}.",
+                self.stack.len(),
+            );
+            if self.stack[self.stack.len() - 2].1 == *name {
+                self.plain_stop();
+                self.plain_stop();
+            }
+        } else {
+            assert_eq!(
+                top,
+                name.to_owned(),
+                "Profiler stack is LIFO; can't pop in disorder."
+            );
+
+            self.plain_stop();
+        }
     }
 
     pub fn finish(&mut self) {
@@ -359,6 +446,15 @@ macro_rules! prof_stop {
     ($p: ident, $s : expr) => {
         if let Some(profiler) = $p.as_mut() {
             profiler.stop($s);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! prof_itr0 {
+    ($p : ident, $s : expr ) => {
+        if let Some(profiler) = $p.as_mut() {
+            profiler.iteration_zero($s);
         }
     };
 }
