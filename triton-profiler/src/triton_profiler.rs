@@ -1,4 +1,5 @@
 use std::{
+    cmp::max,
     fmt::Display,
     time::{Duration, Instant},
     vec,
@@ -138,7 +139,7 @@ impl TritonProfiler {
             }
             let mut younger_max_weight: Weight = Weight::Light;
             for sibling in younger_siblings.iter() {
-                younger_max_weight = Weight::max(&younger_max_weight, &report[*sibling].weight);
+                younger_max_weight = max(younger_max_weight, report[*sibling].weight);
             }
 
             report[task_index].younger_max_weight = younger_max_weight;
@@ -280,7 +281,7 @@ impl Profiler for TritonProfiler {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Weight {
     Light,
     Noticeable,
@@ -314,35 +315,6 @@ impl Weight {
                 b: 0,
             },
             Weight::Massive => Color::Red,
-        }
-    }
-
-    fn max(&self, other: &Self) -> Self {
-        match self {
-            Weight::Light => match other {
-                Weight::Light => Weight::Light,
-                Weight::Noticeable => Weight::Noticeable,
-                Weight::Heavy => Weight::Heavy,
-                Weight::Massive => Weight::Massive,
-            },
-            Weight::Noticeable => match other {
-                Weight::Light => Weight::Noticeable,
-                Weight::Noticeable => Weight::Noticeable,
-                Weight::Heavy => Weight::Heavy,
-                Weight::Massive => Weight::Massive,
-            },
-            Weight::Heavy => match other {
-                Weight::Light => Weight::Heavy,
-                Weight::Noticeable => Weight::Heavy,
-                Weight::Heavy => Weight::Heavy,
-                Weight::Massive => Weight::Massive,
-            },
-            Weight::Massive => match other {
-                Weight::Light => Weight::Massive,
-                Weight::Noticeable => Weight::Massive,
-                Weight::Heavy => Weight::Massive,
-                Weight::Massive => Weight::Massive,
-            },
         }
     }
 }
@@ -414,7 +386,7 @@ impl Display for Report {
                 "├".normal()
             }
             .color(
-                Weight::max(&task.weight, &task.younger_max_weight)
+                max(&task.weight, &task.younger_max_weight)
                     .to_owned()
                     .color(),
             );
