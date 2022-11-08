@@ -14,7 +14,6 @@ struct Task {
     parent_index: Option<usize>,
     depth: usize,
     time: Duration,
-    ignored: bool,
 }
 
 pub struct TritonProfiler {
@@ -70,14 +69,31 @@ impl TritonProfiler {
         );
 
         let mut report: Vec<TaskReport> = vec![];
+        let total_tracked_time = (self.total_time.as_nanos()
+            - self
+                .profile
+                .iter()
+                .filter(|t| t.name == *"all other iterations")
+                .map(|t| t.time.as_nanos())
+                .sum::<u128>()) as f64
+            / 1_000_000_000f64;
+        println!(
+            "total time: {}s and tracked: {}s",
+            self.total_time.as_secs_f64(),
+            total_tracked_time,
+        );
         for (task_index, task) in self.profile.iter().enumerate() {
             // compute this task's time relative to total duration
-            let relative_time = if task.ignored {
-                None
+            let relative_time = task
+                .parent_index
+                .map(|_| task.time.as_secs_f64() / self.total_time.as_secs_f64());
+
+            let weight = if task.name == *"all other iterations" {
+                Weight::Light
             } else {
-                task.parent_index
-                    .map(|_| task.time.as_secs_f64() / self.total_time.as_secs_f64())
+                Weight::weigh(task.time.as_secs_f64() / total_tracked_time)
             };
+
             let is_last_sibling = !self.has_younger_sibling(task_index);
 
             // compute this task's ancestors
@@ -97,7 +113,7 @@ impl TritonProfiler {
                 relative_time,
                 is_last_sibling,
                 ancestors,
-                weight: relative_time.map_or(Weight::Light, Weight::weigh),
+                weight,
                 younger_max_weight: Weight::Light,
             });
         }
@@ -112,10 +128,7 @@ impl TritonProfiler {
                 }
             }
             let mut younger_max_weight: Weight = Weight::Light;
-            for sibling in younger_siblings
-                .iter()
-                .filter(|ys| !self.profile[**ys].ignored)
-            {
+            for sibling in younger_siblings.iter() {
                 younger_max_weight = Weight::max(&younger_max_weight, &report[*sibling].weight);
             }
 
@@ -146,7 +159,6 @@ impl TritonProfiler {
             parent_index,
             depth: self.stack.len(),
             time: now,
-            ignored: false,
         });
     }
 
