@@ -136,10 +136,6 @@ where
         for item in self.items.iter() {
             transcript.append(&mut item.encode());
         }
-        println!(
-            "computing fiat shamir for prover on transcript of length {}",
-            transcript.len()
-        );
         H::hash_slice(&transcript)
     }
 
@@ -148,10 +144,6 @@ where
         for item in self.items[0..self.items_index].iter() {
             transcript.append(&mut item.uncast());
         }
-        println!(
-            "computing fiat shamir for verifier on transcript of length {}",
-            transcript.len()
-        );
         H::hash_slice(&transcript)
     }
 }

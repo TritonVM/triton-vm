@@ -6,6 +6,8 @@ use rayon::iter::{
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
+use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_start, prof_stop};
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::ntt::intt;
@@ -298,10 +300,11 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         proof_stream: &mut ProofStream<ProofItem, H>,
         first_codeword_mt_root: &Digest,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<(), Box<dyn Error>> {
+        prof_start!(maybe_profiler, "init");
         let (num_rounds, degree_of_last_round) = self.num_rounds();
         let num_rounds = num_rounds as usize;
-        let mut timer = TimingReporter::start();
 
         // Extract all roots and calculate alpha, the challenges
         let mut roots: Vec<Digest> = vec![];
@@ -313,8 +316,9 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
 
         roots.push(first_root);
-        timer.elapsed("Init");
+        prof_stop!(maybe_profiler, "init");
 
+        prof_start!(maybe_profiler, "roots and alpha");
         for _round in 0..num_rounds {
             // Get a challenge from the proof stream
             let challenge = proof_stream.verifier_fiat_shamir();
@@ -324,8 +328,9 @@ impl<H: AlgebraicHasher> Fri<H> {
             let root: Digest = proof_stream.dequeue()?.as_merkle_root()?;
             roots.push(root);
         }
-        timer.elapsed("Roots and alpha");
+        prof_stop!(maybe_profiler, "roots and alpha");
 
+        prof_start!(maybe_profiler, "last codeword matches root");
         // Extract last codeword
         let last_codeword: Vec<XFieldElement> = proof_stream.dequeue()?.as_fri_codeword()?;
 
@@ -336,19 +341,16 @@ impl<H: AlgebraicHasher> Fri<H> {
         if *last_root != last_codeword_mt.get_root() {
             return Err(Box::new(FriValidationError::BadMerkleRootForLastCodeword));
         }
+        prof_stop!(maybe_profiler, "last codeword matches root");
 
         // Verify that last codeword is of sufficiently low degree
 
+        prof_start!(maybe_profiler, "last codeword has low degree");
         // Compute interpolant to get the degree of the last codeword
         // Note that we don't have to scale the polynomial back to the
         // trace subgroup since we only check its degree and don't use
         // it further.
         let log_2_of_n = log_2_floor(last_codeword.len() as u128) as u32;
-        println!(
-            "last_codeword.len() = {}, log_2_floor(last_codeword.len()) = {}",
-            last_codeword.len(),
-            log_2_of_n
-        );
         let mut last_polynomial = last_codeword.clone();
 
         // XXX
@@ -367,13 +369,17 @@ impl<H: AlgebraicHasher> Fri<H> {
             );
             return Err(Box::new(FriValidationError::LastIterationTooHighDegree));
         }
-        timer.elapsed("Verified last round");
+        prof_stop!(maybe_profiler, "last codeword has low degree");
 
         // Query phase
+        prof_start!(maybe_profiler, "query phase");
         // query step 0: get "A" indices and verify set membership of corresponding values.
+        prof_start!(maybe_profiler, "sample indices");
         let mut a_indices: Vec<usize> = self.sample_indices(&proof_stream.verifier_fiat_shamir());
-        timer.elapsed("Sample indices");
+        prof_stop!(maybe_profiler, "sample indices");
+        prof_start!(maybe_profiler, "dequeue and authenticate");
         let mut a_values = Self::dequeue_and_authenticate(&a_indices, roots[0], proof_stream)?;
+        prof_stop!(maybe_profiler, "dequeue and authenticate");
 
         // set up "B" for offsetting inside loop.  Note that "B" and "A" indices
         // can be calcuated from each other.
@@ -381,18 +387,14 @@ impl<H: AlgebraicHasher> Fri<H> {
         let mut current_domain_len = self.domain.length;
 
         // query step 1:  loop over FRI rounds, verify "B"s, compute values for "C"s
-        timer.elapsed("Starting query phase step 1 (loop)");
+        prof_start!(maybe_profiler, "loop");
         for r in 0..num_rounds {
-            timer.elapsed(&format!("Round {} started.", r));
-
             // get "B" indices and verify set membership of corresponding values
             b_indices = b_indices
                 .iter()
                 .map(|x| (x + current_domain_len / 2) % current_domain_len)
                 .collect();
-            timer.elapsed(&format!("Get b-indices for current round ({})", r));
             let b_values = Self::dequeue_and_authenticate(&b_indices, roots[r], proof_stream)?;
-            timer.elapsed(&format!("Read & verify b-auth paths round {}", r));
             debug_assert_eq!(
                 self.colinearity_checks_count,
                 a_indices.len(),
@@ -417,10 +419,6 @@ impl<H: AlgebraicHasher> Fri<H> {
             // compute "C" indices and values for next round from "A" and "B`"" of current round
             current_domain_len /= 2;
             let c_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
-            timer.elapsed(&format!(
-                "Got c-indices for current round equal to a-indices for next round ({})",
-                r + 1
-            ));
             let c_values = (0..self.colinearity_checks_count)
                 .into_par_iter()
                 .map(|i| {
@@ -431,25 +429,22 @@ impl<H: AlgebraicHasher> Fri<H> {
                     )
                 })
                 .collect();
-            timer.elapsed(&format!("Computed colinear c-values for current round equal to a-values for next round ({})", r + 1));
 
             // Notice that next rounds "A"s correspond to current rounds "C":
             a_indices = c_indices;
             a_values = c_values;
-
-            timer.elapsed(&format!("Round {} finished.", r));
         }
-        timer.elapsed("Stopping query phase step 1 (loop)");
+        prof_stop!(maybe_profiler, "loop");
+        prof_stop!(maybe_profiler, "query phase");
 
         // Finally compare "C" values (which are named "A" values in this
         // enclosing scope) with last codeword from the proofstream.
+        prof_start!(maybe_profiler, "compare last codeword");
         a_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
         if (0..self.colinearity_checks_count).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
             return Err(Box::new(FriValidationError::MismatchingLastCodeword));
         }
-
-        timer.elapsed("LastCodeword comparison");
-        println!("FRI-verifier Timing Report\n{}", timer.finish());
+        prof_stop!(maybe_profiler, "compare last codeword");
         Ok(())
     }
 
@@ -589,7 +584,7 @@ mod triton_xfri_tests {
         let subgroup = fri.domain.omega.lift().get_cyclic_group_elements(None);
 
         let (_, merkle_root_of_round_0) = fri.prove(&subgroup, &mut proof_stream).unwrap();
-        let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0);
+        let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         if let Err(e) = verdict {
             panic!("Found error: {}", e);
         }
@@ -613,7 +608,7 @@ mod triton_xfri_tests {
         let codeword = fri.domain.evaluate(&poly);
 
         let (_, merkle_root_of_round_0) = fri.prove(&codeword, &mut proof_stream).unwrap();
-        let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0);
+        let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         if let Err(e) = verdict {
             panic!("Found error: {}", e);
         }
@@ -638,7 +633,7 @@ mod triton_xfri_tests {
             let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
             let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
 
-            let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0);
+            let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
             if verify_result.is_err() {
                 println!(
                     "There are {} points, |<128>^{}| = {}, and verify_result = {:?}",
@@ -654,7 +649,7 @@ mod triton_xfri_tests {
             // Manipulate Merkle root of 0 and verify failure with expected error message
             proof_stream.reset_for_verifier();
             let bad_root_digest = corrupt_digest(&merkle_root_of_round_0);
-            let bad_verify_result = fri.verify(&mut proof_stream, &bad_root_digest);
+            let bad_verify_result = fri.verify(&mut proof_stream, &bad_root_digest, &mut None);
             assert!(bad_verify_result.is_err());
             println!("bad_verify_result = {:?}", bad_verify_result);
 
@@ -667,7 +662,7 @@ mod triton_xfri_tests {
         points = subgroup.iter().map(|p| p.mod_pow_u32(too_high)).collect();
         let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
         let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
-        let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0);
+        let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         assert!(verify_result.is_err());
     }
 
@@ -733,7 +728,11 @@ mod triton_xfri_tests {
             }
         }
 
-        let verdict = fri.verify(&mut verifier_proof_stream, &merkle_root_of_round_0);
+        let verdict = fri.verify(
+            &mut verifier_proof_stream,
+            &merkle_root_of_round_0,
+            &mut None,
+        );
         if let Err(e) = verdict {
             panic!("Found error: {}", e);
         }

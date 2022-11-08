@@ -753,7 +753,8 @@ impl Stark {
 
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
-        self.fri.verify(&mut proof_stream, &combination_root)?;
+        self.fri
+            .verify(&mut proof_stream, &combination_root, maybe_profiler)?;
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "check leafs");
@@ -865,10 +866,16 @@ impl Stark {
         let final_offset = ext_offset + num_extension_polynomials;
         let omicron: XFieldElement = derive_omicron(padded_height as u64);
         let omicron_inverse = omicron.inverse();
-        for (combination_check_index, revealed_combination_leaf) in combination_check_indices
-            .into_iter()
-            .zip_eq(revealed_combination_leafs)
+        prof_start!(maybe_profiler, "iteration 0");
+        for (outer_iteration, (combination_check_index, revealed_combination_leaf)) in
+            combination_check_indices
+                .into_iter()
+                .zip_eq(revealed_combination_leafs)
+                .enumerate()
         {
+            if outer_iteration == 0 {
+                prof_start!(maybe_profiler, "populate");
+            }
             let current_fri_domain_value =
                 self.fri.domain.domain_value(combination_check_index as u32);
             let cross_slice = &index_map_of_revealed_elems[&combination_check_index];
@@ -889,6 +896,10 @@ impl Stark {
                     summands.push(curr_codeword_elem);
                     summands.push(curr_codeword_elem_shifted);
                 }
+            }
+            if outer_iteration == 0 {
+                prof_stop!(maybe_profiler, "populate");
+                prof_start!(maybe_profiler, "unmush");
             }
 
             // unmush cross-codeword slice: pick (base, ext) columns per table
@@ -923,13 +934,24 @@ impl Stark {
             }
             assert_eq!(ext_offset, curr_base_idx);
             assert_eq!(final_offset, curr_ext_idx);
+            if outer_iteration == 0 {
+                prof_stop!(maybe_profiler, "unmush");
+                prof_start!(maybe_profiler, "inner loop");
+            }
 
             // use AIR (actually RAP) to get relevant parts of quotient codewords
-            for ((table_row, next_table_row), table) in cross_slice_by_table
+            for (inner_iteration, ((table_row, next_table_row), table)) in cross_slice_by_table
                 .iter()
                 .zip_eq(next_cross_slice_by_table.iter())
                 .zip_eq(ext_table_collection.into_iter())
+                .enumerate()
             {
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_start!(maybe_profiler, "iteration 0");
+                    prof_start!(maybe_profiler, "degree bounds");
+                } else if inner_iteration == 1 && outer_iteration == 0 {
+                    prof_start!(maybe_profiler, "all other iterations");
+                }
                 let initial_quotient_degree_bounds = table.get_initial_quotient_degree_bounds(
                     padded_height,
                     self.parameters.num_trace_randomizers,
@@ -948,7 +970,13 @@ impl Stark {
                     padded_height,
                     self.parameters.num_trace_randomizers,
                 );
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_stop!(maybe_profiler, "degree bounds");
+                }
 
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_start!(maybe_profiler, "initial constraint quotient points");
+                }
                 for (evaluated_bc, degree_bound) in table
                     .evaluate_initial_constraints(table_row, &extension_challenges)
                     .into_iter()
@@ -961,7 +989,13 @@ impl Stark {
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_stop!(maybe_profiler, "initial constraint quotient points");
+                }
 
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_start!(maybe_profiler, "consistency constraint quotient points");
+                }
                 for (evaluated_cc, degree_bound) in table
                     .evaluate_consistency_constraints(table_row, &extension_challenges)
                     .into_iter()
@@ -975,7 +1009,13 @@ impl Stark {
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_stop!(maybe_profiler, "consistency constraint quotient points");
+                }
 
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_start!(maybe_profiler, "transition constraint quotient points");
+                }
                 let tc_evaluation_point = [table_row.clone(), next_table_row.clone()].concat();
                 for (evaluated_tc, degree_bound) in table
                     .evaluate_transition_constraints(&tc_evaluation_point, &extension_challenges)
@@ -994,7 +1034,13 @@ impl Stark {
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_stop!(maybe_profiler, "transition constraint quotient points");
+                }
 
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_start!(maybe_profiler, "terminal constraint quotient points");
+                }
                 for (evaluated_termc, degree_bound) in table
                     .evaluate_terminal_constraints(table_row, &extension_challenges)
                     .into_iter()
@@ -1007,6 +1053,17 @@ impl Stark {
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
+
+                if inner_iteration == 0 && outer_iteration == 0 {
+                    prof_stop!(maybe_profiler, "terminal constraint quotient points");
+                    prof_stop!(maybe_profiler, "iteration 0");
+                }
+            }
+
+            if outer_iteration == 0 {
+                prof_stop!(maybe_profiler, "all other iterations");
+                prof_stop!(maybe_profiler, "inner loop");
+                prof_start!(maybe_profiler, "grand cross-table argument");
             }
 
             let grand_cross_table_arg_degree_bound = grand_cross_table_arg.quotient_degree_bound(
@@ -1022,6 +1079,10 @@ impl Stark {
                 grand_cross_table_arg_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
             summands.push(grand_cross_table_arg_quotient);
             summands.push(grand_cross_table_arg_quotient_shifted);
+            if outer_iteration == 0 {
+                prof_stop!(maybe_profiler, "grand cross-table argument");
+                prof_start!(maybe_profiler, "compute inner product");
+            }
 
             let inner_product = non_lin_combi_weights
                 .par_iter()
@@ -1032,7 +1093,16 @@ impl Stark {
             if revealed_combination_leaf != inner_product {
                 return Err(Box::new(StarkValidationError::CombinationLeafInequality));
             }
+            if outer_iteration == 0 {
+                prof_stop!(maybe_profiler, "compute inner product");
+            }
+
+            if outer_iteration == 0 {
+                prof_stop!(maybe_profiler, "iteration 0");
+                prof_start!(maybe_profiler, "all other iterations");
+            }
         }
+        prof_stop!(maybe_profiler, "all other iterations");
         prof_stop!(maybe_profiler, "main loop");
         prof_stop!(maybe_profiler, "nonlinear combination");
         Ok(true)
