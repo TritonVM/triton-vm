@@ -672,11 +672,14 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue");
 
         prof_start!(maybe_profiler, "degree bounds");
+        prof_start!(maybe_profiler, "generate tables");
         let ext_table_collection = ExtTableCollection::for_verifier(
             self.parameters.num_trace_randomizers,
             padded_height,
             &extension_challenges,
+            maybe_profiler,
         );
+        prof_stop!(maybe_profiler, "generate tables");
 
         prof_start!(maybe_profiler, "base");
         let base_degree_bounds =

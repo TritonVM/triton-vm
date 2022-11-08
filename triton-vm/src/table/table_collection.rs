@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
@@ -254,21 +255,36 @@ impl ExtTableCollection {
         num_trace_randomizers: usize,
         padded_height: usize,
         challenges: &AllChallenges,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
+        prof_start!(maybe_profiler, "program table");
         let ext_program_table =
             ProgramTable::for_verifier(interpolant_degree, padded_height, challenges);
+        prof_stop!(maybe_profiler, "program table");
+        prof_start!(maybe_profiler, "instruction table");
         let ext_instruction_table =
             InstructionTable::for_verifier(interpolant_degree, padded_height, challenges);
+        prof_stop!(maybe_profiler, "instruction table");
+        prof_start!(maybe_profiler, "processor table");
         let ext_processor_table =
             ProcessorTable::for_verifier(interpolant_degree, padded_height, challenges);
+        prof_stop!(maybe_profiler, "processor table");
+        prof_start!(maybe_profiler, "op stack table");
         let ext_op_stack_table =
             OpStackTable::for_verifier(interpolant_degree, padded_height, challenges);
+        prof_stop!(maybe_profiler, "op stack table");
+        prof_start!(maybe_profiler, "ram table");
         let ext_ram_table = RamTable::for_verifier(interpolant_degree, padded_height, challenges);
+        prof_stop!(maybe_profiler, "ram table");
+        prof_start!(maybe_profiler, "jump stack table");
         let ext_jump_stack_table =
             JumpStackTable::for_verifier(interpolant_degree, padded_height, challenges);
+        prof_stop!(maybe_profiler, "jump stack table");
+        prof_start!(maybe_profiler, "hash table");
         let ext_hash_table = HashTable::for_verifier(interpolant_degree, padded_height, challenges);
+        prof_stop!(maybe_profiler, "hash table");
 
         ExtTableCollection {
             padded_height,
