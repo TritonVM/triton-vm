@@ -18,7 +18,6 @@ fn verify_halt(criterion: &mut Criterion) {
     let halt = BenchmarkId::new("VerifyHalt", 0);
 
     // stark object
-    let parameters = StarkParameters::default();
     let program = match Program::from_code("halt") {
         Err(e) => panic!("Cannot compile source code into program: {}", e),
         Ok(p) => p,
@@ -29,6 +28,7 @@ fn verify_halt(criterion: &mut Criterion) {
         output: vec![],
         padded_height: 0,
     };
+    let parameters = StarkParameters::default();
     let stark = Stark::new(claim, parameters);
 
     let filename = "halt.tsp";
