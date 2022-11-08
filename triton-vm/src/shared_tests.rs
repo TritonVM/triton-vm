@@ -1,4 +1,9 @@
-use std::error::Error;
+use std::{
+    error::Error,
+    fs::{create_dir_all, File},
+    io::{Read, Write},
+    path::Path,
+};
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
@@ -126,4 +131,59 @@ pub fn test_hash_nop_nop_lt() -> SourceCodeAndInput {
 
 pub fn test_halt() -> SourceCodeAndInput {
     SourceCodeAndInput::without_input("halt")
+}
+
+pub fn proofs_directory() -> String {
+    "proofs/".to_owned()
+}
+
+pub fn create_proofs_directory() -> Result<(), Box<dyn Error>> {
+    match create_dir_all(proofs_directory()) {
+        Ok(ay) => Ok(ay),
+        Err(e) => Err(Box::new(e)),
+    }
+}
+
+pub fn proofs_directory_exists() -> bool {
+    Path::new(&proofs_directory()).is_dir()
+}
+
+pub fn proof_file_exists(filename: &str) -> bool {
+    if !Path::new(&proofs_directory()).is_dir() {
+        return false;
+    }
+    let full_filename = format!("{}{}", proofs_directory(), filename);
+    if File::open(full_filename).is_err() {
+        return false;
+    }
+    true
+}
+
+pub fn load_proof(filename: &str) -> Result<Proof, Box<dyn Error>> {
+    let full_filename = format!("{}{}", proofs_directory(), filename);
+    let mut contents: Vec<u8> = vec![];
+    let mut file_handle = File::open(full_filename)?;
+    let i = file_handle.read_to_end(&mut contents)?;
+    println!("Read {} bytes of proof data from disk.", i);
+    let proof: Proof = bincode::deserialize(&contents).expect("Cannot deserialize proof.");
+
+    Ok(proof)
+}
+
+pub fn save_proof(filename: &str, proof: Proof) -> Result<(), Box<dyn Error>> {
+    if !proofs_directory_exists() {
+        create_proofs_directory()?;
+    }
+    let full_filename = format!("{}{}", proofs_directory(), filename);
+    let mut file_handle = match File::create(full_filename.clone()) {
+        Ok(fh) => fh,
+        Err(e) => panic!("Cannot write proof to disk at {}: {:?}", full_filename, e),
+    };
+    let binary = match bincode::serialize(&proof) {
+        Ok(b) => b,
+        Err(e) => panic!("Cannot serialize proof: {:?}", e),
+    };
+    let amount = file_handle.write(&binary)?;
+    println!("Wrote {} bytes of proof data to disk.", amount);
+    Ok(())
 }

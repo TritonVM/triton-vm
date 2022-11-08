@@ -1,13 +1,11 @@
-use std::{fs::File, io::Read};
-
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use parity_scale_codec::Output;
 use triton_profiler::{
     prof_start, prof_stop,
     triton_profiler::{Report, TritonProfiler},
 };
 use triton_vm::{
-    proof::{Claim, Proof},
+    proof::Claim,
+    shared_tests::{load_proof, proof_file_exists, save_proof},
     stark::{Stark, StarkParameters},
     vm::Program,
 };
@@ -16,6 +14,7 @@ use triton_vm::{
 fn verify_halt(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("verify_halt");
     group.sample_size(10); // runs
+
     let halt = BenchmarkId::new("VerifyHalt", 0);
 
     // stark object
@@ -32,34 +31,22 @@ fn verify_halt(criterion: &mut Criterion) {
     };
     let stark = Stark::new(claim, parameters);
 
-    // if the proof was stored last time, reuse it
-    let filename = "proofs/halt.tsp";
-    let proof = if let Ok(mut file_handle) = File::open(filename) {
-        let mut contents: Vec<u8> = vec![];
-        if let Err(e) = file_handle.read(&mut contents) {
-            panic!("Cannot read from file {}: {:?}", filename, e);
+    let filename = "halt.tsp";
+    let proof = if proof_file_exists(filename) {
+        match load_proof(filename) {
+            Ok(p) => p,
+            Err(e) => panic!("Could not load proof from disk: {:?}", e),
         }
-        let proof: Proof = bincode::deserialize(&contents).expect("Cannot deserialize proof.");
-
-        proof
-    }
-    // otherwise, create it and store it
-    else {
+    } else {
         let (aet, err, _) = program.simulate_no_input();
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
         let proof = stark.prove(aet, &mut None);
 
-        let mut file_handle = match File::create(filename) {
-            Ok(fh) => fh,
-            Err(e) => panic!("Cannot write proof to disk at {}: {:?}", filename, e),
-        };
-        let binary = match bincode::serialize(&proof) {
-            Ok(b) => b,
-            Err(e) => panic!("Cannot serialize proof: {:?}", e),
-        };
-        file_handle.write(&binary);
+        if let Err(e) = save_proof(filename, proof.clone()) {
+            panic!("Problem! could not save proof to disk: {:?}", e);
+        }
         proof
     };
 
