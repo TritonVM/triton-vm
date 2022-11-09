@@ -47,6 +47,7 @@ pub trait Evaluable: ExtensionTable {
     fn evaluate_initial_constraints(
         &self,
         evaluation_point: &[XFieldElement],
+        _challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
         if let Some(initial_constraints) = &self.inherited_table().initial_constraints {
             initial_constraints
@@ -62,6 +63,7 @@ pub trait Evaluable: ExtensionTable {
     fn evaluate_consistency_constraints(
         &self,
         evaluation_point: &[XFieldElement],
+        _challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
         if let Some(consistency_constraints) = &self.inherited_table().consistency_constraints {
             consistency_constraints
@@ -77,6 +79,7 @@ pub trait Evaluable: ExtensionTable {
     fn evaluate_transition_constraints(
         &self,
         evaluation_point: &[XFieldElement],
+        _challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
         if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
             transition_constraints
@@ -92,6 +95,7 @@ pub trait Evaluable: ExtensionTable {
     fn evaluate_terminal_constraints(
         &self,
         evaluation_point: &[XFieldElement],
+        _challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
         if let Some(terminal_constraints) = &self.inherited_table().terminal_constraints {
             terminal_constraints
@@ -184,6 +188,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        challenges: &AllChallenges,
     ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
             debug_assert_eq!(fri_domain.length, codeword.len());
@@ -204,7 +209,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                     .iter()
                     .map(|codeword| codeword[fri_dom_i])
                     .collect_vec();
-                let evaluated_bcs = self.evaluate_initial_constraints(&row);
+                let evaluated_bcs = self.evaluate_initial_constraints(&row, challenges);
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
             .collect();
@@ -218,6 +223,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        challenges: &AllChallenges,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
@@ -239,7 +245,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                     .iter()
                     .map(|codeword| codeword[fri_dom_i])
                     .collect_vec();
-                let evaluated_ccs = self.evaluate_consistency_constraints(&row);
+                let evaluated_ccs = self.evaluate_consistency_constraints(&row, challenges);
                 evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
             })
             .collect();
@@ -253,6 +259,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        challenges: &AllChallenges,
         omicron: XFieldElement,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
@@ -291,7 +298,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                     .map(|codeword| codeword[next_row_idx])
                     .collect_vec();
                 let evaluation_point = vec![current_row, next_row].concat();
-                let evaluated_tcs = self.evaluate_transition_constraints(&evaluation_point);
+                let evaluated_tcs =
+                    self.evaluate_transition_constraints(&evaluation_point, challenges);
                 evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
@@ -305,6 +313,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        challenges: &AllChallenges,
         omicron: XFieldElement,
     ) -> Vec<Vec<XFieldElement>> {
         for codeword in codewords.iter() {
@@ -328,7 +337,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                     .iter()
                     .map(|codeword| codeword[fri_dom_i])
                     .collect_vec();
-                let evaluated_termcs = self.evaluate_terminal_constraints(&row);
+                let evaluated_termcs = self.evaluate_terminal_constraints(&row, challenges);
                 evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
@@ -342,24 +351,26 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         &self,
         fri_domain: &FriDomain<XFieldElement>,
         codewords: &[Vec<XFieldElement>],
+        challenges: &AllChallenges,
         omicron: XFieldElement,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
         let mut timer = TimingReporter::start();
         timer.elapsed(&format!("Table name: {}", self.name()));
 
-        let initial_quotients = self.initial_quotients(fri_domain, codewords);
+        let initial_quotients = self.initial_quotients(fri_domain, codewords, challenges);
         timer.elapsed("initial quotients");
 
         let consistency_quotients =
-            self.consistency_quotients(fri_domain, codewords, padded_height);
+            self.consistency_quotients(fri_domain, codewords, challenges, padded_height);
         timer.elapsed("Done calculating consistency quotients");
 
         let transition_quotients =
-            self.transition_quotients(fri_domain, codewords, omicron, padded_height);
+            self.transition_quotients(fri_domain, codewords, challenges, omicron, padded_height);
         timer.elapsed("transition quotients");
 
-        let terminal_quotients = self.terminal_quotients(fri_domain, codewords, omicron);
+        let terminal_quotients =
+            self.terminal_quotients(fri_domain, codewords, challenges, omicron);
         timer.elapsed("terminal quotients");
 
         println!("{}", timer.finish());

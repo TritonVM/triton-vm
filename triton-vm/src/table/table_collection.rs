@@ -454,6 +454,7 @@ impl ExtTableCollection {
     pub fn get_all_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
+        challenges: &AllChallenges,
     ) -> Vec<Vec<XFieldElement>> {
         let mut timer = TimingReporter::start();
         let padded_height = self.padded_height;
@@ -468,6 +469,7 @@ impl ExtTableCollection {
                 let res = ext_codeword_table.all_quotients(
                     fri_domain,
                     ext_codeword_table.data(),
+                    challenges,
                     omicron,
                     padded_height,
                 );

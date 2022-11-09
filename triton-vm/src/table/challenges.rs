@@ -44,12 +44,12 @@ impl AllChallenges {
 
             op_stack_table_clk_weight: weights.pop().unwrap(),
             op_stack_table_ib1_weight: weights.pop().unwrap(),
-            op_stack_table_osv_weight: weights.pop().unwrap(),
             op_stack_table_osp_weight: weights.pop().unwrap(),
+            op_stack_table_osv_weight: weights.pop().unwrap(),
 
             ram_table_clk_weight: weights.pop().unwrap(),
-            ram_table_ramv_weight: weights.pop().unwrap(),
             ram_table_ramp_weight: weights.pop().unwrap(),
+            ram_table_ramv_weight: weights.pop().unwrap(),
 
             jump_stack_table_clk_weight: weights.pop().unwrap(),
             jump_stack_table_ci_weight: weights.pop().unwrap(),

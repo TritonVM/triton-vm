@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::ops::Add;
+use std::ops::Mul;
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
@@ -192,10 +192,10 @@ impl ProcessorTable {
                     extension_row[usize::from(ST9)],
                 ];
                 let compressed_row_for_hash_input = st_0_through_9
-                    .iter()
+                    .into_iter()
                     .zip_eq(challenges.hash_table_stack_input_weights.iter())
-                    .map(|(&st, &weight)| weight * st)
-                    .fold(XFieldElement::zero(), XFieldElement::add);
+                    .map(|(st, &weight)| weight * st)
+                    .sum();
                 to_hash_table_running_evaluation = to_hash_table_running_evaluation
                     * challenges.to_hash_table_eval_indeterminate
                     + compressed_row_for_hash_input;
@@ -204,19 +204,19 @@ impl ProcessorTable {
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
             if let Some(prow) = previous_row.clone() {
-                let st_5_through_9 = [
-                    extension_row[usize::from(ST5)],
-                    extension_row[usize::from(ST6)],
-                    extension_row[usize::from(ST7)],
-                    extension_row[usize::from(ST8)],
-                    extension_row[usize::from(ST9)],
-                ];
-                let compressed_row_for_hash_digest = st_5_through_9
-                    .iter()
-                    .zip_eq(challenges.hash_table_digest_output_weights.iter())
-                    .map(|(&st, &weight)| weight * st)
-                    .fold(XFieldElement::zero(), XFieldElement::add);
                 if prow[usize::from(CI)] == Instruction::Hash.opcode_b() {
+                    let st_5_through_9 = [
+                        extension_row[usize::from(ST5)],
+                        extension_row[usize::from(ST6)],
+                        extension_row[usize::from(ST7)],
+                        extension_row[usize::from(ST8)],
+                        extension_row[usize::from(ST9)],
+                    ];
+                    let compressed_row_for_hash_digest = st_5_through_9
+                        .into_iter()
+                        .zip_eq(challenges.hash_table_digest_output_weights.iter())
+                        .map(|(st, &weight)| weight * st)
+                        .sum();
                     from_hash_table_running_evaluation = from_hash_table_running_evaluation
                         * challenges.from_hash_table_eval_indeterminate
                         + compressed_row_for_hash_digest;
@@ -438,8 +438,8 @@ pub struct ProcessorTableChallenges {
     pub op_stack_table_osv_weight: XFieldElement,
 
     pub ram_table_clk_weight: XFieldElement,
-    pub ram_table_ramv_weight: XFieldElement,
     pub ram_table_ramp_weight: XFieldElement,
+    pub ram_table_ramv_weight: XFieldElement,
 
     pub jump_stack_table_clk_weight: XFieldElement,
     pub jump_stack_table_ci_weight: XFieldElement,
@@ -518,160 +518,156 @@ impl ExtProcessorTable {
         challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
+        let constant = SingleRowConstraints::constant_from_i32;
+        let constant_x = SingleRowConstraints::constant_from_xfe;
 
-        // The cycle counter `clk` is 0.
-        //
-        // $clk = 0  ⇒  clk - 0 = 0  ⇒  clk - 0  ⇒  clk$
         let clk_is_0 = factory.clk();
-
-        // The instruction pointer `ip` is 0.
-        //
-        // $ip = 0  ⇒  ip - 0 = 0  ⇒  ip - 0  ⇒  ip$
         let ip_is_0 = factory.ip();
-
-        // The jump address stack pointer `jsp` is 0.
-        //
-        // $jsp = 0  ⇒  jsp - 0 == 0  ⇒  jsp - 0  ⇒  jsp$
         let jsp_is_0 = factory.jsp();
-
-        // The jump address origin `jso` is 0.
-        //
-        // $jso = 0  ⇒  jso - 0 = 0  ⇒  jso - 0  ⇒  jso$
         let jso_is_0 = factory.jso();
-
-        // The jump address destination `jsd` is 0.
-        //
-        // $jsd = 0  ⇒  jsd - 0 = 0  ⇒  jsd - 0  ⇒  jsd$
         let jsd_is_0 = factory.jsd();
-
-        // The operational stack element `st0` is 0.
-        //
-        // $st0 = 0  ⇒  st0 - 0 = 0  ⇒  st0 - 0  ⇒  st0$
         let st0_is_0 = factory.st0();
-
-        // The operational stack element `st1` is 0.
-        //
-        // $st1 = 0  ⇒  st1 - 0 = 0  ⇒  st1 - 0  ⇒  st1$
         let st1_is_0 = factory.st1();
-
-        // The operational stack element `st2` is 0.
-        //
-        // $st2 = 0  ⇒  st2 - 0 = 0  ⇒  st2 - 0  ⇒  st2$
         let st2_is_0 = factory.st2();
-
-        // The operational stack element `st3` is 0.
-        //
-        // $st3 = 0  ⇒  st3 - 0 = 0  ⇒  st3 - 0  ⇒  st3$
         let st3_is_0 = factory.st3();
-
-        // The operational stack element `st4` is 0.
-        //
-        // $st4 = 0  ⇒  st4 - 0 = 0  ⇒  st4 - 0  ⇒  st4$
         let st4_is_0 = factory.st4();
-
-        // The operational stack element `st5` is 0.
-        //
-        // $st5 = 0  ⇒  st5 - 0 = 0  ⇒  st5 - 0  ⇒  st5$
         let st5_is_0 = factory.st5();
-
-        // The operational stack element `st6` is 0.
-        //
-        // $st6 = 0  ⇒  st6 - 0 = 0  ⇒  st6 - 0  ⇒  st6$
         let st6_is_0 = factory.st6();
-
-        // The operational stack element `st7` is 0.
-        //
-        // $st7 = 0  ⇒  st7 - 0 = 0  ⇒  st7 - 0  ⇒  st7$
         let st7_is_0 = factory.st7();
-
-        // The operational stack element `st8` is 0.
-        //
-        // $st8 = 0  ⇒  st8 - 0 = 0  ⇒  st8 - 0  ⇒  st8$
         let st8_is_0 = factory.st8();
-
-        // The operational stack element `st9` is 0.
-        //
-        // $st9 = 0  ⇒  st9 - 0 = 0  ⇒  st9 - 0  ⇒  st9$
         let st9_is_0 = factory.st9();
-
-        // The operational stack element `st10` is 0.
-        //
-        // $st10 = 0  ⇒  st10 - 0 = 0  ⇒  st10 - 0  ⇒  st10$
         let st10_is_0 = factory.st10();
-
-        // The operational stack element `st11` is 0.
-        //
-        // $st11 = 0  ⇒  st11 - 0 = 0  ⇒  st11 - 0  ⇒  st11$
         let st11_is_0 = factory.st11();
-
-        // The operational stack element `st12` is 0.
-        //
-        // $st12 = 0  ⇒  st12 - 0 = 0  ⇒  st12 - 0  ⇒  st12$
         let st12_is_0 = factory.st12();
-
-        // The operational stack element `st13` is 0.
-        //
-        // $st13 = 0  ⇒  st13 - 0 = 0  ⇒  st13 - 0  ⇒  st13$
         let st13_is_0 = factory.st13();
-
-        // The operational stack element `st14` is 0.
-        //
-        // $st14 = 0  ⇒  st14 - 0 = 0  ⇒  st14 - 0  ⇒  st14$
         let st14_is_0 = factory.st14();
-
-        // The operational stack element `st15` is 0.
-        //
-        // $st15 = 0  ⇒  st15 - 0 = 0  ⇒  st15 - 0  ⇒  st15$
         let st15_is_0 = factory.st15();
-
-        // The operational stack pointer `osp` is 16.
-        //
-        // $osp = 16  ⇒  osp - 16 == 0  ⇒  osp - 16$
-        let osp_is_16 = factory.osp() - SingleRowConstraints::constant_from_i32(16);
-
-        // The operational stack value `osv` is 0.
-        //
-        // $osv = 0  ⇒  osv - 0 = 0  ⇒  osv - 0  ⇒  osv$
+        let osp_is_16 = factory.osp() - constant(16);
         let osv_is_0 = factory.osv();
-
-        // The RAM value ramv is 0.
-        //
-        // $ramv = 0  ⇒  ramv - 0 = 0  ⇒  ramv$
         let ramv_is_0 = factory.ramv();
-
-        // The RAM pointer ramp is 0.
-        //
-        // $ramp = 0  ⇒  ramp - 0 = 0  ⇒  ramp$
         let ramp_is_0 = factory.ramp();
 
-        // The inverse of clock jump difference with multiplicity
-        // invm is the inverse-or-zero of the the clock jump
-        // difference cjd.
-        let invm_is_cjd_inverse = factory.cjd() * factory.invm() - factory.one();
-        let invm_is_zero_or_cjd_inverse = factory.invm() * invm_is_cjd_inverse.clone();
-        let cjd_is_zero_or_invm_inverse = factory.cjd() * invm_is_cjd_inverse;
+        // The running evaluation of relevant clock cycles `rer` starts with the initial.
+        let rer_starts_correctly = factory.rer() - constant_x(EvalArg::default_initial());
 
-        // The running evaluation of relevant clock cycles `rer` starts
-        //  with one (or whatever the relevant argument defines as the
-        // correct initial).
-        let rer_starts_correctly =
-            factory.rer() - SingleRowConstraints::constant_from_xfe(EvalArg::default_initial());
+        // The running evaluation of unique clock jump differences starts off having applied one
+        // evaluation step with the clock jump difference.
+        let reu_indeterminate =
+            constant_x(challenges.unique_clock_jump_differences_eval_indeterminate);
+        let reu_starts_correctly = factory.reu()
+            - (reu_indeterminate * constant_x(EvalArg::default_initial()) + factory.cjd());
 
-        // The running evaluation of unique clock jump differences
-        // starts off having applied one evaluation step with the clock
-        // jump difference.
-        let beta = SingleRowConstraints::constant_from_xfe(
-            challenges.unique_clock_jump_differences_eval_indeterminate,
-        );
-        let reu_starts_correctly = factory.reu() - beta - factory.cjd();
-
-        // The running product for all clock jump differences
-        // starts off having accumulated the first factor.
+        // The running product for all clock jump differences starts off having accumulated the
+        // first factor.
+        let rpm_indeterminate =
+            constant_x(challenges.all_clock_jump_differences_multi_perm_indeterminate);
         let rpm_starts_correctly = factory.rpm()
-            - SingleRowConstraints::constant_from_xfe(
-                challenges.all_clock_jump_differences_multi_perm_indeterminate,
-            )
-            + factory.cjd();
+            - constant_x(PermArg::default_initial()) * (rpm_indeterminate - factory.cjd());
+
+        // Permutation and Evaluation Arguments with all tables the Processor Table relates to
+
+        // standard input
+        let running_evaluation_for_standard_input_is_initialized_correctly =
+            factory.running_evaluation_standard_input() - constant_x(EvalArg::default_initial());
+
+        // instruction table
+        let instruction_indeterminate = constant_x(challenges.instruction_perm_indeterminate);
+        let instruction_ip_weight = constant_x(challenges.instruction_table_ip_weight);
+        let instruction_ci_weight = constant_x(challenges.instruction_table_ci_processor_weight);
+        let instruction_nia_weight = constant_x(challenges.instruction_table_nia_weight);
+        let compressed_row_for_instruction_table = instruction_ip_weight * factory.ip()
+            + instruction_ci_weight * factory.ci()
+            + instruction_nia_weight * factory.nia();
+        let running_product_for_instruction_table_is_initialized_correctly = factory
+            .running_product_instruction_table()
+            - constant_x(PermArg::default_initial())
+                * (instruction_indeterminate - compressed_row_for_instruction_table);
+
+        // standard output
+        let running_evaluation_for_standard_output_is_initialized_correctly =
+            factory.running_evaluation_standard_output() - constant_x(EvalArg::default_initial());
+
+        // op-stack table
+        let op_stack_indeterminate = constant_x(challenges.op_stack_perm_indeterminate);
+        let op_stack_clk_weight = constant_x(challenges.op_stack_table_clk_weight);
+        let op_stack_ib1_weight = constant_x(challenges.op_stack_table_ib1_weight);
+        let op_stack_osp_weight = constant_x(challenges.op_stack_table_osp_weight);
+        let op_stack_osv_weight = constant_x(challenges.op_stack_table_osv_weight);
+        let compressed_row_for_op_stack_table = op_stack_clk_weight * factory.clk()
+            + op_stack_ib1_weight * factory.ib1()
+            + op_stack_osp_weight * factory.osp()
+            + op_stack_osv_weight * factory.osv();
+        let running_product_for_op_stack_table_is_initialized_correctly = factory
+            .running_product_op_stack_table()
+            - constant_x(PermArg::default_initial())
+                * (op_stack_indeterminate - compressed_row_for_op_stack_table);
+
+        // ram table
+        let ram_indeterminate = constant_x(challenges.ram_perm_indeterminate);
+        let ram_clk_weight = constant_x(challenges.ram_table_clk_weight);
+        let ram_ramp_weight = constant_x(challenges.ram_table_ramp_weight);
+        let ram_ramv_weight = constant_x(challenges.ram_table_ramv_weight);
+        let compressed_row_for_ram_table = ram_clk_weight * factory.clk()
+            + ram_ramp_weight * factory.ramp()
+            + ram_ramv_weight * factory.ramv();
+        let running_product_for_ram_table_is_initialized_correctly = factory
+            .running_product_ram_table()
+            - constant_x(PermArg::default_initial())
+                * (ram_indeterminate - compressed_row_for_ram_table);
+
+        // jump-stack table
+        let jump_stack_indeterminate = constant_x(challenges.jump_stack_perm_indeterminate);
+        let jump_stack_clk_weight = constant_x(challenges.jump_stack_table_clk_weight);
+        let jump_stack_ci_weight = constant_x(challenges.jump_stack_table_ci_weight);
+        let jump_stack_jsp_weight = constant_x(challenges.jump_stack_table_jsp_weight);
+        let jump_stack_jso_weight = constant_x(challenges.jump_stack_table_jso_weight);
+        let jump_stack_jsd_weight = constant_x(challenges.jump_stack_table_jsd_weight);
+        let compressed_row_for_jump_stack_table = jump_stack_clk_weight * factory.clk()
+            + jump_stack_ci_weight * factory.ci()
+            + jump_stack_jsp_weight * factory.jsp()
+            + jump_stack_jso_weight * factory.jso()
+            + jump_stack_jsd_weight * factory.jsd();
+        let running_product_for_jump_stack_table_is_initialized_correctly = factory
+            .running_product_jump_stack_table()
+            - constant_x(PermArg::default_initial())
+                * (jump_stack_indeterminate - compressed_row_for_jump_stack_table);
+
+        // from processor to hash table
+        let hash_selector = factory.ci() - constant(Instruction::Hash.opcode() as i32);
+        let hash_deselector =
+            InstructionDeselectors::instruction_deselector_single_row(&factory, Instruction::Hash);
+        let to_hash_table_indeterminate = constant_x(challenges.to_hash_table_eval_indeterminate);
+        let weights = challenges.hash_table_stack_input_weights.map(constant_x);
+        let state = [
+            factory.st0(),
+            factory.st1(),
+            factory.st2(),
+            factory.st3(),
+            factory.st4(),
+            factory.st5(),
+            factory.st6(),
+            factory.st7(),
+            factory.st8(),
+            factory.st9(),
+        ];
+        let compressed_row_to_hash_table = weights
+            .into_iter()
+            .zip_eq(state.into_iter())
+            .map(|(w, s)| w * s)
+            .sum();
+        let running_evaluation_to_hash_table_has_absorbed_first_row = factory
+            .running_evaluation_to_hash_table()
+            - to_hash_table_indeterminate * constant_x(EvalArg::default_initial())
+            - compressed_row_to_hash_table;
+        let running_evaluation_to_hash_table_is_default_initial =
+            factory.running_evaluation_to_hash_table() - constant_x(EvalArg::default_initial());
+        let running_evaluation_to_hash_table_is_initialized_correctly = hash_selector
+            * running_evaluation_to_hash_table_is_default_initial
+            + hash_deselector * running_evaluation_to_hash_table_has_absorbed_first_row;
+
+        // from hash table to processor
+        let running_evaluation_from_hash_table_is_initialized_correctly =
+            factory.running_evaluation_from_hash_table() - constant_x(EvalArg::default_initial());
 
         vec![
             clk_is_0,
@@ -699,11 +695,17 @@ impl ExtProcessorTable {
             osv_is_0,
             ramv_is_0,
             ramp_is_0,
-            invm_is_zero_or_cjd_inverse,
-            cjd_is_zero_or_invm_inverse,
             rer_starts_correctly,
             reu_starts_correctly,
             rpm_starts_correctly,
+            running_evaluation_for_standard_input_is_initialized_correctly,
+            running_product_for_instruction_table_is_initialized_correctly,
+            running_evaluation_for_standard_output_is_initialized_correctly,
+            running_product_for_op_stack_table_is_initialized_correctly,
+            running_product_for_ram_table_is_initialized_correctly,
+            running_product_for_jump_stack_table_is_initialized_correctly,
+            running_evaluation_to_hash_table_is_initialized_correctly,
+            running_evaluation_from_hash_table_is_initialized_correctly,
         ]
     }
 
@@ -730,25 +732,24 @@ impl ExtProcessorTable {
         };
 
         let ib0 = factory.ib0();
-        let ib0_is_bit = ib0.clone() * (ib0 - one.clone());
         let ib1 = factory.ib1();
-        let ib1_is_bit = ib1.clone() * (ib1 - one.clone());
         let ib2 = factory.ib2();
-        let ib2_is_bit = ib2.clone() * (ib2 - one.clone());
         let ib3 = factory.ib3();
-        let ib3_is_bit = ib3.clone() * (ib3 - one.clone());
         let ib4 = factory.ib4();
-        let ib4_is_bit = ib4.clone() * (ib4 - one.clone());
         let ib5 = factory.ib5();
-        let ib5_is_bit = ib5.clone() * (ib5 - one.clone());
         let ib6 = factory.ib6();
-        let ib6_is_bit = ib6.clone() * (ib6 - one.clone());
         let ib7 = factory.ib7();
+        let ib0_is_bit = ib0.clone() * (ib0 - one.clone());
+        let ib1_is_bit = ib1.clone() * (ib1 - one.clone());
+        let ib2_is_bit = ib2.clone() * (ib2 - one.clone());
+        let ib3_is_bit = ib3.clone() * (ib3 - one.clone());
+        let ib4_is_bit = ib4.clone() * (ib4 - one.clone());
+        let ib5_is_bit = ib5.clone() * (ib5 - one.clone());
+        let ib6_is_bit = ib6.clone() * (ib6 - one.clone());
         let ib7_is_bit = ib7.clone() * (ib7 - one);
 
-        // The inverse of clock jump difference with multiplicity
-        // `invm` is the inverse-or-zero of the the clock jump
-        // difference `cjd`.
+        // The inverse of clock jump difference with multiplicity `invm` is the inverse-or-zero of
+        // the clock jump difference `cjd`.
         let invm_is_cjd_inverse = factory.invm() * factory.cjd() - factory.one();
         let invm_is_zero_or_cjd_inverse = factory.invm() * invm_is_cjd_inverse.clone();
         let cjd_is_zero_or_invm_inverse = factory.cjd() * invm_is_cjd_inverse;
@@ -900,6 +901,25 @@ impl ExtProcessorTable {
             reu_updates_correctly,
             rer_updates_correctly,
         ]);
+
+        // constraints related to evaluation and permutation arguments
+
+        transition_constraints
+            .push(factory.running_evaluation_for_standard_input_updates_correctly(challenges));
+        transition_constraints
+            .push(factory.running_product_for_instruction_table_updates_correctly(challenges));
+        transition_constraints
+            .push(factory.running_evaluation_for_standard_output_updates_correctly(challenges));
+        transition_constraints
+            .push(factory.running_product_for_op_stack_table_updates_correctly(challenges));
+        transition_constraints
+            .push(factory.running_product_for_ram_table_updates_correctly(challenges));
+        transition_constraints
+            .push(factory.running_product_for_jump_stack_table_updates_correctly(challenges));
+        transition_constraints
+            .push(factory.running_evaluation_to_hash_table_updates_correctly(challenges));
+        transition_constraints
+            .push(factory.running_evaluation_from_hash_table_updates_correctly(challenges));
 
         // normalize polynomials to speed up evaluation
         for polynomial in transition_constraints.iter_mut() {
@@ -1141,6 +1161,31 @@ impl SingleRowConstraints {
 
     pub fn rpm(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
+    }
+
+    pub fn running_evaluation_standard_input(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(InputTableEvalArg)].clone()
+    }
+    pub fn running_evaluation_standard_output(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(OutputTableEvalArg)].clone()
+    }
+    pub fn running_product_instruction_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(InstructionTablePermArg)].clone()
+    }
+    pub fn running_product_op_stack_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(OpStackTablePermArg)].clone()
+    }
+    pub fn running_product_ram_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(RamTablePermArg)].clone()
+    }
+    pub fn running_product_jump_stack_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(JumpStackTablePermArg)].clone()
+    }
+    pub fn running_evaluation_to_hash_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(ToHashTableEvalArg)].clone()
+    }
+    pub fn running_evaluation_from_hash_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(FromHashTableEvalArg)].clone()
     }
 }
 
@@ -1945,6 +1990,10 @@ impl RowPairConstraints {
         MPolynomial::from_constant(constant.lift(), 2 * FULL_WIDTH)
     }
 
+    pub fn constant_x(&self, constant: XFieldElement) -> MPolynomial<XFieldElement> {
+        MPolynomial::from_constant(constant, 2 * FULL_WIDTH)
+    }
+
     pub fn clk(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(CLK)].clone()
     }
@@ -2125,6 +2174,31 @@ impl RowPairConstraints {
         self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
     }
 
+    pub fn running_evaluation_standard_input(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(InputTableEvalArg)].clone()
+    }
+    pub fn running_evaluation_standard_output(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(OutputTableEvalArg)].clone()
+    }
+    pub fn running_product_instruction_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(InstructionTablePermArg)].clone()
+    }
+    pub fn running_product_op_stack_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(OpStackTablePermArg)].clone()
+    }
+    pub fn running_product_ram_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(RamTablePermArg)].clone()
+    }
+    pub fn running_product_jump_stack_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(JumpStackTablePermArg)].clone()
+    }
+    pub fn running_evaluation_to_hash_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(ToHashTableEvalArg)].clone()
+    }
+    pub fn running_evaluation_from_hash_table(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(FromHashTableEvalArg)].clone()
+    }
+
     // Property: All polynomial variables that contain '_next' have the same
     // variable position / value as the one without '_next', +/- FULL_WIDTH.
     pub fn clk_next(&self) -> MPolynomial<XFieldElement> {
@@ -2137,6 +2211,35 @@ impl RowPairConstraints {
 
     pub fn ci_next(&self) -> MPolynomial<XFieldElement> {
         self.variables[FULL_WIDTH + usize::from(CI)].clone()
+    }
+
+    pub fn nia_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(NIA)].clone()
+    }
+
+    pub fn ib0_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB0)].clone()
+    }
+    pub fn ib1_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB1)].clone()
+    }
+    pub fn ib2_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB2)].clone()
+    }
+    pub fn ib3_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB3)].clone()
+    }
+    pub fn ib4_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB4)].clone()
+    }
+    pub fn ib5_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB5)].clone()
+    }
+    pub fn ib6_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB6)].clone()
+    }
+    pub fn ib7_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IB7)].clone()
     }
 
     pub fn jsp_next(&self) -> MPolynomial<XFieldElement> {
@@ -2231,6 +2334,10 @@ impl RowPairConstraints {
         self.variables[FULL_WIDTH + usize::from(RAMV)].clone()
     }
 
+    pub fn is_padding_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(IsPadding)].clone()
+    }
+
     pub fn cjd_next(&self) -> MPolynomial<XFieldElement> {
         self.variables[FULL_WIDTH + usize::from(ClockJumpDifference)].clone()
     }
@@ -2255,6 +2362,30 @@ impl RowPairConstraints {
         self.variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone()
     }
 
+    pub fn running_evaluation_standard_input_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(InputTableEvalArg)].clone()
+    }
+    pub fn running_evaluation_standard_output_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(OutputTableEvalArg)].clone()
+    }
+    pub fn running_product_instruction_table_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(InstructionTablePermArg)].clone()
+    }
+    pub fn running_product_op_stack_table_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(OpStackTablePermArg)].clone()
+    }
+    pub fn running_product_ram_table_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(RamTablePermArg)].clone()
+    }
+    pub fn running_product_jump_stack_table_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(JumpStackTablePermArg)].clone()
+    }
+    pub fn running_evaluation_to_hash_table_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(ToHashTableEvalArg)].clone()
+    }
+    pub fn running_evaluation_from_hash_table_next(&self) -> MPolynomial<XFieldElement> {
+        self.variables[FULL_WIDTH + usize::from(FromHashTableEvalArg)].clone()
+    }
     pub fn decompose_arg(&self) -> Vec<MPolynomial<XFieldElement>> {
         vec![
             self.nia()
@@ -2430,6 +2561,188 @@ impl RowPairConstraints {
             self.ramp_next() - self.ramp(),
         ]
     }
+
+    pub fn running_evaluation_for_standard_input_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let indeterminate = self.constant_x(challenges.standard_input_eval_indeterminate);
+        let read_io_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::ReadIo);
+        let read_io_selector = self.ci() - self.constant_b(Instruction::ReadIo.opcode_b());
+        let input_symbol = self.st0_next();
+        let running_evaluation_updates = self.running_evaluation_standard_input_next()
+            - indeterminate * self.running_evaluation_standard_input()
+            - input_symbol;
+        let running_evaluation_remains = self.running_evaluation_standard_input_next()
+            - self.running_evaluation_standard_input();
+
+        read_io_selector * running_evaluation_remains
+            + read_io_deselector * running_evaluation_updates
+    }
+
+    pub fn running_product_for_instruction_table_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let indeterminate = self.constant_x(challenges.instruction_perm_indeterminate);
+        let ip_weight = self.constant_x(challenges.instruction_table_ip_weight);
+        let ci_weight = self.constant_x(challenges.instruction_table_ci_processor_weight);
+        let nia_weight = self.constant_x(challenges.instruction_table_nia_weight);
+        let compressed_row =
+            ip_weight * self.ip_next() + ci_weight * self.ci_next() + nia_weight * self.nia_next();
+        let running_product_updates = self.running_product_instruction_table_next()
+            - self.running_product_instruction_table() * (indeterminate - compressed_row);
+        let running_product_remains = self.running_product_instruction_table_next()
+            - self.running_product_instruction_table();
+
+        (self.one() - self.is_padding_next()) * running_product_updates
+            + self.is_padding_next() * running_product_remains
+    }
+
+    pub fn running_evaluation_for_standard_output_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let indeterminate = self.constant_x(challenges.standard_output_eval_indeterminate);
+        let write_io_deselector =
+            InstructionDeselectors::instruction_deselector_next(self, Instruction::WriteIo);
+        let write_io_selector = self.ci_next() - self.constant_b(Instruction::WriteIo.opcode_b());
+        let output_symbol = self.st0_next();
+        let running_evaluation_updates = self.running_evaluation_standard_output_next()
+            - indeterminate * self.running_evaluation_standard_output()
+            - output_symbol;
+        let running_evaluation_remains = self.running_evaluation_standard_output_next()
+            - self.running_evaluation_standard_output();
+
+        write_io_selector * running_evaluation_remains
+            + write_io_deselector * running_evaluation_updates
+    }
+
+    pub fn running_product_for_op_stack_table_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let indeterminate = self.constant_x(challenges.op_stack_perm_indeterminate);
+        let clk_weight = self.constant_x(challenges.op_stack_table_clk_weight);
+        let ib1_weight = self.constant_x(challenges.op_stack_table_ib1_weight);
+        let osp_weight = self.constant_x(challenges.op_stack_table_osp_weight);
+        let osv_weight = self.constant_x(challenges.op_stack_table_osv_weight);
+        let compressed_row = clk_weight * self.clk_next()
+            + ib1_weight * self.ib1_next()
+            + osp_weight * self.osp_next()
+            + osv_weight * self.osv_next();
+
+        self.running_product_op_stack_table_next()
+            - self.running_product_op_stack_table() * (indeterminate - compressed_row)
+    }
+
+    pub fn running_product_for_ram_table_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let indeterminate = self.constant_x(challenges.ram_perm_indeterminate);
+        let clk_weight = self.constant_x(challenges.ram_table_clk_weight);
+        let ramp_weight = self.constant_x(challenges.ram_table_ramp_weight);
+        let ramv_weight = self.constant_x(challenges.ram_table_ramv_weight);
+        let compressed_row = clk_weight * self.clk_next()
+            + ramp_weight * self.ramp_next()
+            + ramv_weight * self.ramv_next();
+
+        self.running_product_ram_table_next()
+            - self.running_product_ram_table() * (indeterminate - compressed_row)
+    }
+
+    pub fn running_product_for_jump_stack_table_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let indeterminate = self.constant_x(challenges.jump_stack_perm_indeterminate);
+        let clk_weight = self.constant_x(challenges.jump_stack_table_clk_weight);
+        let ci_weight = self.constant_x(challenges.jump_stack_table_ci_weight);
+        let jsp_weight = self.constant_x(challenges.jump_stack_table_jsp_weight);
+        let jso_weight = self.constant_x(challenges.jump_stack_table_jso_weight);
+        let jsd_weight = self.constant_x(challenges.jump_stack_table_jsd_weight);
+        let compressed_row = clk_weight * self.clk_next()
+            + ci_weight * self.ci_next()
+            + jsp_weight * self.jsp_next()
+            + jso_weight * self.jso_next()
+            + jsd_weight * self.jsd_next();
+
+        self.running_product_jump_stack_table_next()
+            - self.running_product_jump_stack_table() * (indeterminate - compressed_row)
+    }
+
+    pub fn running_evaluation_to_hash_table_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let hash_deselector =
+            InstructionDeselectors::instruction_deselector_next(self, Instruction::Hash);
+        let hash_selector = self.ci_next() - self.constant_b(Instruction::Hash.opcode_b());
+
+        let indeterminate = self.constant_x(challenges.to_hash_table_eval_indeterminate);
+        let weights = challenges
+            .hash_table_stack_input_weights
+            .map(|weight| self.constant_x(weight));
+        let state = [
+            self.st0_next(),
+            self.st1_next(),
+            self.st2_next(),
+            self.st3_next(),
+            self.st4_next(),
+            self.st5_next(),
+            self.st6_next(),
+            self.st7_next(),
+            self.st8_next(),
+            self.st9_next(),
+        ];
+        let compressed_row = weights
+            .into_iter()
+            .zip_eq(state.into_iter())
+            .map(|(weight, state)| weight * state)
+            .sum();
+        let running_evaluation_updates = self.running_evaluation_to_hash_table_next()
+            - indeterminate * self.running_evaluation_to_hash_table()
+            - compressed_row;
+        let running_evaluation_remains =
+            self.running_evaluation_to_hash_table_next() - self.running_evaluation_to_hash_table();
+
+        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+    }
+
+    pub fn running_evaluation_from_hash_table_updates_correctly(
+        &self,
+        challenges: &ProcessorTableChallenges,
+    ) -> MPolynomial<XFieldElement> {
+        let hash_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::Hash);
+        let hash_selector = self.ci() - self.constant_b(Instruction::Hash.opcode_b());
+
+        let indeterminate = self.constant_x(challenges.from_hash_table_eval_indeterminate);
+        let weights = challenges
+            .hash_table_digest_output_weights
+            .map(|weight| self.constant_x(weight));
+        let state = [
+            self.st5_next(),
+            self.st6_next(),
+            self.st7_next(),
+            self.st8_next(),
+            self.st9_next(),
+        ];
+        let compressed_row = weights
+            .into_iter()
+            .zip_eq(state.into_iter())
+            .map(|(weight, state)| weight * state)
+            .sum();
+        let running_evaluation_updates = self.running_evaluation_from_hash_table_next()
+            - indeterminate * self.running_evaluation_from_hash_table()
+            - compressed_row;
+        let running_evaluation_remains = self.running_evaluation_from_hash_table_next()
+            - self.running_evaluation_from_hash_table();
+
+        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -2460,38 +2773,102 @@ impl InstructionDeselectors {
         // self.deselectors[&instruction].clone()
     }
 
+    /// internal helper function to de-duplicate functionality common between the similar (but
+    /// different on a type level) functions for construction deselectors
+    fn instruction_deselector_common_functionality(
+        instruction: Instruction,
+        instruction_bucket_polynomials: [MPolynomial<XFieldElement>; Ord8::COUNT],
+        num_vars: usize,
+    ) -> MPolynomial<XFieldElement> {
+        let one = XFieldElement::one();
+        let constant = |xfe| MPolynomial::from_constant(xfe, num_vars);
+
+        let selector_bits = [
+            instruction.ib(Ord8::IB0).lift(),
+            instruction.ib(Ord8::IB1).lift(),
+            instruction.ib(Ord8::IB2).lift(),
+            instruction.ib(Ord8::IB3).lift(),
+            instruction.ib(Ord8::IB4).lift(),
+            instruction.ib(Ord8::IB5).lift(),
+            instruction.ib(Ord8::IB6).lift(),
+            instruction.ib(Ord8::IB7).lift(),
+        ];
+        let deselector_polynomials = selector_bits.map(|b| constant(one - b));
+
+        instruction_bucket_polynomials
+            .into_iter()
+            .zip_eq(deselector_polynomials.into_iter())
+            .map(|(bucket_poly, deselector_poly)| bucket_poly - deselector_poly)
+            .fold(constant(one), MPolynomial::mul)
+    }
+
     /// A polynomial that has no solutions when ci is 'instruction'
     pub fn instruction_deselector(
         factory: &RowPairConstraints,
         instruction: Instruction,
     ) -> MPolynomial<XFieldElement> {
-        let one = XFieldElement::one();
-        let num_vars = factory.variables.len();
+        let instruction_bucket_polynomials = [
+            factory.ib0(),
+            factory.ib1(),
+            factory.ib2(),
+            factory.ib3(),
+            factory.ib4(),
+            factory.ib5(),
+            factory.ib6(),
+            factory.ib7(),
+        ];
 
-        let ib0 = instruction.ib(Ord8::IB0).lift();
-        let ib1 = instruction.ib(Ord8::IB1).lift();
-        let ib2 = instruction.ib(Ord8::IB2).lift();
-        let ib3 = instruction.ib(Ord8::IB3).lift();
-        let ib4 = instruction.ib(Ord8::IB4).lift();
-        let ib5 = instruction.ib(Ord8::IB5).lift();
-        let ib6 = instruction.ib(Ord8::IB6).lift();
-        let ib7 = instruction.ib(Ord8::IB7).lift();
-        let deselect_ib0 = MPolynomial::from_constant(one - ib0, num_vars);
-        let deselect_ib1 = MPolynomial::from_constant(one - ib1, num_vars);
-        let deselect_ib2 = MPolynomial::from_constant(one - ib2, num_vars);
-        let deselect_ib3 = MPolynomial::from_constant(one - ib3, num_vars);
-        let deselect_ib4 = MPolynomial::from_constant(one - ib4, num_vars);
-        let deselect_ib5 = MPolynomial::from_constant(one - ib5, num_vars);
-        let deselect_ib6 = MPolynomial::from_constant(one - ib6, num_vars);
-        let deselect_ib7 = MPolynomial::from_constant(one - ib7, num_vars);
-        (factory.ib0() - deselect_ib0)
-            * (factory.ib1() - deselect_ib1)
-            * (factory.ib2() - deselect_ib2)
-            * (factory.ib3() - deselect_ib3)
-            * (factory.ib4() - deselect_ib4)
-            * (factory.ib5() - deselect_ib5)
-            * (factory.ib6() - deselect_ib6)
-            * (factory.ib7() - deselect_ib7)
+        Self::instruction_deselector_common_functionality(
+            instruction,
+            instruction_bucket_polynomials,
+            factory.variables.len(),
+        )
+    }
+
+    /// A polynomial that has no solutions when ci is 'instruction'
+    pub fn instruction_deselector_single_row(
+        factory: &SingleRowConstraints,
+        instruction: Instruction,
+    ) -> MPolynomial<XFieldElement> {
+        let instruction_bucket_polynomials = [
+            factory.ib0(),
+            factory.ib1(),
+            factory.ib2(),
+            factory.ib3(),
+            factory.ib4(),
+            factory.ib5(),
+            factory.ib6(),
+            factory.ib7(),
+        ];
+
+        Self::instruction_deselector_common_functionality(
+            instruction,
+            instruction_bucket_polynomials,
+            factory.variables.len(),
+        )
+    }
+
+    /// A polynomial that has no solutions when ci_next is 'instruction'
+    pub fn instruction_deselector_next(
+        factory: &RowPairConstraints,
+        instruction: Instruction,
+    ) -> MPolynomial<XFieldElement> {
+        let instruction_bucket_polynomials = [
+            factory.ib0_next(),
+            factory.ib1_next(),
+            factory.ib2_next(),
+            factory.ib3_next(),
+            factory.ib4_next(),
+            factory.ib5_next(),
+            factory.ib6_next(),
+            factory.ib7_next(),
+        ];
+
+        Self::instruction_deselector_common_functionality(
+            instruction,
+            instruction_bucket_polynomials,
+            factory.variables.len(),
+        )
     }
 
     pub fn create(

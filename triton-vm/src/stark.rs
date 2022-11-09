@@ -178,7 +178,8 @@ impl Stark {
         timer.elapsed("extension_tree");
 
         // compute quotients
-        let mut quotient_codewords = full_fri_domain_tables.get_all_quotients(&self.xfri.domain);
+        let mut quotient_codewords =
+            full_fri_domain_tables.get_all_quotients(&self.xfri.domain, &extension_challenges);
         timer.elapsed("Calculated quotient codewords");
 
         // get degree bounds
@@ -876,7 +877,7 @@ impl Stark {
                     .get_terminal_quotient_degree_bounds(padded_height, self.num_trace_randomizers);
 
                 for (evaluated_bc, degree_bound) in table
-                    .evaluate_initial_constraints(table_row)
+                    .evaluate_initial_constraints(table_row, &extension_challenges)
                     .into_iter()
                     .zip_eq(initial_quotient_degree_bounds.iter())
                 {
@@ -889,7 +890,7 @@ impl Stark {
                 }
 
                 for (evaluated_cc, degree_bound) in table
-                    .evaluate_consistency_constraints(table_row)
+                    .evaluate_consistency_constraints(table_row, &extension_challenges)
                     .into_iter()
                     .zip_eq(consistency_quotient_degree_bounds.iter())
                 {
@@ -904,7 +905,7 @@ impl Stark {
 
                 let tc_evaluation_point = [table_row.clone(), next_table_row.clone()].concat();
                 for (evaluated_tc, degree_bound) in table
-                    .evaluate_transition_constraints(&tc_evaluation_point)
+                    .evaluate_transition_constraints(&tc_evaluation_point, &extension_challenges)
                     .into_iter()
                     .zip_eq(transition_quotient_degree_bounds.iter())
                 {
@@ -922,7 +923,7 @@ impl Stark {
                 }
 
                 for (evaluated_termc, degree_bound) in table
-                    .evaluate_terminal_constraints(table_row)
+                    .evaluate_terminal_constraints(table_row, &extension_challenges)
                     .into_iter()
                     .zip_eq(terminal_quotient_degree_bounds.iter())
                 {
@@ -1364,17 +1365,17 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let (_, _, _, ext_tables, _, _) = parse_simulate_pad_extend("halt", &[], &[]);
+        let (_, _, _, ext_tables, challenges, _) = parse_simulate_pad_extend("halt", &[], &[]);
 
         for table in ext_tables.into_iter() {
             let dummy_row = vec![0.into(); table.full_width()];
             let double_length_dummy_row = vec![0.into(); 2 * table.full_width()];
 
             // will panic if the number of variables is wrong
-            table.evaluate_initial_constraints(&dummy_row);
-            table.evaluate_consistency_constraints(&dummy_row);
-            table.evaluate_transition_constraints(&double_length_dummy_row);
-            table.evaluate_terminal_constraints(&dummy_row);
+            table.evaluate_initial_constraints(&dummy_row, &challenges);
+            table.evaluate_consistency_constraints(&dummy_row, &challenges);
+            table.evaluate_transition_constraints(&double_length_dummy_row, &challenges);
+            table.evaluate_terminal_constraints(&dummy_row, &challenges);
         }
     }
 
@@ -1403,14 +1404,77 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    fn number_of_quotient_degree_bound_matches_number_of_constraints_test() {
+        let (_, _, _, ext_tables, challenges, num_trace_randomizers) =
+            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
+        let padded_height = ext_tables.padded_height;
+
+        for table in ext_tables.into_iter() {
+            let num_initial_constraints = table
+                .evaluate_initial_constraints(&table.data()[0], &challenges)
+                .len();
+            let num_initial_quotient_degree_bounds = table
+                .get_initial_quotient_degree_bounds(padded_height, num_trace_randomizers)
+                .len();
+            assert_eq!(
+                num_initial_constraints,
+                num_initial_quotient_degree_bounds,
+                "{} has mismatching number of initial constraints and quotient degree bounds.",
+                table.name()
+            );
+
+            let num_consistency_constraints = table
+                .evaluate_consistency_constraints(&table.data()[0], &challenges)
+                .len();
+            let num_consistency_quotient_degree_bounds = table
+                .get_consistency_quotient_degree_bounds(padded_height, num_trace_randomizers)
+                .len();
+            assert_eq!(
+                num_consistency_constraints,
+                num_consistency_quotient_degree_bounds,
+                "{} has mismatching number of consistency constraints and quotient degree bounds.",
+                table.name()
+            );
+
+            let evaluation_point = [table.data()[0].clone(), table.data()[1].clone()].concat();
+            let num_transition_constraints = table
+                .evaluate_transition_constraints(&evaluation_point, &challenges)
+                .len();
+            let num_transition_quotient_degree_bounds = table
+                .get_transition_quotient_degree_bounds(padded_height, num_trace_randomizers)
+                .len();
+            assert_eq!(
+                num_transition_constraints,
+                num_transition_quotient_degree_bounds,
+                "{} has mismatching number of transition constraints and quotient degree bounds.",
+                table.name()
+            );
+
+            let num_terminal_constraints = table
+                .evaluate_terminal_constraints(&table.data().last().unwrap(), &challenges)
+                .len();
+            let num_terminal_quotient_degree_bounds = table
+                .get_terminal_quotient_degree_bounds(padded_height, num_trace_randomizers)
+                .len();
+            assert_eq!(
+                num_terminal_constraints,
+                num_terminal_quotient_degree_bounds,
+                "{} has mismatching number of terminal constraints and quotient degree bounds.",
+                table.name()
+            );
+        }
+    }
+
+    #[test]
     fn triton_table_constraints_evaluate_to_zero_test() {
         let zero = XFieldElement::zero();
         let (_, _, _, ext_tables, _, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
 
+        let challenges = AllChallenges::placeholder();
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
-                let evaluated_bcs = table.evaluate_initial_constraints(row);
+                let evaluated_bcs = table.evaluate_initial_constraints(row, &challenges);
                 for (constraint_idx, ebc) in evaluated_bcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
@@ -1424,7 +1488,7 @@ pub(crate) mod triton_stark_tests {
             }
 
             for (row_idx, curr_row) in table.data().iter().enumerate() {
-                let evaluated_ccs = table.evaluate_consistency_constraints(curr_row);
+                let evaluated_ccs = table.evaluate_consistency_constraints(curr_row, &challenges);
                 for (constraint_idx, ecc) in evaluated_ccs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
@@ -1440,7 +1504,8 @@ pub(crate) mod triton_stark_tests {
 
             for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
                 let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
-                let evaluated_tcs = table.evaluate_transition_constraints(&evaluation_point);
+                let evaluated_tcs =
+                    table.evaluate_transition_constraints(&evaluation_point, &challenges);
                 for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
@@ -1455,7 +1520,7 @@ pub(crate) mod triton_stark_tests {
             }
 
             if let Some(row) = table.data().last() {
-                let evaluated_termcs = table.evaluate_terminal_constraints(row);
+                let evaluated_termcs = table.evaluate_terminal_constraints(row, &challenges);
                 for (constraint_idx, etermc) in evaluated_termcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,

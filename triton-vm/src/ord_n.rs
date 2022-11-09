@@ -1,8 +1,9 @@
 use std::fmt::Display;
+use strum_macros::EnumCount as EnumCountMacro;
 use Ord16::*;
 use Ord8::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumCountMacro)]
 pub enum Ord8 {
     #[default]
     IB0,

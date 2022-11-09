@@ -78,19 +78,14 @@ impl Extendable for ProgramTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         let zero = BFieldElement::zero();
         let one = BFieldElement::one();
+
+        let mut padding_row = [zero; BASE_WIDTH];
         if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            // address keeps increasing
-            padding_row[usize::from(Address)] += one;
-            padding_row[usize::from(Instruction)] = zero;
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row])
-        } else {
-            // Not that it makes much sense to run a program with no instructions.
-            let mut padding_row = [zero; BASE_WIDTH];
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row.to_vec()])
+            padding_row[usize::from(Address)] = row[usize::from(Address)] + one;
         }
+        padding_row[usize::from(IsPadding)] = one;
+
+        (None, vec![padding_row.to_vec()])
     }
 }
 
@@ -100,13 +95,21 @@ impl ExtProgramTable {
     fn ext_initial_constraints(
         _challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
+        let variables = MPolynomial::variables(FULL_WIDTH);
+        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
+        let one = constant(XFieldElement::one());
 
         let address = variables[usize::from(Address)].clone();
+        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
 
         let first_address_is_zero = address;
 
-        vec![first_address_is_zero]
+        let running_evaluation_is_initialized_correctly = running_evaluation - one;
+
+        vec![
+            first_address_is_zero,
+            running_evaluation_is_initialized_correctly,
+        ]
     }
 
     fn ext_consistency_constraints(
@@ -117,16 +120,39 @@ impl ExtProgramTable {
     }
 
     fn ext_transition_constraints(
-        _challenges: &ProgramTableChallenges,
+        challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
+        let variables = MPolynomial::variables(2 * FULL_WIDTH);
+        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
+        let one = constant(XFieldElement::one());
 
-        let addr = variables[usize::from(Address)].clone();
-        let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();
-        let one = MPolynomial::<XFieldElement>::from_constant(1.into(), 2 * FULL_WIDTH);
+        let address = variables[usize::from(Address)].clone();
+        let instruction = variables[usize::from(Instruction)].clone();
+        let is_padding = variables[usize::from(IsPadding)].clone();
+        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
+        let address_next = variables[FULL_WIDTH + usize::from(Address)].clone();
+        let instruction_next = variables[FULL_WIDTH + usize::from(Instruction)].clone();
+        let running_evaluation_next =
+            variables[FULL_WIDTH + usize::from(RunningEvaluation)].clone();
 
-        let address_increases_by_one = addr_next - (addr + one);
-        vec![address_increases_by_one]
+        let address_increases_by_one = address_next - (address.clone() + one.clone());
+
+        let running_evaluation_remains =
+            running_evaluation_next.clone() - running_evaluation.clone();
+        let compressed_row = constant(challenges.address_weight) * address
+            + constant(challenges.instruction_weight) * instruction
+            + constant(challenges.next_instruction_weight) * instruction_next;
+        let evaluation_point = constant(challenges.instruction_eval_indeterminate);
+        let running_evaluation_updates =
+            running_evaluation_next - (evaluation_point * running_evaluation + compressed_row);
+        let running_evaluation_updates_if_and_only_if_not_a_padding_row =
+            (one - is_padding.clone()) * running_evaluation_updates
+                + is_padding * running_evaluation_remains;
+
+        vec![
+            address_increases_by_one,
+            running_evaluation_updates_if_and_only_if_not_a_padding_row,
+        ]
     }
 
     fn ext_terminal_constraints(
@@ -171,8 +197,11 @@ impl ProgramTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut instruction_table_running_evaluation = EvalArg::default_initial();
 
-        let mut data_with_0 = self.data().clone();
-        data_with_0.push(vec![BFieldElement::zero(); BASE_WIDTH]);
+        let data_with_0 = {
+            let mut tmp = self.data().clone();
+            tmp.push(vec![BFieldElement::zero(); BASE_WIDTH]);
+            tmp
+        };
 
         for (row, next_row) in data_with_0.into_iter().tuple_windows() {
             let mut extension_row = [0.into(); FULL_WIDTH];
@@ -183,9 +212,14 @@ impl ProgramTable {
             let instruction = row[usize::from(Instruction)].lift();
             let next_instruction = next_row[usize::from(Instruction)].lift();
 
-            // Update the running evaluation if not a padding row
+            // The running evaluation linking Program Table and Instruction Table does record the
+            // initial in the first row, contrary to most other running evaluations and products.
+            // The running product's final value, allowing for a meaningful cross-table argument,
+            // is recorded in the first padding row. This row is guaranteed to exist.
+            extension_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
+            // update the running evaluation if not a padding row
             if row[usize::from(IsPadding)].is_zero() {
-                // Compress address, instruction, and next instruction (or argument) into single value
+                // compress address, instruction, and next instruction (or argument) into one value
                 let compressed_row_for_evaluation_argument = address * challenges.address_weight
                     + instruction * challenges.instruction_weight
                     + next_instruction * challenges.next_instruction_weight;
@@ -194,7 +228,6 @@ impl ProgramTable {
                     * challenges.instruction_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
-            extension_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
 
             extension_matrix.push(extension_row.to_vec());
         }

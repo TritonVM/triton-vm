@@ -475,7 +475,7 @@ impl Display for ProcessorMatrixRow {
             f,
             format!(
                 "ramp: {:>width$} │ ramv: {:>width$} │",
-                self.row[usize::from(ST1)].value(),
+                self.row[usize::from(RAMP)].value(),
                 self.row[usize::from(RAMV)].value(),
             ),
         )?;
@@ -493,41 +493,41 @@ impl Display for ProcessorMatrixRow {
         row(
             f,
             format!(
-                "st3-0:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST3)].value(),
-                self.row[usize::from(ST2)].value(),
-                self.row[usize::from(ST1)].value(),
+                "st0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
                 self.row[usize::from(ST0)].value(),
+                self.row[usize::from(ST1)].value(),
+                self.row[usize::from(ST2)].value(),
+                self.row[usize::from(ST3)].value(),
             ),
         )?;
         row(
             f,
             format!(
-                "st7-4:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST7)].value(),
-                self.row[usize::from(ST6)].value(),
-                self.row[usize::from(ST5)].value(),
+                "st4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
                 self.row[usize::from(ST4)].value(),
+                self.row[usize::from(ST5)].value(),
+                self.row[usize::from(ST6)].value(),
+                self.row[usize::from(ST7)].value(),
             ),
         )?;
         row(
             f,
             format!(
-                "st11-8:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST11)].value(),
-                self.row[usize::from(ST10)].value(),
-                self.row[usize::from(ST9)].value(),
+                "st8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
                 self.row[usize::from(ST8)].value(),
+                self.row[usize::from(ST9)].value(),
+                self.row[usize::from(ST10)].value(),
+                self.row[usize::from(ST11)].value(),
             ),
         )?;
         row(
             f,
             format!(
-                "st15-12:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST15)].value(),
-                self.row[usize::from(ST14)].value(),
-                self.row[usize::from(ST13)].value(),
+                "st12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
                 self.row[usize::from(ST12)].value(),
+                self.row[usize::from(ST13)].value(),
+                self.row[usize::from(ST14)].value(),
+                self.row[usize::from(ST15)].value(),
             ),
         )?;
 
@@ -536,23 +536,27 @@ impl Display for ProcessorMatrixRow {
         row(
             f,
             format!(
-                "hv3-0:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(HV3)].value(),
-                self.row[usize::from(HV2)].value(),
-                self.row[usize::from(HV1)].value(),
+                "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
                 self.row[usize::from(HV0)].value(),
+                self.row[usize::from(HV1)].value(),
+                self.row[usize::from(HV2)].value(),
+                self.row[usize::from(HV3)].value(),
             ),
         )?;
+        let w = 2;
         row(
             f,
             format!(
-                "ib5-0: [ {:>12} | {:>13} | {:>13} | {:>13} | {:>13} | {:>13} ]",
-                self.row[usize::from(IB5)].value(),
-                self.row[usize::from(IB4)].value(),
-                self.row[usize::from(IB3)].value(),
-                self.row[usize::from(IB2)].value(),
-                self.row[usize::from(IB1)].value(),
+                "ib0-7:    \
+                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
                 self.row[usize::from(IB0)].value(),
+                self.row[usize::from(IB1)].value(),
+                self.row[usize::from(IB2)].value(),
+                self.row[usize::from(IB3)].value(),
+                self.row[usize::from(IB4)].value(),
+                self.row[usize::from(IB5)].value(),
+                self.row[usize::from(IB6)].value(),
+                self.row[usize::from(IB7)].value(),
             ),
         )?;
         write!(

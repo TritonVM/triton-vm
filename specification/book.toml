@@ -12,3 +12,4 @@ warning-policy = "ignore" # most latex will generate a warning
 
 [output.html]
 git-repository-url = "https://github.com/TritonVM/triton-vm/tree/master/specification"
+additional-css = ["custom.css"]

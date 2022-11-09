@@ -19,7 +19,8 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | *`osp`               | operational stack pointer    | contains the OpStack address of the top of the operational stack                                                   |
 | *`osv`               | operational stack value      | contains the (stack) memory value at the given address                                                             |
 | *`hv0` through `hv3` | helper variable registers    | helper variables for some arithmetic operations                                                                    |
-| *`ramv`              | RAM value                    | contains the value of the RAM element at the address currently held in `st1`                                       |
+| *`ramp`              | RAM pointer                  | contains an address pointing into the RAM                                                                          |
+| *`ramv`              | RAM value                    | contains the value of the RAM element at the address currently held in `ramp`                                      |
 
 ## Instruction
 
@@ -49,8 +50,8 @@ TritonVM has dedicated Random-Access Memory.
 Programs can read from and write to RAM using instructions `read_mem` and `write_mem`.
 The address to read from – respectively, to write to – is the stack's second-to-top-most OpStack element, i.e, `st1`.
 
-The register `ramv` is not directly accessible by the program running in TritonVM.
-It exists only to allow efficient arithmetization.
+The registers `ramp` and `ramv` are not directly accessible by the program running in TritonVM.
+They exist only to allow efficient arithmetization.
 
 ## Helper Variables
 

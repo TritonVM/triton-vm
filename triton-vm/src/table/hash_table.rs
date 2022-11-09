@@ -75,6 +75,7 @@ impl Evaluable for ExtHashTable {
     fn evaluate_consistency_constraints(
         &self,
         evaluation_point: &[XFieldElement],
+        _challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
         let constant = |x| BFieldElement::new(x as u64).lift();
         let round_number = evaluation_point[usize::from(ROUNDNUMBER)];
@@ -106,7 +107,7 @@ impl Evaluable for ExtHashTable {
                 (round_constant_idx + round_constant_offset).try_into().unwrap();
             evaluated_consistency_constraints.push(
                 round_number
-                    * (round_number - XFieldElement::from(9))
+                    * (round_number - XFieldElement::from(NUM_ROUNDS as u32 + 1))
                     * (Self::round_constants_interpolant(round_constant_column)
                         .evaluate(&evaluation_point[usize::from(ROUNDNUMBER)])
                         - evaluation_point[usize::from(round_constant_column)]),
@@ -119,13 +120,26 @@ impl Evaluable for ExtHashTable {
     fn evaluate_transition_constraints(
         &self,
         evaluation_point: &[XFieldElement],
+        challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
-        use HashBaseTableColumn::*;
-
         let constant = |c: u64| BFieldElement::new(c).lift();
+        let from_processor_eval_indeterminate = challenges
+            .hash_table_challenges
+            .from_processor_eval_indeterminate;
+        let to_processor_eval_indeterminate = challenges
+            .hash_table_challenges
+            .to_processor_eval_indeterminate;
 
         let round_number = evaluation_point[usize::from(ROUNDNUMBER)];
+        let running_evaluation_from_processor =
+            evaluation_point[usize::from(FromProcessorRunningEvaluation)];
+        let running_evaluation_to_processor =
+            evaluation_point[usize::from(ToProcessorRunningEvaluation)];
         let round_number_next = evaluation_point[FULL_WIDTH + usize::from(ROUNDNUMBER)];
+        let running_evaluation_from_processor_next =
+            evaluation_point[FULL_WIDTH + usize::from(FromProcessorRunningEvaluation)];
+        let running_evaluation_to_processor_next =
+            evaluation_point[FULL_WIDTH + usize::from(ToProcessorRunningEvaluation)];
 
         let mut constraint_evaluations: Vec<XFieldElement> = vec![];
 
@@ -139,7 +153,7 @@ impl Evaluable for ExtHashTable {
         // => consistency constraint
 
         // 2. if round number is 0, then next round number is 0
-        // DNF: rn in {1, ..., 9} \/ rn* = 0
+        // DNF: rn in {1, ..., 9} ∨ rn* = 0
         let mut evaluation = (1..=NUM_ROUNDS + 1)
             .map(|r| constant(r as u64) - round_number)
             .fold(constant(1), XFieldElement::mul);
@@ -147,18 +161,18 @@ impl Evaluable for ExtHashTable {
         constraint_evaluations.push(evaluation);
 
         // 3. if round number is 9, then next round number is 0 or 1
-        // DNF: rn =/= 9 \/ rn* = 0 \/ rn* = 1
-        evaluation = (0..=8)
-            .map(|r| constant(r) - round_number)
+        // DNF: rn =/= 9 ∨ rn* = 0 ∨ rn* = 1
+        evaluation = (0..=NUM_ROUNDS)
+            .map(|r| constant(r as u64) - round_number)
             .fold(constant(1), XFieldElement::mul);
         evaluation *= constant(1) - round_number_next;
         evaluation *= round_number_next;
         constraint_evaluations.push(evaluation);
 
         // 4. if round number is in {1, ..., 8} then next round number is +1
-        // DNF: (rn == 0 \/ rn == 9) \/ rn* = rn + 1
+        // DNF: (rn == 0 ∨ rn == 9) ∨ rn* = rn + 1
         evaluation = round_number
-            * (constant(9) - round_number)
+            * (constant(NUM_ROUNDS as u64 + 1) - round_number)
             * (round_number_next - round_number - constant(1));
         constraint_evaluations.push(evaluation);
 
@@ -208,15 +222,70 @@ impl Evaluable for ExtHashTable {
             .map(|c| (*c).mod_pow_u32(ALPHA as u32))
             .collect_vec();
 
-        // equate left hand side to right hand side
-        // (and ignore if padding row)
+        // Equate left hand side to right hand side. Ignore if padding row or after final round.
         constraint_evaluations.append(
             &mut after_constants
                 .into_iter()
                 .zip_eq(before_sbox.into_iter())
-                .map(|(lhs, rhs)| round_number * (round_number - constant(9)) * (lhs - rhs))
+                .map(|(lhs, rhs)| {
+                    round_number * (round_number - constant(NUM_ROUNDS as u64 + 1)) * (lhs - rhs)
+                })
                 .collect_vec(),
         );
+
+        // Evaluation Arguments
+
+        // from Processor Table to Hash Table
+        // If (and only if) the next row number is 1, update running evaluation “from processor.”
+        let running_evaluation_from_processor_remains =
+            running_evaluation_from_processor_next - running_evaluation_from_processor;
+        let xlix_input = (0..2 * DIGEST_LENGTH)
+            .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
+            .collect_vec();
+        let compressed_row_from_processor = challenges
+            .hash_table_challenges
+            .stack_input_weights
+            .iter()
+            .zip_eq(xlix_input.iter())
+            .map(|(&weight, &state)| weight * state)
+            .sum();
+        let running_evaluation_from_processor_updates = running_evaluation_from_processor_next
+            - from_processor_eval_indeterminate * running_evaluation_from_processor
+            - compressed_row_from_processor;
+        let round_number_next_unequal_1 = (0..=NUM_ROUNDS + 1)
+            .filter(|&r| r != 1)
+            .map(|r| round_number_next - constant(r as u64))
+            .fold(XFieldElement::one(), XFieldElement::mul);
+        let running_evaluation_from_processor_is_updated_correctly =
+            running_evaluation_from_processor_remains * (round_number_next - constant(1))
+                + running_evaluation_from_processor_updates * round_number_next_unequal_1;
+        constraint_evaluations.push(running_evaluation_from_processor_is_updated_correctly);
+
+        // from Hash Table to Processor Table
+        // If (and only if) the next row number is 9, update running evaluation “to processor.”
+        let running_evaluation_to_processor_remains =
+            running_evaluation_to_processor_next - running_evaluation_to_processor;
+        let xlix_digest = (0..DIGEST_LENGTH)
+            .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
+            .collect_vec();
+        let compressed_row_to_processor = challenges
+            .hash_table_challenges
+            .digest_output_weights
+            .iter()
+            .zip_eq(xlix_digest.iter())
+            .map(|(&weight, &state)| weight * state)
+            .sum();
+        let running_evaluation_to_processor_updates = running_evaluation_to_processor_next
+            - to_processor_eval_indeterminate * running_evaluation_to_processor
+            - compressed_row_to_processor;
+        let round_number_next_leq_number_of_rounds = (0..=NUM_ROUNDS)
+            .map(|r| round_number_next - constant(r as u64))
+            .fold(XFieldElement::one(), XFieldElement::mul);
+        let running_evaluation_to_processor_is_updated_correctly =
+            running_evaluation_to_processor_remains
+                * (round_number_next - constant(NUM_ROUNDS as u64 + 1))
+                + running_evaluation_to_processor_updates * round_number_next_leq_number_of_rounds;
+        constraint_evaluations.push(running_evaluation_to_processor_is_updated_correctly);
 
         constraint_evaluations
     }
@@ -256,12 +325,17 @@ impl Quotientable for ExtHashTable {
         ];
         let state_evolution_bounds =
             vec![interpolant_degree * (ALPHA + 1 + 1) as Degree; STATE_SIZE];
+        let eval_arg_degrees = vec![interpolant_degree * (NUM_ROUNDS + 1 + 1) as Degree; 2];
 
-        [round_number_bounds, state_evolution_bounds]
-            .concat()
-            .into_iter()
-            .map(|degree_bound| degree_bound - zerofier_degree)
-            .collect_vec()
+        [
+            round_number_bounds,
+            state_evolution_bounds,
+            eval_arg_degrees,
+        ]
+        .concat()
+        .into_iter()
+        .map(|degree_bound| degree_bound - zerofier_degree)
+        .collect_vec()
     }
 }
 
@@ -289,14 +363,52 @@ impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
     fn ext_initial_constraints(
-        _challenges: &HashTableChallenges,
+        challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
-        let variables = MPolynomial::variables(FULL_WIDTH);
+        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
+        let one = constant(XFieldElement::one());
+        let running_evaluation_initial = constant(EvalArg::default_initial());
 
+        let variables = MPolynomial::variables(FULL_WIDTH);
         let round_number = variables[usize::from(ROUNDNUMBER)].clone();
-        let round_number_is_0_or_1 = round_number.clone() * (round_number - one);
-        vec![round_number_is_0_or_1]
+        let running_evaluation_from_processor =
+            variables[usize::from(FromProcessorRunningEvaluation)].clone();
+        let running_evaluation_to_processor =
+            variables[usize::from(ToProcessorRunningEvaluation)].clone();
+        let state = (0..2 * DIGEST_LENGTH)
+            .map(|i| variables[usize::from(STATE0) + i].clone())
+            .collect_vec();
+
+        let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
+
+        // Evaluation Argument “from processor”
+        // If the round number is 0, the running evaluation is the default initial.
+        // Else, the first update has been applied to the running evaluation.
+        let running_evaluation_from_processor_is_default_initial =
+            running_evaluation_from_processor.clone() - running_evaluation_initial.clone();
+        let compressed_row = challenges
+            .stack_input_weights
+            .iter()
+            .zip_eq(state.iter())
+            .map(|(&w, s)| s.clone() * constant(w))
+            .sum();
+        let from_processor_indeterminate = constant(challenges.from_processor_eval_indeterminate);
+        let running_evaluation_from_processor_is_updated = running_evaluation_from_processor
+            - running_evaluation_initial.clone() * from_processor_indeterminate
+            - compressed_row;
+        let running_evaluation_from_processor_is_updated_if_and_only_if_not_a_padding_row =
+            round_number.clone() * running_evaluation_from_processor_is_updated
+                + (one - round_number) * running_evaluation_from_processor_is_default_initial;
+
+        // Evaluation Argument “to processor”
+        let running_evaluation_to_processor_is_default_initial =
+            running_evaluation_to_processor - running_evaluation_initial;
+
+        vec![
+            round_number_is_0_or_1,
+            running_evaluation_from_processor_is_updated_if_and_only_if_not_a_padding_row,
+            running_evaluation_to_processor_is_default_initial,
+        ]
     }
 
     /// The implementation below is kept around for debugging purposes. This table evaluates the
@@ -319,7 +431,7 @@ impl ExtHashTable {
         let state15 = variables[usize::from(STATE15)].clone();
 
         // 1. if round number is 1, then capacity is zero
-        // DNF: rn =/= 1 \/ cap = 0
+        // DNF: rn =/= 1 ∨ cap = 0
         let round_number_is_not_1_or = (0..=NUM_ROUNDS + 1)
             .filter(|&r| r != 1)
             .map(|r| round_number.clone() - constant(r as u64))
@@ -343,7 +455,6 @@ impl ExtHashTable {
         // 3. round constants
         // if round number is zero, we don't care
         // otherwise, make sure the constant is correct
-        let nine = constant(9);
         let round_constant_offset = usize::from(CONSTANT0A);
         for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column: HashBaseTableColumn =
@@ -355,7 +466,7 @@ impl ExtHashTable {
                 MPolynomial::lift(interpolant, usize::from(ROUNDNUMBER), FULL_WIDTH);
             consistency_polynomials.push(
                 round_number.clone()
-                    * (round_number.clone() - nine)
+                    * (round_number.clone() - constant(NUM_ROUNDS as u64 + 1))
                     * (multivariate_interpolant - round_constant.clone()),
             );
         }
@@ -403,7 +514,7 @@ impl ExtHashTable {
         // => consistency constraint
 
         // 2. if round number is 0, then next round number is 0
-        // DNF: rn in {1, ..., 9} \/ rn* = 0
+        // DNF: rn in {1, ..., 9} ∨ rn* = 0
         let mut polynomial = (1..=NUM_ROUNDS + 1)
             .map(|r| constant(r as u64) - round_number.clone())
             .fold(constant(1_u64), MPolynomial::mul);
@@ -411,18 +522,18 @@ impl ExtHashTable {
         constraint_polynomials.push(polynomial);
 
         // 3. if round number is 9, then next round number is 0 or 1
-        // DNF: rn =/= 9 \/ rn* = 0 \/ rn* = 1
-        polynomial = (0..=8)
-            .map(|r| constant(r) - round_number.clone())
+        // DNF: rn =/= 9 ∨ rn* = 0 ∨ rn* = 1
+        polynomial = (0..=NUM_ROUNDS)
+            .map(|r| constant(r as u64) - round_number.clone())
             .fold(constant(1), MPolynomial::mul);
         polynomial *= constant(1) - round_number_next.clone();
         polynomial *= round_number_next.clone();
         constraint_polynomials.push(polynomial);
 
         // 4. if round number is in {1, ..., 8} then next round number is +1
-        // DNF: (rn == 0 \/ rn == 9) \/ rn* = rn + 1
+        // DNF: (rn == 0 ∨ rn == 9) ∨ rn* = rn + 1
         polynomial = round_number.clone()
-            * (constant(9) - round_number.clone())
+            * (constant(NUM_ROUNDS as u64 + 1) - round_number.clone())
             * (round_number_next.clone() - round_number.clone() - constant(1));
         constraint_polynomials.push(polynomial);
 
@@ -476,7 +587,9 @@ impl ExtHashTable {
                 .into_iter()
                 .zip_eq(before_sbox.into_iter())
                 .map(|(lhs, rhs)| {
-                    round_number.clone() * (round_number.clone() - constant(9)) * (lhs - rhs)
+                    round_number.clone()
+                        * (round_number.clone() - constant(NUM_ROUNDS as u64 + 1))
+                        * (lhs - rhs)
                 })
                 .collect_vec(),
         );
@@ -548,7 +661,7 @@ impl HashTable {
                     .iter()
                     .zip_eq(challenges.stack_input_weights.iter())
                     .map(|(&state, &weight)| weight * state)
-                    .fold(XFieldElement::zero(), XFieldElement::add);
+                    .sum();
 
                 from_processor_running_evaluation = from_processor_running_evaluation
                     * challenges.from_processor_eval_indeterminate
@@ -558,7 +671,7 @@ impl HashTable {
                 from_processor_running_evaluation;
 
             // Add compressed digest to running evaluation if round index marks end of hashing
-            if row[usize::from(HashBaseTableColumn::ROUNDNUMBER)].value() == 9 {
+            if row[usize::from(HashBaseTableColumn::ROUNDNUMBER)].value() == NUM_ROUNDS as u64 + 1 {
                 let state_for_output = [
                     extension_row[usize::from(HashBaseTableColumn::STATE0)],
                     extension_row[usize::from(HashBaseTableColumn::STATE1)],
@@ -570,7 +683,7 @@ impl HashTable {
                     .iter()
                     .zip_eq(challenges.digest_output_weights.iter())
                     .map(|(&state, &weight)| weight * state)
-                    .fold(XFieldElement::zero(), XFieldElement::add);
+                    .sum();
 
                 to_processor_running_evaluation = to_processor_running_evaluation
                     * challenges.to_processor_eval_indeterminate
@@ -613,11 +726,11 @@ impl HashTable {
             interpolant_degree,
             padded_height,
             ExtHashTable::ext_initial_constraints(&all_challenges.hash_table_challenges),
-            // The Hash Table bypasses the symbolic representation of transition and consistency constraints.
-            // As a result, there is nothing to memoize. Since the memoization dictionary is never used, it
-            // can't hurt to supply empty databases.
-            vec![], // ExtHashTable::ext_consistency_constraints(),
-            vec![], // ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
+            // The Hash Table bypasses the symbolic representation of transition and consistency
+            // constraints. As a result, there is nothing to memoize. Since the memoization
+            // dictionary is never used, it can't hurt to supply empty databases.
+            vec![],
+            vec![],
             ExtHashTable::ext_terminal_constraints(&all_challenges.hash_table_challenges),
         );
 
@@ -706,36 +819,30 @@ mod constraint_tests {
         let (aet, maybe_err, _) = program.simulate_with_input(&[], &[]);
 
         if let Some(e) = maybe_err {
-            panic!("Program execution failed: {}", e);
+            panic!("Program execution failed: {e}");
         }
 
         let padded_height = roundup_npo2(aet.hash_matrix.len() as u64) as usize;
         let num_trace_randomizers = 0;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
+        let challenges = AllChallenges::placeholder();
         let ext_hash_table =
-            HashTable::new_prover(aet.hash_matrix.iter().map(|r| r.to_vec()).collect()).extend(
-                &AllChallenges::placeholder().hash_table_challenges,
-                interpolant_degree,
-            );
+            HashTable::new_prover(aet.hash_matrix.iter().map(|r| r.to_vec()).collect())
+                .extend(&challenges.hash_table_challenges, interpolant_degree);
 
-        for v in ext_hash_table.evaluate_initial_constraints(&ext_hash_table.data()[0]) {
+        for v in ext_hash_table.evaluate_initial_constraints(&ext_hash_table.data()[0], &challenges)
+        {
             assert!(v.is_zero());
         }
 
         for (i, row) in ext_hash_table.data().iter().enumerate() {
             for (j, v) in ext_hash_table
-                .evaluate_consistency_constraints(row)
+                .evaluate_consistency_constraints(row, &challenges)
                 .iter()
                 .enumerate()
             {
-                assert!(
-                    v.is_zero(),
-                    "consistency constraint {} failed in row {}: {:?}",
-                    j,
-                    i,
-                    row
-                );
+                assert!(v.is_zero(), "consistency constraint {j} failed in row {i}");
             }
         }
 
@@ -743,22 +850,18 @@ mod constraint_tests {
         {
             let eval_point = [current_row.to_vec(), next_row.to_vec()].concat();
             for (j, v) in ext_hash_table
-                .evaluate_transition_constraints(&eval_point)
+                .evaluate_transition_constraints(&eval_point, &challenges)
                 .iter()
                 .enumerate()
             {
-                assert!(
-                    v.is_zero(),
-                    "transition constraint {} failed in row {}",
-                    j,
-                    i
-                );
+                assert!(v.is_zero(), "transition constraint {j} failed in row {i}",);
             }
         }
 
-        for v in ext_hash_table
-            .evaluate_terminal_constraints(&ext_hash_table.data()[ext_hash_table.data().len() - 1])
-        {
+        for v in ext_hash_table.evaluate_terminal_constraints(
+            &ext_hash_table.data()[ext_hash_table.data().len() - 1],
+            &challenges,
+        ) {
             assert!(v.is_zero());
         }
     }

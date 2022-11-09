@@ -1,5 +1,16 @@
 # Instruction Groups
 
+To keep the degrees of the AIR polynomials low, instructions are grouped based on their effect.
+An instruction's effect not captured by the groups it is part of needs to be arithmetized separately.
+
+To exemplify the interplay of an instruction's group and individual constraints, take instruction `add`.
+Executing `add` increases the instruction pointer `ip` by 1, a property shared by many instructions.
+Consequently, `add` belongs to instruction group `step_1`.
+Instruction `add` manipulates the stack's top two elements, combining them into one, which is captured by instruction group `binop`.
+Lastly, the specific behavior of `add` is to, well, add these stack elements, which is described in `add`'s instruction specific constraint.
+
+The instruction groups are listed in the following table.
+
 | group name      | description                                                                                         |
 |:----------------|:----------------------------------------------------------------------------------------------------|
 | `decompose_arg` | instruction's argument held in `nia` is binary decomposed into helper registers `hv0` through `hv3` |
@@ -15,7 +26,7 @@
 A summary of all instructions and which groups they are part of is given in the following table.
 
 | instruction      | `has_arg`* | `decompose_arg` | `step_1` | `step_2` | `grow_stack` | `keep_stack` | `shrink_stack` | `unop` | `binop` | `keep_ram` |
-|:-----------------|:-----------|:----------------|:---------|:---------|:-------------|:-------------|:---------------|:-------|:--------|------------|
+|:-----------------|:-----------|:----------------|:---------|:---------|:-------------|:-------------|:---------------|:-------|:--------|:-----------|
 | `pop`            |            |                 | x        |          |              |              | x              |        |         | x          |
 | `push` + `a`     | x          |                 |          | x        | x            |              |                |        |         | x          |
 | `divine`         |            |                 | x        |          | x            |              |                |        |         | x          |
