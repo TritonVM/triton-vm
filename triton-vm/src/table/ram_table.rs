@@ -349,7 +349,7 @@ impl ExtRamTable {
         vec![]
     }
 
-    fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<RamTableChallenges>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<RamTableChallenges>> {
         let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let one = circuit_builder.constant(1.into());
 
