@@ -230,10 +230,10 @@ impl ExtInstructionTable {
 
         // Base table constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
-        let address_increases_by_one_or_ci_stays =
-            address_increases_by_one.clone() * (current_instruction_next - current_instruction);
+        let address_increases_by_one_or_ci_stays = address_increases_by_one.clone()
+            * (current_instruction_next.clone() - current_instruction);
         let address_increases_by_one_or_nia_stays =
-            address_increases_by_one.clone() * (next_instruction_next - next_instruction);
+            address_increases_by_one.clone() * (next_instruction_next.clone() - next_instruction);
         let is_padding_is_0_or_remains_unchanged =
             is_padding.clone() * (is_padding_next.clone() - is_padding);
 
@@ -261,24 +261,20 @@ impl ExtInstructionTable {
         //      or the running evaluation is not updated, and
         // 3. the current row is not a padding row
         //      or the running evaluation is not updated.
-        let compressed_row_for_eval_arg = circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(Address),
-            InstructionTableChallengeId::AddressWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(CI),
-            InstructionTableChallengeId::InstructionWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(NIA),
-            InstructionTableChallengeId::NextInstructionWeight,
-        );
+        let compressed_row_for_eval_arg = circuit_builder
+            .challenge(InstructionTableChallengeId::AddressWeight)
+            * addr_next.clone()
+            + circuit_builder.challenge(InstructionTableChallengeId::InstructionWeight)
+                * current_instruction_next.clone()
+            + circuit_builder.challenge(InstructionTableChallengeId::NextInstructionWeight)
+                * next_instruction_next.clone();
 
-        let address_stays = addr_next - addr;
-        let running_evaluations_stays = running_evaluation_next.clone() - running_evaluation;
+        let address_stays = addr_next.clone() - addr;
+        let running_evaluations_stays =
+            running_evaluation_next.clone() - running_evaluation.clone();
         let running_evaluation_update = running_evaluation_next
-            - circuit_builder.randomized_input(
-                usize::from(RunningEvaluation),
-                InstructionTableChallengeId::ProgramEvalIndeterminate,
-            )
+            - circuit_builder.challenge(InstructionTableChallengeId::ProgramEvalIndeterminate)
+                * running_evaluation
             - compressed_row_for_eval_arg;
 
         let running_evaluation_is_well_formed = address_stays.clone()
@@ -298,16 +294,12 @@ impl ExtInstructionTable {
         //      or the running product is not updated, and
         // 3. the current row is not a padding row
         //      or the running product is not updated.
-        let compressed_row_for_perm_arg = circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(Address),
-            InstructionTableChallengeId::IpProcessorWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(CI),
-            InstructionTableChallengeId::CiProcessorWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(NIA),
-            InstructionTableChallengeId::NiaProcessorWeight,
-        );
+        let compressed_row_for_perm_arg =
+            circuit_builder.challenge(InstructionTableChallengeId::IpProcessorWeight) * addr_next
+                + circuit_builder.challenge(InstructionTableChallengeId::CiProcessorWeight)
+                    * current_instruction_next
+                + circuit_builder.challenge(InstructionTableChallengeId::NiaProcessorWeight)
+                    * next_instruction_next;
 
         let running_product_stays = running_product_next.clone() - running_product.clone();
         let running_product_update = running_product_next

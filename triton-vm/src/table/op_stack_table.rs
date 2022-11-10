@@ -189,7 +189,7 @@ impl ExtOpStackTable {
         let rppa = circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
 
         let clk_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CLK));
-        let _ib1_shrink_stack_next =
+        let ib1_shrink_stack_next =
             circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IB1ShrinkStack));
         let osp_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(OSP));
         let osv_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(OSV));
@@ -209,7 +209,7 @@ impl ExtOpStackTable {
         // $ (osp' - (osp + 1)) · (osv' - osv) · (1 - ib1) = 0$
         let osp_increases_by_1_or_osv_does_not_change_or_shrink_stack = (osp_next.clone()
             - (osp.clone() + one.clone()))
-            * (osv_next - osv)
+            * (osv_next.clone() - osv)
             * (one.clone() - ib1_shrink_stack);
 
         // The clock jump difference inverse is consistent
@@ -238,25 +238,19 @@ impl ExtOpStackTable {
         let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (one.clone() - osp_next.clone() + osp.clone())
             * (rpcjd_next.clone() - rpcjd.clone() * (beta - clk_next.clone() + clk.clone()))
-            + (one.clone() - (clk_next - clk - one) * clk_di)
+            + (one.clone() - (clk_next.clone() - clk - one) * clk_di)
                 * (rpcjd_next.clone() - rpcjd.clone())
-            + (osp_next - osp) * (rpcjd_next - rpcjd);
+            + (osp_next.clone() - osp) * (rpcjd_next - rpcjd);
 
         // The running product for the permutation argument `rppa` is updated correctly.
         let alpha = circuit_builder.challenge(OpStackTableChallengesId::ProcessorPermIndeterminate);
-        let compressed_row = circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(CLK),
-            OpStackTableChallengesId::ClkWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(IB1ShrinkStack),
-            OpStackTableChallengesId::Ib1Weight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(OSP),
-            OpStackTableChallengesId::OspWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(OSV),
-            OpStackTableChallengesId::OsvWeight,
-        );
+        let compressed_row = circuit_builder.challenge(OpStackTableChallengesId::ClkWeight)
+            * clk_next
+            + circuit_builder.challenge(OpStackTableChallengesId::Ib1Weight)
+                * ib1_shrink_stack_next
+            + circuit_builder.challenge(OpStackTableChallengesId::OspWeight) * osp_next
+            + circuit_builder.challenge(OpStackTableChallengesId::OsvWeight) * osv_next;
+
         let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
         vec![
