@@ -8,7 +8,7 @@ use rayon::iter::{
 };
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{self, random_elements};
+use twenty_first::shared_math::other::{self, is_power_of_two, random_elements};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
@@ -47,16 +47,17 @@ pub struct StarkParameters {
 
 impl StarkParameters {
     pub fn new(security_level: usize, fri_expansion_factor: usize) -> Self {
-        let num_randomizer_polynomials = 1; //security_level / 64;
+        let num_randomizer_polynomials = 1; // over the XField
 
         assert!(
-            fri_expansion_factor & (fri_expansion_factor - 1) == 0,
+            is_power_of_two(fri_expansion_factor),
             "FRI expansion factor must be a power of two, but got {}.",
             fri_expansion_factor
         );
         assert!(
-            fri_expansion_factor != 0,
-            "FRI expansion factor must be greater than zero."
+            fri_expansion_factor > 1,
+            "FRI expansion factor must be greater than one, but got {}.",
+            fri_expansion_factor
         );
 
         let mut log2_of_fri_expansion_factor = 0;
@@ -1072,12 +1073,13 @@ impl Stark {
         revealed_base_elems: Vec<Vec<BFieldElement>>,
         revealed_ext_elems: Vec<Vec<XFieldElement>>,
     ) -> HashMap<usize, Vec<XFieldElement>> {
+        let extension_degree = 3;
         let mut index_map: HashMap<usize, Vec<XFieldElement>> = HashMap::new();
         for (i, &idx) in revealed_indices.iter().enumerate() {
             let mut rand_elems = vec![];
             for (coeff_0, coeff_1, coeff_2) in revealed_base_elems[i]
                 .iter()
-                .take(3 * num_randomizer_polynomials)
+                .take(extension_degree * num_randomizer_polynomials)
                 .tuples()
             {
                 rand_elems.push(XFieldElement::new([*coeff_0, *coeff_1, *coeff_2]));
@@ -1085,7 +1087,7 @@ impl Stark {
 
             let base_elems = revealed_base_elems[i]
                 .iter()
-                .skip(3 * num_randomizer_polynomials)
+                .skip(extension_degree * num_randomizer_polynomials)
                 .map(|bfe| bfe.lift())
                 .collect_vec();
 

@@ -150,13 +150,14 @@ where
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
             Self::Uncast(str) => match AuthenticationStructure::<Digest>::decode(str) {
                 Ok(boxed_auth_struct) => Ok(*boxed_auth_struct),
-                Err(_) => Err(ProofStreamError::boxed(
-                    "cast to authentication structure failed",
-                )),
+                Err(e) => Err(ProofStreamError::boxed(&format!(
+                    "cast to authentication structure failed: {e}"
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
-                "expected compressed authentication paths, but got something else",
-            )),
+            other => Err(ProofStreamError::boxed(&format!(
+                "expected compressed authentication paths, but got something else: {:?}",
+                other
+            ))),
         }
     }
 
@@ -379,8 +380,8 @@ mod proof_item_typed_tests {
 
     use super::*;
     use twenty_first::shared_math::{
-        b_field_element::BFieldElement, rescue_prime_regular::RescuePrimeRegular,
-        x_field_element::XFieldElement,
+        b_field_element::BFieldElement, other::random_elements,
+        rescue_prime_regular::RescuePrimeRegular, x_field_element::XFieldElement,
     };
 
     fn random_bool() -> bool {
@@ -388,29 +389,15 @@ mod proof_item_typed_tests {
         rng.next_u32() % 2 == 1
     }
 
-    fn random_bfieldelement() -> BFieldElement {
-        let mut rng = thread_rng();
-        BFieldElement::new(rng.next_u64())
-    }
-
     fn random_xfieldelement() -> XFieldElement {
+        let extension_degree = 3;
         XFieldElement {
-            coefficients: [
-                random_bfieldelement(),
-                random_bfieldelement(),
-                random_bfieldelement(),
-            ],
+            coefficients: random_elements(extension_degree).try_into().unwrap(),
         }
     }
 
     fn random_digest() -> Digest {
-        Digest::new([
-            random_bfieldelement(),
-            random_bfieldelement(),
-            random_bfieldelement(),
-            random_bfieldelement(),
-            random_bfieldelement(),
-        ])
+        Digest::new(random_elements(DIGEST_LENGTH).try_into().unwrap())
     }
 
     fn random_fri_response() -> FriResponse {
@@ -450,18 +437,9 @@ mod proof_item_typed_tests {
     fn test_serialize_stark_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
         let mut proof_stream = ProofStream::<ProofItem, H>::new();
-        let manyb1 = (0..10)
-            .into_iter()
-            .map(|_| random_bfieldelement())
-            .collect_vec();
-        let manyx = (0..13)
-            .into_iter()
-            .map(|_| random_xfieldelement())
-            .collect_vec();
-        let manyb2 = (0..11)
-            .into_iter()
-            .map(|_| random_bfieldelement())
-            .collect_vec();
+        let manyb1: Vec<BFieldElement> = random_elements(10);
+        let manyx: Vec<XFieldElement> = random_elements(13);
+        let manyb2: Vec<BFieldElement> = random_elements(11);
         let map = (0..7).into_iter().map(|_| random_digest()).collect_vec();
         let auth_struct = (0..8)
             .into_iter()

@@ -40,10 +40,10 @@ impl Error for BFieldCodecError {}
 /// This trait provides functions for encoding to and decoding from a
 /// Vec of BFieldElements. This encoding records the length of
 /// variable-size structures, whether implicitly or explicitly via
-/// length-prepending. It does not record type informatin; this is
+/// length-prepending. It does not record type information; this is
 /// the responsibility of the decoder.
 pub trait BFieldCodec {
-    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>>;
+    fn decode(string: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>>;
     fn encode(&self) -> Vec<BFieldElement>;
 }
 
@@ -96,43 +96,6 @@ impl BFieldCodec for Digest {
         self.to_sequence()
     }
 }
-
-// impl<T: BFieldCodec> BFieldCodec for Vec<T> {
-//     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
-//         let mut vect: Vec<T> = vec![];
-//         let mut index = 0;
-//         while index < str.len() {
-//             // we don't know ahead of time how wide each T-element is
-//             // so every element in the list is length-prepended
-//             let len = str[index].value();
-//             if str.len() < index + 1 + len as usize {
-//                 return Err(BFieldCodecError::boxed(
-//                     "cannot decode vec of Ts because of erroneous length prepending",
-//                 ));
-//             }
-//             let substr = &str[(index + 1)..(index + 1 + len as usize)];
-//             let decoded = T::decode(substr);
-//             if let Ok(t) = decoded {
-//                 vect.push(*t);
-//             } else {
-//                 return Err(BFieldCodecError::boxed("cannot decode T element in vec"));
-//             }
-
-//             index += 1 + len as usize;
-//         }
-//         Ok(Box::new(vect))
-//     }
-
-//     fn encode(&self) -> Vec<BFieldElement> {
-//         let mut str = vec![];
-//         for elem in self.iter() {
-//             let mut substr = elem.encode();
-//             str.push(BFieldElement::new(substr.len().try_into().expect("Generic parameter encoding length (as BFieldElements) does not fit into BFieldElement")));
-//             str.append(&mut substr);
-//         }
-//         str
-//     }
-// }
 
 impl<T: BFieldCodec, S: BFieldCodec> BFieldCodec for (T, S) {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {

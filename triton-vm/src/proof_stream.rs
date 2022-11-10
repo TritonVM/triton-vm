@@ -10,7 +10,7 @@ use crate::proof::Proof;
 use crate::proof_item::MayBeUncast;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ProofStream<Item, H: AlgebraicHasher> {
+pub struct ProofStream<Item: Clone + BFieldCodec + MayBeUncast, H: AlgebraicHasher> {
     pub items: Vec<Item>,
     items_index: usize,
     _hasher: PhantomData<H>,
@@ -152,12 +152,11 @@ where
 mod proof_stream_typed_tests {
     use itertools::Itertools;
     use num_traits::One;
-    use rand::{thread_rng, RngCore};
 
     use super::*;
     use twenty_first::shared_math::{
-        b_field_element::BFieldElement, rescue_prime_regular::RescuePrimeRegular,
-        x_field_element::XFieldElement,
+        b_field_element::BFieldElement, other::random_elements,
+        rescue_prime_regular::RescuePrimeRegular, x_field_element::XFieldElement,
     };
 
     #[derive(Clone, Debug, PartialEq)]
@@ -249,21 +248,6 @@ mod proof_stream_typed_tests {
         }
     }
 
-    fn random_bfieldelement() -> BFieldElement {
-        let mut rng = thread_rng();
-        BFieldElement::new(rng.next_u64())
-    }
-
-    fn random_xfieldelement() -> XFieldElement {
-        XFieldElement {
-            coefficients: [
-                random_bfieldelement(),
-                random_bfieldelement(),
-                random_bfieldelement(),
-            ],
-        }
-    }
-
     // Property: prover_fiat_shamir() is equivalent to verifier_fiat_shamir() when the entire stream has been read.
     #[test]
     fn prover_verifier_fiat_shamir_test() {
@@ -303,18 +287,9 @@ mod proof_stream_typed_tests {
     fn test_serialize_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
         let mut proof_stream = ProofStream::<TestItem, H>::new();
-        let manyb1 = (0..10)
-            .into_iter()
-            .map(|_| random_bfieldelement())
-            .collect_vec();
-        let manyx = (0..13)
-            .into_iter()
-            .map(|_| random_xfieldelement())
-            .collect_vec();
-        let manyb2 = (0..11)
-            .into_iter()
-            .map(|_| random_bfieldelement())
-            .collect_vec();
+        let manyb1: Vec<BFieldElement> = random_elements(10);
+        let manyx: Vec<XFieldElement> = random_elements(13);
+        let manyb2: Vec<BFieldElement> = random_elements(11);
 
         let fs1 = proof_stream.prover_fiat_shamir();
         proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()));
