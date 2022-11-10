@@ -130,19 +130,16 @@ impl ExtProgramTable {
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<ProgramTableChallenges>>
     {
         let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
-        let address = circuit_builder.deterministic_input(usize::from(Address));
-        let address_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Address));
+        let address = circuit_builder.input(usize::from(Address));
+        let address_next = circuit_builder.input(FULL_WIDTH + usize::from(Address));
         let one = circuit_builder.constant(1.into());
-        let instruction = circuit_builder.deterministic_input(usize::from(Instruction));
-        let is_padding = circuit_builder.deterministic_input(usize::from(IsPadding));
-        let running_evaluation =
-            circuit_builder.deterministic_input(usize::from(RunningEvaluation));
-        let instruction_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Instruction));
-        let is_padding_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
+        let instruction = circuit_builder.input(usize::from(Instruction));
+        let is_padding = circuit_builder.input(usize::from(IsPadding));
+        let running_evaluation = circuit_builder.input(usize::from(RunningEvaluation));
+        let instruction_next = circuit_builder.input(FULL_WIDTH + usize::from(Instruction));
+        let is_padding_next = circuit_builder.input(FULL_WIDTH + usize::from(IsPadding));
         let running_evaluation_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningEvaluation));
+            circuit_builder.input(FULL_WIDTH + usize::from(RunningEvaluation));
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_padding_is_0_or_remains_unchanged =

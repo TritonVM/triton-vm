@@ -179,24 +179,21 @@ impl ExtOpStackTable {
             ConstraintCircuitBuilder::<OpStackTableChallenges>::new(2 * FULL_WIDTH);
         let one = circuit_builder.constant(1.into());
 
-        let clk = circuit_builder.deterministic_input(usize::from(CLK));
-        let ib1_shrink_stack = circuit_builder.deterministic_input(usize::from(IB1ShrinkStack));
-        let osp = circuit_builder.deterministic_input(usize::from(OSP));
-        let osv = circuit_builder.deterministic_input(usize::from(OSV));
-        let clk_di = circuit_builder.deterministic_input(usize::from(InverseOfClkDiffMinusOne));
-        let rpcjd =
-            circuit_builder.deterministic_input(usize::from(AllClockJumpDifferencesPermArg));
-        let rppa = circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
+        let clk = circuit_builder.input(usize::from(CLK));
+        let ib1_shrink_stack = circuit_builder.input(usize::from(IB1ShrinkStack));
+        let osp = circuit_builder.input(usize::from(OSP));
+        let osv = circuit_builder.input(usize::from(OSV));
+        let clk_di = circuit_builder.input(usize::from(InverseOfClkDiffMinusOne));
+        let rpcjd = circuit_builder.input(usize::from(AllClockJumpDifferencesPermArg));
+        let rppa = circuit_builder.input(usize::from(RunningProductPermArg));
 
-        let clk_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CLK));
-        let ib1_shrink_stack_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IB1ShrinkStack));
-        let osp_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(OSP));
-        let osv_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(OSV));
-        let rpcjd_next = circuit_builder
-            .deterministic_input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
-        let rppa_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductPermArg));
+        let clk_next = circuit_builder.input(FULL_WIDTH + usize::from(CLK));
+        let ib1_shrink_stack_next = circuit_builder.input(FULL_WIDTH + usize::from(IB1ShrinkStack));
+        let osp_next = circuit_builder.input(FULL_WIDTH + usize::from(OSP));
+        let osv_next = circuit_builder.input(FULL_WIDTH + usize::from(OSV));
+        let rpcjd_next =
+            circuit_builder.input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
+        let rppa_next = circuit_builder.input(FULL_WIDTH + usize::from(RunningProductPermArg));
 
         // the osp increases by 1 or the osp does not change
         //
