@@ -181,8 +181,8 @@ impl ExtJumpStackTable {
         vec![]
     }
 
-    fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<JumpStackTableChallenges>>
-    {
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges>> {
         let mut circuit_builder =
             ConstraintCircuitBuilder::<JumpStackTableChallenges>::new(2 * FULL_WIDTH);
         let one = circuit_builder.constant(1.into());

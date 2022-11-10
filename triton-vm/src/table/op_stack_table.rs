@@ -173,7 +173,8 @@ impl ExtOpStackTable {
         vec![]
     }
 
-    fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<OpStackTableChallenges>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<OpStackTableChallenges>>
+    {
         let mut circuit_builder =
             ConstraintCircuitBuilder::<OpStackTableChallenges>::new(2 * FULL_WIDTH);
         let one = circuit_builder.constant(1.into());
