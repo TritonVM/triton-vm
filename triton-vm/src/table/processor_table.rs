@@ -3292,4 +3292,59 @@ mod constraint_polynomial_tests {
             )
         }
     }
+
+    #[test]
+    fn print_number_and_degrees_of_transition_constraints_for_all_instructions() {
+        let factory = RowPairConstraints::default();
+        let all_instructions_and_their_transition_constraints: [(Instruction, _);
+            Instruction::COUNT] = [
+            (Pop, factory.instruction_pop()),
+            (Push(Default::default()), factory.instruction_push()),
+            (Divine(Default::default()), factory.instruction_divine()),
+            (Dup(Default::default()), factory.instruction_dup()),
+            (Swap(Default::default()), factory.instruction_swap()),
+            (Nop, factory.instruction_nop()),
+            (Skiz, factory.instruction_skiz()),
+            (Call(Default::default()), factory.instruction_call()),
+            (Return, factory.instruction_return()),
+            (Recurse, factory.instruction_recurse()),
+            (Assert, factory.instruction_assert()),
+            (Halt, factory.instruction_halt()),
+            (ReadMem, factory.instruction_read_mem()),
+            (WriteMem, factory.instruction_write_mem()),
+            (Hash, factory.instruction_hash()),
+            (DivineSibling, factory.instruction_divine_sibling()),
+            (AssertVector, factory.instruction_assert_vector()),
+            (Add, factory.instruction_add()),
+            (Mul, factory.instruction_mul()),
+            (Invert, factory.instruction_invert()),
+            (Split, factory.instruction_split()),
+            (Eq, factory.instruction_eq()),
+            (Lsb, factory.instruction_lsb()),
+            (XxAdd, factory.instruction_xxadd()),
+            (XxMul, factory.instruction_xxmul()),
+            (XInvert, factory.instruction_xinv()),
+            (XbMul, factory.instruction_xbmul()),
+            (ReadIo, factory.instruction_read_io()),
+            (WriteIo, factory.instruction_write_io()),
+        ];
+
+        println!("| Instruction     | #polys | max deg | Degrees");
+        println!("|:----------------|-------:|--------:|:------------");
+        for (instruction, constraints) in all_instructions_and_their_transition_constraints {
+            let degrees = constraints
+                .iter()
+                .map(|polynomial| polynomial.degree())
+                .collect_vec();
+            let max_degree = degrees.iter().max().unwrap_or(&0);
+            let degrees_str = degrees.iter().map(|d| format!("{d}")).join(", ");
+            println!(
+                "| {:<15} | {:>6} | {:>7} | [{}]",
+                format!("{instruction}"),
+                constraints.len(),
+                max_degree,
+                degrees_str,
+            );
+        }
+    }
 }
