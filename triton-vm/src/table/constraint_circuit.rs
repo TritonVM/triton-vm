@@ -433,6 +433,33 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
             },
         }
     }
+
+    /// Replace all challenges with constants in subtree
+    fn apply_challenges_to_one_root(&mut self, challenges: &T) {
+        match &self.expression {
+            CircuitExpression::Constant(_) => (),
+            CircuitExpression::Input(_) => (),
+            CircuitExpression::Challenge(challenge_id) => {
+                *self.expression.borrow_mut() =
+                    CircuitExpression::Constant(challenges.get_challenge(*challenge_id))
+            }
+            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+                lhs.as_ref()
+                    .borrow_mut()
+                    .apply_challenges_to_one_root(challenges);
+                rhs.as_ref()
+                    .borrow_mut()
+                    .apply_challenges_to_one_root(challenges);
+            }
+        }
+    }
+
+    /// Simplify the circuit constraints by replacing the known challenges with roots
+    pub fn apply_challenges(constraints: &mut [ConstraintCircuit<T>], challenges: &T) {
+        for circuit in constraints.iter_mut() {
+            circuit.apply_challenges_to_one_root(challenges);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1150,6 +1177,28 @@ mod constraint_circuit_tests {
         for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
             assert_eq!(before, after, "Constant folding must leave partially evaluated constraints unchanged for instruction table constraint {i}");
         }
+
+        assert!(
+            constraints
+                .iter()
+                .any(|constraint| constraint.is_randomized()),
+            "Constraint must contain randomness before challenges have been applied"
+        );
+
+        // apply challenges and verify that subtree no longer contains randomness
+        ConstraintCircuit::apply_challenges(&mut constraints, &challenges);
+        assert!(
+            constraints
+                .iter()
+                .all(|constraint| !constraint.is_randomized()),
+            "Constraint may not contain randomness after challenges have been applied"
+        );
+
+        ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
+        println!(
+            "nodes in {table_name} constraint multitree after applying challenges and constant folding again: {}",
+            node_counter(&mut constraints)
+        );
     }
 
     #[test]
