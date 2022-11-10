@@ -78,12 +78,17 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ## Consistency Constraints
 
-None.
+1. The padding indicator `is_padding` is either 0 or 1.
+
+### Consistency Constraints as Polynomials
+
+1. `IsPadding·(IsPadding - 1)`
 
 ## Transition Constraints
 
 1. The address increases by 1 or `current_instruction` does not change.
 1. The address increases by 1 or `next_instruction_or_arg` does not change.
+1. The padding indicator `IsPadding` is 0 or remains unchanged.
 1. If the next row is not a padding row, the running evaluation absorbs the next row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥. Otherwise, it remains unchanged.
 1. If the next row is not a padding row, the running product absorbs the next row with respect to challenges 🍓, 🍒, and 🥭 and indeterminate 🛁. Otherwise, it remains unchanged.
 
@@ -91,6 +96,7 @@ None.
 
 1. `(address' - (address + 1))·(current_instruction' - current_instruction)`
 1. `(address' - (address + 1))·(next_instruction_or_arg' - next_instruction_or_arg)`
+1. `IsPadding·(IsPadding' - IsPadding)`
 1. `(1 - IsPadding')·(RunningEvaluation' - 🪥·RunningEvaluation - 🥝·address' - 🥥·current_instruction' - 🫐·next_instruction_or_arg') + IsPadding'·(RunningEvaluation' - RunningEvaluation)`
 1. `(1 - IsPadding')·(RunningProduct' - RunningProduct·(🛁 - 🍓·address' - 🍒·current_instruction' - 🥭·next_instruction_or_arg')) + IsPadding'·(RunningProduct' - RunningProduct)`
 

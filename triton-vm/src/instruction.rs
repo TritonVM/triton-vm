@@ -10,11 +10,12 @@ use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use crate::instruction::DivinationHint::Quotient;
 use AnInstruction::*;
 use TokenError::*;
 
-use super::ord_n::{Ord16, Ord16::*, Ord8};
+use crate::instruction::DivinationHint::Quotient;
+
+use super::ord_n::{Ord16, Ord16::*, Ord7};
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -142,28 +143,6 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, EnumIter, EnumCountMacro, Clone, Copy, DisplayMacro)]
-pub enum InstructionBucket {
-    HasArg,
-    ShrinkStack,
-    KeepRam,
-}
-
-impl InstructionBucket {
-    fn index(&self) -> u32 {
-        use InstructionBucket::*;
-        match self {
-            HasArg => 0,
-            ShrinkStack => 1,
-            KeepRam => 2,
-        }
-    }
-
-    fn flag(&self) -> u32 {
-        1 << self.index()
-    }
-}
-
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     /// Drop the specific argument in favor of a default one.
     pub fn strip(&self) -> Self {
@@ -200,53 +179,39 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         }
     }
 
-    /// Test if the instruction is in a given bucket.
-    pub fn in_bucket(&self, bucket: InstructionBucket) -> bool {
-        if *self == Halt {
-            return false;
-        }
-        use InstructionBucket::*;
-        match bucket {
-            HasArg => matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)),
-            ShrinkStack => {
-                matches!(self, Pop | Skiz | Assert | WriteIo)
-            }
-            KeepRam => !matches!(self, ReadMem | WriteMem),
-            // Binop => matches!(self, Add | Mul | Eq | XbMul),
-        }
-    }
-
-    /// A *flag set* is the set of buckets an instruction belongs to.
-    /// It is represented as a list of bits, and wrapped in a u32.
-    pub fn flag_set(&self) -> u32 {
-        InstructionBucket::iter()
-            .filter(|bucket| self.in_bucket(*bucket))
-            .map(|bucket| bucket.flag())
-            .fold(0, |x, y| x | y)
-    }
-
     /// Assign a unique positive integer to each `Instruction`.
     pub fn opcode(&self) -> u32 {
-        // hardcode halt == 0
-        // These lines are actually not necessary (Halt is automatically assigned 0 already)
-        // but it can't hurt to stress it here.
-        if *self == Halt {
-            return 0;
+        match self {
+            Pop => 2,
+            Push(_) => 1,
+            Divine(_) => 4,
+            Dup(_) => 5,
+            Swap(_) => 9,
+            Nop => 8,
+            Skiz => 6,
+            Call(_) => 13,
+            Return => 12,
+            Recurse => 16,
+            Assert => 10,
+            Halt => 0,
+            ReadMem => 24,
+            WriteMem => 28,
+            Hash => 32,
+            DivineSibling => 36,
+            AssertVector => 40,
+            Add => 14,
+            Mul => 18,
+            Invert => 44,
+            Split => 48,
+            Eq => 22,
+            Lsb => 52,
+            XxAdd => 56,
+            XxMul => 60,
+            XInvert => 64,
+            XbMul => 26,
+            ReadIo => 68,
+            WriteIo => 30,
         }
-
-        // compute the index within flag set
-        // by iterating over all instructions and incrementing a counter
-        // whenever a fellow flag set member is encountered
-        let mut index_within_flag_set = 0;
-        for inst in AnInstruction::<Dest>::iter() {
-            if self.strip() == inst.strip() {
-                break;
-            } else if self.flag_set() == inst.flag_set() {
-                index_within_flag_set += 1;
-            }
-        }
-
-        (index_within_flag_set << InstructionBucket::COUNT) + self.flag_set()
     }
 
     /// Returns whether a given instruction modifies the op-stack.
@@ -272,7 +237,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     /// Get the i'th instruction bit
-    pub fn ib(&self, arg: Ord8) -> BFieldElement {
+    pub fn ib(&self, arg: Ord7) -> BFieldElement {
         let opcode = self.opcode();
         let bit_number: usize = arg.into();
 
@@ -1041,12 +1006,15 @@ pub mod sample_programs {
 
     pub const COUNTDOWN_FROM_10: &str = "
         push 10
-        call foo
-   foo: push 18446744069414584320
+        call loop
+  loop: dup0
+        write_io
+        push -1
         add
         dup0
         skiz
         recurse
+        write_io
         halt
     ";
 
@@ -1325,8 +1293,8 @@ mod instruction_tests {
     use strum::{EnumCount, IntoEnumIterator};
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
-    use crate::instruction::{all_labelled_instructions_with_args, InstructionBucket};
-    use crate::ord_n::Ord8;
+    use crate::instruction::all_labelled_instructions_with_args;
+    use crate::ord_n::Ord7;
     use crate::vm::Program;
 
     use super::{all_instructions_without_args, parse, sample_programs, AnInstruction};
@@ -1373,8 +1341,9 @@ mod instruction_tests {
             num_bits += 1;
         }
         assert!(
-            num_bits <= 8,
-            "Biggest instruction needs more than 8 bits :("
+            num_bits <= Ord7::COUNT,
+            "Biggest instruction needs more than {} bits :(",
+            Ord7::COUNT
         );
 
         // assert consistency
@@ -1420,7 +1389,7 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use Ord8::*;
+        use Ord7::*;
 
         for instruction in all_instructions_without_args() {
             for ib in [IB0, IB1, IB2, IB3, IB4, IB5, IB6] {
@@ -1448,25 +1417,5 @@ mod instruction_tests {
         for instr in all_instructions_without_args() {
             println!("{:>3} {: <10}", instr.opcode(), format_args!("{instr}"));
         }
-    }
-
-    #[test]
-    fn print_instruction_bucket_histogram() {
-        for ib in InstructionBucket::iter() {
-            println!(
-                "{ib}: {}",
-                all_instructions_without_args()
-                    .iter()
-                    .filter(|instr| ib.flag() & instr.flag_set() != 0)
-                    .count()
-            );
-        }
-        println!(
-            "no bucket: {}",
-            all_instructions_without_args()
-                .iter()
-                .filter(|instr| instr.flag_set() == 0)
-                .count()
-        );
     }
 }

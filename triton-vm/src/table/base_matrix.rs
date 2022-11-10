@@ -547,8 +547,8 @@ impl Display for ProcessorMatrixRow {
         row(
             f,
             format!(
-                "ib0-7:    \
-                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
+                "ib0-6:    \
+                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
                 self.row[usize::from(IB0)].value(),
                 self.row[usize::from(IB1)].value(),
                 self.row[usize::from(IB2)].value(),
@@ -556,7 +556,6 @@ impl Display for ProcessorMatrixRow {
                 self.row[usize::from(IB4)].value(),
                 self.row[usize::from(IB5)].value(),
                 self.row[usize::from(IB6)].value(),
-                self.row[usize::from(IB7)].value(),
             ),
         )?;
         write!(

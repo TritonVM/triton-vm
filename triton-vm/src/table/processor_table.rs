@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use std::ops::Mul;
 
@@ -11,10 +12,8 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::fri_domain::FriDomain;
-use crate::instruction::{
-    all_instructions_without_args, AnInstruction::*, Instruction, InstructionBucket,
-};
-use crate::ord_n::Ord8;
+use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
+use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::{Evaluable, ExtensionTable};
@@ -371,7 +370,7 @@ impl ExtProcessorTable {
     /// transition constraints among all instructions, the deselector is multiplied with a zero,
     /// causing no additional terms in the final sets of combined transition constraint polynomials.
     fn combine_instruction_constraints_with_deselectors(
-        instr_tc_polys_tuples: Vec<(Instruction, Vec<MPolynomial<XFieldElement>>)>,
+        instr_tc_polys_tuples: [(Instruction, Vec<MPolynomial<XFieldElement>>); Instruction::COUNT],
     ) -> Vec<MPolynomial<XFieldElement>> {
         let (all_instructions, all_tc_polys_for_all_instructions): (Vec<_>, Vec<Vec<_>>) =
             instr_tc_polys_tuples.into_iter().unzip();
@@ -408,6 +407,46 @@ impl ExtProcessorTable {
                     .zip(row)
                     .map(|(deselector, instruction_tc)| deselector * instruction_tc.to_owned())
                     .sum()
+            })
+            .collect_vec()
+    }
+
+    fn combine_transition_constraints_with_padding_constraints(
+        factory: &RowPairConstraints,
+        instruction_transition_constraints: Vec<MPolynomial<XFieldElement>>,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let ip_remains = factory.ip_next() - factory.ip();
+        let ci_remains = factory.ci_next() - factory.ci();
+        let nia_remains = factory.nia_next() - factory.nia();
+        let padding_row_transition_constraints = [
+            vec![ip_remains, ci_remains, nia_remains],
+            factory.keep_jump_stack(),
+            factory.keep_stack(),
+            factory.keep_ram(),
+        ]
+        .concat();
+
+        let padding_row_deselector = factory.one() - factory.is_padding_next();
+        let padding_row_selector = factory.is_padding_next();
+
+        let max_number_of_constraints = max(
+            instruction_transition_constraints.len(),
+            padding_row_transition_constraints.len(),
+        );
+
+        (0..max_number_of_constraints)
+            .map(|idx| {
+                let instruction_constraint = instruction_transition_constraints
+                    .get(idx)
+                    .unwrap_or(&factory.zero())
+                    .clone();
+                let padding_constraint = padding_row_transition_constraints
+                    .get(idx)
+                    .unwrap_or(&factory.zero())
+                    .clone();
+
+                instruction_constraint * padding_row_deselector.clone()
+                    + padding_constraint * padding_row_selector.clone()
             })
             .collect_vec()
     }
@@ -714,39 +753,26 @@ impl ExtProcessorTable {
     ) -> Vec<MPolynomial<XFieldElement>> {
         let factory = SingleRowConstraints::default();
         let one = factory.one();
+        let constant = SingleRowConstraints::constant_from_i32;
 
-        // The composition of instruction buckets ib0-ib5 corresponds the current instruction ci.
-        //
-        // $ci - (2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0) = 0$
-        let ci_corresponds_to_ib0_thru_ib7 = {
-            let ib_composition = one.clone() * factory.ib0()
-                + SingleRowConstraints::constant_from_i32(2) * factory.ib1()
-                + SingleRowConstraints::constant_from_i32(4) * factory.ib2()
-                + SingleRowConstraints::constant_from_i32(8) * factory.ib3()
-                + SingleRowConstraints::constant_from_i32(16) * factory.ib4()
-                + SingleRowConstraints::constant_from_i32(32) * factory.ib5()
-                + SingleRowConstraints::constant_from_i32(64) * factory.ib6()
-                + SingleRowConstraints::constant_from_i32(128) * factory.ib7();
+        // The composition of instruction buckets ib0-ib9 corresponds the current instruction ci.v
+        let ib_composition = one.clone() * factory.ib0()
+            + constant(1 << 1) * factory.ib1()
+            + constant(1 << 2) * factory.ib2()
+            + constant(1 << 3) * factory.ib3()
+            + constant(1 << 4) * factory.ib4()
+            + constant(1 << 5) * factory.ib5()
+            + constant(1 << 6) * factory.ib6();
+        let ci_corresponds_to_ib0_thru_ib12 = factory.ci() - ib_composition;
 
-            factory.ci() - ib_composition
-        };
-
-        let ib0 = factory.ib0();
-        let ib1 = factory.ib1();
-        let ib2 = factory.ib2();
-        let ib3 = factory.ib3();
-        let ib4 = factory.ib4();
-        let ib5 = factory.ib5();
-        let ib6 = factory.ib6();
-        let ib7 = factory.ib7();
-        let ib0_is_bit = ib0.clone() * (ib0 - one.clone());
-        let ib1_is_bit = ib1.clone() * (ib1 - one.clone());
-        let ib2_is_bit = ib2.clone() * (ib2 - one.clone());
-        let ib3_is_bit = ib3.clone() * (ib3 - one.clone());
-        let ib4_is_bit = ib4.clone() * (ib4 - one.clone());
-        let ib5_is_bit = ib5.clone() * (ib5 - one.clone());
-        let ib6_is_bit = ib6.clone() * (ib6 - one.clone());
-        let ib7_is_bit = ib7.clone() * (ib7 - one);
+        let ib0_is_bit = factory.ib0() * (factory.ib0() - one.clone());
+        let ib1_is_bit = factory.ib1() * (factory.ib1() - one.clone());
+        let ib2_is_bit = factory.ib2() * (factory.ib2() - one.clone());
+        let ib3_is_bit = factory.ib3() * (factory.ib3() - one.clone());
+        let ib4_is_bit = factory.ib4() * (factory.ib4() - one.clone());
+        let ib5_is_bit = factory.ib5() * (factory.ib5() - one.clone());
+        let ib6_is_bit = factory.ib6() * (factory.ib6() - one.clone());
+        let is_padding_is_bit = factory.is_padding() * (factory.is_padding() - one);
 
         // The inverse of clock jump difference with multiplicity `invm` is the inverse-or-zero of
         // the clock jump difference `cjd`.
@@ -762,8 +788,8 @@ impl ExtProcessorTable {
             ib4_is_bit,
             ib5_is_bit,
             ib6_is_bit,
-            ib7_is_bit,
-            ci_corresponds_to_ib0_thru_ib7,
+            is_padding_is_bit,
+            ci_corresponds_to_ib0_thru_ib12,
             invm_is_zero_or_cjd_inverse,
             cjd_is_zero_or_invm_inverse,
         ]
@@ -775,7 +801,7 @@ impl ExtProcessorTable {
         let factory = RowPairConstraints::default();
 
         // instruction-specific constraints
-        let all_instruction_transition_constraints = vec![
+        let all_instruction_transition_constraints: [_; Instruction::COUNT] = [
             (Pop, factory.instruction_pop()),
             (Push(Default::default()), factory.instruction_push()),
             (Divine(Default::default()), factory.instruction_divine()),
@@ -806,44 +832,20 @@ impl ExtProcessorTable {
             (ReadIo, factory.instruction_read_io()),
             (WriteIo, factory.instruction_write_io()),
         ];
-        assert_eq!(
-            Instruction::COUNT,
-            all_instruction_transition_constraints.len()
-        );
 
         let mut transition_constraints = Self::combine_instruction_constraints_with_deselectors(
             all_instruction_transition_constraints,
         );
 
+        // if next row is padding row: disable transition constraints, enable padding constraints
+        transition_constraints = Self::combine_transition_constraints_with_padding_constraints(
+            &factory,
+            transition_constraints,
+        );
+
         // constraints common to all instructions
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
-
-        // instruction-bucket constraints
-        // We can't combine bucket constraints like instruction
-        // constraints because there is no guarantee for mutual
-        // exclusivity. So we have to list all of them.
-        let all_instruction_bucket_constraints: Vec<(
-            InstructionBucket,
-            Vec<MPolynomial<XFieldElement>>,
-        )> = vec![
-            // (InstructionBucket::HasArg, factory.has_arg()), // no constraints to add for this bucket
-            (InstructionBucket::ShrinkStack, factory.shrink_stack()),
-            (InstructionBucket::KeepRam, factory.keep_ram()),
-        ];
-        for (bucket, constraints) in all_instruction_bucket_constraints.iter() {
-            let bucket_selector = match bucket {
-                InstructionBucket::HasArg => factory.ib0(),
-                InstructionBucket::ShrinkStack => factory.ib1(),
-                InstructionBucket::KeepRam => factory.ib2(),
-            };
-
-            transition_constraints.append(
-                &mut constraints
-                    .iter()
-                    .map(|c| bucket_selector.clone() * c.to_owned())
-                    .collect_vec(),
-            );
-        }
+        transition_constraints.insert(1, factory.is_padding_is_zero_or_does_not_change());
 
         // constraints related to clock jump difference argument
 
@@ -987,6 +989,10 @@ impl SingleRowConstraints {
         self.variables[usize::from(CLK)].clone()
     }
 
+    pub fn is_padding(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(IsPadding)].clone()
+    }
+
     pub fn ip(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(IP)].clone()
     }
@@ -1025,10 +1031,6 @@ impl SingleRowConstraints {
 
     pub fn ib6(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(IB6)].clone()
-    }
-
-    pub fn ib7(&self) -> MPolynomial<XFieldElement> {
-        self.variables[usize::from(IB7)].clone()
     }
 
     pub fn jsp(&self) -> MPolynomial<XFieldElement> {
@@ -1231,6 +1233,10 @@ impl RowPairConstraints {
         clk_next - clk - one
     }
 
+    pub fn is_padding_is_zero_or_does_not_change(&self) -> MPolynomial<XFieldElement> {
+        self.is_padding() * (self.is_padding_next() - self.is_padding())
+    }
+
     pub fn indicator_polynomial(&self, i: usize) -> MPolynomial<XFieldElement> {
         let hv0 = self.hv0();
         let hv1 = self.hv1();
@@ -1262,26 +1268,28 @@ impl RowPairConstraints {
     }
 
     pub fn instruction_pop(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
     }
 
     /// push'es argument should be on the stack after execution
     /// $st0_next == nia  =>  st0_next - nia == 0$
     pub fn instruction_push(&self) -> Vec<MPolynomial<XFieldElement>> {
-        let st0_next = self.st0_next();
-        let nia = self.nia();
-
-        vec![st0_next - nia]
+        let specific_constraints = vec![self.st0_next() - self.nia()];
+        [
+            specific_constraints,
+            self.grow_stack(),
+            self.step_2(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_divine(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        [self.step_1(), self.grow_stack(), self.keep_ram()].concat()
     }
 
     pub fn instruction_dup(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![
+        let specific_constraints = vec![
             self.indicator_polynomial(0) * (self.st0_next() - self.st0()),
             self.indicator_polynomial(1) * (self.st0_next() - self.st1()),
             self.indicator_polynomial(2) * (self.st0_next() - self.st2()),
@@ -1298,11 +1306,19 @@ impl RowPairConstraints {
             self.indicator_polynomial(13) * (self.st0_next() - self.st13()),
             self.indicator_polynomial(14) * (self.st0_next() - self.st14()),
             self.indicator_polynomial(15) * (self.st0_next() - self.st15()),
+        ];
+        [
+            specific_constraints,
+            self.decompose_arg(),
+            self.step_2(),
+            self.grow_stack(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_swap(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![
+        let specific_constraints = vec![
             self.indicator_polynomial(0),
             self.indicator_polynomial(1) * (self.st1_next() - self.st0()),
             self.indicator_polynomial(2) * (self.st2_next() - self.st0()),
@@ -1351,25 +1367,21 @@ impl RowPairConstraints {
             (self.one() - self.indicator_polynomial(15)) * (self.st15_next() - self.st15()),
             self.osv_next() - self.osv(),
             self.osp_next() - self.osp(),
-            (self.one() - self.indicator_polynomial(1)) * (self.ramv_next() - self.ramv()),
+        ];
+        [
+            specific_constraints,
+            self.decompose_arg(),
+            self.step_2(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_nop(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        [self.step_1(), self.keep_stack(), self.keep_ram()].concat()
     }
 
     pub fn instruction_skiz(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // The jump stack pointer jsp does not change.
-        let jsp_does_not_change = self.jsp_next() - self.jsp();
-
-        // The last jump's origin jso does not change.
-        let jso_does_not_change = self.jso_next() - self.jso();
-
-        // The last jump's destination jsd does not change.
-        let jsd_does_not_change = self.jsd_next() - self.jsd();
-
         // The next instruction nia is decomposed into helper variables hv.
         let nia_decomposes_to_hvs = self.nia() - (self.hv0() + self.two() * self.hv1());
 
@@ -1394,14 +1406,15 @@ impl RowPairConstraints {
             * self.hv0();
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
 
-        vec![
-            jsp_does_not_change,
-            jso_does_not_change,
-            jsd_does_not_change,
-            nia_decomposes_to_hvs,
-            hv0_is_0_or_1,
-            ip_incr_by_1_or_2_or_3,
+        let specific_constraints =
+            vec![nia_decomposes_to_hvs, hv0_is_0_or_1, ip_incr_by_1_or_2_or_3];
+        [
+            specific_constraints,
+            self.keep_jump_stack(),
+            self.shrink_stack(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_call(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -1417,12 +1430,13 @@ impl RowPairConstraints {
         // The instruction pointer ip is set to the instruction's argument.
         let ip_becomes_nia = self.ip_next() - self.nia();
 
-        vec![
+        let specific_constraints = vec![
             jsp_incr_1,
             jso_becomes_ip_plus_2,
             jsd_becomes_nia,
             ip_becomes_nia,
-        ]
+        ];
+        [specific_constraints, self.keep_stack(), self.keep_ram()].concat()
     }
 
     pub fn instruction_return(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -1432,62 +1446,81 @@ impl RowPairConstraints {
         // The instruction pointer ip is set to the last call's origin jso.
         let ip_becomes_jso = self.ip_next() - self.jso();
 
-        vec![jsp_incr_1, ip_becomes_jso]
+        let specific_constraints = vec![jsp_incr_1, ip_becomes_jso];
+        [specific_constraints, self.keep_stack(), self.keep_ram()].concat()
     }
 
     pub fn instruction_recurse(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // The jump stack pointer jsp does not change.
-        let jsp_does_not_change = self.jsp_next() - self.jsp();
-
-        // The last jump's origin jso does not change.
-        let jso_does_not_change = self.jso_next() - self.jso();
-
-        // The last jump's destination jsd does not change.
-        let jsd_does_not_change = self.jsd_next() - self.jsd();
-
         // The instruction pointer ip is set to the last jump's destination jsd.
         let ip_becomes_jsd = self.ip_next() - self.jsd();
-
-        vec![
-            jsp_does_not_change,
-            jso_does_not_change,
-            jsd_does_not_change,
-            ip_becomes_jsd,
+        let specific_constraints = vec![ip_becomes_jsd];
+        [
+            specific_constraints,
+            self.keep_jump_stack(),
+            self.keep_stack(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_assert(&self) -> Vec<MPolynomial<XFieldElement>> {
         // The current top of the stack st0 is 1.
         let st_0_is_1 = self.st0() - self.one();
 
-        vec![st_0_is_1]
+        let specific_constraints = vec![st_0_is_1];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.shrink_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_halt(&self) -> Vec<MPolynomial<XFieldElement>> {
         // The instruction executed in the following step is instruction halt.
         let halt_is_followed_by_halt = self.ci_next() - self.ci();
 
-        vec![halt_is_followed_by_halt]
+        let specific_constraints = vec![halt_is_followed_by_halt];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.keep_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_read_mem(&self) -> Vec<MPolynomial<XFieldElement>> {
+        // the RAM pointer is overwritten with st1
+        let update_ramp = self.ramp_next() - self.st1();
+
         // The top of the stack is overwritten with the RAM value.
         let st0_becomes_ramv = self.st0_next() - self.ramv();
 
-        vec![st0_becomes_ramv]
+        let specific_constraints = vec![update_ramp, st0_becomes_ramv];
+        [specific_constraints, self.step_1(), self.unop()].concat()
     }
 
     pub fn instruction_write_mem(&self) -> Vec<MPolynomial<XFieldElement>> {
+        // the RAM pointer is overwritten with st1
+        let update_ramp = self.ramp_next() - self.st1();
+
         // The RAM value is overwritten with the top of the stack.
         let ramv_becomes_st0 = self.ramv_next() - self.st0();
 
-        vec![ramv_becomes_st0]
+        let specific_constraints = vec![update_ramp, ramv_becomes_st0];
+        [specific_constraints, self.step_1(), self.keep_stack()].concat()
     }
 
     /// Two Evaluation Arguments with the Hash Table guarantee correct transition.
     pub fn instruction_hash(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        [
+            self.step_1(),
+            self.stack_remains_and_top_ten_elements_unconstrained(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     /// Recall that in a Merkle tree, the indices of left (respectively right)
@@ -1501,7 +1534,7 @@ impl RowPairConstraints {
         // The 11th stack register is shifted by 1 bit to the right.
         let st10_is_shifted_1_bit_right = self.st10_next() * self.two() + self.hv0() - self.st10();
 
-        // The the second pentuplet either stays where it is, or is moved to the top
+        // The second pentuplet either stays where it is, or is moved to the top
         let maybe_move_st5 = (self.one() - self.hv0()) * (self.st5() - self.st0_next())
             + self.hv0() * (self.st5() - self.st5_next());
         let maybe_move_st6 = (self.one() - self.hv0()) * (self.st6() - self.st1_next())
@@ -1513,32 +1546,7 @@ impl RowPairConstraints {
         let maybe_move_st9 = (self.one() - self.hv0()) * (self.st9() - self.st4_next())
             + self.hv0() * (self.st9() - self.st9_next());
 
-        // The stack element in st11 does not change.
-        let st11_does_not_change = self.st11_next() - self.st11();
-
-        // The stack element in st12 does not change.
-        let st12_does_not_change = self.st12_next() - self.st12();
-
-        // The stack element in st13 does not change.
-        let st13_does_not_change = self.st13_next() - self.st13();
-
-        // The stack element in st14 does not change.
-        let st14_does_not_change = self.st14_next() - self.st14();
-
-        // The stack element in st15 does not change.
-        let st15_does_not_change = self.st15_next() - self.st15();
-
-        // The top of the OpStack underflow, i.e., osv, does not change.
-        let osv_does_not_change = self.osv_next() - self.osv();
-
-        // The OpStack pointer does not change.
-        let osp_does_not_change = self.osp_next() - self.osp();
-
-        // If hv0 is 0, then the RAM value ramv does not change.
-        let ramv_does_not_change_when_hv0_is_0 =
-            (self.one() - self.hv0()) * (self.ramv_next() - self.ramv());
-
-        vec![
+        let specific_constraints = vec![
             hv0_is_0_or_1,
             st10_is_shifted_1_bit_right,
             maybe_move_st5,
@@ -1546,56 +1554,76 @@ impl RowPairConstraints {
             maybe_move_st7,
             maybe_move_st8,
             maybe_move_st9,
-            st11_does_not_change,
-            st12_does_not_change,
-            st13_does_not_change,
-            st14_does_not_change,
-            st15_does_not_change,
-            osv_does_not_change,
-            osp_does_not_change,
-            ramv_does_not_change_when_hv0_is_0,
+        ];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_eleven_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_assert_vector(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![
+        let specific_constraints = vec![
             // Register st0 is equal to st5.
-            // $st6 - st0 = 0$
             self.st5() - self.st0(),
             // Register st1 is equal to st6.
-            // $st7 - st1 = 0$
             self.st6() - self.st1(),
-            // Register st2 is equal to st7.
-            // $st8 - st2 = 0$
+            // and so on
             self.st7() - self.st2(),
-            // Register st3 is equal to st8.
-            // $st9 - st3 = 0$
             self.st8() - self.st3(),
-            // Register st4 is equal to st9.
-            // $st10 - st4 = 0$
             self.st9() - self.st4(),
+        ];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.keep_stack(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     /// The sum of the top two stack elements is moved into the top of the stack.
     ///
     /// $st0' - (st0 + st1) = 0$
     pub fn instruction_add(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![self.st0_next() - (self.st0() + self.st1())]
+        let specific_constraints = vec![self.st0_next() - (self.st0() + self.st1())];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     /// The product of the top two stack elements is moved into the top of the stack.
     ///
     /// $st0' - (st0 * st1) = 0$
     pub fn instruction_mul(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![self.st0_next() - (self.st0() * self.st1())]
+        let specific_constraints = vec![self.st0_next() - (self.st0() * self.st1())];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     /// The top of the stack's inverse is moved into the top of the stack.
     ///
     /// $st0'·st0 - 1 = 0$
     pub fn instruction_invert(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![self.st0_next() * self.st0() - self.one()]
+        let specific_constraints = vec![self.st0_next() * self.st0() - self.one()];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.unop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_split(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -1622,50 +1650,24 @@ impl RowPairConstraints {
             lo * (hv0 * (hi - ffff_ffff) - self.one())
         };
 
-        let st2_becomes_st1 = self.st2_next() - self.st1();
-        let st3_becomes_st2 = self.st3_next() - self.st2();
-        let st4_becomes_st3 = self.st4_next() - self.st3();
-        let st5_becomes_st4 = self.st5_next() - self.st4();
-        let st6_becomes_st5 = self.st6_next() - self.st5();
-        let st7_becomes_st6 = self.st7_next() - self.st6();
-        let st8_becomes_st7 = self.st8_next() - self.st7();
-        let st9_becomes_st8 = self.st9_next() - self.st8();
-        let st10_becomes_st9 = self.st10_next() - self.st9();
-        let st11_becomes_st10 = self.st11_next() - self.st10();
-        let st12_becomes_st11 = self.st12_next() - self.st11();
-        let st13_becomes_st12 = self.st13_next() - self.st12();
-        let st14_becomes_st13 = self.st14_next() - self.st13();
-        let st15_becomes_st14 = self.st15_next() - self.st14();
-        let osv_becomes_st15 = self.osv_next() - self.st15();
-        let osp_is_incremented = self.osp_next() - (self.osp() + self.one());
-
-        vec![
+        let specific_constraints = vec![
             st0_decomposes_to_two_32_bit_chunks,
             hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0,
-            st2_becomes_st1,
-            st3_becomes_st2,
-            st4_becomes_st3,
-            st5_becomes_st4,
-            st6_becomes_st5,
-            st7_becomes_st6,
-            st8_becomes_st7,
-            st9_becomes_st8,
-            st10_becomes_st9,
-            st11_becomes_st10,
-            st12_becomes_st11,
-            st13_becomes_st12,
-            st14_becomes_st13,
-            st15_becomes_st14,
-            osv_becomes_st15,
-            osp_is_incremented,
+        ];
+        [
+            specific_constraints,
+            self.grow_stack_and_top_two_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_eq(&self) -> Vec<MPolynomial<XFieldElement>> {
         // Helper variable hv0 is the inverse of the difference of the stack's two top-most elements or 0.
         //
         // $ hv0·(hv0·(st1 - st0) - 1) = 0 $
-        let hv0_is_inverse_of_diff_or_0 =
+        let hv0_is_inverse_of_diff_or_hv0_is_0 =
             self.hv0() * (self.hv0() * (self.st1() - self.st0()) - self.one());
 
         // Helper variable hv0 is the inverse of the difference of the stack's two top-most elements or the difference is 0.
@@ -1680,11 +1682,18 @@ impl RowPairConstraints {
         let st0_becomes_1_if_diff_is_not_invertible =
             self.st0_next() - (self.one() - self.hv0() * (self.st1() - self.st0()));
 
-        vec![
-            hv0_is_inverse_of_diff_or_0,
+        let specific_constraints = vec![
+            hv0_is_inverse_of_diff_or_hv0_is_0,
             hv0_is_inverse_of_diff_or_diff_is_0,
             st0_becomes_1_if_diff_is_not_invertible,
+        ];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     /// 1. The lsb is a bit
@@ -1695,119 +1704,40 @@ impl RowPairConstraints {
         let lsb = self.variables[FULL_WIDTH + usize::from(ST0)].clone();
 
         let lsb_is_a_bit = lsb.clone() * (lsb.clone() - self.one());
-
         let correct_decomposition = self.two() * shifted_operand + lsb - operand;
 
-        vec![lsb_is_a_bit, correct_decomposition]
+        let specific_constraints = vec![lsb_is_a_bit, correct_decomposition];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.grow_stack_and_top_two_elements_unconstrained(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_xxadd(&self) -> Vec<MPolynomial<XFieldElement>> {
         // The result of adding st0 to st3 is moved into st0.
-        //
-        // $st0' - (st0 + st3)$
         let st0_becomes_st0_plus_st3 = self.st0_next() - (self.st0() + self.st3());
 
         // The result of adding st1 to st4 is moved into st1.
-        //
-        // $st1' - (st1 + st4)$
         let st1_becomes_st1_plus_st4 = self.st1_next() - (self.st1() + self.st4());
 
         // The result of adding st2 to st5 is moved into st2.
-        //
-        // $st2' - (st2 + st5)$
         let st2_becomes_st2_plus_st5 = self.st2_next() - (self.st2() + self.st5());
 
-        // The stack element in st3 does not change.
-        //
-        // $st3' - st3 = 0$
-        let st3_does_not_change = self.st3_next() - self.st3();
-
-        // The stack element in st4 does not change.
-        //
-        // $st4' - st4 = 0$
-        let st4_does_not_change = self.st4_next() - self.st4();
-
-        // The stack element in st5 does not change.
-        //
-        // $st5' - st5 = 0$
-        let st5_does_not_change = self.st5_next() - self.st5();
-
-        // The stack element in st6 does not change.
-        //
-        // $st6' - st6 = 0$
-        let st6_does_not_change = self.st6_next() - self.st6();
-
-        // The stack element in st7 does not change.
-        //
-        // $st7' - st7 = 0$
-        let st7_does_not_change = self.st7_next() - self.st7();
-
-        // The stack element in st8 does not change.
-        //
-        // $st8' - st8 = 0$
-        let st8_does_not_change = self.st8_next() - self.st8();
-
-        // The stack element in st9 does not change.
-        //
-        // $st9' - st9 = 0$
-        let st9_does_not_change = self.st9_next() - self.st9();
-
-        // The stack element in st10 does not change.
-        //
-        // $st10' - st10 = 0$
-        let st10_does_not_change = self.st10_next() - self.st10();
-
-        // The stack element in st11 does not change.
-        //
-        // $st11' - st11 = 0$
-        let st11_does_not_change = self.st11_next() - self.st11();
-
-        // The stack element in st12 does not change.
-        //
-        // $st12' - st12 = 0$
-        let st12_does_not_change = self.st12_next() - self.st12();
-
-        // The stack element in st13 does not change.
-        //
-        // $st13' - st13 = 0$
-        let st13_does_not_change = self.st13_next() - self.st13();
-
-        // The stack element in st14 does not change.
-        //
-        // $st14' - st14 = 0$
-        let st14_does_not_change = self.st14_next() - self.st14();
-
-        // The stack element in st15 does not change.
-        //
-        // $st15' - st15 = 0$
-        let st15_does_not_change = self.st15_next() - self.st15();
-
-        // The top of the OpStack underflow, i.e., osv, does not change.
-        let osv_does_not_change = self.osv_next() - self.osv();
-
-        // The OpStack pointer does not change.
-        let osp_does_not_change = self.osp_next() - self.osp();
-
-        vec![
+        let specific_constraints = vec![
             st0_becomes_st0_plus_st3,
             st1_becomes_st1_plus_st4,
             st2_becomes_st2_plus_st5,
-            st3_does_not_change,
-            st4_does_not_change,
-            st5_does_not_change,
-            st6_does_not_change,
-            st7_does_not_change,
-            st8_does_not_change,
-            st9_does_not_change,
-            st10_does_not_change,
-            st11_does_not_change,
-            st12_does_not_change,
-            st13_does_not_change,
-            st14_does_not_change,
-            st15_does_not_change,
-            osv_does_not_change,
-            osp_does_not_change,
+        ];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_three_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_xxmul(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -1834,41 +1764,18 @@ impl RowPairConstraints {
                 + self.st0() * self.st5()
                 + self.st2() * self.st5());
 
-        // The stack element in st3 does not change.
-        //
-        // $st3' - st3 = 0$
-        let st3_does_not_change = self.st3_next() - self.st3();
-
-        // The stack element in st4 does not change.
-        //
-        // $st4' - st4 = 0$
-        let st4_does_not_change = self.st4_next() - self.st4();
-
-        // The stack element in st5 does not change.
-        //
-        // $st5' - st5 = 0$
-        let st5_does_not_change = self.st5_next() - self.st5();
-
-        // The stack element in st6 does not change.
-        //
-        // $st6' - st6 = 0$
-        let st6_does_not_change = self.st6_next() - self.st6();
-
-        // The stack element in st7 does not change.
-        //
-        // $st7' - st7 = 0$
-        let st7_does_not_change = self.st7_next() - self.st7();
-
-        vec![
+        let specific_constraints = vec![
             st0_becomes_coefficient_0,
             st1_becomes_coefficient_1,
             st2_becomes_coefficient_2,
-            st3_does_not_change,
-            st4_does_not_change,
-            st5_does_not_change,
-            st6_does_not_change,
-            st7_does_not_change,
+        ];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_three_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_xinv(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -1896,28 +1803,19 @@ impl RowPairConstraints {
             + self.st1() * self.st1_next()
             + self.st0() * self.st2_next()
             + self.st2() * self.st2_next();
-        vec![
+
+        let specific_constraints = vec![
             first_coefficient_of_product_of_element_and_inverse_is_1,
             second_coefficient_of_product_of_element_and_inverse_is_0,
             third_coefficient_of_product_of_element_and_inverse_is_0,
-            // st3 -- st15 do not change
-            self.st3_next() - self.st3(),
-            self.st4_next() - self.st4(),
-            self.st5_next() - self.st5(),
-            self.st6_next() - self.st6(),
-            self.st7_next() - self.st7(),
-            self.st8_next() - self.st8(),
-            self.st9_next() - self.st9(),
-            self.st10_next() - self.st10(),
-            self.st11_next() - self.st11(),
-            self.st12_next() - self.st12(),
-            self.st13_next() - self.st13(),
-            self.st14_next() - self.st14(),
-            self.st15_next() - self.st15(),
-            // osv and osp do not change
-            self.osv_next() - self.osv(),
-            self.osp_next() - self.osp(),
+        ];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_three_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     pub fn instruction_xbmul(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -1936,42 +1834,32 @@ impl RowPairConstraints {
         // st2' - st0·st3
         let third_coeff_scalar_multiplication = self.st2_next() - self.st0() * self.st3();
 
-        vec![
+        let specific_constraints = vec![
             first_coeff_scalar_multiplication,
             secnd_coeff_scalar_multiplication,
             third_coeff_scalar_multiplication,
-            self.st3_next() - self.st4_next(),
-            self.st4_next() - self.st5_next(),
-            self.st5_next() - self.st6_next(),
-            self.st6_next() - self.st7_next(),
-            self.st7_next() - self.st8_next(),
-            self.st8_next() - self.st9_next(),
-            self.st9_next() - self.st10_next(),
-            self.st10_next() - self.st11_next(),
-            self.st11_next() - self.st12_next(),
-            self.st12_next() - self.st13_next(),
-            self.st13_next() - self.st14_next(),
-            self.st14_next() - self.st15_next(),
-            self.st15_next() - self.osv(),
-            self.osp_next() - (self.osp() - self.one()),
-            (self.osp() - self.constant(16)) * self.hv3() - self.one(),
+        ];
+        [
+            specific_constraints,
+            self.stack_shrinks_and_top_three_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
         ]
+        .concat()
     }
 
     /// This instruction has no additional transition constraints.
     ///
     /// An Evaluation Argument with the list of input symbols guarantees correct transition.
     pub fn instruction_read_io(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        [self.step_1(), self.grow_stack(), self.keep_ram()].concat()
     }
 
     /// This instruction has no additional transition constraints.
     ///
     /// An Evaluation Argument with the list of output symbols guarantees correct transition.
     pub fn instruction_write_io(&self) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
     }
 
     pub fn zero(&self) -> MPolynomial<XFieldElement> {
@@ -2040,10 +1928,6 @@ impl RowPairConstraints {
 
     pub fn ib6(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(IB6)].clone()
-    }
-
-    pub fn ib7(&self) -> MPolynomial<XFieldElement> {
-        self.variables[usize::from(IB7)].clone()
     }
 
     pub fn jsp(&self) -> MPolynomial<XFieldElement> {
@@ -2154,6 +2038,10 @@ impl RowPairConstraints {
         self.variables[usize::from(RAMV)].clone()
     }
 
+    pub fn is_padding(&self) -> MPolynomial<XFieldElement> {
+        self.variables[usize::from(IsPadding)].clone()
+    }
+
     pub fn cjd(&self) -> MPolynomial<XFieldElement> {
         self.variables[usize::from(ClockJumpDifference)].clone()
     }
@@ -2241,9 +2129,6 @@ impl RowPairConstraints {
     }
     pub fn ib6_next(&self) -> MPolynomial<XFieldElement> {
         self.variables[FULL_WIDTH + usize::from(IB6)].clone()
-    }
-    pub fn ib7_next(&self) -> MPolynomial<XFieldElement> {
-        self.variables[FULL_WIDTH + usize::from(IB7)].clone()
     }
 
     pub fn jsp_next(&self) -> MPolynomial<XFieldElement> {
@@ -2390,40 +2275,51 @@ impl RowPairConstraints {
     pub fn running_evaluation_from_hash_table_next(&self) -> MPolynomial<XFieldElement> {
         self.variables[FULL_WIDTH + usize::from(FromHashTableEvalArg)].clone()
     }
+
     pub fn decompose_arg(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let hv0_is_a_bit = self.hv0() * (self.hv0() - self.one());
+        let hv1_is_a_bit = self.hv1() * (self.hv1() - self.one());
+        let hv2_is_a_bit = self.hv2() * (self.hv2() - self.one());
+        let hv3_is_a_bit = self.hv3() * (self.hv3() - self.one());
+        let helper_variables_are_binary_decomposition_of_nia = self.nia()
+            - self.constant(8) * self.hv3()
+            - self.constant(4) * self.hv2()
+            - self.constant(2) * self.hv1()
+            - self.hv0();
         vec![
-            self.nia()
-                - (self.constant(8) * self.hv3()
-                    + self.constant(4) * self.hv2()
-                    + self.constant(2) * self.hv1()
-                    + self.hv0()),
-            self.hv1() * (self.hv1() - self.one()),
-            self.hv0() * (self.hv0() - self.one()),
-            self.hv2() * (self.hv2() - self.one()),
-            self.hv3() * (self.hv3() - self.one()),
+            hv0_is_a_bit,
+            hv1_is_a_bit,
+            hv2_is_a_bit,
+            hv3_is_a_bit,
+            helper_variables_are_binary_decomposition_of_nia,
+        ]
+    }
+
+    pub fn keep_jump_stack(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let jsp_does_not_change = self.jsp_next() - self.jsp();
+        let jso_does_not_change = self.jso_next() - self.jso();
+        let jsd_does_not_change = self.jsd_next() - self.jsd();
+        vec![
+            jsp_does_not_change,
+            jso_does_not_change,
+            jsd_does_not_change,
         ]
     }
 
     pub fn step_1(&self) -> Vec<MPolynomial<XFieldElement>> {
-        let one = self.one();
-        let ip = self.ip();
-        let ip_next = self.ip_next();
-
-        vec![ip_next - ip - one]
+        let instruction_pointer_increases_by_one = self.ip_next() - self.ip() - self.one();
+        let specific_constraints = vec![instruction_pointer_increases_by_one];
+        [specific_constraints, self.keep_jump_stack()].concat()
     }
 
     pub fn step_2(&self) -> Vec<MPolynomial<XFieldElement>> {
-        let one = self.one();
-        let ip = self.ip();
-        let ip_next = self.ip_next();
-
-        vec![ip_next - ip - (one.clone() + one)]
+        let instruction_pointer_increases_by_two = self.ip_next() - self.ip() - self.two();
+        let specific_constraints = vec![instruction_pointer_increases_by_two];
+        [specific_constraints, self.keep_jump_stack()].concat()
     }
 
-    pub fn grow_stack(&self) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn grow_stack_and_top_two_elements_unconstrained(&self) -> Vec<MPolynomial<XFieldElement>> {
         vec![
-            // The stack element in st0 is moved into st1.
-            self.st1_next() - self.st0(),
             // The stack element in st1 is moved into st2.
             self.st2_next() - self.st1(),
             // And so on...
@@ -2443,48 +2339,31 @@ impl RowPairConstraints {
             // The stack element in st15 is moved to the top of OpStack underflow, i.e., osv.
             self.osv_next() - self.st15(),
             // The OpStack pointer is incremented by 1.
-            self.osp_next() - (self.osp_next() + self.one()),
+            self.osp_next() - (self.osp() + self.one()),
         ]
     }
 
-    pub fn keep_stack(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![
-            // The stack element st0 does not change
-            self.st0_next() - self.st0(),
-            // The stack element st1 does not change
-            self.st1_next() - self.st1(),
-            // And so on...
-            self.st2_next() - self.st2(),
-            self.st3_next() - self.st3(),
-            self.st4_next() - self.st4(),
-            self.st5_next() - self.st5(),
-            self.st6_next() - self.st6(),
-            self.st7_next() - self.st7(),
-            self.st8_next() - self.st8(),
-            self.st9_next() - self.st9(),
-            self.st10_next() - self.st10(),
-            self.st11_next() - self.st11(),
-            self.st12_next() - self.st12(),
-            self.st13_next() - self.st13(),
-            self.st14_next() - self.st14(),
-            self.st15_next() - self.st15(),
-            // The value of the OpStack underflow, osv, does not change.
-            self.osv_next() - self.osv(),
-            // The operational stack pointer, osp, does not change.
-            self.osp_next() - self.osp(),
+    pub fn grow_stack(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let specific_constraints = vec![
+            // The stack element in st0 is moved into st1.
+            self.st1_next() - self.st0(),
+        ];
+        [
+            specific_constraints,
+            self.grow_stack_and_top_two_elements_unconstrained(),
         ]
+        .concat()
     }
 
-    pub fn shrink_stack(&self) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn stack_shrinks_and_top_three_elements_unconstrained(
+        &self,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         vec![
-            // The stack element in st1 is moved into st0.
-            self.st0_next() - self.st1(),
-            // The stack element in st2 is moved into st1.
-            self.st1_next() - self.st2(),
-            // And so on...
-            self.st2_next() - self.st3(),
+            // The stack element in st4 is moved into st3.
             self.st3_next() - self.st4(),
+            // The stack element in st5 is moved into st4.
             self.st4_next() - self.st5(),
+            // And so on...
             self.st5_next() - self.st6(),
             self.st6_next() - self.st7(),
             self.st7_next() - self.st8(),
@@ -2504,21 +2383,29 @@ impl RowPairConstraints {
         ]
     }
 
-    pub fn unop(&self) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn binop(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let specific_constraints = vec![
+            // The stack element in st2 is moved into st1.
+            self.st1_next() - self.st2(),
+            // The stack element in st3 is moved into st2.
+            self.st2_next() - self.st3(),
+        ];
+        [
+            specific_constraints,
+            self.stack_shrinks_and_top_three_elements_unconstrained(),
+        ]
+        .concat()
+    }
+
+    pub fn shrink_stack(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let specific_constrants = vec![self.st0_next() - self.st1()];
+        [specific_constrants, self.binop()].concat()
+    }
+
+    pub fn stack_remains_and_top_eleven_elements_unconstrained(
+        &self,
+    ) -> Vec<MPolynomial<XFieldElement>> {
         vec![
-            // The stack element in st1 does not change.
-            self.st1_next() - self.st1(),
-            // The stack element in st2 does not change.
-            self.st2_next() - self.st2(),
-            // And so on...
-            self.st3_next() - self.st3(),
-            self.st4_next() - self.st4(),
-            self.st5_next() - self.st5(),
-            self.st6_next() - self.st6(),
-            self.st7_next() - self.st7(),
-            self.st8_next() - self.st8(),
-            self.st9_next() - self.st9(),
-            self.st10_next() - self.st10(),
             self.st11_next() - self.st11(),
             self.st12_next() - self.st12(),
             self.st13_next() - self.st13(),
@@ -2531,32 +2418,53 @@ impl RowPairConstraints {
         ]
     }
 
-    pub fn binop(&self) -> Vec<MPolynomial<XFieldElement>> {
-        vec![
-            // The stack element in st2 is moved into st1.
-            self.st1_next() - self.st2(),
-            // The stack element in st3 is moved into st2.
-            self.st2_next() - self.st3(),
-            // And so on...
-            self.st3_next() - self.st4(),
-            self.st4_next() - self.st5(),
-            self.st5_next() - self.st6(),
-            self.st6_next() - self.st7(),
-            self.st7_next() - self.st8(),
-            self.st8_next() - self.st9(),
-            self.st9_next() - self.st10(),
-            self.st10_next() - self.st11(),
-            self.st11_next() - self.st12(),
-            self.st12_next() - self.st13(),
-            self.st13_next() - self.st14(),
-            self.st14_next() - self.st15(),
-            // The stack element at the top of OpStack underflow, i.e., osv, is moved into st15.
-            self.st15_next() - self.osv(),
-            // The OpStack pointer is decremented by 1.
-            self.osp_next() - (self.osp() - self.one()),
-            // The helper variable register hv4 holds the inverse of (osp - 16).
-            (self.osp() - self.constant(16)) * self.hv3() - self.one(),
+    pub fn stack_remains_and_top_ten_elements_unconstrained(
+        &self,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let specific_constraints = vec![self.st10_next() - self.st10()];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_eleven_elements_unconstrained(),
         ]
+        .concat()
+    }
+
+    pub fn stack_remains_and_top_three_elements_unconstrained(
+        &self,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let specific_constraints = vec![
+            self.st3_next() - self.st3(),
+            self.st4_next() - self.st4(),
+            self.st5_next() - self.st5(),
+            self.st6_next() - self.st6(),
+            self.st7_next() - self.st7(),
+            self.st8_next() - self.st8(),
+            self.st9_next() - self.st9(),
+        ];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_ten_elements_unconstrained(),
+        ]
+        .concat()
+    }
+
+    pub fn unop(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let specific_constraints = vec![
+            // The stack element in st1 does not change.
+            self.st1_next() - self.st1(),
+            // The stack element in st2 does not change.
+            self.st2_next() - self.st2(),
+        ];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_three_elements_unconstrained(),
+        ]
+        .concat()
+    }
+
+    pub fn keep_stack(&self) -> Vec<MPolynomial<XFieldElement>> {
+        let specific_constraints = vec![self.st0_next() - self.st0()];
+        [specific_constraints, self.unop()].concat()
     }
 
     pub fn keep_ram(&self) -> Vec<MPolynomial<XFieldElement>> {
@@ -2781,21 +2689,20 @@ impl InstructionDeselectors {
     /// different on a type level) functions for construction deselectors
     fn instruction_deselector_common_functionality(
         instruction: Instruction,
-        instruction_bucket_polynomials: [MPolynomial<XFieldElement>; Ord8::COUNT],
+        instruction_bucket_polynomials: [MPolynomial<XFieldElement>; Ord7::COUNT],
         num_vars: usize,
     ) -> MPolynomial<XFieldElement> {
         let one = XFieldElement::one();
         let constant = |xfe| MPolynomial::from_constant(xfe, num_vars);
 
-        let selector_bits = [
-            instruction.ib(Ord8::IB0).lift(),
-            instruction.ib(Ord8::IB1).lift(),
-            instruction.ib(Ord8::IB2).lift(),
-            instruction.ib(Ord8::IB3).lift(),
-            instruction.ib(Ord8::IB4).lift(),
-            instruction.ib(Ord8::IB5).lift(),
-            instruction.ib(Ord8::IB6).lift(),
-            instruction.ib(Ord8::IB7).lift(),
+        let selector_bits: [_; Ord7::COUNT] = [
+            instruction.ib(Ord7::IB0).lift(),
+            instruction.ib(Ord7::IB1).lift(),
+            instruction.ib(Ord7::IB2).lift(),
+            instruction.ib(Ord7::IB3).lift(),
+            instruction.ib(Ord7::IB4).lift(),
+            instruction.ib(Ord7::IB5).lift(),
+            instruction.ib(Ord7::IB6).lift(),
         ];
         let deselector_polynomials = selector_bits.map(|b| constant(one - b));
 
@@ -2819,7 +2726,6 @@ impl InstructionDeselectors {
             factory.ib4(),
             factory.ib5(),
             factory.ib6(),
-            factory.ib7(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -2842,7 +2748,6 @@ impl InstructionDeselectors {
             factory.ib4(),
             factory.ib5(),
             factory.ib6(),
-            factory.ib7(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -2865,7 +2770,6 @@ impl InstructionDeselectors {
             factory.ib4_next(),
             factory.ib5_next(),
             factory.ib6_next(),
-            factory.ib7_next(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -3255,14 +3159,13 @@ mod constraint_polynomial_tests {
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {
-                row[usize::from(IB0)] = other_instruction.ib(Ord8::IB0).lift();
-                row[usize::from(IB1)] = other_instruction.ib(Ord8::IB1).lift();
-                row[usize::from(IB2)] = other_instruction.ib(Ord8::IB2).lift();
-                row[usize::from(IB3)] = other_instruction.ib(Ord8::IB3).lift();
-                row[usize::from(IB4)] = other_instruction.ib(Ord8::IB4).lift();
-                row[usize::from(IB5)] = other_instruction.ib(Ord8::IB5).lift();
-                row[usize::from(IB6)] = other_instruction.ib(Ord8::IB6).lift();
-                row[usize::from(IB7)] = other_instruction.ib(Ord8::IB7).lift();
+                row[usize::from(IB0)] = other_instruction.ib(Ord7::IB0).lift();
+                row[usize::from(IB1)] = other_instruction.ib(Ord7::IB1).lift();
+                row[usize::from(IB2)] = other_instruction.ib(Ord7::IB2).lift();
+                row[usize::from(IB3)] = other_instruction.ib(Ord7::IB3).lift();
+                row[usize::from(IB4)] = other_instruction.ib(Ord7::IB4).lift();
+                row[usize::from(IB5)] = other_instruction.ib(Ord7::IB5).lift();
+                row[usize::from(IB6)] = other_instruction.ib(Ord7::IB6).lift();
                 let result = deselector.evaluate(&row);
 
                 assert!(
@@ -3275,14 +3178,13 @@ mod constraint_polynomial_tests {
             }
 
             // Positive tests
-            row[usize::from(IB0)] = instruction.ib(Ord8::IB0).lift();
-            row[usize::from(IB1)] = instruction.ib(Ord8::IB1).lift();
-            row[usize::from(IB2)] = instruction.ib(Ord8::IB2).lift();
-            row[usize::from(IB3)] = instruction.ib(Ord8::IB3).lift();
-            row[usize::from(IB4)] = instruction.ib(Ord8::IB4).lift();
-            row[usize::from(IB5)] = instruction.ib(Ord8::IB5).lift();
-            row[usize::from(IB6)] = instruction.ib(Ord8::IB6).lift();
-            row[usize::from(IB7)] = instruction.ib(Ord8::IB7).lift();
+            row[usize::from(IB0)] = instruction.ib(Ord7::IB0).lift();
+            row[usize::from(IB1)] = instruction.ib(Ord7::IB1).lift();
+            row[usize::from(IB2)] = instruction.ib(Ord7::IB2).lift();
+            row[usize::from(IB3)] = instruction.ib(Ord7::IB3).lift();
+            row[usize::from(IB4)] = instruction.ib(Ord7::IB4).lift();
+            row[usize::from(IB5)] = instruction.ib(Ord7::IB5).lift();
+            row[usize::from(IB6)] = instruction.ib(Ord7::IB6).lift();
             let result = deselector.evaluate(&row);
             assert!(
                 !result.is_zero(),

@@ -65,43 +65,39 @@
     \shrinkstack{\ensuremath{\ominus}}
 }
 
-\newcommand{\ssocol}{
-    \raisebox{6pt}{\shrinkstack{\raisebox{-6pt}{\ensuremath{\ocol}}}} % no idea why this works
-}
-
 \begin{document}
 \pagestyle{empty}
 \begin{minipage}{0.3\textwidth}
 \begin{tabular}{rlll}
-    \texttt{006} & \ssominus                        & \texttt{pop}                                       &                \\
-    \texttt{005} & $\oplus$                         & \tcbox[colback=instr-arg]{\texttt{push + a}}       &                \\
-    \texttt{004} & $\oplus$                         & \texttt{divine}                                    &                \\
-    \texttt{013} & $\oplus$                         & \tcbox[colback=instr-arg]{\texttt{dup + i}}        &                \\
-    \texttt{021} &                                  & \tcbox[colback=instr-arg]{\texttt{swap + i}}       &                \\
-    \texttt{012} & $\ovoid$                         & \texttt{nop}                                       &                \\
-    \texttt{014} & \ssominus                        & \tcbox[colback=instr-jsp]{\texttt{skiz}}           &                \\
-    \texttt{029} & $\ovoid$                         & \splitbox{instr-jsp}{instr-arg}{\texttt{call + d}} &                \\
-    \texttt{020} & $\ovoid$                         & \tcbox[colback=instr-jsp]{\texttt{return}}         &                \\
-    \texttt{028} & $\ovoid$                         & \tcbox[colback=instr-jsp]{\texttt{recurse}}        &                \\
-    \texttt{022} & \ssominus                        & \texttt{assert}                                    &                \\
-    \texttt{000} & $\ovoid$                         & \texttt{halt}                                      &                \\
-    \texttt{008} & $\odot$                          & \texttt{read\_mem}                                 &                \\
-    \texttt{016} & $\ovoid$                         & \texttt{write\_mem}                                &                \\
-    \texttt{036} &                                  & \texttt{hash}                                      &                \\
-    \texttt{044} &                                  & \texttt{divine\_sibling}                           & \hintdivinesib \\
-    \texttt{052} & $\ovoid$                         & \texttt{assert\_vector}                            &                \\
-    \texttt{060} & \ssocol                          & \texttt{add}                                       &                \\
-    \texttt{068} & \ssocol                          & \texttt{mul}                                       &                \\
-    \texttt{076} & $\odot$                          & \texttt{invert}                                    &                \\
-    \texttt{084} &                                  & \texttt{split}                                     & \hintsplit     \\
-    \texttt{092} & \ssocol                          & \texttt{eq}                                        &                \\
-    \texttt{100} &                                  & \texttt{lsb}                                       &                \\
-    \texttt{108} &                                  & \texttt{xxadd}                                     &                \\
-    \texttt{116} &                                  & \texttt{xxmul}                                     &                \\
-    \texttt{124} &                                  & \texttt{xinvert}                                   &                \\
-    \texttt{132} & \shrinkstack{\phantom{$\ovoid$}} & \texttt{xbmul}                                     & \hintxbmul     \\
-    \texttt{140} & $\oplus$                         & \texttt{read\_io}                                  &                \\
-    \texttt{030} & \ssominus                        & \texttt{write\_io}                                 &
+    \texttt{02} & $\ssominus$   & \texttt{pop}                                       &                \\
+    \texttt{01} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{push + a}}       &                \\
+    \texttt{04} & $\oplus$      & \texttt{divine}                                    &                \\
+    \texttt{05} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{dup + i}}        &                \\
+    \texttt{09} & $\ovoid^{16}$ & \tcbox[colback=instr-arg]{\texttt{swap + i}}       &                \\
+    \texttt{08} & $\ovoid$      & \texttt{nop}                                       &                \\
+    \texttt{06} & $\ssominus$   & \tcbox[colback=instr-jsp]{\texttt{skiz}}           &                \\
+    \texttt{13} & $\ovoid$      & \splitbox{instr-jsp}{instr-arg}{\texttt{call + d}} &                \\
+    \texttt{12} & $\ovoid$      & \tcbox[colback=instr-jsp]{\texttt{return}}         &                \\
+    \texttt{16} & $\ovoid$      & \tcbox[colback=instr-jsp]{\texttt{recurse}}        &                \\
+    \texttt{10} & $\ssominus$   & \texttt{assert}                                    &                \\
+    \texttt{00} & $\ovoid$      & \texttt{halt}                                      &                \\
+    \texttt{24} & $\ovoid^1$    & \texttt{read\_mem}                                 &                \\
+    \texttt{28} & $\ovoid$      & \texttt{write\_mem}                                &                \\
+    \texttt{32} & $\ovoid^{10}$ & \texttt{hash}                                      &                \\
+    \texttt{36} & $\ovoid^{11}$ & \texttt{divine\_sibling}                           & \hintdivinesib \\
+    \texttt{40} & $\ovoid$      & \texttt{assert\_vector}                            &                \\
+    \texttt{14} & $\ssominus^1$ & \texttt{add}                                       &                \\
+    \texttt{18} & $\ssominus^1$ & \texttt{mul}                                       &                \\
+    \texttt{44} & $\ovoid^1$    & \texttt{invert}                                    &                \\
+    \texttt{48} & $\oplus^2$    & \texttt{split}                                     & \hintsplit     \\
+    \texttt{22} & $\ssominus^1$ & \texttt{eq}                                        &                \\
+    \texttt{52} & $\oplus^2$    & \texttt{lsb}                                       &                \\
+    \texttt{56} & $\ovoid^3$    & \texttt{xxadd}                                     &                \\
+    \texttt{60} & $\ovoid^3$    & \texttt{xxmul}                                     &                \\
+    \texttt{64} & $\ovoid^3$    & \texttt{xinvert}                                   &                \\
+    \texttt{26} & $\ssominus^3$ & \texttt{xbmul}                                     & \hintxbmul     \\
+    \texttt{68} & $\oplus$      & \texttt{read\_io}                                  &                \\
+    \texttt{30} & $\ssominus$   & \texttt{write\_io}                                 &
 \end{tabular}
 \end{minipage}\hfill%
 \begin{minipage}[][0.84\textheight][s]{0.6\textwidth}
@@ -129,12 +125,12 @@
                     & base & ext & $\sum$ \\ \midrule
         Program     &    3 &   1 &      4 \\
         Instruction &    4 &   2 &      6 \\
-        Processor   &   43 &  11 &     54 \\
+        Processor   &   42 &  11 &     53 \\
         OpStack     &    5 &   2 &      7 \\
         RAM         &    7 &   6 &     13 \\
         JumpStack   &    6 &   2 &      8 \\
         Hash        &   49 &   2 &     51 \\ \bottomrule\bottomrule
-        $\sum$      &  117 &  26 &    143
+        $\sum$      &  116 &  26 &    142
     \end{tabular}
 \end{minipage}
 

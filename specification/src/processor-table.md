@@ -144,12 +144,14 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 
 1. The composition of instruction buckets `ib0`-`ib5` corresponds the current instruction `ci`.
 1. The inverse of clock jump difference with multiplicity `invm` is the inverse-or-zero of the the clock jump difference `cjd`. (Results in 2 polynomials.)
+1. The padding indicator `IsPadding` is either 0 or 1.
 
 ### Consistency Constraints as Polynomials
 
 1. `ci - (2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
 1. `invm·(invm·cjd - 1)`
 1. `cjd·(invm·cjd - 1)`
+1. `IsPadding·(IsPadding - 1)`
 
 ## Transition Constraints
 
@@ -158,6 +160,7 @@ Due to their complexity, instruction-specific constraints are defined [in their 
 The following constraints apply to every pair of rows.
 
 1. The cycle counter `clk` increases by 1.
+1. The padding indicator `IsPadding` is 0 or remains unchanged.
 1. The running evaluation for standard input absorbs `st0` of the next row with respect to 🛏 if the current instruction is `read_io`, and remains unchanged otherwise.
 1. The running evaluation for standard output absorbs `st0` of the next row with respect to 🧯 if the current instruction in the next row is `write_io`, and remains unchanged otherwise.
 1. If the next row is not a padding row, the running product for the Instruction Table absorbs the next row with respect to challenges 🍓, 🍒, and 🥭 and indeterminate 🛁. Otherwise, it remains unchanged.
@@ -175,6 +178,7 @@ The following constraints apply to every pair of rows.
 ### Transition Constraints as Polynomials
 
 1. `clk' - (clk + 1)`
+1. `IsPadding·(IsPadding' - IsPadding)`
 1. `(ci - opcode(read_io))·(RunningEvaluationStandardInput' - RunningEvaluationStandardInput) + read_io_deselector·(RunningEvaluationStandardInput' - 🛏·RunningEvaluationStandardInput - st0')`
 1. `(ci' - opcode(write_io))·(RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput) + write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
 1. `(1 - IsPadding')·(RunningProductInstructionTable' - RunningProductInstructionTable(🛁 - 🍓·ip' - 🍒·ci' - 🥭·nia')) + IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`

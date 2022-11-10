@@ -13,8 +13,8 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::vm_err;
-use crate::instruction::{DivinationHint, InstructionBucket};
-use crate::ord_n::{Ord16, Ord8};
+use crate::instruction::DivinationHint;
+use crate::ord_n::{Ord16, Ord7};
 use crate::table::base_matrix::ProcessorMatrixRow;
 use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
 use crate::table::table_column::{
@@ -25,7 +25,7 @@ use crate::table::table_column::{
 use super::error::{vm_fail, InstructionError::*};
 use super::instruction::{AnInstruction::*, Instruction};
 use super::op_stack::OpStack;
-use super::ord_n::{Ord16::*, Ord8::*};
+use super::ord_n::{Ord16::*, Ord7::*};
 use super::stdio::InputStream;
 use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table};
 use super::table::{processor_table, ram_table};
@@ -128,9 +128,11 @@ impl<'pgm> VMState<'pgm> {
         }
         let current_instruction = current_instruction.unwrap();
 
-        if current_instruction.in_bucket(InstructionBucket::ShrinkStack)
-            || matches!(current_instruction, Add | Mul | Eq | XbMul)
-        {
+        // if current instruction shrinks the stack
+        if matches!(
+            current_instruction,
+            Pop | Skiz | Assert | WriteIo | Add | Mul | Eq | XbMul
+        ) {
             hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse_or_zero();
         }
 
@@ -286,7 +288,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Halt => {
-                self.instruction_pointer = self.program.len();
+                self.instruction_pointer += 1;
             }
 
             ReadMem => {
@@ -467,14 +469,13 @@ impl<'pgm> VMState<'pgm> {
         row[usize::from(IP)] = (self.instruction_pointer as u32).into();
         row[usize::from(CI)] = current_instruction.opcode_b();
         row[usize::from(NIA)] = self.nia();
-        row[usize::from(IB0)] = current_instruction.ib(Ord8::IB0);
-        row[usize::from(IB1)] = current_instruction.ib(Ord8::IB1);
-        row[usize::from(IB2)] = current_instruction.ib(Ord8::IB2);
-        row[usize::from(IB3)] = current_instruction.ib(Ord8::IB3);
-        row[usize::from(IB4)] = current_instruction.ib(Ord8::IB4);
-        row[usize::from(IB5)] = current_instruction.ib(Ord8::IB5);
-        row[usize::from(IB6)] = current_instruction.ib(Ord8::IB6);
-        row[usize::from(IB7)] = current_instruction.ib(Ord8::IB7);
+        row[usize::from(IB0)] = current_instruction.ib(Ord7::IB0);
+        row[usize::from(IB1)] = current_instruction.ib(Ord7::IB1);
+        row[usize::from(IB2)] = current_instruction.ib(Ord7::IB2);
+        row[usize::from(IB3)] = current_instruction.ib(Ord7::IB3);
+        row[usize::from(IB4)] = current_instruction.ib(Ord7::IB4);
+        row[usize::from(IB5)] = current_instruction.ib(Ord7::IB5);
+        row[usize::from(IB6)] = current_instruction.ib(Ord7::IB6);
         row[usize::from(JSP)] = self.jsp();
         row[usize::from(JSO)] = self.jso();
         row[usize::from(JSD)] = self.jsd();
@@ -1053,15 +1054,19 @@ mod vm_state_tests {
     fn run_tvm_countdown_from_10_test() {
         let code = sample_programs::COUNTDOWN_FROM_10;
         let program = Program::from_code(code).unwrap();
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
+        let (trace, out, err) = program.run_with_input(&[], &[]);
 
         println!("{}", program);
         for state in trace.iter() {
             println!("{}", state);
         }
 
-        let last_state = trace.last().unwrap();
-        assert_eq!(BFieldElement::zero(), last_state.op_stack.st(ST0));
+        if let Some(e) = err {
+            panic!("The VM encountered an error: {e}");
+        }
+
+        let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
+        assert_eq!(expected, out);
     }
 
     #[test]

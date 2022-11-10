@@ -1404,6 +1404,67 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    fn print_number_of_all_constraints_per_table() {
+        let (_, _, _, ext_tables, challenges, _) =
+            parse_simulate_pad_extend(sample_programs::COUNTDOWN_FROM_10, &[], &[]);
+
+        println!("| Table                |  Init |  Cons | Trans |  Term |   Sum |");
+        println!("|:---------------------|------:|------:|------:|------:|------:|");
+
+        let mut num_total_initial_constraints = 0;
+        let mut num_total_consistency_constraints = 0;
+        let mut num_total_transition_constraints = 0;
+        let mut num_total_terminal_constraints = 0;
+        for table in ext_tables.into_iter() {
+            let num_initial_constraints = table
+                .evaluate_initial_constraints(&table.data()[0], &challenges)
+                .len();
+            let num_consistency_constraints = table
+                .evaluate_consistency_constraints(&table.data()[0], &challenges)
+                .len();
+            let evaluation_point = [table.data()[0].clone(), table.data()[1].clone()].concat();
+            let num_transition_constraints = table
+                .evaluate_transition_constraints(&evaluation_point, &challenges)
+                .len();
+            let num_terminal_constraints = table
+                .evaluate_terminal_constraints(&table.data().last().unwrap(), &challenges)
+                .len();
+
+            let num_total_constraints = num_initial_constraints
+                + num_consistency_constraints
+                + num_transition_constraints
+                + num_terminal_constraints;
+            num_total_initial_constraints += num_initial_constraints;
+            num_total_consistency_constraints += num_consistency_constraints;
+            num_total_transition_constraints += num_transition_constraints;
+            num_total_terminal_constraints += num_terminal_constraints;
+            println!(
+                "| {:<20} | {:>5} | {:>5} | {:>5} | {:>5} | {:>5} |",
+                table.name().split_whitespace().next().unwrap(),
+                num_initial_constraints,
+                num_consistency_constraints,
+                num_transition_constraints,
+                num_terminal_constraints,
+                num_total_constraints,
+            );
+        }
+
+        let num_total_constraints = num_total_initial_constraints
+            + num_total_consistency_constraints
+            + num_total_transition_constraints
+            + num_total_terminal_constraints;
+        println!(
+            "| {:<20} | {:>5} | {:>5} | {:>5} | {:>5} | {:>5} |",
+            "Sum",
+            num_total_initial_constraints,
+            num_total_consistency_constraints,
+            num_total_transition_constraints,
+            num_total_terminal_constraints,
+            num_total_constraints
+        );
+    }
+
+    #[test]
     fn number_of_quotient_degree_bound_matches_number_of_constraints_test() {
         let (_, _, _, ext_tables, challenges, num_trace_randomizers) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);

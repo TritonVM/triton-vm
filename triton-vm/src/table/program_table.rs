@@ -115,8 +115,14 @@ impl ExtProgramTable {
     fn ext_consistency_constraints(
         _challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        let one = MPolynomial::from_constant(XFieldElement::one(), FULL_WIDTH);
+
+        let variables = MPolynomial::variables(FULL_WIDTH);
+        let is_padding = variables[usize::from(IsPadding)].clone();
+
+        let is_padding_is_bit = is_padding.clone() * (is_padding - one);
+
+        vec![is_padding_is_bit]
     }
 
     fn ext_transition_constraints(
@@ -132,10 +138,14 @@ impl ExtProgramTable {
         let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
         let address_next = variables[FULL_WIDTH + usize::from(Address)].clone();
         let instruction_next = variables[FULL_WIDTH + usize::from(Instruction)].clone();
+        let is_padding_next = variables[FULL_WIDTH + usize::from(IsPadding)].clone();
         let running_evaluation_next =
             variables[FULL_WIDTH + usize::from(RunningEvaluation)].clone();
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
+
+        let is_padding_is_0_or_remains_unchanged =
+            is_padding.clone() * (is_padding_next - is_padding.clone());
 
         let running_evaluation_remains =
             running_evaluation_next.clone() - running_evaluation.clone();
@@ -151,6 +161,7 @@ impl ExtProgramTable {
 
         vec![
             address_increases_by_one,
+            is_padding_is_0_or_remains_unchanged,
             running_evaluation_updates_if_and_only_if_not_a_padding_row,
         ]
     }

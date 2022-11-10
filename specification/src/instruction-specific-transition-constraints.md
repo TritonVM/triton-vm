@@ -2,9 +2,13 @@
 
 ## Instruction `pop`
 
-This instruction has no additional transition constraints.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `shrink_stack`, and `keep_ram`.
+It has no additional transition constraints.
 
 ## Instruction `push` + `a`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_2`, `grow_stack`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -16,12 +20,16 @@ This instruction has no additional transition constraints.
 
 ## Instruction `divine`
 
-This instruction has no additional transition constraints.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_2`, `grow_stack`, and `keep_ram`.
+It has no additional transition constraints.
 
 ## Instruction `dup` + `i`
 
 This instruction makes use of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
 For their definition, please refer to the corresponding section.
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `decompose_arg`, `step_2`, `grow_stack`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -75,6 +83,9 @@ For `dup` + `i`, helper variables contain the binary decomposition of `i`:
 This instruction makes use of [indicator polynomials](instruction-groups.md#indicator-polynomials-ind_ihv3-hv2-hv1-hv0).
 For their definition, please refer to the corresponding section.
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `decompose_arg`, `step_2`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
 1. Argument `i` is not 0.
@@ -125,7 +136,6 @@ For their definition, please refer to the corresponding section.
 1. If `i` is not 15, then `st15` does not change.
 1. The top of the OpStack underflow, i.e., `osv`, does not change.
 1. The OpStack pointer does not change.
-1. If `i` is not 1, then the RAM value `ramv` does not change.
 
 ### Polynomials
 
@@ -177,7 +187,6 @@ For their definition, please refer to the corresponding section.
 1. `(1 - ind_15(hv3, hv2, hv1, hv0))·(st15' - st15)`
 1. `osv' - osv`
 1. `osp' - osp`
-1. `(1 - ind_1(hv3, hv2, hv1, hv0))·(ramv' - ramv)`
 
 ### Helper variable definitions for `swap` + `i`
 
@@ -190,9 +199,21 @@ For `swap` + `i`, helper variables contain the binary decomposition of `i`:
 
 ## Instruction `nop`
 
-This instruction has no additional transition constraints.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
+It has no additional transition constraints.
 
 ## Instruction `skiz`
+
+For the correct behavior of instruction `skiz`, the instruction pointer `ip` needs to increment by either 1, or 2, or 3.
+The concrete value depends on the top of the stack `st0` and the next instruction, held in `nia`.
+
+Efficient arithmetization of instruction `skiz` makes use of one of the properties of [opcodes](instructions.md#regarding-opcodes).
+Concretely, the least significant bit of an opcode is 1 if and only if the instruction takes an argument.
+The arithmetization of `skiz` can incorporate this simple flag by decomposing `nia` into helper variable registers `hv`,
+similarly to how `ci` is (always) deconstructed into instruction bit registers `ib`.
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_jump_stack`, `shrink_stack`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -233,6 +254,9 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 ## Instruction `call` + `d`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_stack` and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
 1. The jump stack pointer `jsp` is incremented by 1.
@@ -249,6 +273,9 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 ## Instruction `return`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_stack` and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
 1. The jump stack pointer `jsp` is decremented by 1.
@@ -260,6 +287,9 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. `ip' - jso`
 
 ## Instruction `recurse`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `keep_jump_stack`, `keep_stack`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -277,6 +307,9 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 ## Instruction `assert`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `shrink_stack`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
 1. The current top of the stack `st0` is 1.
@@ -286,6 +319,9 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 1. `st0 - 1`
 
 ## Instruction `halt`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -297,36 +333,50 @@ The concrete decomposition of `nia` into helper variables `hv` as well as the co
 
 ## Instruction `read_mem`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `unary_operation`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
+1. The RAM pointer is overwritten with stack element `st1`.
 1. The top of the stack is overwritten with the RAM value.
 
 ### Polynomials
 
+1. `ramp' - st1`
 1. `st0' - ramv`
 
 ## Instruction `write_mem`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `keep_stack`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
+1. The RAM pointer is overwritten with stack element `st1`.
 1. The RAM value is overwritten with the top of the stack.
 
 ### Polynomials
 
+1. `ramp' - st1`
 1. `ramv' - st0`
 
 ## Instruction `hash`
 
-This instruction has no additional transition constraints.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_10_unconstrained`, and `keep_ram`.
+It has no additional transition constraints.
 Two Evaluation Arguments with the [Hash Table](hash-table.md) guarantee correct transition.
 
-#### Instruction `divine_sibling`
+## Instruction `divine_sibling`
 
 Recall that in a Merkle tree, the indices of left (respectively right) leafs have 0 (respectively 1) as their least significant bit.
 The first two polynomials achieve that helper variable `hv0` holds the result of `st10 mod 2`.
 The third polynomial sets the new value of `st10` to `st10 div 2`.
 
-##### Description
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_11_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
+### Description
 
 1. Helper variable `hv0` is either 0 or 1.
 1. The 11th stack register is shifted by 1 bit to the right.
@@ -350,7 +400,7 @@ The third polynomial sets the new value of `st10` to `st10 div 2`.
 1. The OpStack pointer does not change.
 1. If `hv0` is 0, then the RAM value `ramv` does not change.
 
-##### Polynomials
+### Polynomials
 
 1. `hv0·(hv0 - 1)`
 1. `st10'·2 + hv0 - st10`
@@ -368,15 +418,18 @@ The third polynomial sets the new value of `st10` to `st10 div 2`.
 1. `osp' - osp`
 1. `(1 - hv0)·(ramv' - ramv)`
 
-##### Helper variable definitions for `divine_sibling`
+### Helper variable definitions for `divine_sibling`
 
 Since `st10` contains the Merkle tree node index,
 
-1. `hv0` holds the result of `st10 % 2` (the node index'es least significant bit, indicating whether it is a left/right node).
+1. `hv0` holds the result of `st10 % 2` (the node index's least significant bit, indicating whether it is a left/right node).
 
-#### Instruction `assert_vector`
+## Instruction `assert_vector`
 
-##### Description
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
+### Description
 
 1. Register `st0` is equal to `st5`.
 1. Register `st1` is equal to `st6`.
@@ -384,7 +437,7 @@ Since `st10` contains the Merkle tree node index,
 1. Register `st3` is equal to `st8`.
 1. Register `st4` is equal to `st9`.
 
-##### Polynomials
+### Polynomials
 
 1. `st5 - st0`
 1. `st6 - st1`
@@ -392,7 +445,10 @@ Since `st10` contains the Merkle tree node index,
 1. `st8 - st3`
 1. `st9 - st4`
 
-#### Instruction `add`
+## Instruction `add`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -404,6 +460,9 @@ Since `st10` contains the Merkle tree node index,
 
 ## Instruction `mul`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
 1. The product of the top two stack elements is moved into the top of the stack.
@@ -413,6 +472,9 @@ Since `st10` contains the Merkle tree node index,
 1. `st0' - st0·st1`
 
 ## Instruction `invert`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `unary_operation`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -424,47 +486,18 @@ Since `st10` contains the Merkle tree node index,
 
 ## Instruction `split`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_grows_and_top_2_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
 1. The top of the stack is decomposed as 32-bit chunks into the stack's top-most two elements.
 1. Helper variable `hv0` holds the inverse of $2^{32} - 1$ subtracted from the high 32 bits or the low 32 bits are 0.
-1. Stack register `st1` is moved into `st2`
-1. Stack register `st2` is moved into `st3`
-1. The stack element in `st3` is moved into `st4`.
-1. The stack element in `st4` is moved into `st5`.
-1. The stack element in `st5` is moved into `st6`.
-1. The stack element in `st6` is moved into `st7`.
-1. The stack element in `st7` is moved into `st8`.
-1. The stack element in `st8` is moved into `st9`.
-1. The stack element in `st9` is moved into `st10`.
-1. The stack element in `st10` is moved into `st11`.
-1. The stack element in `st11` is moved into `st12`.
-1. The stack element in `st12` is moved into `st13`.
-1. The stack element in `st13` is moved into `st14`.
-1. The stack element in `st14` is moved into `st15`.
-1. The stack element in `st15` is moved to the top of OpStack underflow, i.e., `osv`.
-1. The OpStack pointer is incremented by 1.
 
 ### Polynomials
 
 1. `st0 - (2^32·st0' + st1')`
 1. `st1'·(hv0·(st0' - (2^32 - 1)) - 1)`
-1. `st2' - st1`
-1. `st3' - st2`
-1. `st4' - st3`
-1. `st5' - st4`
-1. `st6' - st5`
-1. `st7' - st6`
-1. `st8' - st7`
-1. `st9' - st8`
-1. `st10' - st9`
-1. `st11' - st10`
-1. `st12' - st11`
-1. `st13' - st12`
-1. `st14' - st13`
-1. `st15' - st14`
-1. `osv' - st15`
-1. `osp' - (osp + 1)`
 
 ### Helper variable definitions for `split`
 
@@ -474,6 +507,9 @@ Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0`
 1. `hv0 = 0` if `lo = 0`.
 
 ## Instruction `eq`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
@@ -494,6 +530,9 @@ Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0`
 
 ## Instruction `lsb`
 
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_grows_and_top_2_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
 ### Description
 
 1. The least significant bit is a bit
@@ -502,190 +541,84 @@ Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0`
 ### Polynomials
 
 1. `st0'·(st0' - 1)`
-1. `st0 - 2·st1' + st0'`
+1. `st0 - (2·st1' + st0')`
 
 ## Instruction `xxadd`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
 1. The result of adding `st0` to `st3` is moved into `st0`.
 1. The result of adding `st1` to `st4` is moved into `st1`.
 1. The result of adding `st2` to `st5` is moved into `st2`.
-1. The stack element in `st3` does not change.
-1. The stack element in `st4` does not change.
-1. The stack element in `st5` does not change.
-1. The stack element in `st6` does not change.
-1. The stack element in `st7` does not change.
-1. The stack element in `st8` does not change.
-1. The stack element in `st9` does not change.
-1. The stack element in `st10` does not change.
-1. The stack element in `st11` does not change.
-1. The stack element in `st12` does not change.
-1. The stack element in `st13` does not change.
-1. The stack element in `st14` does not change.
-1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
 
 ### Polynomials
 
 1. `st0' - (st0 + st3)`
 1. `st1' - (st1 + st4)`
 1. `st2' - (st2 + st5)`
-1. `st3' - st3`
-1. `st4' - st4`
-1. `st5' - st5`
-1. `st6' - st6`
-1. `st7' - st7`
-1. `st8' - st8`
-1. `st9' - st9`
-1. `st10' - st10`
-1. `st11' - st11`
-1. `st12' - st12`
-1. `st13' - st13`
-1. `st14' - st14`
-1. `st15' - st15`
-1. `osv' - osv`
-1. `osp' - osp`
 
 ## Instruction `xxmul`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
 1. The coefficient of x^0 of multiplying the two X-Field elements on the stack is moved into `st0`.
 1. The coefficient of x^1 of multiplying the two X-Field elements on the stack is moved into `st1`.
 1. The coefficient of x^2 of multiplying the two X-Field elements on the stack is moved into `st2`.
-1. The stack element in `st3` does not change.
-1. The stack element in `st4` does not change.
-1. The stack element in `st5` does not change.
-1. The stack element in `st6` does not change.
-1. The stack element in `st7` does not change.
-1. The stack element in `st8` does not change.
-1. The stack element in `st9` does not change.
-1. The stack element in `st10` does not change.
-1. The stack element in `st11` does not change.
-1. The stack element in `st12` does not change.
-1. The stack element in `st13` does not change.
-1. The stack element in `st14` does not change.
-1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
 
 ### Polynomials
 
 1. `st0' - (st0·st3 - st2·st4 - st1·st5)`
 1. `st1' - (st1·st3 + st0·st4 - st2·st5 + st2·st4 + st1·st5)`
 1. `st2' - (st2·st3 + st1·st4 + st0·st5 + st2·st5)`
-1. `st3' - st3`
-1. `st4' - st4`
-1. `st5' - st5`
-1. `st6' - st6`
-1. `st7' - st7`
-1. `st8' - st8`
-1. `st9' - st9`
-1. `st10' - st10`
-1. `st11' - st11`
-1. `st12' - st12`
-1. `st13' - st13`
-1. `st14' - st14`
-1. `st15' - st15`
-1. `osv' - osv`
-1. `osp' - osp`
 
 ## Instruction `xinvert`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
 1. The coefficient of x^0 of multiplying X-Field element on top of the current stack and on top of the next stack is 1.
 1. The coefficient of x^1 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
 1. The coefficient of x^2 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
-1. The stack element in `st3` does not change.
-1. The stack element in `st4` does not change.
-1. The stack element in `st5` does not change.
-1. The stack element in `st6` does not change.
-1. The stack element in `st7` does not change.
-1. The stack element in `st8` does not change.
-1. The stack element in `st9` does not change.
-1. The stack element in `st10` does not change.
-1. The stack element in `st11` does not change.
-1. The stack element in `st12` does not change.
-1. The stack element in `st13` does not change.
-1. The stack element in `st14` does not change.
-1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
 
 ### Polynomials
 
 1. `st0·st0' - st2·st1' - st1·st2' - 1`
 1. `st1·st0' + st0·st1' - st2·st2' + st2·st1' + st1·st2'`
 1. `st2·st0' + st1·st1' + st0·st2' + st2·st2'`
-1. `st3' - st3`
-1. `st4' - st4`
-1. `st5' - st5`
-1. `st6' - st6`
-1. `st7' - st7`
-1. `st8' - st8`
-1. `st9' - st9`
-1. `st10' - st10`
-1. `st11' - st11`
-1. `st12' - st12`
-1. `st13' - st13`
-1. `st14' - st14`
-1. `st15' - st15`
-1. `osv' - osv`
-1. `osp' - osp`
 
 ## Instruction `xbmul`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_shrinks_and_top_3_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
 
 ### Description
 
 1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^0 is moved into `st0`.
 1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^1 is moved into `st1`.
 1. The result of multiplying the top of the stack with the X-Field element's coefficient for x^2 is moved into `st2`.
-1. The stack element in `st4` is moved into `st3`.
-1. The stack element in `st5` is moved into `st4`.
-1. The stack element in `st6` is moved into `st5`.
-1. The stack element in `st7` is moved into `st6`.
-1. The stack element in `st8` is moved into `st7`.
-1. The stack element in `st9` is moved into `st8`.
-1. The stack element in `st10` is moved into `st9`.
-1. The stack element in `st11` is moved into `st10`.
-1. The stack element in `st12` is moved into `st11`.
-1. The stack element in `st13` is moved into `st12`.
-1. The stack element in `st14` is moved into `st13`.
-1. The stack element in `st15` is moved into `st14`.
-1. The stack element at the top of OpStack underflow, i.e., `osv`, is moved into `st15`.
-1. The OpStack pointer is decremented by 1.
-1. The helper variable register `hv3` holds the inverse of `(osp - 16)`.
 
 ### Polynomials
 
 1. `st0' - st0·st1`
 1. `st1' - st0·st2`
 1. `st2' - st0·st3`
-1. `st3' - st4`
-1. `st4' - st5`
-1. `st5' - st6`
-1. `st6' - st7`
-1. `st7' - st8`
-1. `st8' - st9`
-1. `st9' - st10`
-1. `st10' - st11`
-1. `st11' - st12`
-1. `st12' - st13`
-1. `st13' - st14`
-1. `st14' - st15`
-1. `st15' - osv`
-1. `osp' - (osp - 1)`
-1. `(osp - 16)·hv3 - 1`
 
 ## Instruction `read_io`
 
-This instruction has no additional transition constraints.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `grow_stack`, and `keep_ram`.
+It has no additional transition constraints.
 An Evaluation Argument with the list of input symbols guarantees correct transition.
 
 ## Instruction `write_io`
 
-This instruction has no additional transition constraints.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `shrink_stack`, and `keep_ram`.
+It has no additional transition constraints.
 An Evaluation Argument with the list of output symbols guarantees correct transition.

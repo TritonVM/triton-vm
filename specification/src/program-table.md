@@ -44,16 +44,22 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ## Consistency Constraints
 
-None.
+1. The padding indicator `IsPadding` is either 0 or 1.
+
+### Consistency Constraints as Polynomials
+
+1. `IsPadding·(IsPadding - 1)`
 
 ## Transition Constraints
 
 1. The address increases by 1.
+1. The padding indicator `IsPadding` is 0 or remains unchanged.
 1. If the current row is not a padding row, the running evaluation absorbs the current row's address, the current row's instruction, and the next row's instruction with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥 respectively. Otherwise, it remains unchanged.
 
 ### Transition Constraints as Polynomials
 
 1. `Address' - (Address + 1)`
+1. `IsPadding·(IsPadding' - IsPadding)`
 1. `(1 - IsPadding) · (RunningEvaluation' - 🪥·RunningEvaluation - 🥝·Address - 🥥·Instruction - 🫐·Instruction') + IsPadding · (RunningEvaluation' - RunningEvaluation)`
 
 ## Terminal Constraints

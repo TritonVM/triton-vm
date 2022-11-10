@@ -135,8 +135,14 @@ impl ExtInstructionTable {
     fn ext_consistency_constraints(
         _challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        let one = MPolynomial::from_constant(XFieldElement::one(), FULL_WIDTH);
+
+        let variables = MPolynomial::variables(FULL_WIDTH);
+        let is_padding = variables[usize::from(IsPadding)].clone();
+
+        let is_padding_is_bit = is_padding.clone() * (is_padding - one);
+
+        vec![is_padding_is_bit]
     }
 
     fn ext_transition_constraints(
@@ -153,8 +159,8 @@ impl ExtInstructionTable {
         let current_instruction_next = variables[FULL_WIDTH + usize::from(CI)].clone();
         let next_instruction = variables[usize::from(NIA)].clone();
         let next_instruction_next = variables[FULL_WIDTH + usize::from(NIA)].clone();
-        // beware: for polynomials, “0” is true
-        let is_padding_row = one.clone() - variables[FULL_WIDTH + usize::from(IsPadding)].clone();
+        let is_padding = variables[usize::from(IsPadding)].clone();
+        let is_padding_next = variables[FULL_WIDTH + usize::from(IsPadding)].clone();
 
         // Base Table Constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
@@ -162,6 +168,8 @@ impl ExtInstructionTable {
             * (current_instruction_next.clone() - current_instruction);
         let address_increases_by_one_or_nia_stays =
             address_increases_by_one.clone() * (next_instruction_next.clone() - next_instruction);
+        let is_padding_is_0_or_remains_unchanged =
+            is_padding.clone() * (is_padding_next.clone() - is_padding);
 
         // Extension Table Constraints
         let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
@@ -194,10 +202,11 @@ impl ExtInstructionTable {
             - running_evaluation.scalar_mul(challenges.program_eval_indeterminate)
             - compressed_row_for_eval_arg;
 
-        let running_evaluation_is_well_formed =
-            address_stays.clone() * is_padding_row.clone() * running_evaluation_update
-                + address_increases_by_one.clone() * running_evaluations_stays.clone()
-                + (one.clone() - is_padding_row.clone()) * running_evaluations_stays;
+        let running_evaluation_is_well_formed = address_stays.clone()
+            * (one.clone() - is_padding_next.clone())
+            * running_evaluation_update
+            + address_increases_by_one.clone() * running_evaluations_stays.clone()
+            + is_padding_next.clone() * running_evaluations_stays;
 
         // The running product is updated if and only if
         // 1. the address doesn't change, and
@@ -219,13 +228,14 @@ impl ExtInstructionTable {
             - running_product * (processor_perm_indeterminate - compressed_row_for_perm_arg);
 
         let running_product_is_well_formed =
-            address_increases_by_one * is_padding_row.clone() * running_product_update
+            address_increases_by_one * (one - is_padding_next.clone()) * running_product_update
                 + address_stays * running_product_stays.clone()
-                + (one - is_padding_row) * running_product_stays;
+                + is_padding_next * running_product_stays;
 
         vec![
             address_increases_by_one_or_ci_stays,
             address_increases_by_one_or_nia_stays,
+            is_padding_is_0_or_remains_unchanged,
             running_evaluation_is_well_formed,
             running_product_is_well_formed,
         ]
