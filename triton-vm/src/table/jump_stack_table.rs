@@ -201,7 +201,7 @@ impl ExtJumpStackTable {
             circuit_builder.deterministic_input(usize::from(AllClockJumpDifferencesPermArg));
 
         let clk_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CLK));
-        let _ci_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CI));
+        let ci_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CI));
         let jsp_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSP));
         let jso_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSO));
         let jsd_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSD));
@@ -223,12 +223,13 @@ impl ExtJumpStackTable {
         let jsp_inc_by_one_or_ci_is_return =
             (jsp_next.clone() - (jsp.clone() + one.clone())) * (ci.clone() - return_opcode.clone());
         let jsp_inc_or_jso_stays_or_ci_is_ret =
-            jsp_inc_by_one_or_ci_is_return.clone() * (jso_next - jso);
+            jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
 
         // 3. The jump stack pointer jsp increases by 1
         //      or current instruction ci is return
         //      or the jump stack destination jsd does not change
-        let jsp_inc_or_jsd_stays_or_ci_ret = jsp_inc_by_one_or_ci_is_return * (jsd_next - jsd);
+        let jsp_inc_or_jsd_stays_or_ci_ret =
+            jsp_inc_by_one_or_ci_is_return * (jsd_next.clone() - jsd);
 
         // 4. The jump stack pointer jsp increases by 1
         //      or the cycle count clk increases by 1
@@ -254,22 +255,13 @@ impl ExtJumpStackTable {
         // 6. The running product for the permutation argument `rppa`
         //  accumulates one row in each row, relative to weights `a`,
         //  `b`, `c`, `d`, `e`, and indeterminate `α`.
-        let compressed_row = circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(CLK),
-            JumpStackTableChallengesId::ClkWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(CI),
-            JumpStackTableChallengesId::CiWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(JSP),
-            JumpStackTableChallengesId::JspWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(JSO),
-            JumpStackTableChallengesId::JsoWeight,
-        ) + circuit_builder.randomized_input(
-            FULL_WIDTH + usize::from(JSD),
-            JumpStackTableChallengesId::JsdWeight,
-        );
+        let compressed_row = circuit_builder.challenge(JumpStackTableChallengesId::ClkWeight)
+            * clk_next.clone()
+            + circuit_builder.challenge(JumpStackTableChallengesId::CiWeight) * ci_next
+            + circuit_builder.challenge(JumpStackTableChallengesId::JspWeight) * jsp_next.clone()
+            + circuit_builder.challenge(JumpStackTableChallengesId::JsoWeight) * jso_next
+            + circuit_builder.challenge(JumpStackTableChallengesId::JsdWeight) * jsd_next;
+
         let rppa_updates_correctly = rppa_next
             - rppa
                 * (circuit_builder

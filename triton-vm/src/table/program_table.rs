@@ -133,33 +133,29 @@ impl ExtProgramTable {
         let address = circuit_builder.deterministic_input(usize::from(Address));
         let address_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Address));
         let one = circuit_builder.constant(1.into());
-        let _instruction = circuit_builder.deterministic_input(usize::from(Instruction));
+        let instruction = circuit_builder.deterministic_input(usize::from(Instruction));
         let is_padding = circuit_builder.deterministic_input(usize::from(IsPadding));
         let running_evaluation =
             circuit_builder.deterministic_input(usize::from(RunningEvaluation));
-        let _instruction_next =
+        let instruction_next =
             circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Instruction));
         let is_padding_next =
             circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
         let running_evaluation_next =
             circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningEvaluation));
 
-        let address_increases_by_one = address_next - (address + one.clone());
+        let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_padding_is_0_or_remains_unchanged =
             is_padding.clone() * (is_padding_next - is_padding.clone());
 
         let running_evaluation_remains =
             running_evaluation_next.clone() - running_evaluation.clone();
-        let compressed_row = circuit_builder
-            .randomized_input(usize::from(Address), ProgramTableChallengeId::AddressWeight)
-            + circuit_builder.randomized_input(
-                usize::from(Instruction),
-                ProgramTableChallengeId::InstructionWeight,
-            )
-            + circuit_builder.randomized_input(
-                FULL_WIDTH + usize::from(Instruction),
-                ProgramTableChallengeId::NextInstructionWeight,
-            );
+        let compressed_row = circuit_builder.challenge(ProgramTableChallengeId::AddressWeight)
+            * address
+            + circuit_builder.challenge(ProgramTableChallengeId::InstructionWeight) * instruction
+            + circuit_builder.challenge(ProgramTableChallengeId::NextInstructionWeight)
+                * instruction_next;
+
         let indeterminate =
             circuit_builder.challenge(ProgramTableChallengeId::InstructionEvalIndeterminate);
         let running_evaluation_updates =

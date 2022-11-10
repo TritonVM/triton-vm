@@ -16,12 +16,6 @@ use twenty_first::shared_math::{mpolynomial::MPolynomial, x_field_element::XFiel
 
 use super::challenges::TableChallenges;
 
-#[derive(Debug, Clone, Copy)]
-pub enum ConstraintType<T: TableChallenges> {
-    Deterministic,
-    Randomized(T::Id),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub enum BinOp {
     Add,
@@ -57,7 +51,7 @@ impl Display for CircuitId {
 pub enum CircuitExpression<T: TableChallenges> {
     // MPol(MPolynomial<XFieldElement>, ConstraintType<T>),
     Constant(XFieldElement),
-    Input(usize, ConstraintType<T>),
+    Input(usize),
     Challenge(T::Id),
     BinaryOperation(
         BinOp,
@@ -70,11 +64,8 @@ impl<T: TableChallenges> Hash for CircuitExpression<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             CircuitExpression::Constant(xfe) => xfe.hash(state),
-            CircuitExpression::Input(index, ConstraintType::Deterministic) => index.hash(state),
-            CircuitExpression::Input(index, ConstraintType::Randomized(challenge_id)) => {
-                index.hash(state);
-                challenge_id.hash(state);
-            }
+
+            CircuitExpression::Input(index) => index.hash(state),
 
             CircuitExpression::Challenge(table_challenge_id) => {
                 table_challenge_id.hash(state);
@@ -122,36 +113,13 @@ impl<T: TableChallenges> PartialEq for ConstraintCircuit<T> {
                 CircuitExpression::Constant(other_xfe) => self_xfe == other_xfe,
                 _ => false,
             },
-            CircuitExpression::Input(self_input_index, ConstraintType::Deterministic) => {
-                match &other.expression {
-                    CircuitExpression::Input(other_input_index, ConstraintType::Deterministic) => {
-                        self_input_index == other_input_index
-                    }
-
-                    // for all inputs: randomized != deterministic
-                    _ => false,
+            CircuitExpression::Input(self_input_index) => match &other.expression {
+                CircuitExpression::Input(other_input_index) => {
+                    self_input_index == other_input_index
                 }
-            }
-            CircuitExpression::Input(
-                self_input_index,
-                ConstraintType::Randomized(self_challenge_id),
-            ) => {
-                match &other.expression {
-                    // for all inputs: randomized != deterministic
 
-                    // randomized is equal to other randomized if randomized and contained input index
-                    // are both the same
-                    CircuitExpression::Input(
-                        other_input_index,
-                        ConstraintType::Randomized(other_challenge_id),
-                    ) => {
-                        other_challenge_id == self_challenge_id
-                            && other_input_index == self_input_index
-                    }
-
-                    _ => false,
-                }
-            }
+                _ => false,
+            },
             CircuitExpression::Challenge(self_challenge_id) => match &other.expression {
                 CircuitExpression::Challenge(other_challenge_id) => {
                     self_challenge_id == other_challenge_id
@@ -180,13 +148,7 @@ impl<T: TableChallenges> Display for ConstraintCircuit<T> {
             CircuitExpression::Constant(xfe) => {
                 write!(f, "{}", xfe)
             }
-            // CircuitExpression::MPol(normalized_pol, challenge) => match challenge {
-            CircuitExpression::Input(self_input_index, constraint_type) => match constraint_type {
-                ConstraintType::Deterministic => write!(f, "${} ", self_input_index),
-                ConstraintType::Randomized(constraint_id) => {
-                    write!(f, "#{}${}", constraint_id, self_input_index)
-                }
-            },
+            CircuitExpression::Input(self_input_index) => write!(f, "${} ", self_input_index),
             CircuitExpression::Challenge(self_challenge_id) => {
                 write!(f, "#{}", self_challenge_id)
             }
@@ -209,7 +171,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         self.visited_counter += 1;
         match self.expression.borrow_mut() {
             CircuitExpression::Constant(_) => (),
-            CircuitExpression::Input(_, _) => (),
+            CircuitExpression::Input(_) => (),
             CircuitExpression::Challenge(_) => (),
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
                 lhs.as_ref().borrow_mut().traverse_single();
@@ -248,7 +210,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         self.visited_counter += 1;
         match &self.expression {
             CircuitExpression::Constant(_) => (),
-            CircuitExpression::Input(_, _) => (),
+            CircuitExpression::Input(_) => (),
             CircuitExpression::Challenge(_) => (),
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
                 lhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
@@ -290,7 +252,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
 
         match &self.expression.clone() {
             CircuitExpression::Constant(_) => change_tracker,
-            CircuitExpression::Input(_, _) => change_tracker,
+            CircuitExpression::Input(_) => change_tracker,
             CircuitExpression::Challenge(_) => change_tracker,
             CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
                 // a + 0 = a /\ a - 0 = a
@@ -355,7 +317,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         // but we probably don't need that as our circuits aren't too big.
         match &self.expression {
             CircuitExpression::Constant(_) => self.visited_counter,
-            CircuitExpression::Input(_, _) => self.visited_counter,
+            CircuitExpression::Input(_) => self.visited_counter,
             CircuitExpression::Challenge(_) => self.visited_counter,
             // The highest number will always be in a leaf so we only
             // need to check those.
@@ -371,7 +333,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     pub fn is_single_term(&self) -> bool {
         match &self.expression {
             CircuitExpression::Constant(_) => true,
-            CircuitExpression::Input(_, _) => true,
+            CircuitExpression::Input(_) => true,
             CircuitExpression::Challenge(_) => true,
             CircuitExpression::BinaryOperation(_, _, _) => false,
         }
@@ -410,9 +372,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// term and a coefficient of one. Returns the index in which the multivariate
     /// polynomial is linear. Returns None otherwise.
     pub fn get_linear_one_index(&self) -> Option<usize> {
-        if let CircuitExpression::Input(input_index, ConstraintType::Deterministic) =
-            self.expression
-        {
+        if let CircuitExpression::Input(input_index) = self.expression {
             Some(input_index)
         } else {
             None
@@ -422,10 +382,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// Return true iff the evaluation value of this node depends on a challenge
     pub fn is_randomized(&self) -> bool {
         match &self.expression {
-            CircuitExpression::Input(_, constaint_type) => match constaint_type {
-                ConstraintType::Deterministic => false,
-                ConstraintType::Randomized(_) => true,
-            },
+            CircuitExpression::Input(_) => false,
             CircuitExpression::Constant(_) => false,
             CircuitExpression::Challenge(_) => true,
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
@@ -451,15 +408,9 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
             CircuitExpression::Constant(xfe) => {
                 MPolynomial::<XFieldElement>::from_constant(*xfe, self.var_count)
             }
-            CircuitExpression::Input(input_index, constraint_type) => match constraint_type {
-                ConstraintType::Deterministic => {
-                    MPolynomial::<XFieldElement>::variables(self.var_count)[*input_index].clone()
-                }
-                ConstraintType::Randomized(challenge_id) => {
-                    MPolynomial::<XFieldElement>::variables(self.var_count)[*input_index]
-                        .scalar_mul(challenges.get_challenge(*challenge_id))
-                }
-            },
+            CircuitExpression::Input(input_index) => {
+                MPolynomial::<XFieldElement>::variables(self.var_count)[*input_index].clone()
+            }
             CircuitExpression::Challenge(challenge_id) => {
                 MPolynomial::<XFieldElement>::from_constant(
                     challenges.get_challenge(*challenge_id),
@@ -658,18 +609,7 @@ impl<T: TableChallenges> ConstraintCircuitBuilder<T> {
 
     /// Create deterministic input leaf node
     pub fn deterministic_input(&mut self, input_index: usize) -> ConstraintCircuitMonad<T> {
-        let expression = CircuitExpression::Input(input_index, ConstraintType::Deterministic);
-        self.make_leaf(expression)
-    }
-
-    /// Create randomized input leaf node
-    pub fn randomized_input(
-        &mut self,
-        input_index: usize,
-        challenge_id: T::Id,
-    ) -> ConstraintCircuitMonad<T> {
-        let expression =
-            CircuitExpression::Input(input_index, ConstraintType::Randomized(challenge_id));
+        let expression = CircuitExpression::Input(input_index);
         self.make_leaf(expression)
     }
 
@@ -827,10 +767,9 @@ mod constraint_circuit_tests {
                     mpol_variables[rand % var_count]
                         .clone()
                         .scalar_mul(challenges.processor_perm_indeterminate),
-                    circuit_builder.randomized_input(
-                        rand % var_count,
-                        InstructionTableChallengeId::ProcessorPermIndeterminate,
-                    ),
+                    circuit_builder.deterministic_input(rand % var_count)
+                        * circuit_builder
+                            .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
                 )
             };
             let operation_indicator = rand % 3;
@@ -866,12 +805,7 @@ mod constraint_circuit_tests {
                 binop(*op, lhs_ref, rhs_ref)
             }
             CircuitExpression::Constant(xfe) => builder.constant(*xfe),
-            CircuitExpression::Input(input_index, ConstraintType::Deterministic) => {
-                builder.deterministic_input(*input_index)
-            }
-            CircuitExpression::Input(input_index, ConstraintType::Randomized(challenge_id)) => {
-                builder.randomized_input(*input_index, *challenge_id)
-            }
+            CircuitExpression::Input(input_index) => builder.deterministic_input(*input_index),
             CircuitExpression::Challenge(challenge_id) => builder.challenge(*challenge_id),
         }
     }
