@@ -635,7 +635,7 @@ impl<T: TableChallenges> ConstraintCircuitBuilder<T> {
     }
 
     /// Create deterministic input leaf node
-    pub fn deterministic_input(&mut self, input_index: usize) -> ConstraintCircuitMonad<T> {
+    pub fn input(&mut self, input_index: usize) -> ConstraintCircuitMonad<T> {
         let expression = CircuitExpression::Input(input_index);
         self.make_leaf(expression)
     }
@@ -759,16 +759,13 @@ mod constraint_circuit_tests {
         let mut rng = thread_rng();
         let rand: usize = rng.next_u64() as usize;
         let mut ret_mpol = mpol_variables[rand % var_count].clone();
-        let mut ret_circuit = circuit_builder.deterministic_input(rand % var_count);
+        let mut ret_circuit = circuit_builder.input(rand % var_count);
         for _ in 0..100 {
             let rand: usize = rng.next_u64() as usize;
             let (mpol, circuit) = if rand % 5 == 0 {
                 // p(x, y, z) = x
                 let mp = mpol_variables[rand % var_count].clone();
-                (
-                    mp.clone(),
-                    circuit_builder.deterministic_input(rand % var_count),
-                )
+                (mp.clone(), circuit_builder.input(rand % var_count))
             } else if rand % 5 == 1 {
                 // p(x, y, z) = c
                 (
@@ -794,7 +791,7 @@ mod constraint_circuit_tests {
                     mpol_variables[rand % var_count]
                         .clone()
                         .scalar_mul(challenges.processor_perm_indeterminate),
-                    circuit_builder.deterministic_input(rand % var_count)
+                    circuit_builder.input(rand % var_count)
                         * circuit_builder
                             .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
                 )
@@ -832,7 +829,7 @@ mod constraint_circuit_tests {
                 binop(*op, lhs_ref, rhs_ref)
             }
             CircuitExpression::Constant(xfe) => builder.constant(*xfe),
-            CircuitExpression::Input(input_index) => builder.deterministic_input(*input_index),
+            CircuitExpression::Input(input_index) => builder.input(*input_index),
             CircuitExpression::Challenge(challenge_id) => builder.challenge(*challenge_id),
         }
     }
@@ -934,8 +931,8 @@ mod constraint_circuit_tests {
         let var_count = 10;
         let mut circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
             ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.deterministic_input(0);
-        let var_4 = circuit_builder.deterministic_input(4);
+        let var_0 = circuit_builder.input(0);
+        let var_4 = circuit_builder.input(4);
         let four = circuit_builder.constant(4.into());
         let one = circuit_builder.constant(1.into());
         let zero = circuit_builder.constant(0.into());
@@ -1127,10 +1124,10 @@ mod constraint_circuit_tests {
 
         let mut circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
             ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.deterministic_input(0);
-        let var_4 = circuit_builder.deterministic_input(4);
-        let var_8 = circuit_builder.deterministic_input(8);
-        let var_9 = circuit_builder.deterministic_input(9);
+        let var_0 = circuit_builder.input(0);
+        let var_4 = circuit_builder.input(4);
+        let var_8 = circuit_builder.input(8);
+        let var_9 = circuit_builder.input(9);
 
         let four = circuit_builder.constant(4.into());
 

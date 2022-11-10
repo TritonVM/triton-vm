@@ -1437,7 +1437,7 @@ impl Default for RowPairConstraints {
         let mut circuit_builder =
             ConstraintCircuitBuilder::<ProcessorTableChallenges>::new(2 * FULL_WIDTH);
         let variables_as_circuits = (0..2 * FULL_WIDTH)
-            .map(|i| circuit_builder.deterministic_input(i))
+            .map(|i| circuit_builder.input(i))
             .collect_vec();
 
         let variables = variables_as_circuits

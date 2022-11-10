@@ -190,27 +190,24 @@ impl ExtJumpStackTable {
             circuit_builder.constant(Instruction::Call(Default::default()).opcode_b().lift());
         let return_opcode = circuit_builder.constant(Instruction::Return.opcode_b().lift());
 
-        let clk = circuit_builder.deterministic_input(usize::from(CLK));
-        let ci = circuit_builder.deterministic_input(usize::from(CI));
-        let jsp = circuit_builder.deterministic_input(usize::from(JSP));
-        let jso = circuit_builder.deterministic_input(usize::from(JSO));
-        let jsd = circuit_builder.deterministic_input(usize::from(JSD));
-        let clk_di = circuit_builder.deterministic_input(usize::from(InverseOfClkDiffMinusOne));
-        let rppa = circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
-        let rpcjd =
-            circuit_builder.deterministic_input(usize::from(AllClockJumpDifferencesPermArg));
+        let clk = circuit_builder.input(usize::from(CLK));
+        let ci = circuit_builder.input(usize::from(CI));
+        let jsp = circuit_builder.input(usize::from(JSP));
+        let jso = circuit_builder.input(usize::from(JSO));
+        let jsd = circuit_builder.input(usize::from(JSD));
+        let clk_di = circuit_builder.input(usize::from(InverseOfClkDiffMinusOne));
+        let rppa = circuit_builder.input(usize::from(RunningProductPermArg));
+        let rpcjd = circuit_builder.input(usize::from(AllClockJumpDifferencesPermArg));
 
-        let clk_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CLK));
-        let ci_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CI));
-        let jsp_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSP));
-        let jso_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSO));
-        let jsd_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSD));
-        let clk_di_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(InverseOfClkDiffMinusOne));
-        let rppa_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductPermArg));
-        let rpcjd_next = circuit_builder
-            .deterministic_input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
+        let clk_next = circuit_builder.input(FULL_WIDTH + usize::from(CLK));
+        let ci_next = circuit_builder.input(FULL_WIDTH + usize::from(CI));
+        let jsp_next = circuit_builder.input(FULL_WIDTH + usize::from(JSP));
+        let jso_next = circuit_builder.input(FULL_WIDTH + usize::from(JSO));
+        let jsd_next = circuit_builder.input(FULL_WIDTH + usize::from(JSD));
+        let clk_di_next = circuit_builder.input(FULL_WIDTH + usize::from(InverseOfClkDiffMinusOne));
+        let rppa_next = circuit_builder.input(FULL_WIDTH + usize::from(RunningProductPermArg));
+        let rpcjd_next =
+            circuit_builder.input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
 
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change

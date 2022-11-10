@@ -213,20 +213,17 @@ impl ExtInstructionTable {
         let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let one: ConstraintCircuitMonad<InstructionTableChallenges> =
             circuit_builder.constant(1.into());
-        let addr = circuit_builder.deterministic_input(usize::from(Address));
+        let addr = circuit_builder.input(usize::from(Address));
 
-        let addr_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Address));
-        let current_instruction = circuit_builder.deterministic_input(usize::from(CI));
-        let current_instruction_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CI));
-        let next_instruction = circuit_builder.deterministic_input(usize::from(NIA));
-        let next_instruction_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(NIA));
+        let addr_next = circuit_builder.input(FULL_WIDTH + usize::from(Address));
+        let current_instruction = circuit_builder.input(usize::from(CI));
+        let current_instruction_next = circuit_builder.input(FULL_WIDTH + usize::from(CI));
+        let next_instruction = circuit_builder.input(usize::from(NIA));
+        let next_instruction_next = circuit_builder.input(FULL_WIDTH + usize::from(NIA));
         // let is_padding_row =
         //     one.clone() - circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
-        let is_padding = circuit_builder.deterministic_input(usize::from(IsPadding));
-        let is_padding_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
+        let is_padding = circuit_builder.input(usize::from(IsPadding));
+        let is_padding_next = circuit_builder.input(FULL_WIDTH + usize::from(IsPadding));
 
         // Base table constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
@@ -240,15 +237,13 @@ impl ExtInstructionTable {
         // Extension table constraints
         let processor_perm_indeterminate =
             circuit_builder.challenge(InstructionTableChallengeId::ProcessorPermIndeterminate);
-        let running_evaluation =
-            circuit_builder.deterministic_input(usize::from(RunningEvaluation));
+        let running_evaluation = circuit_builder.input(usize::from(RunningEvaluation));
         let running_evaluation_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningEvaluation));
+            circuit_builder.input(FULL_WIDTH + usize::from(RunningEvaluation));
 
-        let running_product =
-            circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
+        let running_product = circuit_builder.input(usize::from(RunningProductPermArg));
         let running_product_next =
-            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductPermArg));
+            circuit_builder.input(FULL_WIDTH + usize::from(RunningProductPermArg));
 
         // The running evaluation is updated if and only if
         // 1. the address changes, and
