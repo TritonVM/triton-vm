@@ -559,6 +559,34 @@ fn binop<T: TableChallenges>(
         return ret1.to_owned();
     }
 
+    // If the operator commutes, check if the inverse node has already been constructed.
+    // If it has, return this instead. Do not allow a new one to be built.
+    if matches!(binop, BinOp::Add | BinOp::Mul) {
+        let new_node_inverted = ConstraintCircuitMonad {
+            circuit: Rc::new(RefCell::new(ConstraintCircuit {
+                visited_counter: 0,
+                expression: CircuitExpression::BinaryOperation(
+                    binop,
+                    // Switch rhs and lhs for symmetric operators to check for membership in hash set
+                    Rc::clone(&rhs.circuit),
+                    Rc::clone(&lhs.circuit),
+                ),
+                id: CircuitId(new_index),
+                var_count: lhs.circuit.as_ref().borrow().var_count,
+            })),
+            id_counter_ref: Rc::clone(&lhs.id_counter_ref),
+            all_nodes: Rc::clone(&lhs.all_nodes),
+        };
+
+        // check if node already exists
+        let inverted_contained = lhs.all_nodes.as_ref().borrow().contains(&new_node_inverted);
+        if inverted_contained {
+            let ret0 = &lhs.all_nodes.as_ref().borrow();
+            let ret1 = &(*ret0.get(&new_node_inverted).as_ref().unwrap()).clone();
+            return ret1.to_owned();
+        }
+    }
+
     // Increment counter index
     *lhs.id_counter_ref.as_ref().borrow_mut() = new_index + 1;
 
@@ -707,11 +735,44 @@ mod constraint_circuit_tests {
         instruction_table::{
             ExtInstructionTable, InstructionTableChallengeId, InstructionTableChallenges,
         },
+        jump_stack_table::ExtJumpStackTable,
+        op_stack_table::ExtOpStackTable,
         processor_table::ExtProcessorTable,
         program_table::ExtProgramTable,
+        ram_table::ExtRamTable,
     };
 
     use super::*;
+
+    fn node_counter_inner<T: TableChallenges>(
+        constraint: &mut ConstraintCircuit<T>,
+        counter: &mut usize,
+    ) {
+        if constraint.visited_counter == 0 {
+            *counter += 1;
+            constraint.visited_counter = 1;
+
+            if let CircuitExpression::BinaryOperation(_, lhs, rhs) = &constraint.expression {
+                node_counter_inner(&mut lhs.as_ref().borrow_mut(), counter);
+                node_counter_inner(&mut rhs.as_ref().borrow_mut(), counter);
+            }
+        }
+    }
+
+    /// Count the total number of nodes in call constraints
+    fn node_counter<T: TableChallenges>(constraints: &mut [ConstraintCircuit<T>]) -> usize {
+        let mut counter = 0;
+
+        for constraint in constraints.iter_mut() {
+            node_counter_inner(constraint, &mut counter);
+        }
+
+        for constraint in constraints.iter_mut() {
+            ConstraintCircuit::reset_visited_counters(constraint);
+        }
+
+        counter
+    }
 
     fn circuit_mpol_builder(
         challenges: &InstructionTableChallenges,
@@ -1125,19 +1186,31 @@ mod constraint_circuit_tests {
         assert_eq!(expr_mpol, expr_circuit_partial_evaluated);
     }
 
-    #[test]
-    fn constant_folding_instruction_table_test() {
-        let mut constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
+    fn constant_folding_test<T: TableChallenges>(
+        mut constraints: Vec<ConstraintCircuit<T>>,
+        challenges: T,
+        table_name: &str,
+    ) {
+        println!(
+            "nodes in {table_name} table constraint multitree prior to constant folding: {}",
+            node_counter(&mut constraints)
+        );
+
         let mut before_fold: Vec<MPolynomial<XFieldElement>> = vec![];
-        let challenges = AllChallenges::placeholder();
-        for circuit in constraint_circuits.iter() {
-            before_fold.push(circuit.partial_evaluate(&challenges.instruction_table_challenges));
+
+        for circuit in constraints.iter() {
+            before_fold.push(circuit.partial_evaluate(&challenges));
         }
 
-        ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
+        ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
+        println!(
+            "nodes in {table_name} constraint multitree after constant folding: {}",
+            node_counter(&mut constraints)
+        );
+
         let mut after_fold: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in constraint_circuits.iter() {
-            after_fold.push(circuit.partial_evaluate(&challenges.instruction_table_challenges));
+        for circuit in constraints.iter() {
+            after_fold.push(circuit.partial_evaluate(&challenges));
         }
 
         for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
@@ -1146,42 +1219,64 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn constant_folding_processor_table_test() {
-        let mut constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
-        let mut before_fold: Vec<MPolynomial<XFieldElement>> = vec![];
+    fn constant_folding_instruction_table_test() {
         let challenges = AllChallenges::placeholder();
-        for circuit in constraint_circuits.iter() {
-            before_fold.push(circuit.partial_evaluate(&challenges.processor_table_challenges));
-        }
+        let constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
+        constant_folding_test(
+            constraint_circuits,
+            challenges.instruction_table_challenges,
+            "instruction",
+        );
+    }
 
-        ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
-        let mut after_fold: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in constraint_circuits.iter() {
-            after_fold.push(circuit.partial_evaluate(&challenges.processor_table_challenges));
-        }
-
-        for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
-            assert_eq!(before, after, "Constant folding must leave partially evaluated constraints unchanged for processor table constraint {i}");
-        }
+    #[test]
+    fn constant_folding_processor_table_test() {
+        let challenges = AllChallenges::placeholder();
+        let constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
+        constant_folding_test(
+            constraint_circuits,
+            challenges.processor_table_challenges,
+            "processor",
+        );
     }
 
     #[test]
     fn constant_folding_program_table_test() {
-        let mut constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
-        let mut before_fold: Vec<MPolynomial<XFieldElement>> = vec![];
         let challenges = AllChallenges::placeholder();
-        for circuit in constraint_circuits.iter() {
-            before_fold.push(circuit.partial_evaluate(&challenges.program_table_challenges));
-        }
+        let constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
+        constant_folding_test(
+            constraint_circuits,
+            challenges.program_table_challenges,
+            "program",
+        );
+    }
 
-        ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
-        let mut after_fold: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in constraint_circuits.iter() {
-            after_fold.push(circuit.partial_evaluate(&challenges.program_table_challenges));
-        }
+    #[test]
+    fn constant_folding_jump_stack_table_test() {
+        let challenges = AllChallenges::placeholder();
+        let constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
+        constant_folding_test(
+            constraint_circuits,
+            challenges.jump_stack_table_challenges,
+            "jump stack",
+        );
+    }
 
-        for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
-            assert_eq!(before, after, "Constant folding must leave partially evaluated constraints unchanged for processor table constraint {i}");
-        }
+    #[test]
+    fn constant_folding_op_stack_table_test() {
+        let challenges = AllChallenges::placeholder();
+        let constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
+        constant_folding_test(
+            constraint_circuits,
+            challenges.op_stack_table_challenges,
+            "op stack",
+        );
+    }
+
+    #[test]
+    fn constant_folding_ram_stack_table_test() {
+        let challenges = AllChallenges::placeholder();
+        let constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
+        constant_folding_test(constraint_circuits, challenges.ram_table_challenges, "ram");
     }
 }
