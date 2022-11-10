@@ -1278,8 +1278,9 @@ pub(crate) mod triton_stark_tests {
         let ptoe = ext_table_collection.data(ProcessorTable).last().unwrap()
             [usize::from(OutputTableEvalArg)];
 
+        let output_vec: Vec<_> = stdout.into();
         let oute = EvalArg::compute_terminal(
-            &stdout.to_bword_vec(),
+            &output_vec,
             EvalArg::default_initial(),
             all_challenges
                 .output_challenges
@@ -1310,8 +1311,9 @@ pub(crate) mod triton_stark_tests {
                     .standard_input_eval_indeterminate,
             );
 
+            let output_vec: Vec<_> = output.into();
             let output_terminal = EvalArg::compute_terminal(
-                &output.to_bword_vec(),
+                &output_vec,
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges

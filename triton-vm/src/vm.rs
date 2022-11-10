@@ -169,7 +169,7 @@ impl Program {
         let mut stdout = VecStream::new(&[]);
 
         let (aet, vm_error) = self.simulate(&mut stdin, &mut secret_in, &mut stdout);
-        (aet, vm_error, stdout.to_bword_vec())
+        (aet, vm_error, stdout.into())
     }
 
     pub fn run<In, Out>(
@@ -213,21 +213,13 @@ impl Program {
         input: &[BFieldElement],
         secret_input: &[BFieldElement],
     ) -> (Vec<VMState>, Vec<BFieldElement>, Option<Box<dyn Error>>) {
-        let input_bytes = input
-            .iter()
-            .flat_map(|elem| elem.value().to_be_bytes())
-            .collect_vec();
-        let secret_input_bytes = secret_input
-            .iter()
-            .flat_map(|elem| elem.value().to_be_bytes())
-            .collect_vec();
-        let mut stdin = VecStream::new_from_bytes(&input_bytes);
-        let mut secret_in = VecStream::new_from_bytes(&secret_input_bytes);
-        let mut stdout = VecStream::new_from_bytes(&[]);
+        let mut stdin = VecStream::new(input);
+        let mut secret_in = VecStream::new(secret_input);
+        let mut stdout = VecStream::new(&[]);
 
         let (trace, err) = self.run(&mut stdin, &mut secret_in, &mut stdout);
 
-        let out = stdout.to_bword_vec();
+        let out = stdout.into();
 
         (trace, out, err)
     }
@@ -243,7 +235,6 @@ impl Program {
 
 #[cfg(test)]
 pub mod triton_vm_tests {
-    use std::iter::zip;
     use std::ops::{BitAnd, BitXor};
 
     use num_traits::{One, Zero};
@@ -360,63 +351,41 @@ pub mod triton_vm_tests {
         let mut stdout = VecStream::new(&[]);
 
         let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
+
+        let input: Vec<_> = stdin.into();
+        let output: Vec<_> = stdout.into();
         let base_matrices = BaseMatrices::new(aet, &program);
 
-        println!("{:?}", err);
+        if let Some(e) = err {
+            panic!("The VM encountered an error: {e}");
+        }
+
         for row in base_matrices.processor_matrix.clone() {
             println!("{}", ProcessorMatrixRow { row });
         }
 
+        assert!(input.is_empty());
+
         // 1. Check `output_matrix`.
-        {
-            let expecteds = vec![
-                10, 33, 100, 108, 114, 111, 87, 32, 44, 111, 108, 108, 101, 72,
-            ]
-            .into_iter()
-            .rev()
-            .map(BFieldElement::new);
-            let actuals = stdout.to_bword_vec();
+        let expected_output = vec![
+            10, 33, 100, 108, 114, 111, 87, 32, 44, 111, 108, 108, 101, 72,
+        ]
+        .into_iter()
+        .rev()
+        .map(BFieldElement::new)
+        .collect_vec();
 
-            assert_eq!(expecteds.len(), actuals.len());
-
-            for (expected, actual) in zip(expecteds, actuals) {
-                assert_eq!(expected, actual)
-            }
-        }
+        assert_eq!(expected_output, output);
 
         // 2. Each `hash` operation result in 8 rows.
-        {
-            let hash_instruction_count = 0;
-            let prc_rows_count = base_matrices.processor_matrix.len();
-            assert!(hash_instruction_count <= 8 * prc_rows_count)
-        }
+        let hash_instruction_count = 0;
+        let prc_rows_count = base_matrices.processor_matrix.len();
+        assert!(hash_instruction_count <= 8 * prc_rows_count);
 
-        //3. noRows(jmpstack_tabel) == noRows(processor_table)
-        {
-            let jmp_rows_count = base_matrices.jump_stack_matrix.len();
-            let prc_rows_count = base_matrices.processor_matrix.len();
-            assert_eq!(jmp_rows_count, prc_rows_count)
-        }
-
-        // "4. "READIO; WRITEIO" -> noRows(inputable) + noRows(outputtable) == noReadIO +
-        // noWriteIO"
-
-        {
-            // Input
-            let expected_input_count = 0;
-
-            let actual_input_count = stdin.to_bword_vec().len();
-
-            assert_eq!(expected_input_count, actual_input_count);
-
-            // Output
-            let expected_output_count = 14;
-            //let actual = base_matrices.ram_matrix.len();
-
-            let actual_output_count = stdout.to_bword_vec().len();
-
-            assert_eq!(expected_output_count, actual_output_count);
-        }
+        //3. noRows(jump_stack_table) == noRows(processor_table)
+        let jmp_rows_count = base_matrices.jump_stack_matrix.len();
+        let prc_rows_count = base_matrices.processor_matrix.len();
+        assert_eq!(jmp_rows_count, prc_rows_count);
     }
 
     #[test]
@@ -445,14 +414,16 @@ pub mod triton_vm_tests {
         // 1. Each of three `hash` instructions result in NUM_ROUNDS+1 rows.
         assert_eq!(3 * (NUM_ROUNDS + 1), base_matrices.hash_matrix.len());
 
-        // 2. noRows(jmpstack_table) == noRows(processor_table)
+        // 2. noRows(jump_stack_table) == noRows(processor_table)
         assert_eq!(jmp_rows_count, prc_rows_count);
 
         // 3. The number of input_table rows is equivalent to the number of read_io instructions.
-        assert_eq!(0, stdin.to_bword_vec().len());
+        let input: Vec<_> = stdin.into();
+        assert_eq!(0, input.len());
 
         // 4. The number of output_table rows is equivalent to the number of write_io instructions.
-        assert_eq!(0, stdout.to_bword_vec().len());
+        let output: Vec<_> = stdout.into();
+        assert_eq!(0, output.len());
     }
 
     /// Source code and associated input. Primarily for testing of the VM's instructions.
@@ -1084,13 +1055,13 @@ pub mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new(&[
+        let expected_stdout = vec![
             BFieldElement::new(9),
             BFieldElement::new(14),
             BFieldElement::new(18),
-        ]);
+        ];
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
+        assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
@@ -1118,13 +1089,13 @@ pub mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new(&[
+        let expected_stdout = vec![
             BFieldElement::new(108),
             BFieldElement::new(123),
             BFieldElement::new(22),
-        ]);
+        ];
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
+        assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
@@ -1152,16 +1123,16 @@ pub mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new(&[
+        let expected_stdout = vec![
             BFieldElement::zero(),
             BFieldElement::zero(),
             BFieldElement::one(),
             BFieldElement::new(16360893149904808002),
             BFieldElement::new(14209859389160351173),
             BFieldElement::new(4432433203958274678),
-        ]);
+        ];
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
+        assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
@@ -1186,21 +1157,21 @@ pub mod triton_vm_tests {
         };
 
         let actual_stdout = program.run();
-        let expected_stdout = VecStream::new(&[
+        let expected_stdout = vec![
             BFieldElement::new(14),
             BFieldElement::new(21),
             BFieldElement::new(35),
-        ]);
+        ];
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
+        assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
     fn pseudo_sub_test() {
         let actual_stdout =
             SourceCodeAndInput::without_input("push 7 push 19 sub write_io halt").run();
-        let expected_stdout = VecStream::new(&[BFieldElement::new(12)]);
+        let expected_stdout = vec![BFieldElement::new(12)];
 
-        assert_eq!(expected_stdout.to_bword_vec(), actual_stdout);
+        assert_eq!(expected_stdout, actual_stdout);
     }
 }

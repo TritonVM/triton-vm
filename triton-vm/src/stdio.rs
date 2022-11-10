@@ -1,5 +1,4 @@
 use byteorder::{BigEndian, ReadBytesExt};
-use std::convert::TryInto;
 use std::io::{Error, Write};
 use std::io::{Stdin, Stdout};
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -39,54 +38,29 @@ pub struct VecStream {
 }
 
 impl VecStream {
-    // pub fn new_bytes(bytes: &[u8]) -> Self {
-    //     VecStream {
-    //         cursor: Cursor::new(bytes.to_vec()),
-    //         read_index: 0,
-    //         length: bytes.len(),
-    //     }
-    // }
-
     pub fn new(bfes: &[BFieldElement]) -> Self {
         VecStream {
             buffer: bfes.to_owned(),
             read_index: 0,
         }
     }
+}
 
-    pub fn new_from_bytes(bytes: &[u8]) -> Self {
-        let mut bfes = vec![];
-        for chunk in bytes.chunks(8) {
-            if chunk.len() < 8 {
-                panic!("Cannot create VecStream object from stream of bytes whose length is not a multiple of 8.");
-            }
-            bfes.push(BFieldElement::new(u64::from_be_bytes(
-                chunk.try_into().unwrap(),
-            )));
-        }
-        Self {
-            buffer: bfes,
-            read_index: 0,
-        }
-    }
-
-    pub fn to_bytes_vec(&self) -> Vec<u8> {
-        let mut vector = vec![];
-        for t in self.buffer.iter() {
-            vector.append(&mut t.value().to_be_bytes().to_vec());
-        }
-        vector
-    }
-
-    pub fn to_bword_vec(&self) -> Vec<BFieldElement> {
-        self.buffer.clone()
+impl From<VecStream> for Vec<BFieldElement> {
+    fn from(vec_stream: VecStream) -> Self {
+        vec_stream.buffer
     }
 }
 
 impl InputStream for VecStream {
     fn read_elem(&mut self) -> Result<BFieldElement, Error> {
         if self.read_index == self.buffer.len() {
-            panic!("Error when reading BFieldElement from VecStream: read index {} exceeds buffer length {}.", self.read_index, self.buffer.len());
+            panic!(
+                "Error when reading BFieldElement from VecStream: \
+                read index {} exceeds buffer length {}.",
+                self.read_index,
+                self.buffer.len()
+            );
         }
         let e = self.buffer[self.read_index];
         self.read_index += 1;

@@ -631,8 +631,9 @@ mod permutation_argument_tests {
                 .standard_input_eval_indeterminate,
         );
 
+        let output_vec: Vec<_> = output.into();
         let output_terminal = EvalArg::compute_terminal(
-            &output.to_bword_vec(),
+            &output_vec,
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
