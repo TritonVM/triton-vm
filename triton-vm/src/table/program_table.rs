@@ -132,7 +132,7 @@ impl ExtProgramTable {
         let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let address = circuit_builder.input(usize::from(Address));
         let address_next = circuit_builder.input(FULL_WIDTH + usize::from(Address));
-        let one = circuit_builder.constant(1.into());
+        let one = circuit_builder.b_constant(1u32.into());
         let instruction = circuit_builder.input(usize::from(Instruction));
         let is_padding = circuit_builder.input(usize::from(IsPadding));
         let running_evaluation = circuit_builder.input(usize::from(RunningEvaluation));

@@ -177,7 +177,7 @@ impl ExtOpStackTable {
     {
         let mut circuit_builder =
             ConstraintCircuitBuilder::<OpStackTableChallenges>::new(2 * FULL_WIDTH);
-        let one = circuit_builder.constant(1.into());
+        let one = circuit_builder.b_constant(1u32.into());
 
         let clk = circuit_builder.input(usize::from(CLK));
         let ib1_shrink_stack = circuit_builder.input(usize::from(IB1ShrinkStack));
