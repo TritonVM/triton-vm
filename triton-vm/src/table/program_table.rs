@@ -60,7 +60,6 @@ impl Default for ExtProgramTable {
     }
 }
 
-impl Evaluable for ExtProgramTable {}
 impl Quotientable for ExtProgramTable {}
 impl QuotientableExtensionTable for ExtProgramTable {}
 

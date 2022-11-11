@@ -1,5 +1,5 @@
 [workspace]
-members = ["triton-vm", "triton-profiler"]
+members = ["triton-vm", "triton-profiler", "constraint-evaluation-generator"]
 
 [profile.dev]
 opt-level = 0

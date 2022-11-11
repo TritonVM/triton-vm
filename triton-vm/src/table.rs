@@ -9,6 +9,7 @@ pub mod jump_stack_table;
 pub mod op_stack_table;
 pub mod processor_table;
 pub mod program_table;
+pub mod program_table_autogen;
 pub mod ram_table;
 pub mod table_collection;
 pub mod table_column;

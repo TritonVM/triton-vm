@@ -97,7 +97,7 @@ pub struct ConstraintCircuit<T: TableChallenges> {
     pub id: CircuitId,
     pub visited_counter: usize,
     pub expression: CircuitExpression<T>,
-    var_count: usize,
+    pub var_count: usize,
 }
 
 impl<T: TableChallenges> Eq for ConstraintCircuit<T> {}
