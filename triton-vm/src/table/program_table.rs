@@ -129,7 +129,7 @@ impl ExtProgramTable {
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<ProgramTableChallenges>>
     {
-        let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let address = circuit_builder.input(usize::from(Address));
         let address_next = circuit_builder.input(FULL_WIDTH + usize::from(Address));
         let one = circuit_builder.b_constant(1u32.into());
@@ -172,12 +172,10 @@ impl ExtProgramTable {
         challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let circuits = Self::ext_transition_constraints_as_circuits();
-        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in circuits {
-            ret.push(circuit.partial_evaluate(challenges));
-        }
-
-        ret
+        circuits
+            .into_iter()
+            .map(|circ| circ.partial_evaluate(challenges))
+            .collect_vec()
     }
 
     fn ext_terminal_constraints(

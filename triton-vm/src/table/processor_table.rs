@@ -1155,12 +1155,10 @@ impl ExtProcessorTable {
         challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let circuits = Self::ext_transition_constraints_as_circuits();
-        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in circuits {
-            ret.push(circuit.partial_evaluate(challenges));
-        }
-
-        ret
+        circuits
+            .into_iter()
+            .map(|circ| circ.partial_evaluate(challenges))
+            .collect_vec()
     }
 
     fn ext_terminal_constraints(
@@ -1434,7 +1432,7 @@ pub struct RowPairConstraints {
 
 impl Default for RowPairConstraints {
     fn default() -> Self {
-        let mut circuit_builder =
+        let circuit_builder =
             ConstraintCircuitBuilder::<ProcessorTableChallenges>::new(2 * FULL_WIDTH);
         let variables_as_circuits = (0..2 * FULL_WIDTH)
             .map(|i| circuit_builder.input(i))
@@ -1520,7 +1518,7 @@ impl RowPairConstraints {
         }
     }
 
-    pub fn instruction_pop(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_pop(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
     }
 
@@ -1541,7 +1539,7 @@ impl RowPairConstraints {
         [self.step_1(), self.grow_stack(), self.keep_ram()].concat()
     }
 
-    pub fn instruction_dup(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_dup(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let specific_constraints = vec![
             self.indicator_polynomial(0) * (self.st0_next() - self.st0()),
             self.indicator_polynomial(1) * (self.st0_next() - self.st1()),
@@ -1570,7 +1568,7 @@ impl RowPairConstraints {
         .concat()
     }
 
-    pub fn instruction_swap(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_swap(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let specific_constraints = vec![
             self.indicator_polynomial(0),
             self.indicator_polynomial(1) * (self.st1_next() - self.st0()),
@@ -1634,7 +1632,7 @@ impl RowPairConstraints {
         [self.step_1(), self.keep_stack(), self.keep_ram()].concat()
     }
 
-    pub fn instruction_skiz(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_skiz(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         // The next instruction nia is decomposed into helper variables hv.
         let nia_decomposes_to_hvs = self.nia() - (self.hv0() + self.two() * self.hv1());
 
@@ -1716,7 +1714,7 @@ impl RowPairConstraints {
         .concat()
     }
 
-    pub fn instruction_assert(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_assert(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         // The current top of the stack st0 is 1.
         let st_0_is_1 = self.st0() - self.one();
 
@@ -1844,7 +1842,7 @@ impl RowPairConstraints {
     /// The sum of the top two stack elements is moved into the top of the stack.
     ///
     /// $st0' - (st0 + st1) = 0$
-    pub fn instruction_add(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_add(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let specific_constraints = vec![self.st0_next() - (self.st0() + self.st1())];
         [
             specific_constraints,
@@ -1858,7 +1856,7 @@ impl RowPairConstraints {
     /// The product of the top two stack elements is moved into the top of the stack.
     ///
     /// $st0' - (st0 * st1) = 0$
-    pub fn instruction_mul(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_mul(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let specific_constraints = vec![self.st0_next() - (self.st0() * self.st1())];
         [
             specific_constraints,
@@ -1883,7 +1881,7 @@ impl RowPairConstraints {
         .concat()
     }
 
-    pub fn instruction_split(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_split(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let two_pow_32 = self.constant_b(BFieldElement::new(1_u64 << 32));
 
         // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements.
@@ -1920,7 +1918,7 @@ impl RowPairConstraints {
         .concat()
     }
 
-    pub fn instruction_eq(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_eq(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         // Helper variable hv0 is the inverse of the difference of the stack's two top-most elements or 0.
         //
         // $ hv0·(hv0·(st1 - st0) - 1) = 0 $
@@ -2075,7 +2073,7 @@ impl RowPairConstraints {
         .concat()
     }
 
-    pub fn instruction_xbmul(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_xbmul(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         // The result of multiplying the top of the stack with the X-Field element's coefficient for x^0 is moved into st0.
         //
         // st0' - st0·st1
@@ -2115,9 +2113,7 @@ impl RowPairConstraints {
     /// This instruction has no additional transition constraints.
     ///
     /// An Evaluation Argument with the list of output symbols guarantees correct transition.
-    pub fn instruction_write_io(
-        &mut self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn instruction_write_io(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
     }
 
@@ -2133,12 +2129,12 @@ impl RowPairConstraints {
         self.two.to_owned()
     }
 
-    pub fn constant(&mut self, constant: u32) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
+    pub fn constant(&self, constant: u32) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         self.circuit_builder.b_constant(constant.into())
     }
 
     pub fn constant_b(
-        &mut self,
+        &self,
         constant: BFieldElement,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         self.circuit_builder.b_constant(constant)
@@ -2568,7 +2564,7 @@ impl RowPairConstraints {
         self.variables[FULL_WIDTH + usize::from(FromHashTableEvalArg)].clone()
     }
 
-    pub fn decompose_arg(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn decompose_arg(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let hv0_is_a_bit = self.hv0() * (self.hv0() - self.one());
         let hv1_is_a_bit = self.hv1() * (self.hv1() - self.one());
         let hv2_is_a_bit = self.hv2() * (self.hv2() - self.one());
@@ -2650,7 +2646,7 @@ impl RowPairConstraints {
     }
 
     pub fn stack_shrinks_and_top_three_elements_unconstrained(
-        &mut self,
+        &self,
     ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         vec![
             // The stack element in st4 is moved into st3.
@@ -2677,7 +2673,7 @@ impl RowPairConstraints {
         ]
     }
 
-    pub fn binop(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn binop(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let specific_constraints = vec![
             // The stack element in st2 is moved into st1.
             self.st1_next() - self.st2(),
@@ -2691,7 +2687,7 @@ impl RowPairConstraints {
         .concat()
     }
 
-    pub fn shrink_stack(&mut self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
+    pub fn shrink_stack(&self) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
         let specific_constrants = vec![self.st0_next() - self.st1()];
         [specific_constrants, self.binop()].concat()
     }
@@ -2769,7 +2765,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_evaluation_for_standard_input_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let indeterminate = self
             .circuit_builder
@@ -2789,7 +2785,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_product_for_instruction_table_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let indeterminate = self
             .circuit_builder
@@ -2815,7 +2811,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_evaluation_for_standard_output_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let indeterminate = self
             .circuit_builder
@@ -2835,7 +2831,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_product_for_op_stack_table_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let indeterminate = self
             .circuit_builder
@@ -2862,7 +2858,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_product_for_ram_table_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let indeterminate = self
             .circuit_builder
@@ -2885,7 +2881,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_product_for_jump_stack_table_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let indeterminate = self
             .circuit_builder
@@ -2916,7 +2912,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_evaluation_to_hash_table_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let hash_deselector =
             InstructionDeselectors::instruction_deselector_next(self, Instruction::Hash);
@@ -2975,7 +2971,7 @@ impl RowPairConstraints {
     }
 
     pub fn running_evaluation_from_hash_table_updates_correctly(
-        &mut self,
+        &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let hash_deselector =
             InstructionDeselectors::instruction_deselector(self, Instruction::Hash);
@@ -3049,7 +3045,7 @@ impl InstructionDeselectors {
     /// internal helper function to de-duplicate functionality common between the similar (but
     /// different on a type level) functions for construction deselectors
     fn instruction_deselector_common_functionality(
-        circuit_builder: &mut ConstraintCircuitBuilder<ProcessorTableChallenges>,
+        circuit_builder: &ConstraintCircuitBuilder<ProcessorTableChallenges>,
         instruction: Instruction,
         instruction_bucket_polynomials: [ConstraintCircuitMonad<ProcessorTableChallenges>;
             Ord7::COUNT],
@@ -3077,7 +3073,7 @@ impl InstructionDeselectors {
 
     /// A polynomial that has no solutions when ci is 'instruction'
     pub fn instruction_deselector(
-        factory: &mut RowPairConstraints,
+        factory: &RowPairConstraints,
         instruction: Instruction,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let instruction_bucket_polynomials = [
@@ -3091,7 +3087,7 @@ impl InstructionDeselectors {
         ];
 
         Self::instruction_deselector_common_functionality(
-            &mut factory.circuit_builder,
+            &factory.circuit_builder,
             instruction,
             instruction_bucket_polynomials,
         )
@@ -3143,7 +3139,7 @@ impl InstructionDeselectors {
 
     /// A polynomial that has no solutions when ci_next is 'instruction'
     pub fn instruction_deselector_next(
-        factory: &mut RowPairConstraints,
+        factory: &RowPairConstraints,
         instruction: Instruction,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
         let instruction_bucket_polynomials = [
@@ -3157,7 +3153,7 @@ impl InstructionDeselectors {
         ];
 
         Self::instruction_deselector_common_functionality(
-            &mut factory.circuit_builder,
+            &factory.circuit_builder,
             instruction,
             instruction_bucket_polynomials,
         )
@@ -3246,7 +3242,7 @@ mod constraint_polynomial_tests {
     fn get_transition_constraints_for_instruction(
         instruction: Instruction,
     ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges>> {
-        let mut tc = RowPairConstraints::default();
+        let tc = RowPairConstraints::default();
         match instruction {
             Pop => tc.instruction_pop(),
             Push(_) => tc.instruction_push(),
@@ -3592,7 +3588,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn print_number_and_degrees_of_transition_constraints_for_all_instructions() {
-        let mut factory = RowPairConstraints::default();
+        let factory = RowPairConstraints::default();
         let all_instructions_and_their_transition_constraints: [(Instruction, _);
             Instruction::COUNT] = [
             (Pop, factory.instruction_pop()),

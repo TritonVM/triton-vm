@@ -183,7 +183,7 @@ impl ExtJumpStackTable {
 
     pub fn ext_transition_constraints_as_circuits(
     ) -> Vec<ConstraintCircuit<JumpStackTableChallenges>> {
-        let mut circuit_builder =
+        let circuit_builder =
             ConstraintCircuitBuilder::<JumpStackTableChallenges>::new(2 * FULL_WIDTH);
         let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
@@ -306,12 +306,10 @@ impl ExtJumpStackTable {
         challenges: &JumpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let circuits = Self::ext_transition_constraints_as_circuits();
-        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in circuits {
-            ret.push(circuit.partial_evaluate(challenges));
-        }
-
-        ret
+        circuits
+            .into_iter()
+            .map(|circ| circ.partial_evaluate(challenges))
+            .collect_vec()
     }
 
     fn ext_terminal_constraints(

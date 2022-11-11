@@ -230,14 +230,14 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     }
 
     // Verify that a multitree has unique IDs. Otherwise panic.
-    pub fn assert_has_unique_ids(mpols: &mut [ConstraintCircuit<T>]) {
+    pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<T>]) {
         let mut ids: HashSet<usize> = HashSet::new();
 
-        for mpol in mpols.iter_mut() {
+        for mpol in constraints.iter_mut() {
             mpol.inner_has_unique_ids(&mut ids);
         }
 
-        for mpol in mpols.iter_mut() {
+        for mpol in constraints.iter_mut() {
             mpol.reset_visited_counters();
         }
     }
@@ -350,10 +350,10 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
 
     /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
     pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<T>]) {
-        for mpol in circuits.iter_mut() {
-            let mut mutated = mpol.constant_fold_inner();
+        for circuit in circuits.iter_mut() {
+            let mut mutated = circuit.constant_fold_inner();
             while mutated {
-                mutated = mpol.constant_fold_inner();
+                mutated = circuit.constant_fold_inner();
             }
         }
     }
@@ -375,7 +375,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
 
     /// Return true if the contained multivariate polynomial consists of only a single term. This means that it can be
     /// pretty-printed without parentheses.
-    pub fn is_single_term(&self) -> bool {
+    pub fn print_without_parentheses(&self) -> bool {
         match &self.expression {
             CircuitExpression::XConstant(_) => true,
             CircuitExpression::BConstant(_) => true,
@@ -651,6 +651,18 @@ impl<T: TableChallenges> Sum for ConstraintCircuitMonad<T> {
     }
 }
 
+impl<T: TableChallenges> ConstraintCircuitMonad<T> {
+    /// Flatten a circuit to reveal its equivalent multivariate polynomial
+    pub fn partial_evaluate(&self, challenges: &T) -> MPolynomial<XFieldElement> {
+        self.circuit.as_ref().borrow().partial_evaluate(challenges)
+    }
+
+    /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
+    pub fn consume(self) -> ConstraintCircuit<T> {
+        self.circuit.try_borrow().unwrap().to_owned()
+    }
+}
+
 #[derive(Debug, Clone)]
 /// Helper struct to construct new leaf nodes in the circuit multitree. Ensures that each newly
 /// created node gets a unique ID.
@@ -672,25 +684,25 @@ impl<T: TableChallenges> ConstraintCircuitBuilder<T> {
     }
 
     /// Create constant leaf node
-    pub fn x_constant(&mut self, xfe: XFieldElement) -> ConstraintCircuitMonad<T> {
+    pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<T> {
         let expression = CircuitExpression::XConstant(xfe);
         self.make_leaf(expression)
     }
 
     /// Create constant leaf node
-    pub fn b_constant(&mut self, bfe: BFieldElement) -> ConstraintCircuitMonad<T> {
+    pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<T> {
         let expression = CircuitExpression::BConstant(bfe);
         self.make_leaf(expression)
     }
 
     /// Create deterministic input leaf node
-    pub fn input(&mut self, input_index: usize) -> ConstraintCircuitMonad<T> {
+    pub fn input(&self, input_index: usize) -> ConstraintCircuitMonad<T> {
         let expression = CircuitExpression::Input(input_index);
         self.make_leaf(expression)
     }
 
     /// Create challenge leaf node
-    pub fn challenge(&mut self, challenge_id: T::Id) -> ConstraintCircuitMonad<T> {
+    pub fn challenge(&self, challenge_id: T::Id) -> ConstraintCircuitMonad<T> {
         let expression = CircuitExpression::Challenge(challenge_id);
         self.make_leaf(expression)
     }
@@ -724,17 +736,6 @@ impl<T: TableChallenges> ConstraintCircuitBuilder<T> {
             .insert(new_node.clone());
 
         new_node
-    }
-}
-
-impl<T: TableChallenges> ConstraintCircuitMonad<T> {
-    pub fn partial_evaluate(&self, challenges: &T) -> MPolynomial<XFieldElement> {
-        self.circuit.as_ref().borrow().partial_evaluate(challenges)
-    }
-
-    /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
-    pub fn consume(self) -> ConstraintCircuit<T> {
-        self.circuit.try_borrow().unwrap().to_owned()
     }
 }
 
@@ -798,7 +799,7 @@ mod constraint_circuit_tests {
         ConstraintCircuitBuilder<InstructionTableChallenges>,
     ) {
         let var_count = 100;
-        let mut circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
+        let circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
             ConstraintCircuitBuilder::new(var_count);
         let mpol_variables = MPolynomial::<XFieldElement>::variables(var_count);
         let b_constants: Vec<BFieldElement> = random_elements(var_count);
@@ -905,7 +906,7 @@ mod constraint_circuit_tests {
         // k1 == k2 => h(k1) == h(k2)
         for _ in 0..100 {
             let challenges = AllChallenges::placeholder();
-            let (circuit, _mpol, mut circuit_builder) =
+            let (circuit, _mpol, circuit_builder) =
                 circuit_mpol_builder(&challenges.instruction_table_challenges);
             let mut hasher0 = DefaultHasher::new();
             circuit.hash(&mut hasher0);
@@ -989,7 +990,7 @@ mod constraint_circuit_tests {
     #[test]
     fn circuit_equality_check_and_constant_folding_test() {
         let var_count = 10;
-        let mut circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
+        let circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
             ConstraintCircuitBuilder::new(var_count);
         let var_0 = circuit_builder.input(0);
         let var_4 = circuit_builder.input(4);
@@ -1071,7 +1072,7 @@ mod constraint_circuit_tests {
     fn constant_folding_pbt() {
         for _ in 0..1000 {
             let challenges = AllChallenges::placeholder();
-            let (circuit, _mpol, mut circuit_builder) =
+            let (circuit, _mpol, circuit_builder) =
                 circuit_mpol_builder(&challenges.instruction_table_challenges);
             let one = circuit_builder.x_constant(1.into());
             let zero = circuit_builder.x_constant(0.into());
@@ -1194,7 +1195,7 @@ mod constraint_circuit_tests {
             * four_mpol.clone()
             * four_mpol.clone();
 
-        let mut circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
+        let circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
             ConstraintCircuitBuilder::new(var_count);
         let var_0 = circuit_builder.input(0);
         let var_4 = circuit_builder.input(4);
