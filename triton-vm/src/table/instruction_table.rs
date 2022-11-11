@@ -210,7 +210,7 @@ impl ExtInstructionTable {
 
     pub fn ext_transition_constraints_as_circuits(
     ) -> Vec<ConstraintCircuit<InstructionTableChallenges>> {
-        let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let one: ConstraintCircuitMonad<InstructionTableChallenges> =
             circuit_builder.b_constant(1u32.into());
         let addr = circuit_builder.input(usize::from(Address));
@@ -318,12 +318,10 @@ impl ExtInstructionTable {
         challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         let circuits = Self::ext_transition_constraints_as_circuits();
-        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in circuits {
-            ret.push(circuit.partial_evaluate(challenges));
-        }
-
-        ret
+        circuits
+            .into_iter()
+            .map(|circ| circ.partial_evaluate(challenges))
+            .collect_vec()
     }
 
     fn ext_terminal_constraints(
