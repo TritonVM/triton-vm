@@ -1311,7 +1311,7 @@ mod constraint_circuit_tests {
         let expr_mpol = (variables[0].clone() + variables[4].clone())
             * (variables[8].clone() - variables[9].clone())
             * four_mpol.clone()
-            * four_mpol.clone();
+            * four_mpol;
 
         let circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
             ConstraintCircuitBuilder::new(var_count);

@@ -1499,7 +1499,7 @@ pub(crate) mod triton_stark_tests {
                 .evaluate_transition_constraints(&evaluation_point, &challenges)
                 .len();
             let num_terminal_constraints = table
-                .evaluate_terminal_constraints(&table.data().last().unwrap(), &challenges)
+                .evaluate_terminal_constraints(table.data().last().unwrap(), &challenges)
                 .len();
 
             let num_total_constraints = num_initial_constraints
@@ -1584,7 +1584,7 @@ pub(crate) mod triton_stark_tests {
             );
 
             let num_terminal_constraints = table
-                .evaluate_terminal_constraints(&table.data().last().unwrap(), &challenges)
+                .evaluate_terminal_constraints(table.data().last().unwrap(), &challenges)
                 .len();
             let num_terminal_quotient_degree_bounds = table
                 .get_terminal_quotient_degree_bounds(padded_height, num_trace_randomizers)
