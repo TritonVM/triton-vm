@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use strum::EnumCount;
+use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -11,7 +12,10 @@ use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::AllChallenges;
+use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::{
+    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad,
+};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::InstructionBaseTableColumn::{self, *};
 use super::table_column::InstructionExtTableColumn::{self, *};
@@ -19,15 +23,74 @@ use super::table_column::InstructionExtTableColumn::{self, *};
 pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
 
-/// This is 6 because it combines: (ip, ci, nia) and (addr, instruction, next_instruction).
-pub const INSTRUCTION_TABLE_NUM_EXTENSION_CHALLENGES: usize = 6;
-
 pub const BASE_WIDTH: usize = InstructionBaseTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + InstructionExtTableColumn::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct InstructionTable {
     inherited_table: Table<BFieldElement>,
+}
+
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+pub enum InstructionTableChallengeId {
+    ProcessorPermIndeterminate,
+    IpProcessorWeight,
+    CiProcessorWeight,
+    NiaProcessorWeight,
+    ProgramEvalIndeterminate,
+    AddressWeight,
+    InstructionWeight,
+    NextInstructionWeight,
+}
+
+impl Eq for InstructionTableChallengeId {}
+
+impl From<InstructionTableChallengeId> for usize {
+    fn from(val: InstructionTableChallengeId) -> Self {
+        val as usize
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct InstructionTableChallenges {
+    /// The weight that combines two consecutive rows in the
+    /// permutation/evaluation column of the instruction table.
+    pub processor_perm_indeterminate: XFieldElement,
+
+    /// Weights for condensing part of a row into a single column. (Related to processor table.)
+    pub ip_processor_weight: XFieldElement,
+    pub ci_processor_weight: XFieldElement,
+    pub nia_processor_weight: XFieldElement,
+
+    /// The weight that combines two consecutive rows in the
+    /// permutation/evaluation column of the instruction table.
+    pub program_eval_indeterminate: XFieldElement,
+
+    /// Weights for condensing part of a row into a single column. (Related to program table.)
+    pub address_weight: XFieldElement,
+    pub instruction_weight: XFieldElement,
+    pub next_instruction_weight: XFieldElement,
+}
+
+impl TableChallenges for InstructionTableChallenges {
+    type Id = InstructionTableChallengeId;
+
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
+        match id {
+            InstructionTableChallengeId::ProcessorPermIndeterminate => {
+                self.processor_perm_indeterminate
+            }
+            InstructionTableChallengeId::IpProcessorWeight => self.ip_processor_weight,
+            InstructionTableChallengeId::CiProcessorWeight => self.ci_processor_weight,
+            InstructionTableChallengeId::NiaProcessorWeight => self.nia_processor_weight,
+            InstructionTableChallengeId::ProgramEvalIndeterminate => {
+                self.program_eval_indeterminate
+            }
+            InstructionTableChallengeId::AddressWeight => self.address_weight,
+            InstructionTableChallengeId::InstructionWeight => self.instruction_weight,
+            InstructionTableChallengeId::NextInstructionWeight => self.next_instruction_weight,
+        }
+    }
 }
 
 impl InheritsFromTable<BFieldElement> for InstructionTable {
@@ -145,40 +208,47 @@ impl ExtInstructionTable {
         vec![is_padding_is_bit]
     }
 
-    fn ext_transition_constraints(
-        challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
-        let one = constant(XFieldElement::one());
-        let processor_perm_indeterminate = constant(challenges.processor_perm_indeterminate);
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<InstructionTableChallenges>> {
+        let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+        let one: ConstraintCircuitMonad<InstructionTableChallenges> =
+            circuit_builder.constant(1.into());
+        let addr = circuit_builder.deterministic_input(usize::from(Address));
 
-        let variables = MPolynomial::variables(2 * FULL_WIDTH);
-        let addr = variables[usize::from(Address)].clone();
-        let addr_next = variables[FULL_WIDTH + usize::from(Address)].clone();
-        let current_instruction = variables[usize::from(CI)].clone();
-        let current_instruction_next = variables[FULL_WIDTH + usize::from(CI)].clone();
-        let next_instruction = variables[usize::from(NIA)].clone();
-        let next_instruction_next = variables[FULL_WIDTH + usize::from(NIA)].clone();
-        let is_padding = variables[usize::from(IsPadding)].clone();
-        let is_padding_next = variables[FULL_WIDTH + usize::from(IsPadding)].clone();
+        let addr_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Address));
+        let current_instruction = circuit_builder.deterministic_input(usize::from(CI));
+        let current_instruction_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CI));
+        let next_instruction = circuit_builder.deterministic_input(usize::from(NIA));
+        let next_instruction_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(NIA));
+        // let is_padding_row =
+        //     one.clone() - circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
+        let is_padding = circuit_builder.deterministic_input(usize::from(IsPadding));
+        let is_padding_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
 
-        // Base Table Constraints
+        // Base table constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
-        let address_increases_by_one_or_ci_stays = address_increases_by_one.clone()
-            * (current_instruction_next.clone() - current_instruction);
+        let address_increases_by_one_or_ci_stays =
+            address_increases_by_one.clone() * (current_instruction_next - current_instruction);
         let address_increases_by_one_or_nia_stays =
-            address_increases_by_one.clone() * (next_instruction_next.clone() - next_instruction);
+            address_increases_by_one.clone() * (next_instruction_next - next_instruction);
         let is_padding_is_0_or_remains_unchanged =
             is_padding.clone() * (is_padding_next.clone() - is_padding);
 
-        // Extension Table Constraints
-        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
+        // Extension table constraints
+        let processor_perm_indeterminate =
+            circuit_builder.challenge(InstructionTableChallengeId::ProcessorPermIndeterminate);
+        let running_evaluation =
+            circuit_builder.deterministic_input(usize::from(RunningEvaluation));
         let running_evaluation_next =
-            variables[FULL_WIDTH + usize::from(RunningEvaluation)].clone();
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningEvaluation));
 
-        let running_product = variables[usize::from(RunningProductPermArg)].clone();
+        let running_product =
+            circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
         let running_product_next =
-            variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductPermArg));
 
         // The running evaluation is updated if and only if
         // 1. the address changes, and
@@ -191,15 +261,24 @@ impl ExtInstructionTable {
         //      or the running evaluation is not updated, and
         // 3. the current row is not a padding row
         //      or the running evaluation is not updated.
-        let compressed_row_for_eval_arg = addr_next.scalar_mul(challenges.address_weight)
-            + current_instruction_next.scalar_mul(challenges.instruction_weight)
-            + next_instruction_next.scalar_mul(challenges.next_instruction_weight);
+        let compressed_row_for_eval_arg = circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(Address),
+            InstructionTableChallengeId::AddressWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(CI),
+            InstructionTableChallengeId::InstructionWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(NIA),
+            InstructionTableChallengeId::NextInstructionWeight,
+        );
 
-        let address_stays = addr_next.clone() - addr;
-        let running_evaluations_stays =
-            running_evaluation_next.clone() - running_evaluation.clone();
+        let address_stays = addr_next - addr;
+        let running_evaluations_stays = running_evaluation_next.clone() - running_evaluation;
         let running_evaluation_update = running_evaluation_next
-            - running_evaluation.scalar_mul(challenges.program_eval_indeterminate)
+            - circuit_builder.randomized_input(
+                usize::from(RunningEvaluation),
+                InstructionTableChallengeId::ProgramEvalIndeterminate,
+            )
             - compressed_row_for_eval_arg;
 
         let running_evaluation_is_well_formed = address_stays.clone()
@@ -219,9 +298,16 @@ impl ExtInstructionTable {
         //      or the running product is not updated, and
         // 3. the current row is not a padding row
         //      or the running product is not updated.
-        let compressed_row_for_perm_arg = addr_next.scalar_mul(challenges.ip_processor_weight)
-            + current_instruction_next.scalar_mul(challenges.ci_processor_weight)
-            + next_instruction_next.scalar_mul(challenges.nia_processor_weight);
+        let compressed_row_for_perm_arg = circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(Address),
+            InstructionTableChallengeId::IpProcessorWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(CI),
+            InstructionTableChallengeId::CiProcessorWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(NIA),
+            InstructionTableChallengeId::NiaProcessorWeight,
+        );
 
         let running_product_stays = running_product_next.clone() - running_product.clone();
         let running_product_update = running_product_next
@@ -233,12 +319,24 @@ impl ExtInstructionTable {
                 + is_padding_next * running_product_stays;
 
         vec![
-            address_increases_by_one_or_ci_stays,
-            address_increases_by_one_or_nia_stays,
-            is_padding_is_0_or_remains_unchanged,
-            running_evaluation_is_well_formed,
-            running_product_is_well_formed,
+            address_increases_by_one_or_ci_stays.consume(),
+            address_increases_by_one_or_nia_stays.consume(),
+            is_padding_is_0_or_remains_unchanged.consume(),
+            running_evaluation_is_well_formed.consume(),
+            running_product_is_well_formed.consume(),
         ]
+    }
+
+    fn ext_transition_constraints(
+        challenges: &InstructionTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let circuits = Self::ext_transition_constraints_as_circuits();
+        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
+        for circuit in circuits {
+            ret.push(circuit.partial_evaluate(challenges));
+        }
+
+        ret
     }
 
     fn ext_terminal_constraints(
@@ -414,27 +512,6 @@ impl ExtInstructionTable {
         let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         ExtInstructionTable { inherited_table }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionTableChallenges {
-    /// The weight that combines two consecutive rows in the
-    /// permutation/evaluation column of the instruction table.
-    pub processor_perm_indeterminate: XFieldElement,
-
-    /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub ip_processor_weight: XFieldElement,
-    pub ci_processor_weight: XFieldElement,
-    pub nia_processor_weight: XFieldElement,
-
-    /// The weight that combines two consecutive rows in the
-    /// permutation/evaluation column of the instruction table.
-    pub program_eval_indeterminate: XFieldElement,
-
-    /// Weights for condensing part of a row into a single column. (Related to program table.)
-    pub address_weight: XFieldElement,
-    pub instruction_weight: XFieldElement,
-    pub next_instruction_weight: XFieldElement,
 }
 
 impl ExtensionTable for ExtInstructionTable {

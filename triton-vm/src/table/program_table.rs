@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use strum::EnumCount;
+use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -13,7 +14,8 @@ use crate::table::table_column::ProgramBaseTableColumn::{self, *};
 use crate::table::table_column::ProgramExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::AllChallenges;
+use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
 pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
@@ -125,45 +127,64 @@ impl ExtProgramTable {
         vec![is_padding_is_bit]
     }
 
-    fn ext_transition_constraints(
-        challenges: &ProgramTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables = MPolynomial::variables(2 * FULL_WIDTH);
-        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
-        let one = constant(XFieldElement::one());
-
-        let address = variables[usize::from(Address)].clone();
-        let instruction = variables[usize::from(Instruction)].clone();
-        let is_padding = variables[usize::from(IsPadding)].clone();
-        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
-        let address_next = variables[FULL_WIDTH + usize::from(Address)].clone();
-        let instruction_next = variables[FULL_WIDTH + usize::from(Instruction)].clone();
-        let is_padding_next = variables[FULL_WIDTH + usize::from(IsPadding)].clone();
+    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<ProgramTableChallenges>>
+    {
+        let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+        let address = circuit_builder.deterministic_input(usize::from(Address));
+        let address_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Address));
+        let one = circuit_builder.constant(1.into());
+        let _instruction = circuit_builder.deterministic_input(usize::from(Instruction));
+        let is_padding = circuit_builder.deterministic_input(usize::from(IsPadding));
+        let running_evaluation =
+            circuit_builder.deterministic_input(usize::from(RunningEvaluation));
+        let _instruction_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(Instruction));
+        let is_padding_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
         let running_evaluation_next =
-            variables[FULL_WIDTH + usize::from(RunningEvaluation)].clone();
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningEvaluation));
 
-        let address_increases_by_one = address_next - (address.clone() + one.clone());
-
+        let address_increases_by_one = address_next - (address + one.clone());
         let is_padding_is_0_or_remains_unchanged =
             is_padding.clone() * (is_padding_next - is_padding.clone());
 
         let running_evaluation_remains =
             running_evaluation_next.clone() - running_evaluation.clone();
-        let compressed_row = constant(challenges.address_weight) * address
-            + constant(challenges.instruction_weight) * instruction
-            + constant(challenges.next_instruction_weight) * instruction_next;
-        let evaluation_point = constant(challenges.instruction_eval_indeterminate);
+        let compressed_row = circuit_builder
+            .randomized_input(usize::from(Address), ProgramTableChallengeId::AddressWeight)
+            + circuit_builder.randomized_input(
+                usize::from(Instruction),
+                ProgramTableChallengeId::InstructionWeight,
+            )
+            + circuit_builder.randomized_input(
+                FULL_WIDTH + usize::from(Instruction),
+                ProgramTableChallengeId::NextInstructionWeight,
+            );
+        let indeterminate =
+            circuit_builder.challenge(ProgramTableChallengeId::InstructionEvalIndeterminate);
         let running_evaluation_updates =
-            running_evaluation_next - (evaluation_point * running_evaluation + compressed_row);
+            running_evaluation_next - (indeterminate * running_evaluation + compressed_row);
         let running_evaluation_updates_if_and_only_if_not_a_padding_row =
             (one - is_padding.clone()) * running_evaluation_updates
                 + is_padding * running_evaluation_remains;
 
         vec![
-            address_increases_by_one,
-            is_padding_is_0_or_remains_unchanged,
-            running_evaluation_updates_if_and_only_if_not_a_padding_row,
+            address_increases_by_one.consume(),
+            is_padding_is_0_or_remains_unchanged.consume(),
+            running_evaluation_updates_if_and_only_if_not_a_padding_row.consume(),
         ]
+    }
+
+    fn ext_transition_constraints(
+        challenges: &ProgramTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let circuits = Self::ext_transition_constraints_as_circuits();
+        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
+        for circuit in circuits {
+            ret.push(circuit.partial_evaluate(challenges));
+        }
+
+        ret
     }
 
     fn ext_terminal_constraints(
@@ -305,6 +326,37 @@ impl ExtProgramTable {
 
         let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         ExtProgramTable { inherited_table }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+pub enum ProgramTableChallengeId {
+    InstructionEvalIndeterminate,
+    AddressWeight,
+    InstructionWeight,
+    NextInstructionWeight,
+}
+
+impl Eq for ProgramTableChallengeId {}
+
+impl From<ProgramTableChallengeId> for usize {
+    fn from(val: ProgramTableChallengeId) -> Self {
+        val as usize
+    }
+}
+
+impl TableChallenges for ProgramTableChallenges {
+    type Id = ProgramTableChallengeId;
+
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
+        match id {
+            ProgramTableChallengeId::InstructionEvalIndeterminate => {
+                self.instruction_eval_indeterminate
+            }
+            ProgramTableChallengeId::AddressWeight => self.address_weight,
+            ProgramTableChallengeId::InstructionWeight => self.instruction_weight,
+            ProgramTableChallengeId::NextInstructionWeight => self.next_instruction_weight,
+        }
     }
 }
 

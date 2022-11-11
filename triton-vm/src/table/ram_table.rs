@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use strum::EnumCount;
+use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
@@ -14,7 +15,8 @@ use crate::table::table_column::RamBaseTableColumn::{self, *};
 use crate::table::table_column::RamExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::AllChallenges;
+use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
 pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
@@ -347,48 +349,56 @@ impl ExtRamTable {
         vec![]
     }
 
-    fn ext_transition_constraints(
-        challenges: &RamTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
-        let one = constant(XFieldElement::one());
-        let bezout_challenge = constant(challenges.bezout_relation_indeterminate);
-        let cjd_challenge =
-            constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
-        let rppa_challenge = constant(challenges.processor_perm_indeterminate);
-        let clk_weight = constant(challenges.clk_weight);
-        let ramp_weight = constant(challenges.ramp_weight);
-        let ramv_weight = constant(challenges.ramv_weight);
+    fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<RamTableChallenges>> {
+        let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+        let one = circuit_builder.constant(1.into());
 
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(2 * FULL_WIDTH);
-        let clk = variables[usize::from(CLK)].clone();
-        let ramp = variables[usize::from(RAMP)].clone();
-        let ramv = variables[usize::from(RAMV)].clone();
-        let iord = variables[usize::from(InverseOfRampDifference)].clone();
-        let bcpc0 = variables[usize::from(BezoutCoefficientPolynomialCoefficient0)].clone();
-        let bcpc1 = variables[usize::from(BezoutCoefficientPolynomialCoefficient1)].clone();
-        let rp = variables[usize::from(RunningProductOfRAMP)].clone();
-        let fd = variables[usize::from(FormalDerivative)].clone();
-        let bc0 = variables[usize::from(BezoutCoefficient0)].clone();
-        let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
-        let clk_di = variables[usize::from(InverseOfClkDiffMinusOne)].clone();
-        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
-        let rppa = variables[usize::from(RunningProductPermArg)].clone();
+        let bezout_challenge =
+            circuit_builder.challenge(RamTableChallengesId::BezoutRelationIndeterminate);
+        let cjd_challenge = circuit_builder
+            .challenge(RamTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate);
+        let rppa_challenge =
+            circuit_builder.challenge(RamTableChallengesId::ProcessorPermIndeterminate);
+        let clk_weight = circuit_builder.challenge(RamTableChallengesId::ClkWeight);
+        let ramp_weight = circuit_builder.challenge(RamTableChallengesId::RampWeight);
+        let ramv_weight = circuit_builder.challenge(RamTableChallengesId::RamvWeight);
 
-        let clk_next = variables[FULL_WIDTH + usize::from(CLK)].clone();
-        let ramp_next = variables[FULL_WIDTH + usize::from(RAMP)].clone();
-        let ramv_next = variables[FULL_WIDTH + usize::from(RAMV)].clone();
-        let bcpc0_next =
-            variables[FULL_WIDTH + usize::from(BezoutCoefficientPolynomialCoefficient0)].clone();
-        let bcpc1_next =
-            variables[FULL_WIDTH + usize::from(BezoutCoefficientPolynomialCoefficient1)].clone();
-        let rp_next = variables[FULL_WIDTH + usize::from(RunningProductOfRAMP)].clone();
-        let fd_next = variables[FULL_WIDTH + usize::from(FormalDerivative)].clone();
-        let bc0_next = variables[FULL_WIDTH + usize::from(BezoutCoefficient0)].clone();
-        let bc1_next = variables[FULL_WIDTH + usize::from(BezoutCoefficient1)].clone();
-        let rpcjd_next =
-            variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
-        let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
+        let clk = circuit_builder.deterministic_input(usize::from(CLK));
+        let ramp = circuit_builder.deterministic_input(usize::from(RAMP));
+        let ramv = circuit_builder.deterministic_input(usize::from(RAMV));
+        let iord = circuit_builder.deterministic_input(usize::from(InverseOfRampDifference));
+        let bcpc0 = circuit_builder
+            .deterministic_input(usize::from(BezoutCoefficientPolynomialCoefficient0));
+        let bcpc1 = circuit_builder
+            .deterministic_input(usize::from(BezoutCoefficientPolynomialCoefficient1));
+        let rp = circuit_builder.deterministic_input(usize::from(RunningProductOfRAMP));
+        let fd = circuit_builder.deterministic_input(usize::from(FormalDerivative));
+        let bc0 = circuit_builder.deterministic_input(usize::from(BezoutCoefficient0));
+        let bc1 = circuit_builder.deterministic_input(usize::from(BezoutCoefficient1));
+        let clk_di = circuit_builder.deterministic_input(usize::from(InverseOfClkDiffMinusOne));
+        let rpcjd =
+            circuit_builder.deterministic_input(usize::from(AllClockJumpDifferencesPermArg));
+        let rppa = circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
+
+        let clk_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CLK));
+        let ramp_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RAMP));
+        let ramv_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RAMV));
+        let bcpc0_next = circuit_builder
+            .deterministic_input(FULL_WIDTH + usize::from(BezoutCoefficientPolynomialCoefficient0));
+        let bcpc1_next = circuit_builder
+            .deterministic_input(FULL_WIDTH + usize::from(BezoutCoefficientPolynomialCoefficient1));
+        let rp_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductOfRAMP));
+        let fd_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(FormalDerivative));
+        let bc0_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(BezoutCoefficient0));
+        let bc1_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(BezoutCoefficient1));
+        let rpcjd_next = circuit_builder
+            .deterministic_input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
+        let rppa_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductPermArg));
 
         let ramp_diff = ramp_next.clone() - ramp.clone();
         let ramp_changes = ramp_diff.clone() * iord.clone();
@@ -452,21 +462,33 @@ impl ExtRamTable {
             rppa_next - rppa * (rppa_challenge - compressed_row_for_permutation_argument);
 
         vec![
-            iord_is_0_or_iord_is_inverse_of_ramp_diff,
-            ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
-            ramp_does_not_change_or_ramv_becomes_0,
-            ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1,
-            bcbp0_only_changes_if_ramp_changes,
-            bcbp1_only_changes_if_ramp_changes,
-            running_product_ramp_updates_correctly,
-            formal_derivative_updates_correctly,
-            bezout_coefficient_0_is_constructed_correctly,
-            bezout_coefficient_1_is_constructed_correctly,
-            clk_di_is_zero_or_inverse_of_clkd,
-            clkd_is_zero_or_inverse_of_clk_di,
-            rpcjd_updates_correctly,
-            rppa_updates_correctly,
+            iord_is_0_or_iord_is_inverse_of_ramp_diff.consume(),
+            ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff.consume(),
+            ramp_does_not_change_or_ramv_becomes_0.consume(),
+            ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1.consume(),
+            bcbp0_only_changes_if_ramp_changes.consume(),
+            bcbp1_only_changes_if_ramp_changes.consume(),
+            running_product_ramp_updates_correctly.consume(),
+            formal_derivative_updates_correctly.consume(),
+            bezout_coefficient_0_is_constructed_correctly.consume(),
+            bezout_coefficient_1_is_constructed_correctly.consume(),
+            clk_di_is_zero_or_inverse_of_clkd.consume(),
+            clkd_is_zero_or_inverse_of_clk_di.consume(),
+            rpcjd_updates_correctly.consume(),
+            rppa_updates_correctly.consume(),
         ]
+    }
+
+    fn ext_transition_constraints(
+        challenges: &RamTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let circuits = Self::ext_transition_constraints_as_circuits();
+        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
+        for circuit in circuits {
+            ret.push(circuit.partial_evaluate(challenges));
+        }
+
+        ret
     }
 
     fn ext_terminal_constraints(
@@ -486,6 +508,24 @@ impl ExtRamTable {
     }
 }
 
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+pub enum RamTableChallengesId {
+    BezoutRelationIndeterminate,
+    ProcessorPermIndeterminate,
+    ClkWeight,
+    RamvWeight,
+    RampWeight,
+    AllClockJumpDifferencesMultiPermIndeterminate,
+}
+
+impl Eq for RamTableChallengesId {}
+
+impl From<RamTableChallengesId> for usize {
+    fn from(val: RamTableChallengesId) -> Self {
+        val as usize
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RamTableChallenges {
     /// The point in which the Bézout relation establishing contiguous memory regions is queried.
@@ -501,6 +541,23 @@ pub struct RamTableChallenges {
 
     /// Point of evaluation for accumulating all clock jump differences into a running product
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
+}
+
+impl TableChallenges for RamTableChallenges {
+    type Id = RamTableChallengesId;
+
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
+        match id {
+            RamTableChallengesId::BezoutRelationIndeterminate => self.bezout_relation_indeterminate,
+            RamTableChallengesId::ProcessorPermIndeterminate => self.processor_perm_indeterminate,
+            RamTableChallengesId::ClkWeight => self.clk_weight,
+            RamTableChallengesId::RamvWeight => self.ramv_weight,
+            RamTableChallengesId::RampWeight => self.ramp_weight,
+            RamTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate => {
+                self.all_clock_jump_differences_multi_perm_indeterminate
+            }
+        }
+    }
 }
 
 impl ExtensionTable for ExtRamTable {

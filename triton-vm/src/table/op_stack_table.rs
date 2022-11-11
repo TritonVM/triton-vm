@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use num_traits::One;
 use strum::EnumCount;
+use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
@@ -14,7 +15,8 @@ use crate::table::table_column::OpStackBaseTableColumn::{self, *};
 use crate::table::table_column::OpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::AllChallenges;
+use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
@@ -171,28 +173,29 @@ impl ExtOpStackTable {
         vec![]
     }
 
-    fn ext_transition_constraints(
-        challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
-        let one = constant(XFieldElement::one());
+    fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<OpStackTableChallenges>> {
+        let mut circuit_builder =
+            ConstraintCircuitBuilder::<OpStackTableChallenges>::new(2 * FULL_WIDTH);
+        let one = circuit_builder.constant(1.into());
 
-        let variables = MPolynomial::variables(2 * FULL_WIDTH);
-        let clk = variables[usize::from(CLK)].clone();
-        let ib1_shrink_stack = variables[usize::from(IB1ShrinkStack)].clone();
-        let osp = variables[usize::from(OSP)].clone();
-        let osv = variables[usize::from(OSV)].clone();
-        let clk_di = variables[usize::from(InverseOfClkDiffMinusOne)].clone();
-        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
-        let rppa = variables[usize::from(RunningProductPermArg)].clone();
+        let clk = circuit_builder.deterministic_input(usize::from(CLK));
+        let ib1_shrink_stack = circuit_builder.deterministic_input(usize::from(IB1ShrinkStack));
+        let osp = circuit_builder.deterministic_input(usize::from(OSP));
+        let osv = circuit_builder.deterministic_input(usize::from(OSV));
+        let clk_di = circuit_builder.deterministic_input(usize::from(InverseOfClkDiffMinusOne));
+        let rpcjd =
+            circuit_builder.deterministic_input(usize::from(AllClockJumpDifferencesPermArg));
+        let rppa = circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
 
-        let clk_next = variables[FULL_WIDTH + usize::from(CLK)].clone();
-        let ib1_shrink_stack_next = variables[FULL_WIDTH + usize::from(IB1ShrinkStack)].clone();
-        let osp_next = variables[FULL_WIDTH + usize::from(OSP)].clone();
-        let osv_next = variables[FULL_WIDTH + usize::from(OSV)].clone();
-        let rpcjd_next =
-            variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
-        let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
+        let clk_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CLK));
+        let _ib1_shrink_stack_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IB1ShrinkStack));
+        let osp_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(OSP));
+        let osv_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(OSV));
+        let rpcjd_next = circuit_builder
+            .deterministic_input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
+        let rppa_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductPermArg));
 
         // the osp increases by 1 or the osp does not change
         //
@@ -205,7 +208,7 @@ impl ExtOpStackTable {
         // $ (osp' - (osp + 1)) · (osv' - osv) · (1 - ib1) = 0$
         let osp_increases_by_1_or_osv_does_not_change_or_shrink_stack = (osp_next.clone()
             - (osp.clone() + one.clone()))
-            * (osv_next.clone() - osv)
+            * (osv_next - osv)
             * (one.clone() - ib1_shrink_stack);
 
         // The clock jump difference inverse is consistent
@@ -229,30 +232,52 @@ impl ExtOpStackTable {
         //   (clk' - clk - 1) * (1 - osp' + osp) * (cjdrp' - cjdrp * (beta - clk' + clk))
         // + (1 - (clk' - clk - 1) * clk_di) * (cjdrp' - cjdrp)
         // + (osp' - osp) * (cjdrp' - cjdrp)
-        let beta = constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
+        let beta = circuit_builder
+            .challenge(OpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate);
         let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (one.clone() - osp_next.clone() + osp.clone())
             * (rpcjd_next.clone() - rpcjd.clone() * (beta - clk_next.clone() + clk.clone()))
-            + (one.clone() - (clk_next.clone() - clk - one) * clk_di)
+            + (one.clone() - (clk_next - clk - one) * clk_di)
                 * (rpcjd_next.clone() - rpcjd.clone())
-            + (osp_next.clone() - osp) * (rpcjd_next - rpcjd);
+            + (osp_next - osp) * (rpcjd_next - rpcjd);
 
         // The running product for the permutation argument `rppa` is updated correctly.
-        let alpha = constant(challenges.processor_perm_indeterminate);
-        let compressed_row = constant(challenges.clk_weight) * clk_next
-            + constant(challenges.ib1_weight) * ib1_shrink_stack_next
-            + constant(challenges.osp_weight) * osp_next
-            + constant(challenges.osv_weight) * osv_next;
+        let alpha = circuit_builder.challenge(OpStackTableChallengesId::ProcessorPermIndeterminate);
+        let compressed_row = circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(CLK),
+            OpStackTableChallengesId::ClkWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(IB1ShrinkStack),
+            OpStackTableChallengesId::Ib1Weight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(OSP),
+            OpStackTableChallengesId::OspWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(OSV),
+            OpStackTableChallengesId::OsvWeight,
+        );
         let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
         vec![
-            osp_increases_by_1_or_does_not_change,
-            osp_increases_by_1_or_osv_does_not_change_or_shrink_stack,
-            clk_di_is_zero_or_cdmo_inverse_or_osp_changes,
-            cdmo_is_zero_or_clkdi_inverse_or_osp_changes,
-            cjdrp_updates_correctly,
-            rppa_updates_correctly,
+            osp_increases_by_1_or_does_not_change.consume(),
+            osp_increases_by_1_or_osv_does_not_change_or_shrink_stack.consume(),
+            clk_di_is_zero_or_cdmo_inverse_or_osp_changes.consume(),
+            cdmo_is_zero_or_clkdi_inverse_or_osp_changes.consume(),
+            cjdrp_updates_correctly.consume(),
+            rppa_updates_correctly.consume(),
         ]
+    }
+
+    fn ext_transition_constraints(
+        challenges: &OpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let circuits = Self::ext_transition_constraints_as_circuits();
+        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
+        for circuit in circuits {
+            ret.push(circuit.partial_evaluate(challenges));
+        }
+
+        ret
     }
 
     fn ext_terminal_constraints(
@@ -404,6 +429,43 @@ impl ExtOpStackTable {
 
         let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         ExtOpStackTable { inherited_table }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+pub enum OpStackTableChallengesId {
+    ProcessorPermIndeterminate,
+    ClkWeight,
+    Ib1Weight,
+    OsvWeight,
+    OspWeight,
+    AllClockJumpDifferencesMultiPermIndeterminate,
+}
+
+impl Eq for OpStackTableChallengesId {}
+
+impl From<OpStackTableChallengesId> for usize {
+    fn from(val: OpStackTableChallengesId) -> Self {
+        val as usize
+    }
+}
+
+impl TableChallenges for OpStackTableChallenges {
+    type Id = OpStackTableChallengesId;
+
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
+        match id {
+            OpStackTableChallengesId::ProcessorPermIndeterminate => {
+                self.processor_perm_indeterminate
+            }
+            OpStackTableChallengesId::ClkWeight => self.clk_weight,
+            OpStackTableChallengesId::Ib1Weight => self.ib1_weight,
+            OpStackTableChallengesId::OsvWeight => self.osv_weight,
+            OpStackTableChallengesId::OspWeight => self.osp_weight,
+            OpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate => {
+                self.all_clock_jump_differences_multi_perm_indeterminate
+            }
+        }
     }
 }
 

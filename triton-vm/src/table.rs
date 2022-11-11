@@ -1,6 +1,7 @@
 pub mod base_matrix;
 pub mod base_table;
 pub mod challenges;
+pub mod constraint_circuit;
 pub mod extension_table;
 pub mod hash_table;
 pub mod instruction_table;

@@ -1,5 +1,9 @@
+use std::fmt::Debug;
+use std::fmt::Display;
+use std::hash::Hash;
+use strum::EnumCount;
+use strum::IntoEnumIterator;
 use twenty_first::shared_math::other::random_elements;
-use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::hash_table::HashTableChallenges;
@@ -10,6 +14,34 @@ use super::processor_table::IOChallenges;
 use super::processor_table::ProcessorTableChallenges;
 use super::program_table::ProgramTableChallenges;
 use super::ram_table::RamTableChallenges;
+
+pub trait TableChallenges: Clone + Debug {
+    type Id: Display
+        + Clone
+        + Copy
+        + std::fmt::Debug
+        + EnumCount
+        + IntoEnumIterator
+        + Into<usize>
+        + PartialEq
+        + Eq
+        + Hash;
+
+    fn count() -> usize {
+        Self::Id::COUNT
+    }
+
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement;
+
+    fn to_vec(&self) -> Vec<XFieldElement> {
+        let mut ret: Vec<XFieldElement> = vec![];
+        for id in Self::Id::iter() {
+            ret.push(self.get_challenge(id));
+        }
+
+        ret
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
@@ -57,19 +89,25 @@ impl AllChallenges {
             jump_stack_table_jso_weight: weights.pop().unwrap(),
             jump_stack_table_jsd_weight: weights.pop().unwrap(),
 
-            hash_table_stack_input_weights: weights
-                .drain(0..2 * DIGEST_LENGTH)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            hash_table_digest_output_weights: weights
-                .drain(0..DIGEST_LENGTH)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-
             unique_clock_jump_differences_eval_indeterminate: weights.pop().unwrap(),
             all_clock_jump_differences_multi_perm_indeterminate: weights.pop().unwrap(),
+
+            hash_table_stack_input_weights0: weights.pop().unwrap(),
+            hash_table_stack_input_weights1: weights.pop().unwrap(),
+            hash_table_stack_input_weights2: weights.pop().unwrap(),
+            hash_table_stack_input_weights3: weights.pop().unwrap(),
+            hash_table_stack_input_weights4: weights.pop().unwrap(),
+            hash_table_stack_input_weights5: weights.pop().unwrap(),
+            hash_table_stack_input_weights6: weights.pop().unwrap(),
+            hash_table_stack_input_weights7: weights.pop().unwrap(),
+            hash_table_stack_input_weights8: weights.pop().unwrap(),
+            hash_table_stack_input_weights9: weights.pop().unwrap(),
+
+            hash_table_digest_output_weights0: weights.pop().unwrap(),
+            hash_table_digest_output_weights1: weights.pop().unwrap(),
+            hash_table_digest_output_weights2: weights.pop().unwrap(),
+            hash_table_digest_output_weights3: weights.pop().unwrap(),
+            hash_table_digest_output_weights4: weights.pop().unwrap(),
         };
 
         let program_table_challenges = ProgramTableChallenges {
@@ -138,8 +176,22 @@ impl AllChallenges {
             to_processor_eval_indeterminate: processor_table_challenges
                 .from_hash_table_eval_indeterminate,
 
-            stack_input_weights: processor_table_challenges.hash_table_stack_input_weights,
-            digest_output_weights: processor_table_challenges.hash_table_digest_output_weights,
+            stack_input_weights0: processor_table_challenges.hash_table_stack_input_weights0,
+            stack_input_weights1: processor_table_challenges.hash_table_stack_input_weights1,
+            stack_input_weights2: processor_table_challenges.hash_table_stack_input_weights2,
+            stack_input_weights3: processor_table_challenges.hash_table_stack_input_weights3,
+            stack_input_weights4: processor_table_challenges.hash_table_stack_input_weights4,
+            stack_input_weights5: processor_table_challenges.hash_table_stack_input_weights5,
+            stack_input_weights6: processor_table_challenges.hash_table_stack_input_weights6,
+            stack_input_weights7: processor_table_challenges.hash_table_stack_input_weights7,
+            stack_input_weights8: processor_table_challenges.hash_table_stack_input_weights8,
+            stack_input_weights9: processor_table_challenges.hash_table_stack_input_weights9,
+
+            digest_output_weights0: processor_table_challenges.hash_table_digest_output_weights0,
+            digest_output_weights1: processor_table_challenges.hash_table_digest_output_weights1,
+            digest_output_weights2: processor_table_challenges.hash_table_digest_output_weights2,
+            digest_output_weights3: processor_table_challenges.hash_table_digest_output_weights3,
+            digest_output_weights4: processor_table_challenges.hash_table_digest_output_weights4,
         };
 
         AllChallenges {
