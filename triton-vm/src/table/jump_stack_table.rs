@@ -185,10 +185,10 @@ impl ExtJumpStackTable {
     ) -> Vec<ConstraintCircuit<JumpStackTableChallenges>> {
         let mut circuit_builder =
             ConstraintCircuitBuilder::<JumpStackTableChallenges>::new(2 * FULL_WIDTH);
-        let one = circuit_builder.constant(1.into());
+        let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
-            circuit_builder.constant(Instruction::Call(Default::default()).opcode_b().lift());
-        let return_opcode = circuit_builder.constant(Instruction::Return.opcode_b().lift());
+            circuit_builder.b_constant(Instruction::Call(Default::default()).opcode_b());
+        let return_opcode = circuit_builder.b_constant(Instruction::Return.opcode_b());
 
         let clk = circuit_builder.input(usize::from(CLK));
         let ci = circuit_builder.input(usize::from(CI));

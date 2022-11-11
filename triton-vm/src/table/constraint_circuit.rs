@@ -12,7 +12,9 @@ use std::{
 
 use num_traits::{One, Zero};
 use std::hash::Hash;
-use twenty_first::shared_math::{mpolynomial::MPolynomial, x_field_element::XFieldElement};
+use twenty_first::shared_math::{
+    b_field_element::BFieldElement, mpolynomial::MPolynomial, x_field_element::XFieldElement,
+};
 
 use super::challenges::TableChallenges;
 
@@ -49,8 +51,8 @@ impl Display for CircuitId {
 
 #[derive(Debug, Clone)]
 pub enum CircuitExpression<T: TableChallenges> {
-    // MPol(MPolynomial<XFieldElement>, ConstraintType<T>),
-    Constant(XFieldElement),
+    XConstant(XFieldElement),
+    BConstant(BFieldElement),
     Input(usize),
     Challenge(T::Id),
     BinaryOperation(
@@ -63,14 +65,12 @@ pub enum CircuitExpression<T: TableChallenges> {
 impl<T: TableChallenges> Hash for CircuitExpression<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            CircuitExpression::Constant(xfe) => xfe.hash(state),
-
+            CircuitExpression::XConstant(xfe) => xfe.hash(state),
+            CircuitExpression::BConstant(bfe) => bfe.hash(state),
             CircuitExpression::Input(index) => index.hash(state),
-
             CircuitExpression::Challenge(table_challenge_id) => {
                 table_challenge_id.hash(state);
             }
-
             CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
                 binop.hash(state);
                 lhs.as_ref().borrow().hash(state);
@@ -106,11 +106,16 @@ impl<T: TableChallenges> PartialEq for ConstraintCircuit<T> {
     /// Calculate equality of circuits.
     /// In particular, this function does *not* attempt to simplify
     /// or reduce neutral terms or products. So this comparison will
-    /// return false for `a == a + 0`.
+    /// return false for `a == a + 0`. It will also return false for
+    // `XFieldElement(7) == BFieldElement(7)`
     fn eq(&self, other: &Self) -> bool {
         match &self.expression {
-            CircuitExpression::Constant(self_xfe) => match &other.expression {
-                CircuitExpression::Constant(other_xfe) => self_xfe == other_xfe,
+            CircuitExpression::XConstant(self_xfe) => match &other.expression {
+                CircuitExpression::XConstant(other_xfe) => self_xfe == other_xfe,
+                _ => false,
+            },
+            CircuitExpression::BConstant(self_bfe) => match &other.expression {
+                CircuitExpression::BConstant(other_bfe) => self_bfe == other_bfe,
                 _ => false,
             },
             CircuitExpression::Input(self_input_index) => match &other.expression {
@@ -145,8 +150,11 @@ impl<T: TableChallenges> PartialEq for ConstraintCircuit<T> {
 impl<T: TableChallenges> Display for ConstraintCircuit<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.expression {
-            CircuitExpression::Constant(xfe) => {
+            CircuitExpression::XConstant(xfe) => {
                 write!(f, "{}", xfe)
+            }
+            CircuitExpression::BConstant(bfe) => {
+                write!(f, "{}", bfe)
             }
             CircuitExpression::Input(self_input_index) => write!(f, "${} ", self_input_index),
             CircuitExpression::Challenge(self_challenge_id) => {
@@ -170,7 +178,8 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     fn traverse_single(&mut self) {
         self.visited_counter += 1;
         match self.expression.borrow_mut() {
-            CircuitExpression::Constant(_) => (),
+            CircuitExpression::XConstant(_) => (),
+            CircuitExpression::BConstant(_) => (),
             CircuitExpression::Input(_) => (),
             CircuitExpression::Challenge(_) => (),
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
@@ -209,7 +218,8 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         assert!(!self.visited_counter.is_zero() || new_value);
         self.visited_counter += 1;
         match &self.expression {
-            CircuitExpression::Constant(_) => (),
+            CircuitExpression::XConstant(_) => (),
+            CircuitExpression::BConstant(_) => (),
             CircuitExpression::Input(_) => (),
             CircuitExpression::Challenge(_) => (),
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
@@ -251,7 +261,8 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         }
 
         match &self.expression.clone() {
-            CircuitExpression::Constant(_) => change_tracker,
+            CircuitExpression::XConstant(_) => change_tracker,
+            CircuitExpression::BConstant(_) => change_tracker,
             CircuitExpression::Input(_) => change_tracker,
             CircuitExpression::Challenge(_) => change_tracker,
             CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
@@ -268,29 +279,65 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
                 }
 
                 if matches!(binop, BinOp::Mul) {
+                    // a * 1 = a
                     if rhs.as_ref().borrow().is_one() {
                         *self.expression.borrow_mut() = lhs.as_ref().borrow().expression.clone();
                         return true;
                     }
 
+                    // 1 * a = a
                     if lhs.as_ref().borrow().is_one() {
                         *self.expression.borrow_mut() = rhs.as_ref().borrow().expression.clone();
                         return true;
                     }
 
+                    // 0 * a = a * 0 = 0
                     if lhs.as_ref().borrow().is_zero() || rhs.as_ref().borrow().is_zero() {
-                        *self.expression.borrow_mut() = CircuitExpression::Constant(0.into());
+                        *self.expression.borrow_mut() = CircuitExpression::BConstant(0u64.into());
                         return true;
                     }
                 }
 
                 // if left and right hand sides are both constants
-                if let Some(lhs_const) = lhs.as_ref().borrow().get_constant_value() {
-                    if let Some(rhs_const) = rhs.as_ref().borrow().get_constant_value() {
+                if let CircuitExpression::XConstant(lhs_xfe) = lhs.as_ref().borrow().expression {
+                    if let CircuitExpression::XConstant(rhs_xfe) = rhs.as_ref().borrow().expression
+                    {
                         *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => CircuitExpression::Constant(lhs_const + rhs_const),
-                            BinOp::Sub => CircuitExpression::Constant(lhs_const - rhs_const),
-                            BinOp::Mul => CircuitExpression::Constant(lhs_const * rhs_const),
+                            BinOp::Add => CircuitExpression::XConstant(lhs_xfe + rhs_xfe),
+                            BinOp::Sub => CircuitExpression::XConstant(lhs_xfe - rhs_xfe),
+                            BinOp::Mul => CircuitExpression::XConstant(lhs_xfe * rhs_xfe),
+                        };
+                        return true;
+                    }
+
+                    if let CircuitExpression::BConstant(rhs_bfe) = rhs.as_ref().borrow().expression
+                    {
+                        *self.expression.borrow_mut() = match binop {
+                            BinOp::Add => CircuitExpression::XConstant(lhs_xfe + rhs_bfe.lift()),
+                            BinOp::Sub => CircuitExpression::XConstant(lhs_xfe - rhs_bfe.lift()),
+                            BinOp::Mul => CircuitExpression::XConstant(lhs_xfe * rhs_bfe),
+                        };
+                        return true;
+                    }
+                }
+
+                if let CircuitExpression::BConstant(lhs_bfe) = lhs.as_ref().borrow().expression {
+                    if let CircuitExpression::XConstant(rhs_xfe) = rhs.as_ref().borrow().expression
+                    {
+                        *self.expression.borrow_mut() = match binop {
+                            BinOp::Add => CircuitExpression::XConstant(lhs_bfe.lift() + rhs_xfe),
+                            BinOp::Sub => CircuitExpression::XConstant(lhs_bfe.lift() - rhs_xfe),
+                            BinOp::Mul => CircuitExpression::XConstant(rhs_xfe * lhs_bfe),
+                        };
+                        return true;
+                    }
+
+                    if let CircuitExpression::BConstant(rhs_bfe) = rhs.as_ref().borrow().expression
+                    {
+                        *self.expression.borrow_mut() = match binop {
+                            BinOp::Add => CircuitExpression::BConstant(lhs_bfe + rhs_bfe),
+                            BinOp::Sub => CircuitExpression::BConstant(lhs_bfe - rhs_bfe),
+                            BinOp::Mul => CircuitExpression::BConstant(lhs_bfe * rhs_bfe),
                         };
                         return true;
                     }
@@ -316,15 +363,13 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         // Maybe this could be solved smarter with dynamic programming
         // but we probably don't need that as our circuits aren't too big.
         match &self.expression {
-            CircuitExpression::Constant(_) => self.visited_counter,
-            CircuitExpression::Input(_) => self.visited_counter,
-            CircuitExpression::Challenge(_) => self.visited_counter,
             // The highest number will always be in a leaf so we only
             // need to check those.
             CircuitExpression::BinaryOperation(_, lhs, rhs) => cmp::max(
                 lhs.as_ref().borrow().get_max_visited_counter(),
                 rhs.as_ref().borrow().get_max_visited_counter(),
             ),
+            _ => self.visited_counter,
         }
     }
 
@@ -332,7 +377,8 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// pretty-printed without parentheses.
     pub fn is_single_term(&self) -> bool {
         match &self.expression {
-            CircuitExpression::Constant(_) => true,
+            CircuitExpression::XConstant(_) => true,
+            CircuitExpression::BConstant(_) => true,
             CircuitExpression::Input(_) => true,
             CircuitExpression::Challenge(_) => true,
             CircuitExpression::BinaryOperation(_, _, _) => false,
@@ -342,29 +388,20 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// Return true if this node represents a constant value of zero, does not
     /// catch composite expressions that will always evaluate to zero.
     pub fn is_zero(&self) -> bool {
-        match self.get_constant_value() {
-            Some(val) => val.is_zero(),
-            None => false,
+        match self.expression {
+            CircuitExpression::XConstant(xfe) => xfe.is_zero(),
+            CircuitExpression::BConstant(bfe) => bfe.is_zero(),
+            _ => false,
         }
     }
 
     /// Return true if this node represents a constant value of one, does not
     /// catch composite expressions that will always evaluate to one.
     pub fn is_one(&self) -> bool {
-        match self.get_constant_value() {
-            Some(val) => val.is_one(),
-            None => false,
-        }
-    }
-
-    /// If node is a constant value, then return the constant. Otherwise return None.
-    pub fn get_constant_value(&self) -> Option<XFieldElement> {
-        match &self.expression {
-            CircuitExpression::Constant(xfe) => Some(*xfe),
-
-            // This assumes that the circuit is built in a somewhat sane manner, or that
-            // constant folding has been applied on the multitree
-            _ => None,
+        match self.expression {
+            CircuitExpression::XConstant(xfe) => xfe.is_one(),
+            CircuitExpression::BConstant(bfe) => bfe.is_one(),
+            _ => false,
         }
     }
 
@@ -383,7 +420,8 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     pub fn is_randomized(&self) -> bool {
         match &self.expression {
             CircuitExpression::Input(_) => false,
-            CircuitExpression::Constant(_) => false,
+            CircuitExpression::XConstant(_) => false,
+            CircuitExpression::BConstant(_) => false,
             CircuitExpression::Challenge(_) => true,
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
                 lhs.as_ref().borrow().is_randomized() || rhs.as_ref().borrow().is_randomized()
@@ -405,8 +443,11 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// replacing the inputs by variables.
     fn flatten(&self, challenges: &T) -> MPolynomial<XFieldElement> {
         match &self.expression {
-            CircuitExpression::Constant(xfe) => {
+            CircuitExpression::XConstant(xfe) => {
                 MPolynomial::<XFieldElement>::from_constant(*xfe, self.var_count)
+            }
+            CircuitExpression::BConstant(bfe) => {
+                MPolynomial::<XFieldElement>::from_constant(bfe.lift(), self.var_count)
             }
             CircuitExpression::Input(input_index) => {
                 MPolynomial::<XFieldElement>::variables(self.var_count)[*input_index].clone()
@@ -437,11 +478,12 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// Replace all challenges with constants in subtree
     fn apply_challenges_to_one_root(&mut self, challenges: &T) {
         match &self.expression {
-            CircuitExpression::Constant(_) => (),
+            CircuitExpression::XConstant(_) => (),
+            CircuitExpression::BConstant(_) => (),
             CircuitExpression::Input(_) => (),
             CircuitExpression::Challenge(challenge_id) => {
                 *self.expression.borrow_mut() =
-                    CircuitExpression::Constant(challenges.get_challenge(*challenge_id))
+                    CircuitExpression::XConstant(challenges.get_challenge(*challenge_id))
             }
             CircuitExpression::BinaryOperation(_, lhs, rhs) => {
                 lhs.as_ref()
@@ -628,9 +670,16 @@ impl<T: TableChallenges> ConstraintCircuitBuilder<T> {
             var_count,
         }
     }
+
     /// Create constant leaf node
-    pub fn constant(&mut self, xfe: XFieldElement) -> ConstraintCircuitMonad<T> {
-        let expression = CircuitExpression::Constant(xfe);
+    pub fn x_constant(&mut self, xfe: XFieldElement) -> ConstraintCircuitMonad<T> {
+        let expression = CircuitExpression::XConstant(xfe);
+        self.make_leaf(expression)
+    }
+
+    /// Create constant leaf node
+    pub fn b_constant(&mut self, bfe: BFieldElement) -> ConstraintCircuitMonad<T> {
+        let expression = CircuitExpression::BConstant(bfe);
         self.make_leaf(expression)
     }
 
@@ -695,7 +744,7 @@ mod constraint_circuit_tests {
     use std::{collections::hash_map::DefaultHasher, hash::Hasher};
 
     use rand::{thread_rng, RngCore};
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
+    use twenty_first::shared_math::{mpolynomial::MPolynomial, other::random_elements};
 
     use crate::table::{
         challenges::AllChallenges,
@@ -752,9 +801,8 @@ mod constraint_circuit_tests {
         let mut circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
             ConstraintCircuitBuilder::new(var_count);
         let mpol_variables = MPolynomial::<XFieldElement>::variables(var_count);
-        let constants: Vec<XFieldElement> = (140u64..140 + var_count as u64)
-            .map(|x| XFieldElement::new_const(x.into()))
-            .collect_vec();
+        let b_constants: Vec<BFieldElement> = random_elements(var_count);
+        let x_constants: Vec<XFieldElement> = random_elements(var_count);
         let zero = MPolynomial::from_constant(XFieldElement::zero(), var_count);
         let mut rng = thread_rng();
         let rand: usize = rng.next_u64() as usize;
@@ -762,28 +810,38 @@ mod constraint_circuit_tests {
         let mut ret_circuit = circuit_builder.input(rand % var_count);
         for _ in 0..100 {
             let rand: usize = rng.next_u64() as usize;
-            let (mpol, circuit) = if rand % 5 == 0 {
+            let choices = 6;
+            let (mpol, circuit): (
+                MPolynomial<XFieldElement>,
+                ConstraintCircuitMonad<InstructionTableChallenges>,
+            ) = if rand % choices == 0 {
                 // p(x, y, z) = x
                 let mp = mpol_variables[rand % var_count].clone();
                 (mp.clone(), circuit_builder.input(rand % var_count))
-            } else if rand % 5 == 1 {
+            } else if rand % choices == 1 {
                 // p(x, y, z) = c
                 (
-                    MPolynomial::from_constant(constants[rand % var_count], var_count),
-                    circuit_builder.constant(constants[rand % var_count]),
+                    MPolynomial::from_constant(x_constants[rand % var_count], var_count),
+                    circuit_builder.x_constant(x_constants[rand % var_count]),
                 )
-            } else if rand % 5 == 2 {
+            } else if rand % choices == 2 {
                 // p(x, y, z) = rand_i
                 (
                     MPolynomial::from_constant(challenges.processor_perm_indeterminate, var_count),
                     circuit_builder
                         .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
                 )
-            } else if rand % 5 == 3 {
+            } else if rand % choices == 3 {
                 // p(x, y, z) = 0
                 (
                     zero.clone(),
-                    circuit_builder.constant(XFieldElement::zero()),
+                    circuit_builder.x_constant(XFieldElement::zero()),
+                )
+            } else if rand % choices == 4 {
+                // p(x, y, z) = bfe
+                (
+                    MPolynomial::from_constant(b_constants[rand % var_count].lift(), var_count),
+                    circuit_builder.b_constant(b_constants[rand % var_count]),
                 )
             } else {
                 // p(x, y, z) = rand_i * x
@@ -828,7 +886,8 @@ mod constraint_circuit_tests {
                 let rhs_ref = deep_copy_inner(&rhs.as_ref().borrow(), builder);
                 binop(*op, lhs_ref, rhs_ref)
             }
-            CircuitExpression::Constant(xfe) => builder.constant(*xfe),
+            CircuitExpression::XConstant(xfe) => builder.x_constant(*xfe),
+            CircuitExpression::BConstant(bfe) => builder.b_constant(*bfe),
             CircuitExpression::Input(input_index) => builder.input(*input_index),
             CircuitExpression::Challenge(challenge_id) => builder.challenge(*challenge_id),
         }
@@ -844,7 +903,7 @@ mod constraint_circuit_tests {
         // Since the MPolCircuits are put into a hash set, I think it's important
         // that `Eq` and `Hash` agree whether two nodes are equal or not. So if
         // k1 == k2 => h(k1) == h(k2)
-        for _ in 0..10 {
+        for _ in 0..100 {
             let challenges = AllChallenges::placeholder();
             let (circuit, _mpol, mut circuit_builder) =
                 circuit_mpol_builder(&challenges.instruction_table_challenges);
@@ -854,7 +913,7 @@ mod constraint_circuit_tests {
             assert_eq!(circuit, circuit);
 
             // let zero = circuit_builder.deterministic_input(MPolynomial::zero(100));
-            let zero = circuit_builder.constant(0.into());
+            let zero = circuit_builder.x_constant(0.into());
             let same_circuit = circuit.clone() + zero;
             let mut hasher1 = DefaultHasher::new();
             same_circuit.hash(&mut hasher1);
@@ -908,7 +967,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn circuit_and_mpol_equivalence_check() {
-        for _ in 0..100 {
+        for _ in 0..1000 {
             let challenges = AllChallenges::placeholder();
             let (circuit, mpol, _) = circuit_mpol_builder(&challenges.instruction_table_challenges);
             assert_eq!(
@@ -917,11 +976,12 @@ mod constraint_circuit_tests {
             );
 
             // Also verify equality after constant folding of the circuit
+            let copied_circuit = deep_copy(&circuit.circuit.as_ref().borrow());
             let mut circuits = vec![circuit.consume()];
             ConstraintCircuit::constant_folding(&mut circuits.iter_mut().collect_vec());
             assert_eq!(
                 mpol,
-                circuits[0].partial_evaluate(&challenges.instruction_table_challenges)
+                circuits[0].partial_evaluate(&challenges.instruction_table_challenges), "Circuit before and after constant folding must agree after parital evaluate.\n before: {copied_circuit}\nafter: {}", circuits[0]
             );
         }
     }
@@ -933,9 +993,9 @@ mod constraint_circuit_tests {
             ConstraintCircuitBuilder::new(var_count);
         let var_0 = circuit_builder.input(0);
         let var_4 = circuit_builder.input(4);
-        let four = circuit_builder.constant(4.into());
-        let one = circuit_builder.constant(1.into());
-        let zero = circuit_builder.constant(0.into());
+        let four = circuit_builder.x_constant(4.into());
+        let one = circuit_builder.x_constant(1.into());
+        let zero = circuit_builder.x_constant(0.into());
 
         assert_ne!(var_0, var_4);
         assert_ne!(var_0, four);
@@ -1013,8 +1073,8 @@ mod constraint_circuit_tests {
             let challenges = AllChallenges::placeholder();
             let (circuit, _mpol, mut circuit_builder) =
                 circuit_mpol_builder(&challenges.instruction_table_challenges);
-            let one = circuit_builder.constant(1.into());
-            let zero = circuit_builder.constant(0.into());
+            let one = circuit_builder.x_constant(1.into());
+            let zero = circuit_builder.x_constant(0.into());
 
             // Verify that constant folding can handle a = a * 1
             let copy_0 = deep_copy(&circuit.circuit.as_ref().borrow());
@@ -1088,7 +1148,19 @@ mod constraint_circuit_tests {
                 &mut var_0_not_same_circuit_6,
             ]);
 
-            if var_0_circuit_6.is_zero() {
+            // An X field and a B field leaf will never be equal
+            if var_0_circuit_6.is_zero()
+                && (matches!(var_0_circuit_6.expression, CircuitExpression::BConstant(_))
+                    && matches!(
+                        var_0_not_same_circuit_6.expression,
+                        CircuitExpression::BConstant(_)
+                    )
+                    || matches!(var_0_circuit_6.expression, CircuitExpression::XConstant(_))
+                        && matches!(
+                            var_0_not_same_circuit_6.expression,
+                            CircuitExpression::XConstant(_)
+                        ))
+            {
                 assert_eq!(var_0_circuit_6, var_0_not_same_circuit_6);
                 assert_eq!(var_0_not_same_circuit_6, var_0_circuit_6);
             } else {
@@ -1129,7 +1201,7 @@ mod constraint_circuit_tests {
         let var_8 = circuit_builder.input(8);
         let var_9 = circuit_builder.input(9);
 
-        let four = circuit_builder.constant(4.into());
+        let four = circuit_builder.x_constant(4.into());
 
         let expr_circuit = (var_0 + var_4) * (var_8 - var_9) * four.clone() * four;
 
@@ -1144,7 +1216,7 @@ mod constraint_circuit_tests {
         assert_eq!(expr_mpol, expr_circuit_partial_evaluated);
     }
 
-    fn constant_folding_test<T: TableChallenges>(
+    fn constant_folding_of_table_constraints_test<T: TableChallenges>(
         mut constraints: Vec<ConstraintCircuit<T>>,
         challenges: T,
         table_name: &str,
@@ -1172,7 +1244,7 @@ mod constraint_circuit_tests {
         }
 
         for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
-            assert_eq!(before, after, "Constant folding must leave partially evaluated constraints unchanged for instruction table constraint {i}");
+            assert_eq!(before, after, "Constant folding must leave partially evaluated constraints unchanged for {table_name} table constraint {i}");
         }
 
         assert!(
@@ -1202,7 +1274,7 @@ mod constraint_circuit_tests {
     fn constant_folding_instruction_table_test() {
         let challenges = AllChallenges::placeholder();
         let constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
-        constant_folding_test(
+        constant_folding_of_table_constraints_test(
             constraint_circuits,
             challenges.instruction_table_challenges,
             "instruction",
@@ -1213,7 +1285,7 @@ mod constraint_circuit_tests {
     fn constant_folding_processor_table_test() {
         let challenges = AllChallenges::placeholder();
         let constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
-        constant_folding_test(
+        constant_folding_of_table_constraints_test(
             constraint_circuits,
             challenges.processor_table_challenges,
             "processor",
@@ -1224,7 +1296,7 @@ mod constraint_circuit_tests {
     fn constant_folding_program_table_test() {
         let challenges = AllChallenges::placeholder();
         let constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
-        constant_folding_test(
+        constant_folding_of_table_constraints_test(
             constraint_circuits,
             challenges.program_table_challenges,
             "program",
@@ -1235,7 +1307,7 @@ mod constraint_circuit_tests {
     fn constant_folding_jump_stack_table_test() {
         let challenges = AllChallenges::placeholder();
         let constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
-        constant_folding_test(
+        constant_folding_of_table_constraints_test(
             constraint_circuits,
             challenges.jump_stack_table_challenges,
             "jump stack",
@@ -1246,7 +1318,7 @@ mod constraint_circuit_tests {
     fn constant_folding_op_stack_table_test() {
         let challenges = AllChallenges::placeholder();
         let constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
-        constant_folding_test(
+        constant_folding_of_table_constraints_test(
             constraint_circuits,
             challenges.op_stack_table_challenges,
             "op stack",
@@ -1257,6 +1329,10 @@ mod constraint_circuit_tests {
     fn constant_folding_ram_stack_table_test() {
         let challenges = AllChallenges::placeholder();
         let constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
-        constant_folding_test(constraint_circuits, challenges.ram_table_challenges, "ram");
+        constant_folding_of_table_constraints_test(
+            constraint_circuits,
+            challenges.ram_table_challenges,
+            "ram",
+        );
     }
 }

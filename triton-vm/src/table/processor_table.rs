@@ -1444,9 +1444,9 @@ impl Default for RowPairConstraints {
             .try_into()
             .expect("Create variables for transition constraints");
 
-        let zero = circuit_builder.constant(0.into());
-        let one = circuit_builder.constant(1.into());
-        let two = circuit_builder.constant(2.into());
+        let zero = circuit_builder.b_constant(0u32.into());
+        let one = circuit_builder.b_constant(1u32.into());
+        let two = circuit_builder.b_constant(2u32.into());
 
         Self {
             variables,
@@ -2134,14 +2134,14 @@ impl RowPairConstraints {
     }
 
     pub fn constant(&mut self, constant: u32) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
-        self.circuit_builder.constant(constant.into())
+        self.circuit_builder.b_constant(constant.into())
     }
 
     pub fn constant_b(
         &mut self,
         constant: BFieldElement,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
-        self.circuit_builder.constant(constant.lift())
+        self.circuit_builder.b_constant(constant)
     }
 
     pub fn constant_x(&self, constant: XFieldElement) -> MPolynomial<XFieldElement> {
@@ -3054,19 +3054,19 @@ impl InstructionDeselectors {
         instruction_bucket_polynomials: [ConstraintCircuitMonad<ProcessorTableChallenges>;
             Ord7::COUNT],
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges> {
-        let one = circuit_builder.constant(1.into());
+        let one = circuit_builder.b_constant(1u32.into());
 
         let selector_bits: [_; Ord7::COUNT] = [
-            instruction.ib(Ord7::IB0).lift(),
-            instruction.ib(Ord7::IB1).lift(),
-            instruction.ib(Ord7::IB2).lift(),
-            instruction.ib(Ord7::IB3).lift(),
-            instruction.ib(Ord7::IB4).lift(),
-            instruction.ib(Ord7::IB5).lift(),
-            instruction.ib(Ord7::IB6).lift(),
+            instruction.ib(Ord7::IB0),
+            instruction.ib(Ord7::IB1),
+            instruction.ib(Ord7::IB2),
+            instruction.ib(Ord7::IB3),
+            instruction.ib(Ord7::IB4),
+            instruction.ib(Ord7::IB5),
+            instruction.ib(Ord7::IB6),
         ];
         let deselector_polynomials =
-            selector_bits.map(|b| one.clone() - circuit_builder.constant(b));
+            selector_bits.map(|b| one.clone() - circuit_builder.b_constant(b));
 
         instruction_bucket_polynomials
             .into_iter()

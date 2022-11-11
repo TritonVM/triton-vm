@@ -212,7 +212,7 @@ impl ExtInstructionTable {
     ) -> Vec<ConstraintCircuit<InstructionTableChallenges>> {
         let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let one: ConstraintCircuitMonad<InstructionTableChallenges> =
-            circuit_builder.constant(1.into());
+            circuit_builder.b_constant(1u32.into());
         let addr = circuit_builder.input(usize::from(Address));
 
         let addr_next = circuit_builder.input(FULL_WIDTH + usize::from(Address));

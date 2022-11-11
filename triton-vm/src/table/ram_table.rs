@@ -351,7 +351,7 @@ impl ExtRamTable {
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<RamTableChallenges>> {
         let mut circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
-        let one = circuit_builder.constant(1.into());
+        let one = circuit_builder.b_constant(1u32.into());
 
         let bezout_challenge =
             circuit_builder.challenge(RamTableChallengesId::BezoutRelationIndeterminate);
