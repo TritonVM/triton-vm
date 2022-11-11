@@ -1107,7 +1107,6 @@ pub(crate) mod triton_stark_tests {
     use crate::cross_table_arguments::EvalArg;
     use crate::instruction::sample_programs;
     use crate::shared_tests::*;
-    use crate::stdio::VecStream;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_table::InheritsFromTable;
     use crate::table::table_collection::TableId::ProcessorTable;
@@ -1125,8 +1124,8 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn all_tables_pad_to_same_height_test() {
         let code = "read_io read_io push -1 mul add split push 0 eq swap1 pop "; // simulates LTE
-        let input_symbols = [5_u64.into(), 7_u64.into()];
-        let (aet, _, program) = parse_setup_simulate(code, &input_symbols, &[]);
+        let input_symbols = vec![5_u64.into(), 7_u64.into()];
+        let (aet, _, program) = parse_setup_simulate(code, input_symbols, vec![]);
         let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
         let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
         base_tables.pad();
@@ -1142,19 +1141,15 @@ pub(crate) mod triton_stark_tests {
 
     pub fn parse_setup_simulate(
         code: &str,
-        input_symbols: &[BFieldElement],
-        secret_input_symbols: &[BFieldElement],
-    ) -> (AlgebraicExecutionTrace, VecStream, Program) {
+        input_symbols: Vec<BFieldElement>,
+        secret_input_symbols: Vec<BFieldElement>,
+    ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>, Program) {
         let program = Program::from_code(code);
 
         assert!(program.is_ok(), "program parses correctly");
         let program = program.unwrap();
 
-        let mut stdin = VecStream::new(input_symbols);
-        let mut secret_in = VecStream::new(secret_input_symbols);
-        let mut stdout = VecStream::new(&[]);
-
-        let (aet, err) = program.simulate(&mut stdin, &mut secret_in, &mut stdout);
+        let (aet, stdout, err) = program.simulate(input_symbols, secret_input_symbols);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
@@ -1163,9 +1158,14 @@ pub(crate) mod triton_stark_tests {
 
     pub fn parse_simulate_pad(
         code: &str,
-        stdin: &[BFieldElement],
-        secret_in: &[BFieldElement],
-    ) -> (BaseTableCollection, BaseTableCollection, usize, VecStream) {
+        stdin: Vec<BFieldElement>,
+        secret_in: Vec<BFieldElement>,
+    ) -> (
+        BaseTableCollection,
+        BaseTableCollection,
+        usize,
+        Vec<BFieldElement>,
+    ) {
         let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
         let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
 
@@ -1186,10 +1186,10 @@ pub(crate) mod triton_stark_tests {
 
     pub fn parse_simulate_pad_extend(
         code: &str,
-        stdin: &[BFieldElement],
-        secret_in: &[BFieldElement],
+        stdin: Vec<BFieldElement>,
+        secret_in: Vec<BFieldElement>,
     ) -> (
-        VecStream,
+        Vec<BFieldElement>,
         BaseTableCollection,
         BaseTableCollection,
         ExtTableCollection,
@@ -1220,7 +1220,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     pub fn print_all_constraint_degrees() {
         let (_, _, _, ext_tables, _, num_trace_randomizers) =
-            parse_simulate_pad_extend("halt", &[], &[]);
+            parse_simulate_pad_extend("halt", vec![], vec![]);
         let padded_height = ext_tables.padded_height;
         let all_degrees = ext_tables
             .into_iter()
@@ -1339,7 +1339,7 @@ pub(crate) mod triton_stark_tests {
             BFieldElement::new(7),
         ];
         let (stdout, _, _, ext_table_collection, all_challenges, _) =
-            parse_simulate_pad_extend(read_nop_code, &input_symbols, &[]);
+            parse_simulate_pad_extend(read_nop_code, input_symbols.clone(), vec![]);
 
         let ptie = ext_table_collection.data(ProcessorTable).last().unwrap()
             [usize::from(InputTableEvalArg)];
@@ -1354,7 +1354,7 @@ pub(crate) mod triton_stark_tests {
             [usize::from(OutputTableEvalArg)];
 
         let oute = EvalArg::compute_terminal(
-            &stdout.to_bword_vec(),
+            &stdout,
             EvalArg::default_initial(),
             all_challenges
                 .output_challenges
@@ -1372,9 +1372,9 @@ pub(crate) mod triton_stark_tests {
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
             let code = code_with_input.source_code;
             let input = code_with_input.input;
-            let secret_input = code_with_input.secret_input;
+            let secret_input = code_with_input.secret_input.clone();
             let (output, _, _, ext_table_collection, all_challenges, _) =
-                parse_simulate_pad_extend(&code, &input, &secret_input);
+                parse_simulate_pad_extend(&code, input.clone(), secret_input);
 
             let input_terminal = EvalArg::compute_terminal(
                 &input,
@@ -1385,7 +1385,7 @@ pub(crate) mod triton_stark_tests {
             );
 
             let output_terminal = EvalArg::compute_terminal(
-                &output.to_bword_vec(),
+                &output,
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges
@@ -1437,7 +1437,8 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let (_, _, _, ext_tables, challenges, _) = parse_simulate_pad_extend("halt", &[], &[]);
+        let (_, _, _, ext_tables, challenges, _) =
+            parse_simulate_pad_extend("halt", vec![], vec![]);
 
         for table in ext_tables.into_iter() {
             let dummy_row = vec![0.into(); table.full_width()];
@@ -1454,7 +1455,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn extend_does_not_change_base_table() {
         let (base_tables, _, num_trace_randomizers, _) =
-            parse_simulate_pad(sample_programs::FIBONACCI_LT, &[], &[]);
+            parse_simulate_pad(sample_programs::FIBONACCI_LT, vec![], vec![]);
 
         let dummy_challenges = AllChallenges::placeholder();
         let ext_tables = ExtTableCollection::extend_tables(
@@ -1478,7 +1479,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn print_number_of_all_constraints_per_table() {
         let (_, _, _, ext_tables, challenges, _) =
-            parse_simulate_pad_extend(sample_programs::COUNTDOWN_FROM_10, &[], &[]);
+            parse_simulate_pad_extend(sample_programs::COUNTDOWN_FROM_10, vec![], vec![]);
 
         println!("| Table                |  Init |  Cons | Trans |  Term |   Sum |");
         println!("|:---------------------|------:|------:|------:|------:|------:|");
@@ -1539,7 +1540,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn number_of_quotient_degree_bound_matches_number_of_constraints_test() {
         let (_, _, _, ext_tables, challenges, num_trace_randomizers) =
-            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
+            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
         let padded_height = ext_tables.padded_height;
 
         for table in ext_tables.into_iter() {
@@ -1603,7 +1604,7 @@ pub(crate) mod triton_stark_tests {
         let zero = XFieldElement::zero();
         let source_code_and_input = test_halt();
         let (_, _, _, ext_tables, challenges, _) =
-            parse_simulate_pad_extend(&source_code_and_input.source_code, &[], &[]);
+            parse_simulate_pad_extend(&source_code_and_input.source_code, vec![], vec![]);
 
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
@@ -1675,7 +1676,7 @@ pub(crate) mod triton_stark_tests {
     fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
         let zero = XFieldElement::zero();
         let (_, _, _, ext_tables, _, _) =
-            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, &[], &[]);
+            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
 
         let challenges = AllChallenges::placeholder();
         for table in (&ext_tables).into_iter() {
@@ -1746,9 +1747,9 @@ pub(crate) mod triton_stark_tests {
         let code_with_input = test_hash_nop_nop_lt();
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
-            &code_with_input.input,
-            &code_with_input.secret_input,
-            &[],
+            code_with_input.input.clone(),
+            code_with_input.secret_input.clone(),
+            vec![],
             &mut None,
         );
 
@@ -1766,9 +1767,9 @@ pub(crate) mod triton_stark_tests {
         let code_with_input = test_halt();
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
-            &code_with_input.input,
-            &code_with_input.secret_input,
-            &[],
+            code_with_input.input.clone(),
+            code_with_input.secret_input.clone(),
+            vec![],
             &mut None,
         );
 
@@ -1787,12 +1788,11 @@ pub(crate) mod triton_stark_tests {
         let source_code = sample_programs::FIBONACCI_VIT;
         let program = Program::from_code(source_code).unwrap();
 
-        let stdin = [100_u64.into()];
-        let secret_in = [];
-        let (_, stdout, _) = program.run_with_input(&stdin, &secret_in);
+        let stdin = vec![100_u64.into()];
+        let secret_in = vec![];
 
-        let (stark, proof) =
-            parse_simulate_prove(source_code, &stdin, &secret_in, &stdout, &mut None);
+        let (_, stdout, _) = program.run(stdin.clone(), secret_in.clone());
+        let (stark, proof) = parse_simulate_prove(source_code, stdin, secret_in, stdout, &mut None);
 
         println!("between prove and verify");
 

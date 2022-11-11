@@ -38,7 +38,7 @@ fn verify_halt(criterion: &mut Criterion) {
             Err(e) => panic!("Could not load proof from disk: {:?}", e),
         }
     } else {
-        let (aet, err, _) = program.simulate_no_input();
+        let (aet, _, err) = program.simulate_no_input();
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }

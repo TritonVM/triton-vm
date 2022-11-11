@@ -27,7 +27,7 @@ fn prove_halt(_criterion: &mut Criterion) {
     let stark = Stark::new(claim, parameters);
 
     // witness
-    let (aet, err, _) = program.simulate_no_input();
+    let (aet, _, err) = program.simulate_no_input();
     if let Some(error) = err {
         panic!("The VM encountered the following problem: {}", error);
     }

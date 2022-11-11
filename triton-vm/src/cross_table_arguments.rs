@@ -598,7 +598,7 @@ mod permutation_argument_tests {
         let input = code_with_input.input;
         let secret_input = code_with_input.secret_input;
         let (output, _, _, ext_codeword_tables, all_challenges, _) =
-            parse_simulate_pad_extend(&code, &input, &secret_input);
+            parse_simulate_pad_extend(&code, input.clone(), secret_input);
 
         let input_terminal = EvalArg::compute_terminal(
             &input,
@@ -609,7 +609,7 @@ mod permutation_argument_tests {
         );
 
         let output_terminal = EvalArg::compute_terminal(
-            &output.to_bword_vec(),
+            &output,
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
