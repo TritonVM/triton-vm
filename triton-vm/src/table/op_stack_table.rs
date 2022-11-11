@@ -422,7 +422,7 @@ impl ExtOpStackTable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum OpStackTableChallengesId {
     ProcessorPermIndeterminate,
     ClkWeight,
@@ -431,8 +431,6 @@ pub enum OpStackTableChallengesId {
     OspWeight,
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
-
-impl Eq for OpStackTableChallengesId {}
 
 impl From<OpStackTableChallengesId> for usize {
     fn from(val: OpStackTableChallengesId) -> Self {

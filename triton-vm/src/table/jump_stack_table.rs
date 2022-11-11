@@ -475,7 +475,7 @@ impl ExtJumpStackTable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum JumpStackTableChallengesId {
     ProcessorPermRowIndeterminate,
     ClkWeight,
@@ -485,8 +485,6 @@ pub enum JumpStackTableChallengesId {
     JsdWeight,
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
-
-impl Eq for JumpStackTableChallengesId {}
 
 impl From<JumpStackTableChallengesId> for usize {
     fn from(val: JumpStackTableChallengesId) -> Self {

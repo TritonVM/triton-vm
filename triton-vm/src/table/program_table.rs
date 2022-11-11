@@ -320,15 +320,13 @@ impl ExtProgramTable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum ProgramTableChallengeId {
     InstructionEvalIndeterminate,
     AddressWeight,
     InstructionWeight,
     NextInstructionWeight,
 }
-
-impl Eq for ProgramTableChallengeId {}
 
 impl From<ProgramTableChallengeId> for usize {
     fn from(val: ProgramTableChallengeId) -> Self {

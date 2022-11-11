@@ -31,7 +31,7 @@ pub struct InstructionTable {
     inherited_table: Table<BFieldElement>,
 }
 
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash, Eq)]
 pub enum InstructionTableChallengeId {
     ProcessorPermIndeterminate,
     IpProcessorWeight,
@@ -42,8 +42,6 @@ pub enum InstructionTableChallengeId {
     InstructionWeight,
     NextInstructionWeight,
 }
-
-impl Eq for InstructionTableChallengeId {}
 
 impl From<InstructionTableChallengeId> for usize {
     fn from(val: InstructionTableChallengeId) -> Self {
