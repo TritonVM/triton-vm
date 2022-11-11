@@ -435,8 +435,6 @@ impl Stark {
 
         let base_codewords_lifted = base_codewords
             .into_iter()
-            // 3 is extension degree of X-field over B-field
-            .skip(self.parameters.num_randomizer_polynomials * 3)
             .map(|base_codeword| {
                 base_codeword
                     .into_iter()
