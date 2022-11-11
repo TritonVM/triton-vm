@@ -21,7 +21,7 @@ use crate::table::table_column::{
 };
 
 pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
-pub const NUM_PRIVATE_EVAL_ARGS: usize = 4;
+pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
 pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS;
 pub const NUM_PUBLIC_EVAL_ARGS: usize = 2;
 
@@ -323,24 +323,11 @@ impl EvalArg {
         Self { from, to }
     }
 
-    pub fn processor_to_processor_clock_jump_diff_arg() -> Self {
-        let from = vec![(
-            ProcessorTable,
-            usize::from(ProcessorExtTableColumn::SelectedClockCyclesEvalArg),
-        )];
-        let to = vec![(
-            ProcessorTable,
-            usize::from(ProcessorExtTableColumn::UniqueClockJumpDifferencesEvalArg),
-        )];
-        Self { from, to }
-    }
-
     pub fn all_private_evaluation_arguments() -> [Self; NUM_PRIVATE_EVAL_ARGS] {
         [
             Self::program_instruction_eval_arg(),
             Self::processor_to_hash_eval_arg(),
             Self::hash_to_processor_eval_arg(),
-            Self::processor_to_processor_clock_jump_diff_arg(),
         ]
     }
 }
@@ -362,9 +349,6 @@ pub struct GrandCrossTableArg {
     processor_to_jump_stack_weight: XFieldElement,
     processor_to_hash_weight: XFieldElement,
     hash_to_processor_weight: XFieldElement,
-
-    unique_clock_jumps: EvalArg,
-    unique_clock_jumps_weight: XFieldElement,
 
     all_clock_jump_differences: PermArg,
     all_clock_jump_differences_weight: XFieldElement,
@@ -415,10 +399,6 @@ impl<'a> IntoIterator for &'a GrandCrossTableArg {
                 self.hash_to_processor_weight,
             ),
             (
-                &self.unique_clock_jumps as &'a dyn CrossTableArg,
-                self.unique_clock_jumps_weight,
-            ),
-            (
                 &self.all_clock_jump_differences as &'a dyn CrossTableArg,
                 self.all_clock_jump_differences_weight,
             ),
@@ -450,9 +430,6 @@ impl GrandCrossTableArg {
             processor_to_jump_stack_weight: weights_stack.pop().unwrap(),
             processor_to_hash_weight: weights_stack.pop().unwrap(),
             hash_to_processor_weight: weights_stack.pop().unwrap(),
-
-            unique_clock_jumps: EvalArg::processor_to_processor_clock_jump_diff_arg(),
-            unique_clock_jumps_weight: weights_stack.pop().unwrap(),
 
             all_clock_jump_differences: PermArg::clock_jump_difference_multi_table_perm_arg(),
             all_clock_jump_differences_weight: weights_stack.pop().unwrap(),
@@ -647,7 +624,7 @@ mod permutation_argument_tests {
         let quotient_degree_bound = gxta
             .program_to_instruction
             .quotient_degree_bound(&ext_codeword_tables, num_trace_randomizers);
-        for (arg, _) in gxta.into_iter().take(8) {
+        for (arg, _) in gxta.into_iter().take(7) {
             assert_eq!(
                 quotient_degree_bound,
                 arg.quotient_degree_bound(&ext_codeword_tables, num_trace_randomizers)
