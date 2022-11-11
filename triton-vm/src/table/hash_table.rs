@@ -244,16 +244,16 @@ impl Evaluable for ExtHashTable {
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
         let compressed_row_from_processor = [
-            challenges.hash_table_challenges.stack_input_weights0,
-            challenges.hash_table_challenges.stack_input_weights1,
-            challenges.hash_table_challenges.stack_input_weights2,
-            challenges.hash_table_challenges.stack_input_weights3,
-            challenges.hash_table_challenges.stack_input_weights4,
-            challenges.hash_table_challenges.stack_input_weights5,
-            challenges.hash_table_challenges.stack_input_weights6,
-            challenges.hash_table_challenges.stack_input_weights7,
-            challenges.hash_table_challenges.stack_input_weights8,
-            challenges.hash_table_challenges.stack_input_weights9,
+            challenges.hash_table_challenges.stack_input_weight0,
+            challenges.hash_table_challenges.stack_input_weight1,
+            challenges.hash_table_challenges.stack_input_weight2,
+            challenges.hash_table_challenges.stack_input_weight3,
+            challenges.hash_table_challenges.stack_input_weight4,
+            challenges.hash_table_challenges.stack_input_weight5,
+            challenges.hash_table_challenges.stack_input_weight6,
+            challenges.hash_table_challenges.stack_input_weight7,
+            challenges.hash_table_challenges.stack_input_weight8,
+            challenges.hash_table_challenges.stack_input_weight9,
         ]
         .into_iter()
         .zip_eq(xlix_input.into_iter())
@@ -279,11 +279,11 @@ impl Evaluable for ExtHashTable {
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
         let compressed_row_to_processor = [
-            challenges.hash_table_challenges.digest_output_weights0,
-            challenges.hash_table_challenges.digest_output_weights1,
-            challenges.hash_table_challenges.digest_output_weights2,
-            challenges.hash_table_challenges.digest_output_weights3,
-            challenges.hash_table_challenges.digest_output_weights4,
+            challenges.hash_table_challenges.digest_output_weight0,
+            challenges.hash_table_challenges.digest_output_weight1,
+            challenges.hash_table_challenges.digest_output_weight2,
+            challenges.hash_table_challenges.digest_output_weight3,
+            challenges.hash_table_challenges.digest_output_weight4,
         ]
         .into_iter()
         .zip_eq(xlix_digest.into_iter())
@@ -401,16 +401,16 @@ impl ExtHashTable {
         let running_evaluation_from_processor_is_default_initial =
             running_evaluation_from_processor.clone() - running_evaluation_initial.clone();
         let compressed_row = [
-            challenges.stack_input_weights0,
-            challenges.stack_input_weights1,
-            challenges.stack_input_weights2,
-            challenges.stack_input_weights3,
-            challenges.stack_input_weights4,
-            challenges.stack_input_weights5,
-            challenges.stack_input_weights6,
-            challenges.stack_input_weights7,
-            challenges.stack_input_weights8,
-            challenges.stack_input_weights9,
+            challenges.stack_input_weight0,
+            challenges.stack_input_weight1,
+            challenges.stack_input_weight2,
+            challenges.stack_input_weight3,
+            challenges.stack_input_weight4,
+            challenges.stack_input_weight5,
+            challenges.stack_input_weight6,
+            challenges.stack_input_weight7,
+            challenges.stack_input_weight8,
+            challenges.stack_input_weight9,
         ]
         .iter()
         .zip_eq(state.iter())
@@ -685,16 +685,16 @@ impl HashTable {
                     .iter()
                     .zip_eq(
                         [
-                            challenges.stack_input_weights0,
-                            challenges.stack_input_weights1,
-                            challenges.stack_input_weights2,
-                            challenges.stack_input_weights3,
-                            challenges.stack_input_weights4,
-                            challenges.stack_input_weights5,
-                            challenges.stack_input_weights6,
-                            challenges.stack_input_weights7,
-                            challenges.stack_input_weights8,
-                            challenges.stack_input_weights9,
+                            challenges.stack_input_weight0,
+                            challenges.stack_input_weight1,
+                            challenges.stack_input_weight2,
+                            challenges.stack_input_weight3,
+                            challenges.stack_input_weight4,
+                            challenges.stack_input_weight5,
+                            challenges.stack_input_weight6,
+                            challenges.stack_input_weight7,
+                            challenges.stack_input_weight8,
+                            challenges.stack_input_weight9,
                         ]
                         .iter(),
                     )
@@ -721,11 +721,11 @@ impl HashTable {
                     .iter()
                     .zip_eq(
                         [
-                            challenges.digest_output_weights0,
-                            challenges.digest_output_weights1,
-                            challenges.digest_output_weights2,
-                            challenges.digest_output_weights3,
-                            challenges.digest_output_weights4,
+                            challenges.digest_output_weight0,
+                            challenges.digest_output_weight1,
+                            challenges.digest_output_weight2,
+                            challenges.digest_output_weight3,
+                            challenges.digest_output_weight4,
                         ]
                         .iter(),
                     )
@@ -818,23 +818,23 @@ pub struct HashTableChallenges {
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     // There are 2 * DIGEST_LENGTH elements of these
-    pub stack_input_weights0: XFieldElement,
-    pub stack_input_weights1: XFieldElement,
-    pub stack_input_weights2: XFieldElement,
-    pub stack_input_weights3: XFieldElement,
-    pub stack_input_weights4: XFieldElement,
-    pub stack_input_weights5: XFieldElement,
-    pub stack_input_weights6: XFieldElement,
-    pub stack_input_weights7: XFieldElement,
-    pub stack_input_weights8: XFieldElement,
-    pub stack_input_weights9: XFieldElement,
+    pub stack_input_weight0: XFieldElement,
+    pub stack_input_weight1: XFieldElement,
+    pub stack_input_weight2: XFieldElement,
+    pub stack_input_weight3: XFieldElement,
+    pub stack_input_weight4: XFieldElement,
+    pub stack_input_weight5: XFieldElement,
+    pub stack_input_weight6: XFieldElement,
+    pub stack_input_weight7: XFieldElement,
+    pub stack_input_weight8: XFieldElement,
+    pub stack_input_weight9: XFieldElement,
 
     // There are DIGEST_LENGTH elements of these
-    pub digest_output_weights0: XFieldElement,
-    pub digest_output_weights1: XFieldElement,
-    pub digest_output_weights2: XFieldElement,
-    pub digest_output_weights3: XFieldElement,
-    pub digest_output_weights4: XFieldElement,
+    pub digest_output_weight0: XFieldElement,
+    pub digest_output_weight1: XFieldElement,
+    pub digest_output_weight2: XFieldElement,
+    pub digest_output_weight3: XFieldElement,
+    pub digest_output_weight4: XFieldElement,
 }
 
 impl ExtensionTable for ExtHashTable {

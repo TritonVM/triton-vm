@@ -498,7 +498,7 @@ impl ExtRamTable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum RamTableChallengesId {
     BezoutRelationIndeterminate,
     ProcessorPermIndeterminate,
@@ -507,8 +507,6 @@ pub enum RamTableChallengesId {
     RampWeight,
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
-
-impl Eq for RamTableChallengesId {}
 
 impl From<RamTableChallengesId> for usize {
     fn from(val: RamTableChallengesId) -> Self {

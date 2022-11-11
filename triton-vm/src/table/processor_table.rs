@@ -199,16 +199,16 @@ impl ProcessorTable {
                     .into_iter()
                     .zip_eq(
                         [
-                            challenges.hash_table_stack_input_weights0,
-                            challenges.hash_table_stack_input_weights1,
-                            challenges.hash_table_stack_input_weights2,
-                            challenges.hash_table_stack_input_weights3,
-                            challenges.hash_table_stack_input_weights4,
-                            challenges.hash_table_stack_input_weights5,
-                            challenges.hash_table_stack_input_weights6,
-                            challenges.hash_table_stack_input_weights7,
-                            challenges.hash_table_stack_input_weights8,
-                            challenges.hash_table_stack_input_weights9,
+                            challenges.hash_table_stack_input_weight0,
+                            challenges.hash_table_stack_input_weight1,
+                            challenges.hash_table_stack_input_weight2,
+                            challenges.hash_table_stack_input_weight3,
+                            challenges.hash_table_stack_input_weight4,
+                            challenges.hash_table_stack_input_weight5,
+                            challenges.hash_table_stack_input_weight6,
+                            challenges.hash_table_stack_input_weight7,
+                            challenges.hash_table_stack_input_weight8,
+                            challenges.hash_table_stack_input_weight9,
                         ]
                         .into_iter(),
                     )
@@ -234,11 +234,11 @@ impl ProcessorTable {
                         .into_iter()
                         .zip_eq(
                             [
-                                challenges.hash_table_digest_output_weights0,
-                                challenges.hash_table_digest_output_weights1,
-                                challenges.hash_table_digest_output_weights2,
-                                challenges.hash_table_digest_output_weights3,
-                                challenges.hash_table_digest_output_weights4,
+                                challenges.hash_table_digest_output_weight0,
+                                challenges.hash_table_digest_output_weight1,
+                                challenges.hash_table_digest_output_weight2,
+                                challenges.hash_table_digest_output_weight3,
+                                challenges.hash_table_digest_output_weight4,
                             ]
                             .into_iter(),
                         )
@@ -484,7 +484,7 @@ impl ExtProcessorTable {
     }
 }
 
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum ProcessorTableChallengeId {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the processor table.
@@ -521,27 +521,25 @@ pub enum ProcessorTableChallengeId {
     UniqueClockJumpDifferencesEvalIndeterminate,
     AllClockJumpDifferencesMultiPermIndeterminate,
 
-    // 2* Digest_Length elements of these
-    HashTableStackInputWeights0,
-    HashTableStackInputWeights1,
-    HashTableStackInputWeights2,
-    HashTableStackInputWeights3,
-    HashTableStackInputWeights4,
-    HashTableStackInputWeights5,
-    HashTableStackInputWeights6,
-    HashTableStackInputWeights7,
-    HashTableStackInputWeights8,
-    HashTableStackInputWeights9,
+    // 2 * DIGEST_LENGTH elements of these
+    HashTableStackInputWeight0,
+    HashTableStackInputWeight1,
+    HashTableStackInputWeight2,
+    HashTableStackInputWeight3,
+    HashTableStackInputWeight4,
+    HashTableStackInputWeight5,
+    HashTableStackInputWeight6,
+    HashTableStackInputWeight7,
+    HashTableStackInputWeight8,
+    HashTableStackInputWeight9,
 
-    // Digest_Length elements of these
-    HashTableDigestOutputWeights0,
-    HashTableDigestOutputWeights1,
-    HashTableDigestOutputWeights2,
-    HashTableDigestOutputWeights3,
-    HashTableDigestOutputWeights4,
+    // DIGEST_LENGTH elements of these
+    HashTableDigestOutputWeight0,
+    HashTableDigestOutputWeight1,
+    HashTableDigestOutputWeight2,
+    HashTableDigestOutputWeight3,
+    HashTableDigestOutputWeight4,
 }
-
-impl Eq for ProcessorTableChallengeId {}
 
 impl From<ProcessorTableChallengeId> for usize {
     fn from(val: ProcessorTableChallengeId) -> Self {
@@ -586,24 +584,24 @@ pub struct ProcessorTableChallenges {
     pub unique_clock_jump_differences_eval_indeterminate: XFieldElement,
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 
-    // 2* Digest_Length elements of these
-    pub hash_table_stack_input_weights0: XFieldElement,
-    pub hash_table_stack_input_weights1: XFieldElement,
-    pub hash_table_stack_input_weights2: XFieldElement,
-    pub hash_table_stack_input_weights3: XFieldElement,
-    pub hash_table_stack_input_weights4: XFieldElement,
-    pub hash_table_stack_input_weights5: XFieldElement,
-    pub hash_table_stack_input_weights6: XFieldElement,
-    pub hash_table_stack_input_weights7: XFieldElement,
-    pub hash_table_stack_input_weights8: XFieldElement,
-    pub hash_table_stack_input_weights9: XFieldElement,
+    // 2 * DIGEST_LENGTH elements of these
+    pub hash_table_stack_input_weight0: XFieldElement,
+    pub hash_table_stack_input_weight1: XFieldElement,
+    pub hash_table_stack_input_weight2: XFieldElement,
+    pub hash_table_stack_input_weight3: XFieldElement,
+    pub hash_table_stack_input_weight4: XFieldElement,
+    pub hash_table_stack_input_weight5: XFieldElement,
+    pub hash_table_stack_input_weight6: XFieldElement,
+    pub hash_table_stack_input_weight7: XFieldElement,
+    pub hash_table_stack_input_weight8: XFieldElement,
+    pub hash_table_stack_input_weight9: XFieldElement,
 
-    // Digest_Length elements of these
-    pub hash_table_digest_output_weights0: XFieldElement,
-    pub hash_table_digest_output_weights1: XFieldElement,
-    pub hash_table_digest_output_weights2: XFieldElement,
-    pub hash_table_digest_output_weights3: XFieldElement,
-    pub hash_table_digest_output_weights4: XFieldElement,
+    // DIGEST_LENGTH elements of these
+    pub hash_table_digest_output_weight0: XFieldElement,
+    pub hash_table_digest_output_weight1: XFieldElement,
+    pub hash_table_digest_output_weight2: XFieldElement,
+    pub hash_table_digest_output_weight3: XFieldElement,
+    pub hash_table_digest_output_weight4: XFieldElement,
 }
 
 impl TableChallenges for ProcessorTableChallenges {
@@ -656,50 +654,50 @@ impl TableChallenges for ProcessorTableChallenges {
             ProcessorTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights0 => {
-                self.hash_table_stack_input_weights0
+            ProcessorTableChallengeId::HashTableStackInputWeight0 => {
+                self.hash_table_stack_input_weight0
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights1 => {
-                self.hash_table_stack_input_weights1
+            ProcessorTableChallengeId::HashTableStackInputWeight1 => {
+                self.hash_table_stack_input_weight1
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights2 => {
-                self.hash_table_stack_input_weights2
+            ProcessorTableChallengeId::HashTableStackInputWeight2 => {
+                self.hash_table_stack_input_weight2
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights3 => {
-                self.hash_table_stack_input_weights3
+            ProcessorTableChallengeId::HashTableStackInputWeight3 => {
+                self.hash_table_stack_input_weight3
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights4 => {
-                self.hash_table_stack_input_weights4
+            ProcessorTableChallengeId::HashTableStackInputWeight4 => {
+                self.hash_table_stack_input_weight4
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights5 => {
-                self.hash_table_stack_input_weights5
+            ProcessorTableChallengeId::HashTableStackInputWeight5 => {
+                self.hash_table_stack_input_weight5
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights6 => {
-                self.hash_table_stack_input_weights6
+            ProcessorTableChallengeId::HashTableStackInputWeight6 => {
+                self.hash_table_stack_input_weight6
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights7 => {
-                self.hash_table_stack_input_weights7
+            ProcessorTableChallengeId::HashTableStackInputWeight7 => {
+                self.hash_table_stack_input_weight7
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights8 => {
-                self.hash_table_stack_input_weights8
+            ProcessorTableChallengeId::HashTableStackInputWeight8 => {
+                self.hash_table_stack_input_weight8
             }
-            ProcessorTableChallengeId::HashTableStackInputWeights9 => {
-                self.hash_table_stack_input_weights9
+            ProcessorTableChallengeId::HashTableStackInputWeight9 => {
+                self.hash_table_stack_input_weight9
             }
-            ProcessorTableChallengeId::HashTableDigestOutputWeights0 => {
-                self.hash_table_digest_output_weights0
+            ProcessorTableChallengeId::HashTableDigestOutputWeight0 => {
+                self.hash_table_digest_output_weight0
             }
-            ProcessorTableChallengeId::HashTableDigestOutputWeights1 => {
-                self.hash_table_digest_output_weights1
+            ProcessorTableChallengeId::HashTableDigestOutputWeight1 => {
+                self.hash_table_digest_output_weight1
             }
-            ProcessorTableChallengeId::HashTableDigestOutputWeights2 => {
-                self.hash_table_digest_output_weights2
+            ProcessorTableChallengeId::HashTableDigestOutputWeight2 => {
+                self.hash_table_digest_output_weight2
             }
-            ProcessorTableChallengeId::HashTableDigestOutputWeights3 => {
-                self.hash_table_digest_output_weights3
+            ProcessorTableChallengeId::HashTableDigestOutputWeight3 => {
+                self.hash_table_digest_output_weight3
             }
-            ProcessorTableChallengeId::HashTableDigestOutputWeights4 => {
-                self.hash_table_digest_output_weights4
+            ProcessorTableChallengeId::HashTableDigestOutputWeight4 => {
+                self.hash_table_digest_output_weight4
             }
         }
     }
@@ -889,16 +887,16 @@ impl ExtProcessorTable {
             InstructionDeselectors::instruction_deselector_single_row(&factory, Instruction::Hash);
         let to_hash_table_indeterminate = constant_x(challenges.to_hash_table_eval_indeterminate);
         let weights = [
-            challenges.hash_table_stack_input_weights0,
-            challenges.hash_table_stack_input_weights1,
-            challenges.hash_table_stack_input_weights2,
-            challenges.hash_table_stack_input_weights3,
-            challenges.hash_table_stack_input_weights4,
-            challenges.hash_table_stack_input_weights5,
-            challenges.hash_table_stack_input_weights6,
-            challenges.hash_table_stack_input_weights7,
-            challenges.hash_table_stack_input_weights8,
-            challenges.hash_table_stack_input_weights9,
+            challenges.hash_table_stack_input_weight0,
+            challenges.hash_table_stack_input_weight1,
+            challenges.hash_table_stack_input_weight2,
+            challenges.hash_table_stack_input_weight3,
+            challenges.hash_table_stack_input_weight4,
+            challenges.hash_table_stack_input_weight5,
+            challenges.hash_table_stack_input_weight6,
+            challenges.hash_table_stack_input_weight7,
+            challenges.hash_table_stack_input_weight8,
+            challenges.hash_table_stack_input_weight9,
         ]
         .map(constant_x);
         let state = [
@@ -2924,25 +2922,25 @@ impl RowPairConstraints {
 
         let weights = [
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights0),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight0),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights1),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight1),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights2),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight2),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights3),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight3),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights4),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight4),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights5),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight5),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights6),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight6),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights7),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight7),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights8),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight8),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeights9),
+                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight9),
         ];
         let state = [
             self.st0_next(),
@@ -2983,15 +2981,15 @@ impl RowPairConstraints {
 
         let weights = [
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeights0),
+                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight0),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeights1),
+                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight1),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeights2),
+                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight2),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeights3),
+                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight3),
             self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeights4),
+                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight4),
         ];
         let state = [
             self.st5_next(),
