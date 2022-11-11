@@ -54,16 +54,16 @@ the value `a` was supplied as a secret input.
 
 | Instruction | Opcode | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                             |
 |:------------|-------:|:------------|:------------|:-----------|:-----------|:----------------------------------------------------------------------------------------|
-| `read_mem`  |     24 | `_ p a`     | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and overwrites the top of the OpStack with `v`. |
-| `write_mem` |     28 | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
+| `read_mem`  |     20 | `_ p a`     | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and overwrites the top of the OpStack with `v`. |
+| `write_mem` |     24 | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
 
 ## Hashing
 
 | Instruction      | Opcode | old OpStack     | new OpStack                   | Description                                                                                             |
 |:-----------------|-------:|:----------------|:------------------------------|:--------------------------------------------------------------------------------------------------------|
-| `hash`           |     32 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 6) and 6 zeros.              |
-| `divine_sibling` |     36 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
-| `assert_vector`  |     40 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
+| `hash`           |     28 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 6) and 6 zeros.              |
+| `divine_sibling` |     32 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
+| `assert_vector`  |     36 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are reversed and concatenated with six zeros, resulting in `abcdefghij000000`.
@@ -88,18 +88,18 @@ In conjunction with instruction `hash` and `assert_vector`, the instruction `div
 |:------------|-------:|:----------------|:---------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `add`       |     14 | `_ b a`         | `_ c`                | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                       |
 | `mul`       |     18 | `_ b a`         | `_ c`                | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                   |
-| `invert`    |     44 | `_ a`           | `_ b`                | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                      |
-| `split`     |     48 | `_ a`           | `_ lo hi`            | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits. Use with care, preferably through [pseudo instructions](pseudo-instructions.md).                  |
+| `invert`    |     40 | `_ a`           | `_ b`                | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                      |
+| `split`     |     44 | `_ a`           | `_ lo hi`            | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits. Use with care, preferably through [pseudo instructions](pseudo-instructions.md).                  |
 | `eq`        |     22 | `_ b a`         | `_ (a == b)`         | Tests the top two stack elements for equality.                                                                                                                                  |
-| `lsb`       |     52 | `_ a`           | `_ (a >> 1) (a % 2)` | Bit-shifts `a` to the right by 1 bit and pushes the least significant bit of `a` to the stack. Use with care, preferably through [pseudo instructions](pseudo-instructions.md). |
-| `xxadd`     |     56 | `_ z y x b c a` | `_ z y x w v u`      | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                          |
-| `xxmul`     |     60 | `_ z y x b c a` | `_ z y x w v u`      | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                    |
-| `xinvert`   |     64 | `_ z y x`       | `_ w v u`            | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                             |
+| `lsb`       |     48 | `_ a`           | `_ (a >> 1) (a % 2)` | Bit-shifts `a` to the right by 1 bit and pushes the least significant bit of `a` to the stack. Use with care, preferably through [pseudo instructions](pseudo-instructions.md). |
+| `xxadd`     |     52 | `_ z y x b c a` | `_ z y x w v u`      | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                          |
+| `xxmul`     |     56 | `_ z y x b c a` | `_ z y x w v u`      | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                    |
+| `xinvert`   |     60 | `_ z y x`       | `_ w v u`            | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                             |
 | `xbmul`     |     26 | `_ z y x a`     | `_ w v u`            | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.                              |
 
 ## Input/Output
 
 | Instruction | Opcode | old OpStack | new OpStack | Description                                                             |
 |:------------|-------:|:------------|:------------|:------------------------------------------------------------------------|
-| `read_io`   |     68 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
+| `read_io`   |     64 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
 | `write_io`  |     30 | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |
