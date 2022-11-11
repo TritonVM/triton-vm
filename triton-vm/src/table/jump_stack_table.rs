@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use num_traits::One;
 use strum::EnumCount;
+use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
@@ -15,7 +16,8 @@ use crate::table::table_column::JumpStackBaseTableColumn::{self, *};
 use crate::table::table_column::JumpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::AllChallenges;
+use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
@@ -179,32 +181,36 @@ impl ExtJumpStackTable {
         vec![]
     }
 
-    fn ext_transition_constraints(
-        challenges: &JumpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let constant = |xfe| MPolynomial::from_constant(xfe, 2 * FULL_WIDTH);
-        let one = constant(XFieldElement::one());
-        let call_opcode = constant(Instruction::Call(Default::default()).opcode_b().lift());
-        let return_opcode = constant(Instruction::Return.opcode_b().lift());
+    fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<JumpStackTableChallenges>>
+    {
+        let mut circuit_builder =
+            ConstraintCircuitBuilder::<JumpStackTableChallenges>::new(2 * FULL_WIDTH);
+        let one = circuit_builder.constant(1.into());
+        let call_opcode =
+            circuit_builder.constant(Instruction::Call(Default::default()).opcode_b().lift());
+        let return_opcode = circuit_builder.constant(Instruction::Return.opcode_b().lift());
 
-        let variables = MPolynomial::variables(2 * FULL_WIDTH);
-        let clk = variables[usize::from(CLK)].clone();
-        let ci = variables[usize::from(CI)].clone();
-        let jsp = variables[usize::from(JSP)].clone();
-        let jso = variables[usize::from(JSO)].clone();
-        let jsd = variables[usize::from(JSD)].clone();
-        let clk_di = variables[usize::from(InverseOfClkDiffMinusOne)].clone();
-        let rppa = variables[usize::from(RunningProductPermArg)].clone();
-        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
-        let clk_next = variables[FULL_WIDTH + usize::from(CLK)].clone();
-        let ci_next = variables[FULL_WIDTH + usize::from(CI)].clone();
-        let jsp_next = variables[FULL_WIDTH + usize::from(JSP)].clone();
-        let jso_next = variables[FULL_WIDTH + usize::from(JSO)].clone();
-        let jsd_next = variables[FULL_WIDTH + usize::from(JSD)].clone();
-        let clk_di_next = variables[FULL_WIDTH + usize::from(InverseOfClkDiffMinusOne)].clone();
-        let rppa_next = variables[FULL_WIDTH + usize::from(RunningProductPermArg)].clone();
-        let rpcjd_next =
-            variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone();
+        let clk = circuit_builder.deterministic_input(usize::from(CLK));
+        let ci = circuit_builder.deterministic_input(usize::from(CI));
+        let jsp = circuit_builder.deterministic_input(usize::from(JSP));
+        let jso = circuit_builder.deterministic_input(usize::from(JSO));
+        let jsd = circuit_builder.deterministic_input(usize::from(JSD));
+        let clk_di = circuit_builder.deterministic_input(usize::from(InverseOfClkDiffMinusOne));
+        let rppa = circuit_builder.deterministic_input(usize::from(RunningProductPermArg));
+        let rpcjd =
+            circuit_builder.deterministic_input(usize::from(AllClockJumpDifferencesPermArg));
+
+        let clk_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CLK));
+        let _ci_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(CI));
+        let jsp_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSP));
+        let jso_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSO));
+        let jsd_next = circuit_builder.deterministic_input(FULL_WIDTH + usize::from(JSD));
+        let clk_di_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(InverseOfClkDiffMinusOne));
+        let rppa_next =
+            circuit_builder.deterministic_input(FULL_WIDTH + usize::from(RunningProductPermArg));
+        let rpcjd_next = circuit_builder
+            .deterministic_input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
 
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change
@@ -217,13 +223,12 @@ impl ExtJumpStackTable {
         let jsp_inc_by_one_or_ci_is_return =
             (jsp_next.clone() - (jsp.clone() + one.clone())) * (ci.clone() - return_opcode.clone());
         let jsp_inc_or_jso_stays_or_ci_is_ret =
-            jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
+            jsp_inc_by_one_or_ci_is_return.clone() * (jso_next - jso);
 
         // 3. The jump stack pointer jsp increases by 1
         //      or current instruction ci is return
         //      or the jump stack destination jsd does not change
-        let jsp_inc_or_jsd_stays_or_ci_ret =
-            jsp_inc_by_one_or_ci_is_return * (jsd_next.clone() - jsd);
+        let jsp_inc_or_jsd_stays_or_ci_ret = jsp_inc_by_one_or_ci_is_return * (jsd_next - jsd);
 
         // 4. The jump stack pointer jsp increases by 1
         //      or the cycle count clk increases by 1
@@ -249,13 +254,27 @@ impl ExtJumpStackTable {
         // 6. The running product for the permutation argument `rppa`
         //  accumulates one row in each row, relative to weights `a`,
         //  `b`, `c`, `d`, `e`, and indeterminate `α`.
-        let compressed_row = constant(challenges.clk_weight) * clk_next.clone()
-            + constant(challenges.ci_weight) * ci_next
-            + constant(challenges.jsp_weight) * jsp_next.clone()
-            + constant(challenges.jso_weight) * jso_next
-            + constant(challenges.jsd_weight) * jsd_next;
-        let rppa_updates_correctly =
-            rppa_next - rppa * (constant(challenges.processor_perm_indeterminate) - compressed_row);
+        let compressed_row = circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(CLK),
+            JumpStackTableChallengesId::ClkWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(CI),
+            JumpStackTableChallengesId::CiWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(JSP),
+            JumpStackTableChallengesId::JspWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(JSO),
+            JumpStackTableChallengesId::JsoWeight,
+        ) + circuit_builder.randomized_input(
+            FULL_WIDTH + usize::from(JSD),
+            JumpStackTableChallengesId::JsdWeight,
+        );
+        let rppa_updates_correctly = rppa_next
+            - rppa
+                * (circuit_builder
+                    .challenge(JumpStackTableChallengesId::ProcessorPermRowIndeterminate)
+                    - compressed_row);
 
         // 7. The running product for clock jump differences `rpcjd`
         // accumulates a factor `(clk' - clk - 1)` (relative to
@@ -267,8 +286,8 @@ impl ExtJumpStackTable {
         // + (jsp' - jsp) · (rpcjd' - rpcjd)
         // + (clk' - clk - 1) · (jsp' - jsp - 1)
         //     · (rpcjd' - rpcjd · (β - clk' + clk))`
-        let indeterminate =
-            constant(challenges.all_clock_jump_differences_multi_perm_indeterminate);
+        let indeterminate = circuit_builder
+            .challenge(JumpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate);
         let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
         let jsp_diff = jsp_next - jsp;
         let rpcjd_update = rpcjd_next - rpcjd * (indeterminate - clk_next.clone() + clk.clone());
@@ -282,15 +301,28 @@ impl ExtJumpStackTable {
             + rpcjd_updates_if_jsp_remains_and_clk_jumps;
 
         vec![
-            jsp_inc_or_stays,
-            jsp_inc_or_jso_stays_or_ci_is_ret,
-            jsp_inc_or_jsd_stays_or_ci_ret,
-            jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
-            clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes,
-            clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes,
-            rppa_updates_correctly,
-            rpcjd_updates_correctly,
+            jsp_inc_or_stays.consume(),
+            jsp_inc_or_jso_stays_or_ci_is_ret.consume(),
+            jsp_inc_or_jsd_stays_or_ci_ret.consume(),
+            jsp_inc_or_clk_inc_or_ci_call_or_ci_ret.consume(),
+            clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes.consume(),
+            clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes
+                .consume(),
+            rppa_updates_correctly.consume(),
+            rpcjd_updates_correctly.consume(),
         ]
+    }
+
+    fn ext_transition_constraints(
+        challenges: &JumpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        let circuits = Self::ext_transition_constraints_as_circuits();
+        let mut ret: Vec<MPolynomial<XFieldElement>> = vec![];
+        for circuit in circuits {
+            ret.push(circuit.partial_evaluate(challenges));
+        }
+
+        ret
     }
 
     fn ext_terminal_constraints(
@@ -456,6 +488,25 @@ impl ExtJumpStackTable {
     }
 }
 
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash)]
+pub enum JumpStackTableChallengesId {
+    ProcessorPermRowIndeterminate,
+    ClkWeight,
+    CiWeight,
+    JspWeight,
+    JsoWeight,
+    JsdWeight,
+    AllClockJumpDifferencesMultiPermIndeterminate,
+}
+
+impl Eq for JumpStackTableChallengesId {}
+
+impl From<JumpStackTableChallengesId> for usize {
+    fn from(val: JumpStackTableChallengesId) -> Self {
+        val as usize
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct JumpStackTableChallenges {
     /// The weight that combines two consecutive rows in the
@@ -471,6 +522,26 @@ pub struct JumpStackTableChallenges {
 
     /// Weight for accumulating all clock jump differences
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
+}
+
+impl TableChallenges for JumpStackTableChallenges {
+    type Id = JumpStackTableChallengesId;
+
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
+        match id {
+            JumpStackTableChallengesId::ProcessorPermRowIndeterminate => {
+                self.processor_perm_indeterminate
+            }
+            JumpStackTableChallengesId::ClkWeight => self.clk_weight,
+            JumpStackTableChallengesId::CiWeight => self.ci_weight,
+            JumpStackTableChallengesId::JspWeight => self.jsp_weight,
+            JumpStackTableChallengesId::JsoWeight => self.jso_weight,
+            JumpStackTableChallengesId::JsdWeight => self.jsd_weight,
+            JumpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate => {
+                self.all_clock_jump_differences_multi_perm_indeterminate
+            }
+        }
+    }
 }
 
 impl ExtensionTable for ExtJumpStackTable {

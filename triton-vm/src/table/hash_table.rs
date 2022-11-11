@@ -7,8 +7,9 @@ use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::{
-    ALPHA, CAPACITY, DIGEST_LENGTH, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
+    ALPHA, CAPACITY, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
 };
 use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::ModPowU64;
@@ -242,13 +243,22 @@ impl Evaluable for ExtHashTable {
         let xlix_input = (0..2 * DIGEST_LENGTH)
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
-        let compressed_row_from_processor = challenges
-            .hash_table_challenges
-            .stack_input_weights
-            .iter()
-            .zip_eq(xlix_input.iter())
-            .map(|(&weight, &state)| weight * state)
-            .sum();
+        let compressed_row_from_processor = [
+            challenges.hash_table_challenges.stack_input_weights0,
+            challenges.hash_table_challenges.stack_input_weights1,
+            challenges.hash_table_challenges.stack_input_weights2,
+            challenges.hash_table_challenges.stack_input_weights3,
+            challenges.hash_table_challenges.stack_input_weights4,
+            challenges.hash_table_challenges.stack_input_weights5,
+            challenges.hash_table_challenges.stack_input_weights6,
+            challenges.hash_table_challenges.stack_input_weights7,
+            challenges.hash_table_challenges.stack_input_weights8,
+            challenges.hash_table_challenges.stack_input_weights9,
+        ]
+        .into_iter()
+        .zip_eq(xlix_input.into_iter())
+        .map(|(weight, state)| weight * state)
+        .sum();
         let running_evaluation_from_processor_updates = running_evaluation_from_processor_next
             - from_processor_eval_indeterminate * running_evaluation_from_processor
             - compressed_row_from_processor;
@@ -268,13 +278,17 @@ impl Evaluable for ExtHashTable {
         let xlix_digest = (0..DIGEST_LENGTH)
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
-        let compressed_row_to_processor = challenges
-            .hash_table_challenges
-            .digest_output_weights
-            .iter()
-            .zip_eq(xlix_digest.iter())
-            .map(|(&weight, &state)| weight * state)
-            .sum();
+        let compressed_row_to_processor = [
+            challenges.hash_table_challenges.digest_output_weights0,
+            challenges.hash_table_challenges.digest_output_weights1,
+            challenges.hash_table_challenges.digest_output_weights2,
+            challenges.hash_table_challenges.digest_output_weights3,
+            challenges.hash_table_challenges.digest_output_weights4,
+        ]
+        .into_iter()
+        .zip_eq(xlix_digest.into_iter())
+        .map(|(weight, state)| weight * state)
+        .sum();
         let running_evaluation_to_processor_updates = running_evaluation_to_processor_next
             - to_processor_eval_indeterminate * running_evaluation_to_processor
             - compressed_row_to_processor;
@@ -386,12 +400,22 @@ impl ExtHashTable {
         // Else, the first update has been applied to the running evaluation.
         let running_evaluation_from_processor_is_default_initial =
             running_evaluation_from_processor.clone() - running_evaluation_initial.clone();
-        let compressed_row = challenges
-            .stack_input_weights
-            .iter()
-            .zip_eq(state.iter())
-            .map(|(&w, s)| s.clone() * constant(w))
-            .sum();
+        let compressed_row = [
+            challenges.stack_input_weights0,
+            challenges.stack_input_weights1,
+            challenges.stack_input_weights2,
+            challenges.stack_input_weights3,
+            challenges.stack_input_weights4,
+            challenges.stack_input_weights5,
+            challenges.stack_input_weights6,
+            challenges.stack_input_weights7,
+            challenges.stack_input_weights8,
+            challenges.stack_input_weights9,
+        ]
+        .iter()
+        .zip_eq(state.iter())
+        .map(|(&w, s)| s.clone() * constant(w))
+        .sum();
         let from_processor_indeterminate = constant(challenges.from_processor_eval_indeterminate);
         let running_evaluation_from_processor_is_updated = running_evaluation_from_processor
             - running_evaluation_initial.clone() * from_processor_indeterminate
@@ -659,7 +683,21 @@ impl HashTable {
                 ];
                 let compressed_state_for_input = state_for_input
                     .iter()
-                    .zip_eq(challenges.stack_input_weights.iter())
+                    .zip_eq(
+                        [
+                            challenges.stack_input_weights0,
+                            challenges.stack_input_weights1,
+                            challenges.stack_input_weights2,
+                            challenges.stack_input_weights3,
+                            challenges.stack_input_weights4,
+                            challenges.stack_input_weights5,
+                            challenges.stack_input_weights6,
+                            challenges.stack_input_weights7,
+                            challenges.stack_input_weights8,
+                            challenges.stack_input_weights9,
+                        ]
+                        .iter(),
+                    )
                     .map(|(&state, &weight)| weight * state)
                     .sum();
 
@@ -681,7 +719,16 @@ impl HashTable {
                 ];
                 let compressed_state_for_output = state_for_output
                     .iter()
-                    .zip_eq(challenges.digest_output_weights.iter())
+                    .zip_eq(
+                        [
+                            challenges.digest_output_weights0,
+                            challenges.digest_output_weights1,
+                            challenges.digest_output_weights2,
+                            challenges.digest_output_weights3,
+                            challenges.digest_output_weights4,
+                        ]
+                        .iter(),
+                    )
                     .map(|(&state, &weight)| weight * state)
                     .sum();
 
@@ -770,8 +817,24 @@ pub struct HashTableChallenges {
     pub to_processor_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub stack_input_weights: [XFieldElement; 2 * DIGEST_LENGTH],
-    pub digest_output_weights: [XFieldElement; DIGEST_LENGTH],
+    // There are 2 * DIGEST_LENGTH elements of these
+    pub stack_input_weights0: XFieldElement,
+    pub stack_input_weights1: XFieldElement,
+    pub stack_input_weights2: XFieldElement,
+    pub stack_input_weights3: XFieldElement,
+    pub stack_input_weights4: XFieldElement,
+    pub stack_input_weights5: XFieldElement,
+    pub stack_input_weights6: XFieldElement,
+    pub stack_input_weights7: XFieldElement,
+    pub stack_input_weights8: XFieldElement,
+    pub stack_input_weights9: XFieldElement,
+
+    // There are DIGEST_LENGTH elements of these
+    pub digest_output_weights0: XFieldElement,
+    pub digest_output_weights1: XFieldElement,
+    pub digest_output_weights2: XFieldElement,
+    pub digest_output_weights3: XFieldElement,
+    pub digest_output_weights4: XFieldElement,
 }
 
 impl ExtensionTable for ExtHashTable {
