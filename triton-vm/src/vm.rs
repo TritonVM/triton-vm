@@ -219,7 +219,7 @@ pub mod triton_vm_tests {
     use crate::table::base_table::{Extendable, InheritsFromTable};
     use crate::table::challenges::AllChallenges;
     use crate::table::extension_table::Evaluable;
-    use crate::table::processor_table::{self, ProcessorTable};
+    use crate::table::processor_table::ProcessorTable;
     use crate::table::table_collection::interpolant_degree;
     use crate::table::table_column::ProcessorBaseTableColumn;
 
@@ -862,40 +862,34 @@ pub mod triton_vm_tests {
             let ext_processor_table =
                 processor_table.extend(&challenges.processor_table_challenges, interpolant_degree);
 
-            for (row_idx, (row, next_row)) in ext_processor_table
+            for (row_idx, (current_row, next_row)) in ext_processor_table
                 .data()
                 .iter()
                 .tuple_windows()
                 .enumerate()
             {
-                let evaluation_point = vec![row.clone(), next_row.clone()].concat();
-
                 for (tc_idx, tc_evaluation_result) in ext_processor_table
-                    .evaluate_transition_constraints(&evaluation_point, &challenges)
+                    .evaluate_transition_constraints(current_row, next_row, &challenges)
                     .iter()
                     .enumerate()
                 {
                     if !tc_evaluation_result.is_zero() {
+                        let ci = current_row[ProcessorBaseTableColumn::CI as usize].coefficients[0]
+                            .value();
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
                             {tc_evaluation_result} but must be 0.\n\
                             Instruction: {:?} – opcode: {:?}\n\
-                            Evaluation Point, first half:   [{:?}]\n\
-                            Evaluation Point, second half:  [{:?}]",
-                            AnInstruction::<BFieldElement>::try_from(
-                                evaluation_point[ProcessorBaseTableColumn::CI as usize]
-                                    .coefficients[0]
-                                    .value(),
-                            )
-                            .unwrap(),
-                            evaluation_point[ProcessorBaseTableColumn::CI as usize].coefficients[0]
-                                .value(),
-                            evaluation_point[..processor_table::FULL_WIDTH]
+                            Evaluation Point, current row: [{:?}]\n\
+                            Evaluation Point, next row:    [{:?}]",
+                            AnInstruction::<BFieldElement>::try_from(ci,).unwrap(),
+                            ci,
+                            current_row
                                 .iter()
                                 .map(|xfe| format!("{xfe}"))
                                 .collect_vec()
                                 .join(", "),
-                            evaluation_point[processor_table::FULL_WIDTH..]
+                            next_row
                                 .iter()
                                 .map(|xfe| format!("{xfe}"))
                                 .collect_vec()

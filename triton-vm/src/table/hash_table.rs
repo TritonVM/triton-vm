@@ -120,9 +120,12 @@ impl Evaluable for ExtHashTable {
 
     fn evaluate_transition_constraints(
         &self,
-        evaluation_point: &[XFieldElement],
+        current_row: &[XFieldElement],
+        next_row: &[XFieldElement],
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
+        // TODO: Refactor this function by removing `evaluation_point` and use `current_row`, `next_row` directly.
+        let evaluation_point = vec![current_row, next_row].concat();
         let constant = |c: u64| BFieldElement::new(c).lift();
         let from_processor_eval_indeterminate = challenges
             .hash_table_challenges
@@ -911,9 +914,8 @@ mod constraint_tests {
 
         for (i, (current_row, next_row)) in ext_hash_table.data().iter().tuple_windows().enumerate()
         {
-            let eval_point = [current_row.to_vec(), next_row.to_vec()].concat();
             for (j, v) in ext_hash_table
-                .evaluate_transition_constraints(&eval_point, &challenges)
+                .evaluate_transition_constraints(current_row, next_row, &challenges)
                 .iter()
                 .enumerate()
             {

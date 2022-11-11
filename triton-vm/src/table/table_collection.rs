@@ -7,6 +7,7 @@ use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
+use crate::stark::Stark;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
 use triton_profiler::triton_profiler::TritonProfiler;
@@ -481,9 +482,12 @@ impl ExtTableCollection {
                 if let Some(profiler) = maybe_profiler.as_mut() {
                     profiler.start(&ext_codeword_table.name());
                 }
+                // TODO: Consider if we can use `transposed_ext_codewords` from caller, Stark::prove().
+                // This would require more complicated indexing, but it would save a lot of allocation.
+                let transposed_codewords = Stark::transpose(ext_codeword_table.data());
                 let res = ext_codeword_table.all_quotients(
                     fri_domain,
-                    ext_codeword_table.data(),
+                    transposed_codewords,
                     challenges,
                     omicron,
                     padded_height,

@@ -993,9 +993,12 @@ impl Stark {
                 prof_stop!(maybe_profiler, "consistency constraint quotient points");
 
                 prof_start!(maybe_profiler, "transition constraint quotient points");
-                let tc_evaluation_point = [table_row.clone(), next_table_row.clone()].concat();
                 for (evaluated_tc, degree_bound) in table
-                    .evaluate_transition_constraints(&tc_evaluation_point, &extension_challenges)
+                    .evaluate_transition_constraints(
+                        table_row,
+                        next_table_row,
+                        &extension_challenges,
+                    )
                     .into_iter()
                     .zip_eq(transition_quotient_degree_bounds.iter())
                 {
@@ -1442,12 +1445,11 @@ pub(crate) mod triton_stark_tests {
 
         for table in ext_tables.into_iter() {
             let dummy_row = vec![0.into(); table.full_width()];
-            let double_length_dummy_row = vec![0.into(); 2 * table.full_width()];
 
             // will panic if the number of variables is wrong
             table.evaluate_initial_constraints(&dummy_row, &challenges);
             table.evaluate_consistency_constraints(&dummy_row, &challenges);
-            table.evaluate_transition_constraints(&double_length_dummy_row, &challenges);
+            table.evaluate_transition_constraints(&dummy_row, &dummy_row, &challenges);
             table.evaluate_terminal_constraints(&dummy_row, &challenges);
         }
     }
@@ -1495,9 +1497,8 @@ pub(crate) mod triton_stark_tests {
             let num_consistency_constraints = table
                 .evaluate_consistency_constraints(&table.data()[0], &challenges)
                 .len();
-            let evaluation_point = [table.data()[0].clone(), table.data()[1].clone()].concat();
             let num_transition_constraints = table
-                .evaluate_transition_constraints(&evaluation_point, &challenges)
+                .evaluate_transition_constraints(&table.data()[0], &table.data()[1], &challenges)
                 .len();
             let num_terminal_constraints = table
                 .evaluate_terminal_constraints(table.data().last().unwrap(), &challenges)
@@ -1570,9 +1571,8 @@ pub(crate) mod triton_stark_tests {
                 table.name()
             );
 
-            let evaluation_point = [table.data()[0].clone(), table.data()[1].clone()].concat();
             let num_transition_constraints = table
-                .evaluate_transition_constraints(&evaluation_point, &challenges)
+                .evaluate_transition_constraints(&table.data()[0], &table.data()[1], &challenges)
                 .len();
             let num_transition_quotient_degree_bounds = table
                 .get_transition_quotient_degree_bounds(padded_height, num_trace_randomizers)
@@ -1640,9 +1640,8 @@ pub(crate) mod triton_stark_tests {
             }
 
             for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
-                let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
                 let evaluated_tcs =
-                    table.evaluate_transition_constraints(&evaluation_point, &challenges);
+                    table.evaluate_transition_constraints(curr_row, next_row, &challenges);
                 for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
@@ -1709,10 +1708,11 @@ pub(crate) mod triton_stark_tests {
                 }
             }
 
-            for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
-                let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
+            for (row_idx, (current_row, next_row)) in
+                table.data().iter().tuple_windows().enumerate()
+            {
                 let evaluated_tcs =
-                    table.evaluate_transition_constraints(&evaluation_point, &challenges);
+                    table.evaluate_transition_constraints(&current_row, next_row, &challenges);
                 for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
