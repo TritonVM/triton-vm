@@ -358,6 +358,86 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         }
     }
 
+    /// Return max degree after evaluating the circuit with an input of specified degree
+    pub fn symbolic_degree_bound(&self, max_degrees: &[i64]) -> i64 {
+        assert_eq!(
+            self.var_count,
+            max_degrees.len(),
+            "max_degrees length and var_count must match. Got: {}, {}.",
+            max_degrees.len(),
+            self.var_count
+        );
+        match &self.expression {
+            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
+                let lhs_degree = lhs.borrow().symbolic_degree_bound(max_degrees);
+                let rhs_degree = rhs.borrow().symbolic_degree_bound(max_degrees);
+                match binop {
+                    BinOp::Add | BinOp::Sub => cmp::max(lhs_degree, rhs_degree),
+                    BinOp::Mul => {
+                        // If either operand is zero, product is zero so degree is -1
+                        if lhs_degree == -1 || rhs_degree == -1 {
+                            -1
+                        } else {
+                            lhs_degree + rhs_degree
+                        }
+                    }
+                }
+            }
+            CircuitExpression::Input(index) => max_degrees[*index],
+            CircuitExpression::XConstant(xfe) => {
+                if xfe.is_zero() {
+                    -1
+                } else {
+                    0
+                }
+            }
+            CircuitExpression::BConstant(bfe) => {
+                if bfe.is_zero() {
+                    -1
+                } else {
+                    0
+                }
+            }
+            CircuitExpression::Challenge(_) => 0,
+        }
+    }
+
+    /// Return degree of the multivariate polynomial represented by this circuit
+    pub fn degree(&self) -> i64 {
+        match &self.expression {
+            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
+                let lhs_degree = lhs.borrow().degree();
+                let rhs_degree = rhs.borrow().degree();
+                match binop {
+                    BinOp::Add | BinOp::Sub => cmp::max(lhs_degree, rhs_degree),
+                    BinOp::Mul => {
+                        if lhs_degree == -1 || rhs_degree == -1 {
+                            -1
+                        } else {
+                            lhs_degree + rhs_degree
+                        }
+                    }
+                }
+            }
+            CircuitExpression::Input(_) => 1,
+            CircuitExpression::XConstant(xfe) => {
+                if xfe.is_zero() {
+                    -1
+                } else {
+                    0
+                }
+            }
+            CircuitExpression::BConstant(bfe) => {
+                if bfe.is_zero() {
+                    -1
+                } else {
+                    0
+                }
+            }
+            CircuitExpression::Challenge(_) => 0,
+        }
+    }
+
     /// Return the highest counter value encountered in this subtree
     pub fn get_max_visited_counter(&self) -> usize {
         // Maybe this could be solved smarter with dynamic programming
@@ -968,21 +1048,59 @@ mod constraint_circuit_tests {
 
     #[test]
     fn circuit_and_mpol_equivalence_check() {
-        for _ in 0..1000 {
+        for i in 0..1000 {
             let challenges = AllChallenges::placeholder();
-            let (circuit, mpol, _) = circuit_mpol_builder(&challenges.instruction_table_challenges);
+            let (circuit, mpol, circuit_builder) =
+                circuit_mpol_builder(&challenges.instruction_table_challenges);
             assert_eq!(
                 mpol,
-                circuit.partial_evaluate(&challenges.instruction_table_challenges)
+                circuit.partial_evaluate(&challenges.instruction_table_challenges),
+                "Partial evaluate and constructed mpol must agree"
+            );
+
+            assert_eq!(
+                circuit.circuit.as_ref().borrow().degree(),
+                mpol.degree(),
+                "circuit degree and equivalent mpol degree must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuit.circuit.as_ref().borrow()
+            );
+
+            // Also compare with symbolic evaluation
+            let rand_degree = (thread_rng().next_u32() % 200) as i64;
+            let interpolated_degrees = vec![rand_degree; circuit_builder.var_count];
+            assert_eq!(
+                circuit.circuit.as_ref().borrow().symbolic_degree_bound(&interpolated_degrees),
+                mpol.symbolic_degree_bound(&interpolated_degrees),
+                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n interpolated degree: {rand_degree}\niteration {i}",
+                circuit.circuit.as_ref().borrow()
             );
 
             // Also verify equality after constant folding of the circuit
             let copied_circuit = deep_copy(&circuit.circuit.as_ref().borrow());
             let mut circuits = vec![circuit.consume()];
             ConstraintCircuit::constant_folding(&mut circuits.iter_mut().collect_vec());
+            let partial_evaluated =
+                circuits[0].partial_evaluate(&challenges.instruction_table_challenges);
             assert_eq!(
                 mpol,
-                circuits[0].partial_evaluate(&challenges.instruction_table_challenges), "Circuit before and after constant folding must agree after parital evaluate.\n before: {copied_circuit}\nafter: {}", circuits[0]
+                partial_evaluated, "Circuit before and after constant folding must agree after parital evaluate.\n before: {copied_circuit}\nafter: {}", circuits[0]
+            );
+            assert_eq!(
+                circuits[0].degree(),
+                mpol.degree(),
+                "circuit degree and equivalent mpol degree must match after constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
+            );
+            assert_eq!(
+                circuits[0].degree(),
+                partial_evaluated.degree(),
+                "circuit degree and the degree of its partial evaluation must agree. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
+            );
+
+            // Also compare with symbolic evaluation
+            let interpolated_degrees = vec![rand_degree; circuit_builder.var_count];
+            assert_eq!(
+                circuits[0].symbolic_degree_bound(&interpolated_degrees),
+                partial_evaluated.symbolic_degree_bound(&interpolated_degrees),
+                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
             );
         }
     }
@@ -1230,7 +1348,13 @@ mod constraint_circuit_tests {
         let mut before_fold: Vec<MPolynomial<XFieldElement>> = vec![];
 
         for circuit in constraints.iter() {
-            before_fold.push(circuit.partial_evaluate(&challenges));
+            let partial_evaluated = circuit.partial_evaluate(&challenges);
+            assert_eq!(
+                partial_evaluated.degree(),
+                circuit.degree(),
+                "Degree of partial evaluated and circuit must agree before constant folding"
+            );
+            before_fold.push(partial_evaluated);
         }
 
         ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
@@ -1241,7 +1365,13 @@ mod constraint_circuit_tests {
 
         let mut after_fold: Vec<MPolynomial<XFieldElement>> = vec![];
         for circuit in constraints.iter() {
-            after_fold.push(circuit.partial_evaluate(&challenges));
+            let partial_evaluated = circuit.partial_evaluate(&challenges);
+            assert_eq!(
+                partial_evaluated.degree(),
+                circuit.degree(),
+                "Degree of partial evaluated and circuit must agree after constant folding"
+            );
+            after_fold.push(partial_evaluated);
         }
 
         for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
@@ -1269,6 +1399,9 @@ mod constraint_circuit_tests {
             "nodes in {table_name} constraint multitree after applying challenges and constant folding again: {}",
             node_counter(&mut constraints)
         );
+        let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap();
+
+        println!("Max degree constraint for {table_name} table: {circuit_degree}");
     }
 
     #[test]
