@@ -879,7 +879,7 @@ mod constraint_tests {
     fn table_satisfies_constraints_test() {
         let program = Program::from_code("hash hash hash halt").unwrap();
 
-        let (aet, maybe_err, _) = program.simulate_with_input(&[], &[]);
+        let (aet, _, maybe_err) = program.simulate_no_input();
 
         if let Some(e) = maybe_err {
             panic!("Program execution failed: {e}");

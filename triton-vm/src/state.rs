@@ -26,7 +26,6 @@ use super::error::{vm_fail, InstructionError::*};
 use super::instruction::{AnInstruction::*, Instruction};
 use super::op_stack::OpStack;
 use super::ord_n::{Ord16::*, Ord7::*};
-use super::stdio::InputStream;
 use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table};
 use super::table::{processor_table, ram_table};
 use super::vm::Program;
@@ -105,14 +104,11 @@ impl<'pgm> VMState<'pgm> {
     }
 
     /// Given a state, compute `(next_state, vm_output)`.
-    pub fn step<In>(
+    pub fn step(
         &self,
-        stdin: &mut In,
-        secret_in: &mut In,
-    ) -> Result<(VMState<'pgm>, Option<VMOutput>), Box<dyn Error>>
-    where
-        In: InputStream,
-    {
+        stdin: &mut Vec<BFieldElement>,
+        secret_in: &mut Vec<BFieldElement>,
+    ) -> Result<(VMState<'pgm>, Option<VMOutput>), Box<dyn Error>> {
         let mut next_state = self.clone();
         next_state
             .step_mut(stdin, secret_in)
@@ -181,14 +177,11 @@ impl<'pgm> VMState<'pgm> {
     }
 
     /// Perform the state transition as a mutable operation on `self`.
-    pub fn step_mut<In>(
+    pub fn step_mut(
         &mut self,
-        stdin: &mut In,
-        secret_in: &mut In,
-    ) -> Result<Option<VMOutput>, Box<dyn Error>>
-    where
-        In: InputStream,
-    {
+        stdin: &mut Vec<BFieldElement>,
+        secret_in: &mut Vec<BFieldElement>,
+    ) -> Result<Option<VMOutput>, Box<dyn Error>> {
         // All instructions increase the cycle count
         self.cycle_count += 1;
         let mut vm_output = None;
@@ -226,7 +219,7 @@ impl<'pgm> VMState<'pgm> {
                         }
                     }
                 } else {
-                    secret_in.read_elem()?
+                    secret_in.remove(0)
                 };
                 self.op_stack.push(elem);
                 self.instruction_pointer += 1;
@@ -327,7 +320,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             DivineSibling => {
-                self.divine_sibling::<In>(secret_in)?;
+                self.divine_sibling(secret_in)?;
                 self.instruction_pointer += 1;
             }
 
@@ -428,7 +421,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             ReadIo => {
-                let in_elem = stdin.read_elem()?;
+                let in_elem = stdin.remove(0);
                 self.op_stack.push(in_elem);
                 self.instruction_pointer += 1;
             }
@@ -669,10 +662,7 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
-    fn divine_sibling<In: InputStream>(
-        &mut self,
-        secret_in: &mut In,
-    ) -> Result<(), Box<dyn Error>> {
+    fn divine_sibling(&mut self, secret_in: &mut Vec<BFieldElement>) -> Result<(), Box<dyn Error>> {
         // st0-st4
         let _ = self.op_stack.pop_n::<DIGEST_LENGTH>()?;
 
@@ -688,11 +678,11 @@ impl<'pgm> VMState<'pgm> {
         // nondeterministic guess, flipped
         let sibling_digest: [BFieldElement; DIGEST_LENGTH] = {
             let mut tmp = [
-                secret_in.read_elem()?,
-                secret_in.read_elem()?,
-                secret_in.read_elem()?,
-                secret_in.read_elem()?,
-                secret_in.read_elem()?,
+                secret_in.remove(0),
+                secret_in.remove(0),
+                secret_in.remove(0),
+                secret_in.remove(0),
+                secret_in.remove(0),
             ];
             tmp.reverse();
             tmp
@@ -826,7 +816,7 @@ mod vm_state_tests {
     #[test]
     fn run_tvm_parse_pop_p_test() {
         let program = sample_programs::push_push_add_pop_p();
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
+        let (trace, _out, _err) = program.run(vec![], vec![]);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -837,7 +827,7 @@ mod vm_state_tests {
     fn run_tvm_hello_world_1_test() {
         let code = sample_programs::HELLO_WORLD_1;
         let program = Program::from_code(code).unwrap();
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
+        let (trace, _out, _err) = program.run(vec![], vec![]);
 
         let last_state = trace.last().unwrap();
         assert_eq!(BFieldElement::zero(), last_state.op_stack.safe_peek(ST0));
@@ -849,7 +839,7 @@ mod vm_state_tests {
     fn run_tvm_halt_then_do_stuff_test() {
         let halt_then_do_stuff = "halt push 1 push 2 add invert write_io";
         let program = Program::from_code(halt_then_do_stuff).unwrap();
-        let (trace, _out, err) = program.run_with_input(&[], &[]);
+        let (trace, _out, err) = program.run(vec![], vec![]);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -870,7 +860,7 @@ mod vm_state_tests {
         for instruction in program.instructions.iter() {
             println!("Instruction opcode: {}", instruction.opcode());
         }
-        let (trace, _out, err) = program.run_with_input(&[], &[]);
+        let (trace, _out, err) = program.run(vec![], vec![]);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -895,7 +885,7 @@ mod vm_state_tests {
     #[test]
     fn run_tvm_edgy_ram_writes_test() {
         let program = Program::from_code(sample_programs::EDGY_RAM_WRITES).unwrap();
-        let (trace, _out, err) = program.run_with_input(&[], &[]);
+        let (trace, _out, err) = program.run(vec![], vec![]);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -919,7 +909,8 @@ mod vm_state_tests {
     fn run_tvm_sample_weights_test() {
         let program = Program::from_code(sample_programs::SAMPLE_WEIGHTS).unwrap();
         println!("Successfully parsed the program.");
-        let (trace, _out, err) = program.run_with_input(&[BFieldElement::new(11)], &[]);
+        let input_symbols = vec![BFieldElement::new(11)];
+        let (trace, _out, err) = program.run(input_symbols, vec![]);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -954,7 +945,7 @@ mod vm_state_tests {
 
         let selected_leaf_indices = [0, 28, 55];
 
-        let secret_input: Vec<_> = selected_leaf_indices
+        let secret_input = selected_leaf_indices
             .iter()
             .flat_map(|leaf_index| {
                 let auth_path = merkle_tree.get_authentication_path(*leaf_index);
@@ -968,9 +959,9 @@ mod vm_state_tests {
                     .collect();
                 selected_values
             })
-            .collect();
+            .collect_vec();
 
-        let input = [
+        let input = vec![
             // number of path tests
             BFieldElement::new(3),
             // Merkle root
@@ -1009,7 +1000,7 @@ mod vm_state_tests {
             leafs[55].values()[order[4]],
         ];
 
-        let (trace, _out, err) = program.run_with_input(&input, &secret_input);
+        let (trace, _out, err) = program.run(input, secret_input);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -1027,16 +1018,8 @@ mod vm_state_tests {
     fn run_tvm_get_colinear_y_test() {
         let program = Program::from_code(sample_programs::GET_COLINEAR_Y).unwrap();
         println!("Successfully parsed the program.");
-        let (trace, out, err) = program.run_with_input(
-            &[
-                BFieldElement::new(7),
-                BFieldElement::new(2),
-                BFieldElement::new(1),
-                BFieldElement::new(3),
-                BFieldElement::new(4),
-            ],
-            &[],
-        );
+        let input_symbols = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
+        let (trace, out, err) = program.run(input_symbols, vec![]);
         assert_eq!(out[0], BFieldElement::new(4));
         for state in trace.iter() {
             println!("{}", state);
@@ -1054,7 +1037,7 @@ mod vm_state_tests {
     fn run_tvm_countdown_from_10_test() {
         let code = sample_programs::COUNTDOWN_FROM_10;
         let program = Program::from_code(code).unwrap();
-        let (trace, out, err) = program.run_with_input(&[], &[]);
+        let (trace, out, err) = program.run(vec![], vec![]);
 
         println!("{}", program);
         for state in trace.iter() {
@@ -1074,7 +1057,7 @@ mod vm_state_tests {
         let code = sample_programs::FIBONACCI_VIT;
         let program = Program::from_code(code).unwrap();
 
-        let (trace, out, err) = program.run_with_input(&[7_u64.into()], &[]);
+        let (trace, out, err) = program.run(vec![7_u64.into()], vec![]);
 
         for state in trace.iter() {
             println!("{}", state);
@@ -1090,7 +1073,7 @@ mod vm_state_tests {
     fn run_tvm_fibonacci_lt_test() {
         let code = sample_programs::FIBONACCI_LT;
         let program = Program::from_code(code).unwrap();
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
+        let (trace, _out, _err) = program.run(vec![], vec![]);
 
         println!("{}", program);
         for state in trace.iter() {
@@ -1107,7 +1090,7 @@ mod vm_state_tests {
         let program = Program::from_code(code).unwrap();
 
         println!("{}", program);
-        let (trace, out, _err) = program.run_with_input(&[42_u64.into(), 56_u64.into()], &[]);
+        let (trace, out, _err) = program.run(vec![42_u64.into(), 56_u64.into()], vec![]);
 
         println!("{}", program);
         for state in trace.iter() {
@@ -1127,7 +1110,7 @@ mod vm_state_tests {
         let program = Program::from_code(code).unwrap();
 
         println!("{}", program);
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
+        let (trace, _out, _err) = program.run(vec![], vec![]);
 
         println!("{}", program);
         for state in trace.iter() {
@@ -1146,7 +1129,7 @@ mod vm_state_tests {
     fn run_tvm_swap_test() {
         let code = "push 1 push 2 swap1 halt";
         let program = Program::from_code(code).unwrap();
-        let (trace, _out, _err) = program.run_with_input(&[], &[]);
+        let (trace, _out, _err) = program.run(vec![], vec![]);
 
         for state in trace.iter() {
             println!("{}", state);
