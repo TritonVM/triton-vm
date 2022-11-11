@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::collections::HashSet;
 
 use itertools::Itertools;
@@ -56,7 +57,29 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges>(
     }
 
     let filename = format!("triton-vm/src/table/{table_name_snake}_autogen.rs");
-    let code = "todo!()";
+    let shared_declarations = shared_evaluations.join("");
+
+    let mut constraint_evaluation_expressions: Vec<String> = vec![];
+    for (_constraint_count, constraint) in constraint_circuits.iter().enumerate() {
+        // Build code for expressions that evaluate to the transition constraints
+        let mut constraint_evaluation = String::default();
+        let _dependent_symbols = evaluate_single_node(
+            1,
+            constraint,
+            &HashSet::default(),
+            &mut constraint_evaluation,
+        );
+
+        constraint_evaluation_expressions.push(constraint_evaluation);
+    }
+
+    let constraint_evaluations_joined = constraint_evaluation_expressions.join(",\n");
+
+    let root_evaluation_expressions = format!(
+        "vec![
+        {constraint_evaluations_joined}
+    ]"
+    );
 
     let template = format!(
         "
@@ -73,12 +96,15 @@ impl Evaluable for {table_name_camel} {{
         next_row: &[XFieldElement],
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
-        {code}
+        {shared_declarations}
+
+        {root_evaluation_expressions}
     }}
 }}
 "
     );
 
+    println!("{template}");
     if std::env::var("OUTPUT_RUST_SOURCE_CODE").is_ok() {
         use std::fs;
         fs::write(filename, template).expect("Unable to write file");
@@ -137,6 +163,7 @@ fn declare_single_node_with_visit_count<T: TableChallenges>(
         || in_scope.contains(&circuit.id)
         || matches!(circuit.expression, CircuitExpression::BConstant(_))
         || matches!(circuit.expression, CircuitExpression::XConstant(_))
+        || matches!(circuit.expression, CircuitExpression::Challenge(_))
         || circuit.get_linear_one_index().is_some()
     {
         return;
@@ -163,8 +190,8 @@ fn get_binding_name<T: TableChallenges>(circuit: &ConstraintCircuit<T>) -> Strin
         CircuitExpression::XConstant(xfe) => print_xfe(*xfe),
         CircuitExpression::BConstant(bfe) => print_bfe(*bfe),
         CircuitExpression::Input(idx) => {
-            if *idx >= circuit.var_count {
-                let idx = idx - circuit.var_count;
+            if *idx >= circuit.var_count / 2 {
+                let idx = idx - circuit.var_count / 2;
                 format!("next_row[{idx}]")
             } else {
                 format!("current_row[{idx}]")
@@ -178,6 +205,58 @@ fn get_binding_name<T: TableChallenges>(circuit: &ConstraintCircuit<T>) -> Strin
     }
 }
 
+/// Add to `output` the code for evaluating a single node.
+/// Return a list of symbols that this evaluation depends on.
+fn evaluate_single_node<T: TableChallenges>(
+    requested_visited_count: usize,
+    circuit: &ConstraintCircuit<T>,
+    in_scope: &HashSet<CircuitId>,
+    output: &mut String,
+) -> Vec<String> {
+    // If this node has already been declared, or visit counter is higher than requested,
+    // than the node value *must* be in scope, meaning that we can just reference it.
+    if circuit.visited_counter > requested_visited_count || in_scope.contains(&circuit.id) {
+        let binding_name = get_binding_name(circuit);
+        output.push_str(&binding_name);
+        return match &circuit.expression {
+            CircuitExpression::BinaryOperation(_, _, _) => vec![binding_name],
+            _ => vec![],
+        };
+    }
+
+    // If variable is not already in scope, then we must generate the expression to
+    // evaluate it.
+    let mut ret = vec![];
+    match &circuit.expression {
+        CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
+            output.push_str(&"(");
+            let lhs_symbols = evaluate_single_node(
+                requested_visited_count,
+                &lhs.as_ref().borrow(),
+                in_scope,
+                output,
+            );
+            output.push_str(&")");
+            output.push_str(&binop.to_string());
+            output.push_str(&"(");
+            let rhs_symbols = evaluate_single_node(
+                requested_visited_count,
+                &rhs.as_ref().borrow(),
+                in_scope,
+                output,
+            );
+            output.push_str(&")");
+
+            let ret_as_vec = vec![lhs_symbols, rhs_symbols].concat();
+            let ret_as_hash_set: HashSet<String> = ret_as_vec.into_iter().collect();
+            ret = ret_as_hash_set.into_iter().collect_vec()
+        }
+        _ => output.push_str(&get_binding_name(circuit)),
+    }
+
+    ret
+}
+
 fn print_bfe(bfe: BFieldElement) -> String {
     format!("BFieldElement::new({})", bfe.value())
 }
@@ -185,6 +264,8 @@ fn print_bfe(bfe: BFieldElement) -> String {
 fn print_xfe(xfe: XFieldElement) -> String {
     format!(
         "XFieldElement::new([{}, {}, {}])",
-        xfe.coefficients[0], xfe.coefficients[1], xfe.coefficients[2]
+        xfe.coefficients[0].value(),
+        xfe.coefficients[1].value(),
+        xfe.coefficients[2].value()
     )
 }
