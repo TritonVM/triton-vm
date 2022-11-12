@@ -246,7 +246,7 @@ impl Evaluable for ExtHashTable {
         let xlix_input = (0..2 * DIGEST_LENGTH)
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
-        let compressed_row_from_processor = [
+        let compressed_row_from_processor: XFieldElement = [
             challenges.hash_table_challenges.stack_input_weight0,
             challenges.hash_table_challenges.stack_input_weight1,
             challenges.hash_table_challenges.stack_input_weight2,
@@ -281,7 +281,7 @@ impl Evaluable for ExtHashTable {
         let xlix_digest = (0..DIGEST_LENGTH)
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
-        let compressed_row_to_processor = [
+        let compressed_row_to_processor: XFieldElement = [
             challenges.hash_table_challenges.digest_output_weight0,
             challenges.hash_table_challenges.digest_output_weight1,
             challenges.hash_table_challenges.digest_output_weight2,
@@ -684,7 +684,7 @@ impl HashTable {
                     extension_row[usize::from(HashBaseTableColumn::STATE8)],
                     extension_row[usize::from(HashBaseTableColumn::STATE9)],
                 ];
-                let compressed_state_for_input = state_for_input
+                let compressed_state_for_input: XFieldElement = state_for_input
                     .iter()
                     .zip_eq(
                         [
@@ -720,7 +720,7 @@ impl HashTable {
                     extension_row[usize::from(HashBaseTableColumn::STATE3)],
                     extension_row[usize::from(HashBaseTableColumn::STATE4)],
                 ];
-                let compressed_state_for_output = state_for_output
+                let compressed_state_for_output: XFieldElement = state_for_output
                     .iter()
                     .zip_eq(
                         [

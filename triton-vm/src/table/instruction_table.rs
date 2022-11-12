@@ -386,7 +386,7 @@ impl InstructionTable {
                     debug_assert_eq!(prow[usize::from(NIA)], row[usize::from(NIA)]);
                 } else {
                     debug_assert_eq!(
-                        prow[usize::from(Address)] + 1_u64.into(),
+                        prow[usize::from(Address)] + BFieldElement::one(),
                         row[usize::from(Address)]
                     );
                 }

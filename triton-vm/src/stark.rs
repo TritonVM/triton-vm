@@ -3,6 +3,7 @@ use std::error::Error;
 use std::fmt;
 
 use itertools::Itertools;
+use num_traits::One;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -968,7 +969,7 @@ impl Stark {
                     .zip_eq(initial_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_bc / (current_fri_domain_value - 1.into());
+                    let quotient = evaluated_bc / (current_fri_domain_value - XFieldElement::one());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -984,7 +985,8 @@ impl Stark {
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_cc
-                        / (current_fri_domain_value.mod_pow_u32(padded_height as u32) - 1.into());
+                        / (current_fri_domain_value.mod_pow_u32(padded_height as u32)
+                            - XFieldElement::one());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -1005,8 +1007,9 @@ impl Stark {
                     let shift = self.max_degree - degree_bound;
                     let quotient = {
                         let numerator = current_fri_domain_value - omicron_inverse;
-                        let denominator =
-                            current_fri_domain_value.mod_pow_u32(padded_height as u32) - 1.into();
+                        let denominator = current_fri_domain_value
+                            .mod_pow_u32(padded_height as u32)
+                            - XFieldElement::one();
                         evaluated_tc * numerator / denominator
                     };
                     let quotient_shifted =

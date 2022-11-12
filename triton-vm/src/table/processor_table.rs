@@ -195,7 +195,7 @@ impl ProcessorTable {
                     extension_row[usize::from(ST8)],
                     extension_row[usize::from(ST9)],
                 ];
-                let compressed_row_for_hash_input = st_0_through_9
+                let compressed_row_for_hash_input: XFieldElement = st_0_through_9
                     .into_iter()
                     .zip_eq(
                         [
@@ -230,7 +230,7 @@ impl ProcessorTable {
                         extension_row[usize::from(ST8)],
                         extension_row[usize::from(ST9)],
                     ];
-                    let compressed_row_for_hash_digest = st_5_through_9
+                    let compressed_row_for_hash_digest: XFieldElement = st_5_through_9
                         .into_iter()
                         .zip_eq(
                             [

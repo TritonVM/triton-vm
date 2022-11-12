@@ -110,7 +110,7 @@ impl Extendable for OpStackTable {
             if let Some(next_row) = self.data().get(insertion_index) {
                 let clk_diff = next_row[usize::from(CLK)] - row[usize::from(CLK)];
                 row[usize::from(InverseOfClkDiffMinusOne)] =
-                    (clk_diff - 1_u64.into()).inverse_or_zero();
+                    (clk_diff - BFieldElement::one()).inverse_or_zero();
             }
         }
 
