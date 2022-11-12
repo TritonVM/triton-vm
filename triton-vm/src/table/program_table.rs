@@ -336,6 +336,7 @@ impl From<ProgramTableChallengeId> for usize {
 impl TableChallenges for ProgramTableChallenges {
     type Id = ProgramTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
             ProgramTableChallengeId::InstructionEvalIndeterminate => {

@@ -73,6 +73,7 @@ pub struct InstructionTableChallenges {
 impl TableChallenges for InstructionTableChallenges {
     type Id = InstructionTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
             InstructionTableChallengeId::ProcessorPermIndeterminate => {

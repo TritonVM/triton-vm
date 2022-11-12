@@ -231,7 +231,7 @@ impl ExtOpStackTable {
         // + (1 - (clk' - clk - 1) * clk_di) * (cjdrp' - cjdrp)
         // + (osp' - osp) * (cjdrp' - cjdrp)
         let beta = circuit_builder
-            .challenge(OpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate);
+            .challenge(OpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
         let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (one.clone() - osp_next.clone() + osp.clone())
             * (rpcjd_next.clone() - rpcjd.clone() * (beta - clk_next.clone() + clk.clone()))
@@ -240,13 +240,12 @@ impl ExtOpStackTable {
             + (osp_next.clone() - osp) * (rpcjd_next - rpcjd);
 
         // The running product for the permutation argument `rppa` is updated correctly.
-        let alpha = circuit_builder.challenge(OpStackTableChallengesId::ProcessorPermIndeterminate);
-        let compressed_row = circuit_builder.challenge(OpStackTableChallengesId::ClkWeight)
+        let alpha = circuit_builder.challenge(OpStackTableChallengeId::ProcessorPermIndeterminate);
+        let compressed_row = circuit_builder.challenge(OpStackTableChallengeId::ClkWeight)
             * clk_next
-            + circuit_builder.challenge(OpStackTableChallengesId::Ib1Weight)
-                * ib1_shrink_stack_next
-            + circuit_builder.challenge(OpStackTableChallengesId::OspWeight) * osp_next
-            + circuit_builder.challenge(OpStackTableChallengesId::OsvWeight) * osv_next;
+            + circuit_builder.challenge(OpStackTableChallengeId::Ib1Weight) * ib1_shrink_stack_next
+            + circuit_builder.challenge(OpStackTableChallengeId::OspWeight) * osp_next
+            + circuit_builder.challenge(OpStackTableChallengeId::OsvWeight) * osv_next;
 
         let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
@@ -423,7 +422,7 @@ impl ExtOpStackTable {
 }
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum OpStackTableChallengesId {
+pub enum OpStackTableChallengeId {
     ProcessorPermIndeterminate,
     ClkWeight,
     Ib1Weight,
@@ -432,25 +431,26 @@ pub enum OpStackTableChallengesId {
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
 
-impl From<OpStackTableChallengesId> for usize {
-    fn from(val: OpStackTableChallengesId) -> Self {
+impl From<OpStackTableChallengeId> for usize {
+    fn from(val: OpStackTableChallengeId) -> Self {
         val as usize
     }
 }
 
 impl TableChallenges for OpStackTableChallenges {
-    type Id = OpStackTableChallengesId;
+    type Id = OpStackTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            OpStackTableChallengesId::ProcessorPermIndeterminate => {
+            OpStackTableChallengeId::ProcessorPermIndeterminate => {
                 self.processor_perm_indeterminate
             }
-            OpStackTableChallengesId::ClkWeight => self.clk_weight,
-            OpStackTableChallengesId::Ib1Weight => self.ib1_weight,
-            OpStackTableChallengesId::OsvWeight => self.osv_weight,
-            OpStackTableChallengesId::OspWeight => self.osp_weight,
-            OpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            OpStackTableChallengeId::ClkWeight => self.clk_weight,
+            OpStackTableChallengeId::Ib1Weight => self.ib1_weight,
+            OpStackTableChallengeId::OsvWeight => self.osv_weight,
+            OpStackTableChallengeId::OspWeight => self.osp_weight,
+            OpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
         }

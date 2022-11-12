@@ -534,6 +534,7 @@ pub struct RamTableChallenges {
 impl TableChallenges for RamTableChallenges {
     type Id = RamTableChallengesId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
             RamTableChallengesId::BezoutRelationIndeterminate => self.bezout_relation_indeterminate,

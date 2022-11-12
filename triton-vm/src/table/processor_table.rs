@@ -607,6 +607,7 @@ pub struct ProcessorTableChallenges {
 impl TableChallenges for ProcessorTableChallenges {
     type Id = ProcessorTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
             ProcessorTableChallengeId::StandardInputEvalIndeterminate => {

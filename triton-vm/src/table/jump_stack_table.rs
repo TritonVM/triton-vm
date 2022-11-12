@@ -252,17 +252,17 @@ impl ExtJumpStackTable {
         // 6. The running product for the permutation argument `rppa`
         //  accumulates one row in each row, relative to weights `a`,
         //  `b`, `c`, `d`, `e`, and indeterminate `α`.
-        let compressed_row = circuit_builder.challenge(JumpStackTableChallengesId::ClkWeight)
+        let compressed_row = circuit_builder.challenge(JumpStackTableChallengeId::ClkWeight)
             * clk_next.clone()
-            + circuit_builder.challenge(JumpStackTableChallengesId::CiWeight) * ci_next
-            + circuit_builder.challenge(JumpStackTableChallengesId::JspWeight) * jsp_next.clone()
-            + circuit_builder.challenge(JumpStackTableChallengesId::JsoWeight) * jso_next
-            + circuit_builder.challenge(JumpStackTableChallengesId::JsdWeight) * jsd_next;
+            + circuit_builder.challenge(JumpStackTableChallengeId::CiWeight) * ci_next
+            + circuit_builder.challenge(JumpStackTableChallengeId::JspWeight) * jsp_next.clone()
+            + circuit_builder.challenge(JumpStackTableChallengeId::JsoWeight) * jso_next
+            + circuit_builder.challenge(JumpStackTableChallengeId::JsdWeight) * jsd_next;
 
         let rppa_updates_correctly = rppa_next
             - rppa
                 * (circuit_builder
-                    .challenge(JumpStackTableChallengesId::ProcessorPermRowIndeterminate)
+                    .challenge(JumpStackTableChallengeId::ProcessorPermRowIndeterminate)
                     - compressed_row);
 
         // 7. The running product for clock jump differences `rpcjd`
@@ -276,7 +276,7 @@ impl ExtJumpStackTable {
         // + (clk' - clk - 1) · (jsp' - jsp - 1)
         //     · (rpcjd' - rpcjd · (β - clk' + clk))`
         let indeterminate = circuit_builder
-            .challenge(JumpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate);
+            .challenge(JumpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
         let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
         let jsp_diff = jsp_next - jsp;
         let rpcjd_update = rpcjd_next - rpcjd * (indeterminate - clk_next.clone() + clk.clone());
@@ -476,7 +476,7 @@ impl ExtJumpStackTable {
 }
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum JumpStackTableChallengesId {
+pub enum JumpStackTableChallengeId {
     ProcessorPermRowIndeterminate,
     ClkWeight,
     CiWeight,
@@ -486,8 +486,8 @@ pub enum JumpStackTableChallengesId {
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
 
-impl From<JumpStackTableChallengesId> for usize {
-    fn from(val: JumpStackTableChallengesId) -> Self {
+impl From<JumpStackTableChallengeId> for usize {
+    fn from(val: JumpStackTableChallengeId) -> Self {
         val as usize
     }
 }
@@ -510,19 +510,20 @@ pub struct JumpStackTableChallenges {
 }
 
 impl TableChallenges for JumpStackTableChallenges {
-    type Id = JumpStackTableChallengesId;
+    type Id = JumpStackTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            JumpStackTableChallengesId::ProcessorPermRowIndeterminate => {
+            JumpStackTableChallengeId::ProcessorPermRowIndeterminate => {
                 self.processor_perm_indeterminate
             }
-            JumpStackTableChallengesId::ClkWeight => self.clk_weight,
-            JumpStackTableChallengesId::CiWeight => self.ci_weight,
-            JumpStackTableChallengesId::JspWeight => self.jsp_weight,
-            JumpStackTableChallengesId::JsoWeight => self.jso_weight,
-            JumpStackTableChallengesId::JsdWeight => self.jsd_weight,
-            JumpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            JumpStackTableChallengeId::ClkWeight => self.clk_weight,
+            JumpStackTableChallengeId::CiWeight => self.ci_weight,
+            JumpStackTableChallengeId::JspWeight => self.jsp_weight,
+            JumpStackTableChallengeId::JsoWeight => self.jso_weight,
+            JumpStackTableChallengeId::JsdWeight => self.jsd_weight,
+            JumpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
         }
