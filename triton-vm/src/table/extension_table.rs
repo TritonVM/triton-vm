@@ -5,6 +5,7 @@ use num_traits::One;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -342,15 +343,33 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         challenges: &AllChallenges,
         omicron: XFieldElement,
         padded_height: usize,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("initial quotients")
+        }
         let initial_quotients =
             self.initial_quotients(fri_domain, &transposed_codewords, challenges);
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("initial quotients")
+        }
+
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("consistency quotients")
+        }
         let consistency_quotients = self.consistency_quotients(
             fri_domain,
             &transposed_codewords,
             challenges,
             padded_height,
         );
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("consistency quotients")
+        }
+
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("transition quotients")
+        }
         let transition_quotients = self.transition_quotients(
             fri_domain,
             &transposed_codewords,
@@ -358,8 +377,18 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             omicron,
             padded_height,
         );
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("transition quotients")
+        }
+
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("terminal quotients")
+        }
         let terminal_quotients =
             self.terminal_quotients(fri_domain, &transposed_codewords, challenges, omicron);
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("terminal quotients")
+        }
 
         vec![
             initial_quotients,

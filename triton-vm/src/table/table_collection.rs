@@ -491,6 +491,7 @@ impl ExtTableCollection {
                     challenges,
                     omicron,
                     padded_height,
+                    maybe_profiler,
                 );
                 if let Some(profiler) = maybe_profiler.as_mut() {
                     profiler.stop(&ext_codeword_table.name());
