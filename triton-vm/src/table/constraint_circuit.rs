@@ -215,7 +215,11 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// Verify that all IDs in the subtree are unique. Panics otherwise.
     fn inner_has_unique_ids(&mut self, ids: &mut HashSet<usize>) {
         let new_value = ids.insert(self.id.0);
-        assert!(!self.visited_counter.is_zero() || new_value);
+        assert!(
+            !self.visited_counter.is_zero() || new_value,
+            "ID = {} was repeated",
+            self.id
+        );
         self.visited_counter += 1;
         match &self.expression {
             CircuitExpression::XConstant(_) => (),
