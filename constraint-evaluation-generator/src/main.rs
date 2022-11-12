@@ -1,38 +1,88 @@
-use std::borrow::Borrow;
 use std::collections::HashSet;
 
 use itertools::Itertools;
 use triton_vm::table::base_table::InheritsFromTable;
 use triton_vm::table::challenges::TableChallenges;
 use triton_vm::table::constraint_circuit::{CircuitExpression, CircuitId, ConstraintCircuit};
+use triton_vm::table::instruction_table::ExtInstructionTable;
+use triton_vm::table::jump_stack_table::ExtJumpStackTable;
+use triton_vm::table::op_stack_table::ExtOpStackTable;
+use triton_vm::table::processor_table::ExtProcessorTable;
 use triton_vm::table::program_table::ExtProgramTable;
+use triton_vm::table::ram_table::ExtRamTable;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 fn main() {
     println!("Generate those constraint evaluators!");
 
+    // Program table
     let table = ExtProgramTable::default();
     let mut constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
     gen(
         &table,
         "program_table",
-        "ExtProgramTable",
+        "ProgramTable",
+        &mut constraint_circuits,
+    );
+
+    // Instruction table
+    let table = ExtInstructionTable::default();
+    let mut constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
+    gen(
+        &table,
+        "instruction_table",
+        "InstructionTable",
+        &mut constraint_circuits,
+    );
+
+    // Processor table
+    let table = ExtProcessorTable::default();
+    let mut constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
+    gen(
+        &table,
+        "processor_table",
+        "ProcessorTable",
+        &mut constraint_circuits,
+    );
+
+    // Opstack table
+    let table = ExtOpStackTable::default();
+    let mut constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
+    gen(
+        &table,
+        "op_stack_table",
+        "OpStackTable",
+        &mut constraint_circuits,
+    );
+
+    // RAM table
+    let table = ExtRamTable::default();
+    let mut constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
+    gen(&table, "ram_table", "RamTable", &mut constraint_circuits);
+
+    // JumpStack table
+    let table = ExtJumpStackTable::default();
+    let mut constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
+    gen(
+        &table,
+        "jump_stack_table",
+        "JumpStackTable",
         &mut constraint_circuits,
     );
 }
 
 fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges>(
-    table: &Table,
+    _table: &Table,
     table_name_snake: &str,
-    table_name_camel: &str,
+    table_id_name: &str,
     constraint_circuits: &mut [ConstraintCircuit<T>],
 ) {
-    // Assert that all node IDs are unique (sanity check)
-    ConstraintCircuit::assert_has_unique_ids(constraint_circuits);
-
     // Delete redundant nodes
     ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
+
+    // Assert that all node IDs are unique (sanity check)
+    ConstraintCircuit::assert_has_unique_ids(constraint_circuits);
 
     // Count number of times each node is visited
     ConstraintCircuit::traverse_multiple(constraint_circuits);
@@ -47,6 +97,7 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges>(
 
     // Declare shared values
     // In the main function we predeclare all variables with a visit count of more than 1
+    let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let mut shared_evaluations: Vec<String> = vec![];
     while requested_visited > 1 {
         shared_evaluations.push(evaluate_nodes_with_visit_count(
@@ -81,21 +132,27 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges>(
     ]"
     );
 
+    let table_mod_name = format!("Ext{table_id_name}");
     let template = format!(
         "
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use super::challenges::AllChallenges;
+use super::challenges::TableChallenges;
 use super::extension_table::Evaluable;
-use super::{table_name_snake}::{table_name_camel};
+use super::{table_name_snake}::{table_mod_name};
+use super::{table_name_snake}::{challenge_enum_name}::*;
 
-impl Evaluable for {table_name_camel} {{
+impl Evaluable for {table_mod_name} {{
+    #[inline]
     fn evaluate_transition_constraints(
         &self,
         current_row: &[XFieldElement],
         next_row: &[XFieldElement],
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
+        let challenges = &challenges.{table_name_snake}_challenges;
         {shared_declarations}
 
         {root_evaluation_expressions}
@@ -156,8 +213,8 @@ fn declare_single_node_with_visit_count<T: TableChallenges>(
     }
 
     // If this node has already been declared, or visit counter is higher than requested,
-    // than the node value *must* already be in scope. We should not redeclare it.
-    // We also do not declare nodes that are e.g `point[3]` since they are already in scope
+    // then the node value *must* already be in scope. We should not redeclare it.
+    // We also do not declare nodes that are e.g `row[3]` since they are already in scope
     // through the `points` input argument, and we do not declare constants.
     if circuit.visited_counter > requested_visited_count
         || in_scope.contains(&circuit.id)
@@ -176,7 +233,7 @@ fn declare_single_node_with_visit_count<T: TableChallenges>(
         let binding_name = get_binding_name(circuit);
         output.push_str(&format!("let {binding_name} =\n"));
         evaluate_single_node(requested_visited_count, circuit, in_scope, output);
-        output.push_str("\n");
+        output.push_str(";\n");
 
         let new_insertion = in_scope.insert(circuit.id.clone());
         assert!(new_insertion);
@@ -198,8 +255,7 @@ fn get_binding_name<T: TableChallenges>(circuit: &ConstraintCircuit<T>) -> Strin
             }
         }
         CircuitExpression::Challenge(challenge_id) => {
-            let challenge_index: usize = (*challenge_id).into();
-            format!("challenges[{challenge_index}]")
+            format!("challenges.get_challenge({challenge_id})")
         }
         CircuitExpression::BinaryOperation(_, _, _) => format!("node_{}", circuit.id),
     }
@@ -229,23 +285,23 @@ fn evaluate_single_node<T: TableChallenges>(
     let mut ret = vec![];
     match &circuit.expression {
         CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
-            output.push_str(&"(");
+            output.push('(');
             let lhs_symbols = evaluate_single_node(
                 requested_visited_count,
                 &lhs.as_ref().borrow(),
                 in_scope,
                 output,
             );
-            output.push_str(&")");
+            output.push(')');
             output.push_str(&binop.to_string());
-            output.push_str(&"(");
+            output.push('(');
             let rhs_symbols = evaluate_single_node(
                 requested_visited_count,
                 &rhs.as_ref().borrow(),
                 in_scope,
                 output,
             );
-            output.push_str(&")");
+            output.push(')');
 
             let ret_as_vec = vec![lhs_symbols, rhs_symbols].concat();
             let ret_as_hash_set: HashSet<String> = ret_as_vec.into_iter().collect();
