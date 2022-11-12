@@ -1767,13 +1767,18 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_halt_test() {
         let code_with_input = test_halt();
+        let mut profiler = Some(TritonProfiler::new("prove halt"));
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
             vec![],
-            &mut None,
+            &mut profiler,
         );
+        let mut profiler = profiler.unwrap();
+        profiler.finish();
+        let report = profiler.report();
+        println!("{report}");
 
         println!("between prove and verify");
 
