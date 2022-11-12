@@ -1677,10 +1677,9 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
         let zero = XFieldElement::zero();
-        let (_, _, _, ext_tables, _, _) =
+        let (_, _, _, ext_tables, challenges, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
 
-        let challenges = AllChallenges::placeholder();
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
                 let evaluated_bcs = table.evaluate_initial_constraints(row, &challenges);
