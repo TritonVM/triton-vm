@@ -1,0 +1,1 @@
+impl Evaluable for ExtRamTable {}

@@ -17,7 +17,7 @@ use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instru
 use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges::AllChallenges;
-use crate::table::extension_table::{Evaluable, ExtensionTable};
+use crate::table::extension_table::ExtensionTable;
 use crate::table::table_column::ProcessorBaseTableColumn::{self, *};
 use crate::table::table_column::ProcessorExtTableColumn::{self, *};
 
@@ -715,7 +715,6 @@ pub struct ExtProcessorTable {
     pub(crate) inherited_table: Table<XFieldElement>,
 }
 
-impl Evaluable for ExtProcessorTable {}
 impl Quotientable for ExtProcessorTable {}
 impl QuotientableExtensionTable for ExtProcessorTable {}
 

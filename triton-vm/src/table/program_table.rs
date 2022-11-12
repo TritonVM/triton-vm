@@ -9,7 +9,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use crate::table::table_column::ProgramBaseTableColumn::{self, *};
 use crate::table::table_column::ProgramExtTableColumn::{self, *};
 

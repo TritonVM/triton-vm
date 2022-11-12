@@ -9,7 +9,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
@@ -120,7 +119,6 @@ impl Default for ExtInstructionTable {
     }
 }
 
-impl Evaluable for ExtInstructionTable {}
 impl Quotientable for ExtInstructionTable {}
 impl QuotientableExtensionTable for ExtInstructionTable {}
 

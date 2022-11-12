@@ -11,7 +11,6 @@ use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::instruction::Instruction;
 use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use crate::table::table_column::JumpStackBaseTableColumn::{self, *};
 use crate::table::table_column::JumpStackExtTableColumn::{self, *};
 
@@ -62,7 +61,6 @@ impl Default for ExtJumpStackTable {
     }
 }
 
-impl Evaluable for ExtJumpStackTable {}
 impl Quotientable for ExtJumpStackTable {}
 impl QuotientableExtensionTable for ExtJumpStackTable {}
 
