@@ -24,8 +24,8 @@ use triton_profiler::{prof_itr0, prof_start, prof_stop};
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
+use crate::domain::Domain;
 use crate::fri::{Fri, FriValidationError};
-use crate::fri_domain::FriDomain;
 use crate::proof::{Claim, Proof};
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
@@ -108,7 +108,7 @@ pub struct Stark {
     parameters: StarkParameters,
     claim: Claim,
     max_degree: Degree,
-    fri_domain: FriDomain<BFieldElement>,
+    fri_domain: Domain<BFieldElement>,
     fri: Fri<StarkHasher>,
 }
 
@@ -122,8 +122,7 @@ impl Stark {
         let omega =
             BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
         let coset_offset = BFieldElement::generator();
-        let fri_domain: FriDomain<BFieldElement> =
-            FriDomain::new(coset_offset, omega, fri_domain_length);
+        let fri_domain: Domain<BFieldElement> = Domain::new(coset_offset, omega, fri_domain_length);
         let fri = Fri::new(
             coset_offset,
             omega,
@@ -1301,7 +1300,7 @@ pub(crate) mod triton_stark_tests {
 
         ntt(
             &mut test_codeword,
-            stark.fri.domain.omega,
+            stark.fri.domain.generator,
             log_2_floor(stark.fri.domain.length as u128) as u32,
         );
         for shift in [0, 1, 5, 17, 63, 121, 128] {

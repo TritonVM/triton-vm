@@ -12,7 +12,7 @@ use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
-use crate::fri_domain::FriDomain;
+use crate::domain::Domain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
@@ -60,19 +60,13 @@ impl ProcessorTable {
 
     pub fn to_fri_domain_table(
         &self,
-        fri_domain: &FriDomain<BFieldElement>,
+        fri_domain: &Domain<BFieldElement>,
         omicron: BFieldElement,
-        padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Self {
         let base_columns = 0..self.base_width();
-        let fri_domain_codewords = self.low_degree_extension(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            base_columns,
-        );
+        let fri_domain_codewords =
+            self.low_degree_extension(fri_domain, omicron, num_trace_randomizers, base_columns);
         let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
         Self { inherited_table }
     }
@@ -358,19 +352,13 @@ impl ProcessorTable {
 impl ExtProcessorTable {
     pub fn to_fri_domain_table(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         omicron: XFieldElement,
-        padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();
-        let fri_domain_codewords_ext = self.low_degree_extension(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            ext_columns,
-        );
+        let fri_domain_codewords_ext =
+            self.low_degree_extension(fri_domain, omicron, num_trace_randomizers, ext_columns);
 
         let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
         Self::new(inherited_table)

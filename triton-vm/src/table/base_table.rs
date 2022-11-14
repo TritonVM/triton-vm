@@ -1,9 +1,9 @@
-use super::super::fri_domain::FriDomain;
+use super::super::domain::Domain;
 use itertools::Itertools;
 use num_traits::Zero;
 use rand_distr::{Distribution, Standard};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::ops::{MulAssign, Range};
+use std::ops::{Mul, MulAssign, Range};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other::random_elements;
@@ -256,7 +256,10 @@ fn disjoint_domain<FF: FiniteField>(domain_length: usize, disjoint_domain: &[FF]
 
 pub trait TableLike<FF>: InheritsFromTable<FF>
 where
-    FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+    FF: FiniteField
+        + From<BFieldElement>
+        + Mul<BFieldElement, Output = FF>
+        + MulAssign<BFieldElement>,
     Standard: Distribution<FF>,
 {
     // Generic functions common to all tables
@@ -267,23 +270,16 @@ where
 
     fn low_degree_extension(
         &self,
-        fri_domain: &FriDomain<FF>,
+        fri_domain: &Domain<FF>,
         omicron: FF,
-        padded_height: usize,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Vec<FF>> {
         // FIXME: Table<> supports Vec<[FF; WIDTH]>, but FriDomain does not (yet).
-        self.interpolate_columns(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            columns,
-        )
-        .par_iter()
-        .map(|polynomial| fri_domain.evaluate(polynomial))
-        .collect()
+        self.interpolate_columns(fri_domain, omicron, num_trace_randomizers, columns)
+            .par_iter()
+            .map(|polynomial| fri_domain.evaluate(polynomial))
+            .collect()
     }
 
     /// Return the interpolation of columns. The `column_indices` variable
@@ -291,23 +287,22 @@ where
     /// if it is called with a subset, it *will* fail.
     fn interpolate_columns(
         &self,
-        fri_domain: &FriDomain<FF>,
+        fri_domain: &Domain<FF>,
         omicron: FF,
-        padded_height: usize,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Polynomial<FF>> {
-        // Ensure that `matrix` is set and padded before running this function
-        assert_eq!(
-            padded_height,
-            self.data().len(),
-            "{}: Table data must be padded before interpolation",
-            self.name()
-        );
-
+        let padded_height = self.data().len();
         if padded_height == 0 {
             return vec![Polynomial::zero(); columns.len()];
         }
+
+        // Ensure that `matrix` is set and padded before running this function
+        assert!(
+            padded_height.is_power_of_two(),
+            "{}: Table data must be padded before interpolation",
+            self.name()
+        );
 
         // FIXME: Unfold with multiplication instead of mapping with power.
         let omicron_domain = (0..padded_height)
@@ -339,7 +334,7 @@ where
                 Polynomial::fast_interpolate(
                     &interpolation_domain,
                     randomized_trace,
-                    &fri_domain.omega,
+                    &fri_domain.generator,
                     fri_domain.length,
                 )
             })

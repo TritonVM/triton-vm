@@ -20,7 +20,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, Hashable};
 use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
 
-use crate::fri_domain::FriDomain;
+use crate::domain::Domain;
 use crate::proof_item::{FriResponse, ProofItem};
 use crate::proof_stream::ProofStream;
 
@@ -50,7 +50,7 @@ pub struct Fri<H> {
     // nearest power of 2.
     pub expansion_factor: usize,
     pub colinearity_checks_count: usize,
-    pub domain: FriDomain<XFieldElement>,
+    pub domain: Domain<XFieldElement>,
     _hasher: PhantomData<H>,
 }
 
@@ -62,7 +62,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         expansion_factor: usize,
         colinearity_checks_count: usize,
     ) -> Self {
-        let domain = FriDomain::new(offset, omega, domain_length);
+        let domain = Domain::new(offset, omega, domain_length);
         let _hasher = PhantomData;
         Self {
             domain,
@@ -166,7 +166,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) -> Result<Vec<(Vec<XFieldElement>, MerkleTree<H>)>, Box<dyn Error>> {
-        let mut subgroup_generator = self.domain.omega;
+        let mut subgroup_generator = self.domain.generator;
         let mut offset = self.domain.offset;
         let mut codeword_local = codeword.to_vec();
 
@@ -346,8 +346,10 @@ impl<H: AlgebraicHasher> Fri<H> {
         let log_2_of_n = log_2_floor(last_codeword.len() as u128) as u32;
         let mut last_polynomial = last_codeword.clone();
 
-        // XXX
-        let last_omega = self.domain.omega.mod_pow_u32(2u32.pow(num_rounds as u32));
+        let last_omega = self
+            .domain
+            .generator
+            .mod_pow_u32(2u32.pow(num_rounds as u32));
         intt::<XFieldElement>(&mut last_polynomial, last_omega, log_2_of_n);
 
         let last_poly_degree: isize = (Polynomial::<XFieldElement> {
@@ -445,7 +447,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     /// FRI (co-)domain. This corresponds to `ω^i` in `f(ω^i)` from
     /// [STARK-Anatomy](https://neptune.cash/learn/stark-anatomy/fri/#split-and-fold).
     fn get_evaluation_argument(&self, idx: usize, round: usize) -> XFieldElement {
-        let domain_value = self.domain.offset * self.domain.omega.mod_pow_u32(idx as u32);
+        let domain_value = self.domain.offset * self.domain.generator.mod_pow_u32(idx as u32);
         let round_exponent = 2u32.pow(round as u32);
         let evaluation_argument = domain_value.mod_pow_u32(round_exponent);
 
@@ -574,7 +576,7 @@ mod triton_xfri_tests {
         let fri: Fri<Hasher> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
         let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
-        let subgroup = fri.domain.omega.lift().get_cyclic_group_elements(None);
+        let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
 
         let (_, merkle_root_of_round_0) = fri.prove(&subgroup, &mut proof_stream).unwrap();
         let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
@@ -616,7 +618,7 @@ mod triton_xfri_tests {
         let colinearity_check_count = 6;
         let fri: Fri<Hasher> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let subgroup = fri.domain.omega.lift().get_cyclic_group_elements(None);
+        let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
 
         let mut points: Vec<XFieldElement>;
         for n in [1, 5, 20, 30, 31] {

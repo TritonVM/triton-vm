@@ -5,14 +5,15 @@ use num_traits::One;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
-use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other::transpose;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::fri_domain::FriDomain;
+use triton_profiler::triton_profiler::TritonProfiler;
+
+use crate::domain::Domain;
 use crate::table::extension_table;
 use crate::table::table_collection::interpolant_degree;
 
@@ -193,7 +194,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn initial_quotients(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
     ) -> Vec<Vec<XFieldElement>> {
@@ -223,7 +224,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn consistency_quotients(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         padded_height: usize,
@@ -254,7 +255,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn transition_quotients(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         omicron: XFieldElement,
@@ -304,7 +305,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn terminal_quotients(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         omicron: XFieldElement,
@@ -337,7 +338,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn all_quotients(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         transposed_codewords: Vec<Vec<XFieldElement>>,
         challenges: &AllChallenges,
         omicron: XFieldElement,
@@ -408,7 +409,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     /// probably the result of un-clean division.
     fn debug_fri_domain_bound_check(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         quotient_codewords: &[Vec<XFieldElement>],
         quotient_type: &str,
     ) {

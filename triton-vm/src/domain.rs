@@ -1,70 +1,68 @@
 use std::marker::PhantomData;
-use std::ops::MulAssign;
+use std::ops::{Mul, MulAssign};
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{FiniteField, ModPowU32};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FriDomain<FF> {
+pub struct Domain<FF> {
     pub offset: BFieldElement,
-    pub omega: BFieldElement,
+    pub generator: BFieldElement,
     pub length: usize,
-    _field: PhantomData<FF>,
+    _finite_field: PhantomData<FF>,
 }
 
-impl<FF> FriDomain<FF>
+impl<FF> Domain<FF>
 where
-    FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+    FF: FiniteField
+        + From<BFieldElement>
+        + Mul<BFieldElement, Output = FF>
+        + MulAssign<BFieldElement>,
 {
-    pub fn new(offset: BFieldElement, omega: BFieldElement, length: usize) -> Self {
-        let _field = PhantomData;
+    pub fn new(offset: BFieldElement, generator: BFieldElement, length: usize) -> Self {
         Self {
             offset,
-            omega,
+            generator,
             length,
-            _field,
+            _finite_field: PhantomData,
         }
     }
 
     pub fn evaluate(&self, polynomial: &Polynomial<FF>) -> Vec<FF> {
-        polynomial.fast_coset_evaluate(&self.offset, self.omega, self.length)
+        polynomial.fast_coset_evaluate(&self.offset, self.generator, self.length)
     }
 
     pub fn interpolate(&self, values: &[FF]) -> Polynomial<FF> {
-        Polynomial::<FF>::fast_coset_interpolate(&self.offset, self.omega, values)
+        Polynomial::<FF>::fast_coset_interpolate(&self.offset, self.generator, values)
     }
 
     pub fn domain_value(&self, index: u32) -> FF {
-        let domain_value: BFieldElement = self.omega.mod_pow_u32(index) * self.offset;
+        let domain_value = self.generator.mod_pow_u32(index) * self.offset;
         domain_value.into()
     }
 
     pub fn domain_values(&self) -> Vec<FF> {
-        let mut res = Vec::with_capacity(self.length);
-        let mut acc = FF::one();
+        let mut accumulator = FF::one();
+        let mut domain_values = Vec::with_capacity(self.length);
 
         for _ in 0..self.length {
-            let domain_value = {
-                let mut tmp = acc;
-                tmp *= self.offset;
-                tmp
-            };
-            res.push(domain_value);
-            acc *= self.omega;
+            domain_values.push(accumulator * self.offset);
+            accumulator *= self.generator;
         }
 
-        res
+        domain_values
     }
 }
 
 #[cfg(test)]
-mod fri_domain_tests {
-    use super::*;
+mod domain_tests {
     use itertools::Itertools;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
     use twenty_first::shared_math::x_field_element::XFieldElement;
+
+    use super::*;
 
     #[test]
     fn domain_values_test() {
@@ -75,8 +73,8 @@ mod fri_domain_tests {
         for order in [4, 8, 32] {
             let omega = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain = FriDomain::<BFieldElement>::new(offset, omega, order as usize);
-            let x_domain = FriDomain::<XFieldElement>::new(offset, omega, order as usize);
+            let b_domain = Domain::<BFieldElement>::new(offset, omega, order as usize);
+            let x_domain = Domain::<XFieldElement>::new(offset, omega, order as usize);
 
             let expected_b_values: Vec<BFieldElement> =
                 (0..order).map(|i| offset * omega.mod_pow(i)).collect();
@@ -86,11 +84,11 @@ mod fri_domain_tests {
                 .collect_vec();
             assert_eq!(
                 expected_b_values, actual_b_values_1,
-                "domain_values() generates the FRI domain BFieldElement values"
+                "domain_values() generates the domain BFieldElement values"
             );
             assert_eq!(
                 expected_b_values, actual_b_values_2,
-                "domain_value() generates the given FRI domain BFieldElement value"
+                "domain_value() generates the given domain BFieldElement value"
             );
 
             let expected_x_values: Vec<XFieldElement> =
@@ -101,11 +99,11 @@ mod fri_domain_tests {
                 .collect_vec();
             assert_eq!(
                 expected_x_values, actual_x_values_1,
-                "domain_values() generates the FRI domain XFieldElement values"
+                "domain_values() generates the domain XFieldElement values"
             );
             assert_eq!(
                 expected_x_values, actual_x_values_2,
-                "domain_value() generates the given FRI domain XFieldElement values"
+                "domain_value() generates the given domain XFieldElement values"
             );
 
             let values = b_domain.evaluate(&poly);

@@ -1,15 +1,16 @@
 use itertools::Itertools;
-use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::fri_domain::FriDomain;
+use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_start, prof_stop};
+
+use crate::domain::Domain;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
-use triton_profiler::triton_profiler::TritonProfiler;
 
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
@@ -133,54 +134,33 @@ impl BaseTableCollection {
 
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &FriDomain<BFieldElement>,
+        fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> BaseTableCollection {
         let padded_height = self.padded_height;
         let omicron = derive_omicron(padded_height as u64);
 
-        let program_table = self.program_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let instruction_table = self.instruction_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let processor_table = self.processor_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let op_stack_table = self.op_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let ram_table = self.ram_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let jump_stack_table = self.jump_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let hash_table = self.hash_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
+        let program_table =
+            self.program_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let instruction_table =
+            self.instruction_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let processor_table =
+            self.processor_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let op_stack_table =
+            self.op_stack_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let ram_table =
+            self.ram_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let jump_stack_table =
+            self.jump_stack_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let hash_table =
+            self.hash_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
 
         BaseTableCollection {
             padded_height,
@@ -369,54 +349,33 @@ impl ExtTableCollection {
     /// Heads up: only extension columns are being low degree extended. todo: better naming.
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         num_trace_randomizers: usize,
     ) -> Self {
         let padded_height = self.padded_height;
         let omicron = derive_omicron(padded_height as u64);
 
-        let program_table = self.program_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let instruction_table = self.instruction_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let processor_table = self.processor_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let op_stack_table = self.op_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let ram_table = self.ram_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let jump_stack_table = self.jump_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let hash_table = self.hash_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
+        let program_table =
+            self.program_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let instruction_table =
+            self.instruction_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let processor_table =
+            self.processor_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let op_stack_table =
+            self.op_stack_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let ram_table =
+            self.ram_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let jump_stack_table =
+            self.jump_stack_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let hash_table =
+            self.hash_table
+                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
 
         ExtTableCollection {
             padded_height,
@@ -469,7 +428,7 @@ impl ExtTableCollection {
 
     pub fn get_all_quotients(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        fri_domain: &Domain<XFieldElement>,
         challenges: &AllChallenges,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
