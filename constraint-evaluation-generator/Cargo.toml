@@ -23,7 +23,7 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = { version = "0.3.2" }
+twenty-first = { version = "0.4.0" }
 triton-vm = { path = "../triton-vm" }
 anyhow = "1.0"
 bincode = "1.3"
