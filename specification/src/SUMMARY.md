@@ -17,6 +17,10 @@
     + [Jump Stack Table](jump-stack-table.md)
     + [Hash Table](hash-table.md)
     + [Memory-Consistency](memory-consistency.md)
+        * [Contiguity of Memory-Pointer Regions](contiguity-of-memory-pointer-regions.md)
+        * [Clock Jump Differences and Inner Sorting](clock-jump-differences-and-inner-sorting.md)
+        * [Proof of Memory Consistency](proof-of-memory-consistency.md)
+        * [Appendix: Modified Memory Pointers by Instruction](modified-memory-pointers-by-instruction.md)
 ---
 - [Copy Constraints](copy-constraints.md)
 - [Index Sampling](index-sampling.md)
