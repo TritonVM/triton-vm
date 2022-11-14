@@ -56,5 +56,15 @@ They exist only to allow efficient arithmetization.
 ## Helper Variables
 
 Some instructions require helper variables in order to generate an efficient arithmetization.
-To this end, there are 4 helper registers, labeled `hv0` through `hv3`.
+To this end, there are 4 helper variable registers, labeled `hv0` through `hv3`.
 These registers are part of the arithmetization of the architecture, but not needed to define the instruction set.
+
+Because they are only needed for some instructions, the helper variables are not generally defined.
+For instruction group [`stack_shrinks_and_top_3_unconstrained`](instruction-groups.md#group-stack_shrinks_and_top_3_unconstrained) and its derivatives, as well as for instructions
+[`dup`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-dup--i),
+[`swap`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-swap--i),
+[`skiz`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-skiz),
+[`divine_sibling`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-divine_sibling),
+[`split`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-split), and
+[`eq`](instruction-specific-transition-constraints.md#helper-variable-definitions-for-eq),
+the behavior is defined in the respective sections.

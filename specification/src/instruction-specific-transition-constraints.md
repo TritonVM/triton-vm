@@ -380,7 +380,6 @@ Additionally, it defines the following transition constraints.
 
 1. Helper variable `hv0` is either 0 or 1.
 1. The 11th stack register is shifted by 1 bit to the right.
-
 1. If `hv0` is 0, then `st0` does not change.
 1. If `hv0` is 0, then `st1` does not change.
 1. If `hv0` is 0, then `st2` does not change.
