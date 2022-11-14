@@ -6,6 +6,7 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use triton_profiler::triton_profiler::TritonProfiler;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -201,7 +202,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_codeword = fri_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - XFieldElement::one())
+            .map(|x| x - BFieldElement::one())
             .collect();
         let zerofier_inverse = XFieldElement::batch_inversion(zerofier_codeword);
 
@@ -232,7 +233,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_codeword = fri_domain
             .domain_values()
             .iter()
-            .map(|x| x.mod_pow_u32(padded_height as u32) - XFieldElement::one())
+            .map(|x| x.mod_pow_u32(padded_height as u32) - BFieldElement::one())
             .collect();
         let zerofier_inverse = XFieldElement::batch_inversion(zerofier_codeword);
 

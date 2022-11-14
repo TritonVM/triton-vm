@@ -109,13 +109,13 @@ impl RamTable {
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
 
         // initialize columns establishing Bézout relation
-        let mut running_product_of_ramp = challenges.bezout_relation_indeterminate
-            - XFieldElement::new_const(self.data().first().unwrap()[usize::from(RAMP)]);
+        let ramp_first_row = self.data().first().unwrap()[usize::from(RAMP)];
+        let mut running_product_of_ramp = challenges.bezout_relation_indeterminate - ramp_first_row;
         let mut formal_derivative = XFieldElement::one();
         let mut bezout_coefficient_0 = XFieldElement::zero();
-        let mut bezout_coefficient_1 = self.data().first().unwrap()
-            [usize::from(BezoutCoefficientPolynomialCoefficient1)]
-        .lift();
+        let bcpc_first_row =
+            self.data().first().unwrap()[usize::from(BezoutCoefficientPolynomialCoefficient1)];
+        let mut bezout_coefficient_1 = bcpc_first_row.lift();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
         for row in self.data().iter() {

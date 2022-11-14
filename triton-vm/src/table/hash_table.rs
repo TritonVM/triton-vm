@@ -93,7 +93,7 @@ impl Evaluable for ExtHashTable {
             .fold(XFieldElement::one(), XFieldElement::mul);
 
         let mut evaluated_consistency_constraints = vec![
-            round_number_is_not_1_or * (state10 - XFieldElement::one()), // <-- domain separation bit
+            round_number_is_not_1_or * (state10 - BFieldElement::one()), // <-- domain separation bit
             round_number_is_not_1_or * state11,
             round_number_is_not_1_or * state12,
             round_number_is_not_1_or * state13,
@@ -108,7 +108,7 @@ impl Evaluable for ExtHashTable {
                 (round_constant_idx + round_constant_offset).try_into().unwrap();
             evaluated_consistency_constraints.push(
                 round_number
-                    * (round_number - XFieldElement::from(NUM_ROUNDS as u32 + 1))
+                    * (round_number - BFieldElement::from(NUM_ROUNDS as u32 + 1))
                     * (Self::round_constants_interpolant(round_constant_column)
                         .evaluate(&evaluation_point[usize::from(ROUNDNUMBER)])
                         - evaluation_point[usize::from(round_constant_column)]),

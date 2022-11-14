@@ -969,7 +969,7 @@ impl Stark {
                     .zip_eq(initial_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_bc / (current_fri_domain_value - XFieldElement::one());
+                    let quotient = evaluated_bc / (current_fri_domain_value - BFieldElement::one());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -986,7 +986,7 @@ impl Stark {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_cc
                         / (current_fri_domain_value.mod_pow_u32(padded_height as u32)
-                            - XFieldElement::one());
+                            - BFieldElement::one());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -1009,7 +1009,7 @@ impl Stark {
                         let numerator = current_fri_domain_value - omicron_inverse;
                         let denominator = current_fri_domain_value
                             .mod_pow_u32(padded_height as u32)
-                            - XFieldElement::one();
+                            - BFieldElement::one();
                         evaluated_tc * numerator / denominator
                     };
                     let quotient_shifted =
