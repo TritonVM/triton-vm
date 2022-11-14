@@ -124,7 +124,6 @@ impl Evaluable for ExtHashTable {
         next_row: &[XFieldElement],
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
-        // TODO: Refactor this function by removing `evaluation_point` and use `current_row`, `next_row` directly.
         let evaluation_point = vec![current_row, next_row].concat();
         let constant = |c: u64| BFieldElement::new(c).lift();
         let from_processor_eval_indeterminate = challenges

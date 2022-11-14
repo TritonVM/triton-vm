@@ -43,7 +43,8 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
 }
 
 pub trait Evaluable: ExtensionTable {
-    /// evaluate initial constraints on given point if they are set; panic otherwise
+    /// Evaluate initial constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_initial_constraints(
         &self,
         evaluation_point: &[XFieldElement],
@@ -59,7 +60,8 @@ pub trait Evaluable: ExtensionTable {
         }
     }
 
-    /// evaluate consistency constraints on given point if they are set; panic otherwise
+    /// Evaluate consistency constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_consistency_constraints(
         &self,
         evaluation_point: &[XFieldElement],
@@ -75,34 +77,27 @@ pub trait Evaluable: ExtensionTable {
         }
     }
 
-    /// evaluate transition constraints if they are set; panic otherwise
+    /// Evaluate transition constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_transition_constraints(
         &self,
         current_row: &[XFieldElement],
         next_row: &[XFieldElement],
         _challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
-        // TODO: Refactor this function by removing `evaluation_point` and use `current_row`, `next_row` directly.
         let evaluation_point = vec![current_row, next_row].concat();
-        self.evaluate_transition_constraints_inner(&evaluation_point, _challenges)
-    }
-
-    fn evaluate_transition_constraints_inner(
-        &self,
-        evaluation_point: &[XFieldElement],
-        _challenges: &AllChallenges,
-    ) -> Vec<XFieldElement> {
         if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
             transition_constraints
                 .iter()
-                .map(|tc| tc.evaluate(evaluation_point))
+                .map(|tc| tc.evaluate(&evaluation_point))
                 .collect()
         } else {
             panic!("{} does not have transition constraints!", &self.name());
         }
     }
 
-    /// evaluate terminal constraints on given point if they are set; panic otherwise
+    /// Evaluate terminal constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_terminal_constraints(
         &self,
         evaluation_point: &[XFieldElement],
