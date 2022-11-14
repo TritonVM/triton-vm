@@ -2,7 +2,7 @@ use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
-use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use triton_profiler::triton_profiler::TritonProfiler;
@@ -78,13 +78,13 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
     (padded_height + num_trace_randomizers - 1) as Degree
 }
 
-pub fn derive_omicron<FF: FiniteField>(padded_height: u64) -> FF {
+pub fn derive_omicron(padded_height: u64) -> BFieldElement {
     debug_assert!(
         0 == padded_height || is_power_of_two(padded_height),
         "The padded height was: {}",
         padded_height
     );
-    FF::primitive_root_of_unity(padded_height).unwrap()
+    BFieldElement::primitive_root_of_unity(padded_height).unwrap()
 }
 
 impl BaseTableCollection {
@@ -349,7 +349,7 @@ impl ExtTableCollection {
     /// Heads up: only extension columns are being low degree extended. todo: better naming.
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &Domain<XFieldElement>,
+        fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> Self {
         let padded_height = self.padded_height;
@@ -428,7 +428,7 @@ impl ExtTableCollection {
 
     pub fn get_all_quotients(
         &self,
-        fri_domain: &Domain<XFieldElement>,
+        fri_domain: &Domain<BFieldElement>,
         challenges: &AllChallenges,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {

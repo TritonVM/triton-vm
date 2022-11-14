@@ -44,8 +44,8 @@ pub trait CrossTableArg {
     fn terminal_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        fri_domain: &Domain<XFieldElement>,
-        omicron: XFieldElement,
+        fri_domain: &Domain<BFieldElement>,
+        omicron: BFieldElement,
     ) -> Vec<XFieldElement> {
         let from_codeword = self.combined_from_codeword(ext_codeword_tables);
         let to_codeword = self.combined_to_codeword(ext_codeword_tables);
@@ -55,7 +55,7 @@ pub trait CrossTableArg {
             .into_iter()
             .map(|x| x - omicron.inverse())
             .collect();
-        let zerofier_inverse = XFieldElement::batch_inversion(zerofier);
+        let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
 
         zerofier_inverse
             .into_iter()
@@ -453,8 +453,8 @@ impl GrandCrossTableArg {
     pub fn terminal_quotient_codeword(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        fri_domain: &Domain<XFieldElement>,
-        omicron: XFieldElement,
+        fri_domain: &Domain<BFieldElement>,
+        omicron: BFieldElement,
     ) -> Vec<XFieldElement> {
         let mut non_linear_sum_codeword = vec![XFieldElement::zero(); fri_domain.length];
 
@@ -502,7 +502,7 @@ impl GrandCrossTableArg {
             .into_iter()
             .map(|x| x - omicron.inverse())
             .collect();
-        let zerofier_inverse = XFieldElement::batch_inversion(zerofier);
+        let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
 
         zerofier_inverse
             .into_iter()

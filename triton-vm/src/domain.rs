@@ -29,12 +29,18 @@ where
         }
     }
 
-    pub fn evaluate(&self, polynomial: &Polynomial<FF>) -> Vec<FF> {
+    pub fn evaluate<GF>(&self, polynomial: &Polynomial<GF>) -> Vec<GF>
+    where
+        GF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+    {
         polynomial.fast_coset_evaluate(&self.offset, self.generator, self.length)
     }
 
-    pub fn interpolate(&self, values: &[FF]) -> Polynomial<FF> {
-        Polynomial::<FF>::fast_coset_interpolate(&self.offset, self.generator, values)
+    pub fn interpolate<GF>(&self, values: &[GF]) -> Polynomial<GF>
+    where
+        GF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+    {
+        Polynomial::<GF>::fast_coset_interpolate(&self.offset, self.generator, values)
     }
 
     pub fn domain_value(&self, index: u32) -> FF {

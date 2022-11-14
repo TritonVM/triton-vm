@@ -215,8 +215,8 @@ impl RamTable {
 impl ExtRamTable {
     pub fn to_fri_domain_table(
         &self,
-        fri_domain: &Domain<XFieldElement>,
-        omicron: XFieldElement,
+        fri_domain: &Domain<BFieldElement>,
+        omicron: BFieldElement,
         num_trace_randomizers: usize,
     ) -> Self {
         let ext_columns = self.base_width()..self.full_width();

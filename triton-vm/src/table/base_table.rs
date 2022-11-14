@@ -1,6 +1,5 @@
 use super::super::domain::Domain;
-use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use rand_distr::{Distribution, Standard};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::ops::{Mul, MulAssign, Range};
@@ -270,8 +269,8 @@ where
 
     fn low_degree_extension(
         &self,
-        fri_domain: &Domain<FF>,
-        omicron: FF,
+        fri_domain: &Domain<BFieldElement>,
+        omicron: BFieldElement,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Vec<FF>> {
@@ -287,7 +286,7 @@ where
     /// if it is called with a subset, it *will* fail.
     fn interpolate_columns(
         &self,
-        omicron: FF,
+        omicron: BFieldElement,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Polynomial<FF>> {
@@ -303,10 +302,8 @@ where
             self.name()
         );
 
-        // FIXME: Use Domain::new(…).domain_values() (needs some refactoring)
-        let trace_domain = (0..padded_height)
-            .map(|i| omicron.mod_pow_u32(i as u32))
-            .collect_vec();
+        let trace_domain =
+            Domain::new(BFieldElement::one(), omicron, padded_height).domain_values();
 
         let randomizer_domain = disjoint_domain(num_trace_randomizers, &trace_domain);
         let interpolation_domain = vec![trace_domain, randomizer_domain].concat();

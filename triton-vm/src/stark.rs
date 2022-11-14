@@ -24,7 +24,6 @@ use triton_profiler::{prof_itr0, prof_start, prof_stop};
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
-use crate::domain::Domain;
 use crate::fri::{Fri, FriValidationError};
 use crate::proof::{Claim, Proof};
 use crate::proof_item::ProofItem;
@@ -108,7 +107,6 @@ pub struct Stark {
     parameters: StarkParameters,
     claim: Claim,
     max_degree: Degree,
-    fri_domain: Domain<BFieldElement>,
     fri: Fri<StarkHasher>,
 }
 
@@ -122,7 +120,6 @@ impl Stark {
         let omega =
             BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
         let coset_offset = BFieldElement::generator();
-        let fri_domain: Domain<BFieldElement> = Domain::new(coset_offset, omega, fri_domain_length);
         let fri = Fri::new(
             coset_offset,
             omega,
@@ -134,7 +131,6 @@ impl Stark {
             parameters,
             claim,
             max_degree,
-            fri_domain,
             fri,
         }
     }
@@ -153,7 +149,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "LDE 1");
         let base_fri_domain_tables = base_trace_tables
-            .to_fri_domain_tables(&self.fri_domain, self.parameters.num_trace_randomizers);
+            .to_fri_domain_tables(&self.fri.domain, self.parameters.num_trace_randomizers);
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
         let randomizer_and_base_fri_domain_codewords =
             vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
@@ -557,7 +553,7 @@ impl Stark {
     }
 
     fn shift_codeword(
-        fri_x_values: &Vec<XFieldElement>,
+        fri_x_values: &Vec<BFieldElement>,
         codeword: &Vec<XFieldElement>,
         shift: u32,
     ) -> Vec<XFieldElement> {
@@ -606,7 +602,7 @@ impl Stark {
 
     fn get_randomizer_codewords(&self) -> (Vec<XFieldElement>, Vec<Vec<BFieldElement>>) {
         let randomizer_coefficients = random_elements(self.max_degree as usize + 1);
-        let randomizer_polynomial = Polynomial::new(randomizer_coefficients);
+        let randomizer_polynomial = Polynomial::<XFieldElement>::new(randomizer_coefficients);
 
         let x_randomizer_codeword = self.fri.domain.evaluate(&randomizer_polynomial);
         let mut b_randomizer_codewords = vec![vec![], vec![], vec![]];
@@ -849,7 +845,7 @@ impl Stark {
         let base_offset = self.parameters.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
-        let omicron: XFieldElement = derive_omicron(padded_height as u64);
+        let omicron = derive_omicron(padded_height as u64);
         let omicron_inverse = omicron.inverse();
         for (combination_check_index, revealed_combination_leaf) in combination_check_indices
             .into_iter()
@@ -951,7 +947,8 @@ impl Stark {
                     .zip_eq(initial_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_bc / (current_fri_domain_value - BFieldElement::one());
+                    let quotient =
+                        evaluated_bc / (current_fri_domain_value - BFieldElement::one()).lift();
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -968,7 +965,8 @@ impl Stark {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_cc
                         / (current_fri_domain_value.mod_pow_u32(padded_height as u32)
-                            - BFieldElement::one());
+                            - BFieldElement::one())
+                        .lift();
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -992,7 +990,7 @@ impl Stark {
                         let denominator = current_fri_domain_value
                             .mod_pow_u32(padded_height as u32)
                             - BFieldElement::one();
-                        evaluated_tc * numerator / denominator
+                        evaluated_tc * numerator / denominator.lift()
                     };
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
@@ -1008,7 +1006,8 @@ impl Stark {
                     .zip_eq(terminal_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_termc / (current_fri_domain_value - omicron_inverse);
+                    let quotient =
+                        evaluated_termc / (current_fri_domain_value - omicron_inverse).lift();
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -1028,8 +1027,8 @@ impl Stark {
             let shift = self.max_degree - grand_cross_table_arg_degree_bound;
             let grand_cross_table_arg_evaluated =
                 grand_cross_table_arg.evaluate_non_linear_sum_of_differences(&cross_slice_by_table);
-            let grand_cross_table_arg_quotient =
-                grand_cross_table_arg_evaluated / (current_fri_domain_value - omicron_inverse);
+            let grand_cross_table_arg_quotient = grand_cross_table_arg_evaluated
+                / (current_fri_domain_value - omicron_inverse).lift();
             let grand_cross_table_arg_quotient_shifted =
                 grand_cross_table_arg_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
             summands.push(grand_cross_table_arg_quotient);
