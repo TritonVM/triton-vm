@@ -1,20 +1,18 @@
-use std::{
-    borrow::BorrowMut,
-    cell::RefCell,
-    cmp::{self},
-    collections::HashSet,
-    fmt::{Debug, Display},
-    iter::Sum,
-    marker::PhantomData,
-    ops::{Add, Mul, Sub},
-    rc::Rc,
-};
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
+use std::cmp::{self};
+use std::collections::HashSet;
+use std::fmt::{Debug, Display};
+use std::iter::Sum;
+use std::marker::PhantomData;
+use std::ops::{Add, Mul, Sub};
+use std::rc::Rc;
 
 use num_traits::{One, Zero};
 use std::hash::Hash;
-use twenty_first::shared_math::{
-    b_field_element::BFieldElement, mpolynomial::MPolynomial, x_field_element::XFieldElement,
-};
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::challenges::TableChallenges;
 

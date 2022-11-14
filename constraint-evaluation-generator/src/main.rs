@@ -107,7 +107,7 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges>(
         requested_visited -= 1;
     }
 
-    let filename = format!("triton-vm/src/table/{table_name_snake}_autogen.rs");
+    let filename = format!("triton-vm/src/table/constraints/{table_name_snake}_constraints.rs");
     let shared_declarations = shared_evaluations.join("");
 
     let mut constraint_evaluation_expressions: Vec<String> = vec![];
@@ -138,11 +138,11 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges>(
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use super::challenges::AllChallenges;
-use super::challenges::TableChallenges;
-use super::extension_table::Evaluable;
-use super::{table_name_snake}::{table_mod_name};
-use super::{table_name_snake}::{challenge_enum_name}::*;
+use crate::table::challenges::AllChallenges;
+use crate::table::challenges::TableChallenges;
+use crate::table::extension_table::Evaluable;
+use crate::table::{table_name_snake}::{table_mod_name};
+use crate::table::{table_name_snake}::{challenge_enum_name}::*;
 
 impl Evaluable for {table_mod_name} {{
     #[inline]

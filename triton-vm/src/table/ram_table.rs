@@ -10,7 +10,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use crate::table::table_column::RamBaseTableColumn::{self, *};
 use crate::table::table_column::RamExtTableColumn::{self, *};
 
@@ -61,7 +60,6 @@ impl Default for ExtRamTable {
     }
 }
 
-impl Evaluable for ExtRamTable {}
 impl Quotientable for ExtRamTable {}
 impl QuotientableExtensionTable for ExtRamTable {}
 
