@@ -24,6 +24,7 @@ use triton_profiler::{prof_itr0, prof_start, prof_stop};
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
+use crate::domain::Domain;
 use crate::fri::{Fri, FriValidationError};
 use crate::proof::{Claim, Proof};
 use crate::proof_item::ProofItem;
@@ -147,13 +148,17 @@ impl Stark {
 
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
 
-        prof_start!(maybe_profiler, "LDE 1");
-        let base_fri_domain_tables = base_trace_tables
-            .to_fri_domain_tables(&self.fri.domain, self.parameters.num_trace_randomizers);
+        prof_start!(maybe_profiler, "dual LDE 1");
+        let arithmetic_domain = self.arithmetic_domain();
+        let base_fri_domain_tables = base_trace_tables.to_arithmetic_and_fri_domain_tables(
+            &arithmetic_domain,
+            &self.fri.domain,
+            self.parameters.num_trace_randomizers,
+        );
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
         let randomizer_and_base_fri_domain_codewords =
             vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
-        prof_stop!(maybe_profiler, "LDE 1");
+        prof_stop!(maybe_profiler, "dual LDE 1");
 
         prof_start!(maybe_profiler, "Merkle tree 1");
         let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
@@ -182,12 +187,14 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "extend");
 
-        prof_start!(maybe_profiler, "LDE 2");
-        let ext_fri_domain_tables = ext_trace_tables
-            .to_fri_domain_tables(&self.fri.domain, self.parameters.num_trace_randomizers);
+        prof_start!(maybe_profiler, "dual LDE 2");
+        let ext_fri_domain_tables = ext_trace_tables.to_arithmetic_and_fri_domain_tables(
+            &arithmetic_domain,
+            &self.fri.domain,
+            self.parameters.num_trace_randomizers,
+        );
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
-
-        prof_stop!(maybe_profiler, "LDE 2");
+        prof_stop!(maybe_profiler, "dual LDE 2");
 
         prof_start!(maybe_profiler, "Merkle tree 2");
         let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
@@ -382,6 +389,14 @@ impl Stark {
         }
 
         proof_stream.to_proof()
+    }
+
+    fn arithmetic_domain(&self) -> Domain<BFieldElement> {
+        let offset = self.fri.domain.offset;
+        let expansion_factor = self.fri.expansion_factor;
+        let generator = self.fri.domain.generator.mod_pow(expansion_factor as u64);
+        let length = self.fri.domain.length / expansion_factor;
+        Domain::new(offset, generator, length)
     }
 
     fn get_revealed_indices(

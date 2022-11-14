@@ -132,35 +132,57 @@ impl BaseTableCollection {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn to_fri_domain_tables(
+    pub fn to_arithmetic_and_fri_domain_tables(
         &self,
+        arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> BaseTableCollection {
         let padded_height = self.padded_height;
         let omicron = derive_omicron(padded_height as u64);
 
-        let program_table =
-            self.program_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let instruction_table =
-            self.instruction_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let processor_table =
-            self.processor_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let op_stack_table =
-            self.op_stack_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let ram_table =
-            self.ram_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let jump_stack_table =
-            self.jump_stack_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let hash_table =
-            self.hash_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let (_, program_table) = self.program_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, instruction_table) = self.instruction_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, processor_table) = self.processor_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, op_stack_table) = self.op_stack_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, ram_table) = self.ram_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, jump_stack_table) = self.jump_stack_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, hash_table) = self.hash_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
 
         BaseTableCollection {
             padded_height,
@@ -347,35 +369,57 @@ impl ExtTableCollection {
     }
 
     /// Heads up: only extension columns are being low degree extended. todo: better naming.
-    pub fn to_fri_domain_tables(
+    pub fn to_arithmetic_and_fri_domain_tables(
         &self,
+        arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> Self {
         let padded_height = self.padded_height;
         let omicron = derive_omicron(padded_height as u64);
 
-        let program_table =
-            self.program_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let instruction_table =
-            self.instruction_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let processor_table =
-            self.processor_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let op_stack_table =
-            self.op_stack_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let ram_table =
-            self.ram_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let jump_stack_table =
-            self.jump_stack_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
-        let hash_table =
-            self.hash_table
-                .to_fri_domain_table(fri_domain, omicron, num_trace_randomizers);
+        let (_, program_table) = self.program_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, instruction_table) = self.instruction_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, processor_table) = self.processor_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, op_stack_table) = self.op_stack_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, ram_table) = self.ram_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, jump_stack_table) = self.jump_stack_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
+        let (_, hash_table) = self.hash_table.to_arithmetic_and_fri_domain_table(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+        );
 
         ExtTableCollection {
             padded_height,

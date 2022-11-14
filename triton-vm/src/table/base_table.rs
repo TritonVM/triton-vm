@@ -267,18 +267,36 @@ where
         self.inherited_table().name.clone()
     }
 
-    fn low_degree_extension(
+    /// Low-degree extends the trace that is `self` over the indicated columns `columns` and
+    /// returns two codewords per column:
+    /// - one codeword evaluated on the `arithmetic_domain`, and
+    /// - one codeword evaluated on the `fri_domain`,
+    /// in that order.
+    fn dual_low_degree_extension(
         &self,
+        arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
         num_trace_randomizers: usize,
         columns: Range<usize>,
-    ) -> Vec<Vec<FF>> {
-        // FIXME: Table<> supports Vec<[FF; WIDTH]>, but FriDomain does not (yet).
-        self.interpolate_columns(omicron, num_trace_randomizers, columns)
+    ) -> (Table<FF>, Table<FF>) {
+        // FIXME: Table<> supports Vec<[FF; WIDTH]>, but Domain does not (yet).
+        let interpolated_columns =
+            self.interpolate_columns(trace_domain_generator, num_trace_randomizers, columns);
+        let arithmetic_domain_codewords = interpolated_columns
+            .par_iter()
+            .map(|polynomial| arithmetic_domain.evaluate(polynomial))
+            .collect();
+        let arithmetic_domain_codeword_table = self
+            .inherited_table()
+            .with_data(arithmetic_domain_codewords);
+        let fri_domain_codewords = interpolated_columns
             .par_iter()
             .map(|polynomial| fri_domain.evaluate(polynomial))
-            .collect()
+            .collect();
+        let fri_domain_codeword_table = self.inherited_table().with_data(fri_domain_codewords);
+
+        (arithmetic_domain_codeword_table, fri_domain_codeword_table)
     }
 
     /// Return the interpolation of columns. The `column_indices` variable
@@ -286,7 +304,7 @@ where
     /// if it is called with a subset, it *will* fail.
     fn interpolate_columns(
         &self,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Polynomial<FF>> {
@@ -302,8 +320,8 @@ where
             self.name()
         );
 
-        let trace_domain =
-            Domain::new(BFieldElement::one(), omicron, padded_height).domain_values();
+        let trace_domain = Domain::new(BFieldElement::one(), trace_domain_generator, padded_height)
+            .domain_values();
 
         let randomizer_domain = disjoint_domain(num_trace_randomizers, &trace_domain);
         let interpolation_domain = vec![trace_domain, randomizer_domain].concat();

@@ -185,23 +185,35 @@ impl ExtProgramTable {
 }
 
 impl ProgramTable {
+    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
+        Self { inherited_table }
+    }
+
     pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProgramTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn to_fri_domain_table(
+    pub fn to_arithmetic_and_fri_domain_table(
         &self,
+        arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         omicron: BFieldElement,
         num_trace_randomizers: usize,
-    ) -> Self {
+    ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
-        let fri_domain_codewords =
-            self.low_degree_extension(fri_domain, omicron, num_trace_randomizers, base_columns);
-        let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
-        Self { inherited_table }
+        let (arithmetic_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+            base_columns,
+        );
+        (
+            Self::new(arithmetic_domain_table),
+            Self::new(fri_domain_table),
+        )
     }
 
     pub fn extend(
@@ -291,18 +303,30 @@ impl ProgramTable {
 }
 
 impl ExtProgramTable {
-    pub fn to_fri_domain_table(
+    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
+        Self { inherited_table }
+    }
+
+    pub fn to_arithmetic_and_fri_domain_table(
         &self,
+        arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         omicron: BFieldElement,
         num_trace_randomizers: usize,
-    ) -> Self {
+    ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();
-        let fri_domain_codewords_ext =
-            self.low_degree_extension(fri_domain, omicron, num_trace_randomizers, ext_columns);
+        let (arithmetic_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            arithmetic_domain,
+            fri_domain,
+            omicron,
+            num_trace_randomizers,
+            ext_columns,
+        );
 
-        let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
-        ExtProgramTable { inherited_table }
+        (
+            Self::new(arithmetic_domain_table),
+            Self::new(fri_domain_table),
+        )
     }
 }
 
