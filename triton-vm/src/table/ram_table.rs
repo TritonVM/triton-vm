@@ -352,14 +352,14 @@ impl ExtRamTable {
         let one = circuit_builder.b_constant(1u32.into());
 
         let bezout_challenge =
-            circuit_builder.challenge(RamTableChallengesId::BezoutRelationIndeterminate);
+            circuit_builder.challenge(RamTableChallengeId::BezoutRelationIndeterminate);
         let cjd_challenge = circuit_builder
-            .challenge(RamTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate);
+            .challenge(RamTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
         let rppa_challenge =
-            circuit_builder.challenge(RamTableChallengesId::ProcessorPermIndeterminate);
-        let clk_weight = circuit_builder.challenge(RamTableChallengesId::ClkWeight);
-        let ramp_weight = circuit_builder.challenge(RamTableChallengesId::RampWeight);
-        let ramv_weight = circuit_builder.challenge(RamTableChallengesId::RamvWeight);
+            circuit_builder.challenge(RamTableChallengeId::ProcessorPermIndeterminate);
+        let clk_weight = circuit_builder.challenge(RamTableChallengeId::ClkWeight);
+        let ramp_weight = circuit_builder.challenge(RamTableChallengeId::RampWeight);
+        let ramv_weight = circuit_builder.challenge(RamTableChallengeId::RamvWeight);
 
         let clk = circuit_builder.input(usize::from(CLK));
         let ramp = circuit_builder.input(usize::from(RAMP));
@@ -497,7 +497,7 @@ impl ExtRamTable {
 }
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum RamTableChallengesId {
+pub enum RamTableChallengeId {
     BezoutRelationIndeterminate,
     ProcessorPermIndeterminate,
     ClkWeight,
@@ -506,8 +506,8 @@ pub enum RamTableChallengesId {
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
 
-impl From<RamTableChallengesId> for usize {
-    fn from(val: RamTableChallengesId) -> Self {
+impl From<RamTableChallengeId> for usize {
+    fn from(val: RamTableChallengeId) -> Self {
         val as usize
     }
 }
@@ -530,17 +530,17 @@ pub struct RamTableChallenges {
 }
 
 impl TableChallenges for RamTableChallenges {
-    type Id = RamTableChallengesId;
+    type Id = RamTableChallengeId;
 
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            RamTableChallengesId::BezoutRelationIndeterminate => self.bezout_relation_indeterminate,
-            RamTableChallengesId::ProcessorPermIndeterminate => self.processor_perm_indeterminate,
-            RamTableChallengesId::ClkWeight => self.clk_weight,
-            RamTableChallengesId::RamvWeight => self.ramv_weight,
-            RamTableChallengesId::RampWeight => self.ramp_weight,
-            RamTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            RamTableChallengeId::BezoutRelationIndeterminate => self.bezout_relation_indeterminate,
+            RamTableChallengeId::ProcessorPermIndeterminate => self.processor_perm_indeterminate,
+            RamTableChallengeId::ClkWeight => self.clk_weight,
+            RamTableChallengeId::RamvWeight => self.ramv_weight,
+            RamTableChallengeId::RampWeight => self.ramp_weight,
+            RamTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
         }
