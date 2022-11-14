@@ -109,7 +109,8 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges, II: InputInd
         requested_visited -= 1;
     }
 
-    let filename = format!("triton-vm/src/table/constraints/{table_name_snake}_constraints.rs");
+    let output_filename =
+        format!("triton-vm/src/table/constraints/{table_name_snake}_constraints.rs");
     let shared_declarations = shared_evaluations.join("");
 
     let mut constraint_evaluation_expressions: Vec<String> = vec![];
@@ -135,7 +136,7 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges, II: InputInd
     );
 
     let table_mod_name = format!("Ext{table_id_name}");
-    let template = format!(
+    let rust_source_code = format!(
         "
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -163,10 +164,10 @@ impl Evaluable for {table_mod_name} {{
 "
     );
 
-    println!("{template}");
+    println!("{rust_source_code}");
     if std::env::var("OUTPUT_RUST_SOURCE_CODE").is_ok() {
         use std::fs;
-        fs::write(filename, template).expect("Unable to write file");
+        fs::write(output_filename, rust_source_code).expect("Unable to write file");
     }
 }
 
