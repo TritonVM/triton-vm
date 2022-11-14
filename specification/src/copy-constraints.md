@@ -21,7 +21,7 @@ To establish that the product is correctly computed, the Prover needs to supply 
 
 **Protocol Permutation**
  - Verifier is already in possession of polynomial oracles $[t(X)]$ and $[s(X)]$ that agree with $T$ and $S$ on a subgroup $H$ of order $2^k$.
- - Verifier samples \(\beta \xleftarrow{\$} \mathbb{F}\) and sends it to Prover.
+ - Verifier samples $\beta \xleftarrow{\\$} \mathbb{F}$ and sends it to Prover.
  - Prover computes running product polynomials, $t_ p(X)$ and $s_ p(X)$ of degree at most $|H|-1$ and sends them to Verifier.
  - Prover and Verifier run an AIR sub-protocol to establish that the AIR is satisfied for $(t(X), s(X), t_ p(X), s_ p(X))$.
 
@@ -56,7 +56,7 @@ Likewise, we can re-write the AIR for the running product to avoid accumulating 
 **Protocol Subset**
  - Prover computes $R \leftarrow \mathsf{sort}(T)$ and $M \leftarrow \{[ [ S_{[i]} \in \mathsf{set}(R) ] ] \, \vert \, i \in \{0, \ldots, 2^k-1\}\}$ and commits to them.
  - Prover and Verifier run a Permutation subprotocol on $(T,R)$.
- - Verifier samples $\beta \xleftarrow{\$} \mathbb{F}$ and sends it to Prover.
+ - Verifier samples $\beta \xleftarrow{\\$} \mathbb{F}$ and sends it to Prover.
  - Prover computes the running square-free product table $R_ p$ of $R$, and the running masked product table of $S_ p$ of $S$ masked by $M$.
  - Prover sends $R_ p$ and $S_ p$ to Verifier.
  - Verifier checks the AIR for $(R, R_ p)$ and the AIR for $(S_ p, M \circ S)$.
