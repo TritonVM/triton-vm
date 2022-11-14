@@ -808,10 +808,13 @@ impl<T: TableChallenges, II: InputIndicator> Mul for ConstraintCircuitMonad<T, I
     }
 }
 
+/// This will panic if the iterator is empty because the neutral
+/// element needs a unique ID, and we have no way of getting that
+/// here.
 impl<T: TableChallenges, II: InputIndicator> Sum for ConstraintCircuitMonad<T, II> {
-    // TODO: This will panic if the iterator is empty! Can or should we avoid that?
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|accum, item| accum + item).unwrap()
+        iter.reduce(|accum, item| accum + item)
+            .expect("ConstraintCircuitMonad Iterator was empty")
     }
 }
 
