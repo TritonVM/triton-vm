@@ -44,13 +44,13 @@ pub trait CrossTableArg {
     fn terminal_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         omicron: BFieldElement,
     ) -> Vec<XFieldElement> {
         let from_codeword = self.combined_from_codeword(ext_codeword_tables);
         let to_codeword = self.combined_to_codeword(ext_codeword_tables);
 
-        let zerofier = fri_domain
+        let zerofier = domain
             .domain_values()
             .into_iter()
             .map(|x| x - omicron.inverse())
@@ -453,10 +453,10 @@ impl GrandCrossTableArg {
     pub fn terminal_quotient_codeword(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         omicron: BFieldElement,
     ) -> Vec<XFieldElement> {
-        let mut non_linear_sum_codeword = vec![XFieldElement::zero(); fri_domain.length];
+        let mut non_linear_sum_codeword = vec![XFieldElement::zero(); domain.length];
 
         // cross-table arguments
         for (arg, weight) in self.into_iter() {
@@ -472,7 +472,7 @@ impl GrandCrossTableArg {
         }
 
         // standard input
-        let input_terminal_codeword = vec![self.input_terminal; fri_domain.length];
+        let input_terminal_codeword = vec![self.input_terminal; domain.length];
         let (to_table, to_column) = self.input_to_processor;
         let to_codeword = &ext_codeword_tables.data(to_table)[to_column];
         let weight = self.input_to_processor_weight;
@@ -487,7 +487,7 @@ impl GrandCrossTableArg {
         // standard output
         let (from_table, from_column) = self.processor_to_output;
         let from_codeword = &ext_codeword_tables.data(from_table)[from_column];
-        let output_terminal_codeword = vec![self.output_terminal; fri_domain.length];
+        let output_terminal_codeword = vec![self.output_terminal; domain.length];
         let weight = self.processor_to_output_weight;
         let non_linear_summand =
             weighted_difference_codeword(from_codeword, &output_terminal_codeword, weight);
@@ -497,7 +497,7 @@ impl GrandCrossTableArg {
             XFieldElement::add,
         );
 
-        let zerofier = fri_domain
+        let zerofier = domain
             .domain_values()
             .into_iter()
             .map(|x| x - omicron.inverse())

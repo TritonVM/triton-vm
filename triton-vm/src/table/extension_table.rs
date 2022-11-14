@@ -194,13 +194,13 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn initial_quotients(
         &self,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
     ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
+        debug_assert_eq!(domain.length, transposed_codewords.len());
 
-        let zerofier_codeword = fri_domain
+        let zerofier_codeword = domain
             .domain_values()
             .into_iter()
             .map(|x| x - BFieldElement::one())
@@ -210,28 +210,28 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
             .enumerate()
-            .map(|(fri_dom_i, &z_inv)| {
-                let row = &transposed_codewords[fri_dom_i];
+            .map(|(domain_index, &z_inv)| {
+                let row = &transposed_codewords[domain_index];
                 let evaluated_bcs = self.evaluate_initial_constraints(row, challenges);
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
             .collect();
         let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "initial");
+        self.debug_domain_bound_check(domain, &quotient_codewords, "initial");
 
         quotient_codewords
     }
 
     fn consistency_quotients(
         &self,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
+        debug_assert_eq!(domain.length, transposed_codewords.len());
 
-        let zerofier_codeword = fri_domain
+        let zerofier_codeword = domain
             .domain_values()
             .iter()
             .map(|x| x.mod_pow_u32(padded_height as u32) - BFieldElement::one())
@@ -241,54 +241,54 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
             .enumerate()
-            .map(|(fri_dom_i, &z_inv)| {
-                let row = &transposed_codewords[fri_dom_i];
+            .map(|(domain_index, &z_inv)| {
+                let row = &transposed_codewords[domain_index];
                 let evaluated_ccs = self.evaluate_consistency_constraints(row, challenges);
                 evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
             })
             .collect();
         let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "consistency");
+        self.debug_domain_bound_check(domain, &quotient_codewords, "consistency");
 
         quotient_codewords
     }
 
     fn transition_quotients(
         &self,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         omicron: BFieldElement,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
+        debug_assert_eq!(domain.length, transposed_codewords.len());
 
         let one = XFieldElement::one();
         let omicron_inverse = omicron.inverse();
-        let fri_domain_values = fri_domain.domain_values();
+        let domain_values = domain.domain_values();
 
-        let subgroup_zerofier: Vec<_> = fri_domain_values
+        let subgroup_zerofier: Vec<_> = domain_values
             .par_iter()
-            .map(|fri_dom_v| fri_dom_v.mod_pow_u32(padded_height as u32) - one)
+            .map(|domain_value| domain_value.mod_pow_u32(padded_height as u32) - one)
             .collect();
         let subgroup_zerofier_inverse = XFieldElement::batch_inversion(subgroup_zerofier);
-        let zerofier_inverse: Vec<_> = fri_domain_values
+        let zerofier_inverse: Vec<_> = domain_values
             .into_par_iter()
             .zip_eq(subgroup_zerofier_inverse.into_par_iter())
-            .map(|(fri_dom_v, sub_z_inv)| (fri_dom_v - omicron_inverse) * sub_z_inv)
+            .map(|(domain_value, sub_z_inv)| (domain_value - omicron_inverse) * sub_z_inv)
             .collect();
-        // the relation between the FRI domain and the omicron domain
-        let unit_distance = fri_domain.length / padded_height;
+        // the relation between the arithmetic domain and the trace domain
+        let unit_distance = domain.length / padded_height;
 
-        let fri_domain_bit_mask = fri_domain.length - 1;
+        let domain_length_bit_mask = domain.length - 1;
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
             .enumerate()
             .map(|(current_row_idx, &z_inv)| {
-                // `& fri_domain_bit_mask` performs cheap modulo:
-                // `fri_domain.length - 1` is a bit-mask with all 1s
-                // because fri_domain.length is 2^k for some k.
-                let next_row_index = (current_row_idx + unit_distance) & fri_domain_bit_mask;
+                // `&domain_length_bit_mask` performs the modulo operation cheaply:
+                // `domain.length - 1` is a bit-mask with all 1s because `domain.length` is 2^k
+                // for some k.
+                let next_row_index = (current_row_idx + unit_distance) & domain_length_bit_mask;
                 let current_row = &transposed_codewords[current_row_idx];
                 let next_row = &transposed_codewords[next_row_index];
 
@@ -298,23 +298,23 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect();
         let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "transition");
+        self.debug_domain_bound_check(domain, &quotient_codewords, "transition");
 
         quotient_codewords
     }
 
     fn terminal_quotients(
         &self,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         omicron: BFieldElement,
     ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
+        debug_assert_eq!(domain.length, transposed_codewords.len());
 
         // The zerofier for the terminal quotient has a root in the last
         // value in the cyclical group generated from omicron.
-        let zerofier_codeword = fri_domain
+        let zerofier_codeword = domain
             .domain_values()
             .into_iter()
             .map(|x| x - omicron.inverse())
@@ -324,21 +324,21 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
             .enumerate()
-            .map(|(fri_dom_i, &z_inv)| {
-                let row = &transposed_codewords[fri_dom_i];
+            .map(|(domain_index, &z_inv)| {
+                let row = &transposed_codewords[domain_index];
                 let evaluated_termcs = self.evaluate_terminal_constraints(row, challenges);
                 evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
         let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "terminal");
+        self.debug_domain_bound_check(domain, &quotient_codewords, "terminal");
 
         quotient_codewords
     }
 
     fn all_quotients(
         &self,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         transposed_codewords: Vec<Vec<XFieldElement>>,
         challenges: &AllChallenges,
         omicron: BFieldElement,
@@ -348,8 +348,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         if let Some(p) = maybe_profiler.as_mut() {
             p.start("initial quotients")
         }
-        let initial_quotients =
-            self.initial_quotients(fri_domain, &transposed_codewords, challenges);
+        let initial_quotients = self.initial_quotients(domain, &transposed_codewords, challenges);
         if let Some(p) = maybe_profiler.as_mut() {
             p.stop("initial quotients")
         }
@@ -357,12 +356,8 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         if let Some(p) = maybe_profiler.as_mut() {
             p.start("consistency quotients")
         }
-        let consistency_quotients = self.consistency_quotients(
-            fri_domain,
-            &transposed_codewords,
-            challenges,
-            padded_height,
-        );
+        let consistency_quotients =
+            self.consistency_quotients(domain, &transposed_codewords, challenges, padded_height);
         if let Some(p) = maybe_profiler.as_mut() {
             p.stop("consistency quotients")
         }
@@ -371,7 +366,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             p.start("transition quotients")
         }
         let transition_quotients = self.transition_quotients(
-            fri_domain,
+            domain,
             &transposed_codewords,
             challenges,
             omicron,
@@ -385,7 +380,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             p.start("terminal quotients")
         }
         let terminal_quotients =
-            self.terminal_quotients(fri_domain, &transposed_codewords, challenges, omicron);
+            self.terminal_quotients(domain, &transposed_codewords, challenges, omicron);
         if let Some(p) = maybe_profiler.as_mut() {
             p.stop("terminal quotients")
         }
@@ -402,14 +397,14 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     /// Intended for debugging. Will not do anything unless environment variable `DEBUG` is set.
     /// The performed check
     /// 1. takes `quotients` in value form (i.e., as codewords),
-    /// 1. interpolates them over the given `fri_domain`, and
+    /// 1. interpolates them over the given `domain`, and
     /// 1. checks their degree.
     ///
     /// Panics if an interpolant has maximal degree, indicating that the quotient codeword is most
     /// probably the result of un-clean division.
-    fn debug_fri_domain_bound_check(
+    fn debug_domain_bound_check(
         &self,
-        fri_domain: &Domain<BFieldElement>,
+        domain: &Domain<BFieldElement>,
         quotient_codewords: &[Vec<XFieldElement>],
         quotient_type: &str,
     ) {
@@ -417,16 +412,16 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             return;
         }
         for (idx, qc) in quotient_codewords.iter().enumerate() {
-            let interpolated = fri_domain.interpolate(qc);
+            let interpolated = domain.interpolate(qc);
             assert!(
-                interpolated.degree() < fri_domain.length as isize - 1,
+                interpolated.degree() < domain.length as isize - 1,
                 "Degree of {} quotient index {idx} (total {} quotients) in {} must not be maximal. \
-                    Got degree {}, and FRI domain length was {}.",
+                    Got degree {}, and domain length was {}.",
                 quotient_type,
                 quotient_codewords.len(),
                 self.name(),
                 interpolated.degree(),
-                fri_domain.length,
+                domain.length,
             );
         }
     }
