@@ -61,7 +61,7 @@ the value `a` was supplied as a secret input.
 
 | Instruction      | Opcode | old OpStack     | new OpStack                   | Description                                                                                             |
 |:-----------------|-------:|:----------------|:------------------------------|:--------------------------------------------------------------------------------------------------------|
-| `hash`           |     28 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 6) and 6 zeros.              |
+| `hash`           |     28 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
 | `divine_sibling` |     32 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
 | `assert_vector`  |     36 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
 

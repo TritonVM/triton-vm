@@ -21,11 +21,11 @@ To establish that the product is correctly computed, the Prover needs to supply 
 
 **Protocol Permutation**
  - Verifier is already in possession of polynomial oracles $[t(X)]$ and $[s(X)]$ that agree with $T$ and $S$ on a subgroup $H$ of order $2^k$.
- - Verifier samples $\beta \xleftarrow{\$} \mathbb{F}$ and sends it to Prover.
+ - Verifier samples \(\beta \xleftarrow{\$} \mathbb{F}\) and sends it to Prover.
  - Prover computes running product polynomials, $t_ p(X)$ and $s_ p(X)$ of degree at most $|H|-1$ and sends them to Verifier.
  - Prover and Verifier run an AIR sub-protocol to establish that the AIR is satisfied for $(t(X), s(X), t_ p(X), s_ p(X))$.
 
-What if $T$ and $S$ have multiple columns, say $r$-many? In this case the verifier simply supplies $r$ weights $\alpha_0, \ldots, \alpha_{r-1} \xleftarrow{\$} \mathbb{F}$. The protocol is then applied to the weighted sum of columns.
+What if $T$ and $S$ have multiple columns, say $r$-many? In this case the verifier simply supplies $r$ weights \(\alpha_0, \ldots, \alpha_{r-1} \xleftarrow{\$} \mathbb{F}\). The protocol is then applied to the weighted sum of columns.
 
 What if a column in one of the tables is not explicitly available, but can only be inferred from the other columns via a low-degree polynomial? It is not a problem; the Verifier just evaluates this polynomial to simulate the column, and includes it in the random linear combination.
 
