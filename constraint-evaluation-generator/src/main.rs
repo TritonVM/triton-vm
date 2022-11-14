@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use itertools::Itertools;
 use triton_vm::table::base_table::InheritsFromTable;
 use triton_vm::table::challenges::TableChallenges;
-use triton_vm::table::constraint_circuit::{CircuitExpression, CircuitId, ConstraintCircuit};
+use triton_vm::table::constraint_circuit::{
+    CircuitExpression, CircuitId, ConstraintCircuit, InputIndicator,
+};
 use triton_vm::table::instruction_table::ExtInstructionTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
 use triton_vm::table::op_stack_table::ExtOpStackTable;
@@ -72,11 +74,11 @@ fn main() {
     );
 }
 
-fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges>(
+fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges, II: InputIndicator>(
     _table: &Table,
     table_name_snake: &str,
     table_id_name: &str,
-    constraint_circuits: &mut [ConstraintCircuit<T>],
+    constraint_circuits: &mut [ConstraintCircuit<T, II>],
 ) {
     // Delete redundant nodes
     ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
@@ -171,9 +173,9 @@ impl Evaluable for {table_mod_name} {{
 /// Produce the code to evaluate code for all nodes that share a value number of
 /// times visited. A value for all nodes with a higher count than the provided are assumed
 /// to be in scope.
-fn evaluate_nodes_with_visit_count<T: TableChallenges>(
+fn evaluate_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
     visited_count: usize,
-    circuits: &[ConstraintCircuit<T>],
+    circuits: &[ConstraintCircuit<T, II>],
 ) -> String {
     let mut in_scope: HashSet<CircuitId> = HashSet::new();
     let mut output = String::default();
@@ -185,9 +187,9 @@ fn evaluate_nodes_with_visit_count<T: TableChallenges>(
     output
 }
 
-fn declare_single_node_with_visit_count<T: TableChallenges>(
+fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
-    circuit: &ConstraintCircuit<T>,
+    circuit: &ConstraintCircuit<T, II>,
     in_scope: &mut HashSet<CircuitId>,
     output: &mut String,
 ) {
@@ -242,18 +244,13 @@ fn declare_single_node_with_visit_count<T: TableChallenges>(
 
 /// Return a variable name for the node. Returns `point[n]` if node is just
 /// a value from the codewords. Otherwise returns the ID of the circuit.
-fn get_binding_name<T: TableChallenges>(circuit: &ConstraintCircuit<T>) -> String {
+fn get_binding_name<T: TableChallenges, II: InputIndicator>(
+    circuit: &ConstraintCircuit<T, II>,
+) -> String {
     match &circuit.expression {
         CircuitExpression::XConstant(xfe) => print_xfe(*xfe),
         CircuitExpression::BConstant(bfe) => print_bfe(*bfe),
-        CircuitExpression::Input(idx) => {
-            if *idx >= circuit.var_count / 2 {
-                let idx = idx - circuit.var_count / 2;
-                format!("next_row[{idx}]")
-            } else {
-                format!("current_row[{idx}]")
-            }
-        }
+        CircuitExpression::Input(idx) => idx.to_string(),
         CircuitExpression::Challenge(challenge_id) => {
             format!("challenges.get_challenge({challenge_id})")
         }
@@ -263,9 +260,9 @@ fn get_binding_name<T: TableChallenges>(circuit: &ConstraintCircuit<T>) -> Strin
 
 /// Add to `output` the code for evaluating a single node.
 /// Return a list of symbols that this evaluation depends on.
-fn evaluate_single_node<T: TableChallenges>(
+fn evaluate_single_node<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
-    circuit: &ConstraintCircuit<T>,
+    circuit: &ConstraintCircuit<T, II>,
     in_scope: &HashSet<CircuitId>,
     output: &mut String,
 ) -> Vec<String> {

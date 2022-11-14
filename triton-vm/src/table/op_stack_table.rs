@@ -7,6 +7,7 @@ use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use super::constraint_circuit::DualRowIndicator::*;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
@@ -15,7 +16,7 @@ use crate::table::table_column::OpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
-use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder};
+use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
@@ -171,27 +172,28 @@ impl ExtOpStackTable {
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<OpStackTableChallenges>>
-    {
-        let circuit_builder =
-            ConstraintCircuitBuilder::<OpStackTableChallenges>::new(2 * FULL_WIDTH);
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::<
+            OpStackTableChallenges,
+            DualRowIndicator<FULL_WIDTH>,
+        >::new(2 * FULL_WIDTH);
         let one = circuit_builder.b_constant(1u32.into());
 
-        let clk = circuit_builder.input(usize::from(CLK));
-        let ib1_shrink_stack = circuit_builder.input(usize::from(IB1ShrinkStack));
-        let osp = circuit_builder.input(usize::from(OSP));
-        let osv = circuit_builder.input(usize::from(OSV));
-        let clk_di = circuit_builder.input(usize::from(InverseOfClkDiffMinusOne));
-        let rpcjd = circuit_builder.input(usize::from(AllClockJumpDifferencesPermArg));
-        let rppa = circuit_builder.input(usize::from(RunningProductPermArg));
+        let clk = circuit_builder.input(CurrentRow(CLK.into()));
+        let ib1_shrink_stack = circuit_builder.input(CurrentRow(IB1ShrinkStack.into()));
+        let osp = circuit_builder.input(CurrentRow(OSP.into()));
+        let osv = circuit_builder.input(CurrentRow(OSV.into()));
+        let clk_di = circuit_builder.input(CurrentRow(InverseOfClkDiffMinusOne.into()));
+        let rpcjd = circuit_builder.input(CurrentRow(AllClockJumpDifferencesPermArg.into()));
+        let rppa = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
 
-        let clk_next = circuit_builder.input(FULL_WIDTH + usize::from(CLK));
-        let ib1_shrink_stack_next = circuit_builder.input(FULL_WIDTH + usize::from(IB1ShrinkStack));
-        let osp_next = circuit_builder.input(FULL_WIDTH + usize::from(OSP));
-        let osv_next = circuit_builder.input(FULL_WIDTH + usize::from(OSV));
-        let rpcjd_next =
-            circuit_builder.input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
-        let rppa_next = circuit_builder.input(FULL_WIDTH + usize::from(RunningProductPermArg));
+        let clk_next = circuit_builder.input(NextRow(CLK.into()));
+        let ib1_shrink_stack_next = circuit_builder.input(NextRow(IB1ShrinkStack.into()));
+        let osp_next = circuit_builder.input(NextRow(OSP.into()));
+        let osv_next = circuit_builder.input(NextRow(OSV.into()));
+        let rpcjd_next = circuit_builder.input(NextRow(AllClockJumpDifferencesPermArg.into()));
+        let rppa_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
 
         // the osp increases by 1 or the osp does not change
         //
