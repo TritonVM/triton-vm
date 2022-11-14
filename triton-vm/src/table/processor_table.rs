@@ -398,7 +398,7 @@ impl ExtProcessorTable {
     /// transition constraints among all instructions, the deselector is multiplied with a zero,
     /// causing no additional terms in the final sets of combined transition constraint polynomials.
     fn combine_instruction_constraints_with_deselectors(
-        factory: &mut RowPairConstraints,
+        factory: &mut DualRowConstraints,
         instr_tc_polys_tuples: [(
             Instruction,
             Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>>,
@@ -419,7 +419,7 @@ impl ExtProcessorTable {
             .map(|tc_polys_for_instr| tc_polys_for_instr.len())
             .max()
             .unwrap();
-        let zero_poly = RowPairConstraints::default().zero();
+        let zero_poly = DualRowConstraints::default().zero();
 
         let all_tc_polys_for_all_instructions_transposed = (0..max_number_of_constraints)
             .map(|idx| {
@@ -444,7 +444,7 @@ impl ExtProcessorTable {
     }
 
     fn combine_transition_constraints_with_padding_constraints(
-        factory: &RowPairConstraints,
+        factory: &DualRowConstraints,
         instruction_transition_constraints: Vec<
             ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
         >,
@@ -1030,7 +1030,7 @@ impl ExtProcessorTable {
 
     pub fn ext_transition_constraints_as_circuits(
     ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let mut factory = RowPairConstraints::default();
+        let mut factory = DualRowConstraints::default();
 
         // instruction-specific constraints
         let all_instruction_transition_constraints: [_; Instruction::COUNT] = [
@@ -1431,7 +1431,7 @@ impl SingleRowConstraints {
 }
 
 #[derive(Debug, Clone)]
-pub struct RowPairConstraints {
+pub struct DualRowConstraints {
     variables: [ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>;
         2 * FULL_WIDTH],
     circuit_builder:
@@ -1441,7 +1441,7 @@ pub struct RowPairConstraints {
     two: ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
 }
 
-impl Default for RowPairConstraints {
+impl Default for DualRowConstraints {
     fn default() -> Self {
         let circuit_builder = ConstraintCircuitBuilder::<
             ProcessorTableChallenges,
@@ -1472,7 +1472,7 @@ impl Default for RowPairConstraints {
     }
 }
 
-impl RowPairConstraints {
+impl DualRowConstraints {
     /// ## The cycle counter (`clk`) always increases by one
     ///
     /// $$
@@ -3299,7 +3299,7 @@ pub struct InstructionDeselectors {
 }
 
 impl InstructionDeselectors {
-    fn new(factory: &mut RowPairConstraints) -> Self {
+    fn new(factory: &mut DualRowConstraints) -> Self {
         let deselectors = Self::create(factory);
 
         Self { deselectors }
@@ -3354,7 +3354,7 @@ impl InstructionDeselectors {
 
     /// A polynomial that has no solutions when ci is 'instruction'
     pub fn instruction_deselector(
-        factory: &RowPairConstraints,
+        factory: &DualRowConstraints,
         instruction: Instruction,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
         let instruction_bucket_polynomials = [
@@ -3420,7 +3420,7 @@ impl InstructionDeselectors {
 
     /// A polynomial that has no solutions when ci_next is 'instruction'
     pub fn instruction_deselector_next(
-        factory: &RowPairConstraints,
+        factory: &DualRowConstraints,
         instruction: Instruction,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
         let instruction_bucket_polynomials = [
@@ -3441,7 +3441,7 @@ impl InstructionDeselectors {
     }
 
     pub fn create(
-        factory: &mut RowPairConstraints,
+        factory: &mut DualRowConstraints,
     ) -> HashMap<
         Instruction,
         ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
@@ -3526,7 +3526,7 @@ mod constraint_polynomial_tests {
     fn get_transition_constraints_for_instruction(
         instruction: Instruction,
     ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let tc = RowPairConstraints::default();
+        let tc = DualRowConstraints::default();
         match instruction {
             Pop => tc.instruction_pop(),
             Push(_) => tc.instruction_push(),
@@ -3808,7 +3808,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn instruction_deselector_gives_0_for_all_other_instructions_test() {
-        let mut factory = RowPairConstraints::default();
+        let mut factory = DualRowConstraints::default();
         let deselectors = InstructionDeselectors::new(&mut factory);
 
         let mut row = vec![0.into(); 2 * FULL_WIDTH];
@@ -3872,7 +3872,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn print_number_and_degrees_of_transition_constraints_for_all_instructions() {
-        let factory = RowPairConstraints::default();
+        let factory = DualRowConstraints::default();
         let all_instructions_and_their_transition_constraints: [(Instruction, _);
             Instruction::COUNT] = [
             (Pop, factory.instruction_pop()),
