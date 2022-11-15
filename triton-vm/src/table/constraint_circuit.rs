@@ -520,18 +520,24 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    /// Return the highest counter value encountered in this subtree
-    pub fn get_max_visited_counter(&self) -> usize {
+    /// Return all visited counters in the subtree
+    pub fn get_all_visited_counters(&self) -> Vec<usize> {
         // Maybe this could be solved smarter with dynamic programming
         // but we probably don't need that as our circuits aren't too big.
         match &self.expression {
             // The highest number will always be in a leaf so we only
             // need to check those.
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => cmp::max(
-                lhs.as_ref().borrow().get_max_visited_counter(),
-                rhs.as_ref().borrow().get_max_visited_counter(),
-            ),
-            _ => self.visited_counter,
+            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+                let lhs_counters = lhs.as_ref().borrow().get_all_visited_counters();
+                let rhs_counters = rhs.as_ref().borrow().get_all_visited_counters();
+                let own_counter = self.visited_counter;
+                let mut all = vec![vec![own_counter], lhs_counters, rhs_counters].concat();
+                all.sort_unstable();
+                all.dedup();
+                all.reverse();
+                all
+            }
+            _ => vec![self.visited_counter],
         }
     }
 

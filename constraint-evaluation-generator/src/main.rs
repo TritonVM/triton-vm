@@ -89,24 +89,30 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges, II: InputInd
     // Count number of times each node is visited
     ConstraintCircuit::traverse_multiple(constraint_circuits);
 
-    // Get the max count that each node is visited
-    let mut max_visited = 0;
+    // Get all values for the visited counters in the entire multitree
+    let mut visited_counters = vec![];
     for constraint in constraint_circuits.iter() {
-        max_visited = std::cmp::max(max_visited, constraint.get_max_visited_counter());
+        visited_counters.append(&mut constraint.get_all_visited_counters());
     }
 
-    let mut requested_visited = max_visited;
+    visited_counters.sort_unstable();
+    visited_counters.reverse();
+    visited_counters.dedup();
 
     // Declare shared values
     // In the main function we predeclare all variables with a visit count of more than 1
+    // These declarations must be made from the highest count number to the lowest, otherwise
+    // the code will refer to bindings that have not yet been made
     let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let mut shared_evaluations: Vec<String> = vec![];
-    while requested_visited > 1 {
+    for visited_counter in visited_counters {
+        if visited_counter == 1 {
+            continue;
+        }
         shared_evaluations.push(evaluate_nodes_with_visit_count(
-            requested_visited,
+            visited_counter,
             constraint_circuits,
         ));
-        requested_visited -= 1;
     }
 
     let output_filename =
