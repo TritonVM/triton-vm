@@ -66,5 +66,9 @@ name = "prove_halt"
 harness = false
 
 [[bench]]
+name = "prove_fib_100"
+harness = false
+
+[[bench]]
 name = "verify_halt"
 harness = false
