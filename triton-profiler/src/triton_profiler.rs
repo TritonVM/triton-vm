@@ -347,6 +347,16 @@ impl Report {
             total_time: Duration::ZERO,
         }
     }
+
+    fn display_time_aligned(time: Duration) -> String {
+        let unaligned_time = format!("{:.2?}", time);
+        let time_components: Vec<_> = unaligned_time.split('.').collect();
+        if time_components.len() != 2 {
+            return unaligned_time;
+        }
+
+        format!("{:>3}.{:<4}", time_components[0], time_components[1])
+    }
 }
 
 impl Display for Report {
@@ -364,7 +374,7 @@ impl Display for Report {
         } else {
             title.width()
         };
-        let total_time_string = format!("{:.2?}", self.total_time).bold();
+        let total_time_string = Report::display_time_aligned(self.total_time).bold();
         let separation = String::from_utf8(vec![b' '; max_width - title.width()]).unwrap();
         writeln!(f, "{}{}   {}", title, separation, total_time_string)?;
 
@@ -401,7 +411,7 @@ impl Display for Report {
                 task.name.len(),
             );
             let task_name_colored = task.name.color(task.weight.color());
-            let mut task_time = format!("{:.2?}", task.time);
+            let mut task_time = Report::display_time_aligned(task.time);
             while task_time.width() < 10 {
                 task_time.push(b' '.into());
             }
