@@ -8,11 +8,11 @@ use rayon::iter::{
 use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::other::transpose;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
-use crate::stark::Stark;
 use crate::table::extension_table;
 use crate::table::table_collection::interpolant_degree;
 
@@ -215,7 +215,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "initial");
 
         quotient_codewords
@@ -246,7 +246,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "consistency");
 
         quotient_codewords
@@ -296,7 +296,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "transition");
 
         quotient_codewords
@@ -329,7 +329,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "terminal");
 
         quotient_codewords

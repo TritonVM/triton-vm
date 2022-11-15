@@ -9,7 +9,7 @@ use rayon::iter::{
 };
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{self, is_power_of_two, random_elements};
+use twenty_first::shared_math::other::{self, is_power_of_two, random_elements, transpose};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
@@ -161,7 +161,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "LDE 1");
 
         prof_start!(maybe_profiler, "Merkle tree 1");
-        let transposed_base_codewords = Self::transpose(&randomizer_and_base_fri_domain_codewords);
+        let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
         let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
         let base_merkle_tree_root = base_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree 1");
@@ -195,7 +195,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "LDE 2");
 
         prof_start!(maybe_profiler, "Merkle tree 2");
-        let transposed_ext_codewords = Self::transpose(&extension_fri_domain_codewords);
+        let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
         let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
         prof_stop!(maybe_profiler, "Merkle tree 2");
 
@@ -593,27 +593,6 @@ impl Stark {
             .map(|values| StarkHasher::hash_slice(values))
             .collect_into_vec(&mut codeword_digests_by_index);
         MerkleTree::<StarkHasher>::from_digests(&codeword_digests_by_index)
-    }
-
-    /// Essentially a matrix transpose. Given
-    ///
-    /// ```py
-    /// [a b c]
-    /// [d e f]
-    /// ```
-    ///
-    /// returns
-    ///
-    /// ```py
-    /// [a d]
-    /// [b e]
-    /// [c f]
-    /// ```
-    /// Assumes that input is of rectangular shape.
-    pub fn transpose<P: Copy>(codewords: &[Vec<P>]) -> Vec<Vec<P>> {
-        (0..codewords[0].len())
-            .map(|col_idx| codewords.iter().map(|row| row[col_idx]).collect())
-            .collect()
     }
 
     fn padded(&self, base_matrices: &BaseMatrices) -> BaseTableCollection {
