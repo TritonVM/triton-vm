@@ -31,7 +31,9 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
-use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
+use crate::table::table_collection::{
+    derive_trace_domain_generator, BaseTableCollection, ExtTableCollection,
+};
 
 use super::table::base_matrix::BaseMatrices;
 
@@ -279,7 +281,7 @@ impl Stark {
             .terminal_quotient_codeword(
                 &full_arithmetic_domain_tables,
                 &arithmetic_domain,
-                derive_omicron(full_arithmetic_domain_tables.padded_height as u64),
+                derive_trace_domain_generator(full_arithmetic_domain_tables.padded_height as u64),
             );
         quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
 
@@ -360,7 +362,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "open trace leafs");
-        // the relation between the FRI domain and the omicron domain
+        // the relation between the FRI domain and the trace domain
         let unit_distance = self.fri.domain.length / base_trace_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
@@ -762,7 +764,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "check leafs");
         prof_start!(maybe_profiler, "get indices");
-        // the relation between the FRI domain and the omicron domain
+        // the relation between the FRI domain and the trace domain
         let unit_distance = self.fri.domain.length / ext_table_collection.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
@@ -867,8 +869,8 @@ impl Stark {
         let base_offset = self.parameters.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
-        let omicron = derive_omicron(padded_height as u64);
-        let omicron_inverse = omicron.inverse();
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
         for (combination_check_index, revealed_combination_leaf) in combination_check_indices
             .into_iter()
             .zip_eq(revealed_combination_leafs)
@@ -1008,7 +1010,7 @@ impl Stark {
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = {
-                        let numerator = current_fri_domain_value - omicron_inverse;
+                        let numerator = current_fri_domain_value - trace_domain_generator_inverse;
                         let denominator = current_fri_domain_value
                             .mod_pow_u32(padded_height as u32)
                             - BFieldElement::one();
@@ -1028,8 +1030,8 @@ impl Stark {
                     .zip_eq(terminal_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient =
-                        evaluated_termc / (current_fri_domain_value - omicron_inverse).lift();
+                    let quotient = evaluated_termc
+                        / (current_fri_domain_value - trace_domain_generator_inverse).lift();
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -1050,7 +1052,7 @@ impl Stark {
             let grand_cross_table_arg_evaluated =
                 grand_cross_table_arg.evaluate_non_linear_sum_of_differences(&cross_slice_by_table);
             let grand_cross_table_arg_quotient = grand_cross_table_arg_evaluated
-                / (current_fri_domain_value - omicron_inverse).lift();
+                / (current_fri_domain_value - trace_domain_generator_inverse).lift();
             let grand_cross_table_arg_quotient_shifted =
                 grand_cross_table_arg_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
             summands.push(grand_cross_table_arg_quotient);

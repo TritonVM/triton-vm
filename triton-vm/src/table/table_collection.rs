@@ -78,7 +78,7 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
     (padded_height + num_trace_randomizers - 1) as Degree
 }
 
-pub fn derive_omicron(padded_height: u64) -> BFieldElement {
+pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
     debug_assert!(
         0 == padded_height || is_power_of_two(padded_height),
         "The padded height was: {}",
@@ -139,55 +139,55 @@ impl BaseTableCollection {
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let padded_height = self.padded_height;
-        let omicron = derive_omicron(padded_height as u64);
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
 
         let (program_table_arithmetic, program_table_fri) =
             self.program_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (instruction_table_arithmetic, instruction_table_fri) =
             self.instruction_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (processor_table_arithmetic, processor_table_fri) =
             self.processor_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (op_stack_table_arithmetic, op_stack_table_fri) =
             self.op_stack_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (ram_table_arithmetic, ram_table_fri) =
             self.ram_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (jump_stack_table_arithmetic, jump_stack_table_fri) =
             self.jump_stack_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (hash_table_arithmetic, hash_table_fri) =
             self.hash_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
 
@@ -395,55 +395,55 @@ impl ExtTableCollection {
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let padded_height = self.padded_height;
-        let omicron = derive_omicron(padded_height as u64);
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
 
         let (program_table_arithmetic, program_table_fri) =
             self.program_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (instruction_table_arithmetic, instruction_table_fri) =
             self.instruction_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (processor_table_arithmetic, processor_table_fri) =
             self.processor_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (op_stack_table_arithmetic, op_stack_table_fri) =
             self.op_stack_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (ram_table_arithmetic, ram_table_fri) =
             self.ram_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (jump_stack_table_arithmetic, jump_stack_table_fri) =
             self.jump_stack_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
         let (hash_table_arithmetic, hash_table_fri) =
             self.hash_table.to_arithmetic_and_fri_domain_table(
                 arithmetic_domain,
                 fri_domain,
-                omicron,
+                trace_domain_generator,
                 num_trace_randomizers,
             );
 
@@ -515,7 +515,7 @@ impl ExtTableCollection {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
         let padded_height = self.padded_height;
-        let omicron = derive_omicron(padded_height as u64);
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
 
         self.into_iter()
             .map(|ext_codeword_table| {
@@ -529,7 +529,7 @@ impl ExtTableCollection {
                     domain,
                     transposed_codewords,
                     challenges,
-                    omicron,
+                    trace_domain_generator,
                     padded_height,
                     maybe_profiler,
                 );

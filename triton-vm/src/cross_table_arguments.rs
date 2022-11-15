@@ -45,15 +45,16 @@ pub trait CrossTableArg {
         &self,
         ext_codeword_tables: &ExtTableCollection,
         domain: &Domain<BFieldElement>,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
         let from_codeword = self.combined_from_codeword(ext_codeword_tables);
         let to_codeword = self.combined_to_codeword(ext_codeword_tables);
 
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
         let zerofier = domain
             .domain_values()
             .into_iter()
-            .map(|x| x - omicron.inverse())
+            .map(|x| x - trace_domain_generator_inverse)
             .collect();
         let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
 
@@ -454,7 +455,7 @@ impl GrandCrossTableArg {
         &self,
         ext_codeword_tables: &ExtTableCollection,
         domain: &Domain<BFieldElement>,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
         let mut non_linear_sum_codeword = vec![XFieldElement::zero(); domain.length];
 
@@ -497,10 +498,11 @@ impl GrandCrossTableArg {
             XFieldElement::add,
         );
 
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
         let zerofier = domain
             .domain_values()
             .into_iter()
-            .map(|x| x - omicron.inverse())
+            .map(|x| x - trace_domain_generator_inverse)
             .collect();
         let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
 

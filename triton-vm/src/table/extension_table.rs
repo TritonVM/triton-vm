@@ -258,13 +258,13 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         domain: &Domain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
         debug_assert_eq!(domain.length, transposed_codewords.len());
 
         let one = XFieldElement::one();
-        let omicron_inverse = omicron.inverse();
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
         let domain_values = domain.domain_values();
 
         let subgroup_zerofier: Vec<_> = domain_values
@@ -275,7 +275,9 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         let zerofier_inverse: Vec<_> = domain_values
             .into_par_iter()
             .zip_eq(subgroup_zerofier_inverse.into_par_iter())
-            .map(|(domain_value, sub_z_inv)| (domain_value - omicron_inverse) * sub_z_inv)
+            .map(|(domain_value, sub_z_inv)| {
+                (domain_value - trace_domain_generator_inverse) * sub_z_inv
+            })
             .collect();
         // the relation between the arithmetic domain and the trace domain
         let unit_distance = domain.length / padded_height;
@@ -308,16 +310,16 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         domain: &Domain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
     ) -> Vec<Vec<XFieldElement>> {
         debug_assert_eq!(domain.length, transposed_codewords.len());
 
         // The zerofier for the terminal quotient has a root in the last
-        // value in the cyclical group generated from omicron.
+        // value in the cyclical group generated from the trace domain's generator.
         let zerofier_codeword = domain
             .domain_values()
             .into_iter()
-            .map(|x| x - omicron.inverse())
+            .map(|x| x - trace_domain_generator.inverse())
             .collect_vec();
         let zerofier_inverse = BFieldElement::batch_inversion(zerofier_codeword);
 
@@ -341,7 +343,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         domain: &Domain<BFieldElement>,
         transposed_codewords: Vec<Vec<XFieldElement>>,
         challenges: &AllChallenges,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
         padded_height: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
@@ -369,7 +371,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             domain,
             &transposed_codewords,
             challenges,
-            omicron,
+            trace_domain_generator,
             padded_height,
         );
         if let Some(p) = maybe_profiler.as_mut() {
@@ -379,8 +381,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         if let Some(p) = maybe_profiler.as_mut() {
             p.start("terminal quotients")
         }
-        let terminal_quotients =
-            self.terminal_quotients(domain, &transposed_codewords, challenges, omicron);
+        let terminal_quotients = self.terminal_quotients(
+            domain,
+            &transposed_codewords,
+            challenges,
+            trace_domain_generator,
+        );
         if let Some(p) = maybe_profiler.as_mut() {
             p.stop("terminal quotients")
         }

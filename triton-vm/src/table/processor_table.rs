@@ -66,14 +66,14 @@ impl ProcessorTable {
         &self,
         arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
         let (arithmetic_domain_table, fri_domain_table) = self.dual_low_degree_extension(
             arithmetic_domain,
             fri_domain,
-            omicron,
+            trace_domain_generator,
             num_trace_randomizers,
             base_columns,
         );
@@ -370,14 +370,14 @@ impl ExtProcessorTable {
         &self,
         arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
-        omicron: BFieldElement,
+        trace_domain_generator: BFieldElement,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();
         let (arithmetic_domain_table, fri_domain_table) = self.dual_low_degree_extension(
             arithmetic_domain,
             fri_domain,
-            omicron,
+            trace_domain_generator,
             num_trace_randomizers,
             ext_columns,
         );
