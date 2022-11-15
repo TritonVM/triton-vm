@@ -1,15 +1,17 @@
 use std::cmp::max;
+use std::cmp::Eq;
 use std::collections::HashMap;
 use std::ops::Mul;
 
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use std::cmp::Eq;
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use ProcessorTableChallengeId::*;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
@@ -17,6 +19,7 @@ use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instru
 use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
 use crate::table::challenges::AllChallenges;
+use crate::table::constraint_circuit::{InputIndicator, SingleRowIndicator};
 use crate::table::extension_table::ExtensionTable;
 use crate::table::table_column::ProcessorBaseTableColumn::{self, *};
 use crate::table::table_column::ProcessorExtTableColumn::{self, *};
@@ -614,96 +617,50 @@ impl TableChallenges for ProcessorTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            ProcessorTableChallengeId::StandardInputEvalIndeterminate => {
-                self.standard_input_eval_indeterminate
-            }
-            ProcessorTableChallengeId::StandardOutputEvalIndeterminate => {
-                self.standard_output_eval_indeterminate
-            }
-            ProcessorTableChallengeId::ToHashTableEvalIndeterminate => {
-                self.to_hash_table_eval_indeterminate
-            }
-            ProcessorTableChallengeId::FromHashTableEvalIndeterminate => {
-                self.from_hash_table_eval_indeterminate
-            }
-            ProcessorTableChallengeId::InstructionPermIndeterminate => {
-                self.instruction_perm_indeterminate
-            }
-            ProcessorTableChallengeId::OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
-            ProcessorTableChallengeId::RamPermIndeterminate => self.ram_perm_indeterminate,
-            ProcessorTableChallengeId::JumpStackPermIndeterminate => {
-                self.jump_stack_perm_indeterminate
-            }
-            ProcessorTableChallengeId::InstructionTableIpWeight => self.instruction_table_ip_weight,
-            ProcessorTableChallengeId::InstructionTableCiProcessorWeight => {
-                self.instruction_table_ci_processor_weight
-            }
-            ProcessorTableChallengeId::InstructionTableNiaWeight => {
-                self.instruction_table_nia_weight
-            }
-            ProcessorTableChallengeId::OpStackTableClkWeight => self.op_stack_table_clk_weight,
-            ProcessorTableChallengeId::OpStackTableIb1Weight => self.op_stack_table_ib1_weight,
-            ProcessorTableChallengeId::OpStackTableOspWeight => self.op_stack_table_osp_weight,
-            ProcessorTableChallengeId::OpStackTableOsvWeight => self.op_stack_table_osv_weight,
-            ProcessorTableChallengeId::RamTableClkWeight => self.ram_table_clk_weight,
-            ProcessorTableChallengeId::RamTableRamvWeight => self.ram_table_ramv_weight,
-            ProcessorTableChallengeId::RamTableRampWeight => self.ram_table_ramp_weight,
-            ProcessorTableChallengeId::JumpStackTableClkWeight => self.jump_stack_table_clk_weight,
-            ProcessorTableChallengeId::JumpStackTableCiWeight => self.jump_stack_table_ci_weight,
-            ProcessorTableChallengeId::JumpStackTableJspWeight => self.jump_stack_table_jsp_weight,
-            ProcessorTableChallengeId::JumpStackTableJsoWeight => self.jump_stack_table_jso_weight,
-            ProcessorTableChallengeId::JumpStackTableJsdWeight => self.jump_stack_table_jsd_weight,
-            ProcessorTableChallengeId::UniqueClockJumpDifferencesEvalIndeterminate => {
+            StandardInputEvalIndeterminate => self.standard_input_eval_indeterminate,
+            StandardOutputEvalIndeterminate => self.standard_output_eval_indeterminate,
+            ToHashTableEvalIndeterminate => self.to_hash_table_eval_indeterminate,
+            FromHashTableEvalIndeterminate => self.from_hash_table_eval_indeterminate,
+            InstructionPermIndeterminate => self.instruction_perm_indeterminate,
+            OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
+            RamPermIndeterminate => self.ram_perm_indeterminate,
+            JumpStackPermIndeterminate => self.jump_stack_perm_indeterminate,
+            InstructionTableIpWeight => self.instruction_table_ip_weight,
+            InstructionTableCiProcessorWeight => self.instruction_table_ci_processor_weight,
+            InstructionTableNiaWeight => self.instruction_table_nia_weight,
+            OpStackTableClkWeight => self.op_stack_table_clk_weight,
+            OpStackTableIb1Weight => self.op_stack_table_ib1_weight,
+            OpStackTableOspWeight => self.op_stack_table_osp_weight,
+            OpStackTableOsvWeight => self.op_stack_table_osv_weight,
+            RamTableClkWeight => self.ram_table_clk_weight,
+            RamTableRamvWeight => self.ram_table_ramv_weight,
+            RamTableRampWeight => self.ram_table_ramp_weight,
+            JumpStackTableClkWeight => self.jump_stack_table_clk_weight,
+            JumpStackTableCiWeight => self.jump_stack_table_ci_weight,
+            JumpStackTableJspWeight => self.jump_stack_table_jsp_weight,
+            JumpStackTableJsoWeight => self.jump_stack_table_jso_weight,
+            JumpStackTableJsdWeight => self.jump_stack_table_jsd_weight,
+            UniqueClockJumpDifferencesEvalIndeterminate => {
                 self.unique_clock_jump_differences_eval_indeterminate
             }
-            ProcessorTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
-            ProcessorTableChallengeId::HashTableStackInputWeight0 => {
-                self.hash_table_stack_input_weight0
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight1 => {
-                self.hash_table_stack_input_weight1
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight2 => {
-                self.hash_table_stack_input_weight2
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight3 => {
-                self.hash_table_stack_input_weight3
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight4 => {
-                self.hash_table_stack_input_weight4
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight5 => {
-                self.hash_table_stack_input_weight5
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight6 => {
-                self.hash_table_stack_input_weight6
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight7 => {
-                self.hash_table_stack_input_weight7
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight8 => {
-                self.hash_table_stack_input_weight8
-            }
-            ProcessorTableChallengeId::HashTableStackInputWeight9 => {
-                self.hash_table_stack_input_weight9
-            }
-            ProcessorTableChallengeId::HashTableDigestOutputWeight0 => {
-                self.hash_table_digest_output_weight0
-            }
-            ProcessorTableChallengeId::HashTableDigestOutputWeight1 => {
-                self.hash_table_digest_output_weight1
-            }
-            ProcessorTableChallengeId::HashTableDigestOutputWeight2 => {
-                self.hash_table_digest_output_weight2
-            }
-            ProcessorTableChallengeId::HashTableDigestOutputWeight3 => {
-                self.hash_table_digest_output_weight3
-            }
-            ProcessorTableChallengeId::HashTableDigestOutputWeight4 => {
-                self.hash_table_digest_output_weight4
-            }
+            HashTableStackInputWeight0 => self.hash_table_stack_input_weight0,
+            HashTableStackInputWeight1 => self.hash_table_stack_input_weight1,
+            HashTableStackInputWeight2 => self.hash_table_stack_input_weight2,
+            HashTableStackInputWeight3 => self.hash_table_stack_input_weight3,
+            HashTableStackInputWeight4 => self.hash_table_stack_input_weight4,
+            HashTableStackInputWeight5 => self.hash_table_stack_input_weight5,
+            HashTableStackInputWeight6 => self.hash_table_stack_input_weight6,
+            HashTableStackInputWeight7 => self.hash_table_stack_input_weight7,
+            HashTableStackInputWeight8 => self.hash_table_stack_input_weight8,
+            HashTableStackInputWeight9 => self.hash_table_stack_input_weight9,
+            HashTableDigestOutputWeight0 => self.hash_table_digest_output_weight0,
+            HashTableDigestOutputWeight1 => self.hash_table_digest_output_weight1,
+            HashTableDigestOutputWeight2 => self.hash_table_digest_output_weight2,
+            HashTableDigestOutputWeight3 => self.hash_table_digest_output_weight3,
+            HashTableDigestOutputWeight4 => self.hash_table_digest_output_weight4,
         }
     }
 }
@@ -753,7 +710,7 @@ impl Extendable for ProcessorTable {
         let one = BFieldElement::one();
         if let Some(row) = self.data().last() {
             let mut padding_row = row.clone();
-            padding_row[usize::from(ProcessorBaseTableColumn::CLK)] += one;
+            padding_row[usize::from(CLK)] += one;
             padding_row[usize::from(IsPadding)] = one;
             (None, vec![padding_row])
         } else {
@@ -767,12 +724,14 @@ impl Extendable for ProcessorTable {
 impl TableLike<XFieldElement> for ExtProcessorTable {}
 
 impl ExtProcessorTable {
-    fn ext_initial_constraints(
-        challenges: &ProcessorTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        use ProcessorTableChallengeId::*;
+
         let factory = SingleRowConstraints::default();
-        let constant = SingleRowConstraints::constant_from_i32;
-        let constant_x = SingleRowConstraints::constant_from_xfe;
+        let constant = |c| factory.constant_from_i32(c);
+        let constant_x = |x| factory.constant_from_xfe(x);
+        let challenge = |c| factory.circuit_builder.challenge(c);
 
         let clk_is_0 = factory.clk();
         let ip_is_0 = factory.ip();
@@ -807,8 +766,7 @@ impl ExtProcessorTable {
         // starts off having applied one evaluation step with the clock
         // jump difference, unless the clock jump difference column
         // is all zeros.
-        let reu_indeterminate =
-            constant_x(challenges.unique_clock_jump_differences_eval_indeterminate);
+        let reu_indeterminate = challenge(UniqueClockJumpDifferencesEvalIndeterminate);
         let reu_starts_correctly = factory.cjd()
             * (factory.reu() - reu_indeterminate - factory.cjd())
             + (factory.one() - factory.cjd() * factory.invm())
@@ -817,9 +775,9 @@ impl ExtProcessorTable {
         // The running product for all clock jump differences
         // starts off having accumulated the first factor, but
         // only if the `cjd` is nonzero
-        let rpm_indeterminate = challenges.all_clock_jump_differences_multi_perm_indeterminate;
+        let rpm_indeterminate = challenge(AllClockJumpDifferencesMultiPermIndeterminate);
         let rpm_starts_correctly = factory.cjd()
-            * (factory.rpm() - constant_x(rpm_indeterminate) + factory.cjd())
+            * (factory.rpm() - rpm_indeterminate + factory.cjd())
             + (factory.one() - factory.invm() * factory.cjd())
                 * (factory.rpm()
                     - constant_x(PermArg::default_initial())
@@ -833,13 +791,11 @@ impl ExtProcessorTable {
             factory.running_evaluation_standard_input() - constant_x(EvalArg::default_initial());
 
         // instruction table
-        let instruction_indeterminate = constant_x(challenges.instruction_perm_indeterminate);
-        let instruction_ip_weight = constant_x(challenges.instruction_table_ip_weight);
-        let instruction_ci_weight = constant_x(challenges.instruction_table_ci_processor_weight);
-        let instruction_nia_weight = constant_x(challenges.instruction_table_nia_weight);
-        let compressed_row_for_instruction_table = instruction_ip_weight * factory.ip()
-            + instruction_ci_weight * factory.ci()
-            + instruction_nia_weight * factory.nia();
+        let instruction_indeterminate = challenge(InstructionPermIndeterminate);
+        let instruction_ci_weight = challenge(InstructionTableCiProcessorWeight);
+        let instruction_nia_weight = challenge(InstructionTableNiaWeight);
+        let compressed_row_for_instruction_table =
+            instruction_ci_weight * factory.ci() + instruction_nia_weight * factory.nia();
         let running_product_for_instruction_table_is_initialized_correctly = factory
             .running_product_instruction_table()
             - constant_x(PermArg::default_initial())
@@ -850,45 +806,31 @@ impl ExtProcessorTable {
             factory.running_evaluation_standard_output() - constant_x(EvalArg::default_initial());
 
         // op-stack table
-        let op_stack_indeterminate = constant_x(challenges.op_stack_perm_indeterminate);
-        let op_stack_clk_weight = constant_x(challenges.op_stack_table_clk_weight);
-        let op_stack_ib1_weight = constant_x(challenges.op_stack_table_ib1_weight);
-        let op_stack_osp_weight = constant_x(challenges.op_stack_table_osp_weight);
-        let op_stack_osv_weight = constant_x(challenges.op_stack_table_osv_weight);
-        let compressed_row_for_op_stack_table = op_stack_clk_weight * factory.clk()
-            + op_stack_ib1_weight * factory.ib1()
-            + op_stack_osp_weight * factory.osp()
-            + op_stack_osv_weight * factory.osv();
+        let op_stack_indeterminate = challenge(OpStackPermIndeterminate);
+        let op_stack_ib1_weight = challenge(OpStackTableIb1Weight);
+        let op_stack_osp_weight = challenge(OpStackTableOspWeight);
+        // note: `clk` and `osv` are already constrained to be 0, `osp` to be 16
+        let compressed_row_for_op_stack_table =
+            op_stack_ib1_weight * factory.ib1() + op_stack_osp_weight * constant(16);
         let running_product_for_op_stack_table_is_initialized_correctly = factory
             .running_product_op_stack_table()
             - constant_x(PermArg::default_initial())
                 * (op_stack_indeterminate - compressed_row_for_op_stack_table);
 
         // ram table
-        let ram_indeterminate = constant_x(challenges.ram_perm_indeterminate);
-        let ram_clk_weight = constant_x(challenges.ram_table_clk_weight);
-        let ram_ramp_weight = constant_x(challenges.ram_table_ramp_weight);
-        let ram_ramv_weight = constant_x(challenges.ram_table_ramv_weight);
-        let compressed_row_for_ram_table = ram_clk_weight * factory.clk()
-            + ram_ramp_weight * factory.ramp()
-            + ram_ramv_weight * factory.ramv();
+        let ram_indeterminate = challenge(RamPermIndeterminate);
+        // note: `clk`, `ramp`, and `ramv` are already constrained to be 0.
+        let compressed_row_for_ram_table = constant(0);
         let running_product_for_ram_table_is_initialized_correctly = factory
             .running_product_ram_table()
             - constant_x(PermArg::default_initial())
                 * (ram_indeterminate - compressed_row_for_ram_table);
 
         // jump-stack table
-        let jump_stack_indeterminate = constant_x(challenges.jump_stack_perm_indeterminate);
-        let jump_stack_clk_weight = constant_x(challenges.jump_stack_table_clk_weight);
-        let jump_stack_ci_weight = constant_x(challenges.jump_stack_table_ci_weight);
-        let jump_stack_jsp_weight = constant_x(challenges.jump_stack_table_jsp_weight);
-        let jump_stack_jso_weight = constant_x(challenges.jump_stack_table_jso_weight);
-        let jump_stack_jsd_weight = constant_x(challenges.jump_stack_table_jsd_weight);
-        let compressed_row_for_jump_stack_table = jump_stack_clk_weight * factory.clk()
-            + jump_stack_ci_weight * factory.ci()
-            + jump_stack_jsp_weight * factory.jsp()
-            + jump_stack_jso_weight * factory.jso()
-            + jump_stack_jsd_weight * factory.jsd();
+        let jump_stack_indeterminate = challenge(JumpStackPermIndeterminate);
+        let jump_stack_ci_weight = challenge(JumpStackTableCiWeight);
+        // note: `clk`, `jsp`, `jso`, and `jsd` are already constrained to be 0.
+        let compressed_row_for_jump_stack_table = jump_stack_ci_weight * factory.ci();
         let running_product_for_jump_stack_table_is_initialized_correctly = factory
             .running_product_jump_stack_table()
             - constant_x(PermArg::default_initial())
@@ -898,37 +840,9 @@ impl ExtProcessorTable {
         let hash_selector = factory.ci() - constant(Instruction::Hash.opcode() as i32);
         let hash_deselector =
             InstructionDeselectors::instruction_deselector_single_row(&factory, Instruction::Hash);
-        let to_hash_table_indeterminate = constant_x(challenges.to_hash_table_eval_indeterminate);
-        let weights = [
-            challenges.hash_table_stack_input_weight0,
-            challenges.hash_table_stack_input_weight1,
-            challenges.hash_table_stack_input_weight2,
-            challenges.hash_table_stack_input_weight3,
-            challenges.hash_table_stack_input_weight4,
-            challenges.hash_table_stack_input_weight5,
-            challenges.hash_table_stack_input_weight6,
-            challenges.hash_table_stack_input_weight7,
-            challenges.hash_table_stack_input_weight8,
-            challenges.hash_table_stack_input_weight9,
-        ]
-        .map(constant_x);
-        let state = [
-            factory.st0(),
-            factory.st1(),
-            factory.st2(),
-            factory.st3(),
-            factory.st4(),
-            factory.st5(),
-            factory.st6(),
-            factory.st7(),
-            factory.st8(),
-            factory.st9(),
-        ];
-        let compressed_row_to_hash_table = weights
-            .into_iter()
-            .zip_eq(state.into_iter())
-            .map(|(w, s)| w * s)
-            .sum();
+        let to_hash_table_indeterminate = challenge(ToHashTableEvalIndeterminate);
+        // the opStack is guaranteed to be initialized to 0 by virtue of other initial constraints
+        let compressed_row_to_hash_table = constant(0);
         let running_evaluation_to_hash_table_has_absorbed_first_row = factory
             .running_evaluation_to_hash_table()
             - to_hash_table_indeterminate * constant_x(EvalArg::default_initial())
@@ -943,7 +857,7 @@ impl ExtProcessorTable {
         let running_evaluation_from_hash_table_is_initialized_correctly =
             factory.running_evaluation_from_hash_table() - constant_x(EvalArg::default_initial());
 
-        vec![
+        [
             clk_is_0,
             ip_is_0,
             jsp_is_0,
@@ -970,7 +884,7 @@ impl ExtProcessorTable {
             ramv_is_0,
             ramp_is_0,
             rer_starts_correctly,
-            reu_starts_correctly, // <- culprit
+            reu_starts_correctly,
             rpm_starts_correctly,
             running_evaluation_for_standard_input_is_initialized_correctly,
             running_product_for_instruction_table_is_initialized_correctly,
@@ -981,14 +895,15 @@ impl ExtProcessorTable {
             running_evaluation_to_hash_table_is_initialized_correctly,
             running_evaluation_from_hash_table_is_initialized_correctly,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
-    fn ext_consistency_constraints(
-        _challenges: &ProcessorTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
         let factory = SingleRowConstraints::default();
         let one = factory.one();
-        let constant = SingleRowConstraints::constant_from_i32;
+        let constant = |c| factory.constant_from_i32(c);
 
         // The composition of instruction buckets ib0-ib9 corresponds the current instruction ci.v
         let ib_composition = one.clone() * factory.ib0()
@@ -1015,7 +930,7 @@ impl ExtProcessorTable {
         let invm_is_zero_or_cjd_inverse = factory.invm() * invm_is_cjd_inverse.clone();
         let cjd_is_zero_or_invm_inverse = factory.cjd() * invm_is_cjd_inverse;
 
-        vec![
+        [
             ib0_is_bit,
             ib1_is_bit,
             ib2_is_bit,
@@ -1028,6 +943,8 @@ impl ExtProcessorTable {
             invm_is_zero_or_cjd_inverse,
             cjd_is_zero_or_invm_inverse,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits(
@@ -1099,7 +1016,7 @@ impl ExtProcessorTable {
         // cjd' · (rpm' - rpm · (α - cjd')) + (cjd' · invm' - 1) · (rpm' - rpm)
         let indeterminate_alpha = factory
             .circuit_builder
-            .challenge(ProcessorTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
+            .challenge(AllClockJumpDifferencesMultiPermIndeterminate);
         let rpm_updates_correctly = factory.cjd_next()
             * (factory.rpm_next() - factory.rpm() * (indeterminate_alpha - factory.cjd_next()))
             + (factory.cjd_next() * factory.invm_next() - factory.one())
@@ -1113,7 +1030,7 @@ impl ExtProcessorTable {
         //  + cjd' · (cjd' - cjd) · (reu' - β · reu - cjd')`
         let indeterminate_beta = factory
             .circuit_builder
-            .challenge(ProcessorTableChallengeId::UniqueClockJumpDifferencesEvalIndeterminate);
+            .challenge(UniqueClockJumpDifferencesEvalIndeterminate);
         let reu_updates_correctly = invu_next_is_cjdd_inverse
             * (factory.reu_next() - factory.reu())
             + (factory.one() - factory.invm_next() * factory.cjd_next())
@@ -1154,11 +1071,46 @@ impl ExtProcessorTable {
         transition_constraints.push(factory.running_evaluation_to_hash_table_updates_correctly());
         transition_constraints.push(factory.running_evaluation_from_hash_table_updates_correctly());
 
-        // TODO: Consider folding constants here
-
-        transition_constraints
+        let mut built_transition_constraints = transition_constraints
             .into_iter()
             .map(|tc_ref| tc_ref.consume())
+            .collect_vec();
+        ConstraintCircuit::constant_folding(
+            &mut built_transition_constraints.iter_mut().collect_vec(),
+        );
+        built_transition_constraints
+    }
+
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let factory = SingleRowConstraints::default();
+
+        // In the last row, current instruction register ci is 0, corresponding to instruction halt.
+        let last_ci_is_halt = factory.ci();
+
+        // In the last row, the completed evaluations of
+        // a) relevant clock cycles, and
+        // b) unique clock jump differences are equal.
+        let rer_equals_reu = factory.rer() - factory.reu();
+
+        vec![last_ci_is_halt.consume(), rer_equals_reu.consume()]
+    }
+
+    fn ext_initial_constraints(
+        challenges: &ProcessorTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_initial_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
+    }
+
+    fn ext_consistency_constraints(
+        challenges: &ProcessorTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_consistency_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
             .collect_vec()
     }
 
@@ -1173,261 +1125,350 @@ impl ExtProcessorTable {
     }
 
     fn ext_terminal_constraints(
-        _challenges: &ProcessorTableChallenges,
+        challenges: &ProcessorTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let factory = SingleRowConstraints::default();
-
-        // In the last row, current instruction register ci is 0, corresponding to instruction halt.
-        //
-        // $ci - halt = 0  =>  ci - 0 = 0  =>  ci$
-        let last_ci_is_halt = factory.ci();
-
-        // In the last row, the completed evaluations of a) relevant
-        // clock cycles, and b) unique clock jump differences are equal.
-        let rer_equals_reu = factory.rer() - factory.reu();
-
-        vec![last_ci_is_halt, rer_equals_reu]
+        Self::ext_terminal_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct SingleRowConstraints {
-    variables: [MPolynomial<XFieldElement>; FULL_WIDTH],
+    variables: [ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>;
+        FULL_WIDTH],
+    circuit_builder:
+        ConstraintCircuitBuilder<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>,
+    one: ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>,
+    two: ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>,
 }
 
 impl Default for SingleRowConstraints {
     fn default() -> Self {
-        let variables = MPolynomial::variables(FULL_WIDTH)
-            .try_into()
-            .expect("Create variables for initial/consistency/terminal constraints");
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let variables_as_circuits = (0..FULL_WIDTH)
+            .map(|i| {
+                let input: SingleRowIndicator<FULL_WIDTH> = i.into();
+                circuit_builder.input(input)
+            })
+            .collect_vec();
 
-        Self { variables }
+        let variables = variables_as_circuits
+            .try_into()
+            .expect("Create variables for single row constraints");
+
+        let one = circuit_builder.b_constant(1u32.into());
+        let two = circuit_builder.b_constant(2u32.into());
+
+        Self {
+            variables,
+            circuit_builder,
+            one,
+            two,
+        }
     }
 }
 
 impl SingleRowConstraints {
-    pub fn constant_from_xfe(constant: XFieldElement) -> MPolynomial<XFieldElement> {
-        MPolynomial::from_constant(constant, FULL_WIDTH)
+    pub fn constant_from_xfe(
+        &self,
+        constant: XFieldElement,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+        self.circuit_builder.x_constant(constant)
     }
-    pub fn constant_from_i32(constant: i32) -> MPolynomial<XFieldElement> {
+    pub fn constant_from_i32(
+        &self,
+        constant: i32,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         let bfe = if constant < 0 {
             BFieldElement::new(BFieldElement::QUOTIENT - ((-constant) as u64))
         } else {
             BFieldElement::new(constant as u64)
         };
-        MPolynomial::from_constant(bfe.lift(), FULL_WIDTH)
+        self.circuit_builder.b_constant(bfe)
     }
 
-    pub fn one(&self) -> MPolynomial<XFieldElement> {
-        SingleRowConstraints::constant_from_i32(1)
+    pub fn one(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+        self.one.clone()
     }
-
-    pub fn two(&self) -> MPolynomial<XFieldElement> {
-        SingleRowConstraints::constant_from_i32(2)
+    pub fn two(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+        self.two.clone()
     }
-
-    pub fn clk(&self) -> MPolynomial<XFieldElement> {
+    pub fn clk(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(CLK)].clone()
     }
-
-    pub fn is_padding(&self) -> MPolynomial<XFieldElement> {
+    pub fn is_padding(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IsPadding)].clone()
     }
-
-    pub fn ip(&self) -> MPolynomial<XFieldElement> {
+    pub fn ip(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IP)].clone()
     }
-
-    pub fn ci(&self) -> MPolynomial<XFieldElement> {
+    pub fn ci(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(CI)].clone()
     }
-
-    pub fn nia(&self) -> MPolynomial<XFieldElement> {
+    pub fn nia(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(NIA)].clone()
     }
-
-    pub fn ib0(&self) -> MPolynomial<XFieldElement> {
+    pub fn ib0(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IB0)].clone()
     }
-
-    pub fn ib1(&self) -> MPolynomial<XFieldElement> {
+    pub fn ib1(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IB1)].clone()
     }
-
-    pub fn ib2(&self) -> MPolynomial<XFieldElement> {
+    pub fn ib2(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IB2)].clone()
     }
-
-    pub fn ib3(&self) -> MPolynomial<XFieldElement> {
+    pub fn ib3(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IB3)].clone()
     }
-
-    pub fn ib4(&self) -> MPolynomial<XFieldElement> {
+    pub fn ib4(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IB4)].clone()
     }
-
-    pub fn ib5(&self) -> MPolynomial<XFieldElement> {
+    pub fn ib5(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IB5)].clone()
     }
-
-    pub fn ib6(&self) -> MPolynomial<XFieldElement> {
+    pub fn ib6(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(IB6)].clone()
     }
-
-    pub fn jsp(&self) -> MPolynomial<XFieldElement> {
+    pub fn jsp(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(JSP)].clone()
     }
-
-    pub fn jsd(&self) -> MPolynomial<XFieldElement> {
+    pub fn jsd(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(JSD)].clone()
     }
-
-    pub fn jso(&self) -> MPolynomial<XFieldElement> {
+    pub fn jso(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(JSO)].clone()
     }
-
-    pub fn st0(&self) -> MPolynomial<XFieldElement> {
+    pub fn st0(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST0)].clone()
     }
-
-    pub fn st1(&self) -> MPolynomial<XFieldElement> {
+    pub fn st1(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST1)].clone()
     }
-
-    pub fn st2(&self) -> MPolynomial<XFieldElement> {
+    pub fn st2(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST2)].clone()
     }
-
-    pub fn st3(&self) -> MPolynomial<XFieldElement> {
+    pub fn st3(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST3)].clone()
     }
-
-    pub fn st4(&self) -> MPolynomial<XFieldElement> {
+    pub fn st4(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST4)].clone()
     }
-
-    pub fn st5(&self) -> MPolynomial<XFieldElement> {
+    pub fn st5(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST5)].clone()
     }
-
-    pub fn st6(&self) -> MPolynomial<XFieldElement> {
+    pub fn st6(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST6)].clone()
     }
-
-    pub fn st7(&self) -> MPolynomial<XFieldElement> {
+    pub fn st7(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST7)].clone()
     }
-
-    pub fn st8(&self) -> MPolynomial<XFieldElement> {
+    pub fn st8(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST8)].clone()
     }
-
-    pub fn st9(&self) -> MPolynomial<XFieldElement> {
+    pub fn st9(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST9)].clone()
     }
-
-    pub fn st10(&self) -> MPolynomial<XFieldElement> {
+    pub fn st10(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST10)].clone()
     }
-
-    pub fn st11(&self) -> MPolynomial<XFieldElement> {
+    pub fn st11(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST11)].clone()
     }
-
-    pub fn st12(&self) -> MPolynomial<XFieldElement> {
+    pub fn st12(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST12)].clone()
     }
-
-    pub fn st13(&self) -> MPolynomial<XFieldElement> {
+    pub fn st13(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST13)].clone()
     }
-
-    pub fn st14(&self) -> MPolynomial<XFieldElement> {
+    pub fn st14(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST14)].clone()
     }
-
-    pub fn st15(&self) -> MPolynomial<XFieldElement> {
+    pub fn st15(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ST15)].clone()
     }
-
-    pub fn osp(&self) -> MPolynomial<XFieldElement> {
+    pub fn osp(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(OSP)].clone()
     }
-
-    pub fn osv(&self) -> MPolynomial<XFieldElement> {
+    pub fn osv(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(OSV)].clone()
     }
-
-    pub fn hv0(&self) -> MPolynomial<XFieldElement> {
+    pub fn hv0(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(HV0)].clone()
     }
-
-    pub fn hv1(&self) -> MPolynomial<XFieldElement> {
+    pub fn hv1(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(HV1)].clone()
     }
-
-    pub fn hv2(&self) -> MPolynomial<XFieldElement> {
+    pub fn hv2(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(HV2)].clone()
     }
-
-    pub fn hv3(&self) -> MPolynomial<XFieldElement> {
+    pub fn hv3(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(HV3)].clone()
     }
-
-    pub fn ramv(&self) -> MPolynomial<XFieldElement> {
+    pub fn ramv(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(RAMV)].clone()
     }
-
-    pub fn ramp(&self) -> MPolynomial<XFieldElement> {
+    pub fn ramp(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(RAMP)].clone()
     }
 
-    pub fn cjd(&self) -> MPolynomial<XFieldElement> {
+    pub fn cjd(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ClockJumpDifference)].clone()
     }
 
-    pub fn invm(&self) -> MPolynomial<XFieldElement> {
+    pub fn invm(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ClockJumpDifferenceInverse)].clone()
     }
 
-    pub fn invu(&self) -> MPolynomial<XFieldElement> {
+    pub fn invu(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(UniqueClockJumpDiffDiffInverse)].clone()
     }
 
-    pub fn rer(&self) -> MPolynomial<XFieldElement> {
+    pub fn rer(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(SelectedClockCyclesEvalArg)].clone()
     }
 
-    pub fn reu(&self) -> MPolynomial<XFieldElement> {
+    pub fn reu(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
     }
 
-    pub fn rpm(&self) -> MPolynomial<XFieldElement> {
+    pub fn rpm(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
     }
 
-    pub fn running_evaluation_standard_input(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_evaluation_standard_input(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(InputTableEvalArg)].clone()
     }
-    pub fn running_evaluation_standard_output(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_evaluation_standard_output(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(OutputTableEvalArg)].clone()
     }
-    pub fn running_product_instruction_table(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_product_instruction_table(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(InstructionTablePermArg)].clone()
     }
-    pub fn running_product_op_stack_table(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_product_op_stack_table(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(OpStackTablePermArg)].clone()
     }
-    pub fn running_product_ram_table(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_product_ram_table(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(RamTablePermArg)].clone()
     }
-    pub fn running_product_jump_stack_table(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_product_jump_stack_table(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(JumpStackTablePermArg)].clone()
     }
-    pub fn running_evaluation_to_hash_table(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_evaluation_to_hash_table(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(ToHashTableEvalArg)].clone()
     }
-    pub fn running_evaluation_from_hash_table(&self) -> MPolynomial<XFieldElement> {
+    pub fn running_evaluation_from_hash_table(
+        &self,
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         self.variables[usize::from(FromHashTableEvalArg)].clone()
     }
 }
@@ -1445,10 +1486,7 @@ pub struct DualRowConstraints {
 
 impl Default for DualRowConstraints {
     fn default() -> Self {
-        let circuit_builder = ConstraintCircuitBuilder::<
-            ProcessorTableChallenges,
-            DualRowIndicator<FULL_WIDTH>,
-        >::new(2 * FULL_WIDTH);
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let variables_as_circuits = (0..2 * FULL_WIDTH)
             .map(|i| {
                 let input: DualRowIndicator<FULL_WIDTH> = i.into();
@@ -3046,7 +3084,7 @@ impl DualRowConstraints {
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
         let indeterminate = self
             .circuit_builder
-            .challenge(ProcessorTableChallengeId::StandardInputEvalIndeterminate);
+            .challenge(StandardInputEvalIndeterminate);
         let read_io_deselector =
             InstructionDeselectors::instruction_deselector(self, Instruction::ReadIo);
         let read_io_selector = self.ci() - self.constant_b(Instruction::ReadIo.opcode_b());
@@ -3064,18 +3102,12 @@ impl DualRowConstraints {
     pub fn running_product_for_instruction_table_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        let indeterminate = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::InstructionPermIndeterminate);
-        let ip_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::InstructionTableIpWeight);
+        let indeterminate = self.circuit_builder.challenge(InstructionPermIndeterminate);
+        let ip_weight = self.circuit_builder.challenge(InstructionTableIpWeight);
         let ci_weight = self
             .circuit_builder
-            .challenge(ProcessorTableChallengeId::InstructionTableCiProcessorWeight);
-        let nia_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::InstructionTableNiaWeight);
+            .challenge(InstructionTableCiProcessorWeight);
+        let nia_weight = self.circuit_builder.challenge(InstructionTableNiaWeight);
         let compressed_row =
             ip_weight * self.ip_next() + ci_weight * self.ci_next() + nia_weight * self.nia_next();
         let running_product_updates = self.running_product_instruction_table_next()
@@ -3092,7 +3124,7 @@ impl DualRowConstraints {
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
         let indeterminate = self
             .circuit_builder
-            .challenge(ProcessorTableChallengeId::StandardOutputEvalIndeterminate);
+            .challenge(StandardOutputEvalIndeterminate);
         let write_io_deselector =
             InstructionDeselectors::instruction_deselector_next(self, Instruction::WriteIo);
         let write_io_selector = self.ci_next() - self.constant_b(Instruction::WriteIo.opcode_b());
@@ -3110,21 +3142,11 @@ impl DualRowConstraints {
     pub fn running_product_for_op_stack_table_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        let indeterminate = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::OpStackPermIndeterminate);
-        let clk_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::OpStackTableClkWeight);
-        let ib1_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::OpStackTableIb1Weight);
-        let osp_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::OpStackTableOspWeight);
-        let osv_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::OpStackTableOsvWeight);
+        let indeterminate = self.circuit_builder.challenge(OpStackPermIndeterminate);
+        let clk_weight = self.circuit_builder.challenge(OpStackTableClkWeight);
+        let ib1_weight = self.circuit_builder.challenge(OpStackTableIb1Weight);
+        let osp_weight = self.circuit_builder.challenge(OpStackTableOspWeight);
+        let osv_weight = self.circuit_builder.challenge(OpStackTableOsvWeight);
         let compressed_row = clk_weight * self.clk_next()
             + ib1_weight * self.ib1_next()
             + osp_weight * self.osp_next()
@@ -3137,18 +3159,10 @@ impl DualRowConstraints {
     pub fn running_product_for_ram_table_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        let indeterminate = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::RamPermIndeterminate);
-        let clk_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::RamTableClkWeight);
-        let ramp_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::RamTableRampWeight);
-        let ramv_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::RamTableRamvWeight);
+        let indeterminate = self.circuit_builder.challenge(RamPermIndeterminate);
+        let clk_weight = self.circuit_builder.challenge(RamTableClkWeight);
+        let ramp_weight = self.circuit_builder.challenge(RamTableRampWeight);
+        let ramv_weight = self.circuit_builder.challenge(RamTableRamvWeight);
         let compressed_row = clk_weight * self.clk_next()
             + ramp_weight * self.ramp_next()
             + ramv_weight * self.ramv_next();
@@ -3160,24 +3174,12 @@ impl DualRowConstraints {
     pub fn running_product_for_jump_stack_table_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        let indeterminate = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::JumpStackPermIndeterminate);
-        let clk_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::JumpStackTableClkWeight);
-        let ci_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::JumpStackTableCiWeight);
-        let jsp_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::JumpStackTableJspWeight);
-        let jso_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::JumpStackTableJsoWeight);
-        let jsd_weight = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::JumpStackTableJsdWeight);
+        let indeterminate = self.circuit_builder.challenge(JumpStackPermIndeterminate);
+        let clk_weight = self.circuit_builder.challenge(JumpStackTableClkWeight);
+        let ci_weight = self.circuit_builder.challenge(JumpStackTableCiWeight);
+        let jsp_weight = self.circuit_builder.challenge(JumpStackTableJspWeight);
+        let jso_weight = self.circuit_builder.challenge(JumpStackTableJsoWeight);
+        let jsd_weight = self.circuit_builder.challenge(JumpStackTableJsdWeight);
         let compressed_row = clk_weight * self.clk_next()
             + ci_weight * self.ci_next()
             + jsp_weight * self.jsp_next()
@@ -3195,31 +3197,19 @@ impl DualRowConstraints {
             InstructionDeselectors::instruction_deselector_next(self, Instruction::Hash);
         let hash_selector = self.ci_next() - self.constant_b(Instruction::Hash.opcode_b());
 
-        let indeterminate = self
-            .circuit_builder
-            .challenge(ProcessorTableChallengeId::ToHashTableEvalIndeterminate);
+        let indeterminate = self.circuit_builder.challenge(ToHashTableEvalIndeterminate);
 
         let weights = [
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight0),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight1),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight2),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight3),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight4),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight5),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight6),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight7),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight8),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableStackInputWeight9),
+            self.circuit_builder.challenge(HashTableStackInputWeight0),
+            self.circuit_builder.challenge(HashTableStackInputWeight1),
+            self.circuit_builder.challenge(HashTableStackInputWeight2),
+            self.circuit_builder.challenge(HashTableStackInputWeight3),
+            self.circuit_builder.challenge(HashTableStackInputWeight4),
+            self.circuit_builder.challenge(HashTableStackInputWeight5),
+            self.circuit_builder.challenge(HashTableStackInputWeight6),
+            self.circuit_builder.challenge(HashTableStackInputWeight7),
+            self.circuit_builder.challenge(HashTableStackInputWeight8),
+            self.circuit_builder.challenge(HashTableStackInputWeight9),
         ];
         let state = [
             self.st0_next(),
@@ -3256,19 +3246,14 @@ impl DualRowConstraints {
 
         let indeterminate = self
             .circuit_builder
-            .challenge(ProcessorTableChallengeId::FromHashTableEvalIndeterminate);
+            .challenge(FromHashTableEvalIndeterminate);
 
         let weights = [
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight0),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight1),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight2),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight3),
-            self.circuit_builder
-                .challenge(ProcessorTableChallengeId::HashTableDigestOutputWeight4),
+            self.circuit_builder.challenge(HashTableDigestOutputWeight0),
+            self.circuit_builder.challenge(HashTableDigestOutputWeight1),
+            self.circuit_builder.challenge(HashTableDigestOutputWeight2),
+            self.circuit_builder.challenge(HashTableDigestOutputWeight3),
+            self.circuit_builder.challenge(HashTableDigestOutputWeight4),
         ];
         let state = [
             self.st5_next(),
@@ -3324,15 +3309,12 @@ impl InstructionDeselectors {
 
     /// internal helper function to de-duplicate functionality common between the similar (but
     /// different on a type level) functions for construction deselectors
-    fn instruction_deselector_common_functionality(
-        circuit_builder: &ConstraintCircuitBuilder<
-            ProcessorTableChallenges,
-            DualRowIndicator<FULL_WIDTH>,
-        >,
+    fn instruction_deselector_common_functionality<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<ProcessorTableChallenges, II>,
         instruction: Instruction,
-        instruction_bucket_polynomials: [ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>;
+        instruction_bucket_polynomials: [ConstraintCircuitMonad<ProcessorTableChallenges, II>;
             Ord7::COUNT],
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, II> {
         let one = circuit_builder.b_constant(1u32.into());
 
         let selector_bits: [_; Ord7::COUNT] = [
@@ -3380,7 +3362,7 @@ impl InstructionDeselectors {
     pub fn instruction_deselector_single_row(
         factory: &SingleRowConstraints,
         instruction: Instruction,
-    ) -> MPolynomial<XFieldElement> {
+    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
         let instruction_bucket_polynomials = [
             factory.ib0(),
             factory.ib1(),
@@ -3391,33 +3373,11 @@ impl InstructionDeselectors {
             factory.ib6(),
         ];
 
-        // TODO: When single row constraints are expressed as circuits instead of mpols,
-        // this commented-out function call can be made instead.
-        // Self::instruction_deselector_common_functionality(
-        //     &mut factory.circuit_builder,
-        //     instruction,
-        //     instruction_bucket_polynomials,
-        //     factory.variables.len(),
-        // )
-        let one = XFieldElement::one();
-        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
-
-        let selector_bits: [_; Ord7::COUNT] = [
-            instruction.ib(Ord7::IB0).lift(),
-            instruction.ib(Ord7::IB1).lift(),
-            instruction.ib(Ord7::IB2).lift(),
-            instruction.ib(Ord7::IB3).lift(),
-            instruction.ib(Ord7::IB4).lift(),
-            instruction.ib(Ord7::IB5).lift(),
-            instruction.ib(Ord7::IB6).lift(),
-        ];
-        let deselector_polynomials = selector_bits.map(|b| constant(one - b));
-
-        instruction_bucket_polynomials
-            .into_iter()
-            .zip_eq(deselector_polynomials.into_iter())
-            .map(|(bucket_poly, deselector_poly)| bucket_poly - deselector_poly)
-            .fold(constant(one), MPolynomial::mul)
+        Self::instruction_deselector_common_functionality(
+            &factory.circuit_builder,
+            instruction,
+            instruction_bucket_polynomials,
+        )
     }
 
     /// A polynomial that has no solutions when ci_next is 'instruction'
@@ -3472,7 +3432,7 @@ impl ExtensionTable for ExtProcessorTable {
 
     fn dynamic_transition_constraints(
         &self,
-        challenges: &super::challenges::AllChallenges,
+        challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
     }
@@ -3489,7 +3449,6 @@ impl ExtensionTable for ExtProcessorTable {
 mod constraint_polynomial_tests {
     use crate::ord_n::Ord16;
     use crate::table::base_matrix::ProcessorMatrixRow;
-    use crate::table::processor_table;
     use crate::vm::Program;
 
     use super::*;
@@ -3505,9 +3464,7 @@ mod constraint_polynomial_tests {
     }
 
     fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Vec<XFieldElement> {
-        let fake_extension_columns = [BFieldElement::zero();
-            processor_table::FULL_WIDTH - processor_table::BASE_WIDTH]
-            .to_vec();
+        let fake_extension_columns = [BFieldElement::zero(); FULL_WIDTH - BASE_WIDTH].to_vec();
 
         let program = Program::from_code(source_code).unwrap();
         let (base_matrices, _, err) = program.simulate_no_input();
