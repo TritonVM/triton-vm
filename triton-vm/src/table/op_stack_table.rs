@@ -7,15 +7,19 @@ use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use super::constraint_circuit::DualRowIndicator::*;
+use OpStackTableChallengeId::*;
+
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::table::base_table::Extendable;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::Row;
 use crate::table::table_column::OpStackBaseTableColumn::{self, *};
 use crate::table::table_column::OpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::DualRowIndicator::*;
 use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
@@ -124,50 +128,47 @@ impl Extendable for OpStackTable {
 impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    fn ext_initial_constraints(
-        challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
-        let one = constant(XFieldElement::one());
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let one = circuit_builder.b_constant(1_u32.into());
 
-        let variables = MPolynomial::variables(FULL_WIDTH);
-        let clk = variables[usize::from(CLK)].clone();
-        let ib1 = variables[usize::from(IB1ShrinkStack)].clone();
-        let osp = variables[usize::from(OSP)].clone();
-        let osv = variables[usize::from(OSV)].clone();
-        let rppa = variables[usize::from(RunningProductPermArg)].clone();
-        let rpcjd = variables[usize::from(AllClockJumpDifferencesPermArg)].clone();
+        let clk = circuit_builder.input(Row(CLK.into()));
+        let ib1 = circuit_builder.input(Row(IB1ShrinkStack.into()));
+        let osp = circuit_builder.input(Row(OSP.into()));
+        let osv = circuit_builder.input(Row(OSV.into()));
+        let rppa = circuit_builder.input(Row(RunningProductPermArg.into()));
+        let rpcjd = circuit_builder.input(Row(AllClockJumpDifferencesPermArg.into()));
 
-        let clk_is_0 = clk.clone();
-        let osv_is_0 = osv.clone();
-        let osp_is_16 = osp.clone() - constant(16.into());
+        let clk_is_0 = clk;
+        let osv_is_0 = osv;
+        let osp_is_16 = osp - circuit_builder.b_constant(16_u32.into());
 
-        // The running product for the permutation argument `rppa`
-        // starts off having accumulated the first row.
-        let compressed_row = constant(challenges.clk_weight) * clk
-            + constant(challenges.ib1_weight) * ib1
-            + constant(challenges.osp_weight) * osp
-            + constant(challenges.osv_weight) * osv;
-        let alpha = constant(challenges.processor_perm_indeterminate);
-        let rppa_initial = alpha - compressed_row;
+        // The running product for the permutation argument `rppa` starts off having accumulated the
+        // first row. Note that `clk` and `osv` are constrained to be 0, and `osp` to be 16.
+        let compressed_row = circuit_builder.challenge(Ib1Weight) * ib1
+            + circuit_builder.challenge(OspWeight) * circuit_builder.b_constant(16_u32.into());
+        let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermIndeterminate);
+        let rppa_initial = processor_perm_indeterminate - compressed_row;
         let rppa_starts_correctly = rppa - rppa_initial;
 
         // The running product for clock jump differences starts with
         // one
         let rpcjd_starts_correctly = rpcjd - one;
 
-        vec![
+        [
             clk_is_0,
             osv_is_0,
             osp_is_16,
             rppa_starts_correctly,
             rpcjd_starts_correctly,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
-    fn ext_consistency_constraints(
-        _challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
         // no further constraints
         vec![]
     }
@@ -230,8 +231,7 @@ impl ExtOpStackTable {
         //   (clk' - clk - 1) * (1 - osp' + osp) * (cjdrp' - cjdrp * (beta - clk' + clk))
         // + (1 - (clk' - clk - 1) * clk_di) * (cjdrp' - cjdrp)
         // + (osp' - osp) * (cjdrp' - cjdrp)
-        let beta = circuit_builder
-            .challenge(OpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
+        let beta = circuit_builder.challenge(AllClockJumpDifferencesMultiPermIndeterminate);
         let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (one.clone() - osp_next.clone() + osp.clone())
             * (rpcjd_next.clone() - rpcjd.clone() * (beta - clk_next.clone() + clk.clone()))
@@ -240,40 +240,66 @@ impl ExtOpStackTable {
             + (osp_next.clone() - osp) * (rpcjd_next - rpcjd);
 
         // The running product for the permutation argument `rppa` is updated correctly.
-        let alpha = circuit_builder.challenge(OpStackTableChallengeId::ProcessorPermIndeterminate);
-        let compressed_row = circuit_builder.challenge(OpStackTableChallengeId::ClkWeight)
-            * clk_next
-            + circuit_builder.challenge(OpStackTableChallengeId::Ib1Weight) * ib1_shrink_stack_next
-            + circuit_builder.challenge(OpStackTableChallengeId::OspWeight) * osp_next
-            + circuit_builder.challenge(OpStackTableChallengeId::OsvWeight) * osv_next;
+        let alpha = circuit_builder.challenge(ProcessorPermIndeterminate);
+        let compressed_row = circuit_builder.challenge(ClkWeight) * clk_next
+            + circuit_builder.challenge(Ib1Weight) * ib1_shrink_stack_next
+            + circuit_builder.challenge(OspWeight) * osp_next
+            + circuit_builder.challenge(OsvWeight) * osv_next;
 
         let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
-        vec![
-            osp_increases_by_1_or_does_not_change.consume(),
-            osp_increases_by_1_or_osv_does_not_change_or_shrink_stack.consume(),
-            clk_di_is_zero_or_cdmo_inverse_or_osp_changes.consume(),
-            cdmo_is_zero_or_clkdi_inverse_or_osp_changes.consume(),
-            cjdrp_updates_correctly.consume(),
-            rppa_updates_correctly.consume(),
+        [
+            osp_increases_by_1_or_does_not_change,
+            osp_increases_by_1_or_osv_does_not_change_or_shrink_stack,
+            clk_di_is_zero_or_cdmo_inverse_or_osp_changes,
+            cdmo_is_zero_or_clkdi_inverse_or_osp_changes,
+            cjdrp_updates_correctly,
+            rppa_updates_correctly,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
+    }
+
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        // no further constraints
+        vec![]
+    }
+
+    fn ext_initial_constraints(
+        challenges: &OpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_initial_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
+    }
+
+    fn ext_consistency_constraints(
+        challenges: &OpStackTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_consistency_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 
     fn ext_transition_constraints(
         challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        let circuits = Self::ext_transition_constraints_as_circuits();
-        circuits
+        Self::ext_transition_constraints_as_circuits()
             .into_iter()
-            .map(|circ| circ.partial_evaluate(challenges))
+            .map(|circuit| circuit.partial_evaluate(challenges))
             .collect_vec()
     }
 
     fn ext_terminal_constraints(
-        _challenges: &OpStackTableChallenges,
+        challenges: &OpStackTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        Self::ext_terminal_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 }
 
@@ -451,14 +477,12 @@ impl TableChallenges for OpStackTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            OpStackTableChallengeId::ProcessorPermIndeterminate => {
-                self.processor_perm_indeterminate
-            }
-            OpStackTableChallengeId::ClkWeight => self.clk_weight,
-            OpStackTableChallengeId::Ib1Weight => self.ib1_weight,
-            OpStackTableChallengeId::OsvWeight => self.osv_weight,
-            OpStackTableChallengeId::OspWeight => self.osp_weight,
-            OpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            ProcessorPermIndeterminate => self.processor_perm_indeterminate,
+            ClkWeight => self.clk_weight,
+            Ib1Weight => self.ib1_weight,
+            OsvWeight => self.osv_weight,
+            OspWeight => self.osp_weight,
+            AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
         }
@@ -498,7 +522,7 @@ impl ExtensionTable for ExtOpStackTable {
 
     fn dynamic_transition_constraints(
         &self,
-        challenges: &super::challenges::AllChallenges,
+        challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtOpStackTable::ext_transition_constraints(&challenges.op_stack_table_challenges)
     }
