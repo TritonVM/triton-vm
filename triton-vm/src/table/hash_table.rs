@@ -4,6 +4,7 @@ use std::ops::Mul;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use strum::EnumCount;
+use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::polynomial::Polynomial;
@@ -18,7 +19,13 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::table::base_table::Extendable;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::SingleRowIndicator::Row;
+use crate::table::constraint_circuit::{
+    ConstraintCircuit, ConstraintCircuitBuilder, SingleRowIndicator,
+};
 use crate::table::extension_table::Evaluable;
+use crate::table::hash_table::HashTableChallengeId::*;
 use crate::table::table_collection::interpolant_degree;
 use crate::table::table_column::HashBaseTableColumn::{self, *};
 use crate::table::table_column::HashExtTableColumn::{self, *};
@@ -378,22 +385,23 @@ impl Extendable for HashTable {
 impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
-    fn ext_initial_constraints(
-        challenges: &HashTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
-        let one = constant(XFieldElement::one());
-        let running_evaluation_initial = constant(EvalArg::default_initial());
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let challenge = |c| circuit_builder.challenge(c);
+        let one = circuit_builder.b_constant(1_u32.into());
 
-        let variables = MPolynomial::variables(FULL_WIDTH);
-        let round_number = variables[usize::from(ROUNDNUMBER)].clone();
+        let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
+
+        let round_number = circuit_builder.input(Row(ROUNDNUMBER.into()));
         let running_evaluation_from_processor =
-            variables[usize::from(FromProcessorRunningEvaluation)].clone();
+            circuit_builder.input(Row(FromProcessorRunningEvaluation.into()));
         let running_evaluation_to_processor =
-            variables[usize::from(ToProcessorRunningEvaluation)].clone();
-        let state = (0..2 * DIGEST_LENGTH)
-            .map(|i| variables[usize::from(STATE0) + i].clone())
-            .collect_vec();
+            circuit_builder.input(Row(ToProcessorRunningEvaluation.into()));
+        let state = [
+            STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
+        ]
+        .map(|st| circuit_builder.input(Row(st.into())));
 
         let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
 
@@ -403,22 +411,22 @@ impl ExtHashTable {
         let running_evaluation_from_processor_is_default_initial =
             running_evaluation_from_processor.clone() - running_evaluation_initial.clone();
         let compressed_row = [
-            challenges.stack_input_weight0,
-            challenges.stack_input_weight1,
-            challenges.stack_input_weight2,
-            challenges.stack_input_weight3,
-            challenges.stack_input_weight4,
-            challenges.stack_input_weight5,
-            challenges.stack_input_weight6,
-            challenges.stack_input_weight7,
-            challenges.stack_input_weight8,
-            challenges.stack_input_weight9,
+            challenge(StackInputWeight0),
+            challenge(StackInputWeight1),
+            challenge(StackInputWeight2),
+            challenge(StackInputWeight3),
+            challenge(StackInputWeight4),
+            challenge(StackInputWeight5),
+            challenge(StackInputWeight6),
+            challenge(StackInputWeight7),
+            challenge(StackInputWeight8),
+            challenge(StackInputWeight9),
         ]
-        .iter()
-        .zip_eq(state.iter())
-        .map(|(&w, s)| s.clone() * constant(w))
+        .into_iter()
+        .zip_eq(state.into_iter())
+        .map(|(w, s)| s * w)
         .sum();
-        let from_processor_indeterminate = constant(challenges.from_processor_eval_indeterminate);
+        let from_processor_indeterminate = challenge(FromProcessorEvalIndeterminate);
         let running_evaluation_from_processor_is_updated = running_evaluation_from_processor
             - running_evaluation_initial.clone() * from_processor_indeterminate
             - compressed_row;
@@ -430,11 +438,13 @@ impl ExtHashTable {
         let running_evaluation_to_processor_is_default_initial =
             running_evaluation_to_processor - running_evaluation_initial;
 
-        vec![
+        [
             round_number_is_0_or_1,
             running_evaluation_from_processor_is_updated_if_and_only_if_not_a_padding_row,
             running_evaluation_to_processor_is_default_initial,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
     /// The implementation below is kept around for debugging purposes. This table evaluates the
@@ -623,6 +633,15 @@ impl ExtHashTable {
         constraint_polynomials
     }
 
+    fn ext_initial_constraints(
+        challenges: &HashTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_initial_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
+    }
+
     fn ext_terminal_constraints(
         _challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
@@ -674,18 +693,18 @@ impl HashTable {
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             // Add compressed input to running evaluation if round index marks beginning of hashing
-            if row[usize::from(HashBaseTableColumn::ROUNDNUMBER)].value() == 1 {
+            if row[usize::from(ROUNDNUMBER)].value() == 1 {
                 let state_for_input = [
-                    extension_row[usize::from(HashBaseTableColumn::STATE0)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE1)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE2)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE3)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE4)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE5)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE6)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE7)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE8)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE9)],
+                    extension_row[usize::from(STATE0)],
+                    extension_row[usize::from(STATE1)],
+                    extension_row[usize::from(STATE2)],
+                    extension_row[usize::from(STATE3)],
+                    extension_row[usize::from(STATE4)],
+                    extension_row[usize::from(STATE5)],
+                    extension_row[usize::from(STATE6)],
+                    extension_row[usize::from(STATE7)],
+                    extension_row[usize::from(STATE8)],
+                    extension_row[usize::from(STATE9)],
                 ];
                 let compressed_state_for_input: XFieldElement = state_for_input
                     .iter()
@@ -715,13 +734,13 @@ impl HashTable {
                 from_processor_running_evaluation;
 
             // Add compressed digest to running evaluation if round index marks end of hashing
-            if row[usize::from(HashBaseTableColumn::ROUNDNUMBER)].value() == NUM_ROUNDS as u64 + 1 {
+            if row[usize::from(ROUNDNUMBER)].value() == NUM_ROUNDS as u64 + 1 {
                 let state_for_output = [
-                    extension_row[usize::from(HashBaseTableColumn::STATE0)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE1)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE2)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE3)],
-                    extension_row[usize::from(HashBaseTableColumn::STATE4)],
+                    extension_row[usize::from(STATE0)],
+                    extension_row[usize::from(STATE1)],
+                    extension_row[usize::from(STATE2)],
+                    extension_row[usize::from(STATE3)],
+                    extension_row[usize::from(STATE4)],
                 ];
                 let compressed_state_for_output: XFieldElement = state_for_output
                     .iter()
@@ -818,6 +837,35 @@ impl ExtHashTable {
     }
 }
 
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
+pub enum HashTableChallengeId {
+    FromProcessorEvalIndeterminate,
+    ToProcessorEvalIndeterminate,
+    StackInputWeight0,
+
+    StackInputWeight1,
+    StackInputWeight2,
+    StackInputWeight3,
+    StackInputWeight4,
+    StackInputWeight5,
+    StackInputWeight6,
+    StackInputWeight7,
+    StackInputWeight8,
+    StackInputWeight9,
+
+    DigestOutputWeight0,
+    DigestOutputWeight1,
+    DigestOutputWeight2,
+    DigestOutputWeight3,
+    DigestOutputWeight4,
+}
+
+impl From<HashTableChallengeId> for usize {
+    fn from(val: HashTableChallengeId) -> Self {
+        val as usize
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct HashTableChallenges {
     /// The weight that combines two consecutive rows in the
@@ -846,6 +894,33 @@ pub struct HashTableChallenges {
     pub digest_output_weight4: XFieldElement,
 }
 
+impl TableChallenges for HashTableChallenges {
+    type Id = HashTableChallengeId;
+
+    #[inline]
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
+        match id {
+            FromProcessorEvalIndeterminate => self.from_processor_eval_indeterminate,
+            ToProcessorEvalIndeterminate => self.to_processor_eval_indeterminate,
+            StackInputWeight0 => self.stack_input_weight0,
+            StackInputWeight1 => self.stack_input_weight1,
+            StackInputWeight2 => self.stack_input_weight2,
+            StackInputWeight3 => self.stack_input_weight3,
+            StackInputWeight4 => self.stack_input_weight4,
+            StackInputWeight5 => self.stack_input_weight5,
+            StackInputWeight6 => self.stack_input_weight6,
+            StackInputWeight7 => self.stack_input_weight7,
+            StackInputWeight8 => self.stack_input_weight8,
+            StackInputWeight9 => self.stack_input_weight9,
+            DigestOutputWeight0 => self.digest_output_weight0,
+            DigestOutputWeight1 => self.digest_output_weight1,
+            DigestOutputWeight2 => self.digest_output_weight2,
+            DigestOutputWeight3 => self.digest_output_weight3,
+            DigestOutputWeight4 => self.digest_output_weight4,
+        }
+    }
+}
+
 impl ExtensionTable for ExtHashTable {
     fn dynamic_initial_constraints(
         &self,
@@ -863,7 +938,7 @@ impl ExtensionTable for ExtHashTable {
 
     fn dynamic_transition_constraints(
         &self,
-        challenges: &super::challenges::AllChallenges,
+        challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
     }
