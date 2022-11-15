@@ -40,10 +40,9 @@ pub fn parse_simulate_prove(
     code: &str,
     input_symbols: Vec<BFieldElement>,
     secret_input_symbols: Vec<BFieldElement>,
-    output_symbols: Vec<BFieldElement>,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> (Stark, Proof) {
-    let (aet, _, program) = parse_setup_simulate(
+    let (aet, output_symbols, program) = parse_setup_simulate(
         code,
         input_symbols.clone(),
         secret_input_symbols,

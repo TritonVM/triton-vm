@@ -817,7 +817,6 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    #[ignore = "too slow"]
     fn processor_table_constraints_evaluate_to_zero_for_bigger_tasm_programs_test() {
         processor_table_constraints_evaluate_to_zero(&bigger_tasm_test_programs())
     }

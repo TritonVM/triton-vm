@@ -1734,7 +1734,6 @@ pub(crate) mod triton_stark_tests {
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
-            vec![],
             &mut None,
         );
 
@@ -1755,7 +1754,6 @@ pub(crate) mod triton_stark_tests {
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
-            vec![],
             &mut profiler,
         );
         let mut profiler = profiler.unwrap();
@@ -1773,16 +1771,12 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    #[ignore = "too slow"]
     fn prove_verify_fibonacci_100_test() {
         let source_code = sample_programs::FIBONACCI_VIT;
-        let program = Program::from_code(source_code).unwrap();
-
         let stdin = vec![100_u64.into()];
         let secret_in = vec![];
 
-        let (_, stdout, _) = program.run(stdin.clone(), secret_in.clone());
-        let (stark, proof) = parse_simulate_prove(source_code, stdin, secret_in, stdout, &mut None);
+        let (stark, proof) = parse_simulate_prove(source_code, stdin, secret_in, &mut None);
 
         println!("between prove and verify");
 
