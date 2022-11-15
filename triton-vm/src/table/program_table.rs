@@ -6,15 +6,19 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use super::constraint_circuit::DualRowIndicator::*;
+use ProgramTableChallengeId::*;
+
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::table::base_table::Extendable;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::Row;
 use crate::table::table_column::ProgramBaseTableColumn::{self, *};
 use crate::table::table_column::ProgramExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::DualRowIndicator::*;
 use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
@@ -93,37 +97,33 @@ impl Extendable for ProgramTable {
 impl TableLike<XFieldElement> for ExtProgramTable {}
 
 impl ExtProgramTable {
-    fn ext_initial_constraints(
-        _challenges: &ProgramTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables = MPolynomial::variables(FULL_WIDTH);
-        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
-        let one = constant(XFieldElement::one());
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let one = circuit_builder.b_constant(1_u32.into());
 
-        let address = variables[usize::from(Address)].clone();
-        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
+        let address = circuit_builder.input(Row(Address.into()));
+        let running_evaluation = circuit_builder.input(Row(RunningEvaluation.into()));
 
         let first_address_is_zero = address;
 
         let running_evaluation_is_initialized_correctly = running_evaluation - one;
 
         vec![
-            first_address_is_zero,
-            running_evaluation_is_initialized_correctly,
+            first_address_is_zero.consume(),
+            running_evaluation_is_initialized_correctly.consume(),
         ]
     }
 
-    fn ext_consistency_constraints(
-        _challenges: &ProgramTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let one = MPolynomial::from_constant(XFieldElement::one(), FULL_WIDTH);
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let one = circuit_builder.b_constant(1_u32.into());
 
-        let variables = MPolynomial::variables(FULL_WIDTH);
-        let is_padding = variables[usize::from(IsPadding)].clone();
-
+        let is_padding = circuit_builder.input(Row(IsPadding.into()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
-        vec![is_padding_is_bit]
+        vec![is_padding_is_bit.consume()]
     }
 
     pub fn ext_transition_constraints_as_circuits(
@@ -145,25 +145,48 @@ impl ExtProgramTable {
 
         let running_evaluation_remains =
             running_evaluation_next.clone() - running_evaluation.clone();
-        let compressed_row = circuit_builder.challenge(ProgramTableChallengeId::AddressWeight)
-            * address
-            + circuit_builder.challenge(ProgramTableChallengeId::InstructionWeight) * instruction
-            + circuit_builder.challenge(ProgramTableChallengeId::NextInstructionWeight)
-                * instruction_next;
+        let compressed_row = circuit_builder.challenge(AddressWeight) * address
+            + circuit_builder.challenge(InstructionWeight) * instruction
+            + circuit_builder.challenge(NextInstructionWeight) * instruction_next;
 
-        let indeterminate =
-            circuit_builder.challenge(ProgramTableChallengeId::InstructionEvalIndeterminate);
+        let indeterminate = circuit_builder.challenge(InstructionEvalIndeterminate);
         let running_evaluation_updates =
             running_evaluation_next - (indeterminate * running_evaluation + compressed_row);
         let running_evaluation_updates_if_and_only_if_not_a_padding_row =
             (one - is_padding.clone()) * running_evaluation_updates
                 + is_padding * running_evaluation_remains;
 
-        vec![
-            address_increases_by_one.consume(),
-            is_padding_is_0_or_remains_unchanged.consume(),
-            running_evaluation_updates_if_and_only_if_not_a_padding_row.consume(),
+        [
+            address_increases_by_one,
+            is_padding_is_0_or_remains_unchanged,
+            running_evaluation_updates_if_and_only_if_not_a_padding_row,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
+    }
+
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        // no further constraints
+        vec![]
+    }
+
+    fn ext_initial_constraints(
+        challenges: &ProgramTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_initial_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
+    }
+
+    fn ext_consistency_constraints(
+        challenges: &ProgramTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_consistency_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 
     fn ext_transition_constraints(
@@ -177,10 +200,12 @@ impl ExtProgramTable {
     }
 
     fn ext_terminal_constraints(
-        _challenges: &ProgramTableChallenges,
+        challenges: &ProgramTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        Self::ext_terminal_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 }
 
@@ -346,12 +371,10 @@ impl TableChallenges for ProgramTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            ProgramTableChallengeId::InstructionEvalIndeterminate => {
-                self.instruction_eval_indeterminate
-            }
-            ProgramTableChallengeId::AddressWeight => self.address_weight,
-            ProgramTableChallengeId::InstructionWeight => self.instruction_weight,
-            ProgramTableChallengeId::NextInstructionWeight => self.next_instruction_weight,
+            InstructionEvalIndeterminate => self.instruction_eval_indeterminate,
+            AddressWeight => self.address_weight,
+            InstructionWeight => self.instruction_weight,
+            NextInstructionWeight => self.next_instruction_weight,
         }
     }
 }
@@ -385,7 +408,7 @@ impl ExtensionTable for ExtProgramTable {
 
     fn dynamic_transition_constraints(
         &self,
-        challenges: &super::challenges::AllChallenges,
+        challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtProgramTable::ext_transition_constraints(&challenges.program_table_challenges)
     }
