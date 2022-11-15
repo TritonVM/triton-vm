@@ -5,12 +5,14 @@ use num_traits::One;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use triton_profiler::triton_profiler::TritonProfiler;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::other::transpose;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::fri_domain::FriDomain;
-use crate::stark::Stark;
 use crate::table::extension_table;
 use crate::table::table_collection::interpolant_degree;
 
@@ -42,7 +44,8 @@ pub trait ExtensionTable: TableLike<XFieldElement> + Sync {
 }
 
 pub trait Evaluable: ExtensionTable {
-    /// evaluate initial constraints on given point if they are set; panic otherwise
+    /// Evaluate initial constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_initial_constraints(
         &self,
         evaluation_point: &[XFieldElement],
@@ -58,7 +61,8 @@ pub trait Evaluable: ExtensionTable {
         }
     }
 
-    /// evaluate consistency constraints on given point if they are set; panic otherwise
+    /// Evaluate consistency constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_consistency_constraints(
         &self,
         evaluation_point: &[XFieldElement],
@@ -74,23 +78,27 @@ pub trait Evaluable: ExtensionTable {
         }
     }
 
-    /// evaluate transition constraints if they are set; panic otherwise
+    /// Evaluate transition constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_transition_constraints(
         &self,
-        evaluation_point: &[XFieldElement],
+        current_row: &[XFieldElement],
+        next_row: &[XFieldElement],
         _challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
+        let evaluation_point = vec![current_row, next_row].concat();
         if let Some(transition_constraints) = &self.inherited_table().transition_constraints {
             transition_constraints
                 .iter()
-                .map(|tc| tc.evaluate(evaluation_point))
+                .map(|tc| tc.evaluate(&evaluation_point))
                 .collect()
         } else {
             panic!("{} does not have transition constraints!", &self.name());
         }
     }
 
-    /// evaluate terminal constraints on given point if they are set; panic otherwise
+    /// Evaluate terminal constraints if they are set. This default impl
+    /// can be overridden by running the `constraint-evaluation-generator`.
     fn evaluate_terminal_constraints(
         &self,
         evaluation_point: &[XFieldElement],
@@ -186,17 +194,15 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     fn initial_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
-        codewords: &[Vec<XFieldElement>],
+        transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
     ) -> Vec<Vec<XFieldElement>> {
-        for codeword in codewords.iter() {
-            debug_assert_eq!(fri_domain.length, codeword.len());
-        }
+        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
 
         let zerofier_codeword = fri_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - XFieldElement::one())
+            .map(|x| x - BFieldElement::one())
             .collect();
         let zerofier_inverse = XFieldElement::batch_inversion(zerofier_codeword);
 
@@ -204,15 +210,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .par_iter()
             .enumerate()
             .map(|(fri_dom_i, &z_inv)| {
-                let row = codewords
-                    .iter()
-                    .map(|codeword| codeword[fri_dom_i])
-                    .collect_vec();
-                let evaluated_bcs = self.evaluate_initial_constraints(&row, challenges);
+                let row = &transposed_codewords[fri_dom_i];
+                let evaluated_bcs = self.evaluate_initial_constraints(row, challenges);
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "initial");
 
         quotient_codewords
@@ -221,18 +224,16 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     fn consistency_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
-        codewords: &[Vec<XFieldElement>],
+        transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
-        for codeword in codewords.iter() {
-            debug_assert_eq!(fri_domain.length, codeword.len());
-        }
+        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
 
         let zerofier_codeword = fri_domain
             .domain_values()
             .iter()
-            .map(|x| x.mod_pow_u32(padded_height as u32) - XFieldElement::one())
+            .map(|x| x.mod_pow_u32(padded_height as u32) - BFieldElement::one())
             .collect();
         let zerofier_inverse = XFieldElement::batch_inversion(zerofier_codeword);
 
@@ -240,15 +241,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .par_iter()
             .enumerate()
             .map(|(fri_dom_i, &z_inv)| {
-                let row = codewords
-                    .iter()
-                    .map(|codeword| codeword[fri_dom_i])
-                    .collect_vec();
-                let evaluated_ccs = self.evaluate_consistency_constraints(&row, challenges);
+                let row = &transposed_codewords[fri_dom_i];
+                let evaluated_ccs = self.evaluate_consistency_constraints(row, challenges);
                 evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "consistency");
 
         quotient_codewords
@@ -257,14 +255,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     fn transition_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
-        codewords: &[Vec<XFieldElement>],
+        transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         omicron: XFieldElement,
         padded_height: usize,
     ) -> Vec<Vec<XFieldElement>> {
-        for codeword in codewords.iter() {
-            debug_assert_eq!(fri_domain.length, codeword.len());
-        }
+        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
 
         let one = XFieldElement::one();
         let omicron_inverse = omicron.inverse();
@@ -283,26 +279,24 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         // the relation between the FRI domain and the omicron domain
         let unit_distance = fri_domain.length / padded_height;
 
+        let fri_domain_bit_mask = fri_domain.length - 1;
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
             .enumerate()
             .map(|(current_row_idx, &z_inv)| {
-                let current_row = codewords
-                    .iter()
-                    .map(|codeword| codeword[current_row_idx])
-                    .collect_vec();
-                let next_row_idx = (current_row_idx + unit_distance) % fri_domain.length;
-                let next_row = codewords
-                    .iter()
-                    .map(|codeword| codeword[next_row_idx])
-                    .collect_vec();
-                let evaluation_point = vec![current_row, next_row].concat();
+                // `& fri_domain_bit_mask` performs cheap modulo:
+                // `fri_domain.length - 1` is a bit-mask with all 1s
+                // because fri_domain.length is 2^k for some k.
+                let next_row_index = (current_row_idx + unit_distance) & fri_domain_bit_mask;
+                let current_row = &transposed_codewords[current_row_idx];
+                let next_row = &transposed_codewords[next_row_index];
+
                 let evaluated_tcs =
-                    self.evaluate_transition_constraints(&evaluation_point, challenges);
+                    self.evaluate_transition_constraints(current_row, next_row, challenges);
                 evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "transition");
 
         quotient_codewords
@@ -311,13 +305,11 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     fn terminal_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
-        codewords: &[Vec<XFieldElement>],
+        transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         omicron: XFieldElement,
     ) -> Vec<Vec<XFieldElement>> {
-        for codeword in codewords.iter() {
-            debug_assert_eq!(fri_domain.length, codeword.len());
-        }
+        debug_assert_eq!(fri_domain.length, transposed_codewords.len());
 
         // The zerofier for the terminal quotient has a root in the last
         // value in the cyclical group generated from omicron.
@@ -332,15 +324,12 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .par_iter()
             .enumerate()
             .map(|(fri_dom_i, &z_inv)| {
-                let row = codewords
-                    .iter()
-                    .map(|codeword| codeword[fri_dom_i])
-                    .collect_vec();
-                let evaluated_termcs = self.evaluate_terminal_constraints(&row, challenges);
+                let row = &transposed_codewords[fri_dom_i];
+                let evaluated_termcs = self.evaluate_terminal_constraints(row, challenges);
                 evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = Stark::transpose(&transposed_quotient_codewords);
+        let quotient_codewords = transpose(&transposed_quotient_codewords);
         self.debug_fri_domain_bound_check(fri_domain, &quotient_codewords, "terminal");
 
         quotient_codewords
@@ -349,18 +338,56 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     fn all_quotients(
         &self,
         fri_domain: &FriDomain<XFieldElement>,
-        codewords: &[Vec<XFieldElement>],
+        transposed_codewords: Vec<Vec<XFieldElement>>,
         challenges: &AllChallenges,
         omicron: XFieldElement,
         padded_height: usize,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
-        let initial_quotients = self.initial_quotients(fri_domain, codewords, challenges);
-        let consistency_quotients =
-            self.consistency_quotients(fri_domain, codewords, challenges, padded_height);
-        let transition_quotients =
-            self.transition_quotients(fri_domain, codewords, challenges, omicron, padded_height);
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("initial quotients")
+        }
+        let initial_quotients =
+            self.initial_quotients(fri_domain, &transposed_codewords, challenges);
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("initial quotients")
+        }
+
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("consistency quotients")
+        }
+        let consistency_quotients = self.consistency_quotients(
+            fri_domain,
+            &transposed_codewords,
+            challenges,
+            padded_height,
+        );
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("consistency quotients")
+        }
+
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("transition quotients")
+        }
+        let transition_quotients = self.transition_quotients(
+            fri_domain,
+            &transposed_codewords,
+            challenges,
+            omicron,
+            padded_height,
+        );
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("transition quotients")
+        }
+
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.start("terminal quotients")
+        }
         let terminal_quotients =
-            self.terminal_quotients(fri_domain, codewords, challenges, omicron);
+            self.terminal_quotients(fri_domain, &transposed_codewords, challenges, omicron);
+        if let Some(p) = maybe_profiler.as_mut() {
+            p.stop("terminal quotients")
+        }
 
         vec![
             initial_quotients,

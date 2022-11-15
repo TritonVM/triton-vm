@@ -6,16 +6,16 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use super::constraint_circuit::DualRowIndicator::*;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use crate::table::table_column::ProgramBaseTableColumn::{self, *};
 use crate::table::table_column::ProgramExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
-use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder};
+use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
 pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
@@ -60,7 +60,6 @@ impl Default for ExtProgramTable {
     }
 }
 
-impl Evaluable for ExtProgramTable {}
 impl Quotientable for ExtProgramTable {}
 impl QuotientableExtensionTable for ExtProgramTable {}
 
@@ -127,19 +126,18 @@ impl ExtProgramTable {
         vec![is_padding_is_bit]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<ProgramTableChallenges>>
-    {
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
         let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
-        let address = circuit_builder.input(usize::from(Address));
-        let address_next = circuit_builder.input(FULL_WIDTH + usize::from(Address));
+        let address = circuit_builder.input(CurrentRow(Address.into()));
+        let address_next = circuit_builder.input(NextRow(Address.into()));
         let one = circuit_builder.b_constant(1u32.into());
-        let instruction = circuit_builder.input(usize::from(Instruction));
-        let is_padding = circuit_builder.input(usize::from(IsPadding));
-        let running_evaluation = circuit_builder.input(usize::from(RunningEvaluation));
-        let instruction_next = circuit_builder.input(FULL_WIDTH + usize::from(Instruction));
-        let is_padding_next = circuit_builder.input(FULL_WIDTH + usize::from(IsPadding));
-        let running_evaluation_next =
-            circuit_builder.input(FULL_WIDTH + usize::from(RunningEvaluation));
+        let instruction = circuit_builder.input(CurrentRow(Instruction.into()));
+        let is_padding = circuit_builder.input(CurrentRow(IsPadding.into()));
+        let running_evaluation = circuit_builder.input(CurrentRow(RunningEvaluation.into()));
+        let instruction_next = circuit_builder.input(NextRow(Instruction.into()));
+        let is_padding_next = circuit_builder.input(NextRow(IsPadding.into()));
+        let running_evaluation_next = circuit_builder.input(NextRow(RunningEvaluation.into()));
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_padding_is_0_or_remains_unchanged =
@@ -337,6 +335,7 @@ impl From<ProgramTableChallengeId> for usize {
 impl TableChallenges for ProgramTableChallenges {
     type Id = ProgramTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
             ProgramTableChallengeId::InstructionEvalIndeterminate => {

@@ -9,10 +9,10 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
+use super::constraint_circuit::DualRowIndicator::{self, *};
 use super::constraint_circuit::{
     ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad,
 };
@@ -73,6 +73,7 @@ pub struct InstructionTableChallenges {
 impl TableChallenges for InstructionTableChallenges {
     type Id = InstructionTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
             InstructionTableChallengeId::ProcessorPermIndeterminate => {
@@ -119,7 +120,6 @@ impl Default for ExtInstructionTable {
     }
 }
 
-impl Evaluable for ExtInstructionTable {}
 impl Quotientable for ExtInstructionTable {}
 impl QuotientableExtensionTable for ExtInstructionTable {}
 
@@ -207,21 +207,22 @@ impl ExtInstructionTable {
     }
 
     pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<InstructionTableChallenges>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
-        let one: ConstraintCircuitMonad<InstructionTableChallenges> =
+    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder: ConstraintCircuitBuilder<
+            InstructionTableChallenges,
+            DualRowIndicator<FULL_WIDTH>,
+        > = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+        let one: ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<FULL_WIDTH>> =
             circuit_builder.b_constant(1u32.into());
-        let addr = circuit_builder.input(usize::from(Address));
+        let addr = circuit_builder.input(CurrentRow(Address.into()));
 
-        let addr_next = circuit_builder.input(FULL_WIDTH + usize::from(Address));
-        let current_instruction = circuit_builder.input(usize::from(CI));
-        let current_instruction_next = circuit_builder.input(FULL_WIDTH + usize::from(CI));
-        let next_instruction = circuit_builder.input(usize::from(NIA));
-        let next_instruction_next = circuit_builder.input(FULL_WIDTH + usize::from(NIA));
-        // let is_padding_row =
-        //     one.clone() - circuit_builder.deterministic_input(FULL_WIDTH + usize::from(IsPadding));
-        let is_padding = circuit_builder.input(usize::from(IsPadding));
-        let is_padding_next = circuit_builder.input(FULL_WIDTH + usize::from(IsPadding));
+        let addr_next = circuit_builder.input(NextRow(Address.into()));
+        let current_instruction = circuit_builder.input(CurrentRow(CI.into()));
+        let current_instruction_next = circuit_builder.input(NextRow(CI.into()));
+        let next_instruction = circuit_builder.input(CurrentRow(NIA.into()));
+        let next_instruction_next = circuit_builder.input(NextRow(NIA.into()));
+        let is_padding = circuit_builder.input(CurrentRow(IsPadding.into()));
+        let is_padding_next = circuit_builder.input(NextRow(IsPadding.into()));
 
         // Base table constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
@@ -235,13 +236,11 @@ impl ExtInstructionTable {
         // Extension table constraints
         let processor_perm_indeterminate =
             circuit_builder.challenge(InstructionTableChallengeId::ProcessorPermIndeterminate);
-        let running_evaluation = circuit_builder.input(usize::from(RunningEvaluation));
-        let running_evaluation_next =
-            circuit_builder.input(FULL_WIDTH + usize::from(RunningEvaluation));
+        let running_evaluation = circuit_builder.input(CurrentRow(RunningEvaluation.into()));
+        let running_evaluation_next = circuit_builder.input(NextRow(RunningEvaluation.into()));
 
-        let running_product = circuit_builder.input(usize::from(RunningProductPermArg));
-        let running_product_next =
-            circuit_builder.input(FULL_WIDTH + usize::from(RunningProductPermArg));
+        let running_product = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
+        let running_product_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
 
         // The running evaluation is updated if and only if
         // 1. the address changes, and
@@ -386,7 +385,7 @@ impl InstructionTable {
                     debug_assert_eq!(prow[usize::from(NIA)], row[usize::from(NIA)]);
                 } else {
                     debug_assert_eq!(
-                        prow[usize::from(Address)] + 1_u64.into(),
+                        prow[usize::from(Address)] + BFieldElement::one(),
                         row[usize::from(Address)]
                     );
                 }

@@ -93,7 +93,7 @@ impl Evaluable for ExtHashTable {
             .fold(XFieldElement::one(), XFieldElement::mul);
 
         let mut evaluated_consistency_constraints = vec![
-            round_number_is_not_1_or * (state10 - XFieldElement::one()), // <-- domain separation bit
+            round_number_is_not_1_or * (state10 - BFieldElement::one()), // <-- domain separation bit
             round_number_is_not_1_or * state11,
             round_number_is_not_1_or * state12,
             round_number_is_not_1_or * state13,
@@ -108,7 +108,7 @@ impl Evaluable for ExtHashTable {
                 (round_constant_idx + round_constant_offset).try_into().unwrap();
             evaluated_consistency_constraints.push(
                 round_number
-                    * (round_number - XFieldElement::from(NUM_ROUNDS as u32 + 1))
+                    * (round_number - BFieldElement::from(NUM_ROUNDS as u32 + 1))
                     * (Self::round_constants_interpolant(round_constant_column)
                         .evaluate(&evaluation_point[usize::from(ROUNDNUMBER)])
                         - evaluation_point[usize::from(round_constant_column)]),
@@ -120,9 +120,11 @@ impl Evaluable for ExtHashTable {
 
     fn evaluate_transition_constraints(
         &self,
-        evaluation_point: &[XFieldElement],
+        current_row: &[XFieldElement],
+        next_row: &[XFieldElement],
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {
+        let evaluation_point = vec![current_row, next_row].concat();
         let constant = |c: u64| BFieldElement::new(c).lift();
         let from_processor_eval_indeterminate = challenges
             .hash_table_challenges
@@ -243,7 +245,7 @@ impl Evaluable for ExtHashTable {
         let xlix_input = (0..2 * DIGEST_LENGTH)
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
-        let compressed_row_from_processor = [
+        let compressed_row_from_processor: XFieldElement = [
             challenges.hash_table_challenges.stack_input_weight0,
             challenges.hash_table_challenges.stack_input_weight1,
             challenges.hash_table_challenges.stack_input_weight2,
@@ -278,7 +280,7 @@ impl Evaluable for ExtHashTable {
         let xlix_digest = (0..DIGEST_LENGTH)
             .map(|i| evaluation_point[FULL_WIDTH + usize::from(STATE0) + i])
             .collect_vec();
-        let compressed_row_to_processor = [
+        let compressed_row_to_processor: XFieldElement = [
             challenges.hash_table_challenges.digest_output_weight0,
             challenges.hash_table_challenges.digest_output_weight1,
             challenges.hash_table_challenges.digest_output_weight2,
@@ -681,7 +683,7 @@ impl HashTable {
                     extension_row[usize::from(HashBaseTableColumn::STATE8)],
                     extension_row[usize::from(HashBaseTableColumn::STATE9)],
                 ];
-                let compressed_state_for_input = state_for_input
+                let compressed_state_for_input: XFieldElement = state_for_input
                     .iter()
                     .zip_eq(
                         [
@@ -717,7 +719,7 @@ impl HashTable {
                     extension_row[usize::from(HashBaseTableColumn::STATE3)],
                     extension_row[usize::from(HashBaseTableColumn::STATE4)],
                 ];
-                let compressed_state_for_output = state_for_output
+                let compressed_state_for_output: XFieldElement = state_for_output
                     .iter()
                     .zip_eq(
                         [
@@ -911,9 +913,8 @@ mod constraint_tests {
 
         for (i, (current_row, next_row)) in ext_hash_table.data().iter().tuple_windows().enumerate()
         {
-            let eval_point = [current_row.to_vec(), next_row.to_vec()].concat();
             for (j, v) in ext_hash_table
-                .evaluate_transition_constraints(&eval_point, &challenges)
+                .evaluate_transition_constraints(current_row, next_row, &challenges)
                 .iter()
                 .enumerate()
             {

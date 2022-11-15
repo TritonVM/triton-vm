@@ -2,7 +2,7 @@ use itertools::Itertools;
 use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2};
+use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -481,12 +481,16 @@ impl ExtTableCollection {
                 if let Some(profiler) = maybe_profiler.as_mut() {
                     profiler.start(&ext_codeword_table.name());
                 }
+                // TODO: Consider if we can use `transposed_ext_codewords` from caller, Stark::prove().
+                // This would require more complicated indexing, but it would save a lot of allocation.
+                let transposed_codewords = transpose(ext_codeword_table.data());
                 let res = ext_codeword_table.all_quotients(
                     fri_domain,
-                    ext_codeword_table.data(),
+                    transposed_codewords,
                     challenges,
                     omicron,
                     padded_height,
+                    maybe_profiler,
                 );
                 if let Some(profiler) = maybe_profiler.as_mut() {
                     profiler.stop(&ext_codeword_table.name());

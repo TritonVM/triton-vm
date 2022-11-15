@@ -7,16 +7,16 @@ use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use super::constraint_circuit::DualRowIndicator::*;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
-use crate::table::extension_table::Evaluable;
 use crate::table::table_column::OpStackBaseTableColumn::{self, *};
 use crate::table::table_column::OpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
-use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder};
+use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
@@ -61,7 +61,6 @@ impl Default for ExtOpStackTable {
     }
 }
 
-impl Evaluable for ExtOpStackTable {}
 impl Quotientable for ExtOpStackTable {}
 impl QuotientableExtensionTable for ExtOpStackTable {}
 
@@ -110,7 +109,7 @@ impl Extendable for OpStackTable {
             if let Some(next_row) = self.data().get(insertion_index) {
                 let clk_diff = next_row[usize::from(CLK)] - row[usize::from(CLK)];
                 row[usize::from(InverseOfClkDiffMinusOne)] =
-                    (clk_diff - 1_u64.into()).inverse_or_zero();
+                    (clk_diff - BFieldElement::one()).inverse_or_zero();
             }
         }
 
@@ -173,27 +172,28 @@ impl ExtOpStackTable {
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<OpStackTableChallenges>>
-    {
-        let circuit_builder =
-            ConstraintCircuitBuilder::<OpStackTableChallenges>::new(2 * FULL_WIDTH);
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::<
+            OpStackTableChallenges,
+            DualRowIndicator<FULL_WIDTH>,
+        >::new(2 * FULL_WIDTH);
         let one = circuit_builder.b_constant(1u32.into());
 
-        let clk = circuit_builder.input(usize::from(CLK));
-        let ib1_shrink_stack = circuit_builder.input(usize::from(IB1ShrinkStack));
-        let osp = circuit_builder.input(usize::from(OSP));
-        let osv = circuit_builder.input(usize::from(OSV));
-        let clk_di = circuit_builder.input(usize::from(InverseOfClkDiffMinusOne));
-        let rpcjd = circuit_builder.input(usize::from(AllClockJumpDifferencesPermArg));
-        let rppa = circuit_builder.input(usize::from(RunningProductPermArg));
+        let clk = circuit_builder.input(CurrentRow(CLK.into()));
+        let ib1_shrink_stack = circuit_builder.input(CurrentRow(IB1ShrinkStack.into()));
+        let osp = circuit_builder.input(CurrentRow(OSP.into()));
+        let osv = circuit_builder.input(CurrentRow(OSV.into()));
+        let clk_di = circuit_builder.input(CurrentRow(InverseOfClkDiffMinusOne.into()));
+        let rpcjd = circuit_builder.input(CurrentRow(AllClockJumpDifferencesPermArg.into()));
+        let rppa = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
 
-        let clk_next = circuit_builder.input(FULL_WIDTH + usize::from(CLK));
-        let ib1_shrink_stack_next = circuit_builder.input(FULL_WIDTH + usize::from(IB1ShrinkStack));
-        let osp_next = circuit_builder.input(FULL_WIDTH + usize::from(OSP));
-        let osv_next = circuit_builder.input(FULL_WIDTH + usize::from(OSV));
-        let rpcjd_next =
-            circuit_builder.input(FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg));
-        let rppa_next = circuit_builder.input(FULL_WIDTH + usize::from(RunningProductPermArg));
+        let clk_next = circuit_builder.input(NextRow(CLK.into()));
+        let ib1_shrink_stack_next = circuit_builder.input(NextRow(IB1ShrinkStack.into()));
+        let osp_next = circuit_builder.input(NextRow(OSP.into()));
+        let osv_next = circuit_builder.input(NextRow(OSV.into()));
+        let rpcjd_next = circuit_builder.input(NextRow(AllClockJumpDifferencesPermArg.into()));
+        let rppa_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
 
         // the osp increases by 1 or the osp does not change
         //
@@ -231,7 +231,7 @@ impl ExtOpStackTable {
         // + (1 - (clk' - clk - 1) * clk_di) * (cjdrp' - cjdrp)
         // + (osp' - osp) * (cjdrp' - cjdrp)
         let beta = circuit_builder
-            .challenge(OpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate);
+            .challenge(OpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
         let cjdrp_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
             * (one.clone() - osp_next.clone() + osp.clone())
             * (rpcjd_next.clone() - rpcjd.clone() * (beta - clk_next.clone() + clk.clone()))
@@ -240,13 +240,12 @@ impl ExtOpStackTable {
             + (osp_next.clone() - osp) * (rpcjd_next - rpcjd);
 
         // The running product for the permutation argument `rppa` is updated correctly.
-        let alpha = circuit_builder.challenge(OpStackTableChallengesId::ProcessorPermIndeterminate);
-        let compressed_row = circuit_builder.challenge(OpStackTableChallengesId::ClkWeight)
+        let alpha = circuit_builder.challenge(OpStackTableChallengeId::ProcessorPermIndeterminate);
+        let compressed_row = circuit_builder.challenge(OpStackTableChallengeId::ClkWeight)
             * clk_next
-            + circuit_builder.challenge(OpStackTableChallengesId::Ib1Weight)
-                * ib1_shrink_stack_next
-            + circuit_builder.challenge(OpStackTableChallengesId::OspWeight) * osp_next
-            + circuit_builder.challenge(OpStackTableChallengesId::OsvWeight) * osv_next;
+            + circuit_builder.challenge(OpStackTableChallengeId::Ib1Weight) * ib1_shrink_stack_next
+            + circuit_builder.challenge(OpStackTableChallengeId::OspWeight) * osp_next
+            + circuit_builder.challenge(OpStackTableChallengeId::OsvWeight) * osv_next;
 
         let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
@@ -423,7 +422,7 @@ impl ExtOpStackTable {
 }
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum OpStackTableChallengesId {
+pub enum OpStackTableChallengeId {
     ProcessorPermIndeterminate,
     ClkWeight,
     Ib1Weight,
@@ -432,25 +431,26 @@ pub enum OpStackTableChallengesId {
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
 
-impl From<OpStackTableChallengesId> for usize {
-    fn from(val: OpStackTableChallengesId) -> Self {
+impl From<OpStackTableChallengeId> for usize {
+    fn from(val: OpStackTableChallengeId) -> Self {
         val as usize
     }
 }
 
 impl TableChallenges for OpStackTableChallenges {
-    type Id = OpStackTableChallengesId;
+    type Id = OpStackTableChallengeId;
 
+    #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            OpStackTableChallengesId::ProcessorPermIndeterminate => {
+            OpStackTableChallengeId::ProcessorPermIndeterminate => {
                 self.processor_perm_indeterminate
             }
-            OpStackTableChallengesId::ClkWeight => self.clk_weight,
-            OpStackTableChallengesId::Ib1Weight => self.ib1_weight,
-            OpStackTableChallengesId::OsvWeight => self.osv_weight,
-            OpStackTableChallengesId::OspWeight => self.osp_weight,
-            OpStackTableChallengesId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            OpStackTableChallengeId::ClkWeight => self.clk_weight,
+            OpStackTableChallengeId::Ib1Weight => self.ib1_weight,
+            OpStackTableChallengeId::OsvWeight => self.osv_weight,
+            OpStackTableChallengeId::OspWeight => self.osp_weight,
+            OpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
         }

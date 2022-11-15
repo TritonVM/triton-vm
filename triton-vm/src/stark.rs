@@ -3,12 +3,13 @@ use std::error::Error;
 use std::fmt;
 
 use itertools::Itertools;
+use num_traits::One;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{self, is_power_of_two, random_elements};
+use twenty_first::shared_math::other::{self, is_power_of_two, random_elements, transpose};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
@@ -160,7 +161,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "LDE 1");
 
         prof_start!(maybe_profiler, "Merkle tree 1");
-        let transposed_base_codewords = Self::transpose(&randomizer_and_base_fri_domain_codewords);
+        let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
         let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
         let base_merkle_tree_root = base_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree 1");
@@ -194,7 +195,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "LDE 2");
 
         prof_start!(maybe_profiler, "Merkle tree 2");
-        let transposed_ext_codewords = Self::transpose(&extension_fri_domain_codewords);
+        let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
         let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
         prof_stop!(maybe_profiler, "Merkle tree 2");
 
@@ -594,27 +595,6 @@ impl Stark {
         MerkleTree::<StarkHasher>::from_digests(&codeword_digests_by_index)
     }
 
-    /// Essentially a matrix transpose. Given
-    ///
-    /// ```py
-    /// [a b c]
-    /// [d e f]
-    /// ```
-    ///
-    /// returns
-    ///
-    /// ```py
-    /// [a d]
-    /// [b e]
-    /// [c f]
-    /// ```
-    /// Assumes that input is of rectangular shape.
-    pub fn transpose<P: Copy>(codewords: &[Vec<P>]) -> Vec<Vec<P>> {
-        (0..codewords[0].len())
-            .map(|col_idx| codewords.iter().map(|row| row[col_idx]).collect())
-            .collect()
-    }
-
     fn padded(&self, base_matrices: &BaseMatrices) -> BaseTableCollection {
         let mut base_tables = BaseTableCollection::from_base_matrices(base_matrices);
         base_tables.pad();
@@ -968,7 +948,7 @@ impl Stark {
                     .zip_eq(initial_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_bc / (current_fri_domain_value - 1.into());
+                    let quotient = evaluated_bc / (current_fri_domain_value - BFieldElement::one());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -984,7 +964,8 @@ impl Stark {
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_cc
-                        / (current_fri_domain_value.mod_pow_u32(padded_height as u32) - 1.into());
+                        / (current_fri_domain_value.mod_pow_u32(padded_height as u32)
+                            - BFieldElement::one());
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -993,17 +974,21 @@ impl Stark {
                 prof_stop!(maybe_profiler, "consistency constraint quotient points");
 
                 prof_start!(maybe_profiler, "transition constraint quotient points");
-                let tc_evaluation_point = [table_row.clone(), next_table_row.clone()].concat();
                 for (evaluated_tc, degree_bound) in table
-                    .evaluate_transition_constraints(&tc_evaluation_point, &extension_challenges)
+                    .evaluate_transition_constraints(
+                        table_row,
+                        next_table_row,
+                        &extension_challenges,
+                    )
                     .into_iter()
                     .zip_eq(transition_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = {
                         let numerator = current_fri_domain_value - omicron_inverse;
-                        let denominator =
-                            current_fri_domain_value.mod_pow_u32(padded_height as u32) - 1.into();
+                        let denominator = current_fri_domain_value
+                            .mod_pow_u32(padded_height as u32)
+                            - BFieldElement::one();
                         evaluated_tc * numerator / denominator
                     };
                     let quotient_shifted =
@@ -1442,12 +1427,11 @@ pub(crate) mod triton_stark_tests {
 
         for table in ext_tables.into_iter() {
             let dummy_row = vec![0.into(); table.full_width()];
-            let double_length_dummy_row = vec![0.into(); 2 * table.full_width()];
 
             // will panic if the number of variables is wrong
             table.evaluate_initial_constraints(&dummy_row, &challenges);
             table.evaluate_consistency_constraints(&dummy_row, &challenges);
-            table.evaluate_transition_constraints(&double_length_dummy_row, &challenges);
+            table.evaluate_transition_constraints(&dummy_row, &dummy_row, &challenges);
             table.evaluate_terminal_constraints(&dummy_row, &challenges);
         }
     }
@@ -1495,9 +1479,8 @@ pub(crate) mod triton_stark_tests {
             let num_consistency_constraints = table
                 .evaluate_consistency_constraints(&table.data()[0], &challenges)
                 .len();
-            let evaluation_point = [table.data()[0].clone(), table.data()[1].clone()].concat();
             let num_transition_constraints = table
-                .evaluate_transition_constraints(&evaluation_point, &challenges)
+                .evaluate_transition_constraints(&table.data()[0], &table.data()[1], &challenges)
                 .len();
             let num_terminal_constraints = table
                 .evaluate_terminal_constraints(table.data().last().unwrap(), &challenges)
@@ -1570,9 +1553,8 @@ pub(crate) mod triton_stark_tests {
                 table.name()
             );
 
-            let evaluation_point = [table.data()[0].clone(), table.data()[1].clone()].concat();
             let num_transition_constraints = table
-                .evaluate_transition_constraints(&evaluation_point, &challenges)
+                .evaluate_transition_constraints(&table.data()[0], &table.data()[1], &challenges)
                 .len();
             let num_transition_quotient_degree_bounds = table
                 .get_transition_quotient_degree_bounds(padded_height, num_trace_randomizers)
@@ -1640,9 +1622,8 @@ pub(crate) mod triton_stark_tests {
             }
 
             for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
-                let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
                 let evaluated_tcs =
-                    table.evaluate_transition_constraints(&evaluation_point, &challenges);
+                    table.evaluate_transition_constraints(curr_row, next_row, &challenges);
                 for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
@@ -1675,10 +1656,9 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
         let zero = XFieldElement::zero();
-        let (_, _, _, ext_tables, _, _) =
+        let (_, _, _, ext_tables, challenges, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
 
-        let challenges = AllChallenges::placeholder();
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
                 let evaluated_bcs = table.evaluate_initial_constraints(row, &challenges);
@@ -1709,10 +1689,11 @@ pub(crate) mod triton_stark_tests {
                 }
             }
 
-            for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
-                let evaluation_point = [curr_row.to_vec(), next_row.to_vec()].concat();
+            for (row_idx, (current_row, next_row)) in
+                table.data().iter().tuple_windows().enumerate()
+            {
                 let evaluated_tcs =
-                    table.evaluate_transition_constraints(&evaluation_point, &challenges);
+                    table.evaluate_transition_constraints(current_row, next_row, &challenges);
                 for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,
@@ -1765,13 +1746,18 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_halt_test() {
         let code_with_input = test_halt();
+        let mut profiler = Some(TritonProfiler::new("prove halt"));
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
             vec![],
-            &mut None,
+            &mut profiler,
         );
+        let mut profiler = profiler.unwrap();
+        profiler.finish();
+        let report = profiler.report();
+        println!("{report}");
 
         println!("between prove and verify");
 

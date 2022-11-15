@@ -23,7 +23,7 @@ pub struct Table<FieldElement: FiniteField> {
     matrix: Vec<Vec<FieldElement>>,
 
     /// The name of the table. Mostly for debugging purpose.
-    pub(crate) name: String,
+    pub name: String,
 
     /// AIR constraints, to be populated upon extension
     pub(crate) initial_constraints: Option<Vec<MPolynomial<FieldElement>>>,

@@ -1,20 +1,18 @@
-use std::{
-    borrow::BorrowMut,
-    cell::RefCell,
-    cmp::{self},
-    collections::HashSet,
-    fmt::{Debug, Display},
-    iter::Sum,
-    marker::PhantomData,
-    ops::{Add, Mul, Sub},
-    rc::Rc,
-};
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
+use std::cmp::{self};
+use std::collections::HashSet;
+use std::fmt::{Debug, Display};
+use std::iter::Sum;
+use std::marker::PhantomData;
+use std::ops::{Add, Mul, Sub};
+use std::rc::Rc;
 
 use num_traits::{One, Zero};
 use std::hash::Hash;
-use twenty_first::shared_math::{
-    b_field_element::BFieldElement, mpolynomial::MPolynomial, x_field_element::XFieldElement,
-};
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::challenges::TableChallenges;
 
@@ -49,20 +47,117 @@ impl Display for CircuitId {
     }
 }
 
+/// An `InputIndicator` is a type that describes the position of a variable in
+/// a constraint polynomial in the row layout applicable for a certain kind of
+/// constraint polynomial.
+///
+/// A variable in a constraint polynomial comes in the shape of a `usize`, but
+/// depending on the type of constraint polynomial, this index may be an index
+/// into a single row (for initial, consistency and terminal constraints), or
+/// a pair of adjacent rows (for transition constraints), or some other layout
+/// for a third type of constraint.
+///
+/// `From<usize>` and `Into<usize>` occur for the purpose of this conversion.
+///
+/// Having `Clone + Copy + Hash + PartialEq + Eq` help put these in containers.
+pub trait InputIndicator:
+    Debug + Clone + Copy + Hash + PartialEq + Eq + Display + From<usize> + Into<usize>
+{
+}
+
+/// A `SingleRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// a constraint polynomial that operates on a single execution trace table at a
+/// time.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum SingleRowIndicator<const COLUMN_COUNT: usize> {
+    Row(usize),
+}
+
+impl<const COLUMN_COUNT: usize> Display for SingleRowIndicator<COLUMN_COUNT> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let input_indicator: String = match self {
+            SingleRowIndicator::Row(i) => format!("row[{i}]"),
+        };
+
+        writeln!(f, "{input_indicator}")
+    }
+}
+
+impl<const COLUMN_COUNT: usize> From<usize> for SingleRowIndicator<COLUMN_COUNT> {
+    fn from(val: usize) -> Self {
+        assert!(val < COLUMN_COUNT, "Cannot index out of width of table");
+        SingleRowIndicator::Row(val)
+    }
+}
+
+impl<const COLUMN_COUNT: usize> From<SingleRowIndicator<COLUMN_COUNT>> for usize {
+    fn from(val: SingleRowIndicator<COLUMN_COUNT>) -> usize {
+        match val {
+            SingleRowIndicator::Row(i) => i,
+        }
+    }
+}
+
+impl<const COLUMN_COUNT: usize> InputIndicator for SingleRowIndicator<COLUMN_COUNT> {}
+
+/// A `DualRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// a constraint polynomial that operates on pairs of rows (current and next).
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum DualRowIndicator<const COLUMN_COUNT: usize> {
+    CurrentRow(usize),
+    NextRow(usize),
+}
+
+impl<const COLUMN_COUNT: usize> Display for DualRowIndicator<COLUMN_COUNT> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let input_indicator: String = match self {
+            DualRowIndicator::CurrentRow(i) => format!("current_row[{i}]"),
+            DualRowIndicator::NextRow(i) => format!("next_row[{i}]"),
+        };
+
+        writeln!(f, "{input_indicator}")
+    }
+}
+
+impl<const COLUMN_COUNT: usize> InputIndicator for DualRowIndicator<COLUMN_COUNT> {}
+
+impl<const COLUMN_COUNT: usize> From<usize> for DualRowIndicator<COLUMN_COUNT> {
+    fn from(val: usize) -> Self {
+        assert!(
+            val < 2 * COLUMN_COUNT,
+            "Cannot index out of two times the width of the table"
+        );
+        if val < COLUMN_COUNT {
+            DualRowIndicator::CurrentRow(val)
+        } else {
+            DualRowIndicator::NextRow(val - COLUMN_COUNT)
+        }
+    }
+}
+
+impl<const COLUMN_COUNT: usize> From<DualRowIndicator<COLUMN_COUNT>> for usize {
+    fn from(val: DualRowIndicator<COLUMN_COUNT>) -> Self {
+        match val {
+            DualRowIndicator::CurrentRow(i) => i,
+            DualRowIndicator::NextRow(i) => COLUMN_COUNT + i,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum CircuitExpression<T: TableChallenges> {
+pub enum CircuitExpression<T: TableChallenges, II: InputIndicator> {
     XConstant(XFieldElement),
     BConstant(BFieldElement),
-    Input(usize),
+    Input(II),
     Challenge(T::Id),
     BinaryOperation(
         BinOp,
-        Rc<RefCell<ConstraintCircuit<T>>>,
-        Rc<RefCell<ConstraintCircuit<T>>>,
+        Rc<RefCell<ConstraintCircuit<T, II>>>,
+        Rc<RefCell<ConstraintCircuit<T, II>>>,
     ),
 }
 
-impl<T: TableChallenges> Hash for CircuitExpression<T> {
+impl<T: TableChallenges, II: InputIndicator> Hash for CircuitExpression<T, II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             CircuitExpression::XConstant(xfe) => xfe.hash(state),
@@ -80,29 +175,29 @@ impl<T: TableChallenges> Hash for CircuitExpression<T> {
     }
 }
 
-impl<T: TableChallenges> Hash for ConstraintCircuit<T> {
+impl<T: TableChallenges, II: InputIndicator> Hash for ConstraintCircuit<T, II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.expression.hash(state)
     }
 }
 
-impl<T: TableChallenges> Hash for ConstraintCircuitMonad<T> {
+impl<T: TableChallenges, II: InputIndicator> Hash for ConstraintCircuitMonad<T, II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.circuit.as_ref().borrow().expression.hash(state)
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ConstraintCircuit<T: TableChallenges> {
+pub struct ConstraintCircuit<T: TableChallenges, II: InputIndicator> {
     pub id: CircuitId,
     pub visited_counter: usize,
-    pub expression: CircuitExpression<T>,
-    var_count: usize,
+    pub expression: CircuitExpression<T, II>,
+    pub var_count: usize,
 }
 
-impl<T: TableChallenges> Eq for ConstraintCircuit<T> {}
+impl<T: TableChallenges, II: InputIndicator> Eq for ConstraintCircuit<T, II> {}
 
-impl<T: TableChallenges> PartialEq for ConstraintCircuit<T> {
+impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuit<T, II> {
     /// Calculate equality of circuits.
     /// In particular, this function does *not* attempt to simplify
     /// or reduce neutral terms or products. So this comparison will
@@ -118,10 +213,8 @@ impl<T: TableChallenges> PartialEq for ConstraintCircuit<T> {
                 CircuitExpression::BConstant(other_bfe) => self_bfe == other_bfe,
                 _ => false,
             },
-            CircuitExpression::Input(self_input_index) => match &other.expression {
-                CircuitExpression::Input(other_input_index) => {
-                    self_input_index == other_input_index
-                }
+            CircuitExpression::Input(self_input) => match &other.expression {
+                CircuitExpression::Input(other_input) => self_input == other_input,
 
                 _ => false,
             },
@@ -147,7 +240,7 @@ impl<T: TableChallenges> PartialEq for ConstraintCircuit<T> {
     }
 }
 
-impl<T: TableChallenges> Display for ConstraintCircuit<T> {
+impl<T: TableChallenges, II: InputIndicator> Display for ConstraintCircuit<T, II> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.expression {
             CircuitExpression::XConstant(xfe) => {
@@ -156,7 +249,7 @@ impl<T: TableChallenges> Display for ConstraintCircuit<T> {
             CircuitExpression::BConstant(bfe) => {
                 write!(f, "{}", bfe)
             }
-            CircuitExpression::Input(self_input_index) => write!(f, "${} ", self_input_index),
+            CircuitExpression::Input(input) => write!(f, "{} ", input),
             CircuitExpression::Challenge(self_challenge_id) => {
                 write!(f, "#{}", self_challenge_id)
             }
@@ -173,7 +266,7 @@ impl<T: TableChallenges> Display for ConstraintCircuit<T> {
     }
 }
 
-impl<T: TableChallenges> ConstraintCircuit<T> {
+impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Increment `visited_counter` by one for each reachable node
     fn traverse_single(&mut self) {
         self.visited_counter += 1;
@@ -192,7 +285,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// Count how many times each reachable node is reached when traversing from
     /// the starting points that are given as input. The result is stored in the
     /// `visited_counter` field in each node.
-    pub fn traverse_multiple(mpols: &mut [ConstraintCircuit<T>]) {
+    pub fn traverse_multiple(mpols: &mut [ConstraintCircuit<T, II>]) {
         for mpol in mpols.iter_mut() {
             assert!(
                 mpol.visited_counter.is_zero(),
@@ -215,7 +308,11 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// Verify that all IDs in the subtree are unique. Panics otherwise.
     fn inner_has_unique_ids(&mut self, ids: &mut HashSet<usize>) {
         let new_value = ids.insert(self.id.0);
-        assert!(!self.visited_counter.is_zero() || new_value);
+        assert!(
+            !self.visited_counter.is_zero() || new_value,
+            "ID = {} was repeated",
+            self.id
+        );
         self.visited_counter += 1;
         match &self.expression {
             CircuitExpression::XConstant(_) => (),
@@ -230,7 +327,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     }
 
     // Verify that a multitree has unique IDs. Otherwise panic.
-    pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<T>]) {
+    pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<T, II>]) {
         let mut ids: HashSet<usize> = HashSet::new();
 
         for mpol in constraints.iter_mut() {
@@ -349,7 +446,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     }
 
     /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
-    pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<T>]) {
+    pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<T, II>]) {
         for circuit in circuits.iter_mut() {
             let mut mutated = circuit.constant_fold_inner();
             while mutated {
@@ -383,7 +480,10 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
                     }
                 }
             }
-            CircuitExpression::Input(index) => max_degrees[*index],
+            CircuitExpression::Input(input) => {
+                let index: usize = (*input).into();
+                max_degrees[index]
+            }
             CircuitExpression::XConstant(xfe) => {
                 if xfe.is_zero() {
                     -1
@@ -438,18 +538,24 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
         }
     }
 
-    /// Return the highest counter value encountered in this subtree
-    pub fn get_max_visited_counter(&self) -> usize {
+    /// Return all visited counters in the subtree
+    pub fn get_all_visited_counters(&self) -> Vec<usize> {
         // Maybe this could be solved smarter with dynamic programming
         // but we probably don't need that as our circuits aren't too big.
         match &self.expression {
             // The highest number will always be in a leaf so we only
             // need to check those.
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => cmp::max(
-                lhs.as_ref().borrow().get_max_visited_counter(),
-                rhs.as_ref().borrow().get_max_visited_counter(),
-            ),
-            _ => self.visited_counter,
+            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+                let lhs_counters = lhs.as_ref().borrow().get_all_visited_counters();
+                let rhs_counters = rhs.as_ref().borrow().get_all_visited_counters();
+                let own_counter = self.visited_counter;
+                let mut all = vec![vec![own_counter], lhs_counters, rhs_counters].concat();
+                all.sort_unstable();
+                all.dedup();
+                all.reverse();
+                all
+            }
+            _ => vec![self.visited_counter],
         }
     }
 
@@ -489,8 +595,9 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     /// term and a coefficient of one. Returns the index in which the multivariate
     /// polynomial is linear. Returns None otherwise.
     pub fn get_linear_one_index(&self) -> Option<usize> {
-        if let CircuitExpression::Input(input_index) = self.expression {
-            Some(input_index)
+        if let CircuitExpression::Input(input) = self.expression {
+            let index: usize = input.into();
+            Some(index)
         } else {
             None
         }
@@ -529,8 +636,9 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
             CircuitExpression::BConstant(bfe) => {
                 MPolynomial::<XFieldElement>::from_constant(bfe.lift(), self.var_count)
             }
-            CircuitExpression::Input(input_index) => {
-                MPolynomial::<XFieldElement>::variables(self.var_count)[*input_index].clone()
+            CircuitExpression::Input(input) => {
+                let mpol_index: usize = (*input).into();
+                MPolynomial::<XFieldElement>::variables(self.var_count)[mpol_index].clone()
             }
             CircuitExpression::Challenge(challenge_id) => {
                 MPolynomial::<XFieldElement>::from_constant(
@@ -577,7 +685,7 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
     }
 
     /// Simplify the circuit constraints by replacing the known challenges with roots
-    pub fn apply_challenges(constraints: &mut [ConstraintCircuit<T>], challenges: &T) {
+    pub fn apply_challenges(constraints: &mut [ConstraintCircuit<T, II>], challenges: &T) {
         for circuit in constraints.iter_mut() {
             circuit.apply_challenges_to_one_root(challenges);
         }
@@ -585,13 +693,13 @@ impl<T: TableChallenges> ConstraintCircuit<T> {
 }
 
 #[derive(Clone)]
-pub struct ConstraintCircuitMonad<T: TableChallenges> {
-    pub circuit: Rc<RefCell<ConstraintCircuit<T>>>,
-    pub all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<T>>>>,
+pub struct ConstraintCircuitMonad<T: TableChallenges, II: InputIndicator> {
+    pub circuit: Rc<RefCell<ConstraintCircuit<T, II>>>,
+    pub all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<T, II>>>>,
     pub id_counter_ref: Rc<RefCell<usize>>,
 }
 
-impl<T: TableChallenges> Debug for ConstraintCircuitMonad<T> {
+impl<T: TableChallenges, II: InputIndicator> Debug for ConstraintCircuitMonad<T, II> {
     // We cannot derive `Debug` as `all_nodes` contains itself which a derived `Debug` will
     // attempt to print as well, thus leading to infinite recursion.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -609,13 +717,13 @@ impl<T: TableChallenges> Debug for ConstraintCircuitMonad<T> {
     }
 }
 
-impl<T: TableChallenges> Display for ConstraintCircuitMonad<T> {
+impl<T: TableChallenges, II: InputIndicator> Display for ConstraintCircuitMonad<T, II> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.circuit.as_ref().borrow())
     }
 }
 
-impl<T: TableChallenges> PartialEq for ConstraintCircuitMonad<T> {
+impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuitMonad<T, II> {
     // Equality for the ConstraintCircuitMonad is defined by the circuit, not the
     // other metadata (e.g. ID) that it carries around.
     fn eq(&self, other: &Self) -> bool {
@@ -623,16 +731,16 @@ impl<T: TableChallenges> PartialEq for ConstraintCircuitMonad<T> {
     }
 }
 
-impl<T: TableChallenges> Eq for ConstraintCircuitMonad<T> {}
+impl<T: TableChallenges, II: InputIndicator> Eq for ConstraintCircuitMonad<T, II> {}
 
 /// Helper function for binary operations that are used to generate new parent
 /// nodes in the multitree that represents the algebraic circuit. Ensures that
 /// each newly created node has a unique ID.
-fn binop<T: TableChallenges>(
+fn binop<T: TableChallenges, II: InputIndicator>(
     binop: BinOp,
-    lhs: ConstraintCircuitMonad<T>,
-    rhs: ConstraintCircuitMonad<T>,
-) -> ConstraintCircuitMonad<T> {
+    lhs: ConstraintCircuitMonad<T, II>,
+    rhs: ConstraintCircuitMonad<T, II>,
+) -> ConstraintCircuitMonad<T, II> {
     // Get ID for the new node
     let new_index = lhs.id_counter_ref.as_ref().borrow().to_owned();
 
@@ -700,45 +808,48 @@ fn binop<T: TableChallenges>(
     new_node
 }
 
-impl<T: TableChallenges> Add for ConstraintCircuitMonad<T> {
-    type Output = ConstraintCircuitMonad<T>;
+impl<T: TableChallenges, II: InputIndicator> Add for ConstraintCircuitMonad<T, II> {
+    type Output = ConstraintCircuitMonad<T, II>;
 
     fn add(self, rhs: Self) -> Self::Output {
         binop(BinOp::Add, self, rhs)
     }
 }
 
-impl<T: TableChallenges> Sub for ConstraintCircuitMonad<T> {
-    type Output = ConstraintCircuitMonad<T>;
+impl<T: TableChallenges, II: InputIndicator> Sub for ConstraintCircuitMonad<T, II> {
+    type Output = ConstraintCircuitMonad<T, II>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         binop(BinOp::Sub, self, rhs)
     }
 }
 
-impl<T: TableChallenges> Mul for ConstraintCircuitMonad<T> {
-    type Output = ConstraintCircuitMonad<T>;
+impl<T: TableChallenges, II: InputIndicator> Mul for ConstraintCircuitMonad<T, II> {
+    type Output = ConstraintCircuitMonad<T, II>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         binop(BinOp::Mul, self, rhs)
     }
 }
 
-impl<T: TableChallenges> Sum for ConstraintCircuitMonad<T> {
-    // TODO: This will panic if the iterator is empty! Can or should we avoid that?
+/// This will panic if the iterator is empty because the neutral
+/// element needs a unique ID, and we have no way of getting that
+/// here.
+impl<T: TableChallenges, II: InputIndicator> Sum for ConstraintCircuitMonad<T, II> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
-        iter.reduce(|accum, item| accum + item).unwrap()
+        iter.reduce(|accum, item| accum + item)
+            .expect("ConstraintCircuitMonad Iterator was empty")
     }
 }
 
-impl<T: TableChallenges> ConstraintCircuitMonad<T> {
+impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitMonad<T, II> {
     /// Flatten a circuit to reveal its equivalent multivariate polynomial
     pub fn partial_evaluate(&self, challenges: &T) -> MPolynomial<XFieldElement> {
         self.circuit.as_ref().borrow().partial_evaluate(challenges)
     }
 
     /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
-    pub fn consume(self) -> ConstraintCircuit<T> {
+    pub fn consume(self) -> ConstraintCircuit<T, II> {
         self.circuit.try_borrow().unwrap().to_owned()
     }
 }
@@ -746,14 +857,14 @@ impl<T: TableChallenges> ConstraintCircuitMonad<T> {
 #[derive(Debug, Clone)]
 /// Helper struct to construct new leaf nodes in the circuit multitree. Ensures that each newly
 /// created node gets a unique ID.
-pub struct ConstraintCircuitBuilder<T: TableChallenges> {
+pub struct ConstraintCircuitBuilder<T: TableChallenges, II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
-    all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<T>>>>,
+    all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<T, II>>>>,
     _table_type: PhantomData<T>,
     var_count: usize,
 }
 
-impl<T: TableChallenges> ConstraintCircuitBuilder<T> {
+impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitBuilder<T, II> {
     pub fn new(var_count: usize) -> Self {
         Self {
             id_counter: Rc::new(RefCell::new(0)),
@@ -764,30 +875,30 @@ impl<T: TableChallenges> ConstraintCircuitBuilder<T> {
     }
 
     /// Create constant leaf node
-    pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<T> {
+    pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<T, II> {
         let expression = CircuitExpression::XConstant(xfe);
         self.make_leaf(expression)
     }
 
     /// Create constant leaf node
-    pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<T> {
+    pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<T, II> {
         let expression = CircuitExpression::BConstant(bfe);
         self.make_leaf(expression)
     }
 
     /// Create deterministic input leaf node
-    pub fn input(&self, input_index: usize) -> ConstraintCircuitMonad<T> {
-        let expression = CircuitExpression::Input(input_index);
+    pub fn input(&self, input: II) -> ConstraintCircuitMonad<T, II> {
+        let expression = CircuitExpression::Input(input);
         self.make_leaf(expression)
     }
 
     /// Create challenge leaf node
-    pub fn challenge(&self, challenge_id: T::Id) -> ConstraintCircuitMonad<T> {
+    pub fn challenge(&self, challenge_id: T::Id) -> ConstraintCircuitMonad<T, II> {
         let expression = CircuitExpression::Challenge(challenge_id);
         self.make_leaf(expression)
     }
 
-    fn make_leaf(&self, expression: CircuitExpression<T>) -> ConstraintCircuitMonad<T> {
+    fn make_leaf(&self, expression: CircuitExpression<T, II>) -> ConstraintCircuitMonad<T, II> {
         let new_id = self.id_counter.as_ref().borrow().to_owned();
         let new_node = ConstraintCircuitMonad {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
@@ -841,8 +952,8 @@ mod constraint_circuit_tests {
 
     use super::*;
 
-    fn node_counter_inner<T: TableChallenges>(
-        constraint: &mut ConstraintCircuit<T>,
+    fn node_counter_inner<T: TableChallenges, II: InputIndicator>(
+        constraint: &mut ConstraintCircuit<T, II>,
         counter: &mut usize,
     ) {
         if constraint.visited_counter == 0 {
@@ -857,7 +968,9 @@ mod constraint_circuit_tests {
     }
 
     /// Count the total number of nodes in call constraints
-    fn node_counter<T: TableChallenges>(constraints: &mut [ConstraintCircuit<T>]) -> usize {
+    fn node_counter<T: TableChallenges, II: InputIndicator>(
+        constraints: &mut [ConstraintCircuit<T, II>],
+    ) -> usize {
         let mut counter = 0;
 
         for constraint in constraints.iter_mut() {
@@ -874,13 +987,15 @@ mod constraint_circuit_tests {
     fn circuit_mpol_builder(
         challenges: &InstructionTableChallenges,
     ) -> (
-        ConstraintCircuitMonad<InstructionTableChallenges>,
+        ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50>>,
         MPolynomial<XFieldElement>,
-        ConstraintCircuitBuilder<InstructionTableChallenges>,
+        ConstraintCircuitBuilder<InstructionTableChallenges, DualRowIndicator<50>>,
     ) {
         let var_count = 100;
-        let circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
-            ConstraintCircuitBuilder::new(var_count);
+        let circuit_builder: ConstraintCircuitBuilder<
+            InstructionTableChallenges,
+            DualRowIndicator<50>,
+        > = ConstraintCircuitBuilder::new(var_count);
         let mpol_variables = MPolynomial::<XFieldElement>::variables(var_count);
         let b_constants: Vec<BFieldElement> = random_elements(var_count);
         let x_constants: Vec<XFieldElement> = random_elements(var_count);
@@ -888,17 +1003,19 @@ mod constraint_circuit_tests {
         let mut rng = thread_rng();
         let rand: usize = rng.next_u64() as usize;
         let mut ret_mpol = mpol_variables[rand % var_count].clone();
-        let mut ret_circuit = circuit_builder.input(rand % var_count);
+        let circuit_input: DualRowIndicator<50> = (rand % var_count).into();
+        let mut ret_circuit = circuit_builder.input(circuit_input);
         for _ in 0..100 {
             let rand: usize = rng.next_u64() as usize;
             let choices = 6;
             let (mpol, circuit): (
                 MPolynomial<XFieldElement>,
-                ConstraintCircuitMonad<InstructionTableChallenges>,
+                ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50>>,
             ) = if rand % choices == 0 {
                 // p(x, y, z) = x
                 let mp = mpol_variables[rand % var_count].clone();
-                (mp.clone(), circuit_builder.input(rand % var_count))
+                let input_value: DualRowIndicator<50> = (rand % var_count).into();
+                (mp.clone(), circuit_builder.input(input_value))
             } else if rand % choices == 1 {
                 // p(x, y, z) = c
                 (
@@ -926,11 +1043,12 @@ mod constraint_circuit_tests {
                 )
             } else {
                 // p(x, y, z) = rand_i * x
+                let input_value: DualRowIndicator<50> = (rand % var_count).into();
                 (
                     mpol_variables[rand % var_count]
                         .clone()
                         .scalar_mul(challenges.processor_perm_indeterminate),
-                    circuit_builder.input(rand % var_count)
+                    circuit_builder.input(input_value)
                         * circuit_builder
                             .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
                 )
@@ -957,10 +1075,10 @@ mod constraint_circuit_tests {
     }
 
     // Make a deep copy of a MPolCircuit and return it as a MPolCircuitRef
-    fn deep_copy_inner<T: TableChallenges>(
-        val: &ConstraintCircuit<T>,
-        builder: &mut ConstraintCircuitBuilder<T>,
-    ) -> ConstraintCircuitMonad<T> {
+    fn deep_copy_inner<T: TableChallenges, II: InputIndicator>(
+        val: &ConstraintCircuit<T, II>,
+        builder: &mut ConstraintCircuitBuilder<T, II>,
+    ) -> ConstraintCircuitMonad<T, II> {
         match &val.expression {
             CircuitExpression::BinaryOperation(op, lhs, rhs) => {
                 let lhs_ref = deep_copy_inner(&lhs.as_ref().borrow(), builder);
@@ -974,7 +1092,9 @@ mod constraint_circuit_tests {
         }
     }
 
-    fn deep_copy<T: TableChallenges>(val: &ConstraintCircuit<T>) -> ConstraintCircuitMonad<T> {
+    fn deep_copy<T: TableChallenges, II: InputIndicator>(
+        val: &ConstraintCircuit<T, II>,
+    ) -> ConstraintCircuitMonad<T, II> {
         let mut builder = ConstraintCircuitBuilder::new(val.var_count);
         deep_copy_inner(val, &mut builder)
     }
@@ -1108,10 +1228,12 @@ mod constraint_circuit_tests {
     #[test]
     fn circuit_equality_check_and_constant_folding_test() {
         let var_count = 10;
-        let circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
-            ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.input(0);
-        let var_4 = circuit_builder.input(4);
+        let circuit_builder: ConstraintCircuitBuilder<
+            InstructionTableChallenges,
+            DualRowIndicator<5>,
+        > = ConstraintCircuitBuilder::new(var_count);
+        let var_0 = circuit_builder.input(DualRowIndicator::CurrentRow(0));
+        let var_4 = circuit_builder.input(DualRowIndicator::NextRow(4));
         let four = circuit_builder.x_constant(4.into());
         let one = circuit_builder.x_constant(1.into());
         let zero = circuit_builder.x_constant(0.into());
@@ -1313,21 +1435,23 @@ mod constraint_circuit_tests {
             * four_mpol.clone()
             * four_mpol;
 
-        let circuit_builder: ConstraintCircuitBuilder<InstructionTableChallenges> =
-            ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.input(0);
-        let var_4 = circuit_builder.input(4);
-        let var_8 = circuit_builder.input(8);
-        let var_9 = circuit_builder.input(9);
+        let circuit_builder: ConstraintCircuitBuilder<
+            InstructionTableChallenges,
+            DualRowIndicator<5>,
+        > = ConstraintCircuitBuilder::new(var_count);
+        let var_0 = circuit_builder.input(DualRowIndicator::CurrentRow(0));
+        let var_4 = circuit_builder.input(DualRowIndicator::CurrentRow(4));
+        let var_8 = circuit_builder.input(DualRowIndicator::NextRow(3));
+        let var_9 = circuit_builder.input(DualRowIndicator::NextRow(4));
 
         let four = circuit_builder.x_constant(4.into());
 
         let expr_circuit = (var_0 + var_4) * (var_8 - var_9) * four.clone() * four;
 
         // Verify that IDs are unique
-        ConstraintCircuit::<InstructionTableChallenges>::assert_has_unique_ids(&mut [expr_circuit
-            .clone()
-            .consume()]);
+        ConstraintCircuit::<InstructionTableChallenges, DualRowIndicator<5>>::assert_has_unique_ids(
+            &mut [expr_circuit.clone().consume()],
+        );
 
         // Verify that partial evaluation agrees with the flat polynomial representation
         let expr_circuit_partial_evaluated = expr_circuit
@@ -1335,8 +1459,8 @@ mod constraint_circuit_tests {
         assert_eq!(expr_mpol, expr_circuit_partial_evaluated);
     }
 
-    fn constant_folding_of_table_constraints_test<T: TableChallenges>(
-        mut constraints: Vec<ConstraintCircuit<T>>,
+    fn constant_folding_of_table_constraints_test<T: TableChallenges, II: InputIndicator>(
+        mut constraints: Vec<ConstraintCircuit<T, II>>,
         challenges: T,
         table_name: &str,
     ) {
