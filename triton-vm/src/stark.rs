@@ -120,12 +120,12 @@ impl Stark {
             empty_table_collection.max_degree_with_origin(parameters.num_trace_randomizers);
         let max_degree = (other::roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
         let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
-        let omega =
+        let fri_domain_generator =
             BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
         let coset_offset = BFieldElement::generator();
         let fri = Fri::new(
             coset_offset,
-            omega,
+            fri_domain_generator,
             fri_domain_length,
             parameters.fri_expansion_factor,
             parameters.num_colinearity_checks,

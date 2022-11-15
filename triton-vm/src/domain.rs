@@ -77,13 +77,13 @@ mod domain_tests {
         let poly = Polynomial::<BFieldElement>::new(x_squared_coefficients.clone());
 
         for order in [4, 8, 32] {
-            let omega = BFieldElement::primitive_root_of_unity(order).unwrap();
+            let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain = Domain::<BFieldElement>::new(offset, omega, order as usize);
-            let x_domain = Domain::<XFieldElement>::new(offset, omega, order as usize);
+            let b_domain = Domain::<BFieldElement>::new(offset, generator, order as usize);
+            let x_domain = Domain::<XFieldElement>::new(offset, generator, order as usize);
 
             let expected_b_values: Vec<BFieldElement> =
-                (0..order).map(|i| offset * omega.mod_pow(i)).collect();
+                (0..order).map(|i| offset * generator.mod_pow(i)).collect();
             let actual_b_values_1 = b_domain.domain_values();
             let actual_b_values_2 = (0..order as u32)
                 .map(|i| b_domain.domain_value(i))

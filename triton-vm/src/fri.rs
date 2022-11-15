@@ -57,12 +57,12 @@ pub struct Fri<H> {
 impl<H: AlgebraicHasher> Fri<H> {
     pub fn new(
         offset: BFieldElement,
-        omega: BFieldElement,
+        fri_domain_generator: BFieldElement,
         domain_length: usize,
         expansion_factor: usize,
         colinearity_checks_count: usize,
     ) -> Self {
-        let domain = Domain::new(offset, omega, domain_length);
+        let domain = Domain::new(offset, fri_domain_generator, domain_length);
         let _hasher = PhantomData;
         Self {
             domain,
@@ -346,11 +346,11 @@ impl<H: AlgebraicHasher> Fri<H> {
         let log_2_of_n = log_2_floor(last_codeword.len() as u128) as u32;
         let mut last_polynomial = last_codeword.clone();
 
-        let last_omega = self
+        let last_fri_domain_generator = self
             .domain
             .generator
             .mod_pow_u32(2u32.pow(num_rounds as u32));
-        intt::<XFieldElement>(&mut last_polynomial, last_omega, log_2_of_n);
+        intt::<XFieldElement>(&mut last_polynomial, last_fri_domain_generator, log_2_of_n);
 
         let last_poly_degree: isize = (Polynomial::<XFieldElement> {
             coefficients: last_polynomial,
@@ -666,7 +666,7 @@ mod triton_xfri_tests {
         expansion_factor: usize,
         colinearity_checks: usize,
     ) -> Fri<H> {
-        let omega = BFieldElement::primitive_root_of_unity(subgroup_order).unwrap();
+        let fri_domain_generator = BFieldElement::primitive_root_of_unity(subgroup_order).unwrap();
 
         // The following offset was picked arbitrarily by copying the one found in
         // `get_b_field_fri_test_object`. It does not generate the full Z_p\{0}, but
@@ -675,7 +675,7 @@ mod triton_xfri_tests {
 
         let fri: Fri<H> = Fri::new(
             offset,
-            omega,
+            fri_domain_generator,
             subgroup_order as usize,
             expansion_factor,
             colinearity_checks,
