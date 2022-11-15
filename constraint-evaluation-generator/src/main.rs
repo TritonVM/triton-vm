@@ -65,6 +65,44 @@ fn gen<T: TableChallenges, II: InputIndicator>(
     table_id_name: &str,
     constraint_circuits: &mut [ConstraintCircuit<T, II>],
 ) -> String {
+    let challenge_enum_name = format!("{table_id_name}ChallengeId");
+    let table_mod_name = format!("Ext{table_id_name}");
+
+    let circuits_as_string = turn_circuits_into_string(constraint_circuits);
+
+    format!(
+        "
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+
+use crate::table::challenges::AllChallenges;
+use crate::table::challenges::TableChallenges;
+use crate::table::extension_table::Evaluable;
+use crate::table::{table_name_snake}::{table_mod_name};
+use crate::table::{table_name_snake}::{challenge_enum_name}::*;
+
+// This file is a placeholder for auto-generated code
+// Run `cargo run --bin constraint-evaluation-generator`
+// to fill in this file with optimized constraints.
+impl Evaluable for {table_mod_name} {{
+    #[inline]
+    fn evaluate_transition_constraints(
+        &self,
+        current_row: &[XFieldElement],
+        next_row: &[XFieldElement],
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {{
+        let challenges = &challenges.{table_name_snake}_challenges;
+        {circuits_as_string}
+    }}
+}}
+"
+    )
+}
+
+fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
+    constraint_circuits: &mut [ConstraintCircuit<T, II>],
+) -> String {
     // Delete redundant nodes
     ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
 
@@ -88,7 +126,6 @@ fn gen<T: TableChallenges, II: InputIndicator>(
     // In the main function we predeclare all variables with a visit count of more than 1
     // These declarations must be made from the highest count number to the lowest, otherwise
     // the code will refer to bindings that have not yet been made
-    let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let mut shared_evaluations: Vec<String> = vec![];
     for visited_counter in visited_counters {
         if visited_counter == 1 {
@@ -104,7 +141,7 @@ fn gen<T: TableChallenges, II: InputIndicator>(
 
     let mut constraint_evaluation_expressions: Vec<String> = vec![];
     for constraint in constraint_circuits.iter() {
-        // Build code for expressions that evaluate to the transition constraints
+        // Build code for expressions that evaluate to the constraints
         let mut constraint_evaluation = String::default();
         let _dependent_symbols = evaluate_single_node(
             1,
@@ -118,41 +155,7 @@ fn gen<T: TableChallenges, II: InputIndicator>(
 
     let constraint_evaluations_joined = constraint_evaluation_expressions.join(",\n");
 
-    let root_evaluation_expressions = format!(
-        "vec![
-        {constraint_evaluations_joined}
-    ]"
-    );
-
-    let table_mod_name = format!("Ext{table_id_name}");
-
-    format!(
-        "
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-
-use crate::table::challenges::AllChallenges;
-use crate::table::challenges::TableChallenges;
-use crate::table::extension_table::Evaluable;
-use crate::table::{table_name_snake}::{table_mod_name};
-use crate::table::{table_name_snake}::{challenge_enum_name}::*;
-
-impl Evaluable for {table_mod_name} {{
-    #[inline]
-    fn evaluate_transition_constraints(
-        &self,
-        current_row: &[XFieldElement],
-        next_row: &[XFieldElement],
-        challenges: &AllChallenges,
-    ) -> Vec<XFieldElement> {{
-        let challenges = &challenges.{table_name_snake}_challenges;
-        {shared_declarations}
-
-        {root_evaluation_expressions}
-    }}
-}}
-"
-    )
+    format!("{shared_declarations}\n\nvec![{constraint_evaluations_joined}]")
 }
 
 /// Produce the code to evaluate code for all nodes that share a value number of
