@@ -6,9 +6,13 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use InstructionTableChallengeId::*;
+
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::table::base_table::Extendable;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::Row;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
@@ -76,18 +80,14 @@ impl TableChallenges for InstructionTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            InstructionTableChallengeId::ProcessorPermIndeterminate => {
-                self.processor_perm_indeterminate
-            }
-            InstructionTableChallengeId::IpProcessorWeight => self.ip_processor_weight,
-            InstructionTableChallengeId::CiProcessorWeight => self.ci_processor_weight,
-            InstructionTableChallengeId::NiaProcessorWeight => self.nia_processor_weight,
-            InstructionTableChallengeId::ProgramEvalIndeterminate => {
-                self.program_eval_indeterminate
-            }
-            InstructionTableChallengeId::AddressWeight => self.address_weight,
-            InstructionTableChallengeId::InstructionWeight => self.instruction_weight,
-            InstructionTableChallengeId::NextInstructionWeight => self.next_instruction_weight,
+            ProcessorPermIndeterminate => self.processor_perm_indeterminate,
+            IpProcessorWeight => self.ip_processor_weight,
+            CiProcessorWeight => self.ci_processor_weight,
+            NiaProcessorWeight => self.nia_processor_weight,
+            ProgramEvalIndeterminate => self.program_eval_indeterminate,
+            AddressWeight => self.address_weight,
+            InstructionWeight => self.instruction_weight,
+            NextInstructionWeight => self.next_instruction_weight,
         }
     }
 }
@@ -156,30 +156,28 @@ impl Extendable for InstructionTable {
 impl TableLike<XFieldElement> for ExtInstructionTable {}
 
 impl ExtInstructionTable {
-    fn ext_initial_constraints(
-        challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
 
-        let running_evaluation_initial =
-            MPolynomial::from_constant(EvalArg::default_initial(), FULL_WIDTH);
-        let running_product_initial =
-            MPolynomial::from_constant(PermArg::default_initial(), FULL_WIDTH);
+        let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
+        let running_product_initial = circuit_builder.x_constant(PermArg::default_initial());
 
-        let ip = variables[usize::from(Address)].clone();
-        let ci = variables[usize::from(CI)].clone();
-        let nia = variables[usize::from(NIA)].clone();
-        let running_evaluation = variables[usize::from(RunningEvaluation)].clone();
-        let running_product = variables[usize::from(RunningProductPermArg)].clone();
+        let ip = circuit_builder.input(Row(Address.into()));
+        let ci = circuit_builder.input(Row(CI.into()));
+        let nia = circuit_builder.input(Row(NIA.into()));
+        let running_evaluation = circuit_builder.input(Row(RunningEvaluation.into()));
+        let running_product = circuit_builder.input(Row(RunningProductPermArg.into()));
 
-        let compressed_row_for_eval_arg = ip.scalar_mul(challenges.address_weight)
-            + ci.scalar_mul(challenges.instruction_weight)
-            + nia.scalar_mul(challenges.next_instruction_weight);
+        // Note that “ip = 0” is enforced by a separate constraint. This means we can drop summand
+        // `ip_weight * ip` from the compressed row.
+        let compressed_row_for_eval_arg = circuit_builder.challenge(InstructionWeight) * ci
+            + circuit_builder.challenge(NextInstructionWeight) * nia;
 
         let first_address_is_zero = ip;
 
         let running_evaluation_is_initialized_correctly = running_evaluation
-            - running_evaluation_initial.scalar_mul(challenges.program_eval_indeterminate)
+            - running_evaluation_initial * circuit_builder.challenge(ProgramEvalIndeterminate)
             - compressed_row_for_eval_arg;
 
         // due to the way the instruction table is constructed, the running product does not update
@@ -187,23 +185,21 @@ impl ExtInstructionTable {
         let running_product_is_initialized_correctly = running_product - running_product_initial;
 
         vec![
-            first_address_is_zero,
-            running_evaluation_is_initialized_correctly,
-            running_product_is_initialized_correctly,
+            first_address_is_zero.consume(),
+            running_evaluation_is_initialized_correctly.consume(),
+            running_product_is_initialized_correctly.consume(),
         ]
     }
 
-    fn ext_consistency_constraints(
-        _challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let one = MPolynomial::from_constant(XFieldElement::one(), FULL_WIDTH);
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let one = circuit_builder.b_constant(1u32.into());
 
-        let variables = MPolynomial::variables(FULL_WIDTH);
-        let is_padding = variables[usize::from(IsPadding)].clone();
-
+        let is_padding = circuit_builder.input(Row(IsPadding.into()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
-        vec![is_padding_is_bit]
+        vec![is_padding_is_bit.consume()]
     }
 
     pub fn ext_transition_constraints_as_circuits(
@@ -234,8 +230,7 @@ impl ExtInstructionTable {
             is_padding.clone() * (is_padding_next.clone() - is_padding);
 
         // Extension table constraints
-        let processor_perm_indeterminate =
-            circuit_builder.challenge(InstructionTableChallengeId::ProcessorPermIndeterminate);
+        let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermIndeterminate);
         let running_evaluation = circuit_builder.input(CurrentRow(RunningEvaluation.into()));
         let running_evaluation_next = circuit_builder.input(NextRow(RunningEvaluation.into()));
 
@@ -253,20 +248,16 @@ impl ExtInstructionTable {
         //      or the running evaluation is not updated, and
         // 3. the current row is not a padding row
         //      or the running evaluation is not updated.
-        let compressed_row_for_eval_arg = circuit_builder
-            .challenge(InstructionTableChallengeId::AddressWeight)
+        let compressed_row_for_eval_arg = circuit_builder.challenge(AddressWeight)
             * addr_next.clone()
-            + circuit_builder.challenge(InstructionTableChallengeId::InstructionWeight)
-                * current_instruction_next.clone()
-            + circuit_builder.challenge(InstructionTableChallengeId::NextInstructionWeight)
-                * next_instruction_next.clone();
+            + circuit_builder.challenge(InstructionWeight) * current_instruction_next.clone()
+            + circuit_builder.challenge(NextInstructionWeight) * next_instruction_next.clone();
 
         let address_stays = addr_next.clone() - addr;
         let running_evaluations_stays =
             running_evaluation_next.clone() - running_evaluation.clone();
         let running_evaluation_update = running_evaluation_next
-            - circuit_builder.challenge(InstructionTableChallengeId::ProgramEvalIndeterminate)
-                * running_evaluation
+            - circuit_builder.challenge(ProgramEvalIndeterminate) * running_evaluation
             - compressed_row_for_eval_arg;
 
         let running_evaluation_is_well_formed = address_stays.clone()
@@ -286,12 +277,9 @@ impl ExtInstructionTable {
         //      or the running product is not updated, and
         // 3. the current row is not a padding row
         //      or the running product is not updated.
-        let compressed_row_for_perm_arg =
-            circuit_builder.challenge(InstructionTableChallengeId::IpProcessorWeight) * addr_next
-                + circuit_builder.challenge(InstructionTableChallengeId::CiProcessorWeight)
-                    * current_instruction_next
-                + circuit_builder.challenge(InstructionTableChallengeId::NiaProcessorWeight)
-                    * next_instruction_next;
+        let compressed_row_for_perm_arg = circuit_builder.challenge(IpProcessorWeight) * addr_next
+            + circuit_builder.challenge(CiProcessorWeight) * current_instruction_next
+            + circuit_builder.challenge(NiaProcessorWeight) * next_instruction_next;
 
         let running_product_stays = running_product_next.clone() - running_product.clone();
         let running_product_update = running_product_next
@@ -302,13 +290,38 @@ impl ExtInstructionTable {
                 + address_stays * running_product_stays.clone()
                 + is_padding_next * running_product_stays;
 
-        vec![
-            address_increases_by_one_or_ci_stays.consume(),
-            address_increases_by_one_or_nia_stays.consume(),
-            is_padding_is_0_or_remains_unchanged.consume(),
-            running_evaluation_is_well_formed.consume(),
-            running_product_is_well_formed.consume(),
+        [
+            address_increases_by_one_or_ci_stays,
+            address_increases_by_one_or_nia_stays,
+            is_padding_is_0_or_remains_unchanged,
+            running_evaluation_is_well_formed,
+            running_product_is_well_formed,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
+    }
+
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        vec![]
+    }
+
+    pub fn ext_initial_constraints(
+        challenges: &InstructionTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_initial_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
+    }
+
+    fn ext_consistency_constraints(
+        challenges: &InstructionTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_consistency_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 
     fn ext_transition_constraints(
@@ -322,10 +335,12 @@ impl ExtInstructionTable {
     }
 
     fn ext_terminal_constraints(
-        _challenges: &InstructionTableChallenges,
+        challenges: &InstructionTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        // no further constraints
-        vec![]
+        Self::ext_terminal_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 }
 
@@ -521,7 +536,7 @@ impl ExtensionTable for ExtInstructionTable {
 
     fn dynamic_transition_constraints(
         &self,
-        challenges: &super::challenges::AllChallenges,
+        challenges: &AllChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         ExtInstructionTable::ext_transition_constraints(&challenges.instruction_table_challenges)
     }
