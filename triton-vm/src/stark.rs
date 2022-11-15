@@ -379,10 +379,12 @@ impl Stark {
 
         prof_stop!(maybe_profiler, "open trace leafs");
 
-        println!(
-            "Created proof containing {} B-field elements",
-            proof_stream.transcript_length()
-        );
+        if std::env::var("DEBUG").is_ok() {
+            println!(
+                "Created proof containing {} B-field elements",
+                proof_stream.transcript_length()
+            );
+        }
 
         proof_stream.to_proof()
     }
@@ -464,7 +466,9 @@ impl Stark {
             (extension_codewords, extension_degree_bounds, "ext"),
             (quotient_codewords, quotient_degree_bounds, "quot"),
         ] {
-            println!("{}", identifier);
+            if std::env::var("DEBUG").is_ok() {
+                println!(" --- next up: {identifier} codewords");
+            }
             // TODO with the DEBUG CODE and enumerate removed, the iterators can be `into_par_iter`
             for (idx, (codeword, degree_bound)) in
                 codewords.into_iter().zip_eq(bounds.iter()).enumerate()

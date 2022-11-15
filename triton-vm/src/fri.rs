@@ -17,7 +17,6 @@ use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::{CyclicGroupGenerator, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::timing_reporter::TimingReporter;
 use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, Hashable};
 use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
 
@@ -127,14 +126,11 @@ impl<H: AlgebraicHasher> Fri<H> {
         );
 
         // commit phase
-        let mut timer = TimingReporter::start();
         let (codewords, merkle_trees): (Vec<Vec<XFieldElement>>, Vec<MerkleTree<H>>) =
             self.commit(codeword, proof_stream)?.into_iter().unzip();
-        timer.elapsed("Commit phase");
 
         // Fiat-Shamir to get indices
         let top_level_indices: Vec<usize> = self.sample_indices(&proof_stream.prover_fiat_shamir());
-        timer.elapsed("Sample indices");
 
         // query phase
         // query step 0: enqueue authentication paths for all points `A` into proof stream
@@ -158,10 +154,7 @@ impl<H: AlgebraicHasher> Fri<H> {
                 .collect();
             Self::enqueue_auth_pairs(&b_indices, &codewords[r], &merkle_trees[r], proof_stream);
             current_domain_len /= 2;
-            timer.elapsed(&format!("Query phase {}", r));
         }
-
-        println!("FRI-prover, timing report\n{}", timer.finish());
 
         let merkle_root_of_1st_round: Digest = merkle_trees[0].get_root();
         Ok((top_level_indices, merkle_root_of_1st_round))

@@ -207,11 +207,11 @@ pub mod triton_vm_tests {
     use num_traits::{One, Zero};
     use rand::rngs::ThreadRng;
     use rand::{Rng, RngCore};
+    use triton_profiler::triton_profiler::TritonProfiler;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
     use twenty_first::shared_math::other::roundup_npo2;
     use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
-    use twenty_first::timing_reporter::TimingReporter;
 
     use crate::instruction::{sample_programs, AnInstruction};
     use crate::shared_tests::SourceCodeAndInput;
@@ -823,7 +823,7 @@ pub mod triton_vm_tests {
     }
 
     fn processor_table_constraints_evaluate_to_zero(all_programs: &[SourceCodeAndInput]) {
-        let mut timer = TimingReporter::start();
+        let mut profiler = TritonProfiler::new("Table Constraints Evaluate to Zero Test");
         for (code_idx, program) in all_programs.iter().enumerate() {
             let (aet, output, err) = program.simulate();
 
@@ -862,6 +862,8 @@ pub mod triton_vm_tests {
             let ext_processor_table =
                 processor_table.extend(&challenges.processor_table_challenges, interpolant_degree);
 
+            let program_idx_string = format!("Program number {code_idx:>2}");
+            profiler.start(&program_idx_string);
             for (row_idx, (current_row, next_row)) in ext_processor_table
                 .data()
                 .iter()
@@ -898,11 +900,13 @@ pub mod triton_vm_tests {
                     }
                 }
             }
-            timer.elapsed(
-                format!("Program number {code_idx:>2} (cycles: {num_cycles:>4})").as_str(),
-            );
+            let num_cycles_string = format!("took {num_cycles:>4} VM cycles");
+            profiler.start(&num_cycles_string);
+            profiler.stop(&num_cycles_string);
+            profiler.stop(&program_idx_string);
         }
-        println!("{}", timer.finish());
+        profiler.finish();
+        println!("{}", profiler.report());
     }
 
     fn _assert_air_constraints_on_matrix(
