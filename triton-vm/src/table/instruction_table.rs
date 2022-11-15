@@ -12,9 +12,9 @@ use crate::table::base_table::Extendable;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
-use super::constraint_circuit::DualRowIndicator::*;
+use super::constraint_circuit::DualRowIndicator::{self, *};
 use super::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad, DualRowIndicator,
+    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad,
 };
 use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
 use super::table_column::InstructionBaseTableColumn::{self, *};

@@ -14,10 +14,14 @@ use crate::table::base_table::Extendable;
 use crate::table::table_column::RamBaseTableColumn::{self, *};
 use crate::table::table_column::RamExtTableColumn::{self, *};
 
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::{AllChallenges, TableChallenges};
-use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use crate::table::base_table::{InheritsFromTable, Table, TableLike};
+use crate::table::challenges::{AllChallenges, TableChallenges};
+use crate::table::constraint_circuit::{
+    ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator,
+};
+use crate::table::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+
+use RamTableChallengeId::*;
 
 pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -353,15 +357,13 @@ impl ExtRamTable {
         let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let one = circuit_builder.b_constant(1u32.into());
 
-        let bezout_challenge =
-            circuit_builder.challenge(RamTableChallengeId::BezoutRelationIndeterminate);
-        let cjd_challenge = circuit_builder
-            .challenge(RamTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
-        let rppa_challenge =
-            circuit_builder.challenge(RamTableChallengeId::ProcessorPermIndeterminate);
-        let clk_weight = circuit_builder.challenge(RamTableChallengeId::ClkWeight);
-        let ramp_weight = circuit_builder.challenge(RamTableChallengeId::RampWeight);
-        let ramv_weight = circuit_builder.challenge(RamTableChallengeId::RamvWeight);
+        let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
+        let cjd_challenge =
+            circuit_builder.challenge(AllClockJumpDifferencesMultiPermIndeterminate);
+        let rppa_challenge = circuit_builder.challenge(ProcessorPermIndeterminate);
+        let clk_weight = circuit_builder.challenge(ClkWeight);
+        let ramp_weight = circuit_builder.challenge(RampWeight);
+        let ramv_weight = circuit_builder.challenge(RamvWeight);
 
         let clk = circuit_builder.input(CurrentRow(CLK.into()));
         let ramp = circuit_builder.input(CurrentRow(RAMP.into()));
@@ -538,12 +540,12 @@ impl TableChallenges for RamTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            RamTableChallengeId::BezoutRelationIndeterminate => self.bezout_relation_indeterminate,
-            RamTableChallengeId::ProcessorPermIndeterminate => self.processor_perm_indeterminate,
-            RamTableChallengeId::ClkWeight => self.clk_weight,
-            RamTableChallengeId::RamvWeight => self.ramv_weight,
-            RamTableChallengeId::RampWeight => self.ramp_weight,
-            RamTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            BezoutRelationIndeterminate => self.bezout_relation_indeterminate,
+            ProcessorPermIndeterminate => self.processor_perm_indeterminate,
+            ClkWeight => self.clk_weight,
+            RamvWeight => self.ramv_weight,
+            RampWeight => self.ramp_weight,
+            AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
         }

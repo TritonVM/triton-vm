@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use triton_vm::table::base_table::InheritsFromTable;
 use triton_vm::table::challenges::TableChallenges;
 use triton_vm::table::constraint_circuit::{
     CircuitExpression, CircuitId, ConstraintCircuit, InputIndicator,
@@ -19,67 +18,48 @@ fn main() {
     println!("Generate those constraint evaluators!");
 
     // Program table
-    let table = ExtProgramTable::default();
-    let mut constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
-    gen(
-        &table,
-        "program_table",
-        "ProgramTable",
-        &mut constraint_circuits,
-    );
+    let mut circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
+    let source_code = gen("program_table", "ProgramTable", &mut circuits);
+    write("program_table", source_code);
 
     // Instruction table
-    let table = ExtInstructionTable::default();
-    let mut constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
-    gen(
-        &table,
-        "instruction_table",
-        "InstructionTable",
-        &mut constraint_circuits,
-    );
+    let mut circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
+    let source_code = gen("instruction_table", "InstructionTable", &mut circuits);
+    write("instruction_table", source_code);
 
     // Processor table
-    let table = ExtProcessorTable::default();
-    let mut constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
-    gen(
-        &table,
-        "processor_table",
-        "ProcessorTable",
-        &mut constraint_circuits,
-    );
+    let mut circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
+    let source_code = gen("processor_table", "ProcessorTable", &mut circuits);
+    write("processor_table", source_code);
 
     // Opstack table
-    let table = ExtOpStackTable::default();
     let mut constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
-    gen(
-        &table,
-        "op_stack_table",
-        "OpStackTable",
-        &mut constraint_circuits,
-    );
+    let source_code = gen("op_stack_table", "OpStackTable", &mut constraint_circuits);
+    write("op_stack_table", source_code);
 
     // RAM table
-    let table = ExtRamTable::default();
-    let mut constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
-    gen(&table, "ram_table", "RamTable", &mut constraint_circuits);
+    let mut circuits = ExtRamTable::ext_transition_constraints_as_circuits();
+    let source_code = gen("ram_table", "RamTable", &mut circuits);
+    write("ram_table", source_code);
 
     // JumpStack table
-    let table = ExtJumpStackTable::default();
-    let mut constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
-    gen(
-        &table,
-        "jump_stack_table",
-        "JumpStackTable",
-        &mut constraint_circuits,
-    );
+    let mut circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
+    let source_code = gen("jump_stack_table", "JumpStackTable", &mut circuits);
+    write("jump_stack_table", source_code);
 }
 
-fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges, II: InputIndicator>(
-    _table: &Table,
+fn write(table_name_snake: &str, rust_source_code: String) {
+    let output_filename =
+        format!("triton-vm/src/table/constraints/{table_name_snake}_constraints.rs");
+
+    std::fs::write(output_filename, rust_source_code).expect("Write Rust source code");
+}
+
+fn gen<T: TableChallenges, II: InputIndicator>(
     table_name_snake: &str,
     table_id_name: &str,
     constraint_circuits: &mut [ConstraintCircuit<T, II>],
-) {
+) -> String {
     // Delete redundant nodes
     ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
 
@@ -115,12 +95,10 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges, II: InputInd
         ));
     }
 
-    let output_filename =
-        format!("triton-vm/src/table/constraints/{table_name_snake}_constraints.rs");
     let shared_declarations = shared_evaluations.join("");
 
     let mut constraint_evaluation_expressions: Vec<String> = vec![];
-    for (_constraint_count, constraint) in constraint_circuits.iter().enumerate() {
+    for constraint in constraint_circuits.iter() {
         // Build code for expressions that evaluate to the transition constraints
         let mut constraint_evaluation = String::default();
         let _dependent_symbols = evaluate_single_node(
@@ -142,7 +120,8 @@ fn gen<Table: InheritsFromTable<XFieldElement>, T: TableChallenges, II: InputInd
     );
 
     let table_mod_name = format!("Ext{table_id_name}");
-    let rust_source_code = format!(
+
+    format!(
         "
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -168,13 +147,7 @@ impl Evaluable for {table_mod_name} {{
     }}
 }}
 "
-    );
-
-    println!("{rust_source_code}");
-    if std::env::var("OUTPUT_RUST_SOURCE_CODE").is_ok() {
-        use std::fs;
-        fs::write(output_filename, rust_source_code).expect("Unable to write file");
-    }
+    )
 }
 
 /// Produce the code to evaluate code for all nodes that share a value number of

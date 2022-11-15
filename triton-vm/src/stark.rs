@@ -1714,7 +1714,7 @@ pub(crate) mod triton_stark_tests {
                 table.data().iter().tuple_windows().enumerate()
             {
                 let evaluated_tcs =
-                    table.evaluate_transition_constraints(&current_row, next_row, &challenges);
+                    table.evaluate_transition_constraints(current_row, next_row, &challenges);
                 for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
                     assert_eq!(
                         zero,

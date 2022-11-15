@@ -47,11 +47,27 @@ impl Display for CircuitId {
     }
 }
 
+/// An `InputIndicator` is a type that describes the position of a variable in
+/// a constraint polynomial in the row layout applicable for a certain kind of
+/// constraint polynomial.
+///
+/// A variable in a constraint polynomial comes in the shape of a `usize`, but
+/// depending on the type of constraint polynomial, this index may be an index
+/// into a single row (for initial, consistency and terminal constraints), or
+/// a pair of adjacent rows (for transition constraints), or some other layout
+/// for a third type of constraint.
+///
+/// `From<usize>` and `Into<usize>` occur for the purpose of this conversion.
+///
+/// Having `Clone + Copy + Hash + PartialEq + Eq` help put these in containers.
 pub trait InputIndicator:
     Debug + Clone + Copy + Hash + PartialEq + Eq + Display + From<usize> + Into<usize>
 {
 }
 
+/// A `SingleRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// a constraint polynomial that operates on a single execution trace table at a
+/// time.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum SingleRowIndicator<const COLUMN_COUNT: usize> {
     Row(usize),
@@ -84,6 +100,8 @@ impl<const COLUMN_COUNT: usize> From<SingleRowIndicator<COLUMN_COUNT>> for usize
 
 impl<const COLUMN_COUNT: usize> InputIndicator for SingleRowIndicator<COLUMN_COUNT> {}
 
+/// A `DualRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// a constraint polynomial that operates on pairs of rows (current and next).
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum DualRowIndicator<const COLUMN_COUNT: usize> {
     CurrentRow(usize),

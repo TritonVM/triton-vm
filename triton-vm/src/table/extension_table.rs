@@ -210,7 +210,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .par_iter()
             .enumerate()
             .map(|(fri_dom_i, &z_inv)| {
-                let row: &[XFieldElement] = &transposed_codewords[fri_dom_i];
+                let row = &transposed_codewords[fri_dom_i];
                 let evaluated_bcs = self.evaluate_initial_constraints(row, challenges);
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
@@ -241,7 +241,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .par_iter()
             .enumerate()
             .map(|(fri_dom_i, &z_inv)| {
-                let row: &[XFieldElement] = &transposed_codewords[fri_dom_i];
+                let row = &transposed_codewords[fri_dom_i];
                 let evaluated_ccs = self.evaluate_consistency_constraints(row, challenges);
                 evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
             })
@@ -279,14 +279,17 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         // the relation between the FRI domain and the omicron domain
         let unit_distance = fri_domain.length / padded_height;
 
-        let fri_domain_length_bit_mask = fri_domain.length - 1;
+        let fri_domain_bit_mask = fri_domain.length - 1;
         let transposed_quotient_codewords: Vec<_> = zerofier_inverse
             .par_iter()
             .enumerate()
             .map(|(current_row_idx, &z_inv)| {
-                let next_row_index = (current_row_idx + unit_distance) & fri_domain_length_bit_mask;
-                let current_row: &[XFieldElement] = &transposed_codewords[current_row_idx];
-                let next_row: &[XFieldElement] = &transposed_codewords[next_row_index];
+                // `& fri_domain_bit_mask` performs cheap modulo:
+                // `fri_domain.length - 1` is a bit-mask with all 1s
+                // because fri_domain.length is 2^k for some k.
+                let next_row_index = (current_row_idx + unit_distance) & fri_domain_bit_mask;
+                let current_row = &transposed_codewords[current_row_idx];
+                let next_row = &transposed_codewords[next_row_index];
 
                 let evaluated_tcs =
                     self.evaluate_transition_constraints(current_row, next_row, challenges);
@@ -321,7 +324,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             .par_iter()
             .enumerate()
             .map(|(fri_dom_i, &z_inv)| {
-                let row: &[XFieldElement] = &transposed_codewords[fri_dom_i];
+                let row = &transposed_codewords[fri_dom_i];
                 let evaluated_termcs = self.evaluate_terminal_constraints(row, challenges);
                 evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
             })
