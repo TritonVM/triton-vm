@@ -344,21 +344,21 @@ impl InstructionTable {
         Self { inherited_table }
     }
 
-    pub fn to_arithmetic_and_fri_domain_table(
+    pub fn to_quotient_and_fri_domain_table(
         &self,
-        arithmetic_domain: &Domain<BFieldElement>,
+        quotient_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
-        let (arithmetic_domain_table, fri_domain_table) = self.dual_low_degree_extension(
-            arithmetic_domain,
+        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            quotient_domain,
             fri_domain,
             num_trace_randomizers,
             base_columns,
         );
         (
-            Self::new(arithmetic_domain_table),
+            Self::new(quotient_domain_table),
             Self::new(fri_domain_table),
         )
     }
@@ -483,22 +483,22 @@ impl ExtInstructionTable {
         Self { inherited_table }
     }
 
-    pub fn to_arithmetic_and_fri_domain_table(
+    pub fn to_quotient_and_fri_domain_table(
         &self,
-        arithmetic_domain: &Domain<BFieldElement>,
+        quotient_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();
-        let (arithmetic_domain_table, fri_domain_table) = self.dual_low_degree_extension(
-            arithmetic_domain,
+        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            quotient_domain,
             fri_domain,
             num_trace_randomizers,
             ext_columns,
         );
 
         (
-            Self::new(arithmetic_domain_table),
+            Self::new(quotient_domain_table),
             Self::new(fri_domain_table),
         )
     }

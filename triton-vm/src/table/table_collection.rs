@@ -132,64 +132,45 @@ impl BaseTableCollection {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn to_arithmetic_and_fri_domain_tables(
+    pub fn to_quotient_and_fri_domain_tables(
         &self,
-        arithmetic_domain: &Domain<BFieldElement>,
+        quotient_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
-        let (program_table_arithmetic, program_table_fri) =
-            self.program_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (instruction_table_arithmetic, instruction_table_fri) =
-            self.instruction_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (processor_table_arithmetic, processor_table_fri) =
-            self.processor_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (op_stack_table_arithmetic, op_stack_table_fri) =
-            self.op_stack_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (ram_table_arithmetic, ram_table_fri) =
-            self.ram_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (jump_stack_table_arithmetic, jump_stack_table_fri) =
-            self.jump_stack_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (hash_table_arithmetic, hash_table_fri) =
-            self.hash_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
+        let (program_table_quotient, program_table_fri) = self
+            .program_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (instruction_table_quotient, instruction_table_fri) = self
+            .instruction_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (processor_table_quotient, processor_table_fri) = self
+            .processor_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (op_stack_table_quotient, op_stack_table_fri) = self
+            .op_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
+            quotient_domain,
+            fri_domain,
+            num_trace_randomizers,
+        );
+        let (jump_stack_table_quotient, jump_stack_table_fri) = self
+            .jump_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (hash_table_quotient, hash_table_fri) = self
+            .hash_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
 
-        let arithmetic_domain_tables = BaseTableCollection {
+        let quotient_domain_tables = BaseTableCollection {
             padded_height: self.padded_height,
-            program_table: program_table_arithmetic,
-            instruction_table: instruction_table_arithmetic,
-            processor_table: processor_table_arithmetic,
-            op_stack_table: op_stack_table_arithmetic,
-            ram_table: ram_table_arithmetic,
-            jump_stack_table: jump_stack_table_arithmetic,
-            hash_table: hash_table_arithmetic,
+            program_table: program_table_quotient,
+            instruction_table: instruction_table_quotient,
+            processor_table: processor_table_quotient,
+            op_stack_table: op_stack_table_quotient,
+            ram_table: ram_table_quotient,
+            jump_stack_table: jump_stack_table_quotient,
+            hash_table: hash_table_quotient,
         };
         let fri_domain_tables = BaseTableCollection {
             padded_height: self.padded_height,
@@ -202,7 +183,7 @@ impl BaseTableCollection {
             hash_table: hash_table_fri,
         };
 
-        (arithmetic_domain_tables, fri_domain_tables)
+        (quotient_domain_tables, fri_domain_tables)
     }
 
     pub fn get_all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
@@ -378,64 +359,45 @@ impl ExtTableCollection {
     }
 
     /// Heads up: only extension columns are being low degree extended. todo: better naming.
-    pub fn to_arithmetic_and_fri_domain_tables(
+    pub fn to_quotient_and_fri_domain_tables(
         &self,
-        arithmetic_domain: &Domain<BFieldElement>,
+        quotient_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
-        let (program_table_arithmetic, program_table_fri) =
-            self.program_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (instruction_table_arithmetic, instruction_table_fri) =
-            self.instruction_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (processor_table_arithmetic, processor_table_fri) =
-            self.processor_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (op_stack_table_arithmetic, op_stack_table_fri) =
-            self.op_stack_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (ram_table_arithmetic, ram_table_fri) =
-            self.ram_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (jump_stack_table_arithmetic, jump_stack_table_fri) =
-            self.jump_stack_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
-        let (hash_table_arithmetic, hash_table_fri) =
-            self.hash_table.to_arithmetic_and_fri_domain_table(
-                arithmetic_domain,
-                fri_domain,
-                num_trace_randomizers,
-            );
+        let (program_table_quotient, program_table_fri) = self
+            .program_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (instruction_table_quotient, instruction_table_fri) = self
+            .instruction_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (processor_table_quotient, processor_table_fri) = self
+            .processor_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (op_stack_table_quotient, op_stack_table_fri) = self
+            .op_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
+            quotient_domain,
+            fri_domain,
+            num_trace_randomizers,
+        );
+        let (jump_stack_table_quotient, jump_stack_table_fri) = self
+            .jump_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (hash_table_quotient, hash_table_fri) = self
+            .hash_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
 
-        let arithmetic_domain_tables = ExtTableCollection {
+        let quotient_domain_tables = ExtTableCollection {
             padded_height: self.padded_height,
-            program_table: program_table_arithmetic,
-            instruction_table: instruction_table_arithmetic,
-            processor_table: processor_table_arithmetic,
-            op_stack_table: op_stack_table_arithmetic,
-            ram_table: ram_table_arithmetic,
-            jump_stack_table: jump_stack_table_arithmetic,
-            hash_table: hash_table_arithmetic,
+            program_table: program_table_quotient,
+            instruction_table: instruction_table_quotient,
+            processor_table: processor_table_quotient,
+            op_stack_table: op_stack_table_quotient,
+            ram_table: ram_table_quotient,
+            jump_stack_table: jump_stack_table_quotient,
+            hash_table: hash_table_quotient,
         };
         let fri_domain_tables = ExtTableCollection {
             padded_height: self.padded_height,
@@ -448,7 +410,7 @@ impl ExtTableCollection {
             hash_table: hash_table_fri,
         };
 
-        (arithmetic_domain_tables, fri_domain_tables)
+        (quotient_domain_tables, fri_domain_tables)
     }
 
     pub fn collect_all_columns(&self) -> Vec<Vec<XFieldElement>> {

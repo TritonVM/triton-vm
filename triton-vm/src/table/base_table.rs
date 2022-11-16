@@ -270,32 +270,31 @@ where
 
     /// Low-degree extends the trace that is `self` over the indicated columns `columns` and
     /// returns two codewords per column:
-    /// - one codeword evaluated on the `arithmetic_domain`, and
+    /// - one codeword evaluated on the `quotient_domain`, and
     /// - one codeword evaluated on the `fri_domain`,
     /// in that order.
     fn dual_low_degree_extension(
         &self,
-        arithmetic_domain: &Domain<BFieldElement>,
+        quotient_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> (Table<FF>, Table<FF>) {
         // FIXME: Table<> supports Vec<[FF; WIDTH]>, but Domain does not (yet).
         let interpolated_columns = self.interpolate_columns(num_trace_randomizers, columns);
-        let arithmetic_domain_codewords = interpolated_columns
+        let quotient_domain_codewords = interpolated_columns
             .par_iter()
-            .map(|polynomial| arithmetic_domain.evaluate(polynomial))
+            .map(|polynomial| quotient_domain.evaluate(polynomial))
             .collect();
-        let arithmetic_domain_codeword_table = self
-            .inherited_table()
-            .with_data(arithmetic_domain_codewords);
+        let quotient_domain_codeword_table =
+            self.inherited_table().with_data(quotient_domain_codewords);
         let fri_domain_codewords = interpolated_columns
             .par_iter()
             .map(|polynomial| fri_domain.evaluate(polynomial))
             .collect();
         let fri_domain_codeword_table = self.inherited_table().with_data(fri_domain_codewords);
 
-        (arithmetic_domain_codeword_table, fri_domain_codeword_table)
+        (quotient_domain_codeword_table, fri_domain_codeword_table)
     }
 
     /// Return the interpolation of columns. The `column_indices` variable

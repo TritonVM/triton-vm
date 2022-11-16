@@ -151,14 +151,14 @@ impl Stark {
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
 
         prof_start!(maybe_profiler, "dual LDE 1");
-        let arithmetic_domain = self.arithmetic_domain();
-        let (base_arithmetic_domain_tables, base_fri_domain_tables) = base_trace_tables
-            .to_arithmetic_and_fri_domain_tables(
-                &arithmetic_domain,
+        let quotient_domain = self.quotient_domain();
+        let (base_quotient_domain_tables, base_fri_domain_tables) = base_trace_tables
+            .to_quotient_and_fri_domain_tables(
+                &quotient_domain,
                 &self.fri.domain,
                 self.parameters.num_trace_randomizers,
             );
-        let base_arithmetic_domain_codewords = base_arithmetic_domain_tables.get_all_base_columns();
+        let base_quotient_domain_codewords = base_quotient_domain_tables.get_all_base_columns();
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
         let randomizer_and_base_fri_domain_codewords =
             vec![b_rand_codewords, base_fri_domain_codewords].concat();
@@ -192,14 +192,13 @@ impl Stark {
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "dual LDE 2");
-        let (ext_arithmetic_domain_tables, ext_fri_domain_tables) = ext_trace_tables
-            .to_arithmetic_and_fri_domain_tables(
-                &arithmetic_domain,
+        let (ext_quotient_domain_tables, ext_fri_domain_tables) = ext_trace_tables
+            .to_quotient_and_fri_domain_tables(
+                &quotient_domain,
                 &self.fri.domain,
                 self.parameters.num_trace_randomizers,
             );
-        let extension_arithmetic_domain_codewords =
-            ext_arithmetic_domain_tables.collect_all_columns();
+        let extension_quotient_domain_codewords = ext_quotient_domain_tables.collect_all_columns();
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
         prof_stop!(maybe_profiler, "dual LDE 2");
 
@@ -213,26 +212,26 @@ impl Stark {
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "base");
-        let base_degree_bounds = base_arithmetic_domain_tables
+        let base_degree_bounds = base_quotient_domain_tables
             .get_base_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "base");
 
         prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds = ext_arithmetic_domain_tables
+        let extension_degree_bounds = ext_quotient_domain_tables
             .get_extension_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "extension");
 
         prof_start!(maybe_profiler, "quotient");
-        let full_arithmetic_domain_tables =
-            ExtTableCollection::join(base_arithmetic_domain_tables, ext_arithmetic_domain_tables);
-        let mut quotient_degree_bounds = full_arithmetic_domain_tables
+        let full_quotient_domain_tables =
+            ExtTableCollection::join(base_quotient_domain_tables, ext_quotient_domain_tables);
+        let mut quotient_degree_bounds = full_quotient_domain_tables
             .get_all_quotient_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
 
         prof_start!(maybe_profiler, "quotient codewords");
-        let mut quotient_codewords = full_arithmetic_domain_tables.get_all_quotients(
-            &arithmetic_domain,
+        let mut quotient_codewords = full_quotient_domain_tables.get_all_quotients(
+            &quotient_domain,
             &extension_challenges,
             maybe_profiler,
         );
@@ -241,8 +240,8 @@ impl Stark {
         prof_start!(maybe_profiler, "grand cross table");
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = self.parameters.num_randomizer_polynomials
-            + 2 * base_arithmetic_domain_codewords.len()
-            + 2 * extension_arithmetic_domain_codewords.len()
+            + 2 * base_quotient_domain_codewords.len()
+            + 2 * extension_quotient_domain_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -279,15 +278,15 @@ impl Stark {
         );
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
-                &full_arithmetic_domain_tables,
-                &arithmetic_domain,
-                derive_trace_domain_generator(full_arithmetic_domain_tables.padded_height as u64),
+                &full_quotient_domain_tables,
+                &quotient_domain,
+                derive_trace_domain_generator(full_quotient_domain_tables.padded_height as u64),
             );
         quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(
-                &full_arithmetic_domain_tables,
+                &full_quotient_domain_tables,
                 self.parameters.num_trace_randomizers,
             );
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
@@ -297,9 +296,9 @@ impl Stark {
         // magic number `1` corresponds to `num_randomizer_polynomials`, which is currently ignored
         let (randomizer_weight, base_ext_quot_weights) = non_lin_combi_weights.split_at(1);
         let combination_codeword = self.create_combination_codeword(
-            &arithmetic_domain,
-            base_arithmetic_domain_codewords,
-            extension_arithmetic_domain_codewords,
+            &quotient_domain,
+            base_quotient_domain_codewords,
+            extension_quotient_domain_codewords,
             quotient_codewords,
             base_ext_quot_weights.to_vec(),
             base_degree_bounds,
@@ -309,7 +308,7 @@ impl Stark {
         );
 
         prof_start!(maybe_profiler, "LDE 3");
-        let combination_polynomial = arithmetic_domain.interpolate(&combination_codeword);
+        let combination_polynomial = quotient_domain.interpolate(&combination_codeword);
         let fri_combination_codeword_without_randomizer =
             self.fri.domain.evaluate(&combination_polynomial);
         prof_stop!(maybe_profiler, "LDE 3");
@@ -412,7 +411,7 @@ impl Stark {
         proof_stream.to_proof()
     }
 
-    fn arithmetic_domain(&self) -> Domain<BFieldElement> {
+    fn quotient_domain(&self) -> Domain<BFieldElement> {
         let offset = self.fri.domain.offset;
         let expansion_factor = self.fri.expansion_factor;
         let generator = self.fri.domain.generator.mod_pow(expansion_factor as u64);
@@ -450,7 +449,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn create_combination_codeword(
         &self,
-        arithmetic_domain: &Domain<BFieldElement>,
+        quotient_domain: &Domain<BFieldElement>,
         base_codewords: Vec<Vec<BFieldElement>>,
         extension_codewords: Vec<Vec<XFieldElement>>,
         quotient_codewords: Vec<Vec<XFieldElement>>,
@@ -471,10 +470,10 @@ impl Stark {
             })
             .collect_vec();
         let mut weights_iterator = weights.into_iter();
-        let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); arithmetic_domain.length];
+        let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); quotient_domain.length];
 
         // TODO don't keep the entire domain's values in memory, create them lazily when needed
-        let domain_values = arithmetic_domain.domain_values();
+        let domain_values = quotient_domain.domain_values();
 
         for (codewords, bounds, identifier) in [
             (base_codewords_lifted, base_degree_bounds, "base"),
@@ -499,7 +498,7 @@ impl Stark {
                     &weights_iterator.next().unwrap(),
                 );
                 self.debug_check_degrees(
-                    arithmetic_domain,
+                    quotient_domain,
                     &idx,
                     degree_bound,
                     &shift,
@@ -513,9 +512,7 @@ impl Stark {
         if std::env::var("DEBUG").is_ok() {
             println!(
                 "The combination codeword corresponds to a polynomial of degree {}",
-                arithmetic_domain
-                    .interpolate(&combination_codeword)
-                    .degree()
+                quotient_domain.interpolate(&combination_codeword).degree()
             );
         }
 

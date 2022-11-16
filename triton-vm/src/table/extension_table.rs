@@ -279,7 +279,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 (domain_value - trace_domain_generator_inverse) * sub_z_inv
             })
             .collect();
-        // the relation between the arithmetic domain and the trace domain
+        // the relation between the quotient domain and the trace domain
         let unit_distance = domain.length / padded_height;
 
         let domain_length_bit_mask = domain.length - 1;
