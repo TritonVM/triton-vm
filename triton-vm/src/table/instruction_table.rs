@@ -6,8 +6,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
-use crate::domain::Domain;
 use crate::table::base_table::Extendable;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
@@ -346,8 +346,8 @@ impl InstructionTable {
 
     pub fn to_quotient_and_fri_domain_table(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
@@ -485,8 +485,8 @@ impl ExtInstructionTable {
 
     pub fn to_quotient_and_fri_domain_table(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();

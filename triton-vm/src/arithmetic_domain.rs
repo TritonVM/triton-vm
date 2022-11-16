@@ -6,14 +6,14 @@ use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{FiniteField, ModPowU32};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Domain<FF> {
+pub struct ArithmeticDomain<FF> {
     pub offset: BFieldElement,
     pub generator: BFieldElement,
     pub length: usize,
     _finite_field: PhantomData<FF>,
 }
 
-impl<FF> Domain<FF>
+impl<FF> ArithmeticDomain<FF>
 where
     FF: FiniteField
         + From<BFieldElement>
@@ -79,8 +79,10 @@ mod domain_tests {
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain = Domain::<BFieldElement>::new(offset, generator, order as usize);
-            let x_domain = Domain::<XFieldElement>::new(offset, generator, order as usize);
+            let b_domain =
+                ArithmeticDomain::<BFieldElement>::new(offset, generator, order as usize);
+            let x_domain =
+                ArithmeticDomain::<XFieldElement>::new(offset, generator, order as usize);
 
             let expected_b_values: Vec<BFieldElement> =
                 (0..order).map(|i| offset * generator.mod_pow(i)).collect();
@@ -90,7 +92,7 @@ mod domain_tests {
                 .collect_vec();
             assert_eq!(
                 expected_b_values, actual_b_values_1,
-                "domain_values() generates the domain BFieldElement values"
+                "domain_values() generates the arithmetic domain's BFieldElement values"
             );
             assert_eq!(
                 expected_b_values, actual_b_values_2,
@@ -105,7 +107,7 @@ mod domain_tests {
                 .collect_vec();
             assert_eq!(
                 expected_x_values, actual_x_values_1,
-                "domain_values() generates the domain XFieldElement values"
+                "domain_values() generates the arithmetic domain's XFieldElement values"
             );
             assert_eq!(
                 expected_x_values, actual_x_values_2,

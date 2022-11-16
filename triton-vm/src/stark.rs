@@ -21,10 +21,10 @@ use twenty_first::util_types::merkle_tree::MerkleTree;
 use triton_profiler::triton_profiler::TritonProfiler;
 use triton_profiler::{prof_itr0, prof_start, prof_stop};
 
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
-use crate::domain::Domain;
 use crate::fri::{Fri, FriValidationError};
 use crate::proof::{Claim, Proof};
 use crate::proof_item::ProofItem;
@@ -411,12 +411,12 @@ impl Stark {
         proof_stream.to_proof()
     }
 
-    fn quotient_domain(&self) -> Domain<BFieldElement> {
+    fn quotient_domain(&self) -> ArithmeticDomain<BFieldElement> {
         let offset = self.fri.domain.offset;
         let expansion_factor = self.fri.expansion_factor;
         let generator = self.fri.domain.generator.mod_pow(expansion_factor as u64);
         let length = self.fri.domain.length / expansion_factor;
-        Domain::new(offset, generator, length)
+        ArithmeticDomain::new(offset, generator, length)
     }
 
     fn get_revealed_indices(
@@ -449,7 +449,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn create_combination_codeword(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
         base_codewords: Vec<Vec<BFieldElement>>,
         extension_codewords: Vec<Vec<XFieldElement>>,
         quotient_codewords: Vec<Vec<XFieldElement>>,
@@ -524,7 +524,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn debug_check_degrees(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         idx: &usize,
         degree_bound: &Degree,
         shift: &u32,

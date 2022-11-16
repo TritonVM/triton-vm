@@ -8,7 +8,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use triton_profiler::triton_profiler::TritonProfiler;
 use triton_profiler::{prof_start, prof_stop};
 
-use crate::domain::Domain;
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
 
@@ -134,8 +134,8 @@ impl BaseTableCollection {
 
     pub fn to_quotient_and_fri_domain_tables(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let (program_table_quotient, program_table_fri) = self
@@ -361,8 +361,8 @@ impl ExtTableCollection {
     /// Heads up: only extension columns are being low degree extended. todo: better naming.
     pub fn to_quotient_and_fri_domain_tables(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let (program_table_quotient, program_table_fri) = self
@@ -452,7 +452,7 @@ impl ExtTableCollection {
 
     pub fn get_all_quotients(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         challenges: &AllChallenges,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {

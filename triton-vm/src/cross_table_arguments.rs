@@ -8,7 +8,7 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::{FiniteField, Inverse};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::domain::Domain;
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_collection::TableId::{
     HashTable, InstructionTable, JumpStackTable, OpStackTable, ProcessorTable, ProgramTable,
@@ -44,7 +44,7 @@ pub trait CrossTableArg {
     fn terminal_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
         let from_codeword = self.combined_from_codeword(ext_codeword_tables);
@@ -454,7 +454,7 @@ impl GrandCrossTableArg {
     pub fn terminal_quotient_codeword(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
         let mut non_linear_sum_codeword = vec![XFieldElement::zero(); domain.length];

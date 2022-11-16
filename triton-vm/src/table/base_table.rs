@@ -1,4 +1,4 @@
-use super::super::domain::Domain;
+use super::super::arithmetic_domain::ArithmeticDomain;
 use crate::table::table_collection::derive_trace_domain_generator;
 use num_traits::Zero;
 use rand_distr::{Distribution, Standard};
@@ -275,8 +275,8 @@ where
     /// in that order.
     fn dual_low_degree_extension(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> (Table<FF>, Table<FF>) {
@@ -319,7 +319,8 @@ where
 
         let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
         let trace_domain =
-            Domain::new(1_u32.into(), trace_domain_generator, padded_height).domain_values();
+            ArithmeticDomain::new(1_u32.into(), trace_domain_generator, padded_height)
+                .domain_values();
 
         let randomizer_domain = disjoint_domain(num_trace_randomizers, &trace_domain);
         let interpolation_domain = vec![trace_domain, randomizer_domain].concat();

@@ -13,7 +13,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use triton_profiler::triton_profiler::TritonProfiler;
 
-use crate::domain::Domain;
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::extension_table;
 use crate::table::table_collection::interpolant_degree;
 
@@ -194,7 +194,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn initial_quotients(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
     ) -> Vec<Vec<XFieldElement>> {
@@ -224,7 +224,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn consistency_quotients(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         padded_height: usize,
@@ -255,7 +255,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn transition_quotients(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,
@@ -307,7 +307,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn terminal_quotients(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,
@@ -340,7 +340,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn all_quotients(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         transposed_codewords: Vec<Vec<XFieldElement>>,
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,
@@ -410,7 +410,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     /// probably the result of un-clean division.
     fn debug_domain_bound_check(
         &self,
-        domain: &Domain<BFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         quotient_codewords: &[Vec<XFieldElement>],
         quotient_type: &str,
     ) {

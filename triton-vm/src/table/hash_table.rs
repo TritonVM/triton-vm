@@ -15,8 +15,8 @@ use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::ModPowU64;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg};
-use crate::domain::Domain;
 use crate::table::base_table::Extendable;
 use crate::table::extension_table::Evaluable;
 use crate::table::table_collection::interpolant_degree;
@@ -642,8 +642,8 @@ impl HashTable {
 
     pub fn to_quotient_and_fri_domain_table(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
@@ -800,8 +800,8 @@ impl ExtHashTable {
 
     pub fn to_quotient_and_fri_domain_table(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();

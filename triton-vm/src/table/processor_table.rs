@@ -11,8 +11,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
-use crate::domain::Domain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
@@ -64,8 +64,8 @@ impl ProcessorTable {
 
     pub fn to_quotient_and_fri_domain_table(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
@@ -366,8 +366,8 @@ impl ExtProcessorTable {
 
     pub fn to_quotient_and_fri_domain_table(
         &self,
-        quotient_domain: &Domain<BFieldElement>,
-        fri_domain: &Domain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
     ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();

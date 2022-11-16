@@ -20,7 +20,7 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, Hashable};
 use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
 
-use crate::domain::Domain;
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::proof_item::{FriResponse, ProofItem};
 use crate::proof_stream::ProofStream;
 
@@ -50,7 +50,7 @@ pub struct Fri<H> {
     // nearest power of 2.
     pub expansion_factor: usize,
     pub colinearity_checks_count: usize,
-    pub domain: Domain<BFieldElement>,
+    pub domain: ArithmeticDomain<BFieldElement>,
     _hasher: PhantomData<H>,
 }
 
@@ -62,7 +62,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         expansion_factor: usize,
         colinearity_checks_count: usize,
     ) -> Self {
-        let domain = Domain::new(offset, fri_domain_generator, domain_length);
+        let domain = ArithmeticDomain::new(offset, fri_domain_generator, domain_length);
         let _hasher = PhantomData;
         Self {
             domain,
