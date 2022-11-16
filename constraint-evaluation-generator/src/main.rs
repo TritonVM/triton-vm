@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::process::Command;
 
 use itertools::Itertools;
 use triton_vm::table::challenges::TableChallenges;
@@ -46,6 +47,10 @@ fn main() {
     let mut circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
     let source_code = gen("jump_stack_table", "JumpStackTable", &mut circuits);
     write("jump_stack_table", source_code);
+
+    if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
+        println!("cargo fmt failed: {}", fmt_failed);
+    }
 }
 
 fn write(table_name_snake: &str, rust_source_code: String) {
