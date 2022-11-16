@@ -318,6 +318,8 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
         let mut index = 0;
         let mut vector = vec![];
+
+        // while there is at least one partial auth path left, parse it
         while index < str.len() {
             let len_remaining = str[index].value() as usize;
             index += 1;
@@ -330,8 +332,22 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
             let mask = str[index + 1].value() as u32;
             index += 2;
 
-            if (vec_len != 0 || mask != 0) && index == str.len() {
-                return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (2)"));
+            // if the vector length and mask indicates some digests are following
+            // and we are already at the end of the buffer
+            if vec_len != 0 && mask != 0 && index == str.len() {
+                return Err(BFieldCodecError::boxed(
+                    &format!("Cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (2).\n\
+                    vec_len: {}\n\
+                    mask: {}\n\
+                    index: {}\n\
+                    str.len(): {}\n\
+                    str[0]: {}",
+                    vec_len,
+                    mask,
+                    index,
+                    str.len(),
+                    str[0])
+                ));
             }
 
             if (len_remaining - 2) % DIGEST_LENGTH != 0 {
@@ -347,7 +363,7 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
                     pap.push(Some(*Digest::decode(chunk)?));
                     index += DIGEST_LENGTH;
                 } else {
-                    return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (3)"));
+                    return Err(BFieldCodecError::boxed("cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths due to length mismatch (4)"));
                 }
             }
 

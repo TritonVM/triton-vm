@@ -1749,23 +1749,68 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_halt_test() {
         let code_with_input = test_halt();
-        let mut profiler = Some(TritonProfiler::new("prove halt"));
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
-            &mut profiler,
+            &mut None,
         );
-        let mut profiler = profiler.unwrap();
-        profiler.finish();
-        let report = profiler.report();
-        println!("{report}");
-
-        println!("between prove and verify");
 
         let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {}", e);
+        }
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    #[ignore = "used for tracking&debugging deserialization errors"]
+    fn triton_prove_halt_save_error_test() {
+        let code_with_input = test_halt();
+
+        for _ in 0..100 {
+            let (stark, proof) = parse_simulate_prove(
+                &code_with_input.source_code,
+                code_with_input.input.clone(),
+                code_with_input.secret_input.clone(),
+                &mut None,
+            );
+
+            let filename = "halt_error.tsp";
+            let result = stark.verify(proof.clone(), &mut None);
+            if let Err(e) = result {
+                if let Err(e) = save_proof(filename, proof) {
+                    panic!("Unsyntactical proof and can't save! {}", e);
+                }
+                panic!(
+                    "Saved proof to {} because verifier is unhappy! {}",
+                    filename, e
+                );
+            }
+            assert!(result.unwrap());
+        }
+    }
+
+    #[test]
+    #[ignore = "used for tracking&debugging deserialization errors"]
+    fn triton_load_verify_halt_test() {
+        let code_with_input = test_halt();
+        let (stark, _) = parse_simulate_prove(
+            &code_with_input.source_code,
+            code_with_input.input.clone(),
+            code_with_input.secret_input.clone(),
+            &mut None,
+        );
+
+        let filename = "halt_error.tsp";
+        let proof = match load_proof(filename) {
+            Ok(p) => p,
+            Err(e) => panic!("Could not load proof from disk at {}: {}", filename, e),
+        };
+
+        let result = stark.verify(proof, &mut None);
+        if let Err(e) = result {
+            panic!("Verifier is unhappy! {}", e);
         }
         assert!(result.unwrap());
     }
