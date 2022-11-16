@@ -1,5 +1,6 @@
 use super::super::domain::Domain;
-use num_traits::{One, Zero};
+use crate::table::table_collection::derive_trace_domain_generator;
+use num_traits::Zero;
 use rand_distr::{Distribution, Standard};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::ops::{Mul, MulAssign, Range};
@@ -276,13 +277,11 @@ where
         &self,
         arithmetic_domain: &Domain<BFieldElement>,
         fri_domain: &Domain<BFieldElement>,
-        trace_domain_generator: BFieldElement,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> (Table<FF>, Table<FF>) {
         // FIXME: Table<> supports Vec<[FF; WIDTH]>, but Domain does not (yet).
-        let interpolated_columns =
-            self.interpolate_columns(trace_domain_generator, num_trace_randomizers, columns);
+        let interpolated_columns = self.interpolate_columns(num_trace_randomizers, columns);
         let arithmetic_domain_codewords = interpolated_columns
             .par_iter()
             .map(|polynomial| arithmetic_domain.evaluate(polynomial))
@@ -304,7 +303,6 @@ where
     /// if it is called with a subset, it *will* fail.
     fn interpolate_columns(
         &self,
-        trace_domain_generator: BFieldElement,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Polynomial<FF>> {
@@ -320,8 +318,9 @@ where
             self.name()
         );
 
-        let trace_domain = Domain::new(BFieldElement::one(), trace_domain_generator, padded_height)
-            .domain_values();
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
+        let trace_domain =
+            Domain::new(1_u32.into(), trace_domain_generator, padded_height).domain_values();
 
         let randomizer_domain = disjoint_domain(num_trace_randomizers, &trace_domain);
         let interpolation_domain = vec![trace_domain, randomizer_domain].concat();
