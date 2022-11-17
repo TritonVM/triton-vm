@@ -337,18 +337,14 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree 3");
 
         // Get indices of slices that go across codewords to prove nonlinear combination
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("Fiat-Shamir 3");
-        }
+        prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let indices_seed = proof_stream.prover_fiat_shamir();
         let cross_codeword_slice_indices = StarkHasher::sample_indices(
             self.parameters.security_level,
             &indices_seed,
             self.fri.domain.length,
         );
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("Fiat-Shamir 3");
-        }
+        prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
         prof_start!(maybe_profiler, "FRI");
         match self.fri.prove(&fri_combination_codeword, &mut proof_stream) {
@@ -472,8 +468,7 @@ impl Stark {
         let mut weights_iterator = weights.into_iter();
         let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); quotient_domain.length];
 
-        // TODO don't keep the entire domain's values in memory, create them lazily when needed
-        let domain_values = quotient_domain.domain_values();
+        let quotient_domain_values = quotient_domain.domain_values();
 
         for (codewords, bounds, identifier) in [
             (base_codewords_lifted, base_degree_bounds, "base"),
@@ -488,7 +483,8 @@ impl Stark {
                 codewords.into_iter().zip_eq(bounds.iter()).enumerate()
             {
                 let shift = (self.max_degree as Degree - degree_bound) as u32;
-                let codeword_shifted = Self::shift_codeword(&domain_values, &codeword, shift);
+                let codeword_shifted =
+                    Self::shift_codeword(&quotient_domain_values, &codeword, shift);
 
                 combination_codeword = Self::non_linearly_add_to_codeword(
                     &combination_codeword,
@@ -574,11 +570,11 @@ impl Stark {
     }
 
     fn shift_codeword(
-        fri_x_values: &Vec<BFieldElement>,
-        codeword: &Vec<XFieldElement>,
+        quotient_domain_values: &[BFieldElement],
+        codeword: &[XFieldElement],
         shift: u32,
     ) -> Vec<XFieldElement> {
-        fri_x_values
+        quotient_domain_values
             .par_iter()
             .zip_eq(codeword.par_iter())
             .map(|(x, &codeword_element)| (codeword_element * x.mod_pow_u32(shift)))

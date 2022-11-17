@@ -12,6 +12,7 @@ use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_start, prof_stop};
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::extension_table;
@@ -307,16 +308,16 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn terminal_quotients(
         &self,
-        domain: &ArithmeticDomain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,
     ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(domain.length, transposed_codewords.len());
+        debug_assert_eq!(quotient_domain.length, transposed_codewords.len());
 
         // The zerofier for the terminal quotient has a root in the last
         // value in the cyclical group generated from the trace domain's generator.
-        let zerofier_codeword = domain
+        let zerofier_codeword = quotient_domain
             .domain_values()
             .into_iter()
             .map(|x| x - trace_domain_generator.inverse())
@@ -333,63 +334,52 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             })
             .collect();
         let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_domain_bound_check(domain, &quotient_codewords, "terminal");
+        self.debug_domain_bound_check(quotient_domain, &quotient_codewords, "terminal");
 
         quotient_codewords
     }
 
     fn all_quotients(
         &self,
-        domain: &ArithmeticDomain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
         transposed_codewords: Vec<Vec<XFieldElement>>,
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,
         padded_height: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.start("initial quotients")
-        }
-        let initial_quotients = self.initial_quotients(domain, &transposed_codewords, challenges);
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.stop("initial quotients")
-        }
+        prof_start!(maybe_profiler, "initial quotients");
+        let initial_quotients =
+            self.initial_quotients(quotient_domain, &transposed_codewords, challenges);
+        prof_stop!(maybe_profiler, "initial quotients");
 
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.start("consistency quotients")
-        }
-        let consistency_quotients =
-            self.consistency_quotients(domain, &transposed_codewords, challenges, padded_height);
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.stop("consistency quotients")
-        }
+        prof_start!(maybe_profiler, "consistency quotients");
+        let consistency_quotients = self.consistency_quotients(
+            quotient_domain,
+            &transposed_codewords,
+            challenges,
+            padded_height,
+        );
+        prof_stop!(maybe_profiler, "consistency quotients");
 
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.start("transition quotients")
-        }
+        prof_start!(maybe_profiler, "transition quotients");
         let transition_quotients = self.transition_quotients(
-            domain,
+            quotient_domain,
             &transposed_codewords,
             challenges,
             trace_domain_generator,
             padded_height,
         );
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.stop("transition quotients")
-        }
+        prof_stop!(maybe_profiler, "transition quotients");
 
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.start("terminal quotients")
-        }
+        prof_start!(maybe_profiler, "terminal quotients");
         let terminal_quotients = self.terminal_quotients(
-            domain,
+            quotient_domain,
             &transposed_codewords,
             challenges,
             trace_domain_generator,
         );
-        if let Some(p) = maybe_profiler.as_mut() {
-            p.stop("terminal quotients")
-        }
+        prof_stop!(maybe_profiler, "terminal quotients");
 
         vec![
             initial_quotients,
@@ -410,7 +400,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     /// probably the result of un-clean division.
     fn debug_domain_bound_check(
         &self,
-        domain: &ArithmeticDomain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
         quotient_codewords: &[Vec<XFieldElement>],
         quotient_type: &str,
     ) {
@@ -418,16 +408,16 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             return;
         }
         for (idx, qc) in quotient_codewords.iter().enumerate() {
-            let interpolated = domain.interpolate(qc);
+            let interpolated = quotient_domain.interpolate(qc);
             assert!(
-                interpolated.degree() < domain.length as isize - 1,
+                interpolated.degree() < quotient_domain.length as isize - 1,
                 "Degree of {} quotient index {idx} (total {} quotients) in {} must not be maximal. \
                     Got degree {}, and domain length was {}.",
                 quotient_type,
                 quotient_codewords.len(),
                 self.name(),
                 interpolated.degree(),
-                domain.length,
+                quotient_domain.length,
             );
         }
     }

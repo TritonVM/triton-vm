@@ -461,9 +461,7 @@ impl ExtTableCollection {
 
         self.into_iter()
             .map(|ext_codeword_table| {
-                if let Some(profiler) = maybe_profiler.as_mut() {
-                    profiler.start(&ext_codeword_table.name());
-                }
+                prof_start!(maybe_profiler, &ext_codeword_table.name());
                 // TODO: Consider if we can use `transposed_ext_codewords` from caller, Stark::prove().
                 // This would require more complicated indexing, but it would save a lot of allocation.
                 let transposed_codewords = transpose(ext_codeword_table.data());
@@ -475,9 +473,7 @@ impl ExtTableCollection {
                     padded_height,
                     maybe_profiler,
                 );
-                if let Some(profiler) = maybe_profiler.as_mut() {
-                    profiler.stop(&ext_codeword_table.name());
-                }
+                prof_stop!(maybe_profiler, &ext_codeword_table.name());
                 res
             })
             .concat()
