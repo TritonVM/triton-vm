@@ -1,14 +1,14 @@
-use super::super::fri_domain::FriDomain;
-use itertools::Itertools;
+use super::super::arithmetic_domain::ArithmeticDomain;
+use crate::table::table_collection::derive_trace_domain_generator;
 use num_traits::Zero;
 use rand_distr::{Distribution, Standard};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::ops::{MulAssign, Range};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use std::ops::{Mul, MulAssign, Range};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
-use twenty_first::shared_math::other::random_elements;
+use twenty_first::shared_math::other::{random_elements, roundup_npo2};
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -256,7 +256,10 @@ fn disjoint_domain<FF: FiniteField>(domain_length: usize, disjoint_domain: &[FF]
 
 pub trait TableLike<FF>: InheritsFromTable<FF>
 where
-    FF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+    FF: FiniteField
+        + From<BFieldElement>
+        + Mul<BFieldElement, Output = FF>
+        + MulAssign<BFieldElement>,
     Standard: Distribution<FF>,
 {
     // Generic functions common to all tables
@@ -265,25 +268,33 @@ where
         self.inherited_table().name.clone()
     }
 
-    fn low_degree_extension(
+    /// Low-degree extends the trace that is `self` over the indicated columns `columns` and
+    /// returns two codewords per column:
+    /// - one codeword evaluated on the `quotient_domain`, and
+    /// - one codeword evaluated on the `fri_domain`,
+    /// in that order.
+    fn dual_low_degree_extension(
         &self,
-        fri_domain: &FriDomain<FF>,
-        omicron: FF,
-        padded_height: usize,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
         columns: Range<usize>,
-    ) -> Vec<Vec<FF>> {
-        // FIXME: Table<> supports Vec<[FF; WIDTH]>, but FriDomain does not (yet).
-        self.interpolate_columns(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-            columns,
-        )
-        .par_iter()
-        .map(|polynomial| fri_domain.evaluate(polynomial))
-        .collect()
+    ) -> (Table<FF>, Table<FF>) {
+        // FIXME: Table<> supports Vec<[FF; WIDTH]>, but Domain does not (yet).
+        let interpolated_columns = self.interpolate_columns(num_trace_randomizers, columns);
+        let quotient_domain_codewords = interpolated_columns
+            .par_iter()
+            .map(|polynomial| quotient_domain.evaluate(polynomial))
+            .collect();
+        let quotient_domain_codeword_table =
+            self.inherited_table().with_data(quotient_domain_codewords);
+        let fri_domain_codewords = interpolated_columns
+            .par_iter()
+            .map(|polynomial| fri_domain.evaluate(polynomial))
+            .collect();
+        let fri_domain_codeword_table = self.inherited_table().with_data(fri_domain_codewords);
+
+        (quotient_domain_codeword_table, fri_domain_codeword_table)
     }
 
     /// Return the interpolation of columns. The `column_indices` variable
@@ -291,56 +302,47 @@ where
     /// if it is called with a subset, it *will* fail.
     fn interpolate_columns(
         &self,
-        fri_domain: &FriDomain<FF>,
-        omicron: FF,
-        padded_height: usize,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Vec<Polynomial<FF>> {
-        // Ensure that `matrix` is set and padded before running this function
-        assert_eq!(
-            padded_height,
-            self.data().len(),
-            "{}: Table data must be padded before interpolation",
-            self.name()
-        );
-
+        let all_trace_columns = self.data();
+        let padded_height = all_trace_columns.len();
         if padded_height == 0 {
             return vec![Polynomial::zero(); columns.len()];
         }
 
-        // FIXME: Unfold with multiplication instead of mapping with power.
-        let omicron_domain = (0..padded_height)
-            .map(|i| omicron.mod_pow_u32(i as u32))
-            .collect_vec();
+        assert!(
+            padded_height.is_power_of_two(),
+            "{}: Table data must be padded before interpolation",
+            self.name()
+        );
 
-        let num_trace_randomizers = num_trace_randomizers;
-        let randomizer_domain = disjoint_domain(num_trace_randomizers, &omicron_domain);
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
+        let trace_domain =
+            ArithmeticDomain::new(1_u32.into(), trace_domain_generator, padded_height)
+                .domain_values();
 
-        let interpolation_domain = vec![omicron_domain, randomizer_domain].concat();
-        let mut all_randomized_traces = vec![];
-        let data = self.data();
+        let randomizer_domain = disjoint_domain(num_trace_randomizers, &trace_domain);
+        let interpolation_domain = vec![trace_domain, randomizer_domain].concat();
 
-        for col in columns {
-            let trace = data.iter().map(|row| row[col]).collect();
-            let randomizers = random_elements(num_trace_randomizers);
-            let randomized_trace = vec![trace, randomizers].concat();
-            assert_eq!(
-                randomized_trace.len(),
-                interpolation_domain.len(),
-                "Length of x values and y values must match"
-            );
-            all_randomized_traces.push(randomized_trace);
-        }
+        // Generator (and its order) for a subgroup of the B-field. The subgroup is as small as
+        // possible given the constraints that its length is
+        // - larger than or equal to `interpolation_domain`, and
+        // - a power of two.
+        let order_of_root_of_unity = roundup_npo2(interpolation_domain.len() as u64);
+        let root_of_unity = BFieldElement::primitive_root_of_unity(order_of_root_of_unity).unwrap();
 
-        all_randomized_traces
-            .par_iter()
-            .map(|randomized_trace| {
+        columns
+            .into_par_iter()
+            .map(|col| {
+                let trace = all_trace_columns.iter().map(|row| row[col]).collect();
+                let randomizers = random_elements(num_trace_randomizers);
+                let randomized_trace = vec![trace, randomizers].concat();
                 Polynomial::fast_interpolate(
                     &interpolation_domain,
-                    randomized_trace,
-                    &fri_domain.omega,
-                    fri_domain.length,
+                    &randomized_trace,
+                    &root_of_unity,
+                    order_of_root_of_unity as usize,
                 )
             })
             .collect()

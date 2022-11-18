@@ -1,15 +1,16 @@
 use itertools::Itertools;
-use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
-use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::fri_domain::FriDomain;
+use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_start, prof_stop};
+
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::base_table::{Extendable, InheritsFromTable};
 use crate::table::extension_table::DegreeWithOrigin;
-use triton_profiler::triton_profiler::TritonProfiler;
 
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
@@ -77,13 +78,13 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
     (padded_height + num_trace_randomizers - 1) as Degree
 }
 
-pub fn derive_omicron<FF: FiniteField>(padded_height: u64) -> FF {
+pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
     debug_assert!(
         0 == padded_height || is_power_of_two(padded_height),
         "The padded height was: {}",
         padded_height
     );
-    FF::primitive_root_of_unity(padded_height).unwrap()
+    BFieldElement::primitive_root_of_unity(padded_height).unwrap()
 }
 
 impl BaseTableCollection {
@@ -131,67 +132,58 @@ impl BaseTableCollection {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn to_fri_domain_tables(
+    pub fn to_quotient_and_fri_domain_tables(
         &self,
-        fri_domain: &FriDomain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
-    ) -> BaseTableCollection {
-        let padded_height = self.padded_height;
-        let omicron = derive_omicron(padded_height as u64);
+    ) -> (Self, Self) {
+        let (program_table_quotient, program_table_fri) = self
+            .program_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (instruction_table_quotient, instruction_table_fri) = self
+            .instruction_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (processor_table_quotient, processor_table_fri) = self
+            .processor_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (op_stack_table_quotient, op_stack_table_fri) = self
+            .op_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
+            quotient_domain,
+            fri_domain,
+            num_trace_randomizers,
+        );
+        let (jump_stack_table_quotient, jump_stack_table_fri) = self
+            .jump_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (hash_table_quotient, hash_table_fri) = self
+            .hash_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
 
-        let program_table = self.program_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let instruction_table = self.instruction_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let processor_table = self.processor_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let op_stack_table = self.op_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let ram_table = self.ram_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let jump_stack_table = self.jump_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let hash_table = self.hash_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
+        let quotient_domain_tables = BaseTableCollection {
+            padded_height: self.padded_height,
+            program_table: program_table_quotient,
+            instruction_table: instruction_table_quotient,
+            processor_table: processor_table_quotient,
+            op_stack_table: op_stack_table_quotient,
+            ram_table: ram_table_quotient,
+            jump_stack_table: jump_stack_table_quotient,
+            hash_table: hash_table_quotient,
+        };
+        let fri_domain_tables = BaseTableCollection {
+            padded_height: self.padded_height,
+            program_table: program_table_fri,
+            instruction_table: instruction_table_fri,
+            processor_table: processor_table_fri,
+            op_stack_table: op_stack_table_fri,
+            ram_table: ram_table_fri,
+            jump_stack_table: jump_stack_table_fri,
+            hash_table: hash_table_fri,
+        };
 
-        BaseTableCollection {
-            padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
+        (quotient_domain_tables, fri_domain_tables)
     }
 
     pub fn get_all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
@@ -367,67 +359,58 @@ impl ExtTableCollection {
     }
 
     /// Heads up: only extension columns are being low degree extended. todo: better naming.
-    pub fn to_fri_domain_tables(
+    pub fn to_quotient_and_fri_domain_tables(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
-    ) -> Self {
-        let padded_height = self.padded_height;
-        let omicron = derive_omicron(padded_height as u64);
+    ) -> (Self, Self) {
+        let (program_table_quotient, program_table_fri) = self
+            .program_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (instruction_table_quotient, instruction_table_fri) = self
+            .instruction_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (processor_table_quotient, processor_table_fri) = self
+            .processor_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (op_stack_table_quotient, op_stack_table_fri) = self
+            .op_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
+            quotient_domain,
+            fri_domain,
+            num_trace_randomizers,
+        );
+        let (jump_stack_table_quotient, jump_stack_table_fri) = self
+            .jump_stack_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let (hash_table_quotient, hash_table_fri) = self
+            .hash_table
+            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
 
-        let program_table = self.program_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let instruction_table = self.instruction_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let processor_table = self.processor_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let op_stack_table = self.op_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let ram_table = self.ram_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let jump_stack_table = self.jump_stack_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
-        let hash_table = self.hash_table.to_fri_domain_table(
-            fri_domain,
-            omicron,
-            padded_height,
-            num_trace_randomizers,
-        );
+        let quotient_domain_tables = ExtTableCollection {
+            padded_height: self.padded_height,
+            program_table: program_table_quotient,
+            instruction_table: instruction_table_quotient,
+            processor_table: processor_table_quotient,
+            op_stack_table: op_stack_table_quotient,
+            ram_table: ram_table_quotient,
+            jump_stack_table: jump_stack_table_quotient,
+            hash_table: hash_table_quotient,
+        };
+        let fri_domain_tables = ExtTableCollection {
+            padded_height: self.padded_height,
+            program_table: program_table_fri,
+            instruction_table: instruction_table_fri,
+            processor_table: processor_table_fri,
+            op_stack_table: op_stack_table_fri,
+            ram_table: ram_table_fri,
+            jump_stack_table: jump_stack_table_fri,
+            hash_table: hash_table_fri,
+        };
 
-        ExtTableCollection {
-            padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
+        (quotient_domain_tables, fri_domain_tables)
     }
 
     pub fn collect_all_columns(&self) -> Vec<Vec<XFieldElement>> {
@@ -469,32 +452,28 @@ impl ExtTableCollection {
 
     pub fn get_all_quotients(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
+        domain: &ArithmeticDomain<BFieldElement>,
         challenges: &AllChallenges,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {
         let padded_height = self.padded_height;
-        let omicron = derive_omicron(padded_height as u64);
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
 
         self.into_iter()
             .map(|ext_codeword_table| {
-                if let Some(profiler) = maybe_profiler.as_mut() {
-                    profiler.start(&ext_codeword_table.name());
-                }
+                prof_start!(maybe_profiler, &ext_codeword_table.name());
                 // TODO: Consider if we can use `transposed_ext_codewords` from caller, Stark::prove().
                 // This would require more complicated indexing, but it would save a lot of allocation.
                 let transposed_codewords = transpose(ext_codeword_table.data());
                 let res = ext_codeword_table.all_quotients(
-                    fri_domain,
+                    domain,
                     transposed_codewords,
                     challenges,
-                    omicron,
+                    trace_domain_generator,
                     padded_height,
                     maybe_profiler,
                 );
-                if let Some(profiler) = maybe_profiler.as_mut() {
-                    profiler.stop(&ext_codeword_table.name());
-                }
+                prof_stop!(maybe_profiler, &ext_codeword_table.name());
                 res
             })
             .concat()

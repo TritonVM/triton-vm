@@ -21,17 +21,19 @@ use twenty_first::util_types::merkle_tree::MerkleTree;
 use triton_profiler::triton_profiler::TritonProfiler;
 use triton_profiler::{prof_itr0, prof_start, prof_stop};
 
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{
     CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
 };
 use crate::fri::{Fri, FriValidationError};
-use crate::fri_domain::FriDomain;
 use crate::proof::{Claim, Proof};
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
-use crate::table::table_collection::{derive_omicron, BaseTableCollection, ExtTableCollection};
+use crate::table::table_collection::{
+    derive_trace_domain_generator, BaseTableCollection, ExtTableCollection,
+};
 
 use super::table::base_matrix::BaseMatrices;
 
@@ -108,7 +110,6 @@ pub struct Stark {
     parameters: StarkParameters,
     claim: Claim,
     max_degree: Degree,
-    fri_domain: FriDomain<BFieldElement>,
     fri: Fri<StarkHasher>,
 }
 
@@ -119,14 +120,12 @@ impl Stark {
             empty_table_collection.max_degree_with_origin(parameters.num_trace_randomizers);
         let max_degree = (other::roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
         let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
-        let omega =
+        let fri_domain_generator =
             BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
         let coset_offset = BFieldElement::generator();
-        let fri_domain: FriDomain<BFieldElement> =
-            FriDomain::new(coset_offset, omega, fri_domain_length);
         let fri = Fri::new(
             coset_offset,
-            omega,
+            fri_domain_generator,
             fri_domain_length,
             parameters.fri_expansion_factor,
             parameters.num_colinearity_checks,
@@ -135,7 +134,6 @@ impl Stark {
             parameters,
             claim,
             max_degree,
-            fri_domain,
             fri,
         }
     }
@@ -152,13 +150,19 @@ impl Stark {
 
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
 
-        prof_start!(maybe_profiler, "LDE 1");
-        let base_fri_domain_tables = base_trace_tables
-            .to_fri_domain_tables(&self.fri_domain, self.parameters.num_trace_randomizers);
+        prof_start!(maybe_profiler, "dual LDE 1");
+        let quotient_domain = self.quotient_domain();
+        let (base_quotient_domain_tables, base_fri_domain_tables) = base_trace_tables
+            .to_quotient_and_fri_domain_tables(
+                &quotient_domain,
+                &self.fri.domain,
+                self.parameters.num_trace_randomizers,
+            );
+        let base_quotient_domain_codewords = base_quotient_domain_tables.get_all_base_columns();
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
         let randomizer_and_base_fri_domain_codewords =
-            vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
-        prof_stop!(maybe_profiler, "LDE 1");
+            vec![b_rand_codewords, base_fri_domain_codewords].concat();
+        prof_stop!(maybe_profiler, "dual LDE 1");
 
         prof_start!(maybe_profiler, "Merkle tree 1");
         let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
@@ -187,12 +191,16 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "extend");
 
-        prof_start!(maybe_profiler, "LDE 2");
-        let ext_fri_domain_tables = ext_trace_tables
-            .to_fri_domain_tables(&self.fri.domain, self.parameters.num_trace_randomizers);
+        prof_start!(maybe_profiler, "dual LDE 2");
+        let (ext_quotient_domain_tables, ext_fri_domain_tables) = ext_trace_tables
+            .to_quotient_and_fri_domain_tables(
+                &quotient_domain,
+                &self.fri.domain,
+                self.parameters.num_trace_randomizers,
+            );
+        let extension_quotient_domain_codewords = ext_quotient_domain_tables.collect_all_columns();
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
-
-        prof_stop!(maybe_profiler, "LDE 2");
+        prof_stop!(maybe_profiler, "dual LDE 2");
 
         prof_start!(maybe_profiler, "Merkle tree 2");
         let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
@@ -204,26 +212,26 @@ impl Stark {
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "base");
-        let base_degree_bounds =
-            base_fri_domain_tables.get_base_degree_bounds(self.parameters.num_trace_randomizers);
+        let base_degree_bounds = base_quotient_domain_tables
+            .get_base_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "base");
 
         prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds = ext_fri_domain_tables
+        let extension_degree_bounds = ext_quotient_domain_tables
             .get_extension_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "extension");
 
         prof_start!(maybe_profiler, "quotient");
-        let full_fri_domain_tables =
-            ExtTableCollection::join(base_fri_domain_tables, ext_fri_domain_tables);
-        let mut quotient_degree_bounds = full_fri_domain_tables
+        let full_quotient_domain_tables =
+            ExtTableCollection::join(base_quotient_domain_tables, ext_quotient_domain_tables);
+        let mut quotient_degree_bounds = full_quotient_domain_tables
             .get_all_quotient_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
 
         prof_start!(maybe_profiler, "quotient codewords");
-        let mut quotient_codewords = full_fri_domain_tables.get_all_quotients(
-            &self.fri.domain,
+        let mut quotient_codewords = full_quotient_domain_tables.get_all_quotients(
+            &quotient_domain,
             &extension_challenges,
             maybe_profiler,
         );
@@ -232,8 +240,8 @@ impl Stark {
         prof_start!(maybe_profiler, "grand cross table");
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = self.parameters.num_randomizer_polynomials
-            + 2 * base_fri_domain_codewords.len()
-            + 2 * extension_fri_domain_codewords.len()
+            + 2 * base_quotient_domain_codewords.len()
+            + 2 * extension_quotient_domain_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -270,38 +278,52 @@ impl Stark {
         );
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
-                &full_fri_domain_tables,
-                &self.fri.domain,
-                derive_omicron(full_fri_domain_tables.padded_height as u64),
+                &full_quotient_domain_tables,
+                &quotient_domain,
+                derive_trace_domain_generator(full_quotient_domain_tables.padded_height as u64),
             );
         quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(
-                &full_fri_domain_tables,
+                &full_quotient_domain_tables,
                 self.parameters.num_trace_randomizers,
             );
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
         prof_stop!(maybe_profiler, "grand cross table");
 
         prof_start!(maybe_profiler, "nonlinear combination");
+        // magic number `1` corresponds to `num_randomizer_polynomials`, which is currently ignored
+        let (randomizer_weight, base_ext_quot_weights) = non_lin_combi_weights.split_at(1);
         let combination_codeword = self.create_combination_codeword(
-            vec![x_rand_codeword],
-            base_fri_domain_codewords,
-            extension_fri_domain_codewords,
+            &quotient_domain,
+            base_quotient_domain_codewords,
+            extension_quotient_domain_codewords,
             quotient_codewords,
-            non_lin_combi_weights.to_vec(),
+            base_ext_quot_weights.to_vec(),
             base_degree_bounds,
             extension_degree_bounds,
             quotient_degree_bounds,
             maybe_profiler,
         );
+
+        prof_start!(maybe_profiler, "LDE 3");
+        let combination_polynomial = quotient_domain.interpolate(&combination_codeword);
+        let fri_combination_codeword_without_randomizer =
+            self.fri.domain.evaluate(&combination_polynomial);
+        prof_stop!(maybe_profiler, "LDE 3");
+
+        let fri_combination_codeword: Vec<_> = fri_combination_codeword_without_randomizer
+            .into_par_iter()
+            .zip_eq(x_rand_codeword.into_par_iter())
+            .map(|(cc_elem, rand_elem)| cc_elem + randomizer_weight[0] * rand_elem)
+            .collect();
         prof_stop!(maybe_profiler, "nonlinear combination");
 
         prof_start!(maybe_profiler, "Merkle tree 3");
         let mut combination_codeword_digests: Vec<Digest> =
-            Vec::with_capacity(combination_codeword.len());
-        combination_codeword
+            Vec::with_capacity(fri_combination_codeword.len());
+        fri_combination_codeword
             .clone()
             .into_par_iter()
             .map(|elem| StarkHasher::hash(&elem))
@@ -315,21 +337,17 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree 3");
 
         // Get indices of slices that go across codewords to prove nonlinear combination
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.start("Fiat-Shamir 3");
-        }
+        prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let indices_seed = proof_stream.prover_fiat_shamir();
         let cross_codeword_slice_indices = StarkHasher::sample_indices(
             self.parameters.security_level,
             &indices_seed,
             self.fri.domain.length,
         );
-        if let Some(profiler) = maybe_profiler.as_mut() {
-            profiler.stop("Fiat-Shamir 3");
-        }
+        prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
         prof_start!(maybe_profiler, "FRI");
-        match self.fri.prove(&combination_codeword, &mut proof_stream) {
+        match self.fri.prove(&fri_combination_codeword, &mut proof_stream) {
             Ok((_, fri_first_round_merkle_root)) => assert_eq!(
                 combination_root, fri_first_round_merkle_root,
                 "Combination root from STARK and from FRI must agree."
@@ -339,7 +357,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "open trace leafs");
-        // the relation between the FRI domain and the omicron domain
+        // the relation between the FRI domain and the trace domain
         let unit_distance = self.fri.domain.length / base_trace_tables.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
@@ -366,7 +384,7 @@ impl Stark {
         // as the latter includes adjacent table rows relative to the values in `indices`
         let revealed_combination_elements: Vec<XFieldElement> = cross_codeword_slice_indices
             .iter()
-            .map(|i| combination_codeword[*i])
+            .map(|i| fri_combination_codeword[*i])
             .collect();
         let revealed_combination_auth_paths =
             combination_tree.get_authentication_structure(&cross_codeword_slice_indices);
@@ -387,6 +405,14 @@ impl Stark {
         }
 
         proof_stream.to_proof()
+    }
+
+    fn quotient_domain(&self) -> ArithmeticDomain<BFieldElement> {
+        let offset = self.fri.domain.offset;
+        let expansion_factor = self.fri.expansion_factor;
+        let generator = self.fri.domain.generator.mod_pow(expansion_factor as u64);
+        let length = self.fri.domain.length / expansion_factor;
+        ArithmeticDomain::new(offset, generator, length)
     }
 
     fn get_revealed_indices(
@@ -419,7 +445,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn create_combination_codeword(
         &self,
-        randomizer_codewords: Vec<Vec<XFieldElement>>,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
         base_codewords: Vec<Vec<BFieldElement>>,
         extension_codewords: Vec<Vec<XFieldElement>>,
         quotient_codewords: Vec<Vec<XFieldElement>>,
@@ -429,13 +455,7 @@ impl Stark {
         quotient_degree_bounds: Vec<i64>,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<XFieldElement> {
-        assert_eq!(
-            self.parameters.num_randomizer_polynomials,
-            randomizer_codewords.len()
-        );
-
         prof_start!(maybe_profiler, "create combination codeword");
-
         let base_codewords_lifted = base_codewords
             .into_iter()
             .map(|base_codeword| {
@@ -446,20 +466,9 @@ impl Stark {
             })
             .collect_vec();
         let mut weights_iterator = weights.into_iter();
-        let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); self.fri.domain.length];
+        let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); quotient_domain.length];
 
-        // TODO don't keep the entire domain's values in memory, create them lazily when needed
-        let fri_x_values = self.fri.domain.domain_values();
-
-        for randomizer_codeword in randomizer_codewords {
-            combination_codeword = Self::non_linearly_add_to_codeword(
-                &combination_codeword,
-                &randomizer_codeword,
-                &weights_iterator.next().unwrap(),
-                &randomizer_codeword,
-                &0.into(),
-            );
-        }
+        let quotient_domain_values = quotient_domain.domain_values();
 
         for (codewords, bounds, identifier) in [
             (base_codewords_lifted, base_degree_bounds, "base"),
@@ -474,7 +483,8 @@ impl Stark {
                 codewords.into_iter().zip_eq(bounds.iter()).enumerate()
             {
                 let shift = (self.max_degree as Degree - degree_bound) as u32;
-                let codeword_shifted = Self::shift_codeword(&fri_x_values, &codeword, shift);
+                let codeword_shifted =
+                    Self::shift_codeword(&quotient_domain_values, &codeword, shift);
 
                 combination_codeword = Self::non_linearly_add_to_codeword(
                     &combination_codeword,
@@ -484,6 +494,7 @@ impl Stark {
                     &weights_iterator.next().unwrap(),
                 );
                 self.debug_check_degrees(
+                    quotient_domain,
                     &idx,
                     degree_bound,
                     &shift,
@@ -497,7 +508,7 @@ impl Stark {
         if std::env::var("DEBUG").is_ok() {
             println!(
                 "The combination codeword corresponds to a polynomial of degree {}",
-                self.fri.domain.interpolate(&combination_codeword).degree()
+                quotient_domain.interpolate(&combination_codeword).degree()
             );
         }
 
@@ -509,6 +520,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn debug_check_degrees(
         &self,
+        domain: &ArithmeticDomain<BFieldElement>,
         idx: &usize,
         degree_bound: &Degree,
         shift: &u32,
@@ -519,8 +531,8 @@ impl Stark {
         if std::env::var("DEBUG").is_err() {
             return;
         }
-        let interpolated = self.fri.domain.interpolate(extension_codeword);
-        let interpolated_shifted = self.fri.domain.interpolate(extension_codeword_shifted);
+        let interpolated = domain.interpolate(extension_codeword);
+        let interpolated_shifted = domain.interpolate(extension_codeword_shifted);
         let int_shift_deg = interpolated_shifted.degree();
         let maybe_excl_mark = if int_shift_deg > self.max_degree as isize {
             "!!!"
@@ -558,11 +570,11 @@ impl Stark {
     }
 
     fn shift_codeword(
-        fri_x_values: &Vec<XFieldElement>,
-        codeword: &Vec<XFieldElement>,
+        quotient_domain_values: &[BFieldElement],
+        codeword: &[XFieldElement],
         shift: u32,
     ) -> Vec<XFieldElement> {
-        fri_x_values
+        quotient_domain_values
             .par_iter()
             .zip_eq(codeword.par_iter())
             .map(|(x, &codeword_element)| (codeword_element * x.mod_pow_u32(shift)))
@@ -607,7 +619,7 @@ impl Stark {
 
     fn get_randomizer_codewords(&self) -> (Vec<XFieldElement>, Vec<Vec<BFieldElement>>) {
         let randomizer_coefficients = random_elements(self.max_degree as usize + 1);
-        let randomizer_polynomial = Polynomial::new(randomizer_coefficients);
+        let randomizer_polynomial = Polynomial::<XFieldElement>::new(randomizer_coefficients);
 
         let x_randomizer_codeword = self.fri.domain.evaluate(&randomizer_polynomial);
         let mut b_randomizer_codewords = vec![vec![], vec![], vec![]];
@@ -745,7 +757,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "check leafs");
         prof_start!(maybe_profiler, "get indices");
-        // the relation between the FRI domain and the omicron domain
+        // the relation between the FRI domain and the trace domain
         let unit_distance = self.fri.domain.length / ext_table_collection.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
@@ -850,8 +862,8 @@ impl Stark {
         let base_offset = self.parameters.num_randomizer_polynomials;
         let ext_offset = base_offset + num_base_polynomials;
         let final_offset = ext_offset + num_extension_polynomials;
-        let omicron: XFieldElement = derive_omicron(padded_height as u64);
-        let omicron_inverse = omicron.inverse();
+        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
         for (combination_check_index, revealed_combination_leaf) in combination_check_indices
             .into_iter()
             .zip_eq(revealed_combination_leafs)
@@ -952,7 +964,8 @@ impl Stark {
                     .zip_eq(initial_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_bc / (current_fri_domain_value - BFieldElement::one());
+                    let quotient =
+                        evaluated_bc / (current_fri_domain_value - BFieldElement::one()).lift();
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -969,7 +982,8 @@ impl Stark {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_cc
                         / (current_fri_domain_value.mod_pow_u32(padded_height as u32)
-                            - BFieldElement::one());
+                            - BFieldElement::one())
+                        .lift();
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -989,11 +1003,11 @@ impl Stark {
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = {
-                        let numerator = current_fri_domain_value - omicron_inverse;
+                        let numerator = current_fri_domain_value - trace_domain_generator_inverse;
                         let denominator = current_fri_domain_value
                             .mod_pow_u32(padded_height as u32)
                             - BFieldElement::one();
-                        evaluated_tc * numerator / denominator
+                        evaluated_tc * numerator / denominator.lift()
                     };
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
@@ -1009,7 +1023,8 @@ impl Stark {
                     .zip_eq(terminal_quotient_degree_bounds.iter())
                 {
                     let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_termc / (current_fri_domain_value - omicron_inverse);
+                    let quotient = evaluated_termc
+                        / (current_fri_domain_value - trace_domain_generator_inverse).lift();
                     let quotient_shifted =
                         quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
                     summands.push(quotient);
@@ -1029,8 +1044,8 @@ impl Stark {
             let shift = self.max_degree - grand_cross_table_arg_degree_bound;
             let grand_cross_table_arg_evaluated =
                 grand_cross_table_arg.evaluate_non_linear_sum_of_differences(&cross_slice_by_table);
-            let grand_cross_table_arg_quotient =
-                grand_cross_table_arg_evaluated / (current_fri_domain_value - omicron_inverse);
+            let grand_cross_table_arg_quotient = grand_cross_table_arg_evaluated
+                / (current_fri_domain_value - trace_domain_generator_inverse).lift();
             let grand_cross_table_arg_quotient_shifted =
                 grand_cross_table_arg_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
             summands.push(grand_cross_table_arg_quotient);
@@ -1301,7 +1316,7 @@ pub(crate) mod triton_stark_tests {
 
         ntt(
             &mut test_codeword,
-            stark.fri.domain.omega,
+            stark.fri.domain.generator,
             log_2_floor(stark.fri.domain.length as u128) as u32,
         );
         for shift in [0, 1, 5, 17, 63, 121, 128] {

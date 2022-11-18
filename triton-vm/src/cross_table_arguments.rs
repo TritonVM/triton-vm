@@ -8,7 +8,7 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::{FiniteField, Inverse};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::fri_domain::FriDomain;
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_collection::TableId::{
     HashTable, InstructionTable, JumpStackTable, OpStackTable, ProcessorTable, ProgramTable,
@@ -44,18 +44,19 @@ pub trait CrossTableArg {
     fn terminal_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        fri_domain: &FriDomain<XFieldElement>,
-        omicron: XFieldElement,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
         let from_codeword = self.combined_from_codeword(ext_codeword_tables);
         let to_codeword = self.combined_to_codeword(ext_codeword_tables);
 
-        let zerofier = fri_domain
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
+        let zerofier = quotient_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - omicron.inverse())
+            .map(|x| x - trace_domain_generator_inverse)
             .collect();
-        let zerofier_inverse = XFieldElement::batch_inversion(zerofier);
+        let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
 
         zerofier_inverse
             .into_iter()
@@ -453,10 +454,10 @@ impl GrandCrossTableArg {
     pub fn terminal_quotient_codeword(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        fri_domain: &FriDomain<XFieldElement>,
-        omicron: XFieldElement,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
-        let mut non_linear_sum_codeword = vec![XFieldElement::zero(); fri_domain.length];
+        let mut non_linear_sum_codeword = vec![XFieldElement::zero(); quotient_domain.length];
 
         // cross-table arguments
         for (arg, weight) in self.into_iter() {
@@ -472,7 +473,7 @@ impl GrandCrossTableArg {
         }
 
         // standard input
-        let input_terminal_codeword = vec![self.input_terminal; fri_domain.length];
+        let input_terminal_codeword = vec![self.input_terminal; quotient_domain.length];
         let (to_table, to_column) = self.input_to_processor;
         let to_codeword = &ext_codeword_tables.data(to_table)[to_column];
         let weight = self.input_to_processor_weight;
@@ -487,7 +488,7 @@ impl GrandCrossTableArg {
         // standard output
         let (from_table, from_column) = self.processor_to_output;
         let from_codeword = &ext_codeword_tables.data(from_table)[from_column];
-        let output_terminal_codeword = vec![self.output_terminal; fri_domain.length];
+        let output_terminal_codeword = vec![self.output_terminal; quotient_domain.length];
         let weight = self.processor_to_output_weight;
         let non_linear_summand =
             weighted_difference_codeword(from_codeword, &output_terminal_codeword, weight);
@@ -497,12 +498,13 @@ impl GrandCrossTableArg {
             XFieldElement::add,
         );
 
-        let zerofier = fri_domain
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
+        let zerofier = quotient_domain
             .domain_values()
             .into_iter()
-            .map(|x| x - omicron.inverse())
+            .map(|x| x - trace_domain_generator_inverse)
             .collect();
-        let zerofier_inverse = XFieldElement::batch_inversion(zerofier);
+        let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
 
         zerofier_inverse
             .into_iter()

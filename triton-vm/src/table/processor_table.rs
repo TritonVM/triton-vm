@@ -11,8 +11,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
-use crate::fri_domain::FriDomain;
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
@@ -52,29 +52,33 @@ impl InheritsFromTable<BFieldElement> for ProcessorTable {
 }
 
 impl ProcessorTable {
+    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
+        Self { inherited_table }
+    }
+
     pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProcessorTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn to_fri_domain_table(
+    pub fn to_quotient_and_fri_domain_table(
         &self,
-        fri_domain: &FriDomain<BFieldElement>,
-        omicron: BFieldElement,
-        padded_height: usize,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
-    ) -> Self {
+    ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
-        let fri_domain_codewords = self.low_degree_extension(
+        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            quotient_domain,
             fri_domain,
-            omicron,
-            padded_height,
             num_trace_randomizers,
             base_columns,
         );
-        let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
-        Self { inherited_table }
+        (
+            Self::new(quotient_domain_table),
+            Self::new(fri_domain_table),
+        )
     }
 
     pub fn extend(
@@ -356,30 +360,28 @@ impl ProcessorTable {
 }
 
 impl ExtProcessorTable {
-    pub fn to_fri_domain_table(
+    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
+        Self { inherited_table }
+    }
+
+    pub fn to_quotient_and_fri_domain_table(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
-        omicron: XFieldElement,
-        padded_height: usize,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
-    ) -> Self {
+    ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();
-        let fri_domain_codewords_ext = self.low_degree_extension(
+        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            quotient_domain,
             fri_domain,
-            omicron,
-            padded_height,
             num_trace_randomizers,
             ext_columns,
         );
 
-        let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
-        Self::new(inherited_table)
-    }
-
-    pub fn new(base: Table<XFieldElement>) -> ExtProcessorTable {
-        Self {
-            inherited_table: base,
-        }
+        (
+            Self::new(quotient_domain_table),
+            Self::new(fri_domain_table),
+        )
     }
 
     /// Instruction-specific transition constraints are combined with deselectors in such a way

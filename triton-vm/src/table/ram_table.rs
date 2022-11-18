@@ -8,8 +8,8 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::constraint_circuit::DualRowIndicator::*;
+use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
-use crate::fri_domain::FriDomain;
 use crate::table::base_table::Extendable;
 use crate::table::table_column::RamBaseTableColumn::{self, *};
 use crate::table::table_column::RamExtTableColumn::{self, *};
@@ -79,28 +79,33 @@ impl InheritsFromTable<XFieldElement> for ExtRamTable {
 }
 
 impl RamTable {
+    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
+        Self { inherited_table }
+    }
+
     pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
         let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "RamTable".to_string());
         Self { inherited_table }
     }
 
-    pub fn to_fri_domain_table(
+    pub fn to_quotient_and_fri_domain_table(
         &self,
-        fri_domain: &FriDomain<BFieldElement>,
-        omicron: BFieldElement,
-        padded_height: usize,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
-    ) -> Self {
+    ) -> (Self, Self) {
         let base_columns = 0..self.base_width();
-        let fri_domain_codewords = self.low_degree_extension(
+        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            quotient_domain,
             fri_domain,
-            omicron,
-            padded_height,
             num_trace_randomizers,
             base_columns,
         );
-        let inherited_table = self.inherited_table.with_data(fri_domain_codewords);
-        Self { inherited_table }
+
+        (
+            Self::new(quotient_domain_table),
+            Self::new(fri_domain_table),
+        )
     }
 
     pub fn extend(
@@ -219,24 +224,28 @@ impl RamTable {
 }
 
 impl ExtRamTable {
-    pub fn to_fri_domain_table(
+    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
+        Self { inherited_table }
+    }
+
+    pub fn to_quotient_and_fri_domain_table(
         &self,
-        fri_domain: &FriDomain<XFieldElement>,
-        omicron: XFieldElement,
-        padded_height: usize,
+        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
-    ) -> Self {
+    ) -> (Self, Self) {
         let ext_columns = self.base_width()..self.full_width();
-        let fri_domain_codewords_ext = self.low_degree_extension(
+        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
+            quotient_domain,
             fri_domain,
-            omicron,
-            padded_height,
             num_trace_randomizers,
             ext_columns,
         );
 
-        let inherited_table = self.inherited_table.with_data(fri_domain_codewords_ext);
-        ExtRamTable { inherited_table }
+        (
+            Self::new(quotient_domain_table),
+            Self::new(fri_domain_table),
+        )
     }
 }
 
