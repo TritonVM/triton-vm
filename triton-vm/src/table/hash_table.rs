@@ -7,10 +7,9 @@ use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
-use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::{
-    ALPHA, CAPACITY, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
+    ALPHA, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
 };
 use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::ModPowU64;
@@ -80,51 +79,6 @@ impl Default for ExtHashTable {
 }
 
 impl Evaluable for ExtHashTable {
-    fn evaluate_consistency_constraints(
-        &self,
-        evaluation_point: &[XFieldElement],
-        _challenges: &AllChallenges,
-    ) -> Vec<XFieldElement> {
-        let constant = |x| BFieldElement::new(x as u64).lift();
-        let round_number = evaluation_point[usize::from(ROUNDNUMBER)];
-        let state10 = evaluation_point[usize::from(STATE10)];
-        let state11 = evaluation_point[usize::from(STATE11)];
-        let state12 = evaluation_point[usize::from(STATE12)];
-        let state13 = evaluation_point[usize::from(STATE13)];
-        let state14 = evaluation_point[usize::from(STATE14)];
-        let state15 = evaluation_point[usize::from(STATE15)];
-
-        let round_number_is_not_1_or = (0..=NUM_ROUNDS + 1)
-            .filter(|&r| r != 1)
-            .map(|r| round_number - constant(r))
-            .fold(XFieldElement::one(), XFieldElement::mul);
-
-        let mut evaluated_consistency_constraints = vec![
-            round_number_is_not_1_or * (state10 - BFieldElement::one()), // <-- domain separation bit
-            round_number_is_not_1_or * state11,
-            round_number_is_not_1_or * state12,
-            round_number_is_not_1_or * state13,
-            round_number_is_not_1_or * state14,
-            round_number_is_not_1_or * state15,
-        ];
-
-        let round_constant_offset = usize::from(CONSTANT0A);
-        for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
-            let round_constant_column: HashBaseTableColumn =
-                // wrap
-                (round_constant_idx + round_constant_offset).try_into().unwrap();
-            evaluated_consistency_constraints.push(
-                round_number
-                    * (round_number - BFieldElement::from(NUM_ROUNDS as u32 + 1))
-                    * (Self::round_constants_interpolant(round_constant_column)
-                        .evaluate(&evaluation_point[usize::from(ROUNDNUMBER)])
-                        - evaluation_point[usize::from(round_constant_column)]),
-            );
-        }
-
-        evaluated_consistency_constraints
-    }
-
     fn evaluate_transition_constraints(
         &self,
         current_row: &[XFieldElement],
@@ -315,25 +269,6 @@ impl Evaluable for ExtHashTable {
 }
 
 impl Quotientable for ExtHashTable {
-    fn get_consistency_quotient_degree_bounds(
-        &self,
-        padded_height: usize,
-        num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
-        let zerofier_degree = padded_height as Degree;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-        let capacity_degree_bounds =
-            vec![interpolant_degree * (NUM_ROUNDS + 1 + 1) as Degree; CAPACITY];
-        let round_constant_degree_bounds =
-            vec![interpolant_degree * (NUM_ROUNDS + 1) as Degree; NUM_ROUND_CONSTANTS];
-
-        [capacity_degree_bounds, round_constant_degree_bounds]
-            .concat()
-            .into_iter()
-            .map(|degree_bound| degree_bound - zerofier_degree)
-            .collect_vec()
-    }
-
     fn get_transition_quotient_degree_bounds(
         &self,
         padded_height: usize,
@@ -447,33 +382,28 @@ impl ExtHashTable {
         .to_vec()
     }
 
-    /// The implementation below is kept around for debugging purposes. This table evaluates the
-    /// consistency constraints directly by implementing the respective method in trait
-    /// `Evaluable`, and does not use the polynomials below.
-    #[allow(unreachable_code)]
-    fn ext_consistency_constraints(
-        _challenges: &HashTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        panic!("ext_consistency_constraints should never be called; method is bypassed statically");
-        let constant = |c| MPolynomial::from_constant(BFieldElement::new(c).lift(), FULL_WIDTH);
-        let variables = MPolynomial::variables(FULL_WIDTH);
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
 
-        let round_number = variables[usize::from(ROUNDNUMBER)].clone();
-        let state10 = variables[usize::from(STATE10)].clone();
-        let state11 = variables[usize::from(STATE11)].clone();
-        let state12 = variables[usize::from(STATE12)].clone();
-        let state13 = variables[usize::from(STATE13)].clone();
-        let state14 = variables[usize::from(STATE14)].clone();
-        let state15 = variables[usize::from(STATE15)].clone();
+        let round_number = circuit_builder.input(Row(ROUNDNUMBER.into()));
+        let state10 = circuit_builder.input(Row(STATE10.into()));
+        let state11 = circuit_builder.input(Row(STATE11.into()));
+        let state12 = circuit_builder.input(Row(STATE12.into()));
+        let state13 = circuit_builder.input(Row(STATE13.into()));
+        let state14 = circuit_builder.input(Row(STATE14.into()));
+        let state15 = circuit_builder.input(Row(STATE15.into()));
 
-        // 1. if round number is 1, then capacity is zero
-        // DNF: rn =/= 1 ∨ cap = 0
-        let round_number_is_not_1_or = (0..=NUM_ROUNDS + 1)
-            .filter(|&r| r != 1)
-            .map(|r| round_number.clone() - constant(r as u64))
-            .fold(constant(1), MPolynomial::mul);
+        let round_number_deselector = |round_number_to_deselect| {
+            (0..=NUM_ROUNDS + 1)
+                .filter(|&r| r != round_number_to_deselect)
+                .map(|r| round_number.clone() - constant(r as u64))
+                .fold(constant(1), |a, b| a * b)
+        };
 
-        let mut consistency_polynomials = vec![
+        let round_number_is_not_1_or = round_number_deselector(1);
+        let mut consistency_constraint_circuits = vec![
             round_number_is_not_1_or.clone() * (state10 - constant(1)), // <-- domain separation bit
             round_number_is_not_1_or.clone() * state11,
             round_number_is_not_1_or.clone() * state12,
@@ -482,46 +412,26 @@ impl ExtHashTable {
             round_number_is_not_1_or * state15,
         ];
 
-        // 2. round number is in {0, ..., 9}
-        let polynomial = (0..=NUM_ROUNDS + 1)
-            .map(|r| constant(r as u64) - round_number.clone())
-            .fold(constant(1), MPolynomial::mul);
-        consistency_polynomials.push(polynomial);
-
-        // 3. round constants
-        // if round number is zero, we don't care
-        // otherwise, make sure the constant is correct
-        let round_constant_offset = usize::from(CONSTANT0A);
-        for round_constant_idx in 0..NUM_ROUND_CONSTANTS {
-            let round_constant_column: HashBaseTableColumn =
-                // wrap
-                (round_constant_idx + round_constant_offset).try_into().unwrap();
-            let round_constant = &variables[usize::from(round_constant_column)];
-            let interpolant = Self::round_constants_interpolant(round_constant_column);
-            let multivariate_interpolant =
-                MPolynomial::lift(interpolant, usize::from(ROUNDNUMBER), FULL_WIDTH);
-            consistency_polynomials.push(
-                round_number.clone()
-                    * (round_number.clone() - constant(NUM_ROUNDS as u64 + 1))
-                    * (multivariate_interpolant - round_constant.clone()),
-            );
+        let round_constant_offset: usize = CONSTANT0A.into();
+        for round_constant_col_index in 0..NUM_ROUND_CONSTANTS {
+            let round_constant_input =
+                circuit_builder.input(Row(round_constant_col_index + round_constant_offset));
+            let round_constant_constraint_circuit = (1..=NUM_ROUNDS)
+                .map(|i| {
+                    let round_constant_idx =
+                        NUM_ROUND_CONSTANTS * (i - 1) + round_constant_col_index;
+                    let round_constant_needed = constant(ROUND_CONSTANTS[round_constant_idx]);
+                    round_number_deselector(i)
+                        * (round_constant_input.clone() - round_constant_needed)
+                })
+                .sum();
+            consistency_constraint_circuits.push(round_constant_constraint_circuit);
         }
 
-        consistency_polynomials
-    }
-
-    fn round_constants_interpolant(
-        round_constant: HashBaseTableColumn,
-    ) -> Polynomial<XFieldElement> {
-        let round_constant_idx = usize::from(round_constant) - usize::from(CONSTANT0A);
-        let domain = (1..=NUM_ROUNDS)
-            .map(|x| BFieldElement::new(x as u64).lift())
-            .collect_vec();
-        let abscissae = (1..=NUM_ROUNDS)
-            .map(|i| ROUND_CONSTANTS[NUM_ROUND_CONSTANTS * (i - 1) + round_constant_idx])
-            .map(|x| BFieldElement::new(x).lift())
-            .collect_vec();
-        Polynomial::lagrange_interpolate(&domain, &abscissae)
+        consistency_constraint_circuits
+            .into_iter()
+            .map(|circuit| circuit.consume())
+            .collect()
     }
 
     /// The implementation below is kept around for debugging purposes. This table evaluates the
@@ -637,6 +547,15 @@ impl ExtHashTable {
         challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
         Self::ext_initial_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
+    }
+
+    fn ext_consistency_constraints(
+        challenges: &HashTableChallenges,
+    ) -> Vec<MPolynomial<XFieldElement>> {
+        Self::ext_consistency_constraints_as_circuits()
             .into_iter()
             .map(|circuit| circuit.partial_evaluate(challenges))
             .collect_vec()
@@ -774,7 +693,7 @@ impl HashTable {
             interpolant_degree,
             padded_height,
             ExtHashTable::ext_initial_constraints(challenges),
-            vec![],
+            ExtHashTable::ext_consistency_constraints(challenges),
             vec![],
             ExtHashTable::ext_terminal_constraints(challenges),
         );
@@ -801,7 +720,7 @@ impl HashTable {
             // The Hash Table bypasses the symbolic representation of transition and consistency
             // constraints. As a result, there is nothing to memoize. Since the memoization
             // dictionary is never used, it can't hurt to supply empty databases.
-            vec![],
+            ExtHashTable::ext_consistency_constraints(&all_challenges.hash_table_challenges),
             vec![],
             ExtHashTable::ext_terminal_constraints(&all_challenges.hash_table_challenges),
         );
