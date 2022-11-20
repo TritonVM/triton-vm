@@ -24,18 +24,6 @@ pub struct Table<FieldElement: FiniteField> {
 
     /// The name of the table. Mostly for debugging purpose.
     pub name: String,
-
-    /// AIR constraints, to be populated upon extension
-    pub(crate) initial_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-    pub(crate) consistency_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-    pub(crate) transition_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-    pub(crate) terminal_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-
-    /// quotient degrees, to be populated upon extension
-    pub(crate) initial_quotient_degree_bounds: Option<Vec<i64>>,
-    pub(crate) consistency_quotient_degree_bounds: Option<Vec<i64>>,
-    pub(crate) transition_quotient_degree_bounds: Option<Vec<i64>>,
-    pub(crate) terminal_quotient_degree_bounds: Option<Vec<i64>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -46,14 +34,6 @@ impl<FF: FiniteField> Table<FF> {
             full_width,
             matrix,
             name,
-            initial_constraints: None,
-            consistency_constraints: None,
-            transition_constraints: None,
-            terminal_constraints: None,
-            initial_quotient_degree_bounds: None,
-            consistency_quotient_degree_bounds: None,
-            transition_quotient_degree_bounds: None,
-            terminal_quotient_degree_bounds: None,
         }
     }
 
@@ -200,45 +180,6 @@ pub trait Extendable: TableLike<BFieldElement> {
             zerofier_degree,
             full_width,
         )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn extension(
-        &self,
-        extended_matrix: Vec<Vec<XFieldElement>>,
-        interpolant_degree: Degree,
-        padded_height: usize,
-        initial_constraints: Vec<MPolynomial<XFieldElement>>,
-        consistency_constraints: Vec<MPolynomial<XFieldElement>>,
-        transition_constraints: Vec<MPolynomial<XFieldElement>>,
-        terminal_constraints: Vec<MPolynomial<XFieldElement>>,
-    ) -> Table<XFieldElement> {
-        let bqdb =
-            self.get_initial_quotient_degree_bounds(&initial_constraints, interpolant_degree);
-        let cqdb = self.get_consistency_quotient_degree_bounds(
-            &consistency_constraints,
-            interpolant_degree,
-            padded_height,
-        );
-        let tqdb = self.get_transition_quotient_degree_bounds(
-            &transition_constraints,
-            interpolant_degree,
-            padded_height,
-        );
-        let termqdb =
-            self.get_terminal_quotient_degree_bounds(&terminal_constraints, interpolant_degree);
-        let new_table = self.new_from_lifted_matrix(extended_matrix);
-        Table {
-            initial_constraints: Some(initial_constraints),
-            consistency_constraints: Some(consistency_constraints),
-            transition_constraints: Some(transition_constraints),
-            terminal_constraints: Some(terminal_constraints),
-            initial_quotient_degree_bounds: Some(bqdb),
-            consistency_quotient_degree_bounds: Some(cqdb),
-            transition_quotient_degree_bounds: Some(tqdb),
-            terminal_quotient_degree_bounds: Some(termqdb),
-            ..new_table
-        }
     }
 }
 

@@ -220,7 +220,6 @@ pub mod triton_vm_tests {
     use crate::table::challenges::AllChallenges;
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ProcessorTable;
-    use crate::table::table_collection::interpolant_degree;
     use crate::table::table_column::ProcessorBaseTableColumn;
 
     use super::*;
@@ -855,11 +854,9 @@ pub mod triton_vm_tests {
                 "Matrix length must be power of 2 after padding"
             );
 
-            let num_trace_randomizers = 2;
             let challenges = AllChallenges::placeholder();
-            let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
             let ext_processor_table =
-                processor_table.extend(&challenges.processor_table_challenges, interpolant_degree);
+                processor_table.extend(&challenges.processor_table_challenges);
 
             let program_idx_string = format!("Program number {code_idx:>2}");
             profiler.start(&program_idx_string);
