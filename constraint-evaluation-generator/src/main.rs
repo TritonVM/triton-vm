@@ -1,15 +1,16 @@
 use std::collections::HashSet;
 use std::process::Command;
 
+use heck::ToUpperCamelCase;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use heck::ToUpperCamelCase;
 use triton_vm::table::challenges::TableChallenges;
 use triton_vm::table::constraint_circuit::{
     CircuitExpression, CircuitId, ConstraintCircuit, InputIndicator,
 };
+use triton_vm::table::hash_table::ExtHashTable;
 use triton_vm::table::instruction_table::ExtInstructionTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
 use triton_vm::table::op_stack_table::ExtOpStackTable;
@@ -65,6 +66,14 @@ fn main() {
         table_name_snake,
         &mut ExtJumpStackTable::ext_initial_constraints_as_circuits(),
         &mut ExtJumpStackTable::ext_transition_constraints_as_circuits(),
+    );
+    write(table_name_snake, source_code);
+
+    let table_name_snake = "hash_table";
+    let source_code = gen(
+        table_name_snake,
+        &mut ExtHashTable::ext_initial_constraints_as_circuits(),
+        &mut ExtHashTable::ext_transition_constraints_as_circuits(),
     );
     write(table_name_snake, source_code);
 
