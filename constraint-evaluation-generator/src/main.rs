@@ -25,6 +25,7 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         &mut ExtProgramTable::ext_initial_constraints_as_circuits(),
+        &mut ExtProgramTable::ext_consistency_constraints_as_circuits(),
         &mut ExtProgramTable::ext_transition_constraints_as_circuits(),
     );
     write(table_name_snake, source_code);
@@ -33,6 +34,7 @@ fn main() {
     let source_code = gen(
         tabe_name_snake,
         &mut ExtInstructionTable::ext_initial_constraints_as_circuits(),
+        &mut ExtInstructionTable::ext_consistency_constraints_as_circuits(),
         &mut ExtInstructionTable::ext_transition_constraints_as_circuits(),
     );
     write(tabe_name_snake, source_code);
@@ -41,6 +43,7 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         &mut ExtProcessorTable::ext_initial_constraints_as_circuits(),
+        &mut ExtProcessorTable::ext_consistency_constraints_as_circuits(),
         &mut ExtProcessorTable::ext_transition_constraints_as_circuits(),
     );
     write(table_name_snake, source_code);
@@ -49,6 +52,7 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         &mut ExtOpStackTable::ext_initial_constraints_as_circuits(),
+        &mut ExtOpStackTable::ext_consistency_constraints_as_circuits(),
         &mut ExtOpStackTable::ext_transition_constraints_as_circuits(),
     );
     write(table_name_snake, source_code);
@@ -57,6 +61,7 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         &mut ExtRamTable::ext_initial_constraints_as_circuits(),
+        &mut ExtRamTable::ext_consistency_constraints_as_circuits(),
         &mut ExtRamTable::ext_transition_constraints_as_circuits(),
     );
     write(table_name_snake, source_code);
@@ -65,6 +70,7 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         &mut ExtJumpStackTable::ext_initial_constraints_as_circuits(),
+        &mut ExtJumpStackTable::ext_consistency_constraints_as_circuits(),
         &mut ExtJumpStackTable::ext_transition_constraints_as_circuits(),
     );
     write(table_name_snake, source_code);
@@ -73,6 +79,7 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         &mut ExtHashTable::ext_initial_constraints_as_circuits(),
+        &mut ExtHashTable::ext_consistency_constraints_as_circuits(),
         &mut ExtHashTable::ext_transition_constraints_as_circuits(),
     );
     write(table_name_snake, source_code);
@@ -92,6 +99,7 @@ fn write(table_name_snake: &str, rust_source_code: String) {
 fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     table_name_snake: &str,
     initial_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
+    consistency_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
     transition_constraint_circuits: &mut [ConstraintCircuit<T, DII>],
 ) -> String {
     let table_id_name = table_name_snake.to_upper_camel_case();
@@ -100,16 +108,30 @@ fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
 
     let initial_constraints_degrees =
         turn_circuits_into_degree_bounds_string(initial_constraint_circuits);
+    let consistency_constraints_degrees =
+        turn_circuits_into_degree_bounds_string(consistency_constraint_circuits);
     let transition_constraints_degrees =
         turn_circuits_into_degree_bounds_string(transition_constraint_circuits);
 
     let initial_constraint_strings = turn_circuits_into_string(initial_constraint_circuits);
+    let consistency_constraint_strings = turn_circuits_into_string(consistency_constraint_circuits);
     let transition_constraint_strings = turn_circuits_into_string(transition_constraint_circuits);
 
+    // maybe-prefixes to supress clippy's warnings for unused variables
     let initial_challenges_used = if initial_constraint_strings.contains("challenges") {
         ""
     } else {
         "_"
+    };
+    let consistency_challenges_used = if consistency_constraint_strings.contains("challenges") {
+        ""
+    } else {
+        "_"
+    };
+    let consistency_constraints_exist = if consistency_constraints_degrees.is_empty() {
+        "_"
+    } else {
+        ""
     };
 
     format!(
@@ -141,6 +163,16 @@ impl Evaluable for {table_mod_name} {{
     }}
 
     #[inline]
+    fn evaluate_consistency_constraints(
+        &self,
+        {consistency_constraints_exist}row: &[XFieldElement],
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {{
+        let {consistency_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        {consistency_constraint_strings}
+    }}
+
+    #[inline]
     fn evaluate_transition_constraints(
         &self,
         current_row: &[XFieldElement],
@@ -161,6 +193,17 @@ impl Quotientable for {table_mod_name} {{
         let zerofier_degree = 1 as Degree;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         [{initial_constraints_degrees}].to_vec()
+    }}
+
+    fn get_consistency_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {{
+        let {consistency_constraints_exist}zerofier_degree = padded_height as Degree;
+        let {consistency_constraints_exist}interpolant_degree =
+            interpolant_degree(padded_height, num_trace_randomizers);
+        [{consistency_constraints_degrees}].to_vec()
     }}
 
     fn get_transition_quotient_degree_bounds(
