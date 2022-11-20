@@ -3,7 +3,6 @@ use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use InstructionTableChallengeId::*;
@@ -15,7 +14,7 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::Row;
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::{AllChallenges, TableChallenges};
+use super::challenges::TableChallenges;
 use super::constraint_circuit::DualRowIndicator::{self, *};
 use super::constraint_circuit::{
     ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad,
@@ -304,43 +303,6 @@ impl ExtInstructionTable {
     ) -> Vec<ConstraintCircuit<InstructionTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
         vec![]
     }
-
-    pub fn ext_initial_constraints(
-        challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_initial_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_consistency_constraints(
-        challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_consistency_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_transition_constraints(
-        challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let circuits = Self::ext_transition_constraints_as_circuits();
-        circuits
-            .into_iter()
-            .map(|circ| circ.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_terminal_constraints(
-        challenges: &InstructionTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_terminal_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
 }
 
 impl InstructionTable {
@@ -485,32 +447,4 @@ impl ExtInstructionTable {
     }
 }
 
-impl ExtensionTable for ExtInstructionTable {
-    fn dynamic_initial_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_initial_constraints(&challenges.instruction_table_challenges)
-    }
-
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_consistency_constraints(&challenges.instruction_table_challenges)
-    }
-
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_transition_constraints(&challenges.instruction_table_challenges)
-    }
-
-    fn dynamic_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtInstructionTable::ext_terminal_constraints(&challenges.instruction_table_challenges)
-    }
-}
+impl ExtensionTable for ExtInstructionTable {}

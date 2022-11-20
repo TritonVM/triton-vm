@@ -3,7 +3,6 @@ use num_traits::Zero;
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::{
     ALPHA, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
@@ -25,7 +24,6 @@ use crate::table::table_column::HashBaseTableColumn::{self, *};
 use crate::table::table_column::HashExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::AllChallenges;
 use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
@@ -461,42 +459,6 @@ impl ExtHashTable {
         // no more constraints
         vec![]
     }
-
-    fn ext_initial_constraints(
-        challenges: &HashTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_initial_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_consistency_constraints(
-        challenges: &HashTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_consistency_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_transition_constraints(
-        challenges: &HashTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_transition_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_terminal_constraints(
-        challenges: &HashTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_terminal_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
 }
 
 impl HashTable {
@@ -743,38 +705,11 @@ impl TableChallenges for HashTableChallenges {
     }
 }
 
-impl ExtensionTable for ExtHashTable {
-    fn dynamic_initial_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_initial_constraints(&challenges.hash_table_challenges)
-    }
-
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_consistency_constraints(&challenges.hash_table_challenges)
-    }
-
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_transition_constraints(&challenges.hash_table_challenges)
-    }
-
-    fn dynamic_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtHashTable::ext_terminal_constraints(&challenges.hash_table_challenges)
-    }
-}
+impl ExtensionTable for ExtHashTable {}
 
 #[cfg(test)]
 mod constraint_tests {
+    use crate::table::challenges::AllChallenges;
     use crate::table::extension_table::Evaluable;
     use crate::vm::Program;
 

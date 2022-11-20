@@ -3,7 +3,6 @@ use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -13,7 +12,7 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::table::base_table::Extendable;
 use crate::table::base_table::{InheritsFromTable, Table, TableLike};
-use crate::table::challenges::{AllChallenges, TableChallenges};
+use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::Row;
 use crate::table::constraint_circuit::{
@@ -481,41 +480,6 @@ impl ExtRamTable {
 
         vec![bezout_relation_holds.consume()]
     }
-
-    fn ext_initial_constraints(challenges: &RamTableChallenges) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_initial_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_consistency_constraints(
-        challenges: &RamTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_consistency_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_transition_constraints(
-        challenges: &RamTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let circuits = Self::ext_transition_constraints_as_circuits();
-        circuits
-            .into_iter()
-            .map(|circ| circ.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_terminal_constraints(
-        challenges: &RamTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_terminal_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
 }
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
@@ -569,32 +533,4 @@ impl TableChallenges for RamTableChallenges {
     }
 }
 
-impl ExtensionTable for ExtRamTable {
-    fn dynamic_initial_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_initial_constraints(&challenges.ram_table_challenges)
-    }
-
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_consistency_constraints(&challenges.ram_table_challenges)
-    }
-
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_transition_constraints(&challenges.ram_table_challenges)
-    }
-
-    fn dynamic_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_terminal_constraints(&challenges.ram_table_challenges)
-    }
-}
+impl ExtensionTable for ExtRamTable {}
