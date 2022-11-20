@@ -26,3 +26,4 @@ default-features = false
 twenty-first = { version = "0.6.0" }
 triton-vm = { path = "../triton-vm" }
 itertools = "0.10"
+heck = "0.4"
