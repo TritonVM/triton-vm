@@ -3,7 +3,6 @@ use num_traits::One;
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -18,7 +17,7 @@ use crate::table::table_column::OpStackBaseTableColumn::{self, *};
 use crate::table::table_column::OpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::{AllChallenges, TableChallenges};
+use super::challenges::TableChallenges;
 use super::constraint_circuit::DualRowIndicator::*;
 use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
 use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
@@ -264,42 +263,6 @@ impl ExtOpStackTable {
         // no further constraints
         vec![]
     }
-
-    fn ext_initial_constraints(
-        challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_initial_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_consistency_constraints(
-        challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_consistency_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_transition_constraints(
-        challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_transition_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_terminal_constraints(
-        challenges: &OpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_terminal_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
 }
 
 impl OpStackTable {
@@ -479,32 +442,4 @@ pub struct OpStackTableChallenges {
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 }
 
-impl ExtensionTable for ExtOpStackTable {
-    fn dynamic_initial_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_initial_constraints(&challenges.op_stack_table_challenges)
-    }
-
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_consistency_constraints(&challenges.op_stack_table_challenges)
-    }
-
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_transition_constraints(&challenges.op_stack_table_challenges)
-    }
-
-    fn dynamic_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtOpStackTable::ext_terminal_constraints(&challenges.op_stack_table_challenges)
-    }
-}
+impl ExtensionTable for ExtOpStackTable {}

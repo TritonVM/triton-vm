@@ -18,7 +18,6 @@ use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
-use crate::table::challenges::AllChallenges;
 use crate::table::constraint_circuit::{InputIndicator, SingleRowIndicator};
 use crate::table::extension_table::ExtensionTable;
 use crate::table::table_column::ProcessorBaseTableColumn::{self, *};
@@ -1064,43 +1063,6 @@ impl ExtProcessorTable {
         let rer_equals_reu = factory.rer() - factory.reu();
 
         vec![last_ci_is_halt.consume(), rer_equals_reu.consume()]
-    }
-
-    fn ext_initial_constraints(
-        challenges: &ProcessorTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_initial_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_consistency_constraints(
-        challenges: &ProcessorTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_consistency_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_transition_constraints(
-        challenges: &ProcessorTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let circuits = Self::ext_transition_constraints_as_circuits();
-        circuits
-            .into_iter()
-            .map(|circ| circ.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_terminal_constraints(
-        challenges: &ProcessorTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        Self::ext_terminal_constraints_as_circuits()
-            .into_iter()
-            .map(|circuit| circuit.partial_evaluate(challenges))
-            .collect_vec()
     }
 }
 
@@ -3385,40 +3347,13 @@ impl InstructionDeselectors {
     }
 }
 
-impl ExtensionTable for ExtProcessorTable {
-    fn dynamic_initial_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_initial_constraints(&challenges.processor_table_challenges)
-    }
-
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_consistency_constraints(&challenges.processor_table_challenges)
-    }
-
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_transition_constraints(&challenges.processor_table_challenges)
-    }
-
-    fn dynamic_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtProcessorTable::ext_terminal_constraints(&challenges.processor_table_challenges)
-    }
-}
+impl ExtensionTable for ExtProcessorTable {}
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
     use crate::ord_n::Ord16;
     use crate::table::base_matrix::ProcessorMatrixRow;
+    use crate::table::challenges::AllChallenges;
     use crate::vm::Program;
 
     use super::*;
