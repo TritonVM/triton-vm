@@ -16,10 +16,11 @@ use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, PrimitiveRootOfUnity};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::merkle_tree::MerkleTree;
+use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
 
 use triton_profiler::triton_profiler::TritonProfiler;
 use triton_profiler::{prof_itr0, prof_start, prof_stop};
+use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{
@@ -38,6 +39,7 @@ use crate::table::table_collection::{
 use super::table::base_matrix::BaseMatrices;
 
 pub type StarkHasher = RescuePrimeRegular;
+pub type Maker = CpuParallel;
 pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
 
 pub struct StarkParameters {
@@ -328,8 +330,8 @@ impl Stark {
             .into_par_iter()
             .map(|elem| StarkHasher::hash(&elem))
             .collect_into_vec(&mut combination_codeword_digests);
-        let combination_tree =
-            MerkleTree::<StarkHasher>::from_digests(&combination_codeword_digests);
+        let combination_tree: MerkleTree<StarkHasher, Maker> =
+            Maker::from_digests(&combination_codeword_digests);
         let combination_root: Digest = combination_tree.get_root();
 
         proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root));
@@ -583,7 +585,7 @@ impl Stark {
 
     fn get_extension_merkle_tree(
         transposed_extension_codewords: &Vec<Vec<XFieldElement>>,
-    ) -> MerkleTree<StarkHasher> {
+    ) -> MerkleTree<StarkHasher, CpuParallel> {
         let mut extension_codeword_digests_by_index =
             Vec::with_capacity(transposed_extension_codewords.len());
 
@@ -599,16 +601,18 @@ impl Stark {
             })
             .collect_into_vec(&mut extension_codeword_digests_by_index);
 
-        MerkleTree::<StarkHasher>::from_digests(&extension_codeword_digests_by_index)
+        Maker::from_digests(&extension_codeword_digests_by_index)
     }
 
-    fn get_merkle_tree(codewords: &Vec<Vec<BFieldElement>>) -> MerkleTree<StarkHasher> {
+    fn get_merkle_tree(
+        codewords: &Vec<Vec<BFieldElement>>,
+    ) -> MerkleTree<StarkHasher, CpuParallel> {
         let mut codeword_digests_by_index = Vec::with_capacity(codewords.len());
         codewords
             .par_iter()
             .map(|values| StarkHasher::hash_slice(values))
             .collect_into_vec(&mut codeword_digests_by_index);
-        MerkleTree::<StarkHasher>::from_digests(&codeword_digests_by_index)
+        Maker::from_digests(&codeword_digests_by_index)
     }
 
     fn padded(&self, base_matrices: &BaseMatrices) -> BaseTableCollection {
@@ -778,7 +782,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue");
 
         prof_start!(maybe_profiler, "Merkle verify");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
             &revealed_indices,
             &leaf_digests_base,
@@ -809,7 +813,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue");
 
         prof_start!(maybe_profiler, "Merkle verify (auth struct)");
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
             &revealed_indices,
             &leaf_digests_ext,
@@ -831,7 +835,7 @@ impl Stark {
         let revealed_combination_auth_paths = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
-        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             combination_root,
             &combination_check_indices,
             &revealed_combination_digests,

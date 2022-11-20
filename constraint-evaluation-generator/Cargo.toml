@@ -23,6 +23,6 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = { version = "0.5.0" }
+twenty-first = { version = "0.6.0" }
 triton-vm = { path = "../triton-vm" }
 itertools = "0.10"

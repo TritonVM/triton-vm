@@ -233,8 +233,8 @@ fn get_binding_name<T: TableChallenges, II: InputIndicator>(
     circuit: &ConstraintCircuit<T, II>,
 ) -> String {
     match &circuit.expression {
-        CircuitExpression::XConstant(xfe) => print_xfe(*xfe),
-        CircuitExpression::BConstant(bfe) => print_bfe(*bfe),
+        CircuitExpression::XConstant(xfe) => print_xfe(xfe),
+        CircuitExpression::BConstant(bfe) => print_bfe(bfe),
         CircuitExpression::Input(idx) => idx.to_string(),
         CircuitExpression::Challenge(challenge_id) => {
             format!("challenges.get_challenge({challenge_id})")
@@ -295,11 +295,11 @@ fn evaluate_single_node<T: TableChallenges, II: InputIndicator>(
     ret
 }
 
-fn print_bfe(bfe: BFieldElement) -> String {
+fn print_bfe(bfe: &BFieldElement) -> String {
     format!("BFieldElement::new({})", bfe.value())
 }
 
-fn print_xfe(xfe: XFieldElement) -> String {
+fn print_xfe(xfe: &XFieldElement) -> String {
     format!(
         "XFieldElement::new([{}, {}, {}])",
         xfe.coefficients[0].value(),
