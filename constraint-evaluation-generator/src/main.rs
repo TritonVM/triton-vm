@@ -2,6 +2,10 @@ use std::collections::HashSet;
 use std::process::Command;
 
 use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use heck::ToUpperCamelCase;
 use triton_vm::table::challenges::TableChallenges;
 use triton_vm::table::constraint_circuit::{
     CircuitExpression, CircuitId, ConstraintCircuit, InputIndicator,
@@ -12,41 +16,57 @@ use triton_vm::table::op_stack_table::ExtOpStackTable;
 use triton_vm::table::processor_table::ExtProcessorTable;
 use triton_vm::table::program_table::ExtProgramTable;
 use triton_vm::table::ram_table::ExtRamTable;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 fn main() {
     println!("Generate those constraint evaluators!");
 
-    // Program table
-    let mut circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("program_table", "ProgramTable", &mut circuits);
-    write("program_table", source_code);
+    let table_name_snake = "program_table";
+    let source_code = gen(
+        table_name_snake,
+        &mut ExtProgramTable::ext_initial_constraints_as_circuits(),
+        &mut ExtProgramTable::ext_transition_constraints_as_circuits(),
+    );
+    write(table_name_snake, source_code);
 
-    // Instruction table
-    let mut circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("instruction_table", "InstructionTable", &mut circuits);
-    write("instruction_table", source_code);
+    let tabe_name_snake = "instruction_table";
+    let source_code = gen(
+        tabe_name_snake,
+        &mut ExtInstructionTable::ext_initial_constraints_as_circuits(),
+        &mut ExtInstructionTable::ext_transition_constraints_as_circuits(),
+    );
+    write(tabe_name_snake, source_code);
 
-    // Processor table
-    let mut circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("processor_table", "ProcessorTable", &mut circuits);
-    write("processor_table", source_code);
+    let table_name_snake = "processor_table";
+    let source_code = gen(
+        table_name_snake,
+        &mut ExtProcessorTable::ext_initial_constraints_as_circuits(),
+        &mut ExtProcessorTable::ext_transition_constraints_as_circuits(),
+    );
+    write(table_name_snake, source_code);
 
-    // Opstack table
-    let mut constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("op_stack_table", "OpStackTable", &mut constraint_circuits);
-    write("op_stack_table", source_code);
+    let table_name_snake = "op_stack_table";
+    let source_code = gen(
+        table_name_snake,
+        &mut ExtOpStackTable::ext_initial_constraints_as_circuits(),
+        &mut ExtOpStackTable::ext_transition_constraints_as_circuits(),
+    );
+    write(table_name_snake, source_code);
 
-    // RAM table
-    let mut circuits = ExtRamTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("ram_table", "RamTable", &mut circuits);
-    write("ram_table", source_code);
+    let table_name_snake = "ram_table";
+    let source_code = gen(
+        table_name_snake,
+        &mut ExtRamTable::ext_initial_constraints_as_circuits(),
+        &mut ExtRamTable::ext_transition_constraints_as_circuits(),
+    );
+    write(table_name_snake, source_code);
 
-    // JumpStack table
-    let mut circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("jump_stack_table", "JumpStackTable", &mut circuits);
-    write("jump_stack_table", source_code);
+    let table_name_snake = "jump_stack_table";
+    let source_code = gen(
+        table_name_snake,
+        &mut ExtJumpStackTable::ext_initial_constraints_as_circuits(),
+        &mut ExtJumpStackTable::ext_transition_constraints_as_circuits(),
+    );
+    write(table_name_snake, source_code);
 
     if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
         println!("cargo fmt failed: {}", fmt_failed);
@@ -60,15 +80,23 @@ fn write(table_name_snake: &str, rust_source_code: String) {
     std::fs::write(output_filename, rust_source_code).expect("Write Rust source code");
 }
 
-fn gen<T: TableChallenges, II: InputIndicator>(
+fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     table_name_snake: &str,
-    table_id_name: &str,
-    constraint_circuits: &mut [ConstraintCircuit<T, II>],
+    initial_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
+    transition_constraint_circuits: &mut [ConstraintCircuit<T, DII>],
 ) -> String {
+    let table_id_name = table_name_snake.to_upper_camel_case();
     let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let table_mod_name = format!("Ext{table_id_name}");
 
-    let circuits_as_string = turn_circuits_into_string(constraint_circuits);
+    let initial_constraint_strings = turn_circuits_into_string(initial_constraint_circuits);
+    let transition_constraint_strings = turn_circuits_into_string(transition_constraint_circuits);
+
+    let initial_challenges_used = if initial_constraint_strings.contains("challenges") {
+        ""
+    } else {
+        "_"
+    };
 
     format!(
         "
@@ -81,10 +109,20 @@ use crate::table::extension_table::Evaluable;
 use crate::table::{table_name_snake}::{table_mod_name};
 use crate::table::{table_name_snake}::{challenge_enum_name}::*;
 
-// This file is a placeholder for auto-generated code
-// Run `cargo run --bin constraint-evaluation-generator`
-// to fill in this file with optimized constraints.
+// This file has been auto-generated. Any modifications _will_ be lost.
+// To re-generate, execute:
+// `cargo run --bin constraint-evaluation-generator`
 impl Evaluable for {table_mod_name} {{
+    #[inline]
+    fn evaluate_initial_constraints(
+        &self,
+        row: &[XFieldElement],
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {{
+        let {initial_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        {initial_constraint_strings}
+    }}
+
     #[inline]
     fn evaluate_transition_constraints(
         &self,
@@ -93,7 +131,7 @@ impl Evaluable for {table_mod_name} {{
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
         let challenges = &challenges.{table_name_snake}_challenges;
-        {circuits_as_string}
+        {transition_constraint_strings}
     }}
 }}
 "
@@ -181,7 +219,6 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     in_scope: &mut HashSet<CircuitId>,
     output: &mut String,
 ) {
-    println!("requested_visited_count = {requested_visited_count}");
     if circuit.visited_counter < requested_visited_count {
         // If the visited counter is not there yet, make a recursive call. We are
         // not yet ready to bind this node's ID to a value.
@@ -304,7 +341,7 @@ fn print_bfe(bfe: &BFieldElement) -> String {
 
 fn print_xfe(xfe: &XFieldElement) -> String {
     format!(
-        "XFieldElement::new([{}, {}, {}])",
+        "XFieldElement::new_u64([{}, {}, {}])",
         xfe.coefficients[0].value(),
         xfe.coefficients[1].value(),
         xfe.coefficients[2].value()
