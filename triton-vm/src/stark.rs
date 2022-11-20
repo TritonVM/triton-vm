@@ -1244,10 +1244,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     pub fn print_all_coefficient_counts() {
         let ext_tables = ExtTableCollection::with_padded_height(2);
-        for table in ext_tables
-            .into_iter()
-            .filter(|&table| table.name() != "EmptyExtHashTable")
-        {
+        for table in ext_tables.into_iter() {
             for (idx, constraint) in table
                 .dynamic_initial_constraints(&AllChallenges::placeholder())
                 .into_iter()
@@ -1293,7 +1290,6 @@ pub(crate) mod triton_stark_tests {
                 );
             }
         }
-        println!("HashTable AIR's coefficients cannot be counted because they are hardcoded.");
     }
 
     #[test]
