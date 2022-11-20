@@ -21,7 +21,7 @@ use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
 use super::constraint_circuit::DualRowIndicator::*;
 use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -65,7 +65,6 @@ impl Default for ExtOpStackTable {
     }
 }
 
-impl Quotientable for ExtOpStackTable {}
 impl QuotientableExtensionTable for ExtOpStackTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtOpStackTable {
