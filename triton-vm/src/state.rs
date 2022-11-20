@@ -1,10 +1,10 @@
+use itertools::Itertools;
+use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::Display;
 
-use itertools::Itertools;
-use num_traits::{One, Zero};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_regular::{
     RescuePrimeRegular, DIGEST_LENGTH, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
@@ -795,9 +795,11 @@ mod vm_state_tests {
     use twenty_first::shared_math::rescue_prime_digest::Digest;
     use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
     use twenty_first::util_types::merkle_tree::MerkleTree;
+    use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::instruction::sample_programs;
     use crate::op_stack::OP_STACK_REG_COUNT;
+    use crate::stark::Maker;
 
     use super::*;
 
@@ -936,7 +938,7 @@ mod vm_state_tests {
             .iter()
             .map(|leaf| H::hash_pair(&zero_padding, leaf))
             .collect_vec();
-        let merkle_tree = MerkleTree::<H>::from_digests(&digests);
+        let merkle_tree: MerkleTree<H, Maker> = Maker::from_digests(&digests);
         let root: Digest = merkle_tree.get_root();
 
         // generate program

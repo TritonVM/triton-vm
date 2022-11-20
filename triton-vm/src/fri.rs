@@ -6,9 +6,9 @@ use rayon::iter::{
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
+
 use triton_profiler::triton_profiler::TritonProfiler;
 use triton_profiler::{prof_start, prof_stop};
-
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::ntt::intt;
 use twenty_first::shared_math::other::{log_2_ceil, log_2_floor};
@@ -19,10 +19,12 @@ use twenty_first::shared_math::traits::{CyclicGroupGenerator, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, Hashable};
 use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
+use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::proof_item::{FriResponse, ProofItem};
 use crate::proof_stream::ProofStream;
+use crate::stark::Maker;
 
 impl Error for FriValidationError {}
 
@@ -77,7 +79,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     fn enqueue_auth_pairs(
         indices: &[usize],
         codeword: &[XFieldElement],
-        merkle_tree: &MerkleTree<H>,
+        merkle_tree: &MerkleTree<H, Maker>,
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) {
         let value_ap_pairs: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = merkle_tree
@@ -106,7 +108,11 @@ impl<H: AlgebraicHasher> Fri<H> {
             .collect();
         let digests: Vec<Digest> = values.par_iter().map(H::hash).collect();
         let path_digest_pairs = paths.into_iter().zip(digests).collect_vec();
-        if MerkleTree::<H>::verify_authentication_structure(root, indices, &path_digest_pairs) {
+        if MerkleTree::<H, Maker>::verify_authentication_structure(
+            root,
+            indices,
+            &path_digest_pairs,
+        ) {
             Ok(values)
         } else {
             Err(Box::new(FriValidationError::BadMerkleAuthenticationPath))
@@ -126,7 +132,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         );
 
         // commit phase
-        let (codewords, merkle_trees): (Vec<Vec<XFieldElement>>, Vec<MerkleTree<H>>) =
+        let (codewords, merkle_trees): (Vec<Vec<XFieldElement>>, Vec<MerkleTree<H, Maker>>) =
             self.commit(codeword, proof_stream)?.into_iter().unzip();
 
         // Fiat-Shamir to get indices
@@ -165,7 +171,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> Result<Vec<(Vec<XFieldElement>, MerkleTree<H>)>, Box<dyn Error>> {
+    ) -> Result<Vec<(Vec<XFieldElement>, MerkleTree<H, Maker>)>, Box<dyn Error>> {
         let mut subgroup_generator = self.domain.generator;
         let mut offset = self.domain.offset;
         let mut codeword_local = codeword.to_vec();
@@ -181,7 +187,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             .into_par_iter()
             .map(|xfe| H::hash(&xfe))
             .collect_into_vec(&mut digests);
-        let mut mt: MerkleTree<H> = MerkleTree::from_digests(&digests);
+        let mut mt: MerkleTree<H, Maker> = Maker::from_digests(&digests);
         let mut mt_root: Digest = mt.get_root();
 
         proof_stream.enqueue(&ProofItem::MerkleRoot(mt_root));
@@ -219,7 +225,7 @@ impl<H: AlgebraicHasher> Fri<H> {
                 .map(|xfe| H::hash(&xfe))
                 .collect_into_vec(&mut digests);
 
-            mt = MerkleTree::from_digests(&digests);
+            mt = Maker::from_digests(&digests);
             mt_root = mt.get_root();
             proof_stream.enqueue(&ProofItem::MerkleRoot(mt_root));
             values_and_merkle_trees.push((codeword_local.clone(), mt));
@@ -329,7 +335,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // Check if last codeword matches the given root
         let codeword_digests = last_codeword.iter().map(H::hash).collect_vec();
-        let last_codeword_mt = MerkleTree::<H>::from_digests(&codeword_digests);
+        let last_codeword_mt: MerkleTree<H, Maker> = Maker::from_digests(&codeword_digests);
         let last_root = roots.last().unwrap();
         if *last_root != last_codeword_mt.get_root() {
             return Err(Box::new(FriValidationError::BadMerkleRootForLastCodeword));
