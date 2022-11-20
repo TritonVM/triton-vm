@@ -456,6 +456,12 @@ impl ExtHashTable {
         .collect()
     }
 
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        // no more constraints
+        vec![]
+    }
+
     fn ext_initial_constraints(
         challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
@@ -484,9 +490,12 @@ impl ExtHashTable {
     }
 
     fn ext_terminal_constraints(
-        _challenges: &HashTableChallenges,
+        challenges: &HashTableChallenges,
     ) -> Vec<MPolynomial<XFieldElement>> {
-        vec![]
+        Self::ext_terminal_constraints_as_circuits()
+            .into_iter()
+            .map(|circuit| circuit.partial_evaluate(challenges))
+            .collect_vec()
     }
 }
 
