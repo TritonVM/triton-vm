@@ -8,7 +8,7 @@ use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProcessorTableChallengeId::*;
@@ -84,11 +84,7 @@ impl ProcessorTable {
         )
     }
 
-    pub fn extend(
-        &self,
-        challenges: &ProcessorTableChallenges,
-        interpolant_degree: Degree,
-    ) -> ExtProcessorTable {
+    pub fn extend(&self, challenges: &ProcessorTableChallenges) -> ExtProcessorTable {
         let mut unique_clock_jump_differences = vec![];
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
@@ -316,24 +312,11 @@ impl ProcessorTable {
         }
 
         assert_eq!(self.data().len(), extension_matrix.len());
-        let padded_height = extension_matrix.len();
-        let inherited_table = self.extension(
-            extension_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtProcessorTable::ext_initial_constraints(challenges),
-            ExtProcessorTable::ext_consistency_constraints(challenges),
-            ExtProcessorTable::ext_transition_constraints(challenges),
-            ExtProcessorTable::ext_terminal_constraints(challenges),
-        );
+        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
         ExtProcessorTable { inherited_table }
     }
 
-    pub fn for_verifier(
-        interpolant_degree: Degree,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-    ) -> ExtProcessorTable {
+    pub fn for_verifier() -> ExtProcessorTable {
         let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
@@ -342,19 +325,7 @@ impl ProcessorTable {
         );
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.extension(
-            empty_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtProcessorTable::ext_initial_constraints(&all_challenges.processor_table_challenges),
-            ExtProcessorTable::ext_consistency_constraints(
-                &all_challenges.processor_table_challenges,
-            ),
-            ExtProcessorTable::ext_transition_constraints(
-                &all_challenges.processor_table_challenges,
-            ),
-            ExtProcessorTable::ext_terminal_constraints(&all_challenges.processor_table_challenges),
-        );
+        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
 
         ExtProcessorTable {
             inherited_table: extension_table,

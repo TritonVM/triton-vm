@@ -3,7 +3,7 @@ use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -109,11 +109,7 @@ impl RamTable {
         )
     }
 
-    pub fn extend(
-        &self,
-        challenges: &RamTableChallenges,
-        interpolant_degree: Degree,
-    ) -> ExtRamTable {
+    pub fn extend(&self, challenges: &RamTableChallenges) -> ExtRamTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product_for_perm_arg = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
@@ -187,36 +183,15 @@ impl RamTable {
         }
 
         assert_eq!(self.data().len(), extension_matrix.len());
-        let padded_height = extension_matrix.len();
-        let inherited_table = self.extension(
-            extension_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtRamTable::ext_initial_constraints(challenges),
-            ExtRamTable::ext_consistency_constraints(challenges),
-            ExtRamTable::ext_transition_constraints(challenges),
-            ExtRamTable::ext_terminal_constraints(challenges),
-        );
+        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
         ExtRamTable { inherited_table }
     }
 
-    pub fn for_verifier(
-        interpolant_degree: Degree,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-    ) -> ExtRamTable {
+    pub fn for_verifier() -> ExtRamTable {
         let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, vec![], "ExtRamTable".to_string());
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.extension(
-            empty_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtRamTable::ext_initial_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_terminal_constraints(&all_challenges.ram_table_challenges),
-        );
+        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
 
         ExtRamTable {
             inherited_table: extension_table,

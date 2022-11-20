@@ -243,39 +243,27 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn for_verifier(
-        num_trace_randomizers: usize,
-        padded_height: usize,
-        challenges: &AllChallenges,
-        maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Self {
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-
+    pub fn for_verifier(padded_height: usize, maybe_profiler: &mut Option<TritonProfiler>) -> Self {
         prof_start!(maybe_profiler, "program table");
-        let ext_program_table =
-            ProgramTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_program_table = ProgramTable::for_verifier();
         prof_stop!(maybe_profiler, "program table");
         prof_start!(maybe_profiler, "instruction table");
-        let ext_instruction_table =
-            InstructionTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_instruction_table = InstructionTable::for_verifier();
         prof_stop!(maybe_profiler, "instruction table");
         prof_start!(maybe_profiler, "processor table");
-        let ext_processor_table =
-            ProcessorTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_processor_table = ProcessorTable::for_verifier();
         prof_stop!(maybe_profiler, "processor table");
         prof_start!(maybe_profiler, "op stack table");
-        let ext_op_stack_table =
-            OpStackTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_op_stack_table = OpStackTable::for_verifier();
         prof_stop!(maybe_profiler, "op stack table");
         prof_start!(maybe_profiler, "ram table");
-        let ext_ram_table = RamTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_ram_table = RamTable::for_verifier();
         prof_stop!(maybe_profiler, "ram table");
         prof_start!(maybe_profiler, "jump stack table");
-        let ext_jump_stack_table =
-            JumpStackTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_jump_stack_table = JumpStackTable::for_verifier();
         prof_stop!(maybe_profiler, "jump stack table");
         prof_start!(maybe_profiler, "hash table");
-        let ext_hash_table = HashTable::for_verifier(interpolant_degree, padded_height, challenges);
+        let ext_hash_table = HashTable::for_verifier();
         prof_stop!(maybe_profiler, "hash table");
 
         ExtTableCollection {
@@ -309,42 +297,29 @@ impl ExtTableCollection {
     pub fn extend_tables(
         base_tables: &BaseTableCollection,
         all_challenges: &AllChallenges,
-        num_trace_randomizers: usize,
     ) -> Self {
         let padded_height = base_tables.padded_height;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-
         let program_table = base_tables
             .program_table
-            .extend(&all_challenges.program_table_challenges, interpolant_degree);
-
-        let instruction_table = base_tables.instruction_table.extend(
-            &all_challenges.instruction_table_challenges,
-            interpolant_degree,
-        );
-
-        let processor_table = base_tables.processor_table.extend(
-            &all_challenges.processor_table_challenges,
-            interpolant_degree,
-        );
-
-        let op_stack_table = base_tables.op_stack_table.extend(
-            &all_challenges.op_stack_table_challenges,
-            interpolant_degree,
-        );
-
+            .extend(&all_challenges.program_table_challenges);
+        let instruction_table = base_tables
+            .instruction_table
+            .extend(&all_challenges.instruction_table_challenges);
+        let processor_table = base_tables
+            .processor_table
+            .extend(&all_challenges.processor_table_challenges);
+        let op_stack_table = base_tables
+            .op_stack_table
+            .extend(&all_challenges.op_stack_table_challenges);
         let ram_table = base_tables
             .ram_table
-            .extend(&all_challenges.ram_table_challenges, interpolant_degree);
-
-        let jump_stack_table = base_tables.jump_stack_table.extend(
-            &all_challenges.jump_stack_table_challenges,
-            interpolant_degree,
-        );
-
+            .extend(&all_challenges.ram_table_challenges);
+        let jump_stack_table = base_tables
+            .jump_stack_table
+            .extend(&all_challenges.jump_stack_table_challenges);
         let hash_table = base_tables
             .hash_table
-            .extend(&all_challenges.hash_table_challenges, interpolant_degree);
+            .extend(&all_challenges.hash_table_challenges);
 
         ExtTableCollection {
             padded_height,

@@ -187,11 +187,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "extend");
-        let ext_trace_tables = ExtTableCollection::extend_tables(
-            &base_trace_tables,
-            &extension_challenges,
-            self.parameters.num_trace_randomizers,
-        );
+        let ext_trace_tables =
+            ExtTableCollection::extend_tables(&base_trace_tables, &extension_challenges);
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "dual LDE 2");
@@ -675,12 +672,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "generate tables");
-        let ext_table_collection = ExtTableCollection::for_verifier(
-            self.parameters.num_trace_randomizers,
-            padded_height,
-            &extension_challenges,
-            maybe_profiler,
-        );
+        let ext_table_collection = ExtTableCollection::for_verifier(padded_height, maybe_profiler);
         prof_stop!(maybe_profiler, "generate tables");
 
         prof_start!(maybe_profiler, "base");
@@ -1212,11 +1204,7 @@ pub(crate) mod triton_stark_tests {
             parse_simulate_pad(code, stdin, secret_in);
 
         let dummy_challenges = AllChallenges::placeholder();
-        let ext_tables = ExtTableCollection::extend_tables(
-            &base_tables,
-            &dummy_challenges,
-            num_trace_randomizers,
-        );
+        let ext_tables = ExtTableCollection::extend_tables(&base_tables, &dummy_challenges);
 
         (
             stdout,
@@ -1461,15 +1449,11 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn extend_does_not_change_base_table() {
-        let (base_tables, _, num_trace_randomizers, _) =
+        let (base_tables, _, _, _) =
             parse_simulate_pad(sample_programs::FIBONACCI_LT, vec![], vec![]);
 
         let dummy_challenges = AllChallenges::placeholder();
-        let ext_tables = ExtTableCollection::extend_tables(
-            &base_tables,
-            &dummy_challenges,
-            num_trace_randomizers,
-        );
+        let ext_tables = ExtTableCollection::extend_tables(&base_tables, &dummy_challenges);
 
         for (base_table, extension_table) in base_tables.into_iter().zip(ext_tables.into_iter()) {
             for column in 0..base_table.base_width() {

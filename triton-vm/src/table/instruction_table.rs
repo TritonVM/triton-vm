@@ -3,7 +3,7 @@ use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use InstructionTableChallengeId::*;
@@ -377,11 +377,7 @@ impl InstructionTable {
         )
     }
 
-    pub fn extend(
-        &self,
-        challenges: &InstructionTableChallenges,
-        interpolant_degree: Degree,
-    ) -> ExtInstructionTable {
+    pub fn extend(&self, challenges: &InstructionTableChallenges) -> ExtInstructionTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut processor_table_running_product = PermArg::default_initial();
         let mut program_table_running_evaluation = EvalArg::default_initial();
@@ -442,24 +438,11 @@ impl InstructionTable {
         }
 
         assert_eq!(self.data().len(), extension_matrix.len());
-        let padded_height = extension_matrix.len();
-        let inherited_table = self.extension(
-            extension_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtInstructionTable::ext_initial_constraints(challenges),
-            ExtInstructionTable::ext_consistency_constraints(challenges),
-            ExtInstructionTable::ext_transition_constraints(challenges),
-            ExtInstructionTable::ext_terminal_constraints(challenges),
-        );
+        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
         ExtInstructionTable { inherited_table }
     }
 
-    pub fn for_verifier(
-        interpolant_degree: Degree,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-    ) -> ExtInstructionTable {
+    pub fn for_verifier() -> ExtInstructionTable {
         let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
@@ -468,23 +451,7 @@ impl InstructionTable {
         );
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.extension(
-            empty_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtInstructionTable::ext_initial_constraints(
-                &all_challenges.instruction_table_challenges,
-            ),
-            ExtInstructionTable::ext_consistency_constraints(
-                &all_challenges.instruction_table_challenges,
-            ),
-            ExtInstructionTable::ext_transition_constraints(
-                &all_challenges.instruction_table_challenges,
-            ),
-            ExtInstructionTable::ext_terminal_constraints(
-                &all_challenges.instruction_table_challenges,
-            ),
-        );
+        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
 
         ExtInstructionTable {
             inherited_table: extension_table,

@@ -3,7 +3,7 @@ use num_traits::Zero;
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
+use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::{
     ALPHA, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
@@ -528,11 +528,7 @@ impl HashTable {
         )
     }
 
-    pub fn extend(
-        &self,
-        challenges: &HashTableChallenges,
-        interpolant_degree: Degree,
-    ) -> ExtHashTable {
+    pub fn extend(&self, challenges: &HashTableChallenges) -> ExtHashTable {
         let mut from_processor_running_evaluation = EvalArg::default_initial();
         let mut to_processor_running_evaluation = EvalArg::default_initial();
 
@@ -618,40 +614,19 @@ impl HashTable {
         }
 
         assert_eq!(self.data().len(), extension_matrix.len());
-        let padded_height = extension_matrix.len();
-        let extension_table = self.extension(
-            extension_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtHashTable::ext_initial_constraints(challenges),
-            ExtHashTable::ext_consistency_constraints(challenges),
-            ExtHashTable::ext_transition_constraints(challenges),
-            ExtHashTable::ext_terminal_constraints(challenges),
-        );
+        let extension_table = self.new_from_lifted_matrix(extension_matrix);
 
         ExtHashTable {
             inherited_table: extension_table,
         }
     }
 
-    pub fn for_verifier(
-        interpolant_degree: Degree,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-    ) -> ExtHashTable {
+    pub fn for_verifier() -> ExtHashTable {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, vec![], "ExtHashTable".to_string());
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.extension(
-            empty_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtHashTable::ext_initial_constraints(&all_challenges.hash_table_challenges),
-            ExtHashTable::ext_consistency_constraints(&all_challenges.hash_table_challenges),
-            ExtHashTable::ext_transition_constraints(&all_challenges.hash_table_challenges),
-            ExtHashTable::ext_terminal_constraints(&all_challenges.hash_table_challenges),
-        );
+        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
 
         ExtHashTable {
             inherited_table: extension_table,
@@ -800,10 +775,7 @@ impl ExtensionTable for ExtHashTable {
 
 #[cfg(test)]
 mod constraint_tests {
-    use twenty_first::shared_math::other::roundup_npo2;
-
     use crate::table::extension_table::Evaluable;
-    use crate::table::table_collection::interpolant_degree;
     use crate::vm::Program;
 
     use super::*;
@@ -818,14 +790,10 @@ mod constraint_tests {
             panic!("Program execution failed: {e}");
         }
 
-        let padded_height = roundup_npo2(aet.hash_matrix.len() as u64) as usize;
-        let num_trace_randomizers = 0;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-
         let challenges = AllChallenges::placeholder();
         let ext_hash_table =
             HashTable::new_prover(aet.hash_matrix.iter().map(|r| r.to_vec()).collect())
-                .extend(&challenges.hash_table_challenges, interpolant_degree);
+                .extend(&challenges.hash_table_challenges);
 
         for v in ext_hash_table.evaluate_initial_constraints(&ext_hash_table.data()[0], &challenges)
         {
