@@ -89,6 +89,11 @@ fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let table_mod_name = format!("Ext{table_id_name}");
 
+    let initial_constraints_degrees =
+        turn_circuits_into_degree_bounds_string(initial_constraint_circuits);
+    let transition_constraints_degrees =
+        turn_circuits_into_degree_bounds_string(transition_constraint_circuits);
+
     let initial_constraint_strings = turn_circuits_into_string(initial_constraint_circuits);
     let transition_constraint_strings = turn_circuits_into_string(transition_constraint_circuits);
 
@@ -100,12 +105,15 @@ fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
 
     format!(
         "
+use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::table::challenges::AllChallenges;
 use crate::table::challenges::TableChallenges;
 use crate::table::extension_table::Evaluable;
+use crate::table::extension_table::Quotientable;
+use crate::table::table_collection::interpolant_degree;
 use crate::table::{table_name_snake}::{table_mod_name};
 use crate::table::{table_name_snake}::{challenge_enum_name}::*;
 
@@ -134,8 +142,40 @@ impl Evaluable for {table_mod_name} {{
         {transition_constraint_strings}
     }}
 }}
+
+impl Quotientable for {table_mod_name} {{
+    fn get_initial_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {{
+        let zerofier_degree = 1 as Degree;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        [{initial_constraints_degrees}].to_vec()
+    }}
+
+    fn get_transition_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {{
+        let zerofier_degree = padded_height as Degree - 1;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        [{transition_constraints_degrees}].to_vec()
+    }}
+}}
 "
     )
+}
+
+fn turn_circuits_into_degree_bounds_string<T: TableChallenges, II: InputIndicator>(
+    transition_constraint_circuits: &[ConstraintCircuit<T, II>],
+) -> String {
+    transition_constraint_circuits
+        .iter()
+        .map(|circuit| circuit.degree())
+        .map(|degree| format!("interpolant_degree * {degree} as Degree - zerofier_degree"))
+        .join(",\n")
 }
 
 fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(

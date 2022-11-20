@@ -28,7 +28,7 @@ use super::challenges::TableChallenges;
 use super::constraint_circuit::{
     ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad, DualRowIndicator,
 };
-use super::extension_table::{Quotientable, QuotientableExtensionTable};
+use super::extension_table::QuotientableExtensionTable;
 
 pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
 pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
@@ -676,7 +676,6 @@ pub struct ExtProcessorTable {
     pub(crate) inherited_table: Table<XFieldElement>,
 }
 
-impl Quotientable for ExtProcessorTable {}
 impl QuotientableExtensionTable for ExtProcessorTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtProcessorTable {

@@ -22,7 +22,7 @@ use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
 use super::constraint_circuit::DualRowIndicator::*;
 use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -66,7 +66,6 @@ impl Default for ExtJumpStackTable {
     }
 }
 
-impl Quotientable for ExtJumpStackTable {}
 impl QuotientableExtensionTable for ExtJumpStackTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtJumpStackTable {

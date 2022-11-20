@@ -19,7 +19,7 @@ use crate::table::constraint_circuit::SingleRowIndicator::Row;
 use crate::table::constraint_circuit::{
     ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator,
 };
-use crate::table::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use crate::table::extension_table::{ExtensionTable, QuotientableExtensionTable};
 use crate::table::table_column::RamBaseTableColumn::{self, *};
 use crate::table::table_column::RamExtTableColumn::{self, *};
 
@@ -67,7 +67,6 @@ impl Default for ExtRamTable {
     }
 }
 
-impl Quotientable for ExtRamTable {}
 impl QuotientableExtensionTable for ExtRamTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtRamTable {

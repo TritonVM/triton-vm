@@ -20,7 +20,7 @@ use super::base_table::{InheritsFromTable, Table, TableLike};
 use super::challenges::{AllChallenges, TableChallenges};
 use super::constraint_circuit::DualRowIndicator::*;
 use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
@@ -64,7 +64,6 @@ impl Default for ExtProgramTable {
     }
 }
 
-impl Quotientable for ExtProgramTable {}
 impl QuotientableExtensionTable for ExtProgramTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtProgramTable {

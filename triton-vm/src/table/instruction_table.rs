@@ -20,7 +20,7 @@ use super::constraint_circuit::DualRowIndicator::{self, *};
 use super::constraint_circuit::{
     ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad,
 };
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 use super::table_column::InstructionBaseTableColumn::{self, *};
 use super::table_column::InstructionExtTableColumn::{self, *};
 
@@ -120,7 +120,6 @@ impl Default for ExtInstructionTable {
     }
 }
 
-impl Quotientable for ExtInstructionTable {}
 impl QuotientableExtensionTable for ExtInstructionTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtInstructionTable {
