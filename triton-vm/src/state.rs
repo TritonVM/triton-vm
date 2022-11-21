@@ -42,19 +42,19 @@ pub struct VMState<'pgm> {
     /// Triton VM's four kinds of memory:
     ///
     /// 1. **Program memory**, from which the VM reads instructions
-    program: &'pgm [Instruction],
+    pub program: &'pgm [Instruction],
 
     /// 2. **Random-access memory**, to which the VM can read and write field elements
-    ram: HashMap<BFieldElement, BFieldElement>,
+    pub ram: HashMap<BFieldElement, BFieldElement>,
 
     /// 3. **Op-stack memory**, which stores the part of the operational stack
     ///    that is not represented explicitly by the operational stack registers
     ///
     ///    *(An implementation detail: We keep the entire stack in one `Vec<>`.)*
-    op_stack: OpStack,
+    pub op_stack: OpStack,
 
     /// 4. Jump-stack memory, which stores the entire jump stack
-    jump_stack: Vec<(BFieldElement, BFieldElement)>,
+    pub jump_stack: Vec<(BFieldElement, BFieldElement)>,
 
     ///
     /// Registers
@@ -66,7 +66,7 @@ pub struct VMState<'pgm> {
     pub instruction_pointer: usize,
 
     /// RAM pointer
-    ramp: u64,
+    pub ramp: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
