@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::process::Command;
 
-use heck::ToUpperCamelCase;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -21,79 +20,101 @@ use triton_vm::table::ram_table::ExtRamTable;
 fn main() {
     println!("Generate those constraint evaluators!");
 
-    let table_name_snake = "program_table";
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["program"]);
     let source_code = gen(
-        table_name_snake,
+        &table_name_snake,
+        &table_name_camel,
         &mut ExtProgramTable::ext_initial_constraints_as_circuits(),
         &mut ExtProgramTable::ext_consistency_constraints_as_circuits(),
         &mut ExtProgramTable::ext_transition_constraints_as_circuits(),
         &mut ExtProgramTable::ext_terminal_constraints_as_circuits(),
     );
-    write(table_name_snake, source_code);
+    write(&table_name_snake, source_code);
 
-    let tabe_name_snake = "instruction_table";
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["instruction"]);
     let source_code = gen(
-        tabe_name_snake,
+        &table_name_snake,
+        &table_name_camel,
         &mut ExtInstructionTable::ext_initial_constraints_as_circuits(),
         &mut ExtInstructionTable::ext_consistency_constraints_as_circuits(),
         &mut ExtInstructionTable::ext_transition_constraints_as_circuits(),
         &mut ExtInstructionTable::ext_terminal_constraints_as_circuits(),
     );
-    write(tabe_name_snake, source_code);
+    write(&table_name_snake, source_code);
 
-    let table_name_snake = "processor_table";
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["processor"]);
     let source_code = gen(
-        table_name_snake,
+        &table_name_snake,
+        &table_name_camel,
         &mut ExtProcessorTable::ext_initial_constraints_as_circuits(),
         &mut ExtProcessorTable::ext_consistency_constraints_as_circuits(),
         &mut ExtProcessorTable::ext_transition_constraints_as_circuits(),
         &mut ExtProcessorTable::ext_terminal_constraints_as_circuits(),
     );
-    write(table_name_snake, source_code);
+    write(&table_name_snake, source_code);
 
-    let table_name_snake = "op_stack_table";
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["op", "stack"]);
     let source_code = gen(
-        table_name_snake,
+        &table_name_snake,
+        &table_name_camel,
         &mut ExtOpStackTable::ext_initial_constraints_as_circuits(),
         &mut ExtOpStackTable::ext_consistency_constraints_as_circuits(),
         &mut ExtOpStackTable::ext_transition_constraints_as_circuits(),
         &mut ExtOpStackTable::ext_terminal_constraints_as_circuits(),
     );
-    write(table_name_snake, source_code);
+    write(&table_name_snake, source_code);
 
-    let table_name_snake = "ram_table";
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["ram"]);
     let source_code = gen(
-        table_name_snake,
+        &table_name_snake,
+        &table_name_camel,
         &mut ExtRamTable::ext_initial_constraints_as_circuits(),
         &mut ExtRamTable::ext_consistency_constraints_as_circuits(),
         &mut ExtRamTable::ext_transition_constraints_as_circuits(),
         &mut ExtRamTable::ext_terminal_constraints_as_circuits(),
     );
-    write(table_name_snake, source_code);
+    write(&table_name_snake, source_code);
 
-    let table_name_snake = "jump_stack_table";
+    let (table_name_snake, table_name_camel) =
+        construct_needed_table_identifiers(&["jump", "stack"]);
     let source_code = gen(
-        table_name_snake,
+        &table_name_snake,
+        &table_name_camel,
         &mut ExtJumpStackTable::ext_initial_constraints_as_circuits(),
         &mut ExtJumpStackTable::ext_consistency_constraints_as_circuits(),
         &mut ExtJumpStackTable::ext_transition_constraints_as_circuits(),
         &mut ExtJumpStackTable::ext_terminal_constraints_as_circuits(),
     );
-    write(table_name_snake, source_code);
+    write(&table_name_snake, source_code);
 
-    let table_name_snake = "hash_table";
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["hash"]);
     let source_code = gen(
-        table_name_snake,
+        &table_name_snake,
+        &table_name_camel,
         &mut ExtHashTable::ext_initial_constraints_as_circuits(),
         &mut ExtHashTable::ext_consistency_constraints_as_circuits(),
         &mut ExtHashTable::ext_transition_constraints_as_circuits(),
         &mut ExtHashTable::ext_terminal_constraints_as_circuits(),
     );
-    write(table_name_snake, source_code);
+    write(&table_name_snake, source_code);
 
     if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
         println!("cargo fmt failed: {}", fmt_failed);
     }
+}
+
+fn construct_needed_table_identifiers(table_name_constituents: &[&str]) -> (String, String) {
+    let table_name_snake = format!("{}_table", table_name_constituents.join("_"));
+    let title_case = table_name_constituents
+        .iter()
+        .map(|part| {
+            let (first_char, rest) = part.split_at(1);
+            let first_char_upper = first_char.to_uppercase();
+            format!("{first_char_upper}{rest}")
+        })
+        .collect_vec();
+    let table_name_camel = format!("{}Table", title_case.iter().join(""));
+    (table_name_snake, table_name_camel)
 }
 
 fn write(table_name_snake: &str, rust_source_code: String) {
@@ -105,12 +126,12 @@ fn write(table_name_snake: &str, rust_source_code: String) {
 
 fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     table_name_snake: &str,
+    table_id_name: &str,
     initial_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
     consistency_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
     transition_constraint_circuits: &mut [ConstraintCircuit<T, DII>],
     terminal_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
 ) -> String {
-    let table_id_name = table_name_snake.to_upper_camel_case();
     let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let table_mod_name = format!("Ext{table_id_name}");
 
