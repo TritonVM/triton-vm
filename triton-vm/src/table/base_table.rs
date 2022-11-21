@@ -5,7 +5,6 @@ use rand_distr::{Distribution, Standard};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::ops::{Mul, MulAssign, Range};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other::{random_elements, roundup_npo2};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
@@ -101,85 +100,6 @@ pub trait Extendable: TableLike<BFieldElement> {
             }
         }
         assert_eq!(padded_height, self.data().len());
-    }
-
-    /// Computes the degree bounds of the quotients given the AIR constraints and the interpolant
-    /// degree. The AIR constraints are defined over a symbolic ring with `full_width`-many
-    /// variables.
-    fn compute_degree_bounds(
-        air_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-        zerofier_degree: Degree,
-        full_width: usize,
-    ) -> Vec<Degree> {
-        air_constraints
-            .iter()
-            .map(|mpo| {
-                mpo.symbolic_degree_bound(&vec![interpolant_degree; full_width]) - zerofier_degree
-            })
-            .collect()
-    }
-
-    fn get_initial_quotient_degree_bounds(
-        &self,
-        initial_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-    ) -> Vec<Degree> {
-        let zerofier_degree = 1;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            initial_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            full_width,
-        )
-    }
-
-    fn get_consistency_quotient_degree_bounds(
-        &self,
-        consistency_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-        padded_height: usize,
-    ) -> Vec<Degree> {
-        let zerofier_degree = padded_height as Degree;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            consistency_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            full_width,
-        )
-    }
-
-    fn get_transition_quotient_degree_bounds(
-        &self,
-        transition_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-        padded_height: usize,
-    ) -> Vec<Degree> {
-        let zerofier_degree = (padded_height - 1) as Degree;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            transition_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            2 * full_width,
-        )
-    }
-
-    fn get_terminal_quotient_degree_bounds(
-        &self,
-        terminal_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-    ) -> Vec<Degree> {
-        let zerofier_degree = 1;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            terminal_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            full_width,
-        )
     }
 }
 
