@@ -1,14 +1,13 @@
-use std::{error::Error, fmt::Display};
-
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use twenty_first::{
-    shared_math::{
-        b_field_element::BFieldElement, rescue_prime_digest::Digest,
-        rescue_prime_regular::DIGEST_LENGTH, x_field_element::XFieldElement,
-    },
-    util_types::{algebraic_hasher::Hashable, merkle_tree::PartialAuthenticationPath},
-};
+use std::{error::Error, fmt::Display};
+
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_digest::Digest;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::algebraic_hasher::Hashable;
+use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 
 #[derive(Debug, Clone)]
 pub struct BFieldCodecError {
