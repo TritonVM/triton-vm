@@ -109,8 +109,6 @@ pub enum ProofItem {
     TransposedBaseElements(Vec<BFieldElement>),
     TransposedExtensionElements(Vec<XFieldElement>),
     AuthenticationPath(Vec<Digest>),
-    // FIXME: Redundancy.
-    RevealedCombinationElement(XFieldElement),
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
     FriResponse(FriResponse),
@@ -250,21 +248,6 @@ where
         }
     }
 
-    pub fn as_revealed_combination_element(&self) -> Result<XFieldElement> {
-        match self {
-            Self::RevealedCombinationElement(x) => Ok(x.to_owned()),
-            Self::Uncast(str) => match XFieldElement::decode(str) {
-                Ok(revealed_combination_element) => Ok(*revealed_combination_element),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to revealed combination element failed",
-                ))),
-            },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
-                "expected revealed combination element, but got something else",
-            ))),
-        }
-    }
-
     pub fn as_revealed_combination_elements(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::RevealedCombinationElements(xs) => Ok(xs.to_owned()),
@@ -353,7 +336,6 @@ impl BFieldCodec for ProofItem {
             ProofItem::TransposedBaseElements(something) => something.encode(),
             ProofItem::TransposedExtensionElements(something) => something.encode(),
             ProofItem::AuthenticationPath(something) => something.encode(),
-            ProofItem::RevealedCombinationElement(something) => something.encode(),
             ProofItem::RevealedCombinationElements(something) => something.encode(),
             ProofItem::FriCodeword(something) => something.encode(),
             ProofItem::FriResponse(something) => something.encode(),

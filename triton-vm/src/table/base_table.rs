@@ -141,7 +141,6 @@ where
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> (Table<FF>, Table<FF>) {
-        // FIXME: Table<> supports Vec<[FF; WIDTH]>, but Domain does not (yet).
         let interpolated_columns = self.interpolate_columns(num_trace_randomizers, columns);
         let quotient_domain_codewords = interpolated_columns
             .par_iter()

@@ -250,7 +250,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         F: Fn(&Dest) -> NewDest,
     {
         match self {
-            // Fixme: can we treat everything that doesn't change with the same line of code?
             Pop => Pop,
             Push(x) => Push(*x),
             Divine(x) => Divine(*x),
@@ -383,7 +382,6 @@ fn convert_labels_helper(
 
         LabelledInstruction::Instruction(instr) => {
             let unlabelled_instruction: Instruction = instr.map_call_address(|label_name| {
-                // FIXME: Consider failing graciously on missing labels.
                 let label_not_found = format!("Label not found: {}", label_name);
                 let absolute_address = label_map.get(label_name).expect(&label_not_found);
                 BFieldElement::new(*absolute_address as u64)
@@ -1159,37 +1157,6 @@ pub mod sample_programs {
         // _ d
         "halt ",
     );
-
-    // This cannot not print because we need to itoa() before write_io.
-    // TODO: Swap0-7 are now available and we can continue this implementation.
-    pub const XGCD: &str = "
-        push 1
-        push 0
-        push 0
-        push 1
-        push 240
-        push 46
-    12: dup1
-        dup1
-        lt
-        skiz
-        swap1
-        dup0
-        push 0
-        eq
-        skiz
-        call 33
-        dup1
-        dup1
-        div
-    33: swap2
-        swap3
-        pop
-        pop
-        call 12
-        pop
-        halt
-    ";
 
     pub const HASH_HASH_HASH_HALT: &str = "
         hash

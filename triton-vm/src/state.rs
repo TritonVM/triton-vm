@@ -453,8 +453,7 @@ impl<'pgm> VMState<'pgm> {
         use ProcessorBaseTableColumn::*;
         let mut row = [BFieldElement::zero(); processor_table::BASE_WIDTH];
 
-        // todo: is `Instruction::Halt` a good default?
-        let current_instruction = self.current_instruction().unwrap_or(Instruction::Halt);
+        let current_instruction = self.current_instruction().unwrap_or(Nop);
         let hvs = self.derive_helper_variables();
         let ramp = self.ramp.into();
 
@@ -1102,29 +1101,6 @@ mod vm_state_tests {
         let expected = BFieldElement::new(14);
         let actual = *out.last().unwrap();
         assert_eq!(expected, actual);
-    }
-
-    #[test]
-    #[ignore = "assembly not up to date"]
-    fn run_tvm_xgcd_test() {
-        // The XGCD program is work in progress.
-        let code = sample_programs::XGCD;
-        let program = Program::from_code(code).unwrap();
-
-        println!("{}", program);
-        let (trace, _out, _err) = program.run(vec![], vec![]);
-
-        println!("{}", program);
-        for state in trace.iter() {
-            println!("{}", state);
-        }
-
-        let _last_state = trace.last().unwrap();
-
-        let _expected = BFieldElement::new(14);
-        let _actual = _last_state.op_stack.st(ST0);
-
-        //assert_eq!(expected, actual);
     }
 
     #[test]
