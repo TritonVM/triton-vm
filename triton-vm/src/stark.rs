@@ -187,11 +187,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "extend");
-        let ext_trace_tables = ExtTableCollection::extend_tables(
-            &base_trace_tables,
-            &extension_challenges,
-            self.parameters.num_trace_randomizers,
-        );
+        let ext_trace_tables =
+            ExtTableCollection::extend_tables(&base_trace_tables, &extension_challenges);
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "dual LDE 2");
@@ -675,12 +672,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "generate tables");
-        let ext_table_collection = ExtTableCollection::for_verifier(
-            self.parameters.num_trace_randomizers,
-            padded_height,
-            &extension_challenges,
-            maybe_profiler,
-        );
+        let ext_table_collection = ExtTableCollection::for_verifier(padded_height, maybe_profiler);
         prof_stop!(maybe_profiler, "generate tables");
 
         prof_start!(maybe_profiler, "base");
@@ -1212,11 +1204,7 @@ pub(crate) mod triton_stark_tests {
             parse_simulate_pad(code, stdin, secret_in);
 
         let dummy_challenges = AllChallenges::placeholder();
-        let ext_tables = ExtTableCollection::extend_tables(
-            &base_tables,
-            &dummy_challenges,
-            num_trace_randomizers,
-        );
+        let ext_tables = ExtTableCollection::extend_tables(&base_tables, &dummy_challenges);
 
         (
             stdout,
@@ -1243,61 +1231,6 @@ pub(crate) mod triton_stark_tests {
         for deg in all_degrees {
             println!("{}", deg);
         }
-    }
-
-    #[test]
-    pub fn print_all_coefficient_counts() {
-        let ext_tables = ExtTableCollection::with_padded_height(2);
-        for table in ext_tables
-            .into_iter()
-            .filter(|&table| table.name() != "EmptyExtHashTable")
-        {
-            for (idx, constraint) in table
-                .dynamic_initial_constraints(&AllChallenges::placeholder())
-                .into_iter()
-                .enumerate()
-            {
-                println!(
-                    "{} initial constraint with index {idx} has {} coefficients.",
-                    table.name(),
-                    constraint.coefficients.len()
-                );
-            }
-            for (idx, constraint) in table
-                .dynamic_consistency_constraints(&AllChallenges::placeholder())
-                .into_iter()
-                .enumerate()
-            {
-                println!(
-                    "{} consistency constraint with index {idx} has {} coefficients.",
-                    table.name(),
-                    constraint.coefficients.len()
-                );
-            }
-            for (idx, constraint) in table
-                .dynamic_transition_constraints(&AllChallenges::placeholder())
-                .into_iter()
-                .enumerate()
-            {
-                println!(
-                    "{} transition constraint with index {idx} has {} coefficients.",
-                    table.name(),
-                    constraint.coefficients.len()
-                );
-            }
-            for (idx, constraint) in table
-                .dynamic_terminal_constraints(&AllChallenges::placeholder())
-                .into_iter()
-                .enumerate()
-            {
-                println!(
-                    "{} terminal constraint with index {idx} has {} coefficients.",
-                    table.name(),
-                    constraint.coefficients.len()
-                );
-            }
-        }
-        println!("HashTable AIR's coefficients cannot be counted because they are hardcoded.");
     }
 
     #[test]
@@ -1465,15 +1398,11 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn extend_does_not_change_base_table() {
-        let (base_tables, _, num_trace_randomizers, _) =
+        let (base_tables, _, _, _) =
             parse_simulate_pad(sample_programs::FIBONACCI_LT, vec![], vec![]);
 
         let dummy_challenges = AllChallenges::placeholder();
-        let ext_tables = ExtTableCollection::extend_tables(
-            &base_tables,
-            &dummy_challenges,
-            num_trace_randomizers,
-        );
+        let ext_tables = ExtTableCollection::extend_tables(&base_tables, &dummy_challenges);
 
         for (base_table, extension_table) in base_tables.into_iter().zip(ext_tables.into_iter()) {
             for column in 0..base_table.base_width() {
@@ -1853,5 +1782,27 @@ pub(crate) mod triton_stark_tests {
             panic!("The Verifier is unhappy! {}", e);
         }
         assert!(result.unwrap());
+    }
+
+    #[test]
+    #[ignore = "stress test"]
+    fn prove_fib_successively_larger() {
+        let source_code = sample_programs::FIBONACCI_VIT;
+
+        for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
+            let mut profiler = Some(TritonProfiler::new(&format!(
+                "element #{fibonacci_number:>4} from Fibonacci sequence"
+            )));
+            let stdin = vec![BFieldElement::new(fibonacci_number)];
+            let (stark, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
+            let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
+            let fri_dom_len_str = format!("log_2 of FRI domain length: {}", log_fri_dom_len);
+            prof_start!(profiler, &fri_dom_len_str);
+            prof_stop!(profiler, &fri_dom_len_str);
+            if let Some(mut p) = profiler {
+                p.finish();
+                println!("{}", p.report())
+            }
+        }
     }
 }

@@ -19,7 +19,7 @@ pub trait TableChallenges: Clone + Debug {
     type Id: Display
         + Clone
         + Copy
-        + std::fmt::Debug
+        + Debug
         + EnumCount
         + IntoEnumIterator
         + Into<usize>
@@ -34,12 +34,7 @@ pub trait TableChallenges: Clone + Debug {
     fn get_challenge(&self, id: Self::Id) -> XFieldElement;
 
     fn to_vec(&self) -> Vec<XFieldElement> {
-        let mut ret: Vec<XFieldElement> = vec![];
-        for id in Self::Id::iter() {
-            ret.push(self.get_challenge(id));
-        }
-
-        ret
+        Self::Id::iter().map(|id| self.get_challenge(id)).collect()
     }
 }
 

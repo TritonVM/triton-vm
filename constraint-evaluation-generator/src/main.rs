@@ -2,55 +2,119 @@ use std::collections::HashSet;
 use std::process::Command;
 
 use itertools::Itertools;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
 use triton_vm::table::challenges::TableChallenges;
 use triton_vm::table::constraint_circuit::{
     CircuitExpression, CircuitId, ConstraintCircuit, InputIndicator,
 };
+use triton_vm::table::hash_table::ExtHashTable;
 use triton_vm::table::instruction_table::ExtInstructionTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
 use triton_vm::table::op_stack_table::ExtOpStackTable;
 use triton_vm::table::processor_table::ExtProcessorTable;
 use triton_vm::table::program_table::ExtProgramTable;
 use triton_vm::table::ram_table::ExtRamTable;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 fn main() {
     println!("Generate those constraint evaluators!");
 
-    // Program table
-    let mut circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("program_table", "ProgramTable", &mut circuits);
-    write("program_table", source_code);
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["program"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtProgramTable::ext_initial_constraints_as_circuits(),
+        &mut ExtProgramTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtProgramTable::ext_transition_constraints_as_circuits(),
+        &mut ExtProgramTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
 
-    // Instruction table
-    let mut circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("instruction_table", "InstructionTable", &mut circuits);
-    write("instruction_table", source_code);
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["instruction"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtInstructionTable::ext_initial_constraints_as_circuits(),
+        &mut ExtInstructionTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtInstructionTable::ext_transition_constraints_as_circuits(),
+        &mut ExtInstructionTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
 
-    // Processor table
-    let mut circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("processor_table", "ProcessorTable", &mut circuits);
-    write("processor_table", source_code);
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["processor"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtProcessorTable::ext_initial_constraints_as_circuits(),
+        &mut ExtProcessorTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtProcessorTable::ext_transition_constraints_as_circuits(),
+        &mut ExtProcessorTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
 
-    // Opstack table
-    let mut constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("op_stack_table", "OpStackTable", &mut constraint_circuits);
-    write("op_stack_table", source_code);
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["op", "stack"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtOpStackTable::ext_initial_constraints_as_circuits(),
+        &mut ExtOpStackTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtOpStackTable::ext_transition_constraints_as_circuits(),
+        &mut ExtOpStackTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
 
-    // RAM table
-    let mut circuits = ExtRamTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("ram_table", "RamTable", &mut circuits);
-    write("ram_table", source_code);
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["ram"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtRamTable::ext_initial_constraints_as_circuits(),
+        &mut ExtRamTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtRamTable::ext_transition_constraints_as_circuits(),
+        &mut ExtRamTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
 
-    // JumpStack table
-    let mut circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
-    let source_code = gen("jump_stack_table", "JumpStackTable", &mut circuits);
-    write("jump_stack_table", source_code);
+    let (table_name_snake, table_name_camel) =
+        construct_needed_table_identifiers(&["jump", "stack"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtJumpStackTable::ext_initial_constraints_as_circuits(),
+        &mut ExtJumpStackTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtJumpStackTable::ext_transition_constraints_as_circuits(),
+        &mut ExtJumpStackTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
+
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["hash"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtHashTable::ext_initial_constraints_as_circuits(),
+        &mut ExtHashTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtHashTable::ext_transition_constraints_as_circuits(),
+        &mut ExtHashTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
 
     if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
         println!("cargo fmt failed: {}", fmt_failed);
     }
+}
+
+fn construct_needed_table_identifiers(table_name_constituents: &[&str]) -> (String, String) {
+    let table_name_snake = format!("{}_table", table_name_constituents.join("_"));
+    let title_case = table_name_constituents
+        .iter()
+        .map(|part| {
+            let (first_char, rest) = part.split_at(1);
+            let first_char_upper = first_char.to_uppercase();
+            format!("{first_char_upper}{rest}")
+        })
+        .collect_vec();
+    let table_name_camel = format!("{}Table", title_case.iter().join(""));
+    (table_name_snake, table_name_camel)
 }
 
 fn write(table_name_snake: &str, rust_source_code: String) {
@@ -60,9 +124,176 @@ fn write(table_name_snake: &str, rust_source_code: String) {
     std::fs::write(output_filename, rust_source_code).expect("Write Rust source code");
 }
 
-fn gen<T: TableChallenges, II: InputIndicator>(
+fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     table_name_snake: &str,
     table_id_name: &str,
+    initial_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
+    consistency_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
+    transition_constraint_circuits: &mut [ConstraintCircuit<T, DII>],
+    terminal_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
+) -> String {
+    let challenge_enum_name = format!("{table_id_name}ChallengeId");
+    let table_mod_name = format!("Ext{table_id_name}");
+
+    let initial_constraints_degrees =
+        turn_circuits_into_degree_bounds_string(initial_constraint_circuits);
+    let consistency_constraints_degrees =
+        turn_circuits_into_degree_bounds_string(consistency_constraint_circuits);
+    let transition_constraints_degrees =
+        turn_circuits_into_degree_bounds_string(transition_constraint_circuits);
+    let terminal_constraints_degrees =
+        turn_circuits_into_degree_bounds_string(terminal_constraint_circuits);
+
+    let initial_constraint_strings = turn_circuits_into_string(initial_constraint_circuits);
+    let consistency_constraint_strings = turn_circuits_into_string(consistency_constraint_circuits);
+    let transition_constraint_strings = turn_circuits_into_string(transition_constraint_circuits);
+    let terminal_constraint_strings = turn_circuits_into_string(terminal_constraint_circuits);
+
+    // maybe-prefixes to supress clippy's warnings for unused variables
+    let initial_challenges_used = if initial_constraint_strings.contains("challenges") {
+        ""
+    } else {
+        "_"
+    };
+    let consistency_challenges_used = if consistency_constraint_strings.contains("challenges") {
+        ""
+    } else {
+        "_"
+    };
+    let terminal_challenges_used = if terminal_constraint_strings.contains("challenges") {
+        ""
+    } else {
+        "_"
+    };
+    let consistency_constraints_exist = if consistency_constraints_degrees.is_empty() {
+        "_"
+    } else {
+        ""
+    };
+    let terminal_constraints_exist = if terminal_constraints_degrees.is_empty() {
+        "_"
+    } else {
+        ""
+    };
+
+    format!(
+        "
+use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+
+use crate::table::challenges::AllChallenges;
+use crate::table::challenges::TableChallenges;
+use crate::table::extension_table::Evaluable;
+use crate::table::extension_table::Quotientable;
+use crate::table::table_collection::interpolant_degree;
+use crate::table::{table_name_snake}::{table_mod_name};
+use crate::table::{table_name_snake}::{challenge_enum_name}::*;
+
+// This file has been auto-generated. Any modifications _will_ be lost.
+// To re-generate, execute:
+// `cargo run --bin constraint-evaluation-generator`
+impl Evaluable for {table_mod_name} {{
+    #[inline]
+    fn evaluate_initial_constraints(
+        &self,
+        row: &[XFieldElement],
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {{
+        let {initial_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        {initial_constraint_strings}
+    }}
+
+    #[inline]
+    fn evaluate_consistency_constraints(
+        &self,
+        {consistency_constraints_exist}row: &[XFieldElement],
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {{
+        let {consistency_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        {consistency_constraint_strings}
+    }}
+
+    #[inline]
+    fn evaluate_transition_constraints(
+        &self,
+        current_row: &[XFieldElement],
+        next_row: &[XFieldElement],
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {{
+        let challenges = &challenges.{table_name_snake}_challenges;
+        {transition_constraint_strings}
+    }}
+
+    #[inline]
+    fn evaluate_terminal_constraints(
+        &self,
+        {terminal_constraints_exist}row: &[XFieldElement],
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {{
+        let {terminal_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        {terminal_constraint_strings}
+    }}
+}}
+
+impl Quotientable for {table_mod_name} {{
+    fn get_initial_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {{
+        let zerofier_degree = 1 as Degree;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        [{initial_constraints_degrees}].to_vec()
+    }}
+
+    fn get_consistency_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {{
+        let {consistency_constraints_exist}zerofier_degree = padded_height as Degree;
+        let {consistency_constraints_exist}interpolant_degree =
+            interpolant_degree(padded_height, num_trace_randomizers);
+        [{consistency_constraints_degrees}].to_vec()
+    }}
+
+    fn get_transition_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {{
+        let zerofier_degree = padded_height as Degree - 1;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        [{transition_constraints_degrees}].to_vec()
+    }}
+
+    fn get_terminal_quotient_degree_bounds(
+        &self,
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {{
+        let {terminal_constraints_exist}zerofier_degree = 1 as Degree;
+        let {terminal_constraints_exist}interpolant_degree =
+            interpolant_degree(padded_height, num_trace_randomizers);
+        [{terminal_constraints_degrees}].to_vec()
+    }}
+}}
+"
+    )
+}
+
+fn turn_circuits_into_degree_bounds_string<T: TableChallenges, II: InputIndicator>(
+    transition_constraint_circuits: &[ConstraintCircuit<T, II>],
+) -> String {
+    transition_constraint_circuits
+        .iter()
+        .map(|circuit| circuit.degree())
+        .map(|degree| format!("interpolant_degree * {degree} as Degree - zerofier_degree"))
+        .join(",\n")
+}
+
+fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
     constraint_circuits: &mut [ConstraintCircuit<T, II>],
 ) -> String {
     // Delete redundant nodes
@@ -74,7 +305,7 @@ fn gen<T: TableChallenges, II: InputIndicator>(
     // Count number of times each node is visited
     ConstraintCircuit::traverse_multiple(constraint_circuits);
 
-    // Get all values for the visited counters in the entire multitree
+    // Get all values for the visited counters in the entire multi-circuit
     let mut visited_counters = vec![];
     for constraint in constraint_circuits.iter() {
         visited_counters.append(&mut constraint.get_all_visited_counters());
@@ -88,13 +319,12 @@ fn gen<T: TableChallenges, II: InputIndicator>(
     // In the main function we predeclare all variables with a visit count of more than 1
     // These declarations must be made from the highest count number to the lowest, otherwise
     // the code will refer to bindings that have not yet been made
-    let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let mut shared_evaluations: Vec<String> = vec![];
     for visited_counter in visited_counters {
         if visited_counter == 1 {
             continue;
         }
-        shared_evaluations.push(evaluate_nodes_with_visit_count(
+        shared_evaluations.push(declare_nodes_with_visit_count(
             visited_counter,
             constraint_circuits,
         ));
@@ -104,7 +334,7 @@ fn gen<T: TableChallenges, II: InputIndicator>(
 
     let mut constraint_evaluation_expressions: Vec<String> = vec![];
     for constraint in constraint_circuits.iter() {
-        // Build code for expressions that evaluate to the transition constraints
+        // Build code for expressions that evaluate to the constraints
         let mut constraint_evaluation = String::default();
         let _dependent_symbols = evaluate_single_node(
             1,
@@ -118,55 +348,26 @@ fn gen<T: TableChallenges, II: InputIndicator>(
 
     let constraint_evaluations_joined = constraint_evaluation_expressions.join(",\n");
 
-    let root_evaluation_expressions = format!(
-        "vec![
-        {constraint_evaluations_joined}
-    ]"
-    );
-
-    let table_mod_name = format!("Ext{table_id_name}");
-
-    format!(
-        "
-use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-
-use crate::table::challenges::AllChallenges;
-use crate::table::challenges::TableChallenges;
-use crate::table::extension_table::Evaluable;
-use crate::table::{table_name_snake}::{table_mod_name};
-use crate::table::{table_name_snake}::{challenge_enum_name}::*;
-
-impl Evaluable for {table_mod_name} {{
-    #[inline]
-    fn evaluate_transition_constraints(
-        &self,
-        current_row: &[XFieldElement],
-        next_row: &[XFieldElement],
-        challenges: &AllChallenges,
-    ) -> Vec<XFieldElement> {{
-        let challenges = &challenges.{table_name_snake}_challenges;
-        {shared_declarations}
-
-        {root_evaluation_expressions}
-    }}
-}}
-"
-    )
+    format!("{shared_declarations}\n\nvec![{constraint_evaluations_joined}]")
 }
 
 /// Produce the code to evaluate code for all nodes that share a value number of
 /// times visited. A value for all nodes with a higher count than the provided are assumed
 /// to be in scope.
-fn evaluate_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
-    visited_count: usize,
+fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
+    requested_visited_count: usize,
     circuits: &[ConstraintCircuit<T, II>],
 ) -> String {
     let mut in_scope: HashSet<CircuitId> = HashSet::new();
     let mut output = String::default();
 
     for circuit in circuits.iter() {
-        declare_single_node_with_visit_count(visited_count, circuit, &mut in_scope, &mut output);
+        declare_single_node_with_visit_count(
+            requested_visited_count,
+            circuit,
+            &mut in_scope,
+            &mut output,
+        );
     }
 
     output
@@ -178,7 +379,6 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     in_scope: &mut HashSet<CircuitId>,
     output: &mut String,
 ) {
-    println!("requested_visited_count = {requested_visited_count}");
     if circuit.visited_counter < requested_visited_count {
         // If the visited counter is not there yet, make a recursive call. We are
         // not yet ready to bind this node's ID to a value.
@@ -223,6 +423,7 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
         output.push_str(";\n");
 
         let new_insertion = in_scope.insert(circuit.id.clone());
+        // sanity check: don't declare same node multiple times
         assert!(new_insertion);
     }
 }
@@ -301,7 +502,7 @@ fn print_bfe(bfe: &BFieldElement) -> String {
 
 fn print_xfe(xfe: &XFieldElement) -> String {
     format!(
-        "XFieldElement::new([{}, {}, {}])",
+        "XFieldElement::new_u64([{}, {}, {}])",
         xfe.coefficients[0].value(),
         xfe.coefficients[1].value(),
         xfe.coefficients[2].value()

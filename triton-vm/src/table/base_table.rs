@@ -5,7 +5,6 @@ use rand_distr::{Distribution, Standard};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::ops::{Mul, MulAssign, Range};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::other::{random_elements, roundup_npo2};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
@@ -24,18 +23,6 @@ pub struct Table<FieldElement: FiniteField> {
 
     /// The name of the table. Mostly for debugging purpose.
     pub name: String,
-
-    /// AIR constraints, to be populated upon extension
-    pub(crate) initial_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-    pub(crate) consistency_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-    pub(crate) transition_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-    pub(crate) terminal_constraints: Option<Vec<MPolynomial<FieldElement>>>,
-
-    /// quotient degrees, to be populated upon extension
-    pub(crate) initial_quotient_degree_bounds: Option<Vec<i64>>,
-    pub(crate) consistency_quotient_degree_bounds: Option<Vec<i64>>,
-    pub(crate) transition_quotient_degree_bounds: Option<Vec<i64>>,
-    pub(crate) terminal_quotient_degree_bounds: Option<Vec<i64>>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -46,14 +33,6 @@ impl<FF: FiniteField> Table<FF> {
             full_width,
             matrix,
             name,
-            initial_constraints: None,
-            consistency_constraints: None,
-            transition_constraints: None,
-            terminal_constraints: None,
-            initial_quotient_degree_bounds: None,
-            consistency_quotient_degree_bounds: None,
-            transition_quotient_degree_bounds: None,
-            terminal_quotient_degree_bounds: None,
         }
     }
 
@@ -121,124 +100,6 @@ pub trait Extendable: TableLike<BFieldElement> {
             }
         }
         assert_eq!(padded_height, self.data().len());
-    }
-
-    /// Computes the degree bounds of the quotients given the AIR constraints and the interpolant
-    /// degree. The AIR constraints are defined over a symbolic ring with `full_width`-many
-    /// variables.
-    fn compute_degree_bounds(
-        air_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-        zerofier_degree: Degree,
-        full_width: usize,
-    ) -> Vec<Degree> {
-        air_constraints
-            .iter()
-            .map(|mpo| {
-                mpo.symbolic_degree_bound(&vec![interpolant_degree; full_width]) - zerofier_degree
-            })
-            .collect()
-    }
-
-    fn get_initial_quotient_degree_bounds(
-        &self,
-        initial_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-    ) -> Vec<Degree> {
-        let zerofier_degree = 1;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            initial_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            full_width,
-        )
-    }
-
-    fn get_consistency_quotient_degree_bounds(
-        &self,
-        consistency_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-        padded_height: usize,
-    ) -> Vec<Degree> {
-        let zerofier_degree = padded_height as Degree;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            consistency_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            full_width,
-        )
-    }
-
-    fn get_transition_quotient_degree_bounds(
-        &self,
-        transition_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-        padded_height: usize,
-    ) -> Vec<Degree> {
-        let zerofier_degree = (padded_height - 1) as Degree;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            transition_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            2 * full_width,
-        )
-    }
-
-    fn get_terminal_quotient_degree_bounds(
-        &self,
-        terminal_constraints: &[MPolynomial<XFieldElement>],
-        interpolant_degree: Degree,
-    ) -> Vec<Degree> {
-        let zerofier_degree = 1;
-        let full_width = self.full_width();
-        Self::compute_degree_bounds(
-            terminal_constraints,
-            interpolant_degree,
-            zerofier_degree,
-            full_width,
-        )
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn extension(
-        &self,
-        extended_matrix: Vec<Vec<XFieldElement>>,
-        interpolant_degree: Degree,
-        padded_height: usize,
-        initial_constraints: Vec<MPolynomial<XFieldElement>>,
-        consistency_constraints: Vec<MPolynomial<XFieldElement>>,
-        transition_constraints: Vec<MPolynomial<XFieldElement>>,
-        terminal_constraints: Vec<MPolynomial<XFieldElement>>,
-    ) -> Table<XFieldElement> {
-        let bqdb =
-            self.get_initial_quotient_degree_bounds(&initial_constraints, interpolant_degree);
-        let cqdb = self.get_consistency_quotient_degree_bounds(
-            &consistency_constraints,
-            interpolant_degree,
-            padded_height,
-        );
-        let tqdb = self.get_transition_quotient_degree_bounds(
-            &transition_constraints,
-            interpolant_degree,
-            padded_height,
-        );
-        let termqdb =
-            self.get_terminal_quotient_degree_bounds(&terminal_constraints, interpolant_degree);
-        let new_table = self.new_from_lifted_matrix(extended_matrix);
-        Table {
-            initial_constraints: Some(initial_constraints),
-            consistency_constraints: Some(consistency_constraints),
-            transition_constraints: Some(transition_constraints),
-            terminal_constraints: Some(terminal_constraints),
-            initial_quotient_degree_bounds: Some(bqdb),
-            consistency_quotient_degree_bounds: Some(cqdb),
-            transition_quotient_degree_bounds: Some(tqdb),
-            terminal_quotient_degree_bounds: Some(termqdb),
-            ..new_table
-        }
     }
 }
 

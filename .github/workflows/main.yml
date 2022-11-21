@@ -9,8 +9,8 @@ on:
 name: Rust
 
 jobs:
-  check:
-    name: Check
+  build:
+    name: Build, lint, test and bench
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -23,59 +23,23 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Run cargo check
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # v1.0.1, 2019-09-15
-        with:
-          command: check
+      - name: Build constraints
+        run: make build-constraints
 
-  test:
-    name: Test Suite
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0, 2022-10-13
+      - name: Build tests
+        run: make build-tests
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f # v1.0.7, 2020-03-24
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
+      - name: Build bench
+        run: make build-bench
 
-      - name: Run cargo test
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # v1.0.1, 2019-09-15
-        with:
-          command: test
+      - name: Run fmt
+        run: make fmt-only
 
-      - name: Run cargo benchmark compile
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # v1.0.1, 2019-09-15
-        with:
-          command: bench
-          args: --no-run
+      - name: Run clippy
+        run: make clippy-only
 
-  lints:
-    name: Lints
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@e2f20e631ae6d7dd3b768f56a5d2af784dd54791 # v2.5.0, 2022-10-13
+      - name: Run tests
+        run: make test
 
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@b2417cde72dcf67f306c0ae8e0828a81bf0b189f # v1.0.7, 2020-03-24
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy
-
-      - name: Run cargo fmt
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # v1.0.1, 2019-09-15
-        with:
-          command: fmt
-          args: --all -- --check
-
-      - name: Run cargo clippy
-        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # v1.0.1, 2019-09-15
-        with:
-          command: clippy
-          args: -- -D warnings
+      - name: Run benchmarks
+        run: make bench

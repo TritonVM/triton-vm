@@ -3,22 +3,25 @@ use num_traits::One;
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use JumpStackTableChallengeId::*;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::instruction::Instruction;
 use crate::table::base_table::Extendable;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::Row;
 use crate::table::table_column::JumpStackBaseTableColumn::{self, *};
 use crate::table::table_column::JumpStackExtTableColumn::{self, *};
 
 use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::{AllChallenges, TableChallenges};
+use super::challenges::TableChallenges;
 use super::constraint_circuit::DualRowIndicator::*;
 use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -62,7 +65,6 @@ impl Default for ExtJumpStackTable {
     }
 }
 
-impl Quotientable for ExtJumpStackTable {}
 impl QuotientableExtensionTable for ExtJumpStackTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtJumpStackTable {
@@ -127,43 +129,27 @@ impl Extendable for JumpStackTable {
 impl TableLike<XFieldElement> for ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
-    fn ext_initial_constraints(
-        challenges: &JumpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let one = circuit_builder.b_constant(1_u32.into());
 
-        // 1. Cycle count clk is 0.
-        let clk = variables[usize::from(CLK)].clone();
+        let clk = circuit_builder.input(Row(CLK.into()));
+        let jsp = circuit_builder.input(Row(JSP.into()));
+        let jso = circuit_builder.input(Row(JSO.into()));
+        let jsd = circuit_builder.input(Row(JSD.into()));
+        let ci = circuit_builder.input(Row(CI.into()));
+        let rppa = circuit_builder.input(Row(RunningProductPermArg.into()));
+        let rpcjd = circuit_builder.input(Row(AllClockJumpDifferencesPermArg.into()));
 
-        // 2. Jump Stack Pointer jsp is 0.
-        let jsp = variables[usize::from(JSP)].clone();
+        let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermRowIndeterminate);
+        // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and can thus be omitted.
+        let compressed_row = circuit_builder.challenge(CiWeight) * ci;
+        let rppa_starts_correctly = rppa - (processor_perm_indeterminate - compressed_row);
 
-        // 3. Jump Stack Origin jso is 0.
-        let jso = variables[usize::from(JSO)].clone();
-
-        // 4. Jump Stack Destination jsd is 0.
-        let jsd = variables[usize::from(JSD)].clone();
-
-        let ci = variables[usize::from(JumpStackBaseTableColumn::CI)].clone();
-        let rppa = variables[usize::from(JumpStackExtTableColumn::RunningProductPermArg)].clone();
-        let rpcjd =
-            variables[usize::from(JumpStackExtTableColumn::AllClockJumpDifferencesPermArg)].clone();
-
-        // rppa starts off having accumulated the first row
-        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
-        let alpha = constant(challenges.processor_perm_indeterminate);
-        let compressed_row = constant(challenges.clk_weight) * clk.clone()
-            + constant(challenges.ci_weight) * ci
-            + constant(challenges.jsp_weight) * jsp.clone()
-            + constant(challenges.jso_weight) * jsp.clone()
-            + constant(challenges.jsd_weight) * jsd.clone();
-        let rppa_starts_correctly = rppa - (alpha - compressed_row);
-
-        // rpcjd starts off as 1
-        let one = constant(XFieldElement::one());
         let rpcjd_starts_with_one = rpcjd - one;
 
-        vec![
+        [
             clk,
             jsp,
             jso,
@@ -171,21 +157,19 @@ impl ExtJumpStackTable {
             rppa_starts_correctly,
             rpcjd_starts_with_one,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
-    fn ext_consistency_constraints(
-        _challenges: &JumpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
         // no further constraints
         vec![]
     }
 
     pub fn ext_transition_constraints_as_circuits(
     ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::<
-            JumpStackTableChallenges,
-            DualRowIndicator<FULL_WIDTH>,
-        >::new(2 * FULL_WIDTH);
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
         let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
             circuit_builder.b_constant(Instruction::Call(Default::default()).opcode_b());
@@ -252,18 +236,14 @@ impl ExtJumpStackTable {
         // 6. The running product for the permutation argument `rppa`
         //  accumulates one row in each row, relative to weights `a`,
         //  `b`, `c`, `d`, `e`, and indeterminate `α`.
-        let compressed_row = circuit_builder.challenge(JumpStackTableChallengeId::ClkWeight)
-            * clk_next.clone()
-            + circuit_builder.challenge(JumpStackTableChallengeId::CiWeight) * ci_next
-            + circuit_builder.challenge(JumpStackTableChallengeId::JspWeight) * jsp_next.clone()
-            + circuit_builder.challenge(JumpStackTableChallengeId::JsoWeight) * jso_next
-            + circuit_builder.challenge(JumpStackTableChallengeId::JsdWeight) * jsd_next;
+        let compressed_row = circuit_builder.challenge(ClkWeight) * clk_next.clone()
+            + circuit_builder.challenge(CiWeight) * ci_next
+            + circuit_builder.challenge(JspWeight) * jsp_next.clone()
+            + circuit_builder.challenge(JsoWeight) * jso_next
+            + circuit_builder.challenge(JsdWeight) * jsd_next;
 
         let rppa_updates_correctly = rppa_next
-            - rppa
-                * (circuit_builder
-                    .challenge(JumpStackTableChallengeId::ProcessorPermRowIndeterminate)
-                    - compressed_row);
+            - rppa * (circuit_builder.challenge(ProcessorPermRowIndeterminate) - compressed_row);
 
         // 7. The running product for clock jump differences `rpcjd`
         // accumulates a factor `(clk' - clk - 1)` (relative to
@@ -275,8 +255,8 @@ impl ExtJumpStackTable {
         // + (jsp' - jsp) · (rpcjd' - rpcjd)
         // + (clk' - clk - 1) · (jsp' - jsp - 1)
         //     · (rpcjd' - rpcjd · (β - clk' + clk))`
-        let indeterminate = circuit_builder
-            .challenge(JumpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate);
+        let indeterminate =
+            circuit_builder.challenge(AllClockJumpDifferencesMultiPermIndeterminate);
         let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
         let jsp_diff = jsp_next - jsp;
         let rpcjd_update = rpcjd_next - rpcjd * (indeterminate - clk_next.clone() + clk.clone());
@@ -289,32 +269,22 @@ impl ExtJumpStackTable {
             + rpcjd_remains_if_jsp_changes
             + rpcjd_updates_if_jsp_remains_and_clk_jumps;
 
-        vec![
-            jsp_inc_or_stays.consume(),
-            jsp_inc_or_jso_stays_or_ci_is_ret.consume(),
-            jsp_inc_or_jsd_stays_or_ci_ret.consume(),
-            jsp_inc_or_clk_inc_or_ci_call_or_ci_ret.consume(),
-            clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes.consume(),
-            clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes
-                .consume(),
-            rppa_updates_correctly.consume(),
-            rpcjd_updates_correctly.consume(),
+        [
+            jsp_inc_or_stays,
+            jsp_inc_or_jso_stays_or_ci_is_ret,
+            jsp_inc_or_jsd_stays_or_ci_ret,
+            jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
+            clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes,
+            clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes,
+            rppa_updates_correctly,
+            rpcjd_updates_correctly,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
-    fn ext_transition_constraints(
-        challenges: &JumpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let circuits = Self::ext_transition_constraints_as_circuits();
-        circuits
-            .into_iter()
-            .map(|circ| circ.partial_evaluate(challenges))
-            .collect_vec()
-    }
-
-    fn ext_terminal_constraints(
-        _challenges: &JumpStackTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
         vec![]
     }
 }
@@ -350,11 +320,7 @@ impl JumpStackTable {
         )
     }
 
-    pub fn extend(
-        &self,
-        challenges: &JumpStackTableChallenges,
-        interpolant_degree: Degree,
-    ) -> ExtJumpStackTable {
+    pub fn extend(&self, challenges: &JumpStackTableChallenges) -> ExtJumpStackTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
@@ -410,24 +376,11 @@ impl JumpStackTable {
         }
 
         assert_eq!(self.data().len(), extension_matrix.len());
-        let padded_height = extension_matrix.len();
-        let inherited_table = self.extension(
-            extension_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtJumpStackTable::ext_initial_constraints(challenges),
-            ExtJumpStackTable::ext_consistency_constraints(challenges),
-            ExtJumpStackTable::ext_transition_constraints(challenges),
-            ExtJumpStackTable::ext_terminal_constraints(challenges),
-        );
+        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
         ExtJumpStackTable { inherited_table }
     }
 
-    pub fn for_verifier(
-        interpolant_degree: Degree,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-    ) -> ExtJumpStackTable {
+    pub fn for_verifier() -> ExtJumpStackTable {
         let inherited_table = Table::new(
             BASE_WIDTH,
             FULL_WIDTH,
@@ -436,21 +389,7 @@ impl JumpStackTable {
         );
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.extension(
-            empty_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtJumpStackTable::ext_initial_constraints(&all_challenges.jump_stack_table_challenges),
-            ExtJumpStackTable::ext_consistency_constraints(
-                &all_challenges.jump_stack_table_challenges,
-            ),
-            ExtJumpStackTable::ext_transition_constraints(
-                &all_challenges.jump_stack_table_challenges,
-            ),
-            ExtJumpStackTable::ext_terminal_constraints(
-                &all_challenges.jump_stack_table_challenges,
-            ),
-        );
+        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
 
         ExtJumpStackTable {
             inherited_table: extension_table,
@@ -523,47 +462,17 @@ impl TableChallenges for JumpStackTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            JumpStackTableChallengeId::ProcessorPermRowIndeterminate => {
-                self.processor_perm_indeterminate
-            }
-            JumpStackTableChallengeId::ClkWeight => self.clk_weight,
-            JumpStackTableChallengeId::CiWeight => self.ci_weight,
-            JumpStackTableChallengeId::JspWeight => self.jsp_weight,
-            JumpStackTableChallengeId::JsoWeight => self.jso_weight,
-            JumpStackTableChallengeId::JsdWeight => self.jsd_weight,
-            JumpStackTableChallengeId::AllClockJumpDifferencesMultiPermIndeterminate => {
+            ProcessorPermRowIndeterminate => self.processor_perm_indeterminate,
+            ClkWeight => self.clk_weight,
+            CiWeight => self.ci_weight,
+            JspWeight => self.jsp_weight,
+            JsoWeight => self.jso_weight,
+            JsdWeight => self.jsd_weight,
+            AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
         }
     }
 }
 
-impl ExtensionTable for ExtJumpStackTable {
-    fn dynamic_initial_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_initial_constraints(&challenges.jump_stack_table_challenges)
-    }
-
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_consistency_constraints(&challenges.jump_stack_table_challenges)
-    }
-
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_transition_constraints(&challenges.jump_stack_table_challenges)
-    }
-
-    fn dynamic_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtJumpStackTable::ext_terminal_constraints(&challenges.jump_stack_table_challenges)
-    }
-}
+impl ExtensionTable for ExtJumpStackTable {}

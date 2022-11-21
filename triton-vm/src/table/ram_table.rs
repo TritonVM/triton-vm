@@ -3,25 +3,26 @@ use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use super::constraint_circuit::DualRowIndicator::*;
+use RamTableChallengeId::*;
+
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::table::base_table::Extendable;
-use crate::table::table_column::RamBaseTableColumn::{self, *};
-use crate::table::table_column::RamExtTableColumn::{self, *};
-
 use crate::table::base_table::{InheritsFromTable, Table, TableLike};
-use crate::table::challenges::{AllChallenges, TableChallenges};
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::Row;
 use crate::table::constraint_circuit::{
     ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator,
 };
-use crate::table::extension_table::{ExtensionTable, Quotientable, QuotientableExtensionTable};
+use crate::table::extension_table::{ExtensionTable, QuotientableExtensionTable};
+use crate::table::table_column::RamBaseTableColumn::{self, *};
+use crate::table::table_column::RamExtTableColumn::{self, *};
 
-use RamTableChallengeId::*;
+use super::constraint_circuit::DualRowIndicator::*;
 
 pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -65,7 +66,6 @@ impl Default for ExtRamTable {
     }
 }
 
-impl Quotientable for ExtRamTable {}
 impl QuotientableExtensionTable for ExtRamTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtRamTable {
@@ -108,11 +108,7 @@ impl RamTable {
         )
     }
 
-    pub fn extend(
-        &self,
-        challenges: &RamTableChallenges,
-        interpolant_degree: Degree,
-    ) -> ExtRamTable {
+    pub fn extend(&self, challenges: &RamTableChallenges) -> ExtRamTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product_for_perm_arg = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
@@ -186,36 +182,15 @@ impl RamTable {
         }
 
         assert_eq!(self.data().len(), extension_matrix.len());
-        let padded_height = extension_matrix.len();
-        let inherited_table = self.extension(
-            extension_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtRamTable::ext_initial_constraints(challenges),
-            ExtRamTable::ext_consistency_constraints(challenges),
-            ExtRamTable::ext_transition_constraints(challenges),
-            ExtRamTable::ext_terminal_constraints(challenges),
-        );
+        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
         ExtRamTable { inherited_table }
     }
 
-    pub fn for_verifier(
-        interpolant_degree: Degree,
-        padded_height: usize,
-        all_challenges: &AllChallenges,
-    ) -> ExtRamTable {
+    pub fn for_verifier() -> ExtRamTable {
         let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, vec![], "ExtRamTable".to_string());
         let base_table = Self { inherited_table };
         let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.extension(
-            empty_matrix,
-            interpolant_degree,
-            padded_height,
-            ExtRamTable::ext_initial_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_consistency_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_transition_constraints(&all_challenges.ram_table_challenges),
-            ExtRamTable::ext_terminal_constraints(&all_challenges.ram_table_challenges),
-        );
+        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
 
         ExtRamTable {
             inherited_table: extension_table,
@@ -313,35 +288,40 @@ impl Extendable for RamTable {
 impl TableLike<XFieldElement> for ExtRamTable {}
 
 impl ExtRamTable {
-    fn ext_initial_constraints(challenges: &RamTableChallenges) -> Vec<MPolynomial<XFieldElement>> {
-        let constant = |xfe| MPolynomial::from_constant(xfe, FULL_WIDTH);
-        let one = constant(XFieldElement::one());
-        let bezout_challenge = constant(challenges.bezout_relation_indeterminate);
-        let rppa_challenge = constant(challenges.processor_perm_indeterminate);
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<RamTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        use RamTableChallengeId::*;
 
-        let variables: Vec<MPolynomial<XFieldElement>> = MPolynomial::variables(FULL_WIDTH);
-        let clk = variables[usize::from(CLK)].clone();
-        let ramp = variables[usize::from(RAMP)].clone();
-        let ramv = variables[usize::from(RAMV)].clone();
-        let bcpc0 = variables[usize::from(BezoutCoefficientPolynomialCoefficient0)].clone();
-        let bcpc1 = variables[usize::from(BezoutCoefficientPolynomialCoefficient1)].clone();
-        let rp = variables[usize::from(RunningProductOfRAMP)].clone();
-        let fd = variables[usize::from(FormalDerivative)].clone();
-        let bc0 = variables[usize::from(BezoutCoefficient0)].clone();
-        let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
-        let rppa = variables[usize::from(RunningProductPermArg)].clone();
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let one = circuit_builder.b_constant(1_u32.into());
+
+        let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
+        let rppa_challenge = circuit_builder.challenge(ProcessorPermIndeterminate);
+
+        let clk = circuit_builder.input(Row(CLK.into()));
+        let ramp = circuit_builder.input(Row(RAMP.into()));
+        let ramv = circuit_builder.input(Row(RAMV.into()));
+        let bcpc0 = circuit_builder.input(Row(BezoutCoefficientPolynomialCoefficient0.into()));
+        let bcpc1 = circuit_builder.input(Row(BezoutCoefficientPolynomialCoefficient1.into()));
+        let rp = circuit_builder.input(Row(RunningProductOfRAMP.into()));
+        let fd = circuit_builder.input(Row(FormalDerivative.into()));
+        let bc0 = circuit_builder.input(Row(BezoutCoefficient0.into()));
+        let bc1 = circuit_builder.input(Row(BezoutCoefficient1.into()));
+        let rppa = circuit_builder.input(Row(RunningProductPermArg.into()));
 
         let clk_is_0 = clk;
-        let ramp_is_0 = ramp.clone();
+        let ramp_is_0 = ramp;
         let ramv_is_0 = ramv;
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
         let formal_derivative_is_1 = fd - one;
-        let running_product_polynomial_is_initialized_correctly = rp - (bezout_challenge - ramp);
+        // This should be rp - (bezout_challenge - ramp). However, `ramp` is already constrained to
+        // be 0, and can thus be omitted.
+        let running_product_polynomial_is_initialized_correctly = rp - bezout_challenge;
         let running_product_permutation_argument_is_initialized_correctly = rppa - rppa_challenge;
 
-        vec![
+        [
             clk_is_0,
             ramp_is_0,
             ramv_is_0,
@@ -352,11 +332,12 @@ impl ExtRamTable {
             running_product_polynomial_is_initialized_correctly,
             running_product_permutation_argument_is_initialized_correctly,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
-    fn ext_consistency_constraints(
-        _challenges: &RamTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<RamTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
         // no further constraints
         vec![]
     }
@@ -465,48 +446,39 @@ impl ExtRamTable {
         let rppa_updates_correctly =
             rppa_next - rppa * (rppa_challenge - compressed_row_for_permutation_argument);
 
-        vec![
-            iord_is_0_or_iord_is_inverse_of_ramp_diff.consume(),
-            ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff.consume(),
-            ramp_does_not_change_or_ramv_becomes_0.consume(),
-            ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1.consume(),
-            bcbp0_only_changes_if_ramp_changes.consume(),
-            bcbp1_only_changes_if_ramp_changes.consume(),
-            running_product_ramp_updates_correctly.consume(),
-            formal_derivative_updates_correctly.consume(),
-            bezout_coefficient_0_is_constructed_correctly.consume(),
-            bezout_coefficient_1_is_constructed_correctly.consume(),
-            clk_di_is_zero_or_inverse_of_clkd.consume(),
-            clkd_is_zero_or_inverse_of_clk_di.consume(),
-            rpcjd_updates_correctly.consume(),
-            rppa_updates_correctly.consume(),
+        [
+            iord_is_0_or_iord_is_inverse_of_ramp_diff,
+            ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
+            ramp_does_not_change_or_ramv_becomes_0,
+            ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1,
+            bcbp0_only_changes_if_ramp_changes,
+            bcbp1_only_changes_if_ramp_changes,
+            running_product_ramp_updates_correctly,
+            formal_derivative_updates_correctly,
+            bezout_coefficient_0_is_constructed_correctly,
+            bezout_coefficient_1_is_constructed_correctly,
+            clk_di_is_zero_or_inverse_of_clkd,
+            clkd_is_zero_or_inverse_of_clk_di,
+            rpcjd_updates_correctly,
+            rppa_updates_correctly,
         ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
-    fn ext_transition_constraints(
-        challenges: &RamTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let circuits = Self::ext_transition_constraints_as_circuits();
-        circuits
-            .into_iter()
-            .map(|circ| circ.partial_evaluate(challenges))
-            .collect_vec()
-    }
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<RamTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let one = circuit_builder.b_constant(1_u32.into());
 
-    fn ext_terminal_constraints(
-        _challenges: &RamTableChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        let one = MPolynomial::from_constant(1.into(), FULL_WIDTH);
-        let variables = MPolynomial::variables(FULL_WIDTH);
-
-        let rp = variables[usize::from(RunningProductOfRAMP)].clone();
-        let fd = variables[usize::from(FormalDerivative)].clone();
-        let bc0 = variables[usize::from(BezoutCoefficient0)].clone();
-        let bc1 = variables[usize::from(BezoutCoefficient1)].clone();
+        let rp = circuit_builder.input(Row(RunningProductOfRAMP.into()));
+        let fd = circuit_builder.input(Row(FormalDerivative.into()));
+        let bc0 = circuit_builder.input(Row(BezoutCoefficient0.into()));
+        let bc1 = circuit_builder.input(Row(BezoutCoefficient1.into()));
 
         let bezout_relation_holds = bc0 * rp + bc1 * fd - one;
 
-        vec![bezout_relation_holds]
+        vec![bezout_relation_holds.consume()]
     }
 }
 
@@ -561,32 +533,4 @@ impl TableChallenges for RamTableChallenges {
     }
 }
 
-impl ExtensionTable for ExtRamTable {
-    fn dynamic_initial_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_initial_constraints(&challenges.ram_table_challenges)
-    }
-
-    fn dynamic_consistency_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_consistency_constraints(&challenges.ram_table_challenges)
-    }
-
-    fn dynamic_transition_constraints(
-        &self,
-        challenges: &super::challenges::AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_transition_constraints(&challenges.ram_table_challenges)
-    }
-
-    fn dynamic_terminal_constraints(
-        &self,
-        challenges: &AllChallenges,
-    ) -> Vec<MPolynomial<XFieldElement>> {
-        ExtRamTable::ext_terminal_constraints(&challenges.ram_table_challenges)
-    }
-}
+impl ExtensionTable for ExtRamTable {}

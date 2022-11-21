@@ -1,3 +1,4 @@
+pub mod hash_table_constraints;
 pub mod instruction_table_constraints;
 pub mod jump_stack_table_constraints;
 pub mod op_stack_table_constraints;
