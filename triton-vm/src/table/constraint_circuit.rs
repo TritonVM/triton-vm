@@ -3,16 +3,18 @@ use std::cell::RefCell;
 use std::cmp::{self};
 use std::collections::HashSet;
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
 use std::iter::Sum;
 use std::marker::PhantomData;
 use std::ops::{Add, Mul, Sub};
 use std::rc::Rc;
 
 use num_traits::{One, Zero};
-use std::hash::Hash;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use CircuitExpression::*;
 
 use super::challenges::TableChallenges;
 
@@ -36,7 +38,7 @@ impl Display for BinOp {
 }
 
 /// Data structure for uniquely identifying each node
-#[derive(Debug, Clone, std::hash::Hash, PartialEq)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct CircuitId(usize);
 
 impl Eq for CircuitId {}
@@ -160,13 +162,13 @@ pub enum CircuitExpression<T: TableChallenges, II: InputIndicator> {
 impl<T: TableChallenges, II: InputIndicator> Hash for CircuitExpression<T, II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            CircuitExpression::XConstant(xfe) => xfe.hash(state),
-            CircuitExpression::BConstant(bfe) => bfe.hash(state),
-            CircuitExpression::Input(index) => index.hash(state),
-            CircuitExpression::Challenge(table_challenge_id) => {
+            BConstant(bfe) => bfe.hash(state),
+            XConstant(xfe) => xfe.hash(state),
+            Input(index) => index.hash(state),
+            Challenge(table_challenge_id) => {
                 table_challenge_id.hash(state);
             }
-            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
+            BinaryOperation(binop, lhs, rhs) => {
                 binop.hash(state);
                 lhs.as_ref().borrow().hash(state);
                 rhs.as_ref().borrow().hash(state);
@@ -202,31 +204,28 @@ impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuit<T, 
     /// In particular, this function does *not* attempt to simplify
     /// or reduce neutral terms or products. So this comparison will
     /// return false for `a == a + 0`. It will also return false for
-    // `XFieldElement(7) == BFieldElement(7)`
+    /// `XFieldElement(7) == BFieldElement(7)`
     fn eq(&self, other: &Self) -> bool {
         match &self.expression {
-            CircuitExpression::XConstant(self_xfe) => match &other.expression {
-                CircuitExpression::XConstant(other_xfe) => self_xfe == other_xfe,
+            XConstant(self_xfe) => match &other.expression {
+                XConstant(other_xfe) => self_xfe == other_xfe,
                 _ => false,
             },
-            CircuitExpression::BConstant(self_bfe) => match &other.expression {
-                CircuitExpression::BConstant(other_bfe) => self_bfe == other_bfe,
+            BConstant(self_bfe) => match &other.expression {
+                BConstant(other_bfe) => self_bfe == other_bfe,
                 _ => false,
             },
-            CircuitExpression::Input(self_input) => match &other.expression {
-                CircuitExpression::Input(other_input) => self_input == other_input,
-
+            Input(self_input) => match &other.expression {
+                Input(other_input) => self_input == other_input,
                 _ => false,
             },
-            CircuitExpression::Challenge(self_challenge_id) => match &other.expression {
-                CircuitExpression::Challenge(other_challenge_id) => {
-                    self_challenge_id == other_challenge_id
-                }
+            Challenge(self_challenge_id) => match &other.expression {
+                Challenge(other_challenge_id) => self_challenge_id == other_challenge_id,
                 _ => false,
             },
-            CircuitExpression::BinaryOperation(binop_self, lhs_self, rhs_self) => {
+            BinaryOperation(binop_self, lhs_self, rhs_self) => {
                 match &other.expression {
-                    CircuitExpression::BinaryOperation(binop_other, lhs_other, rhs_other) => {
+                    BinaryOperation(binop_other, lhs_other, rhs_other) => {
                         // a = b `op0` c,
                         // d = e `op1` f =>
                         // a = d <= op0 == op1 && b == e && c ==f
@@ -243,17 +242,17 @@ impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuit<T, 
 impl<T: TableChallenges, II: InputIndicator> Display for ConstraintCircuit<T, II> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.expression {
-            CircuitExpression::XConstant(xfe) => {
+            XConstant(xfe) => {
                 write!(f, "{}", xfe)
             }
-            CircuitExpression::BConstant(bfe) => {
+            BConstant(bfe) => {
                 write!(f, "{}", bfe)
             }
-            CircuitExpression::Input(input) => write!(f, "{} ", input),
-            CircuitExpression::Challenge(self_challenge_id) => {
+            Input(input) => write!(f, "{} ", input),
+            Challenge(self_challenge_id) => {
                 write!(f, "#{}", self_challenge_id)
             }
-            CircuitExpression::BinaryOperation(operation, lhs, rhs) => {
+            BinaryOperation(operation, lhs, rhs) => {
                 write!(
                     f,
                     "({}) {} ({})",
@@ -270,15 +269,9 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Increment `visited_counter` by one for each reachable node
     fn traverse_single(&mut self) {
         self.visited_counter += 1;
-        match self.expression.borrow_mut() {
-            CircuitExpression::XConstant(_) => (),
-            CircuitExpression::BConstant(_) => (),
-            CircuitExpression::Input(_) => (),
-            CircuitExpression::Challenge(_) => (),
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
-                lhs.as_ref().borrow_mut().traverse_single();
-                rhs.as_ref().borrow_mut().traverse_single();
-            }
+        if let BinaryOperation(_, lhs, rhs) = self.expression.borrow_mut() {
+            lhs.as_ref().borrow_mut().traverse_single();
+            rhs.as_ref().borrow_mut().traverse_single();
         }
     }
 
@@ -299,7 +292,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     fn reset_visited_counters(&mut self) {
         self.visited_counter = 0;
 
-        if let CircuitExpression::BinaryOperation(_, lhs, rhs) = &self.expression {
+        if let BinaryOperation(_, lhs, rhs) = &self.expression {
             lhs.as_ref().borrow_mut().reset_visited_counters();
             rhs.as_ref().borrow_mut().reset_visited_counters();
         }
@@ -314,15 +307,9 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
             self.id
         );
         self.visited_counter += 1;
-        match &self.expression {
-            CircuitExpression::XConstant(_) => (),
-            CircuitExpression::BConstant(_) => (),
-            CircuitExpression::Input(_) => (),
-            CircuitExpression::Challenge(_) => (),
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
-                lhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
-                rhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
-            }
+        if let BinaryOperation(_, lhs, rhs) = &self.expression {
+            lhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
+            rhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
         }
     }
 
@@ -352,18 +339,14 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// applied anywhere in the tree.
     fn constant_fold_inner(&mut self) -> bool {
         let mut change_tracker = false;
-        if let CircuitExpression::BinaryOperation(_, lhs, rhs) = &self.expression {
+        if let BinaryOperation(_, lhs, rhs) = &self.expression {
             change_tracker |= lhs.clone().as_ref().borrow_mut().constant_fold_inner();
             change_tracker |= rhs.clone().as_ref().borrow_mut().constant_fold_inner();
         }
 
         match &self.expression.clone() {
-            CircuitExpression::XConstant(_) => change_tracker,
-            CircuitExpression::BConstant(_) => change_tracker,
-            CircuitExpression::Input(_) => change_tracker,
-            CircuitExpression::Challenge(_) => change_tracker,
-            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
-                // a + 0 = a /\ a - 0 = a
+            BinaryOperation(binop, lhs, rhs) => {
+                // a + 0 = a ∧ a - 0 = a
                 if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.as_ref().borrow().is_zero() {
                     *self.expression.borrow_mut() = lhs.as_ref().borrow().expression.clone();
                     return true;
@@ -390,51 +373,47 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
 
                     // 0 * a = a * 0 = 0
                     if lhs.as_ref().borrow().is_zero() || rhs.as_ref().borrow().is_zero() {
-                        *self.expression.borrow_mut() = CircuitExpression::BConstant(0u64.into());
+                        *self.expression.borrow_mut() = BConstant(0u64.into());
                         return true;
                     }
                 }
 
                 // if left and right hand sides are both constants
-                if let CircuitExpression::XConstant(lhs_xfe) = lhs.as_ref().borrow().expression {
-                    if let CircuitExpression::XConstant(rhs_xfe) = rhs.as_ref().borrow().expression
-                    {
+                if let XConstant(lhs_xfe) = lhs.as_ref().borrow().expression {
+                    if let XConstant(rhs_xfe) = rhs.as_ref().borrow().expression {
                         *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => CircuitExpression::XConstant(lhs_xfe + rhs_xfe),
-                            BinOp::Sub => CircuitExpression::XConstant(lhs_xfe - rhs_xfe),
-                            BinOp::Mul => CircuitExpression::XConstant(lhs_xfe * rhs_xfe),
+                            BinOp::Add => XConstant(lhs_xfe + rhs_xfe),
+                            BinOp::Sub => XConstant(lhs_xfe - rhs_xfe),
+                            BinOp::Mul => XConstant(lhs_xfe * rhs_xfe),
                         };
                         return true;
                     }
 
-                    if let CircuitExpression::BConstant(rhs_bfe) = rhs.as_ref().borrow().expression
-                    {
+                    if let BConstant(rhs_bfe) = rhs.as_ref().borrow().expression {
                         *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => CircuitExpression::XConstant(lhs_xfe + rhs_bfe.lift()),
-                            BinOp::Sub => CircuitExpression::XConstant(lhs_xfe - rhs_bfe.lift()),
-                            BinOp::Mul => CircuitExpression::XConstant(lhs_xfe * rhs_bfe),
+                            BinOp::Add => XConstant(lhs_xfe + rhs_bfe.lift()),
+                            BinOp::Sub => XConstant(lhs_xfe - rhs_bfe.lift()),
+                            BinOp::Mul => XConstant(lhs_xfe * rhs_bfe),
                         };
                         return true;
                     }
                 }
 
-                if let CircuitExpression::BConstant(lhs_bfe) = lhs.as_ref().borrow().expression {
-                    if let CircuitExpression::XConstant(rhs_xfe) = rhs.as_ref().borrow().expression
-                    {
+                if let BConstant(lhs_bfe) = lhs.as_ref().borrow().expression {
+                    if let XConstant(rhs_xfe) = rhs.as_ref().borrow().expression {
                         *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => CircuitExpression::XConstant(lhs_bfe.lift() + rhs_xfe),
-                            BinOp::Sub => CircuitExpression::XConstant(lhs_bfe.lift() - rhs_xfe),
-                            BinOp::Mul => CircuitExpression::XConstant(rhs_xfe * lhs_bfe),
+                            BinOp::Add => XConstant(lhs_bfe.lift() + rhs_xfe),
+                            BinOp::Sub => XConstant(lhs_bfe.lift() - rhs_xfe),
+                            BinOp::Mul => XConstant(rhs_xfe * lhs_bfe),
                         };
                         return true;
                     }
 
-                    if let CircuitExpression::BConstant(rhs_bfe) = rhs.as_ref().borrow().expression
-                    {
+                    if let BConstant(rhs_bfe) = rhs.as_ref().borrow().expression {
                         *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => CircuitExpression::BConstant(lhs_bfe + rhs_bfe),
-                            BinOp::Sub => CircuitExpression::BConstant(lhs_bfe - rhs_bfe),
-                            BinOp::Mul => CircuitExpression::BConstant(lhs_bfe * rhs_bfe),
+                            BinOp::Add => BConstant(lhs_bfe + rhs_bfe),
+                            BinOp::Sub => BConstant(lhs_bfe - rhs_bfe),
+                            BinOp::Mul => BConstant(lhs_bfe * rhs_bfe),
                         };
                         return true;
                     }
@@ -442,6 +421,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
 
                 change_tracker
             }
+            _ => change_tracker,
         }
     }
 
@@ -465,7 +445,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
             self.var_count
         );
         match &self.expression {
-            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
+            BinaryOperation(binop, lhs, rhs) => {
                 let lhs_degree = lhs.borrow().symbolic_degree_bound(max_degrees);
                 let rhs_degree = rhs.borrow().symbolic_degree_bound(max_degrees);
                 match binop {
@@ -480,32 +460,32 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
                     }
                 }
             }
-            CircuitExpression::Input(input) => {
+            Input(input) => {
                 let index: usize = (*input).into();
                 max_degrees[index]
             }
-            CircuitExpression::XConstant(xfe) => {
+            XConstant(xfe) => {
                 if xfe.is_zero() {
                     -1
                 } else {
                     0
                 }
             }
-            CircuitExpression::BConstant(bfe) => {
+            BConstant(bfe) => {
                 if bfe.is_zero() {
                     -1
                 } else {
                     0
                 }
             }
-            CircuitExpression::Challenge(_) => 0,
+            Challenge(_) => 0,
         }
     }
 
     /// Return degree of the multivariate polynomial represented by this circuit
     pub fn degree(&self) -> i64 {
         match &self.expression {
-            CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
+            BinaryOperation(binop, lhs, rhs) => {
                 let lhs_degree = lhs.borrow().degree();
                 let rhs_degree = rhs.borrow().degree();
                 match binop {
@@ -519,22 +499,22 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
                     }
                 }
             }
-            CircuitExpression::Input(_) => 1,
-            CircuitExpression::XConstant(xfe) => {
+            Input(_) => 1,
+            XConstant(xfe) => {
                 if xfe.is_zero() {
                     -1
                 } else {
                     0
                 }
             }
-            CircuitExpression::BConstant(bfe) => {
+            BConstant(bfe) => {
                 if bfe.is_zero() {
                     -1
                 } else {
                     0
                 }
             }
-            CircuitExpression::Challenge(_) => 0,
+            Challenge(_) => 0,
         }
     }
 
@@ -545,7 +525,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         match &self.expression {
             // The highest number will always be in a leaf so we only
             // need to check those.
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+            BinaryOperation(_, lhs, rhs) => {
                 let lhs_counters = lhs.as_ref().borrow().get_all_visited_counters();
                 let rhs_counters = rhs.as_ref().borrow().get_all_visited_counters();
                 let own_counter = self.visited_counter;
@@ -562,21 +542,15 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Return true if the contained multivariate polynomial consists of only a single term. This means that it can be
     /// pretty-printed without parentheses.
     pub fn print_without_parentheses(&self) -> bool {
-        match &self.expression {
-            CircuitExpression::XConstant(_) => true,
-            CircuitExpression::BConstant(_) => true,
-            CircuitExpression::Input(_) => true,
-            CircuitExpression::Challenge(_) => true,
-            CircuitExpression::BinaryOperation(_, _, _) => false,
-        }
+        !matches!(&self.expression, BinaryOperation(_, _, _))
     }
 
     /// Return true if this node represents a constant value of zero, does not
     /// catch composite expressions that will always evaluate to zero.
     pub fn is_zero(&self) -> bool {
         match self.expression {
-            CircuitExpression::XConstant(xfe) => xfe.is_zero(),
-            CircuitExpression::BConstant(bfe) => bfe.is_zero(),
+            BConstant(bfe) => bfe.is_zero(),
+            XConstant(xfe) => xfe.is_zero(),
             _ => false,
         }
     }
@@ -585,8 +559,8 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// catch composite expressions that will always evaluate to one.
     pub fn is_one(&self) -> bool {
         match self.expression {
-            CircuitExpression::XConstant(xfe) => xfe.is_one(),
-            CircuitExpression::BConstant(bfe) => bfe.is_one(),
+            XConstant(xfe) => xfe.is_one(),
+            BConstant(bfe) => bfe.is_one(),
             _ => false,
         }
     }
@@ -595,7 +569,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// term and a coefficient of one. Returns the index in which the multivariate
     /// polynomial is linear. Returns None otherwise.
     pub fn get_linear_one_index(&self) -> Option<usize> {
-        if let CircuitExpression::Input(input) = self.expression {
+        if let Input(input) = self.expression {
             let index: usize = input.into();
             Some(index)
         } else {
@@ -606,13 +580,11 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Return true iff the evaluation value of this node depends on a challenge
     pub fn is_randomized(&self) -> bool {
         match &self.expression {
-            CircuitExpression::Input(_) => false,
-            CircuitExpression::XConstant(_) => false,
-            CircuitExpression::BConstant(_) => false,
-            CircuitExpression::Challenge(_) => true,
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+            Challenge(_) => true,
+            BinaryOperation(_, lhs, rhs) => {
                 lhs.as_ref().borrow().is_randomized() || rhs.as_ref().borrow().is_randomized()
             }
+            _ => false,
         }
     }
 
@@ -630,23 +602,19 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// replacing the inputs by variables.
     fn flatten(&self, challenges: &T) -> MPolynomial<XFieldElement> {
         match &self.expression {
-            CircuitExpression::XConstant(xfe) => {
-                MPolynomial::<XFieldElement>::from_constant(*xfe, self.var_count)
-            }
-            CircuitExpression::BConstant(bfe) => {
+            XConstant(xfe) => MPolynomial::<XFieldElement>::from_constant(*xfe, self.var_count),
+            BConstant(bfe) => {
                 MPolynomial::<XFieldElement>::from_constant(bfe.lift(), self.var_count)
             }
-            CircuitExpression::Input(input) => {
+            Input(input) => {
                 let mpol_index: usize = (*input).into();
                 MPolynomial::<XFieldElement>::variables(self.var_count)[mpol_index].clone()
             }
-            CircuitExpression::Challenge(challenge_id) => {
-                MPolynomial::<XFieldElement>::from_constant(
-                    challenges.get_challenge(*challenge_id),
-                    self.var_count,
-                )
-            }
-            CircuitExpression::BinaryOperation(binop, lhs, rhs) => match binop {
+            Challenge(challenge_id) => MPolynomial::<XFieldElement>::from_constant(
+                challenges.get_challenge(*challenge_id),
+                self.var_count,
+            ),
+            BinaryOperation(binop, lhs, rhs) => match binop {
                 BinOp::Add => {
                     lhs.as_ref().borrow().flatten(challenges)
                         + rhs.as_ref().borrow().flatten(challenges)
@@ -666,14 +634,10 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Replace all challenges with constants in subtree
     fn apply_challenges_to_one_root(&mut self, challenges: &T) {
         match &self.expression {
-            CircuitExpression::XConstant(_) => (),
-            CircuitExpression::BConstant(_) => (),
-            CircuitExpression::Input(_) => (),
-            CircuitExpression::Challenge(challenge_id) => {
-                *self.expression.borrow_mut() =
-                    CircuitExpression::XConstant(challenges.get_challenge(*challenge_id))
+            Challenge(challenge_id) => {
+                *self.expression.borrow_mut() = XConstant(challenges.get_challenge(*challenge_id))
             }
-            CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+            BinaryOperation(_, lhs, rhs) => {
                 lhs.as_ref()
                     .borrow_mut()
                     .apply_challenges_to_one_root(challenges);
@@ -681,6 +645,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
                     .borrow_mut()
                     .apply_challenges_to_one_root(challenges);
             }
+            _ => (),
         }
     }
 
@@ -747,11 +712,7 @@ fn binop<T: TableChallenges, II: InputIndicator>(
     let new_node = ConstraintCircuitMonad {
         circuit: Rc::new(RefCell::new(ConstraintCircuit {
             visited_counter: 0,
-            expression: CircuitExpression::BinaryOperation(
-                binop,
-                Rc::clone(&lhs.circuit),
-                Rc::clone(&rhs.circuit),
-            ),
+            expression: BinaryOperation(binop, Rc::clone(&lhs.circuit), Rc::clone(&rhs.circuit)),
             id: CircuitId(new_index),
             var_count: lhs.circuit.as_ref().borrow().var_count,
         })),
@@ -773,7 +734,7 @@ fn binop<T: TableChallenges, II: InputIndicator>(
         let new_node_inverted = ConstraintCircuitMonad {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
                 visited_counter: 0,
-                expression: CircuitExpression::BinaryOperation(
+                expression: BinaryOperation(
                     binop,
                     // Switch rhs and lhs for symmetric operators to check for membership in hash set
                     Rc::clone(&rhs.circuit),
@@ -876,25 +837,25 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitBuilder<T, II> {
 
     /// Create constant leaf node
     pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<T, II> {
-        let expression = CircuitExpression::XConstant(xfe);
+        let expression = XConstant(xfe);
         self.make_leaf(expression)
     }
 
     /// Create constant leaf node
     pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<T, II> {
-        let expression = CircuitExpression::BConstant(bfe);
+        let expression = BConstant(bfe);
         self.make_leaf(expression)
     }
 
     /// Create deterministic input leaf node
     pub fn input(&self, input: II) -> ConstraintCircuitMonad<T, II> {
-        let expression = CircuitExpression::Input(input);
+        let expression = Input(input);
         self.make_leaf(expression)
     }
 
     /// Create challenge leaf node
     pub fn challenge(&self, challenge_id: T::Id) -> ConstraintCircuitMonad<T, II> {
-        let expression = CircuitExpression::Challenge(challenge_id);
+        let expression = Challenge(challenge_id);
         self.make_leaf(expression)
     }
 
@@ -960,7 +921,7 @@ mod constraint_circuit_tests {
             *counter += 1;
             constraint.visited_counter = 1;
 
-            if let CircuitExpression::BinaryOperation(_, lhs, rhs) = &constraint.expression {
+            if let BinaryOperation(_, lhs, rhs) = &constraint.expression {
                 node_counter_inner(&mut lhs.as_ref().borrow_mut(), counter);
                 node_counter_inner(&mut rhs.as_ref().borrow_mut(), counter);
             }
@@ -1080,15 +1041,15 @@ mod constraint_circuit_tests {
         builder: &mut ConstraintCircuitBuilder<T, II>,
     ) -> ConstraintCircuitMonad<T, II> {
         match &val.expression {
-            CircuitExpression::BinaryOperation(op, lhs, rhs) => {
+            BinaryOperation(op, lhs, rhs) => {
                 let lhs_ref = deep_copy_inner(&lhs.as_ref().borrow(), builder);
                 let rhs_ref = deep_copy_inner(&rhs.as_ref().borrow(), builder);
                 binop(*op, lhs_ref, rhs_ref)
             }
-            CircuitExpression::XConstant(xfe) => builder.x_constant(*xfe),
-            CircuitExpression::BConstant(bfe) => builder.b_constant(*bfe),
-            CircuitExpression::Input(input_index) => builder.input(*input_index),
-            CircuitExpression::Challenge(challenge_id) => builder.challenge(*challenge_id),
+            XConstant(xfe) => builder.x_constant(*xfe),
+            BConstant(bfe) => builder.b_constant(*bfe),
+            Input(input_index) => builder.input(*input_index),
+            Challenge(challenge_id) => builder.challenge(*challenge_id),
         }
     }
 
