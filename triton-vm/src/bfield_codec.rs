@@ -324,7 +324,7 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
             if (len_remaining - 2) % DIGEST_LENGTH != 0 {
                 bail!(
                     "cannot decode string of BFieldElements as Vec of PartialAuthenticationPaths \
-                    due to length mismatch (EXTENSION_DEGREE)",
+                    due to length mismatch (3)",
                 );
             }
 
