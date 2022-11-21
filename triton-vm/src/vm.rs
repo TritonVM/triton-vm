@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt::Display;
 use std::io::Cursor;
 
@@ -82,7 +81,7 @@ impl Program {
     /// All valid programs terminate with `Halt`.
     ///
     /// `from_code()` will append `Halt` if not present.
-    pub fn from_code(code: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn from_code(code: &str) -> anyhow::Result<Self> {
         let instructions = parse(code)?;
         Ok(Program::new(&instructions))
     }
@@ -119,7 +118,7 @@ impl Program {
     ) -> (
         AlgebraicExecutionTrace,
         Vec<BFieldElement>,
-        Option<Box<dyn Error>>,
+        Option<anyhow::Error>,
     ) {
         let mut aet = AlgebraicExecutionTrace::default();
         let mut state = VMState::new(self);
@@ -156,7 +155,7 @@ impl Program {
     ) -> (
         AlgebraicExecutionTrace,
         Vec<BFieldElement>,
-        Option<Box<dyn Error>>,
+        Option<anyhow::Error>,
     ) {
         self.simulate(vec![], vec![])
     }
@@ -165,7 +164,7 @@ impl Program {
         &self,
         mut stdin: Vec<BFieldElement>,
         mut secret_in: Vec<BFieldElement>,
-    ) -> (Vec<VMState>, Vec<BFieldElement>, Option<Box<dyn Error>>) {
+    ) -> (Vec<VMState>, Vec<BFieldElement>, Option<anyhow::Error>) {
         let mut states = vec![VMState::new(self)];
         let mut current_state = states.last().unwrap();
 

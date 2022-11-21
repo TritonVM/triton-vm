@@ -643,7 +643,7 @@ impl Stark {
         &self,
         proof: Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Result<bool, Box<dyn Error>> {
+    ) -> anyhow::Result<bool> {
         prof_start!(maybe_profiler, "deserialize");
         let mut proof_stream = StarkProofStream::from_proof(&proof)?;
         prof_stop!(maybe_profiler, "deserialize");
@@ -658,7 +658,9 @@ impl Stark {
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         if self.claim.padded_height != padded_height && self.claim.padded_height != 0 {
-            return Err(Box::new(StarkValidationError::PaddedHeightInequality));
+            return Err(anyhow::Error::new(
+                StarkValidationError::PaddedHeightInequality,
+            ));
         }
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
@@ -1056,7 +1058,9 @@ impl Stark {
                 .sum();
 
             if revealed_combination_leaf != inner_product {
-                return Err(Box::new(StarkValidationError::CombinationLeafInequality));
+                return Err(anyhow::Error::new(
+                    StarkValidationError::CombinationLeafInequality,
+                ));
             }
             prof_stop!(maybe_profiler, "compute inner product");
         }

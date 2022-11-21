@@ -22,14 +22,11 @@ pub struct ProofStreamError {
 }
 
 impl ProofStreamError {
-    pub fn new(message: &str) -> Self {
-        Self {
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new(message: &str) -> anyhow::Error {
+        anyhow::Error::new(Self {
             message: message.to_string(),
-        }
-    }
-
-    pub fn boxed(message: &str) -> Box<dyn Error> {
-        Box::new(Self::new(message))
+        })
     }
 }
 
@@ -84,13 +81,13 @@ where
     }
 
     /// Convert the proof into a proof stream for the verifier.
-    pub fn from_proof(proof: &Proof) -> Result<Self, Box<dyn Error>> {
+    pub fn from_proof(proof: &Proof) -> anyhow::Result<Self> {
         let mut index = 0;
         let mut items = vec![];
         while index < proof.0.len() {
             let len = proof.0[index].value() as usize;
             if proof.0.len() < index + 1 + len {
-                return Err(ProofStreamError::boxed(&format!(
+                return Err(ProofStreamError::new(&format!(
                     "failed to decode proof; wrong length: have {} but expected {}",
                     proof.0.len(),
                     index + 1 + len
@@ -121,11 +118,11 @@ where
     }
 
     /// Receive a proof item from prover as verifier.
-    pub fn dequeue(&mut self) -> Result<Item, Box<dyn Error>> {
+    pub fn dequeue(&mut self) -> anyhow::Result<Item> {
         let item = self
             .items
             .get(self.items_index)
-            .ok_or_else(|| ProofStreamError::boxed("Could not dequeue, queue empty"))?;
+            .ok_or_else(|| ProofStreamError::new("Could not dequeue, queue empty"))?;
 
         self.items_index += 1;
         Ok(item.clone())
@@ -207,15 +204,15 @@ mod proof_stream_typed_tests {
     }
 
     impl BFieldCodec for TestItem {
-        fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn Error>> {
+        fn decode(str: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
             let maybe_element_zero = str.get(0);
             match maybe_element_zero {
-                None => Err(ProofStreamError::boxed(
+                None => Err(ProofStreamError::new(
                     "trying to decode empty string into test item",
                 )),
                 Some(bfe) => {
                     if str.len() != 1 + (bfe.value() as usize) {
-                        Err(ProofStreamError::boxed("length mismatch"))
+                        Err(ProofStreamError::new("length mismatch"))
                     } else {
                         Ok(Box::new(Self::Uncast(str[1..].to_vec())))
                     }

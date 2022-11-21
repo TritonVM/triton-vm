@@ -98,7 +98,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         indices: &[usize],
         root: Digest,
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> Result<Vec<XFieldElement>, Box<dyn Error>> {
+    ) -> anyhow::Result<Vec<XFieldElement>> {
         let fri_response = proof_stream.dequeue()?.as_fri_response()?;
         let dequeued_paths_and_leafs = fri_response.0;
         let paths = dequeued_paths_and_leafs.clone().into_iter().map(|(p, _)| p);
@@ -115,7 +115,9 @@ impl<H: AlgebraicHasher> Fri<H> {
         ) {
             Ok(values)
         } else {
-            Err(Box::new(FriValidationError::BadMerkleAuthenticationPath))
+            Err(anyhow::Error::new(
+                FriValidationError::BadMerkleAuthenticationPath,
+            ))
         }
     }
 
@@ -124,7 +126,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> Result<(Vec<usize>, Digest), Box<dyn Error>> {
+    ) -> anyhow::Result<(Vec<usize>, Digest)> {
         debug_assert_eq!(
             self.domain.length,
             codeword.len(),
@@ -171,7 +173,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> Result<Vec<(Vec<XFieldElement>, MerkleTree<H, Maker>)>, Box<dyn Error>> {
+    ) -> anyhow::Result<Vec<(Vec<XFieldElement>, MerkleTree<H, Maker>)>> {
         let mut subgroup_generator = self.domain.generator;
         let mut offset = self.domain.offset;
         let mut codeword_local = codeword.to_vec();
@@ -300,7 +302,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         proof_stream: &mut ProofStream<ProofItem, H>,
         first_codeword_mt_root: &Digest,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> anyhow::Result<()> {
         prof_start!(maybe_profiler, "init");
         let (num_rounds, degree_of_last_round) = self.num_rounds();
         let num_rounds = num_rounds as usize;
@@ -311,7 +313,9 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         let first_root: Digest = proof_stream.dequeue()?.as_merkle_root()?;
         if first_root != *first_codeword_mt_root {
-            return Err(Box::new(FriValidationError::BadMerkleRootForFirstCodeword));
+            return Err(anyhow::Error::new(
+                FriValidationError::BadMerkleRootForFirstCodeword,
+            ));
         }
 
         roots.push(first_root);
@@ -338,7 +342,9 @@ impl<H: AlgebraicHasher> Fri<H> {
         let last_codeword_mt: MerkleTree<H, Maker> = Maker::from_digests(&codeword_digests);
         let last_root = roots.last().unwrap();
         if *last_root != last_codeword_mt.get_root() {
-            return Err(Box::new(FriValidationError::BadMerkleRootForLastCodeword));
+            return Err(anyhow::Error::new(
+                FriValidationError::BadMerkleRootForLastCodeword,
+            ));
         }
         prof_stop!(maybe_profiler, "last codeword matches root");
 
@@ -368,7 +374,9 @@ impl<H: AlgebraicHasher> Fri<H> {
                 "last_poly_degree is {}, degree_of_last_round is {}",
                 last_poly_degree, degree_of_last_round
             );
-            return Err(Box::new(FriValidationError::LastIterationTooHighDegree));
+            return Err(anyhow::Error::new(
+                FriValidationError::LastIterationTooHighDegree,
+            ));
         }
         prof_stop!(maybe_profiler, "last codeword has low degree");
 
@@ -443,7 +451,9 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_start!(maybe_profiler, "compare last codeword");
         a_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
         if (0..self.colinearity_checks_count).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
-            return Err(Box::new(FriValidationError::MismatchingLastCodeword));
+            return Err(anyhow::Error::new(
+                FriValidationError::MismatchingLastCodeword,
+            ));
         }
         prof_stop!(maybe_profiler, "compare last codeword");
         Ok(())

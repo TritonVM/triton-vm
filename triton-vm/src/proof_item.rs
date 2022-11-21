@@ -13,7 +13,7 @@ type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 pub struct FriResponse(pub Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>);
 
 impl BFieldCodec for FriResponse {
-    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn std::error::Error>> {
+    fn decode(str: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
         let mut index = 0usize;
         let mut vect: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = vec![];
         while index < str.len() {
@@ -21,9 +21,9 @@ impl BFieldCodec for FriResponse {
             let len = match str.get(index) {
                 Some(bfe) => bfe.value() as usize,
                 None => {
-                    return Err(ProofStreamError::boxed(
+                    return Err(anyhow::Error::new(ProofStreamError::new(
                         "invalid index counting in decode for FriResponse",
-                    ));
+                    )));
                 }
             };
             index += 1;
@@ -32,9 +32,9 @@ impl BFieldCodec for FriResponse {
             let mask = match str.get(index) {
                 Some(bfe) => bfe.value() as u32,
                 None => {
-                    return Err(ProofStreamError::boxed(
+                    return Err(anyhow::Error::new(ProofStreamError::new(
                         "invalid mask decoding in decode for FriResponse",
-                    ));
+                    )));
                 }
             };
             index += 1;
@@ -48,9 +48,9 @@ impl BFieldCodec for FriResponse {
                     pap.push(Some(*Digest::decode(digest)?));
                     index += DIGEST_LENGTH;
                 } else {
-                    return Err(ProofStreamError::boxed(
+                    return Err(anyhow::Error::new(ProofStreamError::new(
                         "length mismatch in decoding FRI response",
-                    ));
+                    )));
                 }
             }
 
@@ -58,9 +58,9 @@ impl BFieldCodec for FriResponse {
             let xfe = match str.get(index..(index + 3)) {
                 Some(substr) => *XFieldElement::decode(substr)?,
                 None => {
-                    return Err(ProofStreamError::boxed(
+                    return Err(anyhow::Error::new(ProofStreamError::new(
                         "could not decode XFieldElement in decode for FriResponse",
-                    ));
+                    )));
                 }
             };
             index += 3;
@@ -145,188 +145,186 @@ where
 {
     pub fn as_compressed_authentication_paths(
         &self,
-    ) -> Result<AuthenticationStructure<Digest>, Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<AuthenticationStructure<Digest>> {
         match self {
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
             Self::Uncast(str) => match AuthenticationStructure::<Digest>::decode(str) {
                 Ok(boxed_auth_struct) => Ok(*boxed_auth_struct),
-                Err(e) => Err(ProofStreamError::boxed(&format!(
+                Err(e) => Err(anyhow::Error::new(ProofStreamError::new(&format!(
                     "cast to authentication structure failed: {e}"
-                ))),
+                )))),
             },
-            other => Err(ProofStreamError::boxed(&format!(
+            other => Err(anyhow::Error::new(ProofStreamError::new(&format!(
                 "expected compressed authentication paths, but got something else: {:?}",
                 other
-            ))),
+            )))),
         }
     }
 
-    pub fn as_transposed_base_element_vectors(
-        &self,
-    ) -> Result<Vec<Vec<BFieldElement>>, Box<dyn std::error::Error>> {
+    pub fn as_transposed_base_element_vectors(&self) -> anyhow::Result<Vec<Vec<BFieldElement>>> {
         match self {
             Self::TransposedBaseElementVectors(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<BFieldElement>>::decode(str) {
                 Ok(base_element_vectors) => Ok(*base_element_vectors),
-                Err(_) => Err(ProofStreamError::boxed(
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
                     "cast to base element vectors failed",
-                )),
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected transposed base element vectors, but got something else",
-            )),
+            ))),
         }
     }
 
     pub fn as_transposed_extension_element_vectors(
         &self,
-    ) -> Result<Vec<Vec<XFieldElement>>, Box<dyn std::error::Error>> {
+    ) -> anyhow::Result<Vec<Vec<XFieldElement>>> {
         match self {
             Self::TransposedExtensionElementVectors(xss) => Ok(xss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<XFieldElement>>::decode(str) {
                 Ok(ext_element_vectors) => Ok(*ext_element_vectors),
-                Err(_) => Err(ProofStreamError::boxed(
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
                     "cast to extension field element vectors failed",
-                )),
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected transposed extension element vectors, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_merkle_root(&self) -> Result<Digest, Box<dyn std::error::Error>> {
+    pub fn as_merkle_root(&self) -> anyhow::Result<Digest> {
         match self {
             Self::MerkleRoot(bs) => Ok(*bs),
             Self::Uncast(str) => match Digest::decode(str) {
                 Ok(merkle_root) => Ok(*merkle_root),
-                Err(_) => Err(ProofStreamError::boxed("cast to Merkle root failed")),
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
+                    "cast to Merkle root failed",
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected merkle root, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_transposed_base_elements(
-        &self,
-    ) -> Result<Vec<BFieldElement>, Box<dyn std::error::Error>> {
+    pub fn as_transposed_base_elements(&self) -> anyhow::Result<Vec<BFieldElement>> {
         match self {
             Self::TransposedBaseElements(bs) => Ok(bs.to_owned()),
             Self::Uncast(str) => match Vec::<BFieldElement>::decode(str) {
                 Ok(transposed_base_elements) => Ok(*transposed_base_elements),
-                Err(_) => Err(ProofStreamError::boxed(
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
                     "cast to transposed base field elements failed",
-                )),
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected tranposed base elements, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_transposed_extension_elements(
-        &self,
-    ) -> Result<Vec<XFieldElement>, Box<dyn std::error::Error>> {
+    pub fn as_transposed_extension_elements(&self) -> anyhow::Result<Vec<XFieldElement>> {
         match self {
             Self::TransposedExtensionElements(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
                 Ok(transposed_ext_elements) => Ok(*transposed_ext_elements),
-                Err(_) => Err(ProofStreamError::boxed(
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
                     "cast to transposed extension field elements failed",
-                )),
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected tranposed extension elements, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_authentication_path(&self) -> Result<Vec<Digest>, Box<dyn std::error::Error>> {
+    pub fn as_authentication_path(&self) -> anyhow::Result<Vec<Digest>> {
         match self {
             Self::AuthenticationPath(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Digest>::decode(str) {
                 Ok(authentication_path) => Ok(*authentication_path),
-                Err(_) => Err(ProofStreamError::boxed(
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
                     "cast to authentication path failed",
-                )),
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected authentication path, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_revealed_combination_element(
-        &self,
-    ) -> Result<XFieldElement, Box<dyn std::error::Error>> {
+    pub fn as_revealed_combination_element(&self) -> anyhow::Result<XFieldElement> {
         match self {
             Self::RevealedCombinationElement(x) => Ok(x.to_owned()),
             Self::Uncast(str) => match XFieldElement::decode(str) {
                 Ok(revealed_combination_element) => Ok(*revealed_combination_element),
-                Err(_) => Err(ProofStreamError::boxed(
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
                     "cast to revealed combination element failed",
-                )),
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected revealed combination element, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_revealed_combination_elements(
-        &self,
-    ) -> Result<Vec<XFieldElement>, Box<dyn std::error::Error>> {
+    pub fn as_revealed_combination_elements(&self) -> anyhow::Result<Vec<XFieldElement>> {
         match self {
             Self::RevealedCombinationElements(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
                 Ok(revealed_combination_elements) => Ok(*revealed_combination_elements),
-                Err(_) => Err(ProofStreamError::boxed(
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
                     "cast to revealed combination elements failed",
-                )),
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected revealed combination elements, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_fri_codeword(&self) -> Result<Vec<XFieldElement>, Box<dyn std::error::Error>> {
+    pub fn as_fri_codeword(&self) -> anyhow::Result<Vec<XFieldElement>> {
         match self {
             Self::FriCodeword(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
                 Ok(fri_codeword) => Ok(*fri_codeword),
-                Err(_) => Err(ProofStreamError::boxed("cast to FRI codeword failed")),
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
+                    "cast to FRI codeword failed",
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected FRI codeword, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_fri_response(&self) -> Result<FriResponse, Box<dyn std::error::Error>> {
+    pub fn as_fri_response(&self) -> anyhow::Result<FriResponse> {
         match self {
             Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
             Self::Uncast(str) => match FriResponse::decode(str) {
                 Ok(fri_proof) => Ok(*fri_proof),
-                Err(_) => Err(ProofStreamError::boxed("cast to FRI proof failed")),
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
+                    "cast to FRI proof failed",
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected FRI proof, but got something else",
-            )),
+            ))),
         }
     }
 
-    pub fn as_padded_heights(&self) -> Result<BFieldElement, Box<dyn std::error::Error>> {
+    pub fn as_padded_heights(&self) -> anyhow::Result<BFieldElement> {
         match self {
             Self::PaddedHeight(padded_height) => Ok(padded_height.to_owned()),
             Self::Uncast(str) => match BFieldElement::decode(str) {
                 Ok(padded_height) => Ok(*padded_height),
-                Err(_) => Err(ProofStreamError::boxed("cast to padded heights failed")),
+                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
+                    "cast to padded heights failed",
+                ))),
             },
-            _ => Err(ProofStreamError::boxed(
+            _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected padded table height, but got something else",
-            )),
+            ))),
         }
     }
 }
@@ -335,15 +333,15 @@ impl BFieldCodec for ProofItem {
     /// Turn the given string of BFieldElements into a ProofItem.
     /// The first element denotes the length of the encoding; make
     /// sure it is correct!
-    fn decode(str: &[BFieldElement]) -> Result<Box<Self>, Box<dyn std::error::Error>> {
+    fn decode(str: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
         if let Some(len) = str.get(0) {
             if len.value() as usize + 1 != str.len() {
-                return Err(ProofStreamError::boxed("length mismatch"));
+                Err(anyhow::Error::new(ProofStreamError::new("length mismatch")))
             } else {
                 Ok(Box::new(Self::Uncast(str[1..].to_vec())))
             }
         } else {
-            return Err(ProofStreamError::boxed("empty buffer"));
+            Err(anyhow::Error::new(ProofStreamError::new("empty buffer")))
         }
     }
 

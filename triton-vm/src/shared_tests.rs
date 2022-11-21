@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fs::{create_dir_all, File};
 use std::io::{Read, Write};
 use std::path::Path;
@@ -110,7 +109,7 @@ impl SourceCodeAndInput {
     ) -> (
         AlgebraicExecutionTrace,
         Vec<BFieldElement>,
-        Option<Box<dyn Error>>,
+        Option<anyhow::Error>,
     ) {
         let program = Program::from_code(&self.source_code).expect("Could not load source code.");
         program.simulate(self.input.clone(), self.secret_input.clone())
@@ -129,10 +128,10 @@ pub fn proofs_directory() -> String {
     "proofs/".to_owned()
 }
 
-pub fn create_proofs_directory() -> Result<(), Box<dyn Error>> {
+pub fn create_proofs_directory() -> anyhow::Result<()> {
     match create_dir_all(proofs_directory()) {
         Ok(ay) => Ok(ay),
-        Err(e) => Err(Box::new(e)),
+        Err(e) => Err(anyhow::Error::new(e)),
     }
 }
 
@@ -151,7 +150,7 @@ pub fn proof_file_exists(filename: &str) -> bool {
     true
 }
 
-pub fn load_proof(filename: &str) -> Result<Proof, Box<dyn Error>> {
+pub fn load_proof(filename: &str) -> anyhow::Result<Proof> {
     let full_filename = format!("{}{}", proofs_directory(), filename);
     let mut contents: Vec<u8> = vec![];
     let mut file_handle = File::open(full_filename)?;
@@ -162,7 +161,7 @@ pub fn load_proof(filename: &str) -> Result<Proof, Box<dyn Error>> {
     Ok(proof)
 }
 
-pub fn save_proof(filename: &str, proof: Proof) -> Result<(), Box<dyn Error>> {
+pub fn save_proof(filename: &str, proof: Proof) -> anyhow::Result<()> {
     if !proofs_directory_exists() {
         create_proofs_directory()?;
     }

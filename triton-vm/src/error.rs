@@ -74,10 +74,10 @@ impl Display for InstructionError {
 
 impl Error for InstructionError {}
 
-pub fn vm_err<T>(runtime_error: InstructionError) -> Result<T, Box<dyn Error>> {
+pub fn vm_err<T>(runtime_error: InstructionError) -> anyhow::Result<T> {
     Err(vm_fail(runtime_error))
 }
 
-pub fn vm_fail(runtime_error: InstructionError) -> Box<dyn Error> {
-    Box::new(runtime_error)
+pub fn vm_fail(runtime_error: InstructionError) -> anyhow::Error {
+    anyhow::Error::new(runtime_error)
 }
