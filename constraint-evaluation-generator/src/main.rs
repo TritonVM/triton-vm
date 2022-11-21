@@ -284,7 +284,7 @@ fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
     // Count number of times each node is visited
     ConstraintCircuit::traverse_multiple(constraint_circuits);
 
-    // Get all values for the visited counters in the entire multitree
+    // Get all values for the visited counters in the entire multi-circuit
     let mut visited_counters = vec![];
     for constraint in constraint_circuits.iter() {
         visited_counters.append(&mut constraint.get_all_visited_counters());
@@ -303,7 +303,7 @@ fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
         if visited_counter == 1 {
             continue;
         }
-        shared_evaluations.push(evaluate_nodes_with_visit_count(
+        shared_evaluations.push(declare_nodes_with_visit_count(
             visited_counter,
             constraint_circuits,
         ));
@@ -333,15 +333,20 @@ fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
 /// Produce the code to evaluate code for all nodes that share a value number of
 /// times visited. A value for all nodes with a higher count than the provided are assumed
 /// to be in scope.
-fn evaluate_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
-    visited_count: usize,
+fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
+    requested_visited_count: usize,
     circuits: &[ConstraintCircuit<T, II>],
 ) -> String {
     let mut in_scope: HashSet<CircuitId> = HashSet::new();
     let mut output = String::default();
 
     for circuit in circuits.iter() {
-        declare_single_node_with_visit_count(visited_count, circuit, &mut in_scope, &mut output);
+        declare_single_node_with_visit_count(
+            requested_visited_count,
+            circuit,
+            &mut in_scope,
+            &mut output,
+        );
     }
 
     output
@@ -397,6 +402,7 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
         output.push_str(";\n");
 
         let new_insertion = in_scope.insert(circuit.id.clone());
+        // sanity check: don't declare same node multiple times
         assert!(new_insertion);
     }
 }
