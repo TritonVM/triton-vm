@@ -1,3 +1,4 @@
+use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::{
@@ -98,7 +99,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         indices: &[usize],
         root: Digest,
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> anyhow::Result<Vec<XFieldElement>> {
+    ) -> Result<Vec<XFieldElement>> {
         let fri_response = proof_stream.dequeue()?.as_fri_response()?;
         let dequeued_paths_and_leafs = fri_response.0;
         let paths = dequeued_paths_and_leafs.clone().into_iter().map(|(p, _)| p);
@@ -126,7 +127,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> anyhow::Result<(Vec<usize>, Digest)> {
+    ) -> Result<(Vec<usize>, Digest)> {
         debug_assert_eq!(
             self.domain.length,
             codeword.len(),
@@ -173,7 +174,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> anyhow::Result<Vec<(Vec<XFieldElement>, MerkleTree<H, Maker>)>> {
+    ) -> Result<Vec<(Vec<XFieldElement>, MerkleTree<H, Maker>)>> {
         let mut subgroup_generator = self.domain.generator;
         let mut offset = self.domain.offset;
         let mut codeword_local = codeword.to_vec();
@@ -302,7 +303,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         proof_stream: &mut ProofStream<ProofItem, H>,
         first_codeword_mt_root: &Digest,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         prof_start!(maybe_profiler, "init");
         let (num_rounds, degree_of_last_round) = self.num_rounds();
         let num_rounds = num_rounds as usize;

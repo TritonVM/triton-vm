@@ -1,3 +1,4 @@
+use anyhow::Result;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use std::collections::HashMap;
@@ -107,7 +108,7 @@ impl<'pgm> VMState<'pgm> {
         &self,
         stdin: &mut Vec<BFieldElement>,
         secret_in: &mut Vec<BFieldElement>,
-    ) -> anyhow::Result<(VMState<'pgm>, Option<VMOutput>)> {
+    ) -> Result<(VMState<'pgm>, Option<VMOutput>)> {
         let mut next_state = self.clone();
         next_state
             .step_mut(stdin, secret_in)
@@ -180,7 +181,7 @@ impl<'pgm> VMState<'pgm> {
         &mut self,
         stdin: &mut Vec<BFieldElement>,
         secret_in: &mut Vec<BFieldElement>,
-    ) -> anyhow::Result<Option<VMOutput>> {
+    ) -> Result<Option<VMOutput>> {
         // All instructions increase the cycle count
         self.cycle_count += 1;
         let mut vm_output = None;
@@ -585,7 +586,7 @@ impl<'pgm> VMState<'pgm> {
             .unwrap_or_else(BFieldElement::zero)
     }
 
-    pub fn current_instruction(&self) -> anyhow::Result<Instruction> {
+    pub fn current_instruction(&self) -> Result<Instruction> {
         self.program
             .get(self.instruction_pointer)
             .ok_or_else(|| vm_fail(InstructionPointerOverflow(self.instruction_pointer)))
@@ -598,7 +599,7 @@ impl<'pgm> VMState<'pgm> {
     // since the current instruction could be a jump, but it is either
     // program[ip + 1] or program[ip + 2] depending on whether the current
     // instruction takes an argument or not.
-    pub fn next_instruction(&self) -> anyhow::Result<Instruction> {
+    pub fn next_instruction(&self) -> Result<Instruction> {
         let ci = self.current_instruction()?;
         let ci_size = ci.size();
         let ni_pointer = self.instruction_pointer + ci_size;
@@ -608,7 +609,7 @@ impl<'pgm> VMState<'pgm> {
             .copied()
     }
 
-    fn _next_next_instruction(&self) -> anyhow::Result<Instruction> {
+    fn _next_next_instruction(&self) -> Result<Instruction> {
         let cur_size = self.current_instruction()?.size();
         let next_size = self.next_instruction()?.size();
         self.program
@@ -617,20 +618,20 @@ impl<'pgm> VMState<'pgm> {
             .copied()
     }
 
-    fn jump_stack_pop(&mut self) -> anyhow::Result<(BFieldElement, BFieldElement)> {
+    fn jump_stack_pop(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         self.jump_stack
             .pop()
             .ok_or_else(|| vm_fail(JumpStackTooShallow))
     }
 
-    fn jump_stack_peek(&mut self) -> anyhow::Result<(BFieldElement, BFieldElement)> {
+    fn jump_stack_peek(&mut self) -> Result<(BFieldElement, BFieldElement)> {
         self.jump_stack
             .last()
             .copied()
             .ok_or_else(|| vm_fail(JumpStackTooShallow))
     }
 
-    fn memory_get(&self, mem_addr: &BFieldElement) -> anyhow::Result<BFieldElement> {
+    fn memory_get(&self, mem_addr: &BFieldElement) -> Result<BFieldElement> {
         self.ram
             .get(mem_addr)
             .copied()
@@ -652,7 +653,7 @@ impl<'pgm> VMState<'pgm> {
         true
     }
 
-    pub fn read_word(&self) -> anyhow::Result<Option<BFieldElement>> {
+    pub fn read_word(&self) -> Result<Option<BFieldElement>> {
         let current_instruction = self.current_instruction()?;
         if matches!(current_instruction, ReadIo) {
             Ok(Some(self.op_stack.safe_peek(ST0)))
@@ -661,7 +662,7 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
-    fn divine_sibling(&mut self, secret_in: &mut Vec<BFieldElement>) -> anyhow::Result<()> {
+    fn divine_sibling(&mut self, secret_in: &mut Vec<BFieldElement>) -> Result<()> {
         // st0-st4
         let _ = self.op_stack.pop_n::<DIGEST_LENGTH>()?;
 

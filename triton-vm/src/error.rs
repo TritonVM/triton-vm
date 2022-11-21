@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -74,7 +75,7 @@ impl Display for InstructionError {
 
 impl Error for InstructionError {}
 
-pub fn vm_err<T>(runtime_error: InstructionError) -> anyhow::Result<T> {
+pub fn vm_err<T>(runtime_error: InstructionError) -> Result<T> {
     Err(vm_fail(runtime_error))
 }
 

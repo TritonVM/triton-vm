@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::Display;
 use std::marker::PhantomData;
 
+use anyhow::Result;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
@@ -81,7 +82,7 @@ where
     }
 
     /// Convert the proof into a proof stream for the verifier.
-    pub fn from_proof(proof: &Proof) -> anyhow::Result<Self> {
+    pub fn from_proof(proof: &Proof) -> Result<Self> {
         let mut index = 0;
         let mut items = vec![];
         while index < proof.0.len() {
@@ -118,7 +119,7 @@ where
     }
 
     /// Receive a proof item from prover as verifier.
-    pub fn dequeue(&mut self) -> anyhow::Result<Item> {
+    pub fn dequeue(&mut self) -> Result<Item> {
         let item = self
             .items
             .get(self.items_index)
@@ -150,11 +151,12 @@ mod proof_stream_typed_tests {
     use itertools::Itertools;
     use num_traits::One;
 
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::x_field_element::XFieldElement;
+
     use super::*;
-    use twenty_first::shared_math::{
-        b_field_element::BFieldElement, other::random_elements,
-        rescue_prime_regular::RescuePrimeRegular, x_field_element::XFieldElement,
-    };
 
     #[derive(Clone, Debug, PartialEq)]
     enum TestItem {
@@ -204,7 +206,7 @@ mod proof_stream_typed_tests {
     }
 
     impl BFieldCodec for TestItem {
-        fn decode(str: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
+        fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
             let maybe_element_zero = str.get(0);
             match maybe_element_zero {
                 None => Err(ProofStreamError::new(

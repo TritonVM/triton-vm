@@ -1,7 +1,8 @@
+use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::{XFieldElement, EXTENSION_DEGREE};
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
@@ -13,7 +14,7 @@ type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 pub struct FriResponse(pub Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>);
 
 impl BFieldCodec for FriResponse {
-    fn decode(str: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
         let mut index = 0usize;
         let mut vect: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = vec![];
         while index < str.len() {
@@ -55,7 +56,7 @@ impl BFieldCodec for FriResponse {
             }
 
             // x field element
-            let xfe = match str.get(index..(index + 3)) {
+            let xfe = match str.get(index..(index + EXTENSION_DEGREE)) {
                 Some(substr) => *XFieldElement::decode(substr)?,
                 None => {
                     return Err(anyhow::Error::new(ProofStreamError::new(
@@ -63,7 +64,7 @@ impl BFieldCodec for FriResponse {
                     )));
                 }
             };
-            index += 3;
+            index += EXTENSION_DEGREE;
 
             // push to vector
             vect.push((PartialAuthenticationPath(pap), xfe));
@@ -143,9 +144,7 @@ where
     XFieldElement: BFieldCodec,
     FriResponse: BFieldCodec,
 {
-    pub fn as_compressed_authentication_paths(
-        &self,
-    ) -> anyhow::Result<AuthenticationStructure<Digest>> {
+    pub fn as_compressed_authentication_paths(&self) -> Result<AuthenticationStructure<Digest>> {
         match self {
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
             Self::Uncast(str) => match AuthenticationStructure::<Digest>::decode(str) {
@@ -161,7 +160,7 @@ where
         }
     }
 
-    pub fn as_transposed_base_element_vectors(&self) -> anyhow::Result<Vec<Vec<BFieldElement>>> {
+    pub fn as_transposed_base_element_vectors(&self) -> Result<Vec<Vec<BFieldElement>>> {
         match self {
             Self::TransposedBaseElementVectors(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<BFieldElement>>::decode(str) {
@@ -176,9 +175,7 @@ where
         }
     }
 
-    pub fn as_transposed_extension_element_vectors(
-        &self,
-    ) -> anyhow::Result<Vec<Vec<XFieldElement>>> {
+    pub fn as_transposed_extension_element_vectors(&self) -> Result<Vec<Vec<XFieldElement>>> {
         match self {
             Self::TransposedExtensionElementVectors(xss) => Ok(xss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<XFieldElement>>::decode(str) {
@@ -193,7 +190,7 @@ where
         }
     }
 
-    pub fn as_merkle_root(&self) -> anyhow::Result<Digest> {
+    pub fn as_merkle_root(&self) -> Result<Digest> {
         match self {
             Self::MerkleRoot(bs) => Ok(*bs),
             Self::Uncast(str) => match Digest::decode(str) {
@@ -208,7 +205,7 @@ where
         }
     }
 
-    pub fn as_transposed_base_elements(&self) -> anyhow::Result<Vec<BFieldElement>> {
+    pub fn as_transposed_base_elements(&self) -> Result<Vec<BFieldElement>> {
         match self {
             Self::TransposedBaseElements(bs) => Ok(bs.to_owned()),
             Self::Uncast(str) => match Vec::<BFieldElement>::decode(str) {
@@ -223,7 +220,7 @@ where
         }
     }
 
-    pub fn as_transposed_extension_elements(&self) -> anyhow::Result<Vec<XFieldElement>> {
+    pub fn as_transposed_extension_elements(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::TransposedExtensionElements(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
@@ -238,7 +235,7 @@ where
         }
     }
 
-    pub fn as_authentication_path(&self) -> anyhow::Result<Vec<Digest>> {
+    pub fn as_authentication_path(&self) -> Result<Vec<Digest>> {
         match self {
             Self::AuthenticationPath(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Digest>::decode(str) {
@@ -253,7 +250,7 @@ where
         }
     }
 
-    pub fn as_revealed_combination_element(&self) -> anyhow::Result<XFieldElement> {
+    pub fn as_revealed_combination_element(&self) -> Result<XFieldElement> {
         match self {
             Self::RevealedCombinationElement(x) => Ok(x.to_owned()),
             Self::Uncast(str) => match XFieldElement::decode(str) {
@@ -268,7 +265,7 @@ where
         }
     }
 
-    pub fn as_revealed_combination_elements(&self) -> anyhow::Result<Vec<XFieldElement>> {
+    pub fn as_revealed_combination_elements(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::RevealedCombinationElements(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
@@ -283,7 +280,7 @@ where
         }
     }
 
-    pub fn as_fri_codeword(&self) -> anyhow::Result<Vec<XFieldElement>> {
+    pub fn as_fri_codeword(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::FriCodeword(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
@@ -298,7 +295,7 @@ where
         }
     }
 
-    pub fn as_fri_response(&self) -> anyhow::Result<FriResponse> {
+    pub fn as_fri_response(&self) -> Result<FriResponse> {
         match self {
             Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
             Self::Uncast(str) => match FriResponse::decode(str) {
@@ -313,7 +310,7 @@ where
         }
     }
 
-    pub fn as_padded_heights(&self) -> anyhow::Result<BFieldElement> {
+    pub fn as_padded_heights(&self) -> Result<BFieldElement> {
         match self {
             Self::PaddedHeight(padded_height) => Ok(padded_height.to_owned()),
             Self::Uncast(str) => match BFieldElement::decode(str) {
@@ -333,7 +330,7 @@ impl BFieldCodec for ProofItem {
     /// Turn the given string of BFieldElements into a ProofItem.
     /// The first element denotes the length of the encoding; make
     /// sure it is correct!
-    fn decode(str: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
+    fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
         if let Some(len) = str.get(0) {
             if len.value() as usize + 1 != str.len() {
                 Err(anyhow::Error::new(ProofStreamError::new("length mismatch")))
@@ -378,8 +375,10 @@ mod proof_item_typed_tests {
 
     use super::*;
     use twenty_first::shared_math::{
-        b_field_element::BFieldElement, other::random_elements,
-        rescue_prime_regular::RescuePrimeRegular, x_field_element::XFieldElement,
+        b_field_element::BFieldElement,
+        other::random_elements,
+        rescue_prime_regular::RescuePrimeRegular,
+        x_field_element::{XFieldElement, EXTENSION_DEGREE},
     };
 
     fn random_bool() -> bool {
@@ -388,9 +387,8 @@ mod proof_item_typed_tests {
     }
 
     fn random_xfieldelement() -> XFieldElement {
-        let extension_degree = 3;
         XFieldElement {
-            coefficients: random_elements(extension_degree).try_into().unwrap(),
+            coefficients: random_elements(EXTENSION_DEGREE).try_into().unwrap(),
         }
     }
 

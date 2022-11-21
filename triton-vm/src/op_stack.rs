@@ -1,5 +1,6 @@
 use super::error::{vm_fail, InstructionError::*};
 use super::ord_n::{Ord16, Ord16::*};
+use anyhow::Result;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -33,21 +34,21 @@ impl OpStack {
         self.push(elem.coefficients[0]);
     }
 
-    pub fn pop(&mut self) -> anyhow::Result<BFieldElement> {
+    pub fn pop(&mut self) -> Result<BFieldElement> {
         self.stack.pop().ok_or_else(|| vm_fail(OpStackTooShallow))
     }
 
-    pub fn pop_x(&mut self) -> anyhow::Result<XFieldElement> {
+    pub fn pop_x(&mut self) -> Result<XFieldElement> {
         Ok(XFieldElement::new([self.pop()?, self.pop()?, self.pop()?]))
     }
 
-    pub fn pop_u32(&mut self) -> anyhow::Result<u32> {
+    pub fn pop_u32(&mut self) -> Result<u32> {
         let elem = self.pop()?;
         elem.try_into()
             .map_err(|_| vm_fail(FailedU32Conversion(elem)))
     }
 
-    pub fn pop_n<const N: usize>(&mut self) -> anyhow::Result<[BFieldElement; N]> {
+    pub fn pop_n<const N: usize>(&mut self) -> Result<[BFieldElement; N]> {
         let mut buffer = [BFieldElement::zero(); N];
         for element in buffer.iter_mut() {
             *element = self.pop()?;

@@ -1,6 +1,7 @@
 use std::fmt::Display;
 use std::io::Cursor;
 
+use anyhow::Result;
 use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
@@ -81,7 +82,7 @@ impl Program {
     /// All valid programs terminate with `Halt`.
     ///
     /// `from_code()` will append `Halt` if not present.
-    pub fn from_code(code: &str) -> anyhow::Result<Self> {
+    pub fn from_code(code: &str) -> Result<Self> {
         let instructions = parse(code)?;
         Ok(Program::new(&instructions))
     }
