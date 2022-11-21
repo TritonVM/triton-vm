@@ -10,7 +10,7 @@ use rayon::iter::{
 };
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{self, is_power_of_two, random_elements, transpose};
+use twenty_first::shared_math::other::{is_power_of_two, random_elements, roundup_npo2, transpose};
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
@@ -121,7 +121,7 @@ impl Stark {
         let empty_table_collection = ExtTableCollection::with_padded_height(claim.padded_height);
         let max_degree_with_origin =
             empty_table_collection.max_degree_with_origin(parameters.num_trace_randomizers);
-        let max_degree = (other::roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
+        let max_degree = (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
         let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
         let fri_domain_generator =
             BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
@@ -406,10 +406,9 @@ impl Stark {
 
     fn quotient_domain(&self) -> ArithmeticDomain<BFieldElement> {
         let offset = self.fri.domain.offset;
-        let expansion_factor = self.fri.expansion_factor;
-        let generator = self.fri.domain.generator.mod_pow(expansion_factor as u64);
-        let length = self.fri.domain.length / expansion_factor;
-        ArithmeticDomain::new(offset, generator, length)
+        let length = roundup_npo2(self.max_degree as u64);
+        let generator = BFieldElement::primitive_root_of_unity(length).unwrap();
+        ArithmeticDomain::new(offset, generator, length as usize)
     }
 
     fn get_revealed_indices(
