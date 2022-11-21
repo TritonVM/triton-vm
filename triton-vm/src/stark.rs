@@ -160,6 +160,7 @@ impl Stark {
                 &quotient_domain,
                 &self.fri.domain,
                 self.parameters.num_trace_randomizers,
+                maybe_profiler,
             );
         let base_quotient_domain_codewords = base_quotient_domain_tables.get_all_base_columns();
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
@@ -197,6 +198,7 @@ impl Stark {
                 &quotient_domain,
                 &self.fri.domain,
                 self.parameters.num_trace_randomizers,
+                maybe_profiler,
             );
         let extension_quotient_domain_codewords = ext_quotient_domain_tables.collect_all_columns();
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();

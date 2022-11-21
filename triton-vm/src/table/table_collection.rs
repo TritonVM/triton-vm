@@ -137,30 +137,45 @@ impl BaseTableCollection {
         quotient_domain: &ArithmeticDomain<BFieldElement>,
         fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> (Self, Self) {
+        prof_start!(maybe_profiler, "program table");
         let (program_table_quotient, program_table_fri) = self
             .program_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "program table");
+        prof_start!(maybe_profiler, "instruction table");
         let (instruction_table_quotient, instruction_table_fri) = self
             .instruction_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "instruction table");
+        prof_start!(maybe_profiler, "processor table");
         let (processor_table_quotient, processor_table_fri) = self
             .processor_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "processor table");
+        prof_start!(maybe_profiler, "op stack table");
         let (op_stack_table_quotient, op_stack_table_fri) = self
             .op_stack_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "op stack table");
+        prof_start!(maybe_profiler, "ram table");
         let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
             quotient_domain,
             fri_domain,
             num_trace_randomizers,
         );
+        prof_stop!(maybe_profiler, "ram table");
+        prof_start!(maybe_profiler, "jump stack table");
         let (jump_stack_table_quotient, jump_stack_table_fri) = self
             .jump_stack_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "jump stack table");
+        prof_start!(maybe_profiler, "hash table");
         let (hash_table_quotient, hash_table_fri) = self
             .hash_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "hash table");
 
         let quotient_domain_tables = BaseTableCollection {
             padded_height: self.padded_height,
@@ -339,30 +354,45 @@ impl ExtTableCollection {
         quotient_domain: &ArithmeticDomain<BFieldElement>,
         fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
+        maybe_profiler: &mut Option<TritonProfiler>,
     ) -> (Self, Self) {
+        prof_start!(maybe_profiler, "program table");
         let (program_table_quotient, program_table_fri) = self
             .program_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "program table");
+        prof_start!(maybe_profiler, "instruction table");
         let (instruction_table_quotient, instruction_table_fri) = self
             .instruction_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "instruction table");
+        prof_start!(maybe_profiler, "processor table");
         let (processor_table_quotient, processor_table_fri) = self
             .processor_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "processor table");
+        prof_start!(maybe_profiler, "op stack table");
         let (op_stack_table_quotient, op_stack_table_fri) = self
             .op_stack_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "op stack table");
+        prof_start!(maybe_profiler, "ram table");
         let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
             quotient_domain,
             fri_domain,
             num_trace_randomizers,
         );
+        prof_stop!(maybe_profiler, "ram table");
+        prof_start!(maybe_profiler, "jump stack table");
         let (jump_stack_table_quotient, jump_stack_table_fri) = self
             .jump_stack_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "jump stack table");
+        prof_start!(maybe_profiler, "hash table");
         let (hash_table_quotient, hash_table_fri) = self
             .hash_table
             .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        prof_stop!(maybe_profiler, "hash table");
 
         let quotient_domain_tables = ExtTableCollection {
             padded_height: self.padded_height,
