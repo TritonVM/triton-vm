@@ -5,6 +5,7 @@ use std::ops::Neg;
 use std::str::SplitWhitespace;
 use std::vec;
 
+use anyhow::{bail, Result};
 use num_traits::One;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
@@ -297,31 +298,31 @@ impl Instruction {
 }
 
 impl TryFrom<u32> for Instruction {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(opcode: u32) -> Result<Self, Self::Error> {
+    fn try_from(opcode: u32) -> Result<Self> {
         if let Some(instruction) =
             Instruction::iter().find(|instruction| instruction.opcode() == opcode)
         {
             Ok(instruction)
         } else {
-            Err(format!("No instruction with opcode {} exists.", opcode))
+            bail!("No instruction with opcode {} exists.", opcode)
         }
     }
 }
 
 impl TryFrom<u64> for Instruction {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(opcode: u64) -> Result<Self, Self::Error> {
+    fn try_from(opcode: u64) -> Result<Self> {
         (opcode as u32).try_into()
     }
 }
 
 impl TryFrom<usize> for Instruction {
-    type Error = String;
+    type Error = anyhow::Error;
 
-    fn try_from(opcode: usize) -> Result<Self, Self::Error> {
+    fn try_from(opcode: usize) -> Result<Self> {
         (opcode as u32).try_into()
     }
 }
@@ -393,7 +394,7 @@ fn convert_labels_helper(
     }
 }
 
-pub fn parse(code: &str) -> Result<Vec<LabelledInstruction>, Box<dyn Error>> {
+pub fn parse(code: &str) -> Result<Vec<LabelledInstruction>> {
     let mut tokens = code.split_whitespace();
     let mut instructions = vec![];
 
@@ -405,10 +406,7 @@ pub fn parse(code: &str) -> Result<Vec<LabelledInstruction>, Box<dyn Error>> {
     Ok(instructions)
 }
 
-fn parse_token(
-    token: &str,
-    tokens: &mut SplitWhitespace,
-) -> Result<Vec<LabelledInstruction>, Box<dyn Error>> {
+fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<LabelledInstruction>> {
     if let Some(label) = token.strip_suffix(':') {
         let label_name = label.to_string();
         return Ok(vec![LabelledInstruction::Label(label_name)]);
@@ -500,7 +498,7 @@ fn parse_token(
         "read_io" => vec![ReadIo],
         "write_io" => vec![WriteIo],
 
-        _ => return Err(Box::new(UnknownInstruction(token.to_string()))),
+        _ => return Err(anyhow::Error::new(UnknownInstruction(token.to_string()))),
     };
 
     let labelled_instruction = instruction
@@ -683,7 +681,7 @@ fn pseudo_instruction_reverse() -> Vec<AnInstruction<String>> {
     instructions
 }
 
-fn parse_elem(tokens: &mut SplitWhitespace) -> Result<BFieldElement, Box<dyn Error>> {
+fn parse_elem(tokens: &mut SplitWhitespace) -> Result<BFieldElement> {
     let constant_s = tokens.next().ok_or(UnexpectedEndOfStream)?;
 
     let mut constant_n128: i128 = constant_s.parse::<i128>()?;
@@ -696,7 +694,7 @@ fn parse_elem(tokens: &mut SplitWhitespace) -> Result<BFieldElement, Box<dyn Err
     Ok(constant_elem)
 }
 
-fn parse_label(tokens: &mut SplitWhitespace) -> Result<String, Box<dyn Error>> {
+fn parse_label(tokens: &mut SplitWhitespace) -> Result<String> {
     let label = tokens
         .next()
         .map(|s| s.to_string())

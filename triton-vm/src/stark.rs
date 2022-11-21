@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
+use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::{
@@ -14,7 +15,7 @@ use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, PrimitiveRootOfUnity};
-use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::{XFieldElement, EXTENSION_DEGREE};
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
 
@@ -646,7 +647,7 @@ impl Stark {
         &self,
         proof: Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Result<bool, Box<dyn Error>> {
+    ) -> Result<bool> {
         prof_start!(maybe_profiler, "deserialize");
         let mut proof_stream = StarkProofStream::from_proof(&proof)?;
         prof_stop!(maybe_profiler, "deserialize");
@@ -661,7 +662,9 @@ impl Stark {
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         if self.claim.padded_height != padded_height && self.claim.padded_height != 0 {
-            return Err(Box::new(StarkValidationError::PaddedHeightInequality));
+            return Err(anyhow::Error::new(
+                StarkValidationError::PaddedHeightInequality,
+            ));
         }
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
@@ -1064,7 +1067,9 @@ impl Stark {
                 .sum();
 
             if revealed_combination_leaf != inner_product {
-                return Err(Box::new(StarkValidationError::CombinationLeafInequality));
+                return Err(anyhow::Error::new(
+                    StarkValidationError::CombinationLeafInequality,
+                ));
             }
             prof_stop!(maybe_profiler, "compute inner product");
         }
@@ -1079,13 +1084,12 @@ impl Stark {
         revealed_base_elems: Vec<Vec<BFieldElement>>,
         revealed_ext_elems: Vec<Vec<XFieldElement>>,
     ) -> HashMap<usize, Vec<XFieldElement>> {
-        let extension_degree = 3;
         let mut index_map: HashMap<usize, Vec<XFieldElement>> = HashMap::new();
         for (i, &idx) in revealed_indices.iter().enumerate() {
             let mut rand_elems = vec![];
             for (coeff_0, coeff_1, coeff_2) in revealed_base_elems[i]
                 .iter()
-                .take(extension_degree * num_randomizer_polynomials)
+                .take(EXTENSION_DEGREE * num_randomizer_polynomials)
                 .tuples()
             {
                 rand_elems.push(XFieldElement::new([*coeff_0, *coeff_1, *coeff_2]));
@@ -1093,7 +1097,7 @@ impl Stark {
 
             let base_elems = revealed_base_elems[i]
                 .iter()
-                .skip(extension_degree * num_randomizer_polynomials)
+                .skip(EXTENSION_DEGREE * num_randomizer_polynomials)
                 .map(|bfe| bfe.lift())
                 .collect_vec();
 
