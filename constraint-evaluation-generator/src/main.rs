@@ -1,7 +1,7 @@
+use itertools::Itertools;
 use std::collections::HashSet;
 use std::process::Command;
 
-use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
