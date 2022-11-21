@@ -61,7 +61,7 @@ impl BFieldCodec for BFieldElement {
 
 impl BFieldCodec for XFieldElement {
     fn decode(str: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
-        if str.len() != 3 {
+        if str.len() != EXTENSION_DEGREE {
             Err(BFieldCodecError::new(
                 "trying to decode slice of not 3 BFieldElements into XFieldElement",
             ))
