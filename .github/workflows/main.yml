@@ -29,7 +29,7 @@ jobs:
         id: vars
         run: |
           RUST_VERSION=$(rustc -V | grep -Po '(?<=^rustc )\S+')
-          echo "rustc-version=$RUST_VERSION" >> $GITHUB_STATE
+          echo "rustc-version=$RUST_VERSION" >> $GITHUB_OUTPUT
 
       # 1. Use `**/Cargo.toml` in cache key because Cargo.lock isn't committed.
       # 2. Don't include target/ -- only cache building 3rd-party libraries.
