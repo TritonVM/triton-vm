@@ -932,23 +932,23 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitBuilder<T, II> {
 
 #[cfg(test)]
 mod constraint_circuit_tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+
     use itertools::Itertools;
-    use std::{collections::hash_map::DefaultHasher, hash::Hasher};
-
     use rand::{thread_rng, RngCore};
-    use twenty_first::shared_math::{mpolynomial::MPolynomial, other::random_elements};
+    use twenty_first::shared_math::mpolynomial::MPolynomial;
+    use twenty_first::shared_math::other::random_elements;
 
-    use crate::table::{
-        challenges::AllChallenges,
-        instruction_table::{
-            ExtInstructionTable, InstructionTableChallengeId, InstructionTableChallenges,
-        },
-        jump_stack_table::ExtJumpStackTable,
-        op_stack_table::ExtOpStackTable,
-        processor_table::ExtProcessorTable,
-        program_table::ExtProgramTable,
-        ram_table::ExtRamTable,
+    use crate::table::challenges::AllChallenges;
+    use crate::table::instruction_table::{
+        ExtInstructionTable, InstructionTableChallengeId, InstructionTableChallenges,
     };
+    use crate::table::jump_stack_table::ExtJumpStackTable;
+    use crate::table::op_stack_table::ExtOpStackTable;
+    use crate::table::processor_table::ExtProcessorTable;
+    use crate::table::program_table::ExtProgramTable;
+    use crate::table::ram_table::ExtRamTable;
 
     use super::*;
 
