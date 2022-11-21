@@ -333,7 +333,7 @@ impl ExtTableCollection {
         }
     }
 
-    /// Heads up: only extension columns are being low degree extended. todo: better naming.
+    /// Heads up: only extension columns are low-degree extended – base columns are already covered.
     pub fn to_quotient_and_fri_domain_tables(
         &self,
         quotient_domain: &ArithmeticDomain<BFieldElement>,

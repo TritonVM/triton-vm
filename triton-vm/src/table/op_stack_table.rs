@@ -83,7 +83,6 @@ impl Extendable for OpStackTable {
         panic!("This function should not be called: the Op Stack Table implements `.pad` directly.")
     }
 
-    // todo deduplicate this function. Other copy in jump_stack_table.rs
     fn pad(&mut self, padded_height: usize) {
         let max_clock = self.data().len() as u64 - 1;
         let num_padding_rows = padded_height - self.data().len();
@@ -94,7 +93,7 @@ impl Extendable for OpStackTable {
             .enumerate()
             .find(|(_, row)| row[usize::from(CLK)].value() == max_clock)
             .map(|(idx, _)| idx)
-            .unwrap();
+            .expect("Op Stack Table must contain row with clock cycle equal to max cycle.");
         let insertion_index = template_index + 1;
 
         let padding_template = &mut self.mut_data()[template_index];

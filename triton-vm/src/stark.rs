@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use rayon::iter::{
@@ -475,7 +475,6 @@ impl Stark {
             if std::env::var("DEBUG").is_ok() {
                 println!(" --- next up: {identifier} codewords");
             }
-            // TODO with the DEBUG CODE and enumerate removed, the iterators can be `into_par_iter`
             for (idx, (codeword, degree_bound)) in
                 codewords.into_iter().zip_eq(bounds.iter()).enumerate()
             {
@@ -756,8 +755,7 @@ impl Stark {
         let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
         prof_stop!(maybe_profiler, "get indices");
 
-        // TODO: in the following ~80 lines, we (conceptually) do the same thing three times. DRY.
-        prof_start!(maybe_profiler, "dequeue");
+        prof_start!(maybe_profiler, "dequeue base elements");
         let revealed_base_elems = proof_stream
             .dequeue()?
             .as_transposed_base_element_vectors()?;
@@ -768,21 +766,20 @@ impl Stark {
             .par_iter()
             .map(|revealed_base_elem| StarkHasher::hash_slice(revealed_base_elem))
             .collect();
-        prof_stop!(maybe_profiler, "dequeue");
+        prof_stop!(maybe_profiler, "dequeue base elements");
 
-        prof_start!(maybe_profiler, "Merkle verify");
+        prof_start!(maybe_profiler, "Merkle verify (base tree)");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
             &revealed_indices,
             &leaf_digests_base,
             &auth_paths_base,
         ) {
-            // TODO: Replace this by a specific error type, or just return `Ok(false)`
-            panic!("Failed to verify authentication path for base codeword");
+            bail!("Failed to verify authentication path for base codeword");
         }
-        prof_stop!(maybe_profiler, "Merkle verify");
+        prof_stop!(maybe_profiler, "Merkle verify (base tree)");
 
-        prof_start!(maybe_profiler, "dequeue");
+        prof_start!(maybe_profiler, "dequeue extension elements");
         let revealed_ext_elems = proof_stream
             .dequeue()?
             .as_transposed_extension_element_vectors()?;
@@ -799,22 +796,21 @@ impl Stark {
                 StarkHasher::hash_slice(&bvalues)
             })
             .collect();
-        prof_stop!(maybe_profiler, "dequeue");
+        prof_stop!(maybe_profiler, "dequeue extension elements");
 
-        prof_start!(maybe_profiler, "Merkle verify (auth struct)");
+        prof_start!(maybe_profiler, "Merkle verify (extension tree)");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
             &revealed_indices,
             &leaf_digests_ext,
             &auth_paths_ext,
         ) {
-            // TODO: Replace this by a specific error type, or just return `Ok(false)`
-            panic!("Failed to verify authentication path for extension codeword");
+            bail!("Failed to verify authentication path for extension codeword");
         }
-        prof_stop!(maybe_profiler, "Merkle verify (auth struct)");
+        prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
 
         // Verify Merkle authentication path for combination elements
-        prof_start!(maybe_profiler, "Merkle verify");
+        prof_start!(maybe_profiler, "Merkle verify (combination tree)");
         let revealed_combination_leafs =
             proof_stream.dequeue()?.as_revealed_combination_elements()?;
         let revealed_combination_digests: Vec<_> = revealed_combination_leafs
@@ -830,10 +826,9 @@ impl Stark {
             &revealed_combination_digests,
             &revealed_combination_auth_paths,
         ) {
-            // TODO: Replace this by a specific error type, or just return `Ok(false)`
-            panic!("Failed to verify authentication path for combination codeword");
+            bail!("Failed to verify authentication path for combination codeword");
         }
-        prof_stop!(maybe_profiler, "Merkle verify");
+        prof_stop!(maybe_profiler, "Merkle verify (combination tree)");
         prof_stop!(maybe_profiler, "check leafs");
 
         // TODO: we can store the elements mushed into "index_map_of_revealed_elems" separately,
