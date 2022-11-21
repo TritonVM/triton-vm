@@ -4,7 +4,7 @@ use std::fmt;
 
 use anyhow::Result;
 use itertools::Itertools;
-use num_traits::One;
+use num_traits::{One, Zero};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -239,8 +239,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "grand cross table");
         let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = self.parameters.num_randomizer_polynomials
-            + 2 * base_quotient_domain_codewords.len()
+        let num_non_lin_combi_weights = 2 * base_quotient_domain_codewords.len()
             + 2 * extension_quotient_domain_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
@@ -293,14 +292,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "grand cross table");
 
         prof_start!(maybe_profiler, "nonlinear combination");
-        // magic number `1` corresponds to `num_randomizer_polynomials`, which is currently ignored
-        let (randomizer_weight, base_ext_quot_weights) = non_lin_combi_weights.split_at(1);
         let combination_codeword = self.create_combination_codeword(
             &quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
             quotient_codewords,
-            base_ext_quot_weights.to_vec(),
+            non_lin_combi_weights.to_vec(),
             base_degree_bounds,
             extension_degree_bounds,
             quotient_degree_bounds,
@@ -316,7 +313,7 @@ impl Stark {
         let fri_combination_codeword: Vec<_> = fri_combination_codeword_without_randomizer
             .into_par_iter()
             .zip_eq(x_rand_codeword.into_par_iter())
-            .map(|(cc_elem, rand_elem)| cc_elem + randomizer_weight[0] * rand_elem)
+            .map(|(cc_elem, rand_elem)| cc_elem + rand_elem)
             .collect();
         prof_stop!(maybe_profiler, "nonlinear combination");
 
@@ -691,16 +688,13 @@ impl Stark {
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
 
-        // get weights for nonlinear combination:
-        //  - 1 for randomizer polynomials,
-        //  - 2 for {base, extension} polynomials and quotients.
-        // The latter require 2 weights because transition constraints check 2 rows.
+        // Get weights for nonlinear combination. Concretely, sample 2 weights for each base, and
+        // extension polynomial and each quotients, because transition constraints check 2 rows.
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
         let num_base_polynomials = base_degree_bounds.len();
         let num_extension_polynomials = extension_degree_bounds.len();
         let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = self.parameters.num_randomizer_polynomials
-            + 2 * num_base_polynomials
+        let num_non_lin_combi_weights = 2 * num_base_polynomials
             + 2 * num_extension_polynomials
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
@@ -873,8 +867,7 @@ impl Stark {
                 self.fri.domain.domain_value(combination_check_index as u32);
             let cross_slice = &index_map_of_revealed_elems[&combination_check_index];
 
-            // populate summands with a cross-slice from the randomizer codewords
-            let mut summands = cross_slice[0..base_offset].to_vec();
+            let mut summands = vec![];
 
             // populate summands with a cross-slice of (base,ext) codewords and their shifts
             for (index_range, degree_bounds) in [
@@ -1052,13 +1045,16 @@ impl Stark {
             prof_stop!(maybe_profiler, "grand cross-table argument");
 
             prof_start!(maybe_profiler, "compute inner product");
-            let inner_product = non_lin_combi_weights
+            let inner_product: XFieldElement = non_lin_combi_weights
                 .par_iter()
                 .zip_eq(summands.par_iter())
                 .map(|(&weight, &summand)| weight * summand)
                 .sum();
+            let randomizer_codewords_contribution = cross_slice[0..base_offset]
+                .iter()
+                .fold(XFieldElement::zero(), |acc, &summand| acc + summand);
 
-            if revealed_combination_leaf != inner_product {
+            if revealed_combination_leaf != inner_product + randomizer_codewords_contribution {
                 return Err(anyhow::Error::new(
                     StarkValidationError::CombinationLeafInequality,
                 ));
