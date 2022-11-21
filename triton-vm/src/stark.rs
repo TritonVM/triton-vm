@@ -1783,4 +1783,26 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
     }
+
+    #[test]
+    #[ignore = "stress test"]
+    fn prove_fib_successively_larger() {
+        let source_code = sample_programs::FIBONACCI_VIT;
+
+        for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
+            let mut profiler = Some(TritonProfiler::new(&format!(
+                "element #{fibonacci_number:>4} from Fibonacci sequence"
+            )));
+            let stdin = vec![BFieldElement::new(fibonacci_number)];
+            let (stark, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
+            let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
+            let fri_dom_len_str = format!("log_2 of FRI domain length: {}", log_fri_dom_len);
+            prof_start!(profiler, &fri_dom_len_str);
+            prof_stop!(profiler, &fri_dom_len_str);
+            if let Some(mut p) = profiler {
+                p.finish();
+                println!("{}", p.report())
+            }
+        }
+    }
 }
