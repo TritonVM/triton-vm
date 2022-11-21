@@ -23,6 +23,26 @@ jobs:
           toolchain: stable
           override: true
 
+      # We always build with latest stable, but we also reset
+      # the CI cache when new versions of Rust are released.
+      - name: Determine build cache key
+        id: vars
+        run: |
+          export
+          RUST_VERSION=$(rustc -V | grep -Po '(?<=^rustc )\S+')
+          echo "::set-output name=rustc-version::$RUST_VERSION"
+
+      # 1. Use `**/Cargo.toml` in cache key because Cargo.lock isn't committed.
+      # 2. Don't include target/ -- only cache building 3rd-party libraries.
+      - uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # v3.0.11, 2022-10-13
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ steps.vars.outputs.rustc-version }}-${{ hashFiles('**/Cargo.toml') }}
+
       - name: Build constraints
         run: make build-constraints
 
