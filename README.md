@@ -71,7 +71,7 @@ For trying out the code, [install Rust](https://www.rust-lang.org/tools/install)
 ```
 ~/Projects $ git clone https://github.com/TritonVM/triton-vm.git
 ~/Projects $ cd triton-vm
-~/Projects/triton-vm $ cargo test
+~/Projects/triton-vm $ make test
 ```
 
 For local development of both libraries, it is encouraged to follow [GitHub's fork & pull workflow][gh-fap] by forking and cloning both, place `twenty-first` relative to `triton-vm`, and change the dependency to be `path`-local:
