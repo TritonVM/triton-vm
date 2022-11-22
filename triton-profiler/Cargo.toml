@@ -1,6 +1,6 @@
 [package]
 name = "triton-profiler"
-version = "0.0.0"
+version = "0.7.0"
 authors = ["Triton Software AG"]
 edition = "2021"
 
