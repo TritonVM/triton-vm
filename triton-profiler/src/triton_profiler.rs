@@ -9,6 +9,8 @@ use colored::{Color, ColoredString, Colorize};
 use criterion::profiler::Profiler;
 use unicode_width::UnicodeWidthStr;
 
+const GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME: &str = "PROFILE_AS_YOU_GO";
+
 #[derive(Clone, Debug)]
 struct Task {
     name: String,
@@ -171,6 +173,10 @@ impl TritonProfiler {
             time: now,
             task_type,
         });
+
+        if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
+            println!("stop: {name}; took {now:.2?}");
+        }
     }
 
     pub fn iteration_zero(&mut self, name: &str) {
@@ -219,10 +225,14 @@ impl TritonProfiler {
     }
 
     fn plain_stop(&mut self) {
-        let index = self.stack.pop().unwrap().0;
+        let (index, name) = self.stack.pop().unwrap();
         let now = self.timer.elapsed();
         let duration = now - self.profile[index].time;
         self.profile[index].time = duration;
+
+        if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
+            println!("stop: {name}");
+        }
     }
 
     pub fn stop(&mut self, name: &str) {
