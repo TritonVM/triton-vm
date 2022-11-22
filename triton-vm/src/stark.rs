@@ -1692,12 +1692,16 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_halt_test() {
         let code_with_input = test_halt();
+        let mut profiler = Some(TritonProfiler::new("halt"));
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
-            &mut None,
+            &mut profiler,
         );
+        let mut profiler = profiler.unwrap();
+        profiler.finish();
+        println!("{}", profiler.report());
 
         let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
