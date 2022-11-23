@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
@@ -9,8 +11,9 @@ use triton_profiler::triton_profiler::TritonProfiler;
 use triton_profiler::{prof_start, prof_stop};
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::table::base_table::{Extendable, InheritsFromTable};
+use crate::table::base_table::{Extendable, InheritsFromTable, Table};
 use crate::table::extension_table::DegreeWithOrigin;
+use crate::table::table_column::*;
 
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
@@ -75,7 +78,8 @@ fn to_vec_vecs<T: Sized + Clone, const S: usize>(vector_of_arrays: &[[T; S]]) ->
 }
 
 pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
-    (padded_height + num_trace_randomizers - 1) as Degree
+    let randomized_trace_length = roundup_npo2((padded_height + num_trace_randomizers) as u64);
+    (randomized_trace_length - 1) as Degree
 }
 
 pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
@@ -132,73 +136,72 @@ impl BaseTableCollection {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn to_quotient_and_fri_domain_tables(
+    pub fn to_fri_domain_tables(
         &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
         fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> (Self, Self) {
+    ) -> Self {
         prof_start!(maybe_profiler, "program table");
-        let (program_table_quotient, program_table_fri) = self
-            .program_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "program table");
-        prof_start!(maybe_profiler, "instruction table");
-        let (instruction_table_quotient, instruction_table_fri) = self
-            .instruction_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "instruction table");
-        prof_start!(maybe_profiler, "processor table");
-        let (processor_table_quotient, processor_table_fri) = self
-            .processor_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "processor table");
-        prof_start!(maybe_profiler, "op stack table");
-        let (op_stack_table_quotient, op_stack_table_fri) = self
-            .op_stack_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "op stack table");
-        prof_start!(maybe_profiler, "ram table");
-        let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
-            quotient_domain,
+        let program_table = ProgramTable::new(self.program_table.low_degree_extension(
             fri_domain,
             num_trace_randomizers,
-        );
+            0..self.program_table.base_width(),
+        ));
+        prof_stop!(maybe_profiler, "program table");
+        prof_start!(maybe_profiler, "instruction table");
+        let instruction_table = InstructionTable::new(self.instruction_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            0..self.instruction_table.base_width(),
+        ));
+        prof_stop!(maybe_profiler, "instruction table");
+        prof_start!(maybe_profiler, "processor table");
+        let processor_table = ProcessorTable::new(self.processor_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            0..self.processor_table.base_width(),
+        ));
+        prof_stop!(maybe_profiler, "processor table");
+        prof_start!(maybe_profiler, "op stack table");
+        let op_stack_table = OpStackTable::new(self.op_stack_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            0..self.op_stack_table.base_width(),
+        ));
+        prof_stop!(maybe_profiler, "op stack table");
+        prof_start!(maybe_profiler, "ram table");
+        let ram_table = RamTable::new(self.ram_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            0..self.ram_table.base_width(),
+        ));
         prof_stop!(maybe_profiler, "ram table");
         prof_start!(maybe_profiler, "jump stack table");
-        let (jump_stack_table_quotient, jump_stack_table_fri) = self
-            .jump_stack_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let jump_stack_table = JumpStackTable::new(self.jump_stack_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            0..self.jump_stack_table.base_width(),
+        ));
         prof_stop!(maybe_profiler, "jump stack table");
         prof_start!(maybe_profiler, "hash table");
-        let (hash_table_quotient, hash_table_fri) = self
-            .hash_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let hash_table = HashTable::new(self.hash_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            0..self.hash_table.base_width(),
+        ));
         prof_stop!(maybe_profiler, "hash table");
 
-        let quotient_domain_tables = BaseTableCollection {
+        BaseTableCollection {
             padded_height: self.padded_height,
-            program_table: program_table_quotient,
-            instruction_table: instruction_table_quotient,
-            processor_table: processor_table_quotient,
-            op_stack_table: op_stack_table_quotient,
-            ram_table: ram_table_quotient,
-            jump_stack_table: jump_stack_table_quotient,
-            hash_table: hash_table_quotient,
-        };
-        let fri_domain_tables = BaseTableCollection {
-            padded_height: self.padded_height,
-            program_table: program_table_fri,
-            instruction_table: instruction_table_fri,
-            processor_table: processor_table_fri,
-            op_stack_table: op_stack_table_fri,
-            ram_table: ram_table_fri,
-            jump_stack_table: jump_stack_table_fri,
-            hash_table: hash_table_fri,
-        };
-
-        (quotient_domain_tables, fri_domain_tables)
+            program_table,
+            instruction_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+        }
     }
 
     pub fn get_all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
@@ -255,6 +258,161 @@ impl ExtTableCollection {
             ram_table: Default::default(),
             jump_stack_table: Default::default(),
             hash_table: Default::default(),
+        }
+    }
+
+    /// todo: Temporary method, to be replaced in issue #139
+    pub fn with_data(
+        padded_height: usize,
+        base_codewords: Vec<Vec<BFieldElement>>,
+        extension_codewords: Vec<Vec<XFieldElement>>,
+    ) -> Self {
+        let (base_program_table_data, base_codewords) =
+            base_codewords.split_at(ProgramBaseTableColumn::COUNT);
+        let (ext_program_table_data, extension_codewords) =
+            extension_codewords.split_at(ProgramExtTableColumn::COUNT);
+        let lifted_base_program_table_data: Vec<_> = base_program_table_data
+            .into_par_iter()
+            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
+            .collect();
+        let program_table_full_data = vec![
+            lifted_base_program_table_data,
+            ext_program_table_data.to_vec(),
+        ]
+        .concat();
+        let program_table = ExtProgramTable::new(Table::new(
+            ProgramBaseTableColumn::COUNT,
+            ProgramBaseTableColumn::COUNT + ProgramExtTableColumn::COUNT,
+            program_table_full_data,
+            "ExtProgramTable over quotient domain".to_string(),
+        ));
+
+        let (base_instruction_table_data, base_codewords) =
+            base_codewords.split_at(InstructionBaseTableColumn::COUNT);
+        let (ext_instruction_table_data, extension_codewords) =
+            extension_codewords.split_at(InstructionExtTableColumn::COUNT);
+        let lifted_base_instruction_table_data: Vec<_> = base_instruction_table_data
+            .into_par_iter()
+            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
+            .collect();
+        let instruction_table_full_data = vec![
+            lifted_base_instruction_table_data,
+            ext_instruction_table_data.to_vec(),
+        ]
+        .concat();
+        let instruction_table = ExtInstructionTable::new(Table::new(
+            InstructionBaseTableColumn::COUNT,
+            InstructionBaseTableColumn::COUNT + InstructionExtTableColumn::COUNT,
+            instruction_table_full_data,
+            "ExtInstructionTable over quotient domain".to_string(),
+        ));
+
+        let (base_processor_table_data, base_codewords) =
+            base_codewords.split_at(ProcessorBaseTableColumn::COUNT);
+        let (ext_processor_table_data, extension_codewords) =
+            extension_codewords.split_at(ProcessorExtTableColumn::COUNT);
+        let lifted_base_processor_table_data: Vec<_> = base_processor_table_data
+            .into_par_iter()
+            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
+            .collect();
+        let processor_table_full_data = vec![
+            lifted_base_processor_table_data,
+            ext_processor_table_data.to_vec(),
+        ]
+        .concat();
+        let processor_table = ExtProcessorTable::new(Table::new(
+            ProcessorBaseTableColumn::COUNT,
+            ProcessorBaseTableColumn::COUNT + ProcessorExtTableColumn::COUNT,
+            processor_table_full_data,
+            "ExtProcessorTable over quotient domain".to_string(),
+        ));
+
+        let (base_op_stack_table_data, base_codewords) =
+            base_codewords.split_at(OpStackBaseTableColumn::COUNT);
+        let (ext_op_stack_table_data, extension_codewords) =
+            extension_codewords.split_at(OpStackExtTableColumn::COUNT);
+        let lifted_base_op_stack_table_data: Vec<_> = base_op_stack_table_data
+            .into_par_iter()
+            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
+            .collect();
+        let op_stack_table_full_data = vec![
+            lifted_base_op_stack_table_data,
+            ext_op_stack_table_data.to_vec(),
+        ]
+        .concat();
+        let op_stack_table = ExtOpStackTable::new(Table::new(
+            OpStackBaseTableColumn::COUNT,
+            OpStackBaseTableColumn::COUNT + OpStackExtTableColumn::COUNT,
+            op_stack_table_full_data,
+            "ExtOpStackTable over quotient domain".to_string(),
+        ));
+
+        let (base_ram_table_data, base_codewords) =
+            base_codewords.split_at(RamBaseTableColumn::COUNT);
+        let (ext_ram_table_data, extension_codewords) =
+            extension_codewords.split_at(RamExtTableColumn::COUNT);
+        let lifted_base_ram_table_data: Vec<_> = base_ram_table_data
+            .into_par_iter()
+            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
+            .collect();
+        let ram_table_full_data =
+            vec![lifted_base_ram_table_data, ext_ram_table_data.to_vec()].concat();
+        let ram_table = ExtRamTable::new(Table::new(
+            RamBaseTableColumn::COUNT,
+            RamBaseTableColumn::COUNT + RamExtTableColumn::COUNT,
+            ram_table_full_data,
+            "ExtRamTable over quotient domain".to_string(),
+        ));
+
+        let (base_jump_stack_table_data, base_codewords) =
+            base_codewords.split_at(JumpStackBaseTableColumn::COUNT);
+        let (ext_jump_stack_table_data, extension_codewords) =
+            extension_codewords.split_at(JumpStackExtTableColumn::COUNT);
+        let lifted_base_jump_stack_table_data: Vec<_> = base_jump_stack_table_data
+            .into_par_iter()
+            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
+            .collect();
+        let jump_stack_table_full_data = vec![
+            lifted_base_jump_stack_table_data,
+            ext_jump_stack_table_data.to_vec(),
+        ]
+        .concat();
+        let jump_stack_table = ExtJumpStackTable::new(Table::new(
+            JumpStackBaseTableColumn::COUNT,
+            JumpStackBaseTableColumn::COUNT + JumpStackExtTableColumn::COUNT,
+            jump_stack_table_full_data,
+            "ExtJumpStackTable over quotient domain".to_string(),
+        ));
+
+        let (base_hash_table_data, base_codewords) =
+            base_codewords.split_at(HashBaseTableColumn::COUNT);
+        let (ext_hash_table_data, extension_codewords) =
+            extension_codewords.split_at(HashExtTableColumn::COUNT);
+        let lifted_base_hash_table_data: Vec<_> = base_hash_table_data
+            .into_par_iter()
+            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
+            .collect();
+        let hash_table_full_data =
+            vec![lifted_base_hash_table_data, ext_hash_table_data.to_vec()].concat();
+        let hash_table = ExtHashTable::new(Table::new(
+            HashBaseTableColumn::COUNT,
+            HashBaseTableColumn::COUNT + HashExtTableColumn::COUNT,
+            hash_table_full_data,
+            "ExtHashTable over quotient domain".to_string(),
+        ));
+
+        assert!(base_codewords.is_empty());
+        assert!(extension_codewords.is_empty());
+
+        Self {
+            padded_height,
+            program_table,
+            instruction_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
         }
     }
 
@@ -349,73 +507,73 @@ impl ExtTableCollection {
     }
 
     /// Heads up: only extension columns are low-degree extended – base columns are already covered.
-    pub fn to_quotient_and_fri_domain_tables(
+    pub fn to_fri_domain_tables(
         &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<XFieldElement>,
         num_trace_randomizers: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> (Self, Self) {
+    ) -> Self {
         prof_start!(maybe_profiler, "program table");
-        let (program_table_quotient, program_table_fri) = self
-            .program_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "program table");
-        prof_start!(maybe_profiler, "instruction table");
-        let (instruction_table_quotient, instruction_table_fri) = self
-            .instruction_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "instruction table");
-        prof_start!(maybe_profiler, "processor table");
-        let (processor_table_quotient, processor_table_fri) = self
-            .processor_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "processor table");
-        prof_start!(maybe_profiler, "op stack table");
-        let (op_stack_table_quotient, op_stack_table_fri) = self
-            .op_stack_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
-        prof_stop!(maybe_profiler, "op stack table");
-        prof_start!(maybe_profiler, "ram table");
-        let (ram_table_quotient, ram_table_fri) = self.ram_table.to_quotient_and_fri_domain_table(
-            quotient_domain,
+        let program_table = ExtProgramTable::new(self.program_table.low_degree_extension(
             fri_domain,
             num_trace_randomizers,
-        );
+            self.program_table.base_width()..self.program_table.full_width(),
+        ));
+        prof_stop!(maybe_profiler, "program table");
+        prof_start!(maybe_profiler, "instruction table");
+        let instruction_table =
+            ExtInstructionTable::new(self.instruction_table.low_degree_extension(
+                fri_domain,
+                num_trace_randomizers,
+                self.instruction_table.base_width()..self.instruction_table.full_width(),
+            ));
+        prof_stop!(maybe_profiler, "instruction table");
+        prof_start!(maybe_profiler, "processor table");
+        let processor_table = ExtProcessorTable::new(self.processor_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            self.processor_table.base_width()..self.processor_table.full_width(),
+        ));
+        prof_stop!(maybe_profiler, "processor table");
+        prof_start!(maybe_profiler, "op stack table");
+        let op_stack_table = ExtOpStackTable::new(self.op_stack_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            self.op_stack_table.base_width()..self.op_stack_table.full_width(),
+        ));
+        prof_stop!(maybe_profiler, "op stack table");
+        prof_start!(maybe_profiler, "ram table");
+        let ram_table = ExtRamTable::new(self.ram_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            self.ram_table.base_width()..self.ram_table.full_width(),
+        ));
         prof_stop!(maybe_profiler, "ram table");
         prof_start!(maybe_profiler, "jump stack table");
-        let (jump_stack_table_quotient, jump_stack_table_fri) = self
-            .jump_stack_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let jump_stack_table = ExtJumpStackTable::new(self.jump_stack_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            self.jump_stack_table.base_width()..self.jump_stack_table.full_width(),
+        ));
         prof_stop!(maybe_profiler, "jump stack table");
         prof_start!(maybe_profiler, "hash table");
-        let (hash_table_quotient, hash_table_fri) = self
-            .hash_table
-            .to_quotient_and_fri_domain_table(quotient_domain, fri_domain, num_trace_randomizers);
+        let hash_table = ExtHashTable::new(self.hash_table.low_degree_extension(
+            fri_domain,
+            num_trace_randomizers,
+            self.hash_table.base_width()..self.hash_table.full_width(),
+        ));
         prof_stop!(maybe_profiler, "hash table");
 
-        let quotient_domain_tables = ExtTableCollection {
+        ExtTableCollection {
             padded_height: self.padded_height,
-            program_table: program_table_quotient,
-            instruction_table: instruction_table_quotient,
-            processor_table: processor_table_quotient,
-            op_stack_table: op_stack_table_quotient,
-            ram_table: ram_table_quotient,
-            jump_stack_table: jump_stack_table_quotient,
-            hash_table: hash_table_quotient,
-        };
-        let fri_domain_tables = ExtTableCollection {
-            padded_height: self.padded_height,
-            program_table: program_table_fri,
-            instruction_table: instruction_table_fri,
-            processor_table: processor_table_fri,
-            op_stack_table: op_stack_table_fri,
-            ram_table: ram_table_fri,
-            jump_stack_table: jump_stack_table_fri,
-            hash_table: hash_table_fri,
-        };
-
-        (quotient_domain_tables, fri_domain_tables)
+            program_table,
+            instruction_table,
+            processor_table,
+            op_stack_table,
+            ram_table,
+            jump_stack_table,
+            hash_table,
+        }
     }
 
     pub fn collect_all_columns(&self) -> Vec<Vec<XFieldElement>> {
@@ -485,7 +643,7 @@ impl ExtTableCollection {
     }
 
     pub fn get_all_quotient_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
-        self.into_iter() // Can we parallelize this? -> implement into_par_iter for TableCollection
+        self.into_iter()
             .map(|ext_table| {
                 ext_table.get_all_quotient_degree_bounds(self.padded_height, num_trace_randomizers)
             })

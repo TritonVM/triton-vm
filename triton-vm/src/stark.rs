@@ -153,20 +153,16 @@ impl Stark {
 
         let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
 
-        prof_start!(maybe_profiler, "dual LDE 1");
-        let quotient_domain = self.quotient_domain();
-        let (base_quotient_domain_tables, base_fri_domain_tables) = base_trace_tables
-            .to_quotient_and_fri_domain_tables(
-                &quotient_domain,
-                &self.fri.domain,
-                self.parameters.num_trace_randomizers,
-                maybe_profiler,
-            );
-        let base_quotient_domain_codewords = base_quotient_domain_tables.get_all_base_columns();
+        prof_start!(maybe_profiler, "LDE 1");
+        let base_fri_domain_tables = base_trace_tables.to_fri_domain_tables(
+            &self.fri.domain,
+            self.parameters.num_trace_randomizers,
+            maybe_profiler,
+        );
         let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
         let randomizer_and_base_fri_domain_codewords =
-            vec![b_rand_codewords, base_fri_domain_codewords].concat();
-        prof_stop!(maybe_profiler, "dual LDE 1");
+            vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
+        prof_stop!(maybe_profiler, "LDE 1");
 
         prof_start!(maybe_profiler, "Merkle tree 1");
         let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
@@ -192,17 +188,19 @@ impl Stark {
             ExtTableCollection::extend_tables(&base_trace_tables, &extension_challenges);
         prof_stop!(maybe_profiler, "extend");
 
-        prof_start!(maybe_profiler, "dual LDE 2");
-        let (ext_quotient_domain_tables, ext_fri_domain_tables) = ext_trace_tables
-            .to_quotient_and_fri_domain_tables(
-                &quotient_domain,
-                &self.fri.domain,
-                self.parameters.num_trace_randomizers,
-                maybe_profiler,
-            );
-        let extension_quotient_domain_codewords = ext_quotient_domain_tables.collect_all_columns();
+        prof_start!(maybe_profiler, "LDE 2");
+        let x_fri_domain = ArithmeticDomain::new(
+            self.fri.domain.offset,
+            self.fri.domain.generator,
+            self.fri.domain.length,
+        );
+        let ext_fri_domain_tables = ext_trace_tables.to_fri_domain_tables(
+            &x_fri_domain,
+            self.parameters.num_trace_randomizers,
+            maybe_profiler,
+        );
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
-        prof_stop!(maybe_profiler, "dual LDE 2");
+        prof_stop!(maybe_profiler, "LDE 2");
 
         prof_start!(maybe_profiler, "Merkle tree 2");
         let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
@@ -214,22 +212,38 @@ impl Stark {
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "base");
-        let base_degree_bounds = base_quotient_domain_tables
-            .get_base_degree_bounds(self.parameters.num_trace_randomizers);
+        let base_degree_bounds =
+            base_fri_domain_tables.get_base_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "base");
 
         prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds = ext_quotient_domain_tables
+        let extension_degree_bounds = ext_fri_domain_tables
             .get_extension_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "extension");
 
         prof_start!(maybe_profiler, "quotient");
-        let full_quotient_domain_tables =
-            ExtTableCollection::join(base_quotient_domain_tables, ext_quotient_domain_tables);
-        let mut quotient_degree_bounds = full_quotient_domain_tables
+        let mut quotient_degree_bounds = ext_fri_domain_tables
             .get_all_quotient_degree_bounds(self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
+
+        prof_start!(maybe_profiler, "quotient-domain codewords");
+        let quotient_domain = self.quotient_domain();
+        let unit_distance = self.fri.domain.length / quotient_domain.length;
+        let base_quotient_domain_codewords: Vec<_> = base_fri_domain_codewords
+            .par_iter()
+            .map(|c| c.clone().into_iter().step_by(unit_distance).collect_vec())
+            .collect();
+        let extension_quotient_domain_codewords: Vec<_> = extension_fri_domain_codewords
+            .par_iter()
+            .map(|c| c.clone().into_iter().step_by(unit_distance).collect())
+            .collect();
+        let full_quotient_domain_tables = ExtTableCollection::with_data(
+            base_trace_tables.padded_height,
+            base_quotient_domain_codewords.clone(),
+            extension_quotient_domain_codewords.clone(),
+        );
+        prof_stop!(maybe_profiler, "quotient-domain codewords");
 
         prof_start!(maybe_profiler, "quotient codewords");
         let mut quotient_codewords = full_quotient_domain_tables.get_all_quotients(
@@ -241,8 +255,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "grand cross table");
         let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = 2 * base_quotient_domain_codewords.len()
-            + 2 * extension_quotient_domain_codewords.len()
+        let num_non_lin_combi_weights = 2 * base_fri_domain_codewords.len()
+            + 2 * extension_fri_domain_codewords.len()
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;

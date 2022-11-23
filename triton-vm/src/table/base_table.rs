@@ -1,12 +1,10 @@
 use super::super::arithmetic_domain::ArithmeticDomain;
-use crate::table::table_collection::derive_trace_domain_generator;
-use num_traits::Zero;
+use itertools::Itertools;
 use rand_distr::{Distribution, Standard};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::ops::{Mul, MulAssign, Range};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::{random_elements, roundup_npo2};
-use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -103,18 +101,6 @@ pub trait Extendable: TableLike<BFieldElement> {
     }
 }
 
-fn disjoint_domain<FF: FiniteField>(domain_length: usize, disjoint_domain: &[FF]) -> Vec<FF> {
-    let mut domain = Vec::with_capacity(domain_length);
-    let mut elm = FF::one();
-    while domain.len() != domain_length {
-        if !disjoint_domain.contains(&elm) {
-            domain.push(elm);
-        }
-        elm += FF::one();
-    }
-    domain
-}
-
 pub trait TableLike<FF>: InheritsFromTable<FF>
 where
     FF: FiniteField
@@ -129,101 +115,52 @@ where
         self.inherited_table().name.clone()
     }
 
-    /// Low-degree extends the trace that is `self` over the indicated columns `columns` and
-    /// returns two codewords per column:
-    /// - one codeword evaluated on the `quotient_domain`, and
-    /// - one codeword evaluated on the `fri_domain`,
-    /// in that order.
-    fn dual_low_degree_extension(
+    fn low_degree_extension(
         &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain<FF>,
         num_trace_randomizers: usize,
         columns: Range<usize>,
-    ) -> (Table<FF>, Table<FF>) {
-        let interpolated_columns = self.interpolate_columns(num_trace_randomizers, columns);
-        let quotient_domain_codewords = interpolated_columns
-            .par_iter()
-            .map(|polynomial| quotient_domain.evaluate(polynomial))
-            .collect();
-        let quotient_domain_codeword_table =
-            self.inherited_table().with_data(quotient_domain_codewords);
-        let fri_domain_codewords = interpolated_columns
-            .par_iter()
-            .map(|polynomial| fri_domain.evaluate(polynomial))
-            .collect();
-        let fri_domain_codeword_table = self.inherited_table().with_data(fri_domain_codewords);
-
-        (quotient_domain_codeword_table, fri_domain_codeword_table)
-    }
-
-    /// Return the interpolation of columns. The `column_indices` variable
-    /// must be called with *all* the column indices for this particular table,
-    /// if it is called with a subset, it *will* fail.
-    fn interpolate_columns(
-        &self,
-        num_trace_randomizers: usize,
-        columns: Range<usize>,
-    ) -> Vec<Polynomial<FF>> {
+    ) -> Table<FF> {
         let all_trace_columns = self.data();
         let padded_height = all_trace_columns.len();
-        if padded_height == 0 {
-            return vec![Polynomial::zero(); columns.len()];
-        }
 
+        assert_ne!(
+            0,
+            padded_height,
+            "{}: Low-degree extension must be performed on some codeword, but got nothing.",
+            self.name()
+        );
         assert!(
             padded_height.is_power_of_two(),
             "{}: Table data must be padded before interpolation",
             self.name()
         );
 
-        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
-        let trace_domain =
-            ArithmeticDomain::new(1_u32.into(), trace_domain_generator, padded_height)
-                .domain_values();
+        let randomized_trace_domain_len =
+            roundup_npo2((padded_height + num_trace_randomizers) as u64);
+        let randomized_trace_domain_gen =
+            BFieldElement::primitive_root_of_unity(randomized_trace_domain_len).unwrap();
+        let randomized_trace_domain = ArithmeticDomain::new(
+            1_u32.into(),
+            randomized_trace_domain_gen,
+            randomized_trace_domain_len as usize,
+        );
 
-        let randomizer_domain = disjoint_domain(num_trace_randomizers, &trace_domain);
-        let interpolation_domain = vec![trace_domain, randomizer_domain].concat();
+        // how many elements to skip in the randomized trace domain to only refer to elements
+        // in the non-randomized trace domain
+        let unit_distance = randomized_trace_domain_len as usize / padded_height;
 
-        // Generator (and its order) for a subgroup of the B-field. The subgroup is as small as
-        // possible given the constraints that its length is
-        // - larger than or equal to `interpolation_domain`, and
-        // - a power of two.
-        let order_of_root_of_unity = roundup_npo2(interpolation_domain.len() as u64);
-        let root_of_unity = BFieldElement::primitive_root_of_unity(order_of_root_of_unity).unwrap();
-
-        columns
+        let fri_domain_codewords = columns
             .into_par_iter()
-            .map(|col| {
-                let trace = all_trace_columns.iter().map(|row| row[col]).collect();
-                let randomizers = random_elements(num_trace_randomizers);
-                let randomized_trace = vec![trace, randomizers].concat();
-                Polynomial::fast_interpolate(
-                    &interpolation_domain,
-                    &randomized_trace,
-                    &root_of_unity,
-                    order_of_root_of_unity as usize,
-                )
+            .map(|idx| {
+                let trace = all_trace_columns.iter().map(|row| row[idx]).collect_vec();
+                let mut randomized_trace = random_elements(randomized_trace_domain_len as usize);
+                for i in 0..padded_height {
+                    randomized_trace[unit_distance * i] = trace[i]
+                }
+                randomized_trace_domain.low_degree_extension(&randomized_trace, fri_domain)
             })
-            .collect()
-    }
-}
-
-#[cfg(test)]
-mod test_base_table {
-    use crate::table::base_table::disjoint_domain;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
-
-    #[test]
-    fn disjoint_domain_test() {
-        let domain = [
-            BFieldElement::new(2),
-            BFieldElement::new(5),
-            BFieldElement::new(4),
-        ];
-        let ddomain = disjoint_domain(5, &domain);
-        for d in ddomain {
-            assert!(!domain.contains(&d));
-        }
+            .collect();
+        self.inherited_table().with_data(fri_domain_codewords)
     }
 }

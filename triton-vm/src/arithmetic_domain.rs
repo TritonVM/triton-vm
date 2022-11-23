@@ -40,7 +40,11 @@ where
     where
         GF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
     {
-        Polynomial::<GF>::fast_coset_interpolate(&self.offset, self.generator, values)
+        Polynomial::fast_coset_interpolate(&self.offset, self.generator, values)
+    }
+
+    pub fn low_degree_extension(&self, codeword: &[FF], target_domain: &Self) -> Vec<FF> {
+        target_domain.evaluate(&self.interpolate(codeword))
     }
 
     pub fn domain_value(&self, index: u32) -> FF {

@@ -13,7 +13,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProcessorTableChallengeId::*;
 
-use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
 use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
 use crate::ord_n::Ord7;
@@ -62,25 +61,6 @@ impl ProcessorTable {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProcessorTable".to_string());
         Self { inherited_table }
-    }
-
-    pub fn to_quotient_and_fri_domain_table(
-        &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
-        num_trace_randomizers: usize,
-    ) -> (Self, Self) {
-        let base_columns = 0..self.base_width();
-        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
-            quotient_domain,
-            fri_domain,
-            num_trace_randomizers,
-            base_columns,
-        );
-        (
-            Self::new(quotient_domain_table),
-            Self::new(fri_domain_table),
-        )
     }
 
     pub fn extend(&self, challenges: &ProcessorTableChallenges) -> ExtProcessorTable {
@@ -335,26 +315,6 @@ impl ProcessorTable {
 impl ExtProcessorTable {
     pub fn new(inherited_table: Table<XFieldElement>) -> Self {
         Self { inherited_table }
-    }
-
-    pub fn to_quotient_and_fri_domain_table(
-        &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
-        num_trace_randomizers: usize,
-    ) -> (Self, Self) {
-        let ext_columns = self.base_width()..self.full_width();
-        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
-            quotient_domain,
-            fri_domain,
-            num_trace_randomizers,
-            ext_columns,
-        );
-
-        (
-            Self::new(quotient_domain_table),
-            Self::new(fri_domain_table),
-        )
     }
 
     /// Instruction-specific transition constraints are combined with deselectors in such a way

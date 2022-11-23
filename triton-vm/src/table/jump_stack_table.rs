@@ -8,7 +8,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use JumpStackTableChallengeId::*;
 
-use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::{CrossTableArg, PermArg};
 use crate::instruction::Instruction;
 use crate::table::base_table::Extendable;
@@ -299,26 +298,6 @@ impl JumpStackTable {
         Self { inherited_table }
     }
 
-    pub fn to_quotient_and_fri_domain_table(
-        &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
-        num_trace_randomizers: usize,
-    ) -> (Self, Self) {
-        let base_columns = 0..self.base_width();
-        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
-            quotient_domain,
-            fri_domain,
-            num_trace_randomizers,
-            base_columns,
-        );
-
-        (
-            Self::new(quotient_domain_table),
-            Self::new(fri_domain_table),
-        )
-    }
-
     pub fn extend(&self, challenges: &JumpStackTableChallenges) -> ExtJumpStackTable {
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut running_product = PermArg::default_initial();
@@ -399,25 +378,6 @@ impl JumpStackTable {
 impl ExtJumpStackTable {
     pub fn new(inherited_table: Table<XFieldElement>) -> Self {
         Self { inherited_table }
-    }
-
-    pub fn to_quotient_and_fri_domain_table(
-        &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
-        num_trace_randomizers: usize,
-    ) -> (Self, Self) {
-        let ext_columns = self.base_width()..self.full_width();
-        let (quotient_domain_table, fri_domain_table) = self.dual_low_degree_extension(
-            quotient_domain,
-            fri_domain,
-            num_trace_randomizers,
-            ext_columns,
-        );
-        (
-            Self::new(quotient_domain_table),
-            Self::new(fri_domain_table),
-        )
     }
 }
 

@@ -173,10 +173,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_domain_bound_check(domain, &quotient_codewords, "initial");
-
-        quotient_codewords
+        transpose(&transposed_quotient_codewords)
     }
 
     fn consistency_quotients(
@@ -204,10 +201,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_domain_bound_check(domain, &quotient_codewords, "consistency");
-
-        quotient_codewords
+        transpose(&transposed_quotient_codewords)
     }
 
     fn transition_quotients(
@@ -256,10 +250,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_domain_bound_check(domain, &quotient_codewords, "transition");
-
-        quotient_codewords
+        transpose(&transposed_quotient_codewords)
     }
 
     fn terminal_quotients(
@@ -289,10 +280,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
             })
             .collect();
-        let quotient_codewords = transpose(&transposed_quotient_codewords);
-        self.debug_domain_bound_check(quotient_domain, &quotient_codewords, "terminal");
-
-        quotient_codewords
+        transpose(&transposed_quotient_codewords)
     }
 
     fn all_quotients(
@@ -344,38 +332,6 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             terminal_quotients,
         ]
         .concat()
-    }
-
-    /// Intended for debugging. Will not do anything unless environment variable `DEBUG` is set.
-    /// The performed check
-    /// 1. takes `quotients` in value form (i.e., as codewords),
-    /// 1. interpolates them over the given `domain`, and
-    /// 1. checks their degree.
-    ///
-    /// Panics if an interpolant has maximal degree, indicating that the quotient codeword is most
-    /// probably the result of un-clean division.
-    fn debug_domain_bound_check(
-        &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
-        quotient_codewords: &[Vec<XFieldElement>],
-        quotient_type: &str,
-    ) {
-        if std::env::var("DEBUG").is_err() {
-            return;
-        }
-        for (idx, qc) in quotient_codewords.iter().enumerate() {
-            let interpolated = quotient_domain.interpolate(qc);
-            assert!(
-                interpolated.degree() < quotient_domain.length as isize - 1,
-                "Degree of {} quotient index {idx} (total {} quotients) in {} must not be maximal. \
-                    Got degree {}, and domain length was {}.",
-                quotient_type,
-                quotient_codewords.len(),
-                self.name(),
-                interpolated.degree(),
-                quotient_domain.length,
-            );
-        }
     }
 
     fn get_all_quotient_degree_bounds(
