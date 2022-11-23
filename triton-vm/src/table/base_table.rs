@@ -117,7 +117,7 @@ where
 
     fn low_degree_extension(
         &self,
-        fri_domain: &ArithmeticDomain<FF>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Table<FF> {

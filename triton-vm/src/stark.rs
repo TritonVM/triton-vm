@@ -189,13 +189,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "LDE 2");
-        let x_fri_domain = ArithmeticDomain::new(
-            self.fri.domain.offset,
-            self.fri.domain.generator,
-            self.fri.domain.length,
-        );
         let ext_fri_domain_tables = ext_trace_tables.to_fri_domain_tables(
-            &x_fri_domain,
+            &self.fri.domain,
             self.parameters.num_trace_randomizers,
             maybe_profiler,
         );

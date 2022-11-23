@@ -509,7 +509,7 @@ impl ExtTableCollection {
     /// Heads up: only extension columns are low-degree extended – base columns are already covered.
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &ArithmeticDomain<XFieldElement>,
+        fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {

@@ -43,7 +43,10 @@ where
         Polynomial::fast_coset_interpolate(&self.offset, self.generator, values)
     }
 
-    pub fn low_degree_extension(&self, codeword: &[FF], target_domain: &Self) -> Vec<FF> {
+    pub fn low_degree_extension<GF>(&self, codeword: &[GF], target_domain: &Self) -> Vec<GF>
+    where
+        GF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+    {
         target_domain.evaluate(&self.interpolate(codeword))
     }
 
