@@ -138,7 +138,7 @@ impl BaseTableCollection {
 
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain,
         num_trace_randomizers: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {
@@ -512,7 +512,7 @@ impl ExtTableCollection {
     /// Heads up: only extension columns are low-degree extended – base columns are already covered.
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &ArithmeticDomain<BFieldElement>,
+        fri_domain: &ArithmeticDomain,
         num_trace_randomizers: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {
@@ -621,7 +621,7 @@ impl ExtTableCollection {
 
     pub fn get_all_quotients(
         &self,
-        domain: &ArithmeticDomain<BFieldElement>,
+        domain: &ArithmeticDomain,
         challenges: &AllChallenges,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {

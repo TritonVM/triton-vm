@@ -1,62 +1,53 @@
-use std::marker::PhantomData;
-use std::ops::{Mul, MulAssign};
+use std::ops::MulAssign;
 
+use num_traits::One;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{FiniteField, ModPowU32};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArithmeticDomain<FF> {
+pub struct ArithmeticDomain {
     pub offset: BFieldElement,
     pub generator: BFieldElement,
     pub length: usize,
-    _finite_field: PhantomData<FF>,
 }
 
-impl<FF> ArithmeticDomain<FF>
-where
-    FF: FiniteField
-        + From<BFieldElement>
-        + Mul<BFieldElement, Output = FF>
-        + MulAssign<BFieldElement>,
-{
+impl ArithmeticDomain {
     pub fn new(offset: BFieldElement, generator: BFieldElement, length: usize) -> Self {
         Self {
             offset,
             generator,
             length,
-            _finite_field: PhantomData,
         }
     }
 
-    pub fn evaluate<GF>(&self, polynomial: &Polynomial<GF>) -> Vec<GF>
+    pub fn evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
     where
-        GF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement>,
     {
         polynomial.fast_coset_evaluate(&self.offset, self.generator, self.length)
     }
 
-    pub fn interpolate<GF>(&self, values: &[GF]) -> Polynomial<GF>
+    pub fn interpolate<FF>(&self, values: &[FF]) -> Polynomial<FF>
     where
-        GF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement>,
     {
         Polynomial::fast_coset_interpolate(&self.offset, self.generator, values)
     }
 
-    pub fn low_degree_extension<GF>(&self, codeword: &[GF], target_domain: &Self) -> Vec<GF>
+    pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: &Self) -> Vec<FF>
     where
-        GF: FiniteField + From<BFieldElement> + MulAssign<BFieldElement>,
+        FF: FiniteField + MulAssign<BFieldElement>,
     {
         target_domain.evaluate(&self.interpolate(codeword))
     }
 
-    pub fn domain_value(&self, index: u32) -> FF {
-        let domain_value = self.generator.mod_pow_u32(index) * self.offset;
-        domain_value.into()
+    pub fn domain_value(&self, index: u32) -> BFieldElement {
+        self.generator.mod_pow_u32(index) * self.offset
     }
 
-    pub fn domain_values(&self) -> Vec<FF> {
-        let mut accumulator = FF::one();
+    pub fn domain_values(&self) -> Vec<BFieldElement> {
+        let mut accumulator = BFieldElement::one();
         let mut domain_values = Vec::with_capacity(self.length);
 
         for _ in 0..self.length {
@@ -73,7 +64,6 @@ mod domain_tests {
     use itertools::Itertools;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
-    use twenty_first::shared_math::x_field_element::XFieldElement;
 
     use super::*;
 
@@ -86,10 +76,7 @@ mod domain_tests {
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain =
-                ArithmeticDomain::<BFieldElement>::new(offset, generator, order as usize);
-            let x_domain =
-                ArithmeticDomain::<XFieldElement>::new(offset, generator, order as usize);
+            let b_domain = ArithmeticDomain::new(offset, generator, order as usize);
 
             let expected_b_values: Vec<BFieldElement> =
                 (0..order).map(|i| offset * generator.mod_pow(i)).collect();
@@ -106,21 +93,6 @@ mod domain_tests {
                 "domain_value() generates the given domain BFieldElement value"
             );
 
-            let expected_x_values: Vec<XFieldElement> =
-                expected_b_values.iter().map(|bfe| bfe.lift()).collect();
-            let actual_x_values_1 = x_domain.domain_values();
-            let actual_x_values_2 = (0..order as u32)
-                .map(|i| x_domain.domain_value(i))
-                .collect_vec();
-            assert_eq!(
-                expected_x_values, actual_x_values_1,
-                "domain_values() generates the arithmetic domain's XFieldElement values"
-            );
-            assert_eq!(
-                expected_x_values, actual_x_values_2,
-                "domain_value() generates the given domain XFieldElement values"
-            );
-
             let values = b_domain.evaluate(&poly);
             assert_ne!(values, x_squared_coefficients);
 
@@ -134,19 +106,6 @@ mod domain_tests {
                     values[i as usize]
                 );
             }
-
-            let x_squared_coefficients_lifted: Vec<XFieldElement> = x_squared_coefficients
-                .clone()
-                .into_iter()
-                .map(|x| x.lift())
-                .collect();
-            let xpol = Polynomial::new(x_squared_coefficients_lifted.clone());
-
-            let x_field_x_values = x_domain.evaluate(&xpol);
-            assert_ne!(x_field_x_values, x_squared_coefficients_lifted);
-
-            let x_interpolant = x_domain.interpolate(&x_field_x_values);
-            assert_eq!(xpol, x_interpolant);
         }
     }
 }

@@ -316,9 +316,8 @@ impl Stark {
         );
 
         prof_start!(maybe_profiler, "LDE 3");
-        let combination_polynomial = quotient_domain.interpolate(&combination_codeword);
         let fri_combination_codeword_without_randomizer =
-            self.fri.domain.evaluate(&combination_polynomial);
+            quotient_domain.low_degree_extension(&combination_codeword, &self.fri.domain);
         prof_stop!(maybe_profiler, "LDE 3");
 
         let fri_combination_codeword: Vec<_> = fri_combination_codeword_without_randomizer
@@ -415,7 +414,7 @@ impl Stark {
         proof_stream.to_proof()
     }
 
-    fn quotient_domain(&self) -> ArithmeticDomain<BFieldElement> {
+    fn quotient_domain(&self) -> ArithmeticDomain {
         let offset = self.fri.domain.offset;
         let length = roundup_npo2(self.max_degree as u64);
         let generator = BFieldElement::primitive_root_of_unity(length).unwrap();
@@ -452,7 +451,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn create_combination_codeword(
         &self,
-        quotient_domain: &ArithmeticDomain<BFieldElement>,
+        quotient_domain: &ArithmeticDomain,
         base_codewords: Vec<Vec<BFieldElement>>,
         extension_codewords: Vec<Vec<XFieldElement>>,
         quotient_codewords: Vec<Vec<XFieldElement>>,
@@ -526,7 +525,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn debug_check_degrees(
         &self,
-        domain: &ArithmeticDomain<BFieldElement>,
+        domain: &ArithmeticDomain,
         idx: &usize,
         degree_bound: &Degree,
         shift: &u32,

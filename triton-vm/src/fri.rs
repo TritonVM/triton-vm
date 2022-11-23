@@ -53,7 +53,7 @@ pub struct Fri<H> {
     // nearest power of 2.
     pub expansion_factor: usize,
     pub colinearity_checks_count: usize,
-    pub domain: ArithmeticDomain<BFieldElement>,
+    pub domain: ArithmeticDomain,
     _hasher: PhantomData<H>,
 }
 
