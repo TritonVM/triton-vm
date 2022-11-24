@@ -115,7 +115,7 @@ where
         self.inherited_table().name.clone()
     }
 
-    fn low_degree_extension(
+    fn randomized_low_deg_extension(
         &self,
         fri_domain: &ArithmeticDomain<BFieldElement>,
         num_trace_randomizers: usize,

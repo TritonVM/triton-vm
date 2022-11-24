@@ -143,49 +143,52 @@ impl BaseTableCollection {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {
         prof_start!(maybe_profiler, "program table");
-        let program_table = ProgramTable::new(self.program_table.low_degree_extension(
+        let program_table = ProgramTable::new(self.program_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
             0..self.program_table.base_width(),
         ));
         prof_stop!(maybe_profiler, "program table");
         prof_start!(maybe_profiler, "instruction table");
-        let instruction_table = InstructionTable::new(self.instruction_table.low_degree_extension(
-            fri_domain,
-            num_trace_randomizers,
-            0..self.instruction_table.base_width(),
-        ));
+        let instruction_table =
+            InstructionTable::new(self.instruction_table.randomized_low_deg_extension(
+                fri_domain,
+                num_trace_randomizers,
+                0..self.instruction_table.base_width(),
+            ));
         prof_stop!(maybe_profiler, "instruction table");
         prof_start!(maybe_profiler, "processor table");
-        let processor_table = ProcessorTable::new(self.processor_table.low_degree_extension(
-            fri_domain,
-            num_trace_randomizers,
-            0..self.processor_table.base_width(),
-        ));
+        let processor_table =
+            ProcessorTable::new(self.processor_table.randomized_low_deg_extension(
+                fri_domain,
+                num_trace_randomizers,
+                0..self.processor_table.base_width(),
+            ));
         prof_stop!(maybe_profiler, "processor table");
         prof_start!(maybe_profiler, "op stack table");
-        let op_stack_table = OpStackTable::new(self.op_stack_table.low_degree_extension(
+        let op_stack_table = OpStackTable::new(self.op_stack_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
             0..self.op_stack_table.base_width(),
         ));
         prof_stop!(maybe_profiler, "op stack table");
         prof_start!(maybe_profiler, "ram table");
-        let ram_table = RamTable::new(self.ram_table.low_degree_extension(
+        let ram_table = RamTable::new(self.ram_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
             0..self.ram_table.base_width(),
         ));
         prof_stop!(maybe_profiler, "ram table");
         prof_start!(maybe_profiler, "jump stack table");
-        let jump_stack_table = JumpStackTable::new(self.jump_stack_table.low_degree_extension(
-            fri_domain,
-            num_trace_randomizers,
-            0..self.jump_stack_table.base_width(),
-        ));
+        let jump_stack_table =
+            JumpStackTable::new(self.jump_stack_table.randomized_low_deg_extension(
+                fri_domain,
+                num_trace_randomizers,
+                0..self.jump_stack_table.base_width(),
+            ));
         prof_stop!(maybe_profiler, "jump stack table");
         prof_start!(maybe_profiler, "hash table");
-        let hash_table = HashTable::new(self.hash_table.low_degree_extension(
+        let hash_table = HashTable::new(self.hash_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
             0..self.hash_table.base_width(),
@@ -514,7 +517,7 @@ impl ExtTableCollection {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {
         prof_start!(maybe_profiler, "program table");
-        let program_table = ExtProgramTable::new(self.program_table.low_degree_extension(
+        let program_table = ExtProgramTable::new(self.program_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
             self.program_table.base_width()..self.program_table.full_width(),
@@ -522,42 +525,45 @@ impl ExtTableCollection {
         prof_stop!(maybe_profiler, "program table");
         prof_start!(maybe_profiler, "instruction table");
         let instruction_table =
-            ExtInstructionTable::new(self.instruction_table.low_degree_extension(
+            ExtInstructionTable::new(self.instruction_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
                 self.instruction_table.base_width()..self.instruction_table.full_width(),
             ));
         prof_stop!(maybe_profiler, "instruction table");
         prof_start!(maybe_profiler, "processor table");
-        let processor_table = ExtProcessorTable::new(self.processor_table.low_degree_extension(
-            fri_domain,
-            num_trace_randomizers,
-            self.processor_table.base_width()..self.processor_table.full_width(),
-        ));
+        let processor_table =
+            ExtProcessorTable::new(self.processor_table.randomized_low_deg_extension(
+                fri_domain,
+                num_trace_randomizers,
+                self.processor_table.base_width()..self.processor_table.full_width(),
+            ));
         prof_stop!(maybe_profiler, "processor table");
         prof_start!(maybe_profiler, "op stack table");
-        let op_stack_table = ExtOpStackTable::new(self.op_stack_table.low_degree_extension(
-            fri_domain,
-            num_trace_randomizers,
-            self.op_stack_table.base_width()..self.op_stack_table.full_width(),
-        ));
+        let op_stack_table =
+            ExtOpStackTable::new(self.op_stack_table.randomized_low_deg_extension(
+                fri_domain,
+                num_trace_randomizers,
+                self.op_stack_table.base_width()..self.op_stack_table.full_width(),
+            ));
         prof_stop!(maybe_profiler, "op stack table");
         prof_start!(maybe_profiler, "ram table");
-        let ram_table = ExtRamTable::new(self.ram_table.low_degree_extension(
+        let ram_table = ExtRamTable::new(self.ram_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
             self.ram_table.base_width()..self.ram_table.full_width(),
         ));
         prof_stop!(maybe_profiler, "ram table");
         prof_start!(maybe_profiler, "jump stack table");
-        let jump_stack_table = ExtJumpStackTable::new(self.jump_stack_table.low_degree_extension(
-            fri_domain,
-            num_trace_randomizers,
-            self.jump_stack_table.base_width()..self.jump_stack_table.full_width(),
-        ));
+        let jump_stack_table =
+            ExtJumpStackTable::new(self.jump_stack_table.randomized_low_deg_extension(
+                fri_domain,
+                num_trace_randomizers,
+                self.jump_stack_table.base_width()..self.jump_stack_table.full_width(),
+            ));
         prof_stop!(maybe_profiler, "jump stack table");
         prof_start!(maybe_profiler, "hash table");
-        let hash_table = ExtHashTable::new(self.hash_table.low_degree_extension(
+        let hash_table = ExtHashTable::new(self.hash_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
             self.hash_table.base_width()..self.hash_table.full_width(),
