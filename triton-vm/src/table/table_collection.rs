@@ -1,19 +1,19 @@
 use itertools::Itertools;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use strum::EnumCount;
+use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use triton_profiler::triton_profiler::TritonProfiler;
-use triton_profiler::{prof_start, prof_stop};
-
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table};
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::table_column::*;
+use crate::table::*;
 
 use super::base_matrix::BaseMatrices;
 use super::base_table::TableLike;
@@ -146,7 +146,7 @@ impl BaseTableCollection {
         let program_table = ProgramTable::new(self.program_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
-            0..self.program_table.base_width(),
+            0..program_table::BASE_WIDTH,
         ));
         prof_stop!(maybe_profiler, "program table");
         prof_start!(maybe_profiler, "instruction table");
@@ -154,7 +154,7 @@ impl BaseTableCollection {
             InstructionTable::new(self.instruction_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
-                0..self.instruction_table.base_width(),
+                0..instruction_table::BASE_WIDTH,
             ));
         prof_stop!(maybe_profiler, "instruction table");
         prof_start!(maybe_profiler, "processor table");
@@ -162,21 +162,21 @@ impl BaseTableCollection {
             ProcessorTable::new(self.processor_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
-                0..self.processor_table.base_width(),
+                0..processor_table::BASE_WIDTH,
             ));
         prof_stop!(maybe_profiler, "processor table");
         prof_start!(maybe_profiler, "op stack table");
         let op_stack_table = OpStackTable::new(self.op_stack_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
-            0..self.op_stack_table.base_width(),
+            0..op_stack_table::BASE_WIDTH,
         ));
         prof_stop!(maybe_profiler, "op stack table");
         prof_start!(maybe_profiler, "ram table");
         let ram_table = RamTable::new(self.ram_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
-            0..self.ram_table.base_width(),
+            0..ram_table::BASE_WIDTH,
         ));
         prof_stop!(maybe_profiler, "ram table");
         prof_start!(maybe_profiler, "jump stack table");
@@ -184,14 +184,14 @@ impl BaseTableCollection {
             JumpStackTable::new(self.jump_stack_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
-                0..self.jump_stack_table.base_width(),
+                0..jump_stack_table::BASE_WIDTH,
             ));
         prof_stop!(maybe_profiler, "jump stack table");
         prof_start!(maybe_profiler, "hash table");
         let hash_table = HashTable::new(self.hash_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
-            0..self.hash_table.base_width(),
+            0..hash_table::BASE_WIDTH,
         ));
         prof_stop!(maybe_profiler, "hash table");
 
@@ -520,7 +520,7 @@ impl ExtTableCollection {
         let program_table = ExtProgramTable::new(self.program_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
-            self.program_table.base_width()..self.program_table.full_width(),
+            program_table::BASE_WIDTH..program_table::FULL_WIDTH,
         ));
         prof_stop!(maybe_profiler, "program table");
         prof_start!(maybe_profiler, "instruction table");
@@ -528,7 +528,7 @@ impl ExtTableCollection {
             ExtInstructionTable::new(self.instruction_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
-                self.instruction_table.base_width()..self.instruction_table.full_width(),
+                instruction_table::BASE_WIDTH..instruction_table::FULL_WIDTH,
             ));
         prof_stop!(maybe_profiler, "instruction table");
         prof_start!(maybe_profiler, "processor table");
@@ -536,7 +536,7 @@ impl ExtTableCollection {
             ExtProcessorTable::new(self.processor_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
-                self.processor_table.base_width()..self.processor_table.full_width(),
+                processor_table::BASE_WIDTH..processor_table::FULL_WIDTH,
             ));
         prof_stop!(maybe_profiler, "processor table");
         prof_start!(maybe_profiler, "op stack table");
@@ -544,14 +544,14 @@ impl ExtTableCollection {
             ExtOpStackTable::new(self.op_stack_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
-                self.op_stack_table.base_width()..self.op_stack_table.full_width(),
+                op_stack_table::BASE_WIDTH..op_stack_table::FULL_WIDTH,
             ));
         prof_stop!(maybe_profiler, "op stack table");
         prof_start!(maybe_profiler, "ram table");
         let ram_table = ExtRamTable::new(self.ram_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
-            self.ram_table.base_width()..self.ram_table.full_width(),
+            ram_table::BASE_WIDTH..ram_table::FULL_WIDTH,
         ));
         prof_stop!(maybe_profiler, "ram table");
         prof_start!(maybe_profiler, "jump stack table");
@@ -559,14 +559,14 @@ impl ExtTableCollection {
             ExtJumpStackTable::new(self.jump_stack_table.randomized_low_deg_extension(
                 fri_domain,
                 num_trace_randomizers,
-                self.jump_stack_table.base_width()..self.jump_stack_table.full_width(),
+                jump_stack_table::BASE_WIDTH..jump_stack_table::FULL_WIDTH,
             ));
         prof_stop!(maybe_profiler, "jump stack table");
         prof_start!(maybe_profiler, "hash table");
         let hash_table = ExtHashTable::new(self.hash_table.randomized_low_deg_extension(
             fri_domain,
             num_trace_randomizers,
-            self.hash_table.base_width()..self.hash_table.full_width(),
+            hash_table::BASE_WIDTH..hash_table::FULL_WIDTH,
         ));
         prof_stop!(maybe_profiler, "hash table");
 
