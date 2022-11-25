@@ -59,7 +59,7 @@ serde_with = "2.1"
 structopt = { version = "0.3", features = ["paw"] }
 strum = "0.24"
 strum_macros = "0.24"
-
+ndarray = { version = "0.15", features = ["rayon"]}
 
 [[bench]]
 name = "prove_halt"

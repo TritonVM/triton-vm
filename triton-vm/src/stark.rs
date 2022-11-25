@@ -34,7 +34,7 @@ use crate::proof_stream::ProofStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{
-    derive_trace_domain_generator, BaseTableCollection, ExtTableCollection,
+    derive_trace_domain_generator, BaseTableCollection, ExtTableCollection, MasterBaseTable,
 };
 
 use super::table::base_matrix::BaseMatrices;
@@ -146,6 +146,15 @@ impl Stark {
         aet: AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Proof {
+        let mut base_master_table = MasterBaseTable::new(
+            aet.clone(),
+            &self.claim.program,
+            self.parameters.num_trace_randomizers,
+            self.fri.domain.clone(),
+        );
+        base_master_table.pad();
+        base_master_table.low_degree_extend_all_columns();
+
         prof_start!(maybe_profiler, "pad");
         let base_matrices = BaseMatrices::new(aet, &self.claim.program);
         let base_trace_tables = self.padded(&base_matrices);
