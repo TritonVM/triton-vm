@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::Display;
 use std::ops::Neg;
@@ -6,6 +6,7 @@ use std::str::SplitWhitespace;
 use std::vec;
 
 use anyhow::{bail, Result};
+use itertools::Itertools;
 use num_traits::One;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
@@ -399,6 +400,25 @@ pub fn parse(code: &str) -> Result<Vec<LabelledInstruction>> {
     while let Some(token) = tokens.next() {
         let mut instruction = parse_token(token, &mut tokens)?;
         instructions.append(&mut instruction);
+    }
+
+    let all_labels: Vec<String> = instructions
+        .iter()
+        .flat_map(|instr| match instr {
+            LabelledInstruction::Instruction(_) => vec![],
+            LabelledInstruction::Label(label) => vec![label.clone()],
+        })
+        .collect();
+    let mut seen_labels: HashSet<String> = HashSet::default();
+    let mut duplicate_labels: HashSet<String> = HashSet::default();
+    for label in all_labels {
+        if !seen_labels.insert(label.clone()) {
+            duplicate_labels.insert(label);
+        }
+    }
+
+    if !duplicate_labels.is_empty() {
+        bail!("Duplicate labels: {}", duplicate_labels.iter().join(", "));
     }
 
     Ok(instructions)
@@ -1350,6 +1370,23 @@ mod instruction_tests {
         {
             assert_eq!(expected, actual);
         }
+    }
+
+    #[test]
+    fn fail_on_duplicate_labels_test() {
+        let code = "
+            push 2
+            call foo
+            bar: push 2
+            foo: push 3
+            foo: push 4
+            halt
+        ";
+        let program = Program::from_code(code);
+        assert!(
+            program.is_err(),
+            "Duplicate labels should result in a parse error"
+        );
     }
 
     #[test]
