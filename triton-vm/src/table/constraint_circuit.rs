@@ -75,8 +75,9 @@ pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display
     ) -> XFieldElement;
 }
 
-/// The position of a variable in a constraint polynomial that operates on a single row of the
-/// execution trace.
+/// A `SingleRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// a constraint polynomial that operates on a single execution trace table at a
+/// time.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum SingleRowIndicator {
     BaseRow(usize),
