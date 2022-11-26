@@ -682,8 +682,18 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         //     "Input length match circuit's var count"
         // );
         let value = match &self.expression {
-            XConstant(xfe) => xfe.to_owned(),
-            BConstant(bfe) => bfe.lift(),
+            XConstant(xfe) => {
+                if self.id.0 == 107 || self.id.0 == 454 {
+                    println!("{}: XFE", self.id);
+                }
+                xfe.to_owned()
+            }
+            BConstant(bfe) => {
+                if self.id.0 == 107 || self.id.0 == 454 {
+                    println!("{}: BFE", self.id);
+                }
+                bfe.lift()
+            }
             Input(s) => {
                 if s.is_base_table_row() {
                     base_input[s.base_row_index()].lift()

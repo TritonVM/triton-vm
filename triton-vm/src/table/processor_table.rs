@@ -797,13 +797,15 @@ impl ExtProcessorTable {
         transition_constraints.push(factory.running_evaluation_sponge_updates_correctly());
         transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
+        ConstraintCircuitMonad::constant_folding(&mut transition_constraints);
+
         let mut built_transition_constraints = transition_constraints
             .into_iter()
             .map(|tc_ref| tc_ref.consume())
             .collect_vec();
-        ConstraintCircuit::constant_folding(
-            &mut built_transition_constraints.iter_mut().collect_vec(),
-        );
+        // ConstraintCircuit::constant_folding(
+        //     &mut built_transition_constraints.iter_mut().collect_vec(),
+        // );
         built_transition_constraints
     }
 
