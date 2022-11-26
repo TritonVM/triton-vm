@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use ndarray::{Array2, ArrayView2, ArrayViewMut2, Axis};
 use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
@@ -27,7 +28,8 @@ pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
 pub const PROGRAM_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 3;
 
 pub const BASE_WIDTH: usize = ProgramBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + ProgramExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = ProgramExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
 pub struct ProgramTable {
@@ -178,6 +180,21 @@ impl ProgramTable {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProgramTable".to_string());
         Self { inherited_table }
+    }
+
+    /// todo rename to “extend()” once the old “extend()” is removed
+    pub fn the_new_extend_method_is_in_place(
+        _base_program_table: &ArrayView2<BFieldElement>,
+        _ext_program_table: &mut ArrayViewMut2<XFieldElement>,
+        _challenges: &ProgramTableChallenges,
+    ) {
+        let base = Array2::<BFieldElement>::zeros([64, 3]);
+        let /*mut*/ ext = Array2::<XFieldElement>::zeros([64, 2]);
+
+        let _b_w = base.axis_windows(Axis(0), 2);
+        let /*mut*/ _e_w = ext.axis_windows(Axis(0), 2);
+
+        // todo traverse base windows & ext windows in lockstep
     }
 
     pub fn extend(&self, challenges: &ProgramTableChallenges) -> ExtProgramTable {

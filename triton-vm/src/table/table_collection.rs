@@ -3,8 +3,8 @@ use std::cmp::max;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
-use ndarray::{par_azip, s, Array2, ArrayView2, ArrayViewMut2, Dim, SliceInfo, SliceInfoElem};
-use num_traits::{One, Zero};
+use ndarray::{par_azip, s, Array2, ArrayView2, ArrayViewMut2};
+use num_traits::One;
 use rand::random;
 use strum::EnumCount;
 use triton_profiler::triton_profiler::TritonProfiler;
@@ -14,8 +14,13 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
+use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::stark::StarkHasher;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table};
 use crate::table::extension_table::DegreeWithOrigin;
@@ -36,13 +41,6 @@ use super::ram_table::{ExtRamTable, RamTable};
 
 pub const NUM_TABLES: usize = 7;
 
-pub const NUM_COLUMNS: usize = program_table::FULL_WIDTH
-    + instruction_table::FULL_WIDTH
-    + processor_table::FULL_WIDTH
-    + op_stack_table::FULL_WIDTH
-    + ram_table::FULL_WIDTH
-    + jump_stack_table::FULL_WIDTH
-    + hash_table::FULL_WIDTH;
 pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + instruction_table::BASE_WIDTH
     + processor_table::BASE_WIDTH
@@ -50,7 +48,14 @@ pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + ram_table::BASE_WIDTH
     + jump_stack_table::BASE_WIDTH
     + hash_table::BASE_WIDTH;
-pub const NUM_EXTENSION_COLUMNS: usize = NUM_COLUMNS - NUM_BASE_COLUMNS;
+pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
+    + instruction_table::EXT_WIDTH
+    + processor_table::EXT_WIDTH
+    + op_stack_table::EXT_WIDTH
+    + ram_table::EXT_WIDTH
+    + jump_stack_table::EXT_WIDTH
+    + hash_table::EXT_WIDTH;
+pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
 
 const PROGRAM_TABLE_START: usize = 0;
 const PROGRAM_TABLE_END: usize = PROGRAM_TABLE_START + program_table::BASE_WIDTH;
@@ -66,6 +71,21 @@ const JUMP_STACK_TABLE_START: usize = RAM_TABLE_END;
 const JUMP_STACK_TABLE_END: usize = JUMP_STACK_TABLE_START + jump_stack_table::BASE_WIDTH;
 const HASH_TABLE_START: usize = JUMP_STACK_TABLE_END;
 const HASH_TABLE_END: usize = HASH_TABLE_START + hash_table::BASE_WIDTH;
+
+const EXT_PROGRAM_TABLE_START: usize = 0;
+const EXT_PROGRAM_TABLE_END: usize = EXT_PROGRAM_TABLE_START + program_table::EXT_WIDTH;
+const EXT_INSTRUCTION_TABLE_START: usize = EXT_PROGRAM_TABLE_END;
+const EXT_INSTRUCTION_TABLE_END: usize = EXT_INSTRUCTION_TABLE_START + instruction_table::EXT_WIDTH;
+const EXT_PROCESSOR_TABLE_START: usize = EXT_INSTRUCTION_TABLE_END;
+const EXT_PROCESSOR_TABLE_END: usize = EXT_PROCESSOR_TABLE_START + processor_table::EXT_WIDTH;
+const EXT_OP_STACK_TABLE_START: usize = EXT_PROCESSOR_TABLE_END;
+const EXT_OP_STACK_TABLE_END: usize = EXT_OP_STACK_TABLE_START + op_stack_table::EXT_WIDTH;
+const EXT_RAM_TABLE_START: usize = EXT_OP_STACK_TABLE_END;
+const EXT_RAM_TABLE_END: usize = EXT_RAM_TABLE_START + ram_table::EXT_WIDTH;
+const EXT_JUMP_STACK_TABLE_START: usize = EXT_RAM_TABLE_END;
+const EXT_JUMP_STACK_TABLE_END: usize = EXT_JUMP_STACK_TABLE_START + jump_stack_table::EXT_WIDTH;
+const EXT_HASH_TABLE_START: usize = EXT_JUMP_STACK_TABLE_END;
+const EXT_HASH_TABLE_END: usize = EXT_HASH_TABLE_START + hash_table::EXT_WIDTH;
 
 #[derive(Debug, Clone)]
 pub struct BaseTableCollection {
@@ -107,19 +127,37 @@ pub enum TableId {
     HashTable,
 }
 
+#[derive(Clone)]
 pub struct MasterBaseTable {
     pub padded_height: usize,
     pub num_trace_randomizers: usize,
+    pub num_randomizer_polynomials: usize,
 
     pub program_len: usize,
     pub main_execution_len: usize,
     pub hash_coprocessor_execution_len: usize,
 
     pub randomized_padded_trace_len: usize,
-    pub trace_to_pad_unit_distance: usize,
+
+    /// how many elements to skip in the randomized (padded) trace domain to only refer to
+    /// elements in the _non_-randomized (padded) trace domain
+    pub rand_trace_to_padded_trace_unit_distance: usize,
 
     pub fri_domain: ArithmeticDomain,
     pub master_base_matrix: Array2<BFieldElement>,
+}
+
+pub struct MasterExtTable {
+    pub padded_height: usize,
+
+    pub randomized_padded_trace_len: usize,
+
+    /// how many elements to skip in the randomized (padded) trace domain to only refer to
+    /// elements in the _non_-randomized (padded) trace domain
+    pub rand_trace_to_padded_trace_unit_distance: usize,
+
+    pub fri_domain: ArithmeticDomain,
+    pub master_ext_matrix: Array2<XFieldElement>,
 }
 
 impl MasterBaseTable {
@@ -134,57 +172,53 @@ impl MasterBaseTable {
         aet: AlgebraicExecutionTrace,
         program: &[BFieldElement],
         num_trace_randomizers: usize,
+        num_randomizer_polynomials: usize,
         fri_domain: ArithmeticDomain,
     ) -> Self {
         let padded_height = Self::padded_height(&aet, program);
         let randomized_padded_trace_len =
             roundup_npo2((padded_height + num_trace_randomizers) as u64) as usize;
-
-        let mut master_base_matrix = Array2::zeros([fri_domain.length, NUM_BASE_COLUMNS].f());
-        // the actual trace (and padding) will overwrite the superfluous randomness later
-        // todo: This can be done in a smarter way. Requires more thinking, more code, less compute.
-        master_base_matrix
-            .slice_mut(s![..randomized_padded_trace_len, ..])
-            .par_mapv_inplace(|_| random::<BFieldElement>());
-
-        // how many elements to skip in the randomized trace domain to only refer to elements
-        // in the non-randomized trace domain
-        let trace_to_pad_unit_distance = randomized_padded_trace_len as usize / padded_height;
-
+        let unit_distance = randomized_padded_trace_len as usize / padded_height;
         let program_len = program.len();
         let main_execution_len = aet.processor_matrix.len();
         let hash_coprocessor_execution_len = aet.hash_matrix.len();
+
+        let num_rows = randomized_padded_trace_len;
+        let num_columns = num_randomizer_polynomials + NUM_BASE_COLUMNS;
+        let mut master_base_matrix = Array2::zeros([num_rows, num_columns].f());
+
+        // randomizer polynomials
+        let num_randomizer_columns = EXTENSION_DEGREE * num_randomizer_polynomials;
+        master_base_matrix
+            .slice_mut(s![.., ..num_randomizer_columns])
+            .par_mapv_inplace(|_| random::<BFieldElement>());
+
         let mut master_base_table = Self {
             padded_height,
             num_trace_randomizers,
+            num_randomizer_polynomials,
             program_len,
             main_execution_len,
             hash_coprocessor_execution_len,
             randomized_padded_trace_len,
-            trace_to_pad_unit_distance,
+            rand_trace_to_padded_trace_unit_distance: unit_distance,
             fri_domain,
             master_base_matrix,
         };
 
         let program_table = &mut master_base_table.table_mut(TableId::ProgramTable);
         let address_column = program_table.slice_mut(s![
-            ..program_len * trace_to_pad_unit_distance; trace_to_pad_unit_distance,
+            ..program_len,
             usize::from(ProgramBaseTableColumn::Address)
         ]);
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
-        addresses.move_into(address_column); // todo: better? address_column.assign(&addresses);
+        addresses.move_into(address_column);
 
         let mut instruction_column = program_table.slice_mut(s![
-            ..program_len * trace_to_pad_unit_distance; trace_to_pad_unit_distance,
+            ..program_len,
             usize::from(ProgramBaseTableColumn::Instruction)
         ]);
         par_azip!((ic in &mut instruction_column, &instr in program)  *ic = instr);
-
-        let mut is_padding_column = program_table.slice_mut(s![
-            ..program_len * trace_to_pad_unit_distance; trace_to_pad_unit_distance,
-            usize::from(ProgramBaseTableColumn::IsPadding)
-        ]);
-        is_padding_column.par_mapv_inplace(|_| BFieldElement::zero());
 
         master_base_table
     }
@@ -192,81 +226,192 @@ impl MasterBaseTable {
     pub fn pad(&mut self) {
         let padded_height = self.padded_height;
         let program_len = self.program_len;
-        let unit_distance = self.trace_to_pad_unit_distance;
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
 
         let address_column = program_table.slice_mut(s![
-            program_len * unit_distance..padded_height * unit_distance; unit_distance,
+            program_len..,
             usize::from(ProgramBaseTableColumn::Address)
         ]);
         let addresses =
             Array1::from_iter((program_len..padded_height).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);
 
-        let mut instruction_column = program_table.slice_mut(s![
-            program_len * unit_distance..padded_height * unit_distance; unit_distance,
-            usize::from(ProgramBaseTableColumn::Instruction)
-        ]);
-        instruction_column.par_mapv_inplace(|_| BFieldElement::zero());
-
         let mut is_padding_column = program_table.slice_mut(s![
-            program_len * unit_distance..padded_height * unit_distance; unit_distance,
+            program_len..,
             usize::from(ProgramBaseTableColumn::IsPadding)
         ]);
         is_padding_column.par_mapv_inplace(|_| BFieldElement::one());
     }
 
-    pub fn low_degree_extend_all_columns(&mut self) {
+    /// requires underlying Array2 to be stored f-style
+    pub fn low_degree_extend_all_columns(&mut self) -> Self {
+        // randomize padded trace:
+        // set all rows _not_ needed for the (padded) trace to random values
+        let randomized_padded_trace_len = self.randomized_padded_trace_len;
+        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
+        (1..unit_distance).for_each(|offset| {
+            self.master_base_matrix
+                .slice_mut(s![offset..randomized_padded_trace_len; unit_distance, ..])
+                .par_mapv_inplace(|_| random::<BFieldElement>())
+        });
+
         let fri_domain = self.fri_domain.clone();
         let randomized_trace_domain_len = self.randomized_padded_trace_len;
-        let Some(randomized_trace_domain_gen) =
-            BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64) else {
-            panic!("Length of randomized trace domain must be a power of 2, \
-                    got {randomized_trace_domain_len}.")
-        };
+        let randomized_trace_domain_gen =
+            BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64)
+                .expect("Length of randomized trace domain must be a power of 2");
         let randomized_trace_domain = ArithmeticDomain::new(
             BFieldElement::one(),
             randomized_trace_domain_gen,
             randomized_trace_domain_len,
         );
 
-        self.master_base_matrix
+        // todo
+        //  - create Array2 with dimensions [fri.domain.length, master_base_table.ncols()]
+        //  - per column: do LDE, move result in new Array2's column
+        //  - change memory layout of Array2 from c-style to f-style
+        //  - try: is it faster to create Array2 in f-style, move columns in, no transform?
+        let a: Vec<_> = self
+            .master_base_matrix
             .axis_iter_mut(Axis(1)) // Axis(1) corresponds to getting all columns.
             .into_par_iter()
-            .for_each(|column| {
-                let randomized_slice = column.slice(s![..self.randomized_padded_trace_len]);
-                let randomized_trace = randomized_slice
+            .map(|column| {
+                let randomized_trace = column
                     .as_slice()
-                    .expect("Columns must be contiguous & non-empty.");
-                let fri_codeword =
-                    randomized_trace_domain.low_degree_extension(randomized_trace, &fri_domain);
-                Array1::from(fri_codeword).move_into(column);
-            });
+                    .expect("Column must be contiguous & non-empty.");
+                randomized_trace_domain.low_degree_extension(randomized_trace, &fri_domain)
+            })
+            .collect::<Vec<_>>()
+            .concat();
+
+        let num_rows = self.fri_domain.length;
+        let num_columns = self.master_base_matrix.ncols();
+        let b = Array2::from_shape_vec([num_rows, num_columns], a)
+            .expect("FRI domain codewords must fit into Array2 of given dimensions.");
+
+        Self {
+            fri_domain: self.fri_domain.clone(),
+            master_base_matrix: b,
+            ..*self
+        }
     }
 
-    pub fn table_slice_info(
-        id: TableId,
-    ) -> SliceInfo<[SliceInfoElem; 2], Dim<[usize; 2]>, Dim<[usize; 2]>> {
+    /// requires underlying Array2 to be stored c-style
+    pub fn merkle_tree(&self) -> MerkleTree<StarkHasher, CpuParallel> {
+        let mut hashed_rows = Vec::with_capacity(self.fri_domain.length);
+        self.master_base_matrix
+            .axis_iter(Axis(0)) // Axis(0) corresponds to getting all rows.
+            .into_par_iter()
+            .map(|row| {
+                let contiguous_row = row.as_slice().expect("Row must be contiguous & non-empty.");
+                StarkHasher::hash_slice(contiguous_row)
+            })
+            .collect_into_vec(&mut hashed_rows);
+        CpuParallel::from_digests(&hashed_rows)
+    }
+
+    pub fn extend(&self, challenges: &AllChallenges) -> MasterExtTable {
+        let master_ext_matrix = Array2::zeros([self.fri_domain.length, NUM_EXT_COLUMNS].f());
+
+        let mut master_ext_table = MasterExtTable {
+            padded_height: self.padded_height,
+            randomized_padded_trace_len: self.randomized_padded_trace_len,
+            rand_trace_to_padded_trace_unit_distance: self.rand_trace_to_padded_trace_unit_distance,
+            fri_domain: self.fri_domain.clone(),
+            master_ext_matrix,
+        };
+
+        let base_program_table = self.table(TableId::ProgramTable);
+        let mut ext_program_table = master_ext_table.table_mut(TableId::ProgramTable);
+        ProgramTable::the_new_extend_method_is_in_place(
+            &base_program_table,
+            &mut ext_program_table,
+            &challenges.program_table_challenges,
+        );
+
+        master_ext_table
+    }
+
+    pub fn randomizer_polynomials(&self) -> Vec<Vec<XFieldElement>> {
+        self.master_base_matrix
+            .slice(s![.., ..EXTENSION_DEGREE * self.num_randomizer_polynomials])
+            .exact_chunks([self.fri_domain.length, EXTENSION_DEGREE])
+            .into_iter()
+            .map(|three_entire_cols| {
+                three_entire_cols
+                    .axis_iter(Axis(0))
+                    .into_par_iter()
+                    .map(|three_bfes| {
+                        XFieldElement::new([three_bfes[0], three_bfes[1], three_bfes[2]])
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    pub fn table_slice_info(id: TableId) -> (usize, usize) {
         use TableId::*;
         match id {
-            ProgramTable => s![.., PROGRAM_TABLE_START..PROGRAM_TABLE_END],
-            InstructionTable => s![.., INSTRUCTION_TABLE_START..INSTRUCTION_TABLE_END],
-            ProcessorTable => s![.., PROCESSOR_TABLE_START..PROCESSOR_TABLE_END],
-            OpStackTable => s![.., OP_STACK_TABLE_START..OP_STACK_TABLE_END],
-            RamTable => s![.., RAM_TABLE_START..RAM_TABLE_END],
-            JumpStackTable => s![.., JUMP_STACK_TABLE_START..JUMP_STACK_TABLE_END],
-            HashTable => s![.., HASH_TABLE_START..HASH_TABLE_END],
+            ProgramTable => (PROGRAM_TABLE_START, PROGRAM_TABLE_END),
+            InstructionTable => (INSTRUCTION_TABLE_START, INSTRUCTION_TABLE_END),
+            ProcessorTable => (PROCESSOR_TABLE_START, PROCESSOR_TABLE_END),
+            OpStackTable => (OP_STACK_TABLE_START, OP_STACK_TABLE_END),
+            RamTable => (RAM_TABLE_START, RAM_TABLE_END),
+            JumpStackTable => (JUMP_STACK_TABLE_START, JUMP_STACK_TABLE_END),
+            HashTable => (HASH_TABLE_START, HASH_TABLE_END),
         }
     }
 
     pub fn table(&self, id: TableId) -> ArrayView2<BFieldElement> {
-        self.master_base_matrix.slice(Self::table_slice_info(id))
+        let num_randomizer_columns = EXTENSION_DEGREE * self.num_randomizer_polynomials;
+        let (table_start, table_end) = Self::table_slice_info(id);
+        let starting_col = num_randomizer_columns + table_start;
+        let ending_col = num_randomizer_columns + table_end;
+
+        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
+        self.master_base_matrix
+            .slice(s![..; unit_distance, starting_col..ending_col])
     }
 
     pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<BFieldElement> {
+        let num_randomizer_columns = EXTENSION_DEGREE * self.num_randomizer_polynomials;
+        let (table_start, table_end) = Self::table_slice_info(id);
+        let starting_col = num_randomizer_columns + table_start;
+        let ending_col = num_randomizer_columns + table_end;
+
+        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         self.master_base_matrix
-            .slice_mut(Self::table_slice_info(id))
+            .slice_mut(s![..; unit_distance, starting_col..ending_col])
+    }
+}
+
+impl MasterExtTable {
+    pub fn table_slice_info(id: TableId) -> (usize, usize) {
+        use TableId::*;
+        match id {
+            ProgramTable => (EXT_PROGRAM_TABLE_START, EXT_PROGRAM_TABLE_END),
+            InstructionTable => (EXT_INSTRUCTION_TABLE_START, EXT_INSTRUCTION_TABLE_END),
+            ProcessorTable => (EXT_PROCESSOR_TABLE_START, EXT_PROCESSOR_TABLE_END),
+            OpStackTable => (EXT_OP_STACK_TABLE_START, EXT_OP_STACK_TABLE_END),
+            RamTable => (EXT_RAM_TABLE_START, EXT_RAM_TABLE_END),
+            JumpStackTable => (EXT_JUMP_STACK_TABLE_START, EXT_JUMP_STACK_TABLE_END),
+            HashTable => (EXT_HASH_TABLE_START, EXT_HASH_TABLE_END),
+        }
+    }
+
+    pub fn table(&self, id: TableId) -> ArrayView2<XFieldElement> {
+        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
+        let (starting_col, ending_col) = Self::table_slice_info(id);
+        self.master_ext_matrix
+            .slice(s![..; unit_distance, starting_col..ending_col])
+    }
+
+    pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<XFieldElement> {
+        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
+        let (starting_col, ending_col) = Self::table_slice_info(id);
+        self.master_ext_matrix
+            .slice_mut(s![..; unit_distance, starting_col..ending_col])
     }
 }
 

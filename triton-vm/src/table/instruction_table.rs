@@ -26,7 +26,8 @@ pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
 
 pub const BASE_WIDTH: usize = InstructionBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + InstructionExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = InstructionExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
 pub struct InstructionTable {

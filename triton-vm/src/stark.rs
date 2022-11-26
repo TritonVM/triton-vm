@@ -4,14 +4,14 @@ use std::fmt;
 
 use anyhow::{bail, Result};
 use itertools::Itertools;
+use ndarray::Axis;
 use num_traits::{One, Zero};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{is_power_of_two, random_elements, roundup_npo2, transpose};
-use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, PrimitiveRootOfUnity};
@@ -35,6 +35,7 @@ use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::{
     derive_trace_domain_generator, BaseTableCollection, ExtTableCollection, MasterBaseTable,
+    NUM_BASE_COLUMNS, NUM_EXT_COLUMNS,
 };
 
 use super::table::base_matrix::BaseMatrices;
@@ -146,73 +147,97 @@ impl Stark {
         aet: AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Proof {
+        prof_start!(maybe_profiler, "base tables");
+        prof_start!(maybe_profiler, "create");
         let mut base_master_table = MasterBaseTable::new(
             aet.clone(),
             &self.claim.program,
             self.parameters.num_trace_randomizers,
+            self.parameters.num_randomizer_polynomials,
             self.fri.domain.clone(),
         );
-        base_master_table.pad();
-        base_master_table.low_degree_extend_all_columns();
+        prof_stop!(maybe_profiler, "create");
 
         prof_start!(maybe_profiler, "pad");
-        let base_matrices = BaseMatrices::new(aet, &self.claim.program);
-        let base_trace_tables = self.padded(&base_matrices);
+        base_master_table.pad();
         prof_stop!(maybe_profiler, "pad");
 
-        let (x_rand_codeword, b_rand_codewords) = self.get_randomizer_codewords();
+        prof_start!(maybe_profiler, "LDE");
+        let fri_domain_base_master_table = base_master_table.low_degree_extend_all_columns();
+        prof_stop!(maybe_profiler, "LDE");
 
-        prof_start!(maybe_profiler, "LDE 1");
-        let base_fri_domain_tables = base_trace_tables.to_fri_domain_tables(
-            &self.fri.domain,
-            self.parameters.num_trace_randomizers,
-            maybe_profiler,
-        );
-        let base_fri_domain_codewords = base_fri_domain_tables.get_all_base_columns();
-        let randomizer_and_base_fri_domain_codewords =
-            vec![b_rand_codewords, base_fri_domain_codewords.clone()].concat();
-        prof_stop!(maybe_profiler, "LDE 1");
-
-        prof_start!(maybe_profiler, "Merkle tree 1");
-        let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
-        let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
+        prof_start!(maybe_profiler, "Merkle tree");
+        prof_start!(maybe_profiler, "build");
+        let base_tree = fri_domain_base_master_table.merkle_tree();
+        prof_stop!(maybe_profiler, "build");
+        prof_start!(maybe_profiler, "root");
         let base_merkle_tree_root = base_tree.get_root();
-        prof_stop!(maybe_profiler, "Merkle tree 1");
+        prof_stop!(maybe_profiler, "root");
+        prof_stop!(maybe_profiler, "Merkle tree");
+
+        dbg!(base_merkle_tree_root);
 
         // send first message
-        prof_start!(maybe_profiler, "Fiat-Shamir 1");
+        prof_start!(maybe_profiler, "Fiat-Shamir");
         let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
-            base_trace_tables.padded_height as u64,
+            base_master_table.padded_height as u64,
         )));
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         let extension_challenge_seed = proof_stream.prover_fiat_shamir();
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
-        prof_stop!(maybe_profiler, "Fiat-Shamir 1");
+        prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
+        let _ext_master_table = base_master_table.extend(&extension_challenges);
+        prof_stop!(maybe_profiler, "extend");
+        /* todo continue >>> here <<< */
+
+        // todo vvvvvvvvvvvvvvvvvvvv OLD vvvvvvvvvvvvvvvvvvvv
+        prof_start!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
+        let base_matrices = BaseMatrices::new(aet, &self.claim.program);
+        let base_trace_tables = self.padded(&base_matrices);
+        let base_fri_domain_tables = base_trace_tables.to_fri_domain_tables(
+            &self.fri.domain,
+            self.parameters.num_trace_randomizers,
+            maybe_profiler,
+        );
         let ext_trace_tables =
             ExtTableCollection::extend_tables(&base_trace_tables, &extension_challenges);
-        prof_stop!(maybe_profiler, "extend");
+        let randomizer_and_base_fri_domain_codewords = fri_domain_base_master_table
+            .master_base_matrix
+            .columns()
+            .into_iter()
+            .map(|col| col.to_vec())
+            .collect_vec();
+        let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
+        prof_start!(maybe_profiler, "Merkle Tree 1");
+        let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
+        prof_stop!(maybe_profiler, "Merkle Tree 1");
+        prof_stop!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
+        prof_stop!(maybe_profiler, "base tables");
+        // todo ^^^^^^^^^^^^^^^^^^^^ OLD ^^^^^^^^^^^^^^^^^^^^
 
-        prof_start!(maybe_profiler, "LDE 2");
+        prof_start!(maybe_profiler, "ext tables");
+        prof_start!(maybe_profiler, "LDE");
         let ext_fri_domain_tables = ext_trace_tables.to_fri_domain_tables(
             &self.fri.domain,
             self.parameters.num_trace_randomizers,
             maybe_profiler,
         );
         let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
-        prof_stop!(maybe_profiler, "LDE 2");
+        prof_stop!(maybe_profiler, "LDE");
 
-        prof_start!(maybe_profiler, "Merkle tree 2");
+        prof_start!(maybe_profiler, "Merkle tree");
         let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
         let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
-        prof_stop!(maybe_profiler, "Merkle tree 2");
+        prof_stop!(maybe_profiler, "Merkle tree");
 
         // send root for extension codewords
         proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
+        prof_stop!(maybe_profiler, "ext tables");
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "base");
@@ -234,9 +259,16 @@ impl Stark {
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let quotient_domain = self.quotient_domain();
         let unit_distance = self.fri.domain.length / quotient_domain.length;
-        let base_quotient_domain_codewords: Vec<_> = base_fri_domain_codewords
-            .par_iter()
-            .map(|c| c.clone().into_iter().step_by(unit_distance).collect_vec())
+        let base_quotient_domain_codewords: Vec<_> = fri_domain_base_master_table
+            .master_base_matrix
+            .axis_iter(Axis(1))
+            .into_par_iter()
+            .map(|c| {
+                c.to_owned()
+                    .into_iter()
+                    .step_by(unit_distance)
+                    .collect_vec()
+            })
             .collect();
         let extension_quotient_domain_codewords: Vec<_> = extension_fri_domain_codewords
             .par_iter()
@@ -259,8 +291,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "grand cross table");
         let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = 2 * base_fri_domain_codewords.len()
-            + 2 * extension_fri_domain_codewords.len()
+        let num_non_lin_combi_weights = 2 * NUM_BASE_COLUMNS
+            + 2 * NUM_EXT_COLUMNS
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -329,6 +361,7 @@ impl Stark {
             quotient_domain.low_degree_extension(&combination_codeword, &self.fri.domain);
         prof_stop!(maybe_profiler, "LDE 3");
 
+        let x_rand_codeword = fri_domain_base_master_table.randomizer_polynomials()[0].clone();
         let fri_combination_codeword: Vec<_> = fri_combination_codeword_without_randomizer
             .into_par_iter()
             .zip_eq(x_rand_codeword.into_par_iter())
@@ -379,6 +412,12 @@ impl Stark {
         let revealed_indices =
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
+        let transposed_base_codewords = fri_domain_base_master_table
+            .master_base_matrix
+            .columns()
+            .into_iter()
+            .map(|a| a.to_vec())
+            .collect_vec();
         let revealed_base_elems =
             Self::get_revealed_elements(&transposed_base_codewords, &revealed_indices);
         let auth_paths_base = base_tree.get_authentication_structure(&revealed_indices);
@@ -631,20 +670,6 @@ impl Stark {
         let mut base_tables = BaseTableCollection::from_base_matrices(base_matrices);
         base_tables.pad();
         base_tables
-    }
-
-    fn get_randomizer_codewords(&self) -> (Vec<XFieldElement>, Vec<Vec<BFieldElement>>) {
-        let randomizer_coefficients = random_elements(self.max_degree as usize + 1);
-        let randomizer_polynomial = Polynomial::<XFieldElement>::new(randomizer_coefficients);
-
-        let x_randomizer_codeword = self.fri.domain.evaluate(&randomizer_polynomial);
-        let mut b_randomizer_codewords = vec![vec![], vec![], vec![]];
-        for x_elem in x_randomizer_codeword.iter() {
-            b_randomizer_codewords[0].push(x_elem.coefficients[0]);
-            b_randomizer_codewords[1].push(x_elem.coefficients[1]);
-            b_randomizer_codewords[2].push(x_elem.coefficients[2]);
-        }
-        (x_randomizer_codeword, b_randomizer_codewords)
     }
 
     fn sample_weights(seed: Digest, num_weights: usize) -> Vec<XFieldElement> {

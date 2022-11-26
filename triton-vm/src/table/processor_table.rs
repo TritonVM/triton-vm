@@ -35,7 +35,8 @@ pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
 pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = 43;
 
 pub const BASE_WIDTH: usize = ProcessorBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + ProcessorExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = ProcessorExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
 pub struct ProcessorTable {

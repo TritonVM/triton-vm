@@ -29,7 +29,8 @@ pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 pub const JUMP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = 5;
 
 pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + JumpStackExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = JumpStackExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
 pub struct JumpStackTable {

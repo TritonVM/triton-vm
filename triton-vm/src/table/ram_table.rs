@@ -30,7 +30,8 @@ pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 pub const RAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = 3;
 
 pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + RamExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
 pub struct RamTable {

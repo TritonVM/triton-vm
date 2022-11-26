@@ -28,7 +28,8 @@ pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
 pub const OP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = 4;
 
 pub const BASE_WIDTH: usize = OpStackBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + OpStackExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = OpStackExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
 pub struct OpStackTable {

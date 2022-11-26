@@ -32,7 +32,8 @@ pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
 pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = 15;
 
 pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + HashExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE * 2;
 pub const TOTAL_NUM_CONSTANTS: usize = NUM_ROUND_CONSTANTS * NUM_ROUNDS;
