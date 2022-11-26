@@ -119,15 +119,15 @@ impl ExtOpStackTable {
         //
         // $(osp' - (osp + 1))·(osp' - osp) = 0$
         let osp_increases_by_1_or_does_not_change =
-            (osp_next.clone() - (osp.clone() + one.clone())) * (osp_next.clone() - osp.clone());
+            (osp_next.clone() - osp.clone() - one.clone()) * (osp_next.clone() - osp.clone());
 
         // the osp increases by 1 or the osv does not change OR the ci shrinks the OpStack
         //
         // $ (osp' - (osp + 1)) · (osv' - osv) · (1 - ib1) = 0$
-        let osp_increases_by_1_or_osv_does_not_change_or_shrink_stack = (osp_next.clone()
-            - (osp.clone() + one.clone()))
-            * (osv_next.clone() - osv)
-            * (one.clone() - ib1_shrink_stack);
+        let osp_increases_by_1_or_osv_does_not_change_or_shrink_stack =
+            (osp_next.clone() - osp.clone() - one.clone())
+                * (osv_next.clone() - osv)
+                * (one.clone() - ib1_shrink_stack);
 
         // The running product for the permutation argument `rppa` is updated correctly.
         let alpha = circuit_builder.challenge(OpStackIndeterminate);

@@ -118,13 +118,13 @@ impl ExtJumpStackTable {
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change
         let jsp_inc_or_stays =
-            (jsp_next.clone() - (jsp.clone() + one.clone())) * (jsp_next.clone() - jsp.clone());
+            (jsp_next.clone() - jsp.clone() - one.clone()) * (jsp_next.clone() - jsp.clone());
 
         // 2. The jump stack pointer jsp increases by 1
         //      or current instruction ci is return
         //      or the jump stack origin jso does not change
         let jsp_inc_by_one_or_ci_is_return =
-            (jsp_next.clone() - (jsp.clone() + one.clone())) * (ci.clone() - return_opcode.clone());
+            (jsp_next.clone() - jsp.clone() - one.clone()) * (ci.clone() - return_opcode.clone());
         let jsp_inc_or_jso_stays_or_ci_is_ret =
             jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
 
@@ -138,11 +138,11 @@ impl ExtJumpStackTable {
         //      or the cycle count clk increases by 1
         //      or current instruction ci is call
         //      or current instruction ci is return
-        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next.clone()
-            - (jsp.clone() + one.clone()))
-            * (clk_next.clone() - (clk.clone() + one.clone()))
-            * (ci.clone() - call_opcode)
-            * (ci - return_opcode);
+        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret =
+            (jsp_next.clone() - jsp.clone() - one.clone())
+                * (clk_next.clone() - clk.clone() - one.clone())
+                * (ci.clone() - call_opcode)
+                * (ci - return_opcode);
 
         // The running product for the permutation argument `rppa` accumulates one row in each
         // row, relative to weights `a`, `b`, `c`, `d`, `e`, and indeterminate `α`.
