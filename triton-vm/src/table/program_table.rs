@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use ndarray::{par_azip, s, Array1, Array2, ArrayView2, ArrayViewMut2, Axis};
+use ndarray::{par_azip, s, Array1, ArrayView2, ArrayViewMut2};
 use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
@@ -184,49 +184,40 @@ impl ProgramTable {
 
     pub fn fill_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program: &[BFieldElement]) {
         let program_len = program.len();
-        let address_column = program_table.slice_mut(s![
-            ..program_len,
-            usize::from(ProgramBaseTableColumn::Address)
-        ]);
+        let address_column = program_table.slice_mut(s![..program_len, usize::from(Address)]);
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);
 
-        let mut instruction_column = program_table.slice_mut(s![
-            ..program_len,
-            usize::from(ProgramBaseTableColumn::Instruction)
-        ]);
+        let mut instruction_column =
+            program_table.slice_mut(s![..program_len, usize::from(Instruction)]);
         par_azip!((ic in &mut instruction_column, &instr in program)  *ic = instr);
+    }
+
+    pub fn pad_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program_len: usize) {
+        let padded_height = program_table.nrows();
+
+        let address_column = program_table.slice_mut(s![program_len.., usize::from(Address)]);
+        let addresses =
+            Array1::from_iter((program_len..padded_height).map(|a| BFieldElement::new(a as u64)));
+        addresses.move_into(address_column);
+
+        let mut is_padding_column =
+            program_table.slice_mut(s![program_len.., usize::from(IsPadding)]);
+        is_padding_column.fill(BFieldElement::one());
     }
 
     /// todo rename to “extend()” once the old “extend()” is removed
     pub fn the_new_extend_method_is_in_place(
-        _base_program_table: &ArrayView2<BFieldElement>,
-        _ext_program_table: &mut ArrayViewMut2<XFieldElement>,
-        _challenges: &ProgramTableChallenges,
+        base_table: &ArrayView2<BFieldElement>,
+        ext_table: &mut ArrayViewMut2<XFieldElement>,
+        challenges: &ProgramTableChallenges,
     ) {
-        let base = Array2::<BFieldElement>::zeros([64, 3]);
-        let /*mut*/ ext = Array2::<XFieldElement>::zeros([64, 2]);
-
-        let _b_w = base.axis_windows(Axis(0), 2);
-        let /*mut*/ _e_w = ext.axis_windows(Axis(0), 2);
-
-        // todo traverse base windows & ext windows in lockstep
-    }
-
-    pub fn extend(&self, challenges: &ProgramTableChallenges) -> ExtProgramTable {
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
         let mut instruction_table_running_evaluation = EvalArg::default_initial();
 
-        let data_with_0 = {
-            let mut tmp = self.data().clone();
-            tmp.push(vec![BFieldElement::zero(); BASE_WIDTH]);
-            tmp
-        };
-
-        for (row, next_row) in data_with_0.into_iter().tuple_windows() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
+            let row = window.slice(s![0, ..]);
+            let next_row = window.slice(s![1, ..]);
+            let mut extension_row = ext_table.slice_mut(s![idx, ..]);
 
             let address = row[usize::from(Address)].lift();
             let instruction = row[usize::from(Instruction)].lift();
@@ -248,7 +239,28 @@ impl ProgramTable {
                     * challenges.instruction_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
+        }
 
+        let mut last_row = ext_table
+            .rows_mut()
+            .into_iter()
+            .last()
+            .expect("Program Table must not be empty.");
+        last_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
+    }
+
+    /// todo delete this stub
+    pub fn extend(&self, _challenges: &ProgramTableChallenges) -> ExtProgramTable {
+        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
+
+        let data_with_0 = {
+            let mut tmp = self.data().clone();
+            tmp.push(vec![BFieldElement::zero(); BASE_WIDTH]);
+            tmp
+        };
+
+        for (_, _) in data_with_0.into_iter().tuple_windows() {
+            let extension_row = [0.into(); FULL_WIDTH];
             extension_matrix.push(extension_row.to_vec());
         }
 

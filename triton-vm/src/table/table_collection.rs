@@ -213,24 +213,10 @@ impl MasterBaseTable {
     }
 
     pub fn pad(&mut self) {
-        let padded_height = self.padded_height;
         let program_len = self.program_len;
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
-
-        let address_column = program_table.slice_mut(s![
-            program_len..,
-            usize::from(ProgramBaseTableColumn::Address)
-        ]);
-        let addresses =
-            Array1::from_iter((program_len..padded_height).map(|a| BFieldElement::new(a as u64)));
-        addresses.move_into(address_column);
-
-        let mut is_padding_column = program_table.slice_mut(s![
-            program_len..,
-            usize::from(ProgramBaseTableColumn::IsPadding)
-        ]);
-        is_padding_column.par_mapv_inplace(|_| BFieldElement::one());
+        ProgramTable::pad_trace(program_table, program_len);
     }
 
     /// requires underlying Array2 to be stored f-style

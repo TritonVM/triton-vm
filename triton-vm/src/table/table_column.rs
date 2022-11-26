@@ -150,7 +150,7 @@ impl From<ProgramExtTableColumn> for usize {
         ProgramExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + ProgramBaseTableColumn::COUNT)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
