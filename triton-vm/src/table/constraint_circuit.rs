@@ -839,23 +839,36 @@ fn binop<II: InputIndicator>(
 ) -> ConstraintCircuitMonad<II> {
     // Get ID for the new node
     let new_index = lhs.id_counter_ref.as_ref().borrow().to_owned();
+    let lhs = Rc::new(RefCell::new(lhs));
+    let rhs = Rc::new(RefCell::new(rhs));
 
     let new_node = ConstraintCircuitMonad {
         circuit: Rc::new(RefCell::new(ConstraintCircuit {
             visited_counter: 0,
-            expression: BinaryOperation(binop, Rc::clone(&lhs.circuit), Rc::clone(&rhs.circuit)),
+            expression: BinaryOperation(
+                binop,
+                Rc::clone(&lhs.as_ref().borrow().circuit),
+                Rc::clone(&rhs.as_ref().borrow().circuit),
+            ),
             id: new_index,
         })),
-        id_counter_ref: Rc::clone(&lhs.id_counter_ref),
-        all_nodes: Rc::clone(&lhs.all_nodes),
+        id_counter_ref: Rc::clone(&lhs.as_ref().borrow().id_counter_ref),
+        all_nodes: Rc::clone(&lhs.as_ref().borrow().all_nodes),
     };
 
     // check if node already exists
-    let contained = lhs.all_nodes.as_ref().borrow().contains(&new_node);
+    let contained = lhs
+        .as_ref()
+        .borrow()
+        .all_nodes
+        .as_ref()
+        .borrow()
+        .contains(&new_node);
     if contained {
-        let ret0 = &lhs.all_nodes.as_ref().borrow();
-        let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
-        return ret1.to_owned();
+        let ret0 = &lhs.as_ref().borrow();
+        let ret1 = ret0.all_nodes.as_ref().borrow();
+        let ret2 = &(*ret1.get(&new_node).as_ref().unwrap()).clone();
+        return ret2.to_owned();
     }
 
     // If the operator commutes, check if the inverse node has already been constructed.
@@ -867,26 +880,33 @@ fn binop<II: InputIndicator>(
                 expression: BinaryOperation(
                     binop,
                     // Switch rhs and lhs for symmetric operators to check membership in hash set
-                    Rc::clone(&rhs.circuit),
-                    Rc::clone(&lhs.circuit),
+                    Rc::clone(&rhs.as_ref().borrow().circuit),
+                    Rc::clone(&lhs.as_ref().borrow().circuit),
                 ),
                 id: new_index,
             })),
-            id_counter_ref: Rc::clone(&lhs.id_counter_ref),
-            all_nodes: Rc::clone(&lhs.all_nodes),
+            id_counter_ref: Rc::clone(&lhs.as_ref().borrow().id_counter_ref),
+            all_nodes: Rc::clone(&lhs.as_ref().borrow().all_nodes),
         };
 
         // check if node already exists
-        let inverted_contained = lhs.all_nodes.as_ref().borrow().contains(&new_node_inverted);
+        let inverted_contained = lhs
+            .as_ref()
+            .borrow()
+            .all_nodes
+            .as_ref()
+            .borrow()
+            .contains(&new_node_inverted);
         if inverted_contained {
-            let ret0 = &lhs.all_nodes.as_ref().borrow();
-            let ret1 = &(*ret0.get(&new_node_inverted).as_ref().unwrap()).clone();
-            return ret1.to_owned();
+            let ret0 = &lhs.as_ref().borrow();
+            let ret1 = ret0.all_nodes.as_ref().borrow();
+            let ret2 = &(*ret1.get(&new_node_inverted).as_ref().unwrap()).clone();
+            return ret2.to_owned();
         }
     }
 
     // Increment counter index
-    *lhs.id_counter_ref.as_ref().borrow_mut() = new_index + 1;
+    *lhs.as_ref().borrow().id_counter_ref.as_ref().borrow_mut() = new_index + 1;
 
     // Store new node in HashSet
     new_node
