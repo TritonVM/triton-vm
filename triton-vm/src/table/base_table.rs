@@ -117,7 +117,7 @@ where
 
     fn randomized_low_deg_extension(
         &self,
-        fri_domain: &ArithmeticDomain,
+        fri_domain: ArithmeticDomain,
         num_trace_randomizers: usize,
         columns: Range<usize>,
     ) -> Table<FF> {

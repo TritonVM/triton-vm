@@ -44,7 +44,7 @@ pub trait CrossTableArg {
     fn terminal_quotient(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        quotient_domain: &ArithmeticDomain,
+        quotient_domain: ArithmeticDomain,
         trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
         let from_codeword = self.combined_from_codeword(ext_codeword_tables);
@@ -454,7 +454,7 @@ impl GrandCrossTableArg {
     pub fn terminal_quotient_codeword(
         &self,
         ext_codeword_tables: &ExtTableCollection,
-        quotient_domain: &ArithmeticDomain,
+        quotient_domain: ArithmeticDomain,
         trace_domain_generator: BFieldElement,
     ) -> Vec<XFieldElement> {
         let mut non_linear_sum_codeword = vec![XFieldElement::zero(); quotient_domain.length];

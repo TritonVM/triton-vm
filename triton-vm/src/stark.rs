@@ -154,7 +154,7 @@ impl Stark {
             &self.claim.program,
             self.parameters.num_trace_randomizers,
             self.parameters.num_randomizer_polynomials,
-            self.fri.domain.clone(),
+            self.fri.domain,
         );
         prof_stop!(maybe_profiler, "create");
 
@@ -200,7 +200,7 @@ impl Stark {
         let base_matrices = BaseMatrices::new(aet, &self.claim.program);
         let base_trace_tables = self.padded(&base_matrices);
         let base_fri_domain_tables = base_trace_tables.to_fri_domain_tables(
-            &self.fri.domain,
+            self.fri.domain,
             self.parameters.num_trace_randomizers,
             maybe_profiler,
         );
@@ -223,7 +223,7 @@ impl Stark {
         prof_start!(maybe_profiler, "ext tables");
         prof_start!(maybe_profiler, "LDE");
         let ext_fri_domain_tables = ext_trace_tables.to_fri_domain_tables(
-            &self.fri.domain,
+            self.fri.domain,
             self.parameters.num_trace_randomizers,
             maybe_profiler,
         );
@@ -283,7 +283,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "quotient codewords");
         let mut quotient_codewords = full_quotient_domain_tables.get_all_quotients(
-            &quotient_domain,
+            quotient_domain,
             &extension_challenges,
             maybe_profiler,
         );
@@ -330,7 +330,7 @@ impl Stark {
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
                 &full_quotient_domain_tables,
-                &quotient_domain,
+                quotient_domain,
                 derive_trace_domain_generator(full_quotient_domain_tables.padded_height as u64),
             );
         quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
@@ -345,7 +345,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "nonlinear combination");
         let combination_codeword = self.create_combination_codeword(
-            &quotient_domain,
+            quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
             quotient_codewords,
@@ -358,7 +358,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "LDE 3");
         let fri_combination_codeword_without_randomizer =
-            quotient_domain.low_degree_extension(&combination_codeword, &self.fri.domain);
+            quotient_domain.low_degree_extension(&combination_codeword, self.fri.domain);
         prof_stop!(maybe_profiler, "LDE 3");
 
         let x_rand_codeword = fri_domain_base_master_table.randomizer_polynomials()[0].clone();
@@ -499,7 +499,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn create_combination_codeword(
         &self,
-        quotient_domain: &ArithmeticDomain,
+        quotient_domain: ArithmeticDomain,
         base_codewords: Vec<Vec<BFieldElement>>,
         extension_codewords: Vec<Vec<XFieldElement>>,
         quotient_codewords: Vec<Vec<XFieldElement>>,
@@ -573,7 +573,7 @@ impl Stark {
     #[allow(clippy::too_many_arguments)]
     fn debug_check_degrees(
         &self,
-        domain: &ArithmeticDomain,
+        domain: ArithmeticDomain,
         idx: &usize,
         degree_bound: &Degree,
         shift: &u32,

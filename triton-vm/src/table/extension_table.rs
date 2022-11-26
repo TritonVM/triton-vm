@@ -151,7 +151,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn initial_quotients(
         &self,
-        domain: &ArithmeticDomain,
+        domain: ArithmeticDomain,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
     ) -> Vec<Vec<XFieldElement>> {
@@ -178,7 +178,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn consistency_quotients(
         &self,
-        domain: &ArithmeticDomain,
+        domain: ArithmeticDomain,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         padded_height: usize,
@@ -206,7 +206,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn transition_quotients(
         &self,
-        domain: &ArithmeticDomain,
+        domain: ArithmeticDomain,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,
@@ -255,7 +255,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn terminal_quotients(
         &self,
-        quotient_domain: &ArithmeticDomain,
+        quotient_domain: ArithmeticDomain,
         transposed_codewords: &[Vec<XFieldElement>],
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,
@@ -285,7 +285,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
 
     fn all_quotients(
         &self,
-        quotient_domain: &ArithmeticDomain,
+        quotient_domain: ArithmeticDomain,
         transposed_codewords: Vec<Vec<XFieldElement>>,
         challenges: &AllChallenges,
         trace_domain_generator: BFieldElement,

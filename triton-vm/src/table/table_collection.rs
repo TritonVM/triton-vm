@@ -256,7 +256,6 @@ impl MasterBaseTable {
                 .par_mapv_inplace(|_| random::<BFieldElement>())
         });
 
-        let fri_domain = self.fri_domain.clone();
         let randomized_trace_domain_len = self.randomized_padded_trace_len;
         let randomized_trace_domain_gen =
             BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64)
@@ -280,7 +279,7 @@ impl MasterBaseTable {
                 let randomized_trace = column
                     .as_slice()
                     .expect("Column must be contiguous & non-empty.");
-                randomized_trace_domain.low_degree_extension(randomized_trace, &fri_domain)
+                randomized_trace_domain.low_degree_extension(randomized_trace, self.fri_domain)
             })
             .collect::<Vec<_>>()
             .concat();
@@ -291,7 +290,6 @@ impl MasterBaseTable {
             .expect("FRI domain codewords must fit into Array2 of given dimensions.");
 
         Self {
-            fri_domain: self.fri_domain.clone(),
             master_base_matrix: b,
             ..*self
         }
@@ -318,7 +316,7 @@ impl MasterBaseTable {
             padded_height: self.padded_height,
             randomized_padded_trace_len: self.randomized_padded_trace_len,
             rand_trace_to_padded_trace_unit_distance: self.rand_trace_to_padded_trace_unit_distance,
-            fri_domain: self.fri_domain.clone(),
+            fri_domain: self.fri_domain,
             master_ext_matrix,
         };
 
@@ -484,7 +482,7 @@ impl BaseTableCollection {
 
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &ArithmeticDomain,
+        fri_domain: ArithmeticDomain,
         num_trace_randomizers: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {
@@ -858,7 +856,7 @@ impl ExtTableCollection {
     /// Heads up: only extension columns are low-degree extended – base columns are already covered.
     pub fn to_fri_domain_tables(
         &self,
-        fri_domain: &ArithmeticDomain,
+        fri_domain: ArithmeticDomain,
         num_trace_randomizers: usize,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Self {
@@ -967,7 +965,7 @@ impl ExtTableCollection {
 
     pub fn get_all_quotients(
         &self,
-        domain: &ArithmeticDomain,
+        domain: ArithmeticDomain,
         challenges: &AllChallenges,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Vec<Vec<XFieldElement>> {

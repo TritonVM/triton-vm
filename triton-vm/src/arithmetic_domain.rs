@@ -5,7 +5,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::{FiniteField, ModPowU32};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArithmeticDomain {
     pub offset: BFieldElement,
     pub generator: BFieldElement,
@@ -35,7 +35,7 @@ impl ArithmeticDomain {
         Polynomial::fast_coset_interpolate(&self.offset, self.generator, values)
     }
 
-    pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: &Self) -> Vec<FF>
+    pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
     where
         FF: FiniteField + MulAssign<BFieldElement>,
     {
