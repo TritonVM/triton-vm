@@ -956,6 +956,185 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     pub fn consume(self) -> ConstraintCircuit<II> {
         self.circuit.try_borrow().unwrap().to_owned()
     }
+
+    fn make_leaf(&self, expression: CircuitExpression<T, II>) -> Self {
+        let new_id = self.id_counter_ref.as_ref().borrow().to_owned();
+        let new_node = ConstraintCircuitMonad {
+            circuit: Rc::new(RefCell::new(ConstraintCircuit {
+                visited_counter: 0usize,
+                expression,
+                id: CircuitId(new_id),
+                var_count: self.circuit.as_ref().borrow().var_count,
+            })),
+            id_counter_ref: Rc::clone(&self.id_counter_ref),
+            all_nodes: Rc::clone(&self.all_nodes),
+        };
+
+        // Check if node already exists, return the existing one if it does
+        let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
+        if contained {
+            let ret0 = &self.all_nodes.as_ref().borrow();
+            let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
+            return ret1.to_owned();
+        }
+
+        // If node did not already exist, increment counter and insert node into hash set
+        *self.id_counter_ref.as_ref().borrow_mut() = new_id + 1;
+        self.all_nodes
+            .as_ref()
+            .borrow_mut()
+            .insert(new_node.clone());
+
+        new_node
+    }
+
+    /// Apply constant folding to simplify the (sub)tree.
+    /// If the subtree is a leaf (terminal), no change.
+    /// If the subtree is a binary operation on:
+    ///
+    ///  - one constant x one constant   => fold
+    ///  - one constant x one expr       => can't
+    ///  - one expr x one constant       => can't
+    ///  - one expr x one expr           => can't
+    ///
+    /// This operation mutates self and returns true if a change was
+    /// applied anywhere in the tree.
+    fn constant_fold_inner(&mut self) -> bool {
+        let mut change_tracker = false;
+        if let BinaryOperation(_, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
+            change_tracker |= lhs
+                .clone()
+                .as_ref()
+                .borrow()
+                .circuit
+                .as_ref()
+                .borrow_mut()
+                .constant_fold_inner();
+            change_tracker |= rhs
+                .clone()
+                .as_ref()
+                .borrow()
+                .circuit
+                .as_ref()
+                .borrow_mut()
+                .constant_fold_inner();
+        }
+
+        match &self
+            .circuit
+            .clone()
+            .as_ref()
+            .borrow()
+            .clone()
+            .expression
+            .clone()
+        {
+            BinaryOperation(binop, lhs, rhs) => {
+                // a + 0 = a ∧ a - 0 = a
+                if matches!(binop, BinOp::Add | BinOp::Sub)
+                    && rhs.as_ref().borrow().circuit.borrow().is_zero()
+                {
+                    println!("PMD0");
+                    self.circuit = Rc::clone(&lhs.as_ref().borrow().circuit);
+                    return true;
+                }
+
+                // 0 + a = a
+                if *binop == BinOp::Add && lhs.as_ref().borrow().circuit.borrow().is_zero() {
+                    println!("PMD1");
+                    self.circuit = Rc::clone(&rhs.as_ref().borrow().circuit);
+                    return true;
+                }
+
+                if matches!(binop, BinOp::Mul) {
+                    // a * 1 = a
+                    if rhs.as_ref().borrow().circuit.borrow().is_one() {
+                        println!("PMD2");
+                        // *self.expression.borrow_mut() =
+                        //     lhs.as_ref().borrow().circuit.borrow().expression.clone();
+                        self.circuit = Rc::clone(&rhs.as_ref().borrow().circuit);
+                        return true;
+                    }
+
+                    // 1 * a = a
+                    if lhs.as_ref().borrow().circuit.borrow().is_one() {
+                        println!("PMD3");
+                        // *self.expression.borrow_mut() =
+                        //     rhs.as_ref().borrow().circuit.borrow().expression.clone();
+                        self.circuit = Rc::clone(&rhs.as_ref().borrow().circuit);
+                        return true;
+                    }
+
+                    // 0 * a = a * 0 = 0
+                    if lhs.as_ref().borrow().circuit.borrow().is_zero()
+                        || rhs.as_ref().borrow().circuit.borrow().is_zero()
+                    {
+                        println!("PMD4");
+                        self.circuit = self.make_leaf(BConstant(0u64.into())).circuit;
+                        return true;
+                    }
+                }
+
+                // if left and right hand sides are both constants
+                if let XConstant(lhs_xfe) = lhs.as_ref().borrow().circuit.borrow().expression {
+                    if let XConstant(rhs_xfe) = rhs.as_ref().borrow().circuit.borrow().expression {
+                        println!("PMD5");
+                        *self = match binop {
+                            BinOp::Add => self.make_leaf(XConstant(lhs_xfe + rhs_xfe)),
+                            BinOp::Sub => self.make_leaf(XConstant(lhs_xfe - rhs_xfe)),
+                            BinOp::Mul => self.make_leaf(XConstant(lhs_xfe * rhs_xfe)),
+                        };
+                        return true;
+                    }
+
+                    if let BConstant(rhs_bfe) = rhs.as_ref().borrow().circuit.borrow().expression {
+                        println!("PMD6");
+                        *self = match binop {
+                            BinOp::Add => self.make_leaf(XConstant(lhs_xfe + rhs_bfe.lift())),
+                            BinOp::Sub => self.make_leaf(XConstant(lhs_xfe - rhs_bfe.lift())),
+                            BinOp::Mul => self.make_leaf(XConstant(lhs_xfe * rhs_bfe)),
+                        };
+                        return true;
+                    }
+                }
+
+                if let BConstant(lhs_bfe) = lhs.as_ref().borrow().circuit.borrow().expression {
+                    if let XConstant(rhs_xfe) = rhs.as_ref().borrow().circuit.borrow().expression {
+                        println!("PMD7");
+                        *self = match binop {
+                            BinOp::Add => self.make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe)),
+                            BinOp::Sub => self.make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe)),
+                            BinOp::Mul => self.make_leaf(XConstant(rhs_xfe * lhs_bfe)),
+                        };
+                        return true;
+                    }
+
+                    if let BConstant(rhs_bfe) = rhs.as_ref().borrow().circuit.borrow().expression {
+                        println!("PMD8");
+                        *self = match binop {
+                            BinOp::Add => self.make_leaf(BConstant(lhs_bfe + rhs_bfe)),
+                            BinOp::Sub => self.make_leaf(BConstant(lhs_bfe - rhs_bfe)),
+                            BinOp::Mul => self.make_leaf(BConstant(lhs_bfe * lhs_bfe)),
+                        };
+                        return true;
+                    }
+                }
+
+                change_tracker
+            }
+            _ => change_tracker,
+        }
+    }
+
+    /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
+    pub fn constant_folding(circuits: &mut [ConstraintCircuitMonad<T, II>]) {
+        for circuit in circuits.iter_mut() {
+            let mut mutated = circuit.constant_fold_inner();
+            while mutated {
+                mutated = circuit.constant_fold_inner();
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
