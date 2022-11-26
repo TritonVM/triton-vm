@@ -9,6 +9,7 @@
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::cmp;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -49,6 +50,18 @@ impl Display for BinOp {
         }
     }
 }
+
+/// Data structure for uniquely identifying each node
+// #[derive(Debug, Clone, Hash, PartialEq)]
+// pub struct CircuitId(usize);
+
+// impl Eq for CircuitId {}
+
+// impl Display for CircuitId {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}", self.0)
+//     }
+// }
 
 /// Describes the position of a variable in a constraint polynomial in the row layout applicable
 /// for a certain kind of constraint polynomial.
@@ -635,7 +648,86 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Replace all challenges with constants in subtree.
+    /// Panics if two nodes evaluate to the same value
+    pub fn assert_all_evaluate_different(
+        constraints: &[Self],
+        challenges: &Challenges,
+        base_input: &[BFieldElement],
+        ext_input: &[XFieldElement],
+    ) {
+        let mut evaluated_values: HashMap<XFieldElement, (usize, CircuitExpression<II>)> =
+            HashMap::default();
+        for constraint in constraints.iter() {
+            Self::evaluate_and_store_and_assert_unique(
+                constraint,
+                challenges,
+                base_input,
+                ext_input,
+                &mut evaluated_values,
+            );
+        }
+    }
+
+    /// Return own value and whether own value was seen before. Stores own value in hash map.
+    fn evaluate_and_store_and_assert_unique(
+        &self,
+        challenges: &Challenges,
+        base_input: &[BFieldElement],
+        ext_input: &[XFieldElement],
+        evaluated_values: &mut HashMap<XFieldElement, (usize, CircuitExpression<II>)>,
+    ) -> XFieldElement {
+        // assert_eq!(
+        //     self.var_count,
+        //     input.len(),
+        //     "Input length match circuit's var count"
+        // );
+        let value = match &self.expression {
+            XConstant(xfe) => xfe.to_owned(),
+            BConstant(bfe) => bfe.lift(),
+            Input(s) => {
+                if s.is_base_table_row() {
+                    base_input[s.base_row_index()].lift()
+                } else {
+                    ext_input[s.ext_row_index()]
+                }
+            }
+            Challenge(cid) => challenges.get_challenge(*cid),
+            BinaryOperation(binop, lhs, rhs) => {
+                let lhs = lhs.as_ref().borrow().evaluate_and_store_and_assert_unique(
+                    challenges,
+                    base_input,
+                    ext_input,
+                    evaluated_values,
+                );
+                let rhs = rhs.as_ref().borrow().evaluate_and_store_and_assert_unique(
+                    challenges,
+                    base_input,
+                    ext_input,
+                    evaluated_values,
+                );
+                match binop {
+                    BinOp::Add => lhs + rhs,
+                    BinOp::Sub => lhs - rhs,
+                    BinOp::Mul => lhs * rhs,
+                }
+            }
+        };
+
+        let self_evaluated_is_unique =
+            evaluated_values.insert(value, (self.id.to_owned(), self.expression.clone()));
+        if let Some((collided_circuit_id, collided_expr)) = self_evaluated_is_unique {
+            let own_id = self.id.to_owned();
+            let own_exp = self.expression.clone();
+            if collided_circuit_id != self.id {
+                panic!(
+                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. Collission on:\n {collided_circuit_id}: {collided_expr:?}\n {own_id}: {own_exp:?}",
+                );
+            }
+        }
+        value
+    }
+
+    /// Replace all challenges with constants in subtree
     fn apply_challenges_to_one_root(&mut self, challenges: &Challenges) {
         match &self.expression {
             Challenge(challenge_id) => {
@@ -936,6 +1028,7 @@ mod constraint_circuit_tests {
     use crate::table::challenges::ChallengeId::U32Indeterminate;
     use crate::table::challenges::Challenges;
     use crate::table::jump_stack_table::ExtJumpStackTable;
+    use crate::table::master_table;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::program_table::ExtProgramTable;
@@ -1324,6 +1417,18 @@ mod constraint_circuit_tests {
             node_counter(&mut constraints)
         );
         ConstraintCircuit::assert_has_unique_ids(&mut constraints);
+
+        // Verify that all nodes evaluate to a unique value when given a randomized input.
+        // If this is not the case two nodes that are not equal evaluate to the same value.
+        // let input: Vec<XFieldElement> = random_elements(constraints[0].var_count);
+        let base_input: Vec<BFieldElement> = random_elements(master_table::NUM_BASE_COLUMNS);
+        let ext_input: Vec<XFieldElement> = random_elements(master_table::NUM_EXT_COLUMNS);
+        ConstraintCircuit::assert_all_evaluate_different(
+            &constraints,
+            &challenges,
+            &base_input,
+            &ext_input,
+        );
 
         assert!(
             constraints
