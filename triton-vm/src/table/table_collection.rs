@@ -3,7 +3,7 @@ use std::cmp::max;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
-use ndarray::{par_azip, s, Array2, ArrayView2, ArrayViewMut2};
+use ndarray::{s, Array2, ArrayView2, ArrayViewMut2};
 use num_traits::One;
 use rand::random;
 use strum::EnumCount;
@@ -207,18 +207,7 @@ impl MasterBaseTable {
         };
 
         let program_table = &mut master_base_table.table_mut(TableId::ProgramTable);
-        let address_column = program_table.slice_mut(s![
-            ..program_len,
-            usize::from(ProgramBaseTableColumn::Address)
-        ]);
-        let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
-        addresses.move_into(address_column);
-
-        let mut instruction_column = program_table.slice_mut(s![
-            ..program_len,
-            usize::from(ProgramBaseTableColumn::Instruction)
-        ]);
-        par_azip!((ic in &mut instruction_column, &instr in program)  *ic = instr);
+        ProgramTable::fill_trace(program_table, program);
 
         master_base_table
     }

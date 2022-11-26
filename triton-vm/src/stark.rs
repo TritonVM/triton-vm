@@ -9,6 +9,8 @@ use num_traits::{One, Zero};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
+use triton_profiler::triton_profiler::TritonProfiler;
+use triton_profiler::{prof_itr0, prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
@@ -18,9 +20,6 @@ use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, Primiti
 use twenty_first::shared_math::x_field_element::{XFieldElement, EXTENSION_DEGREE};
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
-
-use triton_profiler::triton_profiler::TritonProfiler;
-use triton_profiler::{prof_itr0, prof_start, prof_stop};
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -167,27 +166,20 @@ impl Stark {
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
-        prof_start!(maybe_profiler, "build");
-        let base_tree = fri_domain_base_master_table.merkle_tree();
-        prof_stop!(maybe_profiler, "build");
-        prof_start!(maybe_profiler, "root");
-        let base_merkle_tree_root = base_tree.get_root();
-        prof_stop!(maybe_profiler, "root");
+        let base_merkle_tree = fri_domain_base_master_table.merkle_tree();
+        let base_merkle_tree_root = base_merkle_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree");
 
-        dbg!(base_merkle_tree_root);
-
-        // send first message
         prof_start!(maybe_profiler, "Fiat-Shamir");
+        let padded_height = BFieldElement::new(base_master_table.padded_height as u64);
         let mut proof_stream = StarkProofStream::new();
-        proof_stream.enqueue(&ProofItem::PaddedHeight(BFieldElement::new(
-            base_master_table.padded_height as u64,
-        )));
+        proof_stream.enqueue(&ProofItem::PaddedHeight(padded_height));
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
-        let extension_challenge_seed = proof_stream.prover_fiat_shamir();
-        let extension_challenge_weights =
-            Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
-        let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
+        let extension_weights = Self::sample_weights(
+            proof_stream.prover_fiat_shamir(),
+            AllChallenges::TOTAL_CHALLENGES,
+        );
+        let extension_challenges = AllChallenges::create_challenges(extension_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");

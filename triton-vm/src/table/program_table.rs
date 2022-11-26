@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use ndarray::{Array2, ArrayView2, ArrayViewMut2, Axis};
+use ndarray::{par_azip, s, Array1, Array2, ArrayView2, ArrayViewMut2, Axis};
 use num_traits::{One, Zero};
 use strum::EnumCount;
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
@@ -180,6 +180,22 @@ impl ProgramTable {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProgramTable".to_string());
         Self { inherited_table }
+    }
+
+    pub fn fill_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program: &[BFieldElement]) {
+        let program_len = program.len();
+        let address_column = program_table.slice_mut(s![
+            ..program_len,
+            usize::from(ProgramBaseTableColumn::Address)
+        ]);
+        let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
+        addresses.move_into(address_column);
+
+        let mut instruction_column = program_table.slice_mut(s![
+            ..program_len,
+            usize::from(ProgramBaseTableColumn::Instruction)
+        ]);
+        par_azip!((ic in &mut instruction_column, &instr in program)  *ic = instr);
     }
 
     /// todo rename to “extend()” once the old “extend()” is removed

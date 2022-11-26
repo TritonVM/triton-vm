@@ -50,11 +50,11 @@ pub fn parse_simulate_prove(
     );
     let base_matrices = BaseMatrices::new(aet.clone(), &program.to_bwords());
 
-    prof_start!(maybe_profiler, "padding");
+    prof_start!(maybe_profiler, "padding parameters");
     let log_expansion_factor = 2;
     let security_level = 32;
     let padded_height = BaseTableCollection::padded_height(&base_matrices);
-    prof_stop!(maybe_profiler, "padding");
+    prof_stop!(maybe_profiler, "padding parameters");
 
     prof_start!(maybe_profiler, "prove");
     let parameters = StarkParameters::new(security_level, 1 << log_expansion_factor);
