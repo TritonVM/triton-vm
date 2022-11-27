@@ -162,6 +162,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "pad");
 
         prof_start!(maybe_profiler, "LDE");
+        base_master_table.randomize_trace();
         let fri_domain_base_master_table = base_master_table.low_degree_extend_all_columns();
         prof_stop!(maybe_profiler, "LDE");
 

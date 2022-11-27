@@ -219,10 +219,8 @@ impl MasterBaseTable {
         ProgramTable::pad_trace(program_table, program_len);
     }
 
-    /// requires underlying Array2 to be stored f-style
-    pub fn low_degree_extend_all_columns(&mut self) -> Self {
-        // randomize padded trace:
-        // set all rows _not_ needed for the (padded) trace to random values
+    /// set all rows _not_ needed for the (padded) trace to random values
+    pub fn randomize_trace(&mut self) {
         let randomized_padded_trace_len = self.randomized_padded_trace_len;
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         (1..unit_distance).for_each(|offset| {
@@ -230,7 +228,10 @@ impl MasterBaseTable {
                 .slice_mut(s![offset..randomized_padded_trace_len; unit_distance, ..])
                 .par_mapv_inplace(|_| random::<BFieldElement>())
         });
+    }
 
+    /// requires underlying Array2 to be stored f-style
+    pub fn low_degree_extend_all_columns(&self) -> Self {
         let randomized_trace_domain_len = self.randomized_padded_trace_len;
         let randomized_trace_domain_gen =
             BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64)
@@ -248,7 +249,7 @@ impl MasterBaseTable {
         //  - try: is it faster to create Array2 in f-style, move columns in, no transform?
         let a: Vec<_> = self
             .master_base_matrix
-            .axis_iter_mut(Axis(1)) // Axis(1) corresponds to getting all columns.
+            .axis_iter(Axis(1)) // Axis(1) corresponds to getting all columns.
             .into_par_iter()
             .map(|column| {
                 let randomized_trace = column
