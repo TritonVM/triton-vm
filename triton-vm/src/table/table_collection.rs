@@ -1,10 +1,13 @@
 use std::cmp::max;
+use std::ops::MulAssign;
 
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
 use ndarray::{s, Array2, ArrayView2, ArrayViewMut2};
 use num_traits::One;
+use rand::distributions::Standard;
+use rand::prelude::Distribution;
 use rand::random;
 use strum::EnumCount;
 use triton_profiler::triton_profiler::TritonProfiler;
@@ -12,7 +15,7 @@ use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
-use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
+use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
@@ -22,22 +25,21 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
+use crate::table::base_matrix::BaseMatrices;
+use crate::table::base_table::TableLike;
 use crate::table::base_table::{Extendable, InheritsFromTable, Table};
+use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::DegreeWithOrigin;
+use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::hash_table::{ExtHashTable, HashTable};
+use crate::table::instruction_table::{ExtInstructionTable, InstructionTable};
+use crate::table::jump_stack_table::{ExtJumpStackTable, JumpStackTable};
+use crate::table::op_stack_table::{ExtOpStackTable, OpStackTable};
+use crate::table::processor_table::{ExtProcessorTable, ProcessorTable};
+use crate::table::program_table::{ExtProgramTable, ProgramTable};
+use crate::table::ram_table::{ExtRamTable, RamTable};
 use crate::table::table_column::*;
 use crate::table::*;
-
-use super::base_matrix::BaseMatrices;
-use super::base_table::TableLike;
-use super::challenges::AllChallenges;
-use super::extension_table::QuotientableExtensionTable;
-use super::hash_table::{ExtHashTable, HashTable};
-use super::instruction_table::{ExtInstructionTable, InstructionTable};
-use super::jump_stack_table::{ExtJumpStackTable, JumpStackTable};
-use super::op_stack_table::{ExtOpStackTable, OpStackTable};
-use super::processor_table::{ExtProcessorTable, ProcessorTable};
-use super::program_table::{ExtProgramTable, ProgramTable};
-use super::ram_table::{ExtRamTable, RamTable};
 
 pub const NUM_TABLES: usize = 7;
 
@@ -127,6 +129,71 @@ pub enum TableId {
     HashTable,
 }
 
+pub trait MasterTable<FF>
+where
+    FF: FiniteField + MulAssign<BFieldElement>,
+    Standard: Distribution<FF>,
+{
+    fn randomized_padded_trace_len(&self) -> usize;
+    fn rand_trace_to_padded_trace_unit_distance(&self) -> usize;
+    fn master_matrix(&self) -> ArrayView2<FF>;
+    fn master_matrix_mut(&mut self) -> ArrayViewMut2<FF>;
+    fn fri_domain(&self) -> ArithmeticDomain;
+
+    /// set all rows _not_ needed for the (padded) trace to random values
+    fn randomize_trace(&mut self) {
+        let randomized_padded_trace_len = self.randomized_padded_trace_len();
+        let unit_distance = self.rand_trace_to_padded_trace_unit_distance();
+        (1..unit_distance).for_each(|offset| {
+            self.master_matrix_mut()
+                .slice_mut(s![offset..randomized_padded_trace_len; unit_distance, ..])
+                .par_mapv_inplace(|_| random::<FF>())
+        });
+    }
+
+    /// requires underlying Array2 to be stored in column-major order
+    /// resulting Array2 is stored row-major order
+    fn low_degree_extend_all_columns(&self) -> Array2<FF>
+    where
+        Self: Sync,
+    {
+        // todo assert that underlying Array2 is is actually stored in column-major order
+        let randomized_trace_domain_len = self.randomized_padded_trace_len();
+        let randomized_trace_domain_gen =
+            BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64)
+                .expect("Length of randomized trace domain must be a power of 2");
+        let randomized_trace_domain = ArithmeticDomain::new(
+            BFieldElement::one(),
+            randomized_trace_domain_gen,
+            randomized_trace_domain_len,
+        );
+
+        // todo
+        //  - create Array2 with dimensions [fri.domain.length, master_base_table.ncols()]
+        //  - per column: do LDE, move result in new Array2's column
+        //  - change memory layout of Array2 from column-major to row-major (“into_shape_and_order”)
+        //  - try: is it faster to create Array2 in row-major, move columns in, no transform?
+        let a: Vec<_> = self
+            .master_matrix()
+            .slice(s![..randomized_trace_domain_len, ..])
+            .axis_iter(Axis(1)) // Axis(1) corresponds to getting all columns.
+            .into_iter()
+            .map(|column| {
+                let randomized_trace = column
+                    .as_slice()
+                    .expect("Column must be contiguous & non-empty.");
+                randomized_trace_domain.low_degree_extension(randomized_trace, self.fri_domain())
+            })
+            .collect::<Vec<_>>()
+            .concat();
+
+        let num_rows = self.fri_domain().length;
+        let num_columns = self.master_matrix().ncols();
+        Array2::from_shape_vec([num_rows, num_columns], a)
+            .expect("FRI domain codewords must fit into Array2 of given dimensions.")
+    }
+}
+
 #[derive(Clone)]
 pub struct MasterBaseTable {
     pub padded_height: usize,
@@ -158,6 +225,50 @@ pub struct MasterExtTable {
 
     pub fri_domain: ArithmeticDomain,
     pub master_ext_matrix: Array2<XFieldElement>,
+}
+
+impl MasterTable<BFieldElement> for MasterBaseTable {
+    fn randomized_padded_trace_len(&self) -> usize {
+        self.randomized_padded_trace_len
+    }
+
+    fn rand_trace_to_padded_trace_unit_distance(&self) -> usize {
+        self.rand_trace_to_padded_trace_unit_distance
+    }
+
+    fn master_matrix(&self) -> ArrayView2<BFieldElement> {
+        self.master_base_matrix.view()
+    }
+
+    fn master_matrix_mut(&mut self) -> ArrayViewMut2<BFieldElement> {
+        self.master_base_matrix.view_mut()
+    }
+
+    fn fri_domain(&self) -> ArithmeticDomain {
+        self.fri_domain
+    }
+}
+
+impl MasterTable<XFieldElement> for MasterExtTable {
+    fn randomized_padded_trace_len(&self) -> usize {
+        self.randomized_padded_trace_len
+    }
+
+    fn rand_trace_to_padded_trace_unit_distance(&self) -> usize {
+        self.rand_trace_to_padded_trace_unit_distance
+    }
+
+    fn master_matrix(&self) -> ArrayView2<XFieldElement> {
+        self.master_ext_matrix.view()
+    }
+
+    fn master_matrix_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
+        self.master_ext_matrix.view_mut()
+    }
+
+    fn fri_domain(&self) -> ArithmeticDomain {
+        self.fri_domain
+    }
 }
 
 impl MasterBaseTable {
@@ -219,59 +330,14 @@ impl MasterBaseTable {
         ProgramTable::pad_trace(program_table, program_len);
     }
 
-    /// set all rows _not_ needed for the (padded) trace to random values
-    pub fn randomize_trace(&mut self) {
-        let randomized_padded_trace_len = self.randomized_padded_trace_len;
-        let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
-        (1..unit_distance).for_each(|offset| {
-            self.master_base_matrix
-                .slice_mut(s![offset..randomized_padded_trace_len; unit_distance, ..])
-                .par_mapv_inplace(|_| random::<BFieldElement>())
-        });
-    }
-
-    /// requires underlying Array2 to be stored f-style
-    pub fn low_degree_extend_all_columns(&self) -> Self {
-        let randomized_trace_domain_len = self.randomized_padded_trace_len;
-        let randomized_trace_domain_gen =
-            BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64)
-                .expect("Length of randomized trace domain must be a power of 2");
-        let randomized_trace_domain = ArithmeticDomain::new(
-            BFieldElement::one(),
-            randomized_trace_domain_gen,
-            randomized_trace_domain_len,
-        );
-
-        // todo
-        //  - create Array2 with dimensions [fri.domain.length, master_base_table.ncols()]
-        //  - per column: do LDE, move result in new Array2's column
-        //  - change memory layout of Array2 from c-style to f-style
-        //  - try: is it faster to create Array2 in f-style, move columns in, no transform?
-        let a: Vec<_> = self
-            .master_base_matrix
-            .axis_iter(Axis(1)) // Axis(1) corresponds to getting all columns.
-            .into_par_iter()
-            .map(|column| {
-                let randomized_trace = column
-                    .as_slice()
-                    .expect("Column must be contiguous & non-empty.");
-                randomized_trace_domain.low_degree_extension(randomized_trace, self.fri_domain)
-            })
-            .collect::<Vec<_>>()
-            .concat();
-
-        let num_rows = self.fri_domain.length;
-        let num_columns = self.master_base_matrix.ncols();
-        let b = Array2::from_shape_vec([num_rows, num_columns], a)
-            .expect("FRI domain codewords must fit into Array2 of given dimensions.");
-
+    pub fn to_fri_domain_table(&self) -> Self {
         Self {
-            master_base_matrix: b,
+            master_base_matrix: self.low_degree_extend_all_columns(),
             ..*self
         }
     }
 
-    /// requires underlying Array2 to be stored c-style
+    /// requires underlying Array2 to be stored row-major order
     pub fn merkle_tree(&self) -> MerkleTree<StarkHasher, CpuParallel> {
         let mut hashed_rows = Vec::with_capacity(self.fri_domain.length);
         self.master_base_matrix
@@ -361,6 +427,31 @@ impl MasterBaseTable {
 }
 
 impl MasterExtTable {
+    pub fn to_fri_domain_table(&self) -> Self {
+        Self {
+            master_ext_matrix: self.low_degree_extend_all_columns(),
+            ..*self
+        }
+    }
+
+    /// requires underlying Array2 to be stored row-major order
+    pub fn merkle_tree(&self) -> MerkleTree<StarkHasher, CpuParallel> {
+        let mut hashed_rows = Vec::with_capacity(self.fri_domain.length);
+        self.master_ext_matrix
+            .axis_iter(Axis(0)) // Axis(0) corresponds to getting all rows.
+            .into_par_iter()
+            .map(|row| {
+                let contiguous_row = row.as_slice().expect("Row must be contiguous & non-empty.");
+                let contiguous_row_bfe = contiguous_row
+                    .iter()
+                    .map(|elem| elem.coefficients.to_vec())
+                    .concat();
+                StarkHasher::hash_slice(&contiguous_row_bfe)
+            })
+            .collect_into_vec(&mut hashed_rows);
+        CpuParallel::from_digests(&hashed_rows)
+    }
+
     pub fn table_slice_info(id: TableId) -> (usize, usize) {
         use TableId::*;
         match id {

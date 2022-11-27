@@ -8,18 +8,25 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProgramTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg};
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::EvalArg;
 use crate::table::base_table::Extendable;
+use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::Table;
+use crate::table::base_table::TableLike;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::Row;
-use crate::table::table_column::ProgramBaseTableColumn::{self, *};
-use crate::table::table_column::ProgramExtTableColumn::{self, *};
-
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::TableChallenges;
-use super::constraint_circuit::DualRowIndicator::*;
-use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
+use crate::table::extension_table::ExtensionTable;
+use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_column::ProgramBaseTableColumn;
+use crate::table::table_column::ProgramBaseTableColumn::*;
+use crate::table::table_column::ProgramExtTableColumn;
+use crate::table::table_column::ProgramExtTableColumn::*;
 
 pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;

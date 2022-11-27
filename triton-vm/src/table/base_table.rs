@@ -8,6 +8,10 @@ use twenty_first::shared_math::other::{random_elements, roundup_npo2};
 use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+// todo: replace the complicated trait structure with
+//  “TraceTable<FF>” and “Extendable: TraceTable<BFieldElement>”
+//  and define struct (eg) ProgramTable with field trace_table: ArrayView2
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Table<FieldElement: FiniteField> {
     /// The width of each `data` row in the base version of the table

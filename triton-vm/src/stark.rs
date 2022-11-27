@@ -32,10 +32,13 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
-use crate::table::table_collection::{
-    derive_trace_domain_generator, BaseTableCollection, ExtTableCollection, MasterBaseTable,
-    NUM_BASE_COLUMNS, NUM_EXT_COLUMNS,
-};
+use crate::table::table_collection::derive_trace_domain_generator;
+use crate::table::table_collection::BaseTableCollection;
+use crate::table::table_collection::ExtTableCollection;
+use crate::table::table_collection::MasterBaseTable;
+use crate::table::table_collection::MasterTable;
+use crate::table::table_collection::NUM_BASE_COLUMNS;
+use crate::table::table_collection::NUM_EXT_COLUMNS;
 
 use super::table::base_matrix::BaseMatrices;
 
@@ -163,7 +166,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "LDE");
         base_master_table.randomize_trace();
-        let fri_domain_base_master_table = base_master_table.low_degree_extend_all_columns();
+        let fri_domain_base_master_table = base_master_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
@@ -184,8 +187,22 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
-        let _ext_master_table = base_master_table.extend(&extension_challenges);
+        let mut ext_master_table = base_master_table.extend(&extension_challenges);
         prof_stop!(maybe_profiler, "extend");
+
+        prof_start!(maybe_profiler, "ext tables");
+        prof_start!(maybe_profiler, "LDE");
+        ext_master_table.randomize_trace();
+        let fri_domain_ext_master_table = ext_master_table.to_fri_domain_table();
+        prof_stop!(maybe_profiler, "LDE");
+
+        prof_start!(maybe_profiler, "Merkle tree");
+        let ext_merkle_tree = fri_domain_ext_master_table.merkle_tree();
+        let ext_merkle_tree_root = ext_merkle_tree.get_root();
+        prof_stop!(maybe_profiler, "Merkle tree");
+
+        proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree_root));
+        dbg!(ext_merkle_tree_root);
         /* todo continue >>> here <<< */
 
         // todo vvvvvvvvvvvvvvvvvvvv OLD vvvvvvvvvvvvvvvvvvvv
@@ -209,10 +226,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Merkle Tree 1");
         let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
         prof_stop!(maybe_profiler, "Merkle Tree 1");
-        prof_stop!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
         prof_stop!(maybe_profiler, "base tables");
-        // todo ^^^^^^^^^^^^^^^^^^^^ OLD ^^^^^^^^^^^^^^^^^^^^
-
         prof_start!(maybe_profiler, "ext tables");
         prof_start!(maybe_profiler, "LDE");
         let ext_fri_domain_tables = ext_trace_tables.to_fri_domain_tables(
@@ -227,10 +241,9 @@ impl Stark {
         let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
         let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
         prof_stop!(maybe_profiler, "Merkle tree");
-
-        // send root for extension codewords
-        proof_stream.enqueue(&ProofItem::MerkleRoot(extension_tree.get_root()));
+        prof_stop!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
         prof_stop!(maybe_profiler, "ext tables");
+        // todo ^^^^^^^^^^^^^^^^^^^^ OLD ^^^^^^^^^^^^^^^^^^^^
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "base");
@@ -1800,7 +1813,9 @@ pub(crate) mod triton_stark_tests {
         let stdin = vec![100_u64.into()];
         let secret_in = vec![];
 
-        let (stark, proof) = parse_simulate_prove(source_code, stdin, secret_in, &mut None);
+        let profiler = TritonProfiler::new("prove_verify_fibonacci_100_test");
+        let (stark, proof) =
+            parse_simulate_prove(source_code, stdin, secret_in, &mut Some(profiler));
 
         println!("between prove and verify");
 

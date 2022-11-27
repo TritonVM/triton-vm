@@ -1,30 +1,35 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
+use std::fmt::Formatter;
 use std::ops::Mul;
 
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use num_traits::One;
+use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::{FiniteField, Inverse};
+use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::instruction::AnInstruction::*;
+use crate::table::hash_table;
+use crate::table::instruction_table;
+use crate::table::jump_stack_table;
+use crate::table::op_stack_table;
+use crate::table::processor_table;
+use crate::table::program_table;
+use crate::table::ram_table;
+use crate::table::table_column::InstructionBaseTableColumn;
+use crate::table::table_column::JumpStackBaseTableColumn;
+use crate::table::table_column::OpStackBaseTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn::*;
+use crate::table::table_column::ProcessorExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn::*;
-use crate::table::table_column::RamBaseTableColumn::{
-    BezoutCoefficientPolynomialCoefficient0, BezoutCoefficientPolynomialCoefficient1,
-};
-use crate::table::table_column::{
-    InstructionBaseTableColumn, OpStackBaseTableColumn, ProcessorBaseTableColumn,
-    ProgramBaseTableColumn, RamBaseTableColumn,
-};
-
-use super::table_column::{
-    JumpStackBaseTableColumn, ProcessorBaseTableColumn::*, ProcessorExtTableColumn,
-};
-use super::{
-    hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
-    program_table, ram_table,
-};
+use crate::table::table_column::ProgramBaseTableColumn;
+use crate::table::table_column::RamBaseTableColumn;
+use crate::table::table_column::RamBaseTableColumn::BezoutCoefficientPolynomialCoefficient0;
+use crate::table::table_column::RamBaseTableColumn::BezoutCoefficientPolynomialCoefficient1;
 
 #[derive(Debug, Clone, Default)]
 pub struct AlgebraicExecutionTrace {
