@@ -25,9 +25,7 @@ use super::constraint_circuit::DualRowIndicator::*;
 
 pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-
-/// This is 3 because it combines: clk, ramv, ramp
-pub const RAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = 3;
+pub const RAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = RamTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;

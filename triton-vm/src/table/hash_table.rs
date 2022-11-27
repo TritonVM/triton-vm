@@ -27,9 +27,7 @@ use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
-
-/// This is 15 because it combines: 10 stack_input_weights and 5 digest_output_weights.
-pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = 15;
+pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = HashTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;

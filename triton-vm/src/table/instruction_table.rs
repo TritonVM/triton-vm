@@ -24,6 +24,7 @@ use super::table_column::InstructionExtTableColumn::{self, *};
 
 pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
+pub const INSTRUCTION_TABLE_NUM_EXTENSION_CHALLENGES: usize = InstructionTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = InstructionBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = InstructionExtTableColumn::COUNT;

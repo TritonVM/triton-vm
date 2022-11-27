@@ -23,9 +23,7 @@ use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
-
-/// This is 3 because it combines: addr, instruction, instruction in next row
-pub const PROGRAM_TABLE_EXTENSION_CHALLENGE_COUNT: usize = 3;
+pub const PROGRAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = ProgramTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = ProgramBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = ProgramExtTableColumn::COUNT;

@@ -24,9 +24,7 @@ use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-
-/// This is 5 because it combines: clk, ci, jsp, jso, jsd,
-pub const JUMP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = 5;
+pub const JUMP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = JumpStackTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = JumpStackExtTableColumn::COUNT;

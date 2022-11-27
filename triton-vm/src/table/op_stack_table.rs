@@ -23,9 +23,7 @@ use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-
-/// This is 4 because it combines: clk, ci, osv, osp
-pub const OP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = 4;
+pub const OP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = OpStackTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = OpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = OpStackExtTableColumn::COUNT;

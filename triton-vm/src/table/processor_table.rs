@@ -30,9 +30,7 @@ use super::extension_table::QuotientableExtensionTable;
 
 pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
 pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
-
-/// This is 43 because it combines all other tables (except program).
-pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = 43;
+pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = ProcessorTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = ProcessorBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = ProcessorExtTableColumn::COUNT;
