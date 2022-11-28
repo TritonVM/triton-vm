@@ -549,77 +549,6 @@ impl BaseTableCollection {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn to_fri_domain_tables(
-        &self,
-        fri_domain: ArithmeticDomain,
-        num_trace_randomizers: usize,
-        maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Self {
-        prof_start!(maybe_profiler, "program table");
-        let program_table = ProgramTable::new(self.program_table.randomized_low_deg_extension(
-            fri_domain,
-            num_trace_randomizers,
-            0..program_table::BASE_WIDTH,
-        ));
-        prof_stop!(maybe_profiler, "program table");
-        prof_start!(maybe_profiler, "instruction table");
-        let instruction_table =
-            InstructionTable::new(self.instruction_table.randomized_low_deg_extension(
-                fri_domain,
-                num_trace_randomizers,
-                0..instruction_table::BASE_WIDTH,
-            ));
-        prof_stop!(maybe_profiler, "instruction table");
-        prof_start!(maybe_profiler, "processor table");
-        let processor_table =
-            ProcessorTable::new(self.processor_table.randomized_low_deg_extension(
-                fri_domain,
-                num_trace_randomizers,
-                0..processor_table::BASE_WIDTH,
-            ));
-        prof_stop!(maybe_profiler, "processor table");
-        prof_start!(maybe_profiler, "op stack table");
-        let op_stack_table = OpStackTable::new(self.op_stack_table.randomized_low_deg_extension(
-            fri_domain,
-            num_trace_randomizers,
-            0..op_stack_table::BASE_WIDTH,
-        ));
-        prof_stop!(maybe_profiler, "op stack table");
-        prof_start!(maybe_profiler, "ram table");
-        let ram_table = RamTable::new(self.ram_table.randomized_low_deg_extension(
-            fri_domain,
-            num_trace_randomizers,
-            0..ram_table::BASE_WIDTH,
-        ));
-        prof_stop!(maybe_profiler, "ram table");
-        prof_start!(maybe_profiler, "jump stack table");
-        let jump_stack_table =
-            JumpStackTable::new(self.jump_stack_table.randomized_low_deg_extension(
-                fri_domain,
-                num_trace_randomizers,
-                0..jump_stack_table::BASE_WIDTH,
-            ));
-        prof_stop!(maybe_profiler, "jump stack table");
-        prof_start!(maybe_profiler, "hash table");
-        let hash_table = HashTable::new(self.hash_table.randomized_low_deg_extension(
-            fri_domain,
-            num_trace_randomizers,
-            0..hash_table::BASE_WIDTH,
-        ));
-        prof_stop!(maybe_profiler, "hash table");
-
-        BaseTableCollection {
-            padded_height: self.padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
-    }
-
     pub fn get_all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
         self.into_iter()
             .map(|table| table.data().clone())
@@ -627,9 +556,12 @@ impl BaseTableCollection {
             .concat()
     }
 
-    pub fn get_base_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
-        let sum_of_base_widths = self.into_iter().map(|table| table.base_width()).sum();
-        vec![interpolant_degree(self.padded_height, num_trace_randomizers); sum_of_base_widths]
+    // todo: can probably take &self as only argument soon
+    pub fn get_base_degree_bounds(
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_BASE_COLUMNS]
     }
 
     pub fn pad(&mut self) {
@@ -922,69 +854,17 @@ impl ExtTableCollection {
         }
     }
 
-    /// Heads up: only extension columns are low-degree extended – base columns are already covered.
-    pub fn to_fri_domain_tables(
-        &self,
-        fri_domain: ArithmeticDomain,
-        num_trace_randomizers: usize,
-        maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Self {
-        prof_start!(maybe_profiler, "program table");
-        let program_table = ExtProgramTable::new(self.program_table.randomized_low_deg_extension(
-            fri_domain,
-            num_trace_randomizers,
-            program_table::BASE_WIDTH..program_table::FULL_WIDTH,
-        ));
-        prof_stop!(maybe_profiler, "program table");
-        prof_start!(maybe_profiler, "instruction table");
-        let instruction_table =
-            ExtInstructionTable::new(self.instruction_table.randomized_low_deg_extension(
-                fri_domain,
-                num_trace_randomizers,
-                instruction_table::BASE_WIDTH..instruction_table::FULL_WIDTH,
-            ));
-        prof_stop!(maybe_profiler, "instruction table");
-        prof_start!(maybe_profiler, "processor table");
-        let processor_table =
-            ExtProcessorTable::new(self.processor_table.randomized_low_deg_extension(
-                fri_domain,
-                num_trace_randomizers,
-                processor_table::BASE_WIDTH..processor_table::FULL_WIDTH,
-            ));
-        prof_stop!(maybe_profiler, "processor table");
-        prof_start!(maybe_profiler, "op stack table");
-        let op_stack_table =
-            ExtOpStackTable::new(self.op_stack_table.randomized_low_deg_extension(
-                fri_domain,
-                num_trace_randomizers,
-                op_stack_table::BASE_WIDTH..op_stack_table::FULL_WIDTH,
-            ));
-        prof_stop!(maybe_profiler, "op stack table");
-        prof_start!(maybe_profiler, "ram table");
-        let ram_table = ExtRamTable::new(self.ram_table.randomized_low_deg_extension(
-            fri_domain,
-            num_trace_randomizers,
-            ram_table::BASE_WIDTH..ram_table::FULL_WIDTH,
-        ));
-        prof_stop!(maybe_profiler, "ram table");
-        prof_start!(maybe_profiler, "jump stack table");
-        let jump_stack_table =
-            ExtJumpStackTable::new(self.jump_stack_table.randomized_low_deg_extension(
-                fri_domain,
-                num_trace_randomizers,
-                jump_stack_table::BASE_WIDTH..jump_stack_table::FULL_WIDTH,
-            ));
-        prof_stop!(maybe_profiler, "jump stack table");
-        prof_start!(maybe_profiler, "hash table");
-        let hash_table = ExtHashTable::new(self.hash_table.randomized_low_deg_extension(
-            fri_domain,
-            num_trace_randomizers,
-            hash_table::BASE_WIDTH..hash_table::FULL_WIDTH,
-        ));
-        prof_stop!(maybe_profiler, "hash table");
-
+    /// todo – remove this once the master table is in place
+    pub fn dummy_fri_domain_tables(padded_height: usize) -> Self {
+        let program_table = ExtProgramTable::default();
+        let instruction_table = ExtInstructionTable::default();
+        let processor_table = ExtProcessorTable::default();
+        let op_stack_table = ExtOpStackTable::default();
+        let ram_table = ExtRamTable::default();
+        let jump_stack_table = ExtJumpStackTable::default();
+        let hash_table = ExtHashTable::default();
         ExtTableCollection {
-            padded_height: self.padded_height,
+            padded_height,
             program_table,
             instruction_table,
             processor_table,
@@ -1020,16 +900,12 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn get_all_base_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
-        let sum_base_widths = self.into_iter().map(|table| table.base_width()).sum();
-        vec![interpolant_degree(self.padded_height, num_trace_randomizers); sum_base_widths]
-    }
-
-    pub fn get_extension_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
-        let sum_base_widths: usize = self.into_iter().map(|table| table.base_width()).sum();
-        let sum_full_widths: usize = self.into_iter().map(|table| table.full_width()).sum();
-        let num_extension_columns = sum_full_widths - sum_base_widths;
-        vec![interpolant_degree(self.padded_height, num_trace_randomizers); num_extension_columns]
+    // todo: can probably take &self as only argument soon
+    pub fn get_extension_degree_bounds(
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_EXT_COLUMNS]
     }
 
     pub fn get_all_quotients(

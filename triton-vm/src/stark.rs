@@ -2,18 +2,19 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
-use anyhow::{bail, Result};
+use anyhow::bail;
+use anyhow::Result;
 use itertools::Itertools;
+use ndarray::s;
+use ndarray::ArrayView2;
 use ndarray::Axis;
-use num_traits::{One, Zero};
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
-use triton_profiler::triton_profiler::TritonProfiler;
-use triton_profiler::{prof_itr0, prof_start, prof_stop};
+use num_traits::One;
+use num_traits::Zero;
+use rayon::prelude::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
+use twenty_first::shared_math::other::is_power_of_two;
+use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, PrimitiveRootOfUnity};
@@ -22,12 +23,21 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
+use triton_profiler::prof_itr0;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
+
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::cross_table_arguments::{
-    CrossTableArg, EvalArg, GrandCrossTableArg, NUM_CROSS_TABLE_ARGS, NUM_PUBLIC_EVAL_ARGS,
-};
-use crate::fri::{Fri, FriValidationError};
-use crate::proof::{Claim, Proof};
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::EvalArg;
+use crate::cross_table_arguments::GrandCrossTableArg;
+use crate::cross_table_arguments::NUM_CROSS_TABLE_ARGS;
+use crate::cross_table_arguments::NUM_PUBLIC_EVAL_ARGS;
+use crate::fri::Fri;
+use crate::fri::FriValidationError;
+use crate::proof::Claim;
+use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
@@ -39,8 +49,6 @@ use crate::table::table_collection::MasterBaseTable;
 use crate::table::table_collection::MasterTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
-
-use super::table::base_matrix::BaseMatrices;
 
 pub type StarkHasher = RescuePrimeRegular;
 pub type Maker = CpuParallel;
@@ -152,7 +160,7 @@ impl Stark {
         prof_start!(maybe_profiler, "base tables");
         prof_start!(maybe_profiler, "create");
         let mut base_master_table = MasterBaseTable::new(
-            aet.clone(),
+            aet,
             &self.claim.program,
             self.parameters.num_trace_randomizers,
             self.parameters.num_randomizer_polynomials,
@@ -199,62 +207,33 @@ impl Stark {
         prof_start!(maybe_profiler, "Merkle tree");
         let ext_merkle_tree = fri_domain_ext_master_table.merkle_tree();
         let ext_merkle_tree_root = ext_merkle_tree.get_root();
-        prof_stop!(maybe_profiler, "Merkle tree");
-
         proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree_root));
-        dbg!(ext_merkle_tree_root);
+        prof_stop!(maybe_profiler, "Merkle tree");
+        prof_stop!(maybe_profiler, "ext tables");
+
+        prof_start!(maybe_profiler, "degree bounds");
+        prof_start!(maybe_profiler, "base");
+        let base_degree_bounds = BaseTableCollection::get_base_degree_bounds(
+            base_master_table.padded_height,
+            self.parameters.num_trace_randomizers,
+        );
+        prof_stop!(maybe_profiler, "base");
+
+        prof_start!(maybe_profiler, "extension");
+        let extension_degree_bounds = ExtTableCollection::get_extension_degree_bounds(
+            ext_master_table.padded_height,
+            self.parameters.num_trace_randomizers,
+        );
+        prof_stop!(maybe_profiler, "extension");
+
         /* todo continue >>> here <<< */
 
         // todo vvvvvvvvvvvvvvvvvvvv OLD vvvvvvvvvvvvvvvvvvvv
         prof_start!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
-        let base_matrices = BaseMatrices::new(aet, &self.claim.program);
-        let base_trace_tables = self.padded(&base_matrices);
-        let base_fri_domain_tables = base_trace_tables.to_fri_domain_tables(
-            self.fri.domain,
-            self.parameters.num_trace_randomizers,
-            maybe_profiler,
-        );
-        let ext_trace_tables =
-            ExtTableCollection::extend_tables(&base_trace_tables, &extension_challenges);
-        let randomizer_and_base_fri_domain_codewords = fri_domain_base_master_table
-            .master_base_matrix
-            .columns()
-            .into_iter()
-            .map(|col| col.to_vec())
-            .collect_vec();
-        let transposed_base_codewords = transpose(&randomizer_and_base_fri_domain_codewords);
-        prof_start!(maybe_profiler, "Merkle Tree 1");
-        let base_tree = Self::get_merkle_tree(&transposed_base_codewords);
-        prof_stop!(maybe_profiler, "Merkle Tree 1");
-        prof_stop!(maybe_profiler, "base tables");
-        prof_start!(maybe_profiler, "ext tables");
-        prof_start!(maybe_profiler, "LDE");
-        let ext_fri_domain_tables = ext_trace_tables.to_fri_domain_tables(
-            self.fri.domain,
-            self.parameters.num_trace_randomizers,
-            maybe_profiler,
-        );
-        let extension_fri_domain_codewords = ext_fri_domain_tables.collect_all_columns();
-        prof_stop!(maybe_profiler, "LDE");
-
-        prof_start!(maybe_profiler, "Merkle tree");
-        let transposed_ext_codewords = transpose(&extension_fri_domain_codewords);
-        let extension_tree = Self::get_extension_merkle_tree(&transposed_ext_codewords);
-        prof_stop!(maybe_profiler, "Merkle tree");
+        let ext_fri_domain_tables =
+            ExtTableCollection::dummy_fri_domain_tables(base_master_table.padded_height);
         prof_stop!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
-        prof_stop!(maybe_profiler, "ext tables");
         // todo ^^^^^^^^^^^^^^^^^^^^ OLD ^^^^^^^^^^^^^^^^^^^^
-
-        prof_start!(maybe_profiler, "degree bounds");
-        prof_start!(maybe_profiler, "base");
-        let base_degree_bounds =
-            base_fri_domain_tables.get_base_degree_bounds(self.parameters.num_trace_randomizers);
-        prof_stop!(maybe_profiler, "base");
-
-        prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds = ext_fri_domain_tables
-            .get_extension_degree_bounds(self.parameters.num_trace_randomizers);
-        prof_stop!(maybe_profiler, "extension");
 
         prof_start!(maybe_profiler, "quotient");
         let mut quotient_degree_bounds = ext_fri_domain_tables
@@ -276,12 +255,15 @@ impl Stark {
                     .collect_vec()
             })
             .collect();
-        let extension_quotient_domain_codewords: Vec<_> = extension_fri_domain_codewords
-            .par_iter()
-            .map(|c| c.clone().into_iter().step_by(unit_distance).collect())
+        let extension_quotient_domain_codewords: Vec<_> = fri_domain_ext_master_table
+            .master_ext_matrix
+            .slice(s![..; unit_distance, ..])
+            .rows()
+            .into_iter()
+            .map(|row| row.to_vec())
             .collect();
         let full_quotient_domain_tables = ExtTableCollection::with_data(
-            base_trace_tables.padded_height,
+            base_master_table.padded_height,
             base_quotient_domain_codewords.clone(),
             extension_quotient_domain_codewords.clone(),
         );
@@ -413,28 +395,26 @@ impl Stark {
 
         prof_start!(maybe_profiler, "open trace leafs");
         // the relation between the FRI domain and the trace domain
-        let unit_distance = self.fri.domain.length / base_trace_tables.padded_height;
+        let unit_distance = self.fri.domain.length / base_master_table.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
-        let transposed_base_codewords = fri_domain_base_master_table
-            .master_base_matrix
-            .columns()
-            .into_iter()
-            .map(|a| a.to_vec())
-            .collect_vec();
-        let revealed_base_elems =
-            Self::get_revealed_elements(&transposed_base_codewords, &revealed_indices);
-        let auth_paths_base = base_tree.get_authentication_structure(&revealed_indices);
+        let revealed_base_elems = Self::get_revealed_elements(
+            fri_domain_base_master_table.master_base_matrix.view(),
+            &revealed_indices,
+        );
+        let auth_paths_base = base_merkle_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedBaseElementVectors(
             revealed_base_elems,
         ));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
 
-        let revealed_ext_elems =
-            Self::get_revealed_elements(&transposed_ext_codewords, &revealed_indices);
-        let auth_paths_ext = extension_tree.get_authentication_structure(&revealed_indices);
+        let revealed_ext_elems = Self::get_revealed_elements(
+            fri_domain_ext_master_table.master_ext_matrix.view(),
+            &revealed_indices,
+        );
+        let auth_paths_ext = ext_merkle_tree.get_authentication_structure(&revealed_indices);
         proof_stream.enqueue(&ProofItem::TransposedExtensionElementVectors(
             revealed_ext_elems,
         ));
@@ -490,15 +470,15 @@ impl Stark {
         revealed_indices
     }
 
+    // todo: can we get rid of the cloning? I.e., the call of to_vec(). Irrelevant number of times?
     fn get_revealed_elements<FF: FiniteField>(
-        transposed_base_codewords: &[Vec<FF>],
+        master_matrix: ArrayView2<FF>,
         revealed_indices: &[usize],
     ) -> Vec<Vec<FF>> {
-        let revealed_base_elements = revealed_indices
+        revealed_indices
             .iter()
-            .map(|idx| transposed_base_codewords[*idx].clone())
-            .collect_vec();
-        revealed_base_elements
+            .map(|&idx| master_matrix.slice(s![idx, ..]).to_vec())
+            .collect_vec()
     }
 
     // TODO try to reduce the number of arguments
@@ -640,44 +620,6 @@ impl Stark {
             .collect()
     }
 
-    fn get_extension_merkle_tree(
-        transposed_extension_codewords: &Vec<Vec<XFieldElement>>,
-    ) -> MerkleTree<StarkHasher, CpuParallel> {
-        let mut extension_codeword_digests_by_index =
-            Vec::with_capacity(transposed_extension_codewords.len());
-
-        transposed_extension_codewords
-            .into_par_iter()
-            .map(|transposed_ext_codeword| {
-                let transposed_ext_codeword_coeffs: Vec<BFieldElement> = transposed_ext_codeword
-                    .iter()
-                    .map(|elem| elem.coefficients.to_vec())
-                    .concat();
-
-                StarkHasher::hash_slice(&transposed_ext_codeword_coeffs)
-            })
-            .collect_into_vec(&mut extension_codeword_digests_by_index);
-
-        Maker::from_digests(&extension_codeword_digests_by_index)
-    }
-
-    fn get_merkle_tree(
-        codewords: &Vec<Vec<BFieldElement>>,
-    ) -> MerkleTree<StarkHasher, CpuParallel> {
-        let mut codeword_digests_by_index = Vec::with_capacity(codewords.len());
-        codewords
-            .par_iter()
-            .map(|values| StarkHasher::hash_slice(values))
-            .collect_into_vec(&mut codeword_digests_by_index);
-        Maker::from_digests(&codeword_digests_by_index)
-    }
-
-    fn padded(&self, base_matrices: &BaseMatrices) -> BaseTableCollection {
-        let mut base_tables = BaseTableCollection::from_base_matrices(base_matrices);
-        base_tables.pad();
-        base_tables
-    }
-
     fn sample_weights(seed: Digest, num_weights: usize) -> Vec<XFieldElement> {
         StarkHasher::get_n_hash_rounds(&seed, num_weights)
             .iter()
@@ -721,13 +663,17 @@ impl Stark {
         prof_stop!(maybe_profiler, "generate tables");
 
         prof_start!(maybe_profiler, "base");
-        let base_degree_bounds =
-            ext_table_collection.get_all_base_degree_bounds(self.parameters.num_trace_randomizers);
+        let base_degree_bounds = BaseTableCollection::get_base_degree_bounds(
+            padded_height,
+            self.parameters.num_trace_randomizers,
+        );
         prof_stop!(maybe_profiler, "base");
 
         prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds =
-            ext_table_collection.get_extension_degree_bounds(self.parameters.num_trace_randomizers);
+        let extension_degree_bounds = ExtTableCollection::get_extension_degree_bounds(
+            padded_height,
+            self.parameters.num_trace_randomizers,
+        );
         prof_stop!(maybe_profiler, "extension");
 
         prof_start!(maybe_profiler, "quotient");
@@ -1152,15 +1098,15 @@ pub(crate) mod triton_stark_tests {
     use crate::instruction::sample_programs;
     use crate::shared_tests::*;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
+    use crate::table::base_matrix::BaseMatrices;
     use crate::table::base_table::InheritsFromTable;
     use crate::table::table_collection::TableId::ProcessorTable;
-    use crate::table::table_column::ProcessorExtTableColumn::{
-        InputTableEvalArg, OutputTableEvalArg,
-    };
-    use crate::vm::triton_vm_tests::{
-        bigger_tasm_test_programs, property_based_test_programs, small_tasm_test_programs,
-        test_hash_nop_nop_lt,
-    };
+    use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
+    use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
+    use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
+    use crate::vm::triton_vm_tests::property_based_test_programs;
+    use crate::vm::triton_vm_tests::small_tasm_test_programs;
+    use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
     use crate::vm::Program;
 
     use super::*;
