@@ -1,14 +1,68 @@
 //! Enums that convert table column names into `usize` indices
 //!
-//! These let one address a given column by its name rather than its arbitrary index.
+//! Allows addressing columns by name rather than their hard-to-remember index.
 
-// --------------------------------------------------------------------
+use std::fmt::Display;
+use std::hash::Hash;
 
-use num_traits::Bounded;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+use crate::table::hash_table;
+use crate::table::instruction_table;
+use crate::table::jump_stack_table;
+use crate::table::op_stack_table;
+use crate::table::processor_table;
+use crate::table::program_table;
+use crate::table::ram_table;
+use crate::table::table_collection::EXT_HASH_TABLE_START;
+use crate::table::table_collection::EXT_INSTRUCTION_TABLE_START;
+use crate::table::table_collection::EXT_JUMP_STACK_TABLE_START;
+use crate::table::table_collection::EXT_OP_STACK_TABLE_START;
+use crate::table::table_collection::EXT_PROCESSOR_TABLE_START;
+use crate::table::table_collection::EXT_PROGRAM_TABLE_START;
+use crate::table::table_collection::EXT_RAM_TABLE_START;
+use crate::table::table_collection::HASH_TABLE_START;
+use crate::table::table_collection::INSTRUCTION_TABLE_START;
+use crate::table::table_collection::JUMP_STACK_TABLE_START;
+use crate::table::table_collection::OP_STACK_TABLE_START;
+use crate::table::table_collection::PROCESSOR_TABLE_START;
+use crate::table::table_collection::PROGRAM_TABLE_START;
+use crate::table::table_collection::RAM_TABLE_START;
+
+// -------- Program Table --------
+
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum ProgramBaseTableColumn {
+    Address,
+    Instruction,
+    IsPadding,
+}
+
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum ProgramExtTableColumn {
+    RunningEvaluation,
+}
+
+// -------- Instruction Table --------
+
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum InstructionBaseTableColumn {
+    Address,
+    CI,
+    NIA,
+    IsPadding,
+}
+
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum InstructionExtTableColumn {
+    RunningProductPermArg,
+    RunningEvaluation,
+}
+
+// -------- Processor Table --------
+
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProcessorBaseTableColumn {
     CLK,
     IsPadding,
@@ -54,27 +108,7 @@ pub enum ProcessorBaseTableColumn {
     RAMV,
 }
 
-impl From<ProcessorBaseTableColumn> for usize {
-    fn from(column: ProcessorBaseTableColumn) -> Self {
-        ProcessorBaseTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for ProcessorBaseTableColumn {
-    fn min_value() -> Self {
-        ProcessorBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        ProcessorBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProcessorExtTableColumn {
     InputTableEvalArg,
     OutputTableEvalArg,
@@ -91,139 +125,9 @@ pub enum ProcessorExtTableColumn {
     AllClockJumpDifferencesPermArg,
 }
 
-impl From<ProcessorExtTableColumn> for usize {
-    fn from(column: ProcessorExtTableColumn) -> Self {
-        ProcessorExtTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + ProcessorBaseTableColumn::COUNT)
-            .unwrap()
-    }
-}
+// -------- OpStack Table --------
 
-impl Bounded for ProcessorExtTableColumn {
-    fn min_value() -> Self {
-        ProcessorExtTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        ProcessorExtTableColumn::iter().last().unwrap()
-    }
-}
-
-// --------------------------------------------------------------------
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
-pub enum ProgramBaseTableColumn {
-    Address,
-    Instruction,
-    IsPadding,
-}
-
-impl From<ProgramBaseTableColumn> for usize {
-    fn from(column: ProgramBaseTableColumn) -> Self {
-        ProgramBaseTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for ProgramBaseTableColumn {
-    fn min_value() -> Self {
-        ProgramBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        ProgramBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
-pub enum ProgramExtTableColumn {
-    RunningEvaluation,
-}
-
-impl From<ProgramExtTableColumn> for usize {
-    fn from(column: ProgramExtTableColumn) -> Self {
-        ProgramExtTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for ProgramExtTableColumn {
-    fn min_value() -> Self {
-        ProgramExtTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        ProgramExtTableColumn::iter().last().unwrap()
-    }
-}
-
-// --------------------------------------------------------------------
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
-pub enum InstructionBaseTableColumn {
-    Address,
-    CI,
-    NIA,
-    IsPadding,
-}
-
-impl From<InstructionBaseTableColumn> for usize {
-    fn from(column: InstructionBaseTableColumn) -> Self {
-        InstructionBaseTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for InstructionBaseTableColumn {
-    fn min_value() -> Self {
-        InstructionBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        InstructionBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
-pub enum InstructionExtTableColumn {
-    RunningProductPermArg,
-    RunningEvaluation,
-}
-
-impl From<InstructionExtTableColumn> for usize {
-    fn from(column: InstructionExtTableColumn) -> Self {
-        InstructionExtTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + InstructionBaseTableColumn::COUNT)
-            .unwrap()
-    }
-}
-
-impl Bounded for InstructionExtTableColumn {
-    fn min_value() -> Self {
-        InstructionExtTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        InstructionExtTableColumn::iter().last().unwrap()
-    }
-}
-
-// --------------------------------------------------------------------
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum OpStackBaseTableColumn {
     CLK,
     InverseOfClkDiffMinusOne,
@@ -232,55 +136,15 @@ pub enum OpStackBaseTableColumn {
     OSV,
 }
 
-impl From<OpStackBaseTableColumn> for usize {
-    fn from(column: OpStackBaseTableColumn) -> Self {
-        OpStackBaseTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for OpStackBaseTableColumn {
-    fn min_value() -> Self {
-        OpStackBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        OpStackBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum OpStackExtTableColumn {
     RunningProductPermArg,
     AllClockJumpDifferencesPermArg,
 }
 
-impl From<OpStackExtTableColumn> for usize {
-    fn from(column: OpStackExtTableColumn) -> Self {
-        OpStackExtTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + OpStackBaseTableColumn::COUNT)
-            .unwrap()
-    }
-}
+// -------- RAM Table --------
 
-impl Bounded for OpStackExtTableColumn {
-    fn min_value() -> Self {
-        OpStackExtTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        OpStackExtTableColumn::iter().last().unwrap()
-    }
-}
-
-// --------------------------------------------------------------------
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum RamBaseTableColumn {
     CLK,
     InverseOfClkDiffMinusOne,
@@ -291,27 +155,7 @@ pub enum RamBaseTableColumn {
     BezoutCoefficientPolynomialCoefficient1,
 }
 
-impl From<RamBaseTableColumn> for usize {
-    fn from(column: RamBaseTableColumn) -> Self {
-        RamBaseTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for RamBaseTableColumn {
-    fn min_value() -> Self {
-        RamBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        RamBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum RamExtTableColumn {
     RunningProductOfRAMP,
     FormalDerivative,
@@ -321,29 +165,9 @@ pub enum RamExtTableColumn {
     AllClockJumpDifferencesPermArg,
 }
 
-impl From<RamExtTableColumn> for usize {
-    fn from(column: RamExtTableColumn) -> Self {
-        RamExtTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + RamBaseTableColumn::COUNT)
-            .unwrap()
-    }
-}
+// -------- JumpStack Table --------
 
-impl Bounded for RamExtTableColumn {
-    fn min_value() -> Self {
-        RamExtTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        RamExtTableColumn::iter().last().unwrap()
-    }
-}
-
-// --------------------------------------------------------------------
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum JumpStackBaseTableColumn {
     CLK,
     InverseOfClkDiffMinusOne,
@@ -353,55 +177,15 @@ pub enum JumpStackBaseTableColumn {
     JSD,
 }
 
-impl From<JumpStackBaseTableColumn> for usize {
-    fn from(column: JumpStackBaseTableColumn) -> Self {
-        JumpStackBaseTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n)
-            .unwrap()
-    }
-}
-
-impl Bounded for JumpStackBaseTableColumn {
-    fn min_value() -> Self {
-        JumpStackBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        JumpStackBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum JumpStackExtTableColumn {
     RunningProductPermArg,
     AllClockJumpDifferencesPermArg,
 }
 
-impl From<JumpStackExtTableColumn> for usize {
-    fn from(column: JumpStackExtTableColumn) -> Self {
-        JumpStackExtTableColumn::iter()
-            .enumerate()
-            .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + JumpStackBaseTableColumn::COUNT)
-            .unwrap()
-    }
-}
+// -------- Hash Table --------
 
-impl Bounded for JumpStackExtTableColumn {
-    fn min_value() -> Self {
-        JumpStackExtTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        JumpStackExtTableColumn::iter().last().unwrap()
-    }
-}
-
-// --------------------------------------------------------------------
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashBaseTableColumn {
     ROUNDNUMBER,
     STATE0,
@@ -454,6 +238,134 @@ pub enum HashBaseTableColumn {
     CONSTANT15B,
 }
 
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum HashExtTableColumn {
+    ToProcessorRunningEvaluation,
+    FromProcessorRunningEvaluation,
+}
+
+// --------------------------------------------------------------------
+
+impl From<ProgramBaseTableColumn> for usize {
+    fn from(column: ProgramBaseTableColumn) -> Self {
+        ProgramBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
+    }
+}
+
+impl From<ProgramExtTableColumn> for usize {
+    fn from(column: ProgramExtTableColumn) -> Self {
+        ProgramExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + program_table::BASE_WIDTH)
+            .unwrap()
+    }
+}
+
+impl From<InstructionBaseTableColumn> for usize {
+    fn from(column: InstructionBaseTableColumn) -> Self {
+        InstructionBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
+    }
+}
+
+impl From<InstructionExtTableColumn> for usize {
+    fn from(column: InstructionExtTableColumn) -> Self {
+        InstructionExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + instruction_table::BASE_WIDTH)
+            .unwrap()
+    }
+}
+
+impl From<ProcessorBaseTableColumn> for usize {
+    fn from(column: ProcessorBaseTableColumn) -> Self {
+        ProcessorBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
+    }
+}
+
+impl From<ProcessorExtTableColumn> for usize {
+    fn from(column: ProcessorExtTableColumn) -> Self {
+        ProcessorExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + processor_table::BASE_WIDTH)
+            .unwrap()
+    }
+}
+
+impl From<OpStackBaseTableColumn> for usize {
+    fn from(column: OpStackBaseTableColumn) -> Self {
+        OpStackBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
+    }
+}
+
+impl From<OpStackExtTableColumn> for usize {
+    fn from(column: OpStackExtTableColumn) -> Self {
+        OpStackExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + op_stack_table::BASE_WIDTH)
+            .unwrap()
+    }
+}
+
+impl From<RamBaseTableColumn> for usize {
+    fn from(column: RamBaseTableColumn) -> Self {
+        RamBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
+    }
+}
+
+impl From<RamExtTableColumn> for usize {
+    fn from(column: RamExtTableColumn) -> Self {
+        RamExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + ram_table::BASE_WIDTH)
+            .unwrap()
+    }
+}
+
+impl From<JumpStackBaseTableColumn> for usize {
+    fn from(column: JumpStackBaseTableColumn) -> Self {
+        JumpStackBaseTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
+    }
+}
+
+impl From<JumpStackExtTableColumn> for usize {
+    fn from(column: JumpStackExtTableColumn) -> Self {
+        JumpStackExtTableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n + jump_stack_table::BASE_WIDTH)
+            .unwrap()
+    }
+}
+
 impl From<HashBaseTableColumn> for usize {
     fn from(column: HashBaseTableColumn) -> Self {
         HashBaseTableColumn::iter()
@@ -464,155 +376,408 @@ impl From<HashBaseTableColumn> for usize {
     }
 }
 
-impl TryFrom<usize> for HashBaseTableColumn {
-    type Error = String;
-
-    fn try_from(idx: usize) -> Result<Self, Self::Error> {
-        HashBaseTableColumn::iter()
-            .get(idx)
-            .ok_or_else(|| format!("Column index {} out of bounds", idx))
-    }
-}
-
-impl Bounded for HashBaseTableColumn {
-    fn min_value() -> Self {
-        HashBaseTableColumn::iter().next().unwrap()
-    }
-
-    fn max_value() -> Self {
-        HashBaseTableColumn::iter().last().unwrap()
-    }
-}
-
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro)]
-pub enum HashExtTableColumn {
-    ToProcessorRunningEvaluation,
-    FromProcessorRunningEvaluation,
-}
-
 impl From<HashExtTableColumn> for usize {
     fn from(column: HashExtTableColumn) -> Self {
         HashExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + HashBaseTableColumn::COUNT)
+            .map(|(n, _col)| n + hash_table::BASE_WIDTH)
             .unwrap()
     }
 }
 
-impl Bounded for HashExtTableColumn {
-    fn min_value() -> Self {
-        HashExtTableColumn::iter().next().unwrap()
-    }
+// --------------------------------------------------------------------
 
-    fn max_value() -> Self {
-        HashExtTableColumn::iter().last().unwrap()
+trait BaseTableColumn: Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display {}
+trait ExtTableColumn: Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display {}
+
+trait MasterBaseTableColumn: BaseTableColumn {
+    fn master_table_index(column: Self) -> usize;
+}
+
+trait MasterExtTableColumn: ExtTableColumn {
+    fn master_table_index(column: Self) -> usize;
+}
+
+impl BaseTableColumn for ProgramBaseTableColumn {}
+impl BaseTableColumn for InstructionBaseTableColumn {}
+impl BaseTableColumn for ProcessorBaseTableColumn {}
+impl BaseTableColumn for OpStackBaseTableColumn {}
+impl BaseTableColumn for RamBaseTableColumn {}
+impl BaseTableColumn for JumpStackBaseTableColumn {}
+impl BaseTableColumn for HashBaseTableColumn {}
+
+impl ExtTableColumn for ProgramExtTableColumn {}
+impl ExtTableColumn for InstructionExtTableColumn {}
+impl ExtTableColumn for ProcessorExtTableColumn {}
+impl ExtTableColumn for OpStackExtTableColumn {}
+impl ExtTableColumn for RamExtTableColumn {}
+impl ExtTableColumn for JumpStackExtTableColumn {}
+impl ExtTableColumn for HashExtTableColumn {}
+
+impl MasterBaseTableColumn for ProgramBaseTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        PROGRAM_TABLE_START + usize::from(column)
     }
 }
 
+impl MasterBaseTableColumn for InstructionBaseTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        INSTRUCTION_TABLE_START + usize::from(column)
+    }
+}
+
+impl MasterBaseTableColumn for ProcessorBaseTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        PROCESSOR_TABLE_START + usize::from(column)
+    }
+}
+
+impl MasterBaseTableColumn for OpStackBaseTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        OP_STACK_TABLE_START + usize::from(column)
+    }
+}
+
+impl MasterBaseTableColumn for RamBaseTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        RAM_TABLE_START + usize::from(column)
+    }
+}
+
+impl MasterBaseTableColumn for JumpStackBaseTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        JUMP_STACK_TABLE_START + usize::from(column)
+    }
+}
+
+impl MasterBaseTableColumn for HashBaseTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        HASH_TABLE_START + usize::from(column)
+    }
+}
+
+impl MasterExtTableColumn for ProgramExtTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        EXT_PROGRAM_TABLE_START + usize::from(column) - program_table::BASE_WIDTH
+    }
+}
+
+impl MasterExtTableColumn for InstructionExtTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        EXT_INSTRUCTION_TABLE_START + usize::from(column) - instruction_table::BASE_WIDTH
+    }
+}
+
+impl MasterExtTableColumn for ProcessorExtTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        EXT_PROCESSOR_TABLE_START + usize::from(column) - processor_table::BASE_WIDTH
+    }
+}
+
+impl MasterExtTableColumn for OpStackExtTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        EXT_OP_STACK_TABLE_START + usize::from(column) - op_stack_table::BASE_WIDTH
+    }
+}
+
+impl MasterExtTableColumn for RamExtTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        EXT_RAM_TABLE_START + usize::from(column) - ram_table::BASE_WIDTH
+    }
+}
+
+impl MasterExtTableColumn for JumpStackExtTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        EXT_JUMP_STACK_TABLE_START + usize::from(column) - jump_stack_table::BASE_WIDTH
+    }
+}
+
+impl MasterExtTableColumn for HashExtTableColumn {
+    fn master_table_index(column: Self) -> usize {
+        EXT_HASH_TABLE_START + usize::from(column) - hash_table::BASE_WIDTH
+    }
+}
+
+/* --------------------------------------------------------------------
+
+// todo What's this associated type?  v
+impl From<dyn TableColumn<Iterator = ???>> for usize {
+    fn from(column: dyn TableColumn) -> Self {
+        TableColumn::iter()
+            .enumerate()
+            .find(|&(_n, col)| column == col)
+            .map(|(n, _col)| n)
+            .unwrap()
+    }
+}
+   -------------------------------------------------------------------- */
+
 #[cfg(test)]
 mod table_column_tests {
-    use crate::table::{
-        hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
-        program_table, ram_table,
-    };
+    use crate::table::hash_table;
+    use crate::table::instruction_table;
+    use crate::table::jump_stack_table;
+    use crate::table::op_stack_table;
+    use crate::table::processor_table;
+    use crate::table::program_table;
+    use crate::table::ram_table;
 
     use super::*;
 
-    struct TestCase<'a> {
-        base_width: usize,
-        full_width: usize,
-        max_base_column: usize,
-        max_ext_column: usize,
-        table_name: &'a str,
+    #[test]
+    fn column_max_bound_matches_table_width() {
+        assert_eq!(
+            program_table::BASE_WIDTH,
+            usize::from(ProgramBaseTableColumn::iter().last().unwrap()) + 1,
+            "ProgramTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            instruction_table::BASE_WIDTH,
+            usize::from(InstructionBaseTableColumn::iter().last().unwrap()) + 1,
+            "InstructionTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            processor_table::BASE_WIDTH,
+            usize::from(ProcessorBaseTableColumn::iter().last().unwrap()) + 1,
+            "ProcessorTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            op_stack_table::BASE_WIDTH,
+            usize::from(OpStackBaseTableColumn::iter().last().unwrap()) + 1,
+            "OpStackTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            ram_table::BASE_WIDTH,
+            usize::from(RamBaseTableColumn::iter().last().unwrap()) + 1,
+            "RamTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            jump_stack_table::BASE_WIDTH,
+            usize::from(JumpStackBaseTableColumn::iter().last().unwrap()) + 1,
+            "JumpStackTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            hash_table::BASE_WIDTH,
+            usize::from(HashBaseTableColumn::iter().last().unwrap()) + 1,
+            "HashTable's BASE_WIDTH is 1 + its max column index",
+        );
+
+        assert_eq!(
+            program_table::FULL_WIDTH,
+            usize::from(ProgramExtTableColumn::iter().last().unwrap()) + 1,
+            "ProgramTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            instruction_table::FULL_WIDTH,
+            usize::from(InstructionExtTableColumn::iter().last().unwrap()) + 1,
+            "InstructionTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            processor_table::FULL_WIDTH,
+            usize::from(ProcessorExtTableColumn::iter().last().unwrap()) + 1,
+            "ProcessorTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            op_stack_table::FULL_WIDTH,
+            usize::from(OpStackExtTableColumn::iter().last().unwrap()) + 1,
+            "OpStackTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            ram_table::FULL_WIDTH,
+            usize::from(RamExtTableColumn::iter().last().unwrap()) + 1,
+            "RamTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            jump_stack_table::FULL_WIDTH,
+            usize::from(JumpStackExtTableColumn::iter().last().unwrap()) + 1,
+            "JumpStackTable's BASE_WIDTH is 1 + its max column index",
+        );
+        assert_eq!(
+            hash_table::FULL_WIDTH,
+            usize::from(HashExtTableColumn::iter().last().unwrap()) + 1,
+            "HashTable's BASE_WIDTH is 1 + its max column index",
+        );
     }
 
-    impl<'a> TestCase<'a> {
-        pub fn new(
-            base_width: usize,
-            full_width: usize,
-            max_base_column: usize,
-            max_ext_column: usize,
-            table_name: &'a str,
-        ) -> Self {
-            TestCase {
-                base_width,
-                full_width,
-                max_base_column,
-                max_ext_column,
-                table_name,
-            }
+    #[test]
+    fn individual_tables_are_contiguous() {
+        let mut expected_column_index = 0;
+        for column in ProgramBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+        for column in ProgramExtTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+
+        let mut expected_column_index = 0;
+        for column in InstructionBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+        for column in InstructionExtTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+
+        let mut expected_column_index = 0;
+        for column in ProcessorBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+        for column in ProcessorExtTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+
+        let mut expected_column_index = 0;
+        for column in OpStackBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+        for column in OpStackExtTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+
+        let mut expected_column_index = 0;
+        for column in RamBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+        for column in RamExtTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+
+        let mut expected_column_index = 0;
+        for column in JumpStackBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+        for column in JumpStackExtTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+
+        let mut expected_column_index = 0;
+        for column in HashBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
+        }
+        for column in HashExtTableColumn::iter() {
+            assert_eq!(expected_column_index, usize::from(column));
+            expected_column_index += 1;
         }
     }
 
     #[test]
-    fn column_max_bound_matches_table_width() {
-        let cases: Vec<TestCase> = vec![
-            TestCase::new(
-                program_table::BASE_WIDTH,
-                program_table::FULL_WIDTH,
-                ProgramBaseTableColumn::max_value().into(),
-                ProgramExtTableColumn::max_value().into(),
-                "ProgramTable",
-            ),
-            TestCase::new(
-                instruction_table::BASE_WIDTH,
-                instruction_table::FULL_WIDTH,
-                InstructionBaseTableColumn::max_value().into(),
-                InstructionExtTableColumn::max_value().into(),
-                "InstructionTable",
-            ),
-            TestCase::new(
-                processor_table::BASE_WIDTH,
-                processor_table::FULL_WIDTH,
-                ProcessorBaseTableColumn::max_value().into(),
-                ProcessorExtTableColumn::max_value().into(),
-                "ProcessorTable",
-            ),
-            TestCase::new(
-                op_stack_table::BASE_WIDTH,
-                op_stack_table::FULL_WIDTH,
-                OpStackBaseTableColumn::max_value().into(),
-                OpStackExtTableColumn::max_value().into(),
-                "OpStackTable",
-            ),
-            TestCase::new(
-                ram_table::BASE_WIDTH,
-                ram_table::FULL_WIDTH,
-                RamBaseTableColumn::max_value().into(),
-                RamExtTableColumn::max_value().into(),
-                "RamTable",
-            ),
-            TestCase::new(
-                jump_stack_table::BASE_WIDTH,
-                jump_stack_table::FULL_WIDTH,
-                JumpStackBaseTableColumn::max_value().into(),
-                JumpStackExtTableColumn::max_value().into(),
-                "JumpStackTable",
-            ),
-            TestCase::new(
-                hash_table::BASE_WIDTH,
-                hash_table::FULL_WIDTH,
-                HashBaseTableColumn::max_value().into(),
-                HashExtTableColumn::max_value().into(),
-                "HashTable",
-            ),
-        ];
-
-        for case in cases.iter() {
+    fn master_base_table_is_contiguous() {
+        let mut expected_column_index = 0;
+        for column in ProgramBaseTableColumn::iter() {
             assert_eq!(
-                case.base_width,
-                case.max_base_column + 1,
-                "{}'s BASE_WIDTH is 1 + its max column index",
-                case.table_name
+                expected_column_index,
+                MasterBaseTableColumn::master_table_index(column)
             );
-
+            expected_column_index += 1;
+        }
+        for column in InstructionBaseTableColumn::iter() {
             assert_eq!(
-                case.full_width,
-                case.max_ext_column + 1,
-                "Ext{}'s FULL_WIDTH is 1 + its max ext column index",
-                case.table_name
+                expected_column_index,
+                MasterBaseTableColumn::master_table_index(column)
             );
+            expected_column_index += 1;
+        }
+        for column in ProcessorBaseTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterBaseTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in OpStackBaseTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterBaseTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in RamBaseTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterBaseTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in JumpStackBaseTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterBaseTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in HashBaseTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterBaseTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+    }
+
+    #[test]
+    fn master_ext_table_is_contiguous() {
+        let mut expected_column_index = 0;
+        for column in ProgramExtTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterExtTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in InstructionExtTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterExtTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in ProcessorExtTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterExtTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in OpStackExtTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterExtTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in RamExtTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterExtTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in JumpStackExtTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterExtTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
+        }
+        for column in HashExtTableColumn::iter() {
+            assert_eq!(
+                expected_column_index,
+                MasterExtTableColumn::master_table_index(column)
+            );
+            expected_column_index += 1;
         }
     }
 }
