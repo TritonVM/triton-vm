@@ -669,58 +669,77 @@ impl ExtensionTable for ExtHashTable {}
 
 #[cfg(test)]
 mod constraint_tests {
-    use crate::table::challenges::AllChallenges;
-    use crate::table::extension_table::Evaluable;
-    use crate::vm::Program;
-
     use super::*;
+    use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
+    use crate::table::extension_table::Evaluable;
+    use crate::table::table_collection::NUM_EXT_COLUMNS;
+    use ndarray::Array2;
 
     #[test]
-    fn table_satisfies_constraints_test() {
-        let program = Program::from_code("hash hash hash halt").unwrap();
+    fn hash_table_satisfies_constraints_test() {
+        let source_code = "hash hash hash halt";
+        let (_, _, _, _, challenges, _) = parse_simulate_pad_extend(source_code, vec![], vec![]);
 
-        let (aet, _, maybe_err) = program.simulate_no_input();
+        // todo replace this once simulate_pad_extend returns master tables
+        let num_rows = 32;
+        let master_base_table = Array2::zeros([num_rows, NUM_EXT_COLUMNS]);
+        let master_ext_table = Array2::zeros([num_rows, NUM_EXT_COLUMNS]);
 
-        if let Some(e) = maybe_err {
-            panic!("Program execution failed: {e}");
-        }
-
-        let challenges = AllChallenges::placeholder();
-        let ext_hash_table =
-            HashTable::new_prover(aet.hash_matrix.iter().map(|r| r.to_vec()).collect())
-                .extend(&challenges.hash_table_challenges);
-
-        for v in ext_hash_table.evaluate_initial_constraints(&ext_hash_table.data()[0], &challenges)
-        {
-            assert!(v.is_zero());
-        }
-
-        for (i, row) in ext_hash_table.data().iter().enumerate() {
-            for (j, v) in ext_hash_table
-                .evaluate_consistency_constraints(row, &challenges)
+        let first_base_row = master_base_table.row(0);
+        let first_ext_row = master_ext_table.row(0);
+        for (idx, v) in
+            ExtHashTable::evaluate_initial_constraints(first_base_row, first_ext_row, &challenges)
                 .iter()
                 .enumerate()
+        {
+            assert!(v.is_zero(), "Initial constraint {idx} failed.");
+        }
+
+        for row_idx in 0..num_rows {
+            let base_row = master_base_table.row(row_idx);
+            let ext_row = master_ext_table.row(row_idx);
+            for (constraint_idx, v) in
+                ExtHashTable::evaluate_consistency_constraints(base_row, ext_row, &challenges)
+                    .iter()
+                    .enumerate()
             {
-                assert!(v.is_zero(), "consistency constraint {j} failed in row {i}");
+                assert!(
+                    v.is_zero(),
+                    "consistency constraint {constraint_idx} failed in row {row_idx}"
+                );
             }
         }
 
-        for (i, (current_row, next_row)) in ext_hash_table.data().iter().tuple_windows().enumerate()
-        {
-            for (j, v) in ext_hash_table
-                .evaluate_transition_constraints(current_row, next_row, &challenges)
-                .iter()
-                .enumerate()
+        for row_idx in 0..num_rows - 1 {
+            let base_row = master_base_table.row(row_idx);
+            let ext_row = master_ext_table.row(row_idx);
+            let next_base_row = master_base_table.row(row_idx + 1);
+            let next_ext_row = master_ext_table.row(row_idx + 1);
+            for (constraint_idx, v) in ExtHashTable::evaluate_transition_constraints(
+                base_row,
+                ext_row,
+                next_base_row,
+                next_ext_row,
+                &challenges,
+            )
+            .iter()
+            .enumerate()
             {
-                assert!(v.is_zero(), "transition constraint {j} failed in row {i}",);
+                assert!(
+                    v.is_zero(),
+                    "transition constraint {constraint_idx} failed in row {row_idx}",
+                );
             }
         }
 
-        for v in ext_hash_table.evaluate_terminal_constraints(
-            &ext_hash_table.data()[ext_hash_table.data().len() - 1],
-            &challenges,
-        ) {
-            assert!(v.is_zero());
+        let last_base_row = master_base_table.row(num_rows - 1);
+        let last_ext_row = master_ext_table.row(num_rows - 1);
+        for (idx, v) in
+            ExtHashTable::evaluate_terminal_constraints(last_base_row, last_ext_row, &challenges)
+                .iter()
+                .enumerate()
+        {
+            assert!(v.is_zero(), "Terminal constraint {idx} failed.");
         }
     }
 }

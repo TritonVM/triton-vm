@@ -6,8 +6,11 @@ use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction;
-use crate::instruction::{parse, Instruction, LabelledInstruction};
-use crate::state::{VMOutput, VMState};
+use crate::instruction::parse;
+use crate::instruction::Instruction;
+use crate::instruction::LabelledInstruction;
+use crate::state::VMOutput;
+use crate::state::VMState;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -202,24 +205,36 @@ impl Program {
 
 #[cfg(test)]
 pub mod triton_vm_tests {
-    use std::ops::{BitAnd, BitXor};
+    use std::ops::BitAnd;
+    use std::ops::BitXor;
 
-    use num_traits::{One, Zero};
+    use ndarray::Array1;
+    use num_traits::One;
+    use num_traits::Zero;
     use rand::rngs::ThreadRng;
-    use rand::{Rng, RngCore};
-    use triton_profiler::triton_profiler::TritonProfiler;
+    use rand::Rng;
+    use rand::RngCore;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
     use twenty_first::shared_math::other::roundup_npo2;
-    use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
+    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 
-    use crate::instruction::{sample_programs, AnInstruction};
+    use triton_profiler::triton_profiler::TritonProfiler;
+
+    use crate::instruction::sample_programs;
+    use crate::instruction::AnInstruction;
     use crate::shared_tests::SourceCodeAndInput;
-    use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
-    use crate::table::base_table::{Extendable, InheritsFromTable};
+    use crate::table::base_matrix::BaseMatrices;
+    use crate::table::base_matrix::ProcessorMatrixRow;
+    use crate::table::base_table::Extendable;
+    use crate::table::base_table::InheritsFromTable;
     use crate::table::challenges::AllChallenges;
     use crate::table::extension_table::Evaluable;
+    use crate::table::processor_table::ExtProcessorTable;
     use crate::table::processor_table::ProcessorTable;
+    use crate::table::table_collection::NUM_BASE_COLUMNS;
+    use crate::table::table_collection::NUM_EXT_COLUMNS;
     use crate::table::table_column::ProcessorBaseTableColumn;
 
     use super::*;
@@ -866,10 +881,17 @@ pub mod triton_vm_tests {
                 .tuple_windows()
                 .enumerate()
             {
-                for (tc_idx, tc_evaluation_result) in ext_processor_table
-                    .evaluate_transition_constraints(current_row, next_row, &challenges)
-                    .iter()
-                    .enumerate()
+                for (tc_idx, tc_evaluation_result) in
+                    // todo rework this once master tables are being produced
+                    ExtProcessorTable::evaluate_transition_constraints(
+                            Array1::zeros(NUM_BASE_COLUMNS).view(),
+                            Array1::zeros(NUM_EXT_COLUMNS).view(),
+                            Array1::zeros(NUM_BASE_COLUMNS).view(),
+                            Array1::zeros(NUM_EXT_COLUMNS).view(),
+                            &challenges,
+                        )
+                        .iter()
+                        .enumerate()
                 {
                     if !tc_evaluation_result.is_zero() {
                         let ci = current_row[ProcessorBaseTableColumn::CI as usize].coefficients[0]

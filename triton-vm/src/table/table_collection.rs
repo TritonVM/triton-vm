@@ -4,40 +4,59 @@ use std::ops::MulAssign;
 use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::prelude::*;
-use ndarray::{s, Array2, ArrayView2, ArrayViewMut2};
+use ndarray::s;
+use ndarray::Array2;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
 use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
 use strum::EnumCount;
-use triton_profiler::triton_profiler::TritonProfiler;
-use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::{is_power_of_two, roundup_npo2, transpose};
-use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
+use twenty_first::shared_math::other::is_power_of_two;
+use twenty_first::shared_math::other::roundup_npo2;
+use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
+use twenty_first::util_types::merkle_tree::CpuParallel;
+use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
+
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_matrix::BaseMatrices;
+use crate::table::base_table::Extendable;
+use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::Table;
 use crate::table::base_table::TableLike;
-use crate::table::base_table::{Extendable, InheritsFromTable, Table};
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::DegreeWithOrigin;
-use crate::table::extension_table::QuotientableExtensionTable;
-use crate::table::hash_table::{ExtHashTable, HashTable};
-use crate::table::instruction_table::{ExtInstructionTable, InstructionTable};
-use crate::table::jump_stack_table::{ExtJumpStackTable, JumpStackTable};
-use crate::table::op_stack_table::{ExtOpStackTable, OpStackTable};
-use crate::table::processor_table::{ExtProcessorTable, ProcessorTable};
-use crate::table::program_table::{ExtProgramTable, ProgramTable};
-use crate::table::ram_table::{ExtRamTable, RamTable};
+use crate::table::extension_table::Evaluable;
+use crate::table::extension_table::ExtensionTable;
+use crate::table::extension_table::Quotientable;
+use crate::table::hash_table::ExtHashTable;
+use crate::table::hash_table::HashTable;
+use crate::table::instruction_table::ExtInstructionTable;
+use crate::table::instruction_table::InstructionTable;
+use crate::table::jump_stack_table::ExtJumpStackTable;
+use crate::table::jump_stack_table::JumpStackTable;
+use crate::table::op_stack_table::ExtOpStackTable;
+use crate::table::op_stack_table::OpStackTable;
+use crate::table::processor_table::ExtProcessorTable;
+use crate::table::processor_table::ProcessorTable;
+use crate::table::program_table::ExtProgramTable;
+use crate::table::program_table::ProgramTable;
+use crate::table::ram_table::ExtRamTable;
+use crate::table::ram_table::RamTable;
 use crate::table::table_column::*;
 use crate::table::*;
 
@@ -218,6 +237,7 @@ pub struct MasterBaseTable {
 
 pub struct MasterExtTable {
     pub padded_height: usize,
+    pub num_trace_randomizers: usize,
 
     pub randomized_padded_trace_len: usize,
 
@@ -358,6 +378,7 @@ impl MasterBaseTable {
 
         let mut master_ext_table = MasterExtTable {
             padded_height: self.padded_height,
+            num_trace_randomizers: self.num_trace_randomizers,
             randomized_padded_trace_len: self.randomized_padded_trace_len,
             rand_trace_to_padded_trace_unit_distance: self.rand_trace_to_padded_trace_unit_distance,
             fri_domain: self.fri_domain,
@@ -392,7 +413,7 @@ impl MasterBaseTable {
             .collect()
     }
 
-    pub fn table_slice_info(id: TableId) -> (usize, usize) {
+    fn table_slice_info(id: TableId) -> (usize, usize) {
         use TableId::*;
         match id {
             ProgramTable => (PROGRAM_TABLE_START, PROGRAM_TABLE_END),
@@ -454,7 +475,7 @@ impl MasterExtTable {
         CpuParallel::from_digests(&hashed_rows)
     }
 
-    pub fn table_slice_info(id: TableId) -> (usize, usize) {
+    fn table_slice_info(id: TableId) -> (usize, usize) {
         use TableId::*;
         match id {
             ProgramTable => (EXT_PROGRAM_TABLE_START, EXT_PROGRAM_TABLE_END),
@@ -480,6 +501,338 @@ impl MasterExtTable {
         self.master_ext_matrix
             .slice_mut(s![..; unit_distance, starting_col..ending_col])
     }
+}
+
+pub fn base_degree_bounds(padded_height: usize, num_trace_randomizers: usize) -> Vec<Degree> {
+    vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_BASE_COLUMNS]
+}
+
+pub fn extension_degree_bounds(padded_height: usize, num_trace_randomizers: usize) -> Vec<Degree> {
+    vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_EXT_COLUMNS]
+}
+
+pub fn all_degrees_with_origin(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> Vec<DegreeWithOrigin> {
+    let num_rand = num_trace_randomizers;
+    [
+        ExtProgramTable::all_degrees_with_origin("program table", padded_height, num_rand),
+        ExtInstructionTable::all_degrees_with_origin("instruction table", padded_height, num_rand),
+        ExtProcessorTable::all_degrees_with_origin("processor table", padded_height, num_rand),
+        ExtOpStackTable::all_degrees_with_origin("op stack table", padded_height, num_rand),
+        ExtRamTable::all_degrees_with_origin("ram table", padded_height, num_rand),
+        ExtJumpStackTable::all_degrees_with_origin("jump stack table", padded_height, num_rand),
+        ExtHashTable::all_degrees_with_origin("hash table", padded_height, num_rand),
+    ]
+    .concat()
+}
+
+pub fn max_degree_with_origin(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> DegreeWithOrigin {
+    all_degrees_with_origin(padded_height, num_trace_randomizers)
+        .into_iter()
+        .max()
+        .unwrap_or_default()
+}
+
+pub fn all_initial_quotient_degree_bounds(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> Vec<Degree> {
+    [
+        ExtProgramTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtInstructionTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtProcessorTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtOpStackTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtRamTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtJumpStackTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtHashTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+    ]
+    .concat()
+}
+pub fn all_consistency_quotient_degree_bounds(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> Vec<Degree> {
+    let ntr = num_trace_randomizers;
+    [
+        ExtProgramTable::consistency_quotient_degree_bounds(padded_height, ntr),
+        ExtInstructionTable::consistency_quotient_degree_bounds(padded_height, ntr),
+        ExtProcessorTable::consistency_quotient_degree_bounds(padded_height, ntr),
+        ExtOpStackTable::consistency_quotient_degree_bounds(padded_height, ntr),
+        ExtRamTable::consistency_quotient_degree_bounds(padded_height, ntr),
+        ExtJumpStackTable::consistency_quotient_degree_bounds(padded_height, ntr),
+        ExtHashTable::consistency_quotient_degree_bounds(padded_height, ntr),
+    ]
+    .concat()
+}
+pub fn all_transition_quotient_degree_bounds(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> Vec<Degree> {
+    let ntr = num_trace_randomizers;
+    [
+        ExtProgramTable::transition_quotient_degree_bounds(padded_height, ntr),
+        ExtInstructionTable::transition_quotient_degree_bounds(padded_height, ntr),
+        ExtProcessorTable::transition_quotient_degree_bounds(padded_height, ntr),
+        ExtOpStackTable::transition_quotient_degree_bounds(padded_height, ntr),
+        ExtRamTable::transition_quotient_degree_bounds(padded_height, ntr),
+        ExtJumpStackTable::transition_quotient_degree_bounds(padded_height, ntr),
+        ExtHashTable::transition_quotient_degree_bounds(padded_height, ntr),
+    ]
+    .concat()
+}
+pub fn all_terminal_quotient_degree_bounds(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> Vec<Degree> {
+    [
+        ExtProgramTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtInstructionTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtProcessorTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtOpStackTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtRamTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtJumpStackTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtHashTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+    ]
+    .concat()
+}
+
+pub fn all_quotient_degree_bounds(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> Vec<Degree> {
+    [
+        all_initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        all_consistency_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        all_transition_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        all_terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+    ]
+    .concat()
+}
+
+pub fn all_quotients(
+    master_base_table: &MasterBaseTable,
+    master_ext_table: &MasterExtTable,
+    quotient_domain: ArithmeticDomain,
+    challenges: &AllChallenges,
+    maybe_profiler: &mut Option<TritonProfiler>,
+) -> Vec<Vec<XFieldElement>> {
+    assert_eq!(
+        master_base_table.padded_height,
+        master_ext_table.padded_height
+    );
+    assert_eq!(master_base_table.fri_domain, master_ext_table.fri_domain);
+    assert_eq!(
+        master_base_table.num_trace_randomizers,
+        master_ext_table.num_trace_randomizers
+    );
+
+    let unit_distance = master_base_table.fri_domain.length / quotient_domain.length;
+    let quotient_domain_master_base_table = master_base_table
+        .master_base_matrix
+        .slice(s![..; unit_distance, ..]);
+    let quotient_domain_master_ext_table = master_ext_table
+        .master_ext_matrix
+        .slice(s![..; unit_distance, ..]);
+
+    let padded_height = master_base_table.padded_height;
+    let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
+
+    // todo: get quotients by type, not by table -> no recomputing zerofiers
+    prof_start!(maybe_profiler, "program table");
+    let program_table_quotients = ExtProgramTable::all_quotients(
+        quotient_domain_master_base_table,
+        quotient_domain_master_ext_table,
+        quotient_domain,
+        challenges,
+        trace_domain_generator,
+        padded_height,
+        maybe_profiler,
+    );
+    prof_stop!(maybe_profiler, "program table");
+
+    prof_start!(maybe_profiler, "instruction table");
+    let instruction_table_quotients = ExtInstructionTable::all_quotients(
+        quotient_domain_master_base_table,
+        quotient_domain_master_ext_table,
+        quotient_domain,
+        challenges,
+        trace_domain_generator,
+        padded_height,
+        maybe_profiler,
+    );
+    prof_stop!(maybe_profiler, "instruction table");
+
+    prof_start!(maybe_profiler, "processor table");
+    let processor_table_quotients = ExtProcessorTable::all_quotients(
+        quotient_domain_master_base_table,
+        quotient_domain_master_ext_table,
+        quotient_domain,
+        challenges,
+        trace_domain_generator,
+        padded_height,
+        maybe_profiler,
+    );
+    prof_stop!(maybe_profiler, "processor table");
+
+    prof_start!(maybe_profiler, "op stack table");
+    let op_stack_table_quotients = ExtOpStackTable::all_quotients(
+        quotient_domain_master_base_table,
+        quotient_domain_master_ext_table,
+        quotient_domain,
+        challenges,
+        trace_domain_generator,
+        padded_height,
+        maybe_profiler,
+    );
+    prof_stop!(maybe_profiler, "op stack table");
+
+    prof_start!(maybe_profiler, "ram table");
+    let ram_table_quotients = ExtRamTable::all_quotients(
+        quotient_domain_master_base_table,
+        quotient_domain_master_ext_table,
+        quotient_domain,
+        challenges,
+        trace_domain_generator,
+        padded_height,
+        maybe_profiler,
+    );
+    prof_stop!(maybe_profiler, "ram table");
+
+    prof_start!(maybe_profiler, "jump stack table");
+    let jump_stack_table_quotients = ExtJumpStackTable::all_quotients(
+        quotient_domain_master_base_table,
+        quotient_domain_master_ext_table,
+        quotient_domain,
+        challenges,
+        trace_domain_generator,
+        padded_height,
+        maybe_profiler,
+    );
+    prof_stop!(maybe_profiler, "jump stack table");
+
+    prof_start!(maybe_profiler, "hash table");
+    let hash_table_quotients = ExtHashTable::all_quotients(
+        quotient_domain_master_base_table,
+        quotient_domain_master_ext_table,
+        quotient_domain,
+        challenges,
+        trace_domain_generator,
+        padded_height,
+        maybe_profiler,
+    );
+    prof_stop!(maybe_profiler, "hash table");
+
+    [
+        program_table_quotients,
+        instruction_table_quotients,
+        processor_table_quotients,
+        op_stack_table_quotients,
+        ram_table_quotients,
+        jump_stack_table_quotients,
+        hash_table_quotients,
+    ]
+    .concat()
+}
+
+pub fn evaluate_all_initial_constraints(
+    base_row: ArrayView1<BFieldElement>,
+    ext_row: ArrayView1<XFieldElement>,
+    challenges: &AllChallenges,
+) -> Vec<XFieldElement> {
+    [
+        ExtProgramTable::evaluate_initial_constraints(base_row, ext_row, challenges),
+        ExtInstructionTable::evaluate_initial_constraints(base_row, ext_row, challenges),
+        ExtProcessorTable::evaluate_initial_constraints(base_row, ext_row, challenges),
+        ExtOpStackTable::evaluate_initial_constraints(base_row, ext_row, challenges),
+        ExtRamTable::evaluate_initial_constraints(base_row, ext_row, challenges),
+        ExtJumpStackTable::evaluate_initial_constraints(base_row, ext_row, challenges),
+        ExtHashTable::evaluate_initial_constraints(base_row, ext_row, challenges),
+    ]
+    .concat()
+}
+
+pub fn evaluate_all_consistency_constraints(
+    base_row: ArrayView1<BFieldElement>,
+    ext_row: ArrayView1<XFieldElement>,
+    challenges: &AllChallenges,
+) -> Vec<XFieldElement> {
+    [
+        ExtProgramTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
+        ExtInstructionTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
+        ExtProcessorTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
+        ExtOpStackTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
+        ExtRamTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
+        ExtJumpStackTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
+        ExtHashTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
+    ]
+    .concat()
+}
+
+pub fn evaluate_all_transition_constraints(
+    current_base_row: ArrayView1<BFieldElement>,
+    current_ext_row: ArrayView1<XFieldElement>,
+    next_base_row: ArrayView1<BFieldElement>,
+    next_ext_row: ArrayView1<XFieldElement>,
+    challenges: &AllChallenges,
+) -> Vec<XFieldElement> {
+    let cbr = current_base_row;
+    let cer = current_ext_row;
+    let nbr = next_base_row;
+    let ner = next_ext_row;
+    [
+        ExtProgramTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+        ExtInstructionTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+        ExtProcessorTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+        ExtOpStackTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+        ExtRamTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+        ExtJumpStackTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+        ExtHashTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+    ]
+    .concat()
+}
+
+pub fn evaluate_all_terminal_constraints(
+    base_row: ArrayView1<BFieldElement>,
+    ext_row: ArrayView1<XFieldElement>,
+    challenges: &AllChallenges,
+) -> Vec<XFieldElement> {
+    [
+        ExtProgramTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtInstructionTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtProcessorTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtOpStackTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtRamTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtJumpStackTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtHashTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+    ]
+    .concat()
+}
+
+pub fn evaluate_all_constraints(
+    current_base_row: ArrayView1<BFieldElement>,
+    current_ext_row: ArrayView1<XFieldElement>,
+    next_base_row: ArrayView1<BFieldElement>,
+    next_ext_row: ArrayView1<XFieldElement>,
+    challenges: &AllChallenges,
+) -> Vec<XFieldElement> {
+    [
+        evaluate_all_initial_constraints(current_base_row, current_ext_row, challenges),
+        evaluate_all_consistency_constraints(current_base_row, current_ext_row, challenges),
+        evaluate_all_transition_constraints(
+            current_base_row,
+            current_ext_row,
+            next_base_row,
+            next_ext_row,
+            challenges,
+        ),
+        evaluate_all_terminal_constraints(current_base_row, current_ext_row, challenges),
+    ]
+    .concat()
 }
 
 /// Convert vector-of-arrays to vector-of-vectors.
@@ -549,19 +902,11 @@ impl BaseTableCollection {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn get_all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
+    pub fn all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
         self.into_iter()
             .map(|table| table.data().clone())
             .collect_vec()
             .concat()
-    }
-
-    // todo: can probably take &self as only argument soon
-    pub fn get_base_degree_bounds(
-        padded_height: usize,
-        num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
-        vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_BASE_COLUMNS]
     }
 
     pub fn pad(&mut self) {
@@ -799,17 +1144,6 @@ impl ExtTableCollection {
         }
     }
 
-    pub fn max_degree_with_origin(&self, num_trace_randomizers: usize) -> DegreeWithOrigin {
-        self.into_iter()
-            .map(|ext_table| {
-                ext_table.all_degrees_with_origin(self.padded_height, num_trace_randomizers)
-            })
-            .concat()
-            .into_iter()
-            .max()
-            .unwrap_or_default()
-    }
-
     /// Create an ExtTableCollection from a BaseTableCollection by `.extend()`ing each base table.
     /// The `.extend()` for each table is specific to that table, but always
     /// involves adding some number of columns. Each table only needs their
@@ -898,51 +1232,6 @@ impl ExtTableCollection {
             JumpStackTable => self.jump_stack_table.data(),
             HashTable => self.hash_table.data(),
         }
-    }
-
-    // todo: can probably take &self as only argument soon
-    pub fn get_extension_degree_bounds(
-        padded_height: usize,
-        num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
-        vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_EXT_COLUMNS]
-    }
-
-    pub fn get_all_quotients(
-        &self,
-        domain: ArithmeticDomain,
-        challenges: &AllChallenges,
-        maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Vec<Vec<XFieldElement>> {
-        let padded_height = self.padded_height;
-        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
-
-        self.into_iter()
-            .map(|ext_codeword_table| {
-                prof_start!(maybe_profiler, &ext_codeword_table.name());
-                // TODO: Consider if we can use `transposed_ext_codewords` from caller, Stark::prove().
-                // This would require more complicated indexing, but it would save a lot of allocation.
-                let transposed_codewords = transpose(ext_codeword_table.data());
-                let res = ext_codeword_table.all_quotients(
-                    domain,
-                    transposed_codewords,
-                    challenges,
-                    trace_domain_generator,
-                    padded_height,
-                    maybe_profiler,
-                );
-                prof_stop!(maybe_profiler, &ext_codeword_table.name());
-                res
-            })
-            .concat()
-    }
-
-    pub fn get_all_quotient_degree_bounds(&self, num_trace_randomizers: usize) -> Vec<Degree> {
-        self.into_iter()
-            .map(|ext_table| {
-                ext_table.get_all_quotient_degree_bounds(self.padded_height, num_trace_randomizers)
-            })
-            .concat()
     }
 
     pub fn join(
@@ -1081,19 +1370,19 @@ impl ExtTableCollection {
 }
 
 impl<'a> IntoIterator for &'a ExtTableCollection {
-    type Item = &'a dyn QuotientableExtensionTable;
+    type Item = &'a dyn ExtensionTable;
 
-    type IntoIter = std::array::IntoIter<&'a dyn QuotientableExtensionTable, NUM_TABLES>;
+    type IntoIter = std::array::IntoIter<&'a dyn ExtensionTable, NUM_TABLES>;
 
     fn into_iter(self) -> Self::IntoIter {
         [
-            &self.program_table as &'a dyn QuotientableExtensionTable,
-            &self.instruction_table as &'a dyn QuotientableExtensionTable,
-            &self.processor_table as &'a dyn QuotientableExtensionTable,
-            &self.op_stack_table as &'a dyn QuotientableExtensionTable,
-            &self.ram_table as &'a dyn QuotientableExtensionTable,
-            &self.jump_stack_table as &'a dyn QuotientableExtensionTable,
-            &self.hash_table as &'a dyn QuotientableExtensionTable,
+            &self.program_table as &'a dyn ExtensionTable,
+            &self.instruction_table as &'a dyn ExtensionTable,
+            &self.processor_table as &'a dyn ExtensionTable,
+            &self.op_stack_table as &'a dyn ExtensionTable,
+            &self.ram_table as &'a dyn ExtensionTable,
+            &self.jump_stack_table as &'a dyn ExtensionTable,
+            &self.hash_table as &'a dyn ExtensionTable,
         ]
         .into_iter()
     }

@@ -388,15 +388,22 @@ impl From<HashExtTableColumn> for usize {
 
 // --------------------------------------------------------------------
 
-trait BaseTableColumn: Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display {}
-trait ExtTableColumn: Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display {}
-
-trait MasterBaseTableColumn: BaseTableColumn {
-    fn master_table_index(column: Self) -> usize;
+pub trait BaseTableColumn:
+    Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display
+{
 }
 
-trait MasterExtTableColumn: ExtTableColumn {
-    fn master_table_index(column: Self) -> usize;
+pub trait ExtTableColumn:
+    Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display
+{
+}
+
+pub trait MasterBaseTableColumn: BaseTableColumn {
+    fn master_table_index(&self) -> usize;
+}
+
+pub trait MasterExtTableColumn: ExtTableColumn {
+    fn master_table_index(&self) -> usize;
 }
 
 impl BaseTableColumn for ProgramBaseTableColumn {}
@@ -416,102 +423,104 @@ impl ExtTableColumn for JumpStackExtTableColumn {}
 impl ExtTableColumn for HashExtTableColumn {}
 
 impl MasterBaseTableColumn for ProgramBaseTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        PROGRAM_TABLE_START + usize::from(column)
+    fn master_table_index(&self) -> usize {
+        PROGRAM_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterBaseTableColumn for InstructionBaseTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        INSTRUCTION_TABLE_START + usize::from(column)
+    fn master_table_index(&self) -> usize {
+        INSTRUCTION_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterBaseTableColumn for ProcessorBaseTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        PROCESSOR_TABLE_START + usize::from(column)
+    fn master_table_index(&self) -> usize {
+        PROCESSOR_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterBaseTableColumn for OpStackBaseTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        OP_STACK_TABLE_START + usize::from(column)
+    fn master_table_index(&self) -> usize {
+        OP_STACK_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterBaseTableColumn for RamBaseTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        RAM_TABLE_START + usize::from(column)
+    fn master_table_index(&self) -> usize {
+        RAM_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterBaseTableColumn for JumpStackBaseTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        JUMP_STACK_TABLE_START + usize::from(column)
+    fn master_table_index(&self) -> usize {
+        JUMP_STACK_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterBaseTableColumn for HashBaseTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        HASH_TABLE_START + usize::from(column)
+    fn master_table_index(&self) -> usize {
+        HASH_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterExtTableColumn for ProgramExtTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        EXT_PROGRAM_TABLE_START + usize::from(column) - program_table::BASE_WIDTH
+    fn master_table_index(&self) -> usize {
+        EXT_PROGRAM_TABLE_START + usize::from(*self) - program_table::BASE_WIDTH
     }
 }
 
 impl MasterExtTableColumn for InstructionExtTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        EXT_INSTRUCTION_TABLE_START + usize::from(column) - instruction_table::BASE_WIDTH
+    fn master_table_index(&self) -> usize {
+        EXT_INSTRUCTION_TABLE_START + usize::from(*self) - instruction_table::BASE_WIDTH
     }
 }
 
 impl MasterExtTableColumn for ProcessorExtTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        EXT_PROCESSOR_TABLE_START + usize::from(column) - processor_table::BASE_WIDTH
+    fn master_table_index(&self) -> usize {
+        EXT_PROCESSOR_TABLE_START + usize::from(*self) - processor_table::BASE_WIDTH
     }
 }
 
 impl MasterExtTableColumn for OpStackExtTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        EXT_OP_STACK_TABLE_START + usize::from(column) - op_stack_table::BASE_WIDTH
+    fn master_table_index(&self) -> usize {
+        EXT_OP_STACK_TABLE_START + usize::from(*self) - op_stack_table::BASE_WIDTH
     }
 }
 
 impl MasterExtTableColumn for RamExtTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        EXT_RAM_TABLE_START + usize::from(column) - ram_table::BASE_WIDTH
+    fn master_table_index(&self) -> usize {
+        EXT_RAM_TABLE_START + usize::from(*self) - ram_table::BASE_WIDTH
     }
 }
 
 impl MasterExtTableColumn for JumpStackExtTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        EXT_JUMP_STACK_TABLE_START + usize::from(column) - jump_stack_table::BASE_WIDTH
+    fn master_table_index(&self) -> usize {
+        EXT_JUMP_STACK_TABLE_START + usize::from(*self) - jump_stack_table::BASE_WIDTH
     }
 }
 
 impl MasterExtTableColumn for HashExtTableColumn {
-    fn master_table_index(column: Self) -> usize {
-        EXT_HASH_TABLE_START + usize::from(column) - hash_table::BASE_WIDTH
+    fn master_table_index(&self) -> usize {
+        EXT_HASH_TABLE_START + usize::from(*self) - hash_table::BASE_WIDTH
     }
 }
 
-/* --------------------------------------------------------------------
-
+// --------------------------------------------------------------------
+/*
 // todo What's this associated type?  v
-impl From<dyn TableColumn<Iterator = ???>> for usize {
-    fn from(column: dyn TableColumn) -> Self {
-        TableColumn::iter()
+//  alternatively: make a thin wrapper
+impl<C: BaseTableColumn> From<C> for usize {
+    fn from(column: C) -> Self {
+        C::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
             .map(|(n, _col)| n)
             .unwrap()
     }
 }
-   -------------------------------------------------------------------- */
+ */
+// --------------------------------------------------------------------
 
 #[cfg(test)]
 mod table_column_tests {
@@ -677,52 +686,31 @@ mod table_column_tests {
     fn master_base_table_is_contiguous() {
         let mut expected_column_index = 0;
         for column in ProgramBaseTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterBaseTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in InstructionBaseTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterBaseTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in ProcessorBaseTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterBaseTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in OpStackBaseTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterBaseTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in RamBaseTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterBaseTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in JumpStackBaseTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterBaseTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in HashBaseTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterBaseTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
     }
@@ -731,52 +719,31 @@ mod table_column_tests {
     fn master_ext_table_is_contiguous() {
         let mut expected_column_index = 0;
         for column in ProgramExtTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterExtTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in InstructionExtTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterExtTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in ProcessorExtTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterExtTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in OpStackExtTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterExtTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in RamExtTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterExtTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in JumpStackExtTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterExtTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
         for column in HashExtTableColumn::iter() {
-            assert_eq!(
-                expected_column_index,
-                MasterExtTableColumn::master_table_index(column)
-            );
+            assert_eq!(expected_column_index, column.master_table_index());
             expected_column_index += 1;
         }
     }

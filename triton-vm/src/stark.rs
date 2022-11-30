@@ -2,14 +2,15 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
 use ndarray::s;
+use ndarray::Array1;
 use ndarray::ArrayView2;
 use ndarray::Axis;
 use num_traits::One;
-use num_traits::Zero;
 use rayon::prelude::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
@@ -17,8 +18,12 @@ use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
-use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32, PrimitiveRootOfUnity};
-use twenty_first::shared_math::x_field_element::{XFieldElement, EXTENSION_DEGREE};
+use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::traits::ModPowU32;
+use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
@@ -42,8 +47,20 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
+use crate::table::table_collection::all_consistency_quotient_degree_bounds;
+use crate::table::table_collection::all_initial_quotient_degree_bounds;
+use crate::table::table_collection::all_quotient_degree_bounds;
+use crate::table::table_collection::all_quotients;
+use crate::table::table_collection::all_terminal_quotient_degree_bounds;
+use crate::table::table_collection::all_transition_quotient_degree_bounds;
+use crate::table::table_collection::base_degree_bounds;
 use crate::table::table_collection::derive_trace_domain_generator;
-use crate::table::table_collection::BaseTableCollection;
+use crate::table::table_collection::evaluate_all_consistency_constraints;
+use crate::table::table_collection::evaluate_all_initial_constraints;
+use crate::table::table_collection::evaluate_all_terminal_constraints;
+use crate::table::table_collection::evaluate_all_transition_constraints;
+use crate::table::table_collection::extension_degree_bounds;
+use crate::table::table_collection::max_degree_with_origin;
 use crate::table::table_collection::ExtTableCollection;
 use crate::table::table_collection::MasterBaseTable;
 use crate::table::table_collection::MasterTable;
@@ -129,9 +146,8 @@ pub struct Stark {
 
 impl Stark {
     pub fn new(claim: Claim, parameters: StarkParameters) -> Self {
-        let empty_table_collection = ExtTableCollection::with_padded_height(claim.padded_height);
         let max_degree_with_origin =
-            empty_table_collection.max_degree_with_origin(parameters.num_trace_randomizers);
+            max_degree_with_origin(claim.padded_height, parameters.num_trace_randomizers);
         let max_degree = (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
         let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
         let fri_domain_generator =
@@ -159,7 +175,7 @@ impl Stark {
     ) -> Proof {
         prof_start!(maybe_profiler, "base tables");
         prof_start!(maybe_profiler, "create");
-        let mut base_master_table = MasterBaseTable::new(
+        let mut master_base_table = MasterBaseTable::new(
             aet,
             &self.claim.program,
             self.parameters.num_trace_randomizers,
@@ -169,12 +185,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "create");
 
         prof_start!(maybe_profiler, "pad");
-        base_master_table.pad();
+        master_base_table.pad();
         prof_stop!(maybe_profiler, "pad");
 
         prof_start!(maybe_profiler, "LDE");
-        base_master_table.randomize_trace();
-        let fri_domain_base_master_table = base_master_table.to_fri_domain_table();
+        master_base_table.randomize_trace();
+        let fri_domain_base_master_table = master_base_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
@@ -183,7 +199,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
 
         prof_start!(maybe_profiler, "Fiat-Shamir");
-        let padded_height = BFieldElement::new(base_master_table.padded_height as u64);
+        let padded_height = BFieldElement::new(master_base_table.padded_height as u64);
         let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::PaddedHeight(padded_height));
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
@@ -195,13 +211,13 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
-        let mut ext_master_table = base_master_table.extend(&extension_challenges);
+        let mut master_ext_table = master_base_table.extend(&extension_challenges);
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "ext tables");
         prof_start!(maybe_profiler, "LDE");
-        ext_master_table.randomize_trace();
-        let fri_domain_ext_master_table = ext_master_table.to_fri_domain_table();
+        master_ext_table.randomize_trace();
+        let fri_domain_ext_master_table = master_ext_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
@@ -213,33 +229,28 @@ impl Stark {
 
         prof_start!(maybe_profiler, "degree bounds");
         prof_start!(maybe_profiler, "base");
-        let base_degree_bounds = BaseTableCollection::get_base_degree_bounds(
-            base_master_table.padded_height,
-            self.parameters.num_trace_randomizers,
+        let base_degree_bounds = base_degree_bounds(
+            master_base_table.padded_height,
+            master_base_table.num_trace_randomizers,
         );
         prof_stop!(maybe_profiler, "base");
 
         prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds = ExtTableCollection::get_extension_degree_bounds(
-            ext_master_table.padded_height,
-            self.parameters.num_trace_randomizers,
+        let extension_degree_bounds = extension_degree_bounds(
+            master_ext_table.padded_height,
+            master_ext_table.num_trace_randomizers,
         );
         prof_stop!(maybe_profiler, "extension");
 
-        /* todo continue >>> here <<< */
-
-        // todo vvvvvvvvvvvvvvvvvvvv OLD vvvvvvvvvvvvvvvvvvvv
-        prof_start!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
-        let ext_fri_domain_tables =
-            ExtTableCollection::dummy_fri_domain_tables(base_master_table.padded_height);
-        prof_stop!(maybe_profiler, "legacy TMP TMP TMP TMP TMP TMP TMP TMP");
-        // todo ^^^^^^^^^^^^^^^^^^^^ OLD ^^^^^^^^^^^^^^^^^^^^
-
         prof_start!(maybe_profiler, "quotient");
-        let mut quotient_degree_bounds = ext_fri_domain_tables
-            .get_all_quotient_degree_bounds(self.parameters.num_trace_randomizers);
+        let mut quotient_degree_bounds = all_quotient_degree_bounds(
+            master_base_table.padded_height,
+            self.parameters.num_trace_randomizers,
+        );
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
+
+        /* todo continue >>> here <<< */
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let quotient_domain = self.quotient_domain();
@@ -263,14 +274,16 @@ impl Stark {
             .map(|row| row.to_vec())
             .collect();
         let full_quotient_domain_tables = ExtTableCollection::with_data(
-            base_master_table.padded_height,
+            master_base_table.padded_height,
             base_quotient_domain_codewords.clone(),
             extension_quotient_domain_codewords.clone(),
         );
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
         prof_start!(maybe_profiler, "quotient codewords");
-        let mut quotient_codewords = full_quotient_domain_tables.get_all_quotients(
+        let mut quotient_codewords = all_quotients(
+            &master_base_table,
+            &master_ext_table,
             quotient_domain,
             &extension_challenges,
             maybe_profiler,
@@ -317,7 +330,7 @@ impl Stark {
         );
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
-                &full_quotient_domain_tables,
+                master_ext_table.master_ext_matrix.view(),
                 quotient_domain,
                 derive_trace_domain_generator(full_quotient_domain_tables.padded_height as u64),
             );
@@ -395,7 +408,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "open trace leafs");
         // the relation between the FRI domain and the trace domain
-        let unit_distance = self.fri.domain.length / base_master_table.padded_height;
+        let unit_distance = self.fri.domain.length / master_base_table.padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices =
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
@@ -644,11 +657,9 @@ impl Stark {
 
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
-        let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
+        let challenges = AllChallenges::create_challenges(extension_challenge_weights);
         if self.claim.padded_height != padded_height && self.claim.padded_height != 0 {
-            return Err(anyhow::Error::new(
-                StarkValidationError::PaddedHeightInequality,
-            ));
+            return Err(anyhow!(StarkValidationError::PaddedHeightInequality));
         }
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
@@ -662,34 +673,18 @@ impl Stark {
         let ext_table_collection = ExtTableCollection::for_verifier(padded_height, maybe_profiler);
         prof_stop!(maybe_profiler, "generate tables");
 
-        prof_start!(maybe_profiler, "base");
-        let base_degree_bounds = BaseTableCollection::get_base_degree_bounds(
-            padded_height,
-            self.parameters.num_trace_randomizers,
-        );
-        prof_stop!(maybe_profiler, "base");
-
-        prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds = ExtTableCollection::get_extension_degree_bounds(
-            padded_height,
-            self.parameters.num_trace_randomizers,
-        );
-        prof_stop!(maybe_profiler, "extension");
-
         prof_start!(maybe_profiler, "quotient");
-        let quotient_degree_bounds = ext_table_collection
-            .get_all_quotient_degree_bounds(self.parameters.num_trace_randomizers);
+        let quotient_degree_bounds =
+            all_quotient_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
         prof_stop!(maybe_profiler, "quotient");
         prof_stop!(maybe_profiler, "degree bounds");
 
         // Get weights for nonlinear combination. Concretely, sample 2 weights for each base, and
         // extension polynomial and each quotients, because transition constraints check 2 rows.
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
-        let num_base_polynomials = base_degree_bounds.len();
-        let num_extension_polynomials = extension_degree_bounds.len();
         let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = 2 * num_base_polynomials
-            + 2 * num_extension_polynomials
+        let num_non_lin_combi_weights = 2 * NUM_BASE_COLUMNS
+            + 2 * NUM_EXT_COLUMNS
             + 2 * quotient_degree_bounds.len()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -707,14 +702,14 @@ impl Stark {
         let input_terminal = EvalArg::compute_terminal(
             &self.claim.input,
             EvalArg::default_initial(),
-            extension_challenges
+            challenges
                 .processor_table_challenges
                 .standard_input_eval_indeterminate,
         );
         let output_terminal = EvalArg::compute_terminal(
             &self.claim.output,
             EvalArg::default_initial(),
-            extension_challenges
+            challenges
                 .processor_table_challenges
                 .standard_output_eval_indeterminate,
         );
@@ -745,19 +740,20 @@ impl Stark {
         prof_start!(maybe_profiler, "check leafs");
         prof_start!(maybe_profiler, "get indices");
         // the relation between the FRI domain and the trace domain
-        let unit_distance = self.fri.domain.length / ext_table_collection.padded_height;
+        let unit_distance = self.fri.domain.length / padded_height;
         // Open leafs of zipped codewords at indicated positions
         let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
         prof_stop!(maybe_profiler, "get indices");
 
+        // todo rename the operation of the proof stream
         prof_start!(maybe_profiler, "dequeue base elements");
-        let revealed_base_elems = proof_stream
+        let base_table_rows = proof_stream
             .dequeue()?
             .as_transposed_base_element_vectors()?;
-        let auth_paths_base = proof_stream
+        let base_auth_paths = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
-        let leaf_digests_base: Vec<_> = revealed_base_elems
+        let leaf_digests_base: Vec<_> = base_table_rows
             .par_iter()
             .map(|revealed_base_elem| StarkHasher::hash_slice(revealed_base_elem))
             .collect();
@@ -768,20 +764,21 @@ impl Stark {
             base_merkle_tree_root,
             &revealed_indices,
             &leaf_digests_base,
-            &auth_paths_base,
+            &base_auth_paths,
         ) {
             bail!("Failed to verify authentication path for base codeword");
         }
         prof_stop!(maybe_profiler, "Merkle verify (base tree)");
 
+        // todo rename the operation of the proof stream
         prof_start!(maybe_profiler, "dequeue extension elements");
-        let revealed_ext_elems = proof_stream
+        let ext_table_rows = proof_stream
             .dequeue()?
             .as_transposed_extension_element_vectors()?;
         let auth_paths_ext = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
-        let leaf_digests_ext: Vec<_> = revealed_ext_elems
+        let leaf_digests_ext: Vec<_> = ext_table_rows
             .par_iter()
             .map(|xvalues| {
                 let bvalues: Vec<BFieldElement> = xvalues
@@ -826,196 +823,151 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle verify (combination tree)");
         prof_stop!(maybe_profiler, "check leafs");
 
-        // TODO: we can store the elements mushed into "index_map_of_revealed_elems" separately,
-        //  like in "cross_slice_by_table" below, to avoid unmushing later
         prof_start!(maybe_profiler, "nonlinear combination");
-        prof_start!(maybe_profiler, "restructure");
-        let index_map_of_revealed_elems = Self::get_index_map_of_revealed_elems(
-            self.parameters.num_randomizer_polynomials,
-            revealed_indices,
-            revealed_base_elems,
-            revealed_ext_elems,
-        );
-        prof_stop!(maybe_profiler, "restructure");
+        prof_start!(maybe_profiler, "index");
+        let (indexed_randomizer_rows, indexed_base_table_rows, indexed_ext_table_rows) =
+            Self::index_revealed_rows(
+                self.parameters.num_randomizer_polynomials,
+                revealed_indices,
+                base_table_rows,
+                ext_table_rows,
+            );
+        prof_stop!(maybe_profiler, "index");
 
         // =======================================
         // ==== verify non-linear combination ====
         // =======================================
+        let base_degree_bounds =
+            base_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
+        let ext_degree_bounds =
+            extension_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
+
         prof_start!(maybe_profiler, "main loop");
-        let base_offset = self.parameters.num_randomizer_polynomials;
-        let ext_offset = base_offset + num_base_polynomials;
-        let final_offset = ext_offset + num_extension_polynomials;
         let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
         let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        for (combination_check_index, revealed_combination_leaf) in combination_check_indices
+        for (current_row_idx, revealed_combination_leaf) in combination_check_indices
             .into_iter()
             .zip_eq(revealed_combination_leafs)
         {
             prof_itr0!(maybe_profiler, "main loop");
-            prof_start!(maybe_profiler, "populate");
-            let current_fri_domain_value =
-                self.fri.domain.domain_value(combination_check_index as u32);
-            let cross_slice = &index_map_of_revealed_elems[&combination_check_index];
+            let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
+            let base_row = indexed_base_table_rows[&current_row_idx].view();
+            let ext_row = indexed_ext_table_rows[&current_row_idx].view();
+
+            let next_row_idx = (current_row_idx + unit_distance) % self.fri.domain.length;
+            let next_base_row = indexed_base_table_rows[&next_row_idx].view();
+            let next_ext_row = indexed_ext_table_rows[&next_row_idx].view();
+
+            // todo pre-compute for all revealed fri domain values, use batch invert?
+            let one = BFieldElement::one();
+            let initial_zerofier_inverse = (current_fri_domain_value - one).lift();
+            let consistency_zerofier_inverse =
+                (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one)
+                    .inverse()
+                    .lift();
+            let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
+            let transition_zerofier_inverse = except_last_row
+                * (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one)
+                    .inverse()
+                    .lift();
+            let terminal_zerofier_inverse = except_last_row.lift();
 
             let mut summands = vec![];
 
             // populate summands with a cross-slice of (base,ext) codewords and their shifts
-            for (index_range, degree_bounds) in [
-                (base_offset..ext_offset, base_degree_bounds.iter()),
-                (ext_offset..final_offset, extension_degree_bounds.iter()),
-            ] {
-                for (codeword_index, degree_bound) in index_range.zip_eq(degree_bounds) {
-                    let shift = self.max_degree - degree_bound;
-                    let curr_codeword_elem = cross_slice[codeword_index];
-                    let curr_codeword_elem_shifted =
-                        curr_codeword_elem * current_fri_domain_value.mod_pow_u32(shift as u32);
-                    summands.push(curr_codeword_elem);
-                    summands.push(curr_codeword_elem_shifted);
-                }
+            prof_start!(maybe_profiler, "populate");
+            for (&base_row_element, degree_bound) in
+                base_row.iter().zip_eq(base_degree_bounds.iter())
+            {
+                let shift = self.max_degree - degree_bound;
+                let base_row_element_shifted =
+                    base_row_element * current_fri_domain_value.mod_pow_u32(shift as u32);
+                // todo non-lin combine as far as possible staying in the BField, lift at very end
+                summands.push(base_row_element.lift());
+                summands.push(base_row_element_shifted.lift());
+            }
+
+            for (&ext_row_element, degree_bound) in ext_row.iter().zip_eq(ext_degree_bounds.iter())
+            {
+                let shift = self.max_degree - degree_bound;
+                let base_row_element_shifted =
+                    ext_row_element * current_fri_domain_value.mod_pow_u32(shift as u32);
+                summands.push(ext_row_element);
+                summands.push(base_row_element_shifted);
             }
             prof_stop!(maybe_profiler, "populate");
 
-            prof_start!(maybe_profiler, "unmush");
-            // unmush cross-codeword slice: pick (base, ext) columns per table
-            let mut curr_base_idx = base_offset;
-            let mut curr_ext_idx = ext_offset;
-            let mut cross_slice_by_table: Vec<Vec<XFieldElement>> = vec![];
-            let mut next_cross_slice_by_table: Vec<Vec<XFieldElement>> = vec![];
+            prof_start!(maybe_profiler, "degree bounds");
+            let initial_quotient_degree_bounds = all_initial_quotient_degree_bounds(
+                padded_height,
+                self.parameters.num_trace_randomizers,
+            );
+            let consistency_quotient_degree_bounds = all_consistency_quotient_degree_bounds(
+                padded_height,
+                self.parameters.num_trace_randomizers,
+            );
+            let transition_quotient_degree_bounds = all_transition_quotient_degree_bounds(
+                padded_height,
+                self.parameters.num_trace_randomizers,
+            );
+            let terminal_quotient_degree_bounds = all_terminal_quotient_degree_bounds(
+                padded_height,
+                self.parameters.num_trace_randomizers,
+            );
+            prof_stop!(maybe_profiler, "degree bounds");
 
-            for table in ext_table_collection.into_iter() {
-                let num_base_cols = table.base_width();
-                let num_ext_cols = table.full_width() - table.base_width();
+            prof_start!(maybe_profiler, "evaluate AIR");
+            let evaluated_initial_constraints =
+                evaluate_all_initial_constraints(base_row, ext_row, &challenges);
+            let evaluated_consistency_constraints =
+                evaluate_all_consistency_constraints(base_row, ext_row, &challenges);
+            let evaluated_transition_constraints = evaluate_all_transition_constraints(
+                base_row,
+                ext_row,
+                next_base_row,
+                next_ext_row,
+                &challenges,
+            );
+            let evaluated_terminal_constraints =
+                evaluate_all_terminal_constraints(base_row, ext_row, &challenges);
+            prof_stop!(maybe_profiler, "evaluate AIR");
 
-                let base_col_slice =
-                    cross_slice[curr_base_idx..curr_base_idx + num_base_cols].to_vec();
-                let ext_col_slice = cross_slice[curr_ext_idx..curr_ext_idx + num_ext_cols].to_vec();
-                let table_slice = [base_col_slice, ext_col_slice].concat();
-                cross_slice_by_table.push(table_slice);
-
-                let next_cross_slice_index =
-                    (combination_check_index + unit_distance) % self.fri.domain.length;
-                let next_cross_slice = &index_map_of_revealed_elems[&next_cross_slice_index];
-
-                let next_base_col_slice =
-                    next_cross_slice[curr_base_idx..curr_base_idx + num_base_cols].to_vec();
-                let next_ext_col_slice =
-                    next_cross_slice[curr_ext_idx..curr_ext_idx + num_ext_cols].to_vec();
-                let next_table_slice = [next_base_col_slice, next_ext_col_slice].concat();
-                next_cross_slice_by_table.push(next_table_slice);
-
-                curr_base_idx += num_base_cols;
-                curr_ext_idx += num_ext_cols;
+            prof_start!(maybe_profiler, "shift");
+            for (degree_bound_category, evaluated_constraints_category, zerofier_inverse) in [
+                (
+                    initial_quotient_degree_bounds,
+                    evaluated_initial_constraints,
+                    initial_zerofier_inverse,
+                ),
+                (
+                    consistency_quotient_degree_bounds,
+                    evaluated_consistency_constraints,
+                    consistency_zerofier_inverse,
+                ),
+                (
+                    transition_quotient_degree_bounds,
+                    evaluated_transition_constraints,
+                    transition_zerofier_inverse,
+                ),
+                (
+                    terminal_quotient_degree_bounds,
+                    evaluated_terminal_constraints,
+                    terminal_zerofier_inverse,
+                ),
+            ] {
+                for (degree_bound, evaluated_constraint) in degree_bound_category
+                    .into_iter()
+                    .zip_eq(evaluated_constraints_category.into_iter())
+                {
+                    let shift = self.max_degree - degree_bound;
+                    let quotient = evaluated_constraint * zerofier_inverse;
+                    let quotient_shifted =
+                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
+                    summands.push(quotient);
+                    summands.push(quotient_shifted);
+                }
             }
-            assert_eq!(ext_offset, curr_base_idx);
-            assert_eq!(final_offset, curr_ext_idx);
-            prof_stop!(maybe_profiler, "unmush");
-
-            prof_start!(maybe_profiler, "inner loop");
-            // use AIR (actually RAP) to get relevant parts of quotient codewords
-            for ((table_row, next_table_row), table) in cross_slice_by_table
-                .iter()
-                .zip_eq(next_cross_slice_by_table.iter())
-                .zip_eq(ext_table_collection.into_iter())
-            {
-                prof_itr0!(maybe_profiler, "inner loop");
-                prof_start!(maybe_profiler, "degree bounds");
-                let initial_quotient_degree_bounds = table.get_initial_quotient_degree_bounds(
-                    padded_height,
-                    self.parameters.num_trace_randomizers,
-                );
-                let consistency_quotient_degree_bounds = table
-                    .get_consistency_quotient_degree_bounds(
-                        padded_height,
-                        self.parameters.num_trace_randomizers,
-                    );
-                let transition_quotient_degree_bounds = table
-                    .get_transition_quotient_degree_bounds(
-                        padded_height,
-                        self.parameters.num_trace_randomizers,
-                    );
-                let terminal_quotient_degree_bounds = table.get_terminal_quotient_degree_bounds(
-                    padded_height,
-                    self.parameters.num_trace_randomizers,
-                );
-                prof_stop!(maybe_profiler, "degree bounds");
-
-                prof_start!(maybe_profiler, "initial constraint quotient points");
-                for (evaluated_bc, degree_bound) in table
-                    .evaluate_initial_constraints(table_row, &extension_challenges)
-                    .into_iter()
-                    .zip_eq(initial_quotient_degree_bounds.iter())
-                {
-                    let shift = self.max_degree - degree_bound;
-                    let quotient =
-                        evaluated_bc / (current_fri_domain_value - BFieldElement::one()).lift();
-                    let quotient_shifted =
-                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-                    summands.push(quotient);
-                    summands.push(quotient_shifted);
-                }
-                prof_stop!(maybe_profiler, "initial constraint quotient points");
-
-                prof_start!(maybe_profiler, "consistency constraint quotient points");
-                for (evaluated_cc, degree_bound) in table
-                    .evaluate_consistency_constraints(table_row, &extension_challenges)
-                    .into_iter()
-                    .zip_eq(consistency_quotient_degree_bounds.iter())
-                {
-                    let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_cc
-                        / (current_fri_domain_value.mod_pow_u32(padded_height as u32)
-                            - BFieldElement::one())
-                        .lift();
-                    let quotient_shifted =
-                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-                    summands.push(quotient);
-                    summands.push(quotient_shifted);
-                }
-                prof_stop!(maybe_profiler, "consistency constraint quotient points");
-
-                prof_start!(maybe_profiler, "transition constraint quotient points");
-                for (evaluated_tc, degree_bound) in table
-                    .evaluate_transition_constraints(
-                        table_row,
-                        next_table_row,
-                        &extension_challenges,
-                    )
-                    .into_iter()
-                    .zip_eq(transition_quotient_degree_bounds.iter())
-                {
-                    let shift = self.max_degree - degree_bound;
-                    let quotient = {
-                        let numerator = current_fri_domain_value - trace_domain_generator_inverse;
-                        let denominator = current_fri_domain_value
-                            .mod_pow_u32(padded_height as u32)
-                            - BFieldElement::one();
-                        evaluated_tc * numerator / denominator.lift()
-                    };
-                    let quotient_shifted =
-                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-                    summands.push(quotient);
-                    summands.push(quotient_shifted);
-                }
-                prof_stop!(maybe_profiler, "transition constraint quotient points");
-
-                prof_start!(maybe_profiler, "terminal constraint quotient points");
-                for (evaluated_termc, degree_bound) in table
-                    .evaluate_terminal_constraints(table_row, &extension_challenges)
-                    .into_iter()
-                    .zip_eq(terminal_quotient_degree_bounds.iter())
-                {
-                    let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_termc
-                        / (current_fri_domain_value - trace_domain_generator_inverse).lift();
-                    let quotient_shifted =
-                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-                    summands.push(quotient);
-                    summands.push(quotient_shifted);
-                }
-
-                prof_stop!(maybe_profiler, "terminal constraint quotient points");
-            }
-            prof_stop!(maybe_profiler, "inner loop");
+            prof_stop!(maybe_profiler, "shift");
 
             prof_start!(maybe_profiler, "grand cross-table argument");
 
@@ -1025,7 +977,7 @@ impl Stark {
             );
             let shift = self.max_degree - grand_cross_table_arg_degree_bound;
             let grand_cross_table_arg_evaluated =
-                grand_cross_table_arg.evaluate_non_linear_sum_of_differences(&cross_slice_by_table);
+                grand_cross_table_arg.evaluate_non_linear_sum_of_differences(ext_row);
             let grand_cross_table_arg_quotient = grand_cross_table_arg_evaluated
                 / (current_fri_domain_value - trace_domain_generator_inverse).lift();
             let grand_cross_table_arg_quotient_shifted =
@@ -1040,14 +992,13 @@ impl Stark {
                 .zip_eq(summands.par_iter())
                 .map(|(&weight, &summand)| weight * summand)
                 .sum();
-            let randomizer_codewords_contribution = cross_slice[0..base_offset]
-                .iter()
-                .fold(XFieldElement::zero(), |acc, &summand| acc + summand);
-
+            let randomizer_codewords_contribution: XFieldElement = indexed_randomizer_rows
+                [&current_row_idx]
+                .clone()
+                .into_iter()
+                .sum();
             if revealed_combination_leaf != inner_product + randomizer_codewords_contribution {
-                return Err(anyhow::Error::new(
-                    StarkValidationError::CombinationLeafInequality,
-                ));
+                return Err(anyhow!(StarkValidationError::CombinationLeafInequality));
             }
             prof_stop!(maybe_profiler, "compute inner product");
         }
@@ -1056,33 +1007,53 @@ impl Stark {
         Ok(true)
     }
 
-    fn get_index_map_of_revealed_elems(
+    // todo these hash-maps allow doing
+    //      indexed_revealed_base_rows[i]
+    //  instead of
+    //      revealed_base_rows[revealed_indices[i]]
+    //  but is that really worth all this compute & malloc?
+    //  Also, the proof stream should probably just return Array1<FF> or even Array2<FF> instead.
+    #[allow(clippy::type_complexity)]
+    fn index_revealed_rows(
         num_randomizer_polynomials: usize,
         revealed_indices: Vec<usize>,
-        revealed_base_elems: Vec<Vec<BFieldElement>>,
-        revealed_ext_elems: Vec<Vec<XFieldElement>>,
-    ) -> HashMap<usize, Vec<XFieldElement>> {
-        let mut index_map: HashMap<usize, Vec<XFieldElement>> = HashMap::new();
+        revealed_base_rows: Vec<Vec<BFieldElement>>,
+        revealed_ext_rows: Vec<Vec<XFieldElement>>,
+    ) -> (
+        HashMap<usize, Array1<XFieldElement>>,
+        HashMap<usize, Array1<BFieldElement>>,
+        HashMap<usize, Array1<XFieldElement>>,
+    ) {
+        assert_eq!(revealed_indices.len(), revealed_base_rows.len());
+        assert_eq!(revealed_indices.len(), revealed_ext_rows.len());
+
+        let num_randomizer_columns = EXTENSION_DEGREE * num_randomizer_polynomials;
+
+        let mut indexed_revealed_rand_rows: HashMap<usize, Array1<XFieldElement>> = HashMap::new();
+        let mut indexed_revealed_base_rows: HashMap<usize, Array1<BFieldElement>> = HashMap::new();
+        let mut indexed_revealed_ext_rows: HashMap<usize, Array1<XFieldElement>> = HashMap::new();
+
         for (i, &idx) in revealed_indices.iter().enumerate() {
-            let mut rand_elems = vec![];
-            for (coeff_0, coeff_1, coeff_2) in revealed_base_elems[i]
+            let rand_vec = revealed_base_rows[i][..num_randomizer_columns]
                 .iter()
-                .take(EXTENSION_DEGREE * num_randomizer_polynomials)
                 .tuples()
-            {
-                rand_elems.push(XFieldElement::new([*coeff_0, *coeff_1, *coeff_2]));
-            }
-
-            let base_elems = revealed_base_elems[i]
-                .iter()
-                .skip(EXTENSION_DEGREE * num_randomizer_polynomials)
-                .map(|bfe| bfe.lift())
+                .map(|(&c0, &c1, &c2)| XFieldElement::new([c0, c1, c2]))
                 .collect_vec();
+            let rand_row = Array1::from(rand_vec);
 
-            let cross_slice = [rand_elems, base_elems, revealed_ext_elems[i].clone()].concat();
-            index_map.insert(idx, cross_slice);
+            let base_row = Array1::from(revealed_base_rows[i][num_randomizer_columns..].to_vec());
+            let ext_row = Array1::from(revealed_ext_rows[i].clone());
+
+            indexed_revealed_rand_rows.insert(idx, rand_row);
+            indexed_revealed_base_rows.insert(idx, base_row);
+            indexed_revealed_ext_rows.insert(idx, ext_row);
         }
-        index_map
+
+        (
+            indexed_revealed_rand_rows,
+            indexed_revealed_base_rows,
+            indexed_revealed_ext_rows,
+        )
     }
 }
 
@@ -1090,6 +1061,8 @@ impl Stark {
 pub(crate) mod triton_stark_tests {
     use std::ops::Mul;
 
+    use itertools::izip;
+    use ndarray::{Array1, Array2, ArrayBase};
     use num_traits::{One, Zero};
     use twenty_first::shared_math::ntt::ntt;
     use twenty_first::shared_math::other::log_2_floor;
@@ -1100,6 +1073,17 @@ pub(crate) mod triton_stark_tests {
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_matrix::BaseMatrices;
     use crate::table::base_table::InheritsFromTable;
+    use crate::table::extension_table::{Evaluable, Quotientable};
+    use crate::table::hash_table::ExtHashTable;
+    use crate::table::instruction_table::ExtInstructionTable;
+    use crate::table::jump_stack_table::ExtJumpStackTable;
+    use crate::table::op_stack_table::ExtOpStackTable;
+    use crate::table::processor_table::ExtProcessorTable;
+    use crate::table::program_table::ExtProgramTable;
+    use crate::table::ram_table::ExtRamTable;
+    use crate::table::table_collection::all_degrees_with_origin;
+    use crate::table::table_collection::BaseTableCollection;
+    use crate::table::table_collection::MasterExtTable;
     use crate::table::table_collection::TableId::ProcessorTable;
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
@@ -1208,12 +1192,7 @@ pub(crate) mod triton_stark_tests {
         let (_, _, _, ext_tables, _, num_trace_randomizers) =
             parse_simulate_pad_extend("halt", vec![], vec![]);
         let padded_height = ext_tables.padded_height;
-        let all_degrees = ext_tables
-            .into_iter()
-            .map(|ext_table| {
-                ext_table.all_degrees_with_origin(padded_height, num_trace_randomizers)
-            })
-            .concat();
+        let all_degrees = all_degrees_with_origin(padded_height, num_trace_randomizers);
         for deg in all_degrees {
             println!("{}", deg);
         }
@@ -1307,6 +1286,9 @@ pub(crate) mod triton_stark_tests {
             let (output, _, _, ext_table_collection, all_challenges, _) =
                 parse_simulate_pad_extend(&code, input.clone(), secret_input);
 
+            // todo replace once simulate_pad_extend returns master tables
+            let master_ext_table = Array2::<XFieldElement>::zeros([16, NUM_EXT_COLUMNS]);
+
             let input_terminal = EvalArg::compute_terminal(
                 &input,
                 EvalArg::default_initial(),
@@ -1333,16 +1315,12 @@ pub(crate) mod triton_stark_tests {
                 let from = arg
                     .from()
                     .iter()
-                    .map(|&(from_table, from_column)| {
-                        ext_table_collection.data(from_table).last().unwrap()[from_column]
-                    })
+                    .map(|&from_column| *master_ext_table.column(from_column).last().unwrap())
                     .fold(XFieldElement::one(), XFieldElement::mul);
                 let to = arg
                     .to()
                     .iter()
-                    .map(|&(to_table, to_column)| {
-                        ext_table_collection.data(to_table).last().unwrap()[to_column]
-                    })
+                    .map(|&to_column| *master_ext_table.column(to_column).last().unwrap())
                     .fold(XFieldElement::one(), XFieldElement::mul);
                 assert_eq!(
                     from, to,
@@ -1368,18 +1346,47 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let (_, _, _, ext_tables, challenges, _) =
-            parse_simulate_pad_extend("halt", vec![], vec![]);
+        let challenges = AllChallenges::placeholder();
+        let base_row = Array1::zeros(NUM_BASE_COLUMNS);
+        let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
 
-        for table in ext_tables.into_iter() {
-            let dummy_row = vec![0.into(); table.full_width()];
+        let br = base_row.view();
+        let er = ext_row.view();
 
-            // will panic if the number of variables is wrong
-            table.evaluate_initial_constraints(&dummy_row, &challenges);
-            table.evaluate_consistency_constraints(&dummy_row, &challenges);
-            table.evaluate_transition_constraints(&dummy_row, &dummy_row, &challenges);
-            table.evaluate_terminal_constraints(&dummy_row, &challenges);
-        }
+        ExtProgramTable::evaluate_initial_constraints(br, er, &challenges);
+        ExtProgramTable::evaluate_consistency_constraints(br, er, &challenges);
+        ExtProgramTable::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtProgramTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtInstructionTable::evaluate_initial_constraints(br, er, &challenges);
+        ExtInstructionTable::evaluate_consistency_constraints(br, er, &challenges);
+        ExtInstructionTable::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtInstructionTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtProcessorTable::evaluate_initial_constraints(br, er, &challenges);
+        ExtProcessorTable::evaluate_consistency_constraints(br, er, &challenges);
+        ExtProcessorTable::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtProcessorTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtOpStackTable::evaluate_initial_constraints(br, er, &challenges);
+        ExtOpStackTable::evaluate_consistency_constraints(br, er, &challenges);
+        ExtOpStackTable::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtOpStackTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtRamTable::evaluate_initial_constraints(br, er, &challenges);
+        ExtRamTable::evaluate_consistency_constraints(br, er, &challenges);
+        ExtRamTable::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtRamTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtJumpStackTable::evaluate_initial_constraints(br, er, &challenges);
+        ExtJumpStackTable::evaluate_consistency_constraints(br, er, &challenges);
+        ExtJumpStackTable::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtJumpStackTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtHashTable::evaluate_initial_constraints(br, er, &challenges);
+        ExtHashTable::evaluate_consistency_constraints(br, er, &challenges);
+        ExtHashTable::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtHashTable::evaluate_terminal_constraints(br, er, &challenges);
     }
 
     #[test]
@@ -1404,264 +1411,441 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn print_number_of_all_constraints_per_table() {
-        let (_, _, _, ext_tables, challenges, _) =
-            parse_simulate_pad_extend(sample_programs::COUNTDOWN_FROM_10, vec![], vec![]);
+        let table_names = [
+            "program table",
+            "instruction table",
+            "processor table",
+            "op stack table",
+            "ram table",
+            "jump stack table",
+            "hash table",
+        ];
+        let all_init = [
+            ExtProgramTable::initial_quotient_degree_bounds(2, 2).len(),
+            ExtInstructionTable::initial_quotient_degree_bounds(2, 2).len(),
+            ExtProcessorTable::initial_quotient_degree_bounds(2, 2).len(),
+            ExtOpStackTable::initial_quotient_degree_bounds(2, 2).len(),
+            ExtRamTable::initial_quotient_degree_bounds(2, 2).len(),
+            ExtJumpStackTable::initial_quotient_degree_bounds(2, 2).len(),
+            ExtHashTable::initial_quotient_degree_bounds(2, 2).len(),
+        ];
+        let all_cons = [
+            ExtProgramTable::consistency_quotient_degree_bounds(2, 2).len(),
+            ExtInstructionTable::consistency_quotient_degree_bounds(2, 2).len(),
+            ExtProcessorTable::consistency_quotient_degree_bounds(2, 2).len(),
+            ExtOpStackTable::consistency_quotient_degree_bounds(2, 2).len(),
+            ExtRamTable::consistency_quotient_degree_bounds(2, 2).len(),
+            ExtJumpStackTable::consistency_quotient_degree_bounds(2, 2).len(),
+            ExtHashTable::consistency_quotient_degree_bounds(2, 2).len(),
+        ];
+        let all_trans = [
+            ExtProgramTable::transition_quotient_degree_bounds(2, 2).len(),
+            ExtInstructionTable::transition_quotient_degree_bounds(2, 2).len(),
+            ExtProcessorTable::transition_quotient_degree_bounds(2, 2).len(),
+            ExtOpStackTable::transition_quotient_degree_bounds(2, 2).len(),
+            ExtRamTable::transition_quotient_degree_bounds(2, 2).len(),
+            ExtJumpStackTable::transition_quotient_degree_bounds(2, 2).len(),
+            ExtHashTable::transition_quotient_degree_bounds(2, 2).len(),
+        ];
+        let all_term = [
+            ExtProgramTable::terminal_quotient_degree_bounds(2, 2).len(),
+            ExtInstructionTable::terminal_quotient_degree_bounds(2, 2).len(),
+            ExtProcessorTable::terminal_quotient_degree_bounds(2, 2).len(),
+            ExtOpStackTable::terminal_quotient_degree_bounds(2, 2).len(),
+            ExtRamTable::terminal_quotient_degree_bounds(2, 2).len(),
+            ExtJumpStackTable::terminal_quotient_degree_bounds(2, 2).len(),
+            ExtHashTable::terminal_quotient_degree_bounds(2, 2).len(),
+        ];
+
+        let num_total_init: usize = all_init.iter().sum();
+        let num_total_cons: usize = all_cons.iter().sum();
+        let num_total_trans: usize = all_trans.iter().sum();
+        let num_total_term: usize = all_term.iter().sum();
+        let num_total = num_total_init + num_total_cons + num_total_trans + num_total_term;
 
         println!("| Table                |  Init |  Cons | Trans |  Term |   Sum |");
         println!("|:---------------------|------:|------:|------:|------:|------:|");
-
-        let mut num_total_initial_constraints = 0;
-        let mut num_total_consistency_constraints = 0;
-        let mut num_total_transition_constraints = 0;
-        let mut num_total_terminal_constraints = 0;
-        for table in ext_tables.into_iter() {
-            let num_initial_constraints = table
-                .evaluate_initial_constraints(&table.data()[0], &challenges)
-                .len();
-            let num_consistency_constraints = table
-                .evaluate_consistency_constraints(&table.data()[0], &challenges)
-                .len();
-            let num_transition_constraints = table
-                .evaluate_transition_constraints(&table.data()[0], &table.data()[1], &challenges)
-                .len();
-            let num_terminal_constraints = table
-                .evaluate_terminal_constraints(table.data().last().unwrap(), &challenges)
-                .len();
-
-            let num_total_constraints = num_initial_constraints
-                + num_consistency_constraints
-                + num_transition_constraints
-                + num_terminal_constraints;
-            num_total_initial_constraints += num_initial_constraints;
-            num_total_consistency_constraints += num_consistency_constraints;
-            num_total_transition_constraints += num_transition_constraints;
-            num_total_terminal_constraints += num_terminal_constraints;
+        for (name, num_init, num_cons, num_trans, num_term) in
+            izip!(table_names, all_init, all_cons, all_trans, all_term)
+        {
+            let num_total = num_init + num_cons + num_trans + num_term;
             println!(
                 "| {:<20} | {:>5} | {:>5} | {:>5} | {:>5} | {:>5} |",
-                table.name().split_whitespace().next().unwrap(),
-                num_initial_constraints,
-                num_consistency_constraints,
-                num_transition_constraints,
-                num_terminal_constraints,
-                num_total_constraints,
+                name, num_init, num_cons, num_trans, num_term, num_total,
             );
         }
-
-        let num_total_constraints = num_total_initial_constraints
-            + num_total_consistency_constraints
-            + num_total_transition_constraints
-            + num_total_terminal_constraints;
         println!(
             "| {:<20} | {:>5} | {:>5} | {:>5} | {:>5} | {:>5} |",
-            "Sum",
-            num_total_initial_constraints,
-            num_total_consistency_constraints,
-            num_total_transition_constraints,
-            num_total_terminal_constraints,
-            num_total_constraints
+            "Sum", num_total_init, num_total_cons, num_total_trans, num_total_term, num_total
         );
     }
 
     #[test]
-    fn number_of_quotient_degree_bound_matches_number_of_constraints_test() {
-        let (_, _, _, ext_tables, challenges, num_trace_randomizers) =
-            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
-        let padded_height = ext_tables.padded_height;
+    fn number_of_quotient_degree_bounds_match_number_of_constraints_test() {
+        let base_row = Array1::zeros(NUM_BASE_COLUMNS);
+        let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
+        let challenges = AllChallenges::placeholder();
 
-        for table in ext_tables.into_iter() {
-            let num_initial_constraints = table
-                .evaluate_initial_constraints(&table.data()[0], &challenges)
-                .len();
-            let num_initial_quotient_degree_bounds = table
-                .get_initial_quotient_degree_bounds(padded_height, num_trace_randomizers)
-                .len();
-            assert_eq!(
-                num_initial_constraints,
-                num_initial_quotient_degree_bounds,
-                "{} has mismatching number of initial constraints and quotient degree bounds.",
-                table.name()
-            );
+        let br = base_row.view();
+        let er = ext_row.view();
 
-            let num_consistency_constraints = table
-                .evaluate_consistency_constraints(&table.data()[0], &challenges)
-                .len();
-            let num_consistency_quotient_degree_bounds = table
-                .get_consistency_quotient_degree_bounds(padded_height, num_trace_randomizers)
-                .len();
-            assert_eq!(
-                num_consistency_constraints,
-                num_consistency_quotient_degree_bounds,
-                "{} has mismatching number of consistency constraints and quotient degree bounds.",
-                table.name()
-            );
+        assert_eq!(
+            ExtProgramTable::evaluate_initial_constraints(br, er, &challenges).len(),
+            ExtProgramTable::initial_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtInstructionTable::evaluate_initial_constraints(br, er, &challenges).len(),
+            ExtInstructionTable::initial_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtProcessorTable::evaluate_initial_constraints(br, er, &challenges).len(),
+            ExtProcessorTable::initial_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtOpStackTable::evaluate_initial_constraints(br, er, &challenges).len(),
+            ExtOpStackTable::initial_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtRamTable::evaluate_initial_constraints(br, er, &challenges).len(),
+            ExtRamTable::initial_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtJumpStackTable::evaluate_initial_constraints(br, er, &challenges).len(),
+            ExtJumpStackTable::initial_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtHashTable::evaluate_initial_constraints(br, er, &challenges).len(),
+            ExtHashTable::initial_quotient_degree_bounds(2, 2).len()
+        );
 
-            let num_transition_constraints = table
-                .evaluate_transition_constraints(&table.data()[0], &table.data()[1], &challenges)
-                .len();
-            let num_transition_quotient_degree_bounds = table
-                .get_transition_quotient_degree_bounds(padded_height, num_trace_randomizers)
-                .len();
-            assert_eq!(
-                num_transition_constraints,
-                num_transition_quotient_degree_bounds,
-                "{} has mismatching number of transition constraints and quotient degree bounds.",
-                table.name()
-            );
+        assert_eq!(
+            ExtProgramTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+            ExtProgramTable::consistency_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtInstructionTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+            ExtInstructionTable::consistency_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtProcessorTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+            ExtProcessorTable::consistency_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtOpStackTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+            ExtOpStackTable::consistency_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtRamTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+            ExtRamTable::consistency_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtJumpStackTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+            ExtJumpStackTable::consistency_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtHashTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+            ExtHashTable::consistency_quotient_degree_bounds(2, 2).len()
+        );
 
-            let num_terminal_constraints = table
-                .evaluate_terminal_constraints(table.data().last().unwrap(), &challenges)
-                .len();
-            let num_terminal_quotient_degree_bounds = table
-                .get_terminal_quotient_degree_bounds(padded_height, num_trace_randomizers)
-                .len();
-            assert_eq!(
-                num_terminal_constraints,
-                num_terminal_quotient_degree_bounds,
-                "{} has mismatching number of terminal constraints and quotient degree bounds.",
-                table.name()
-            );
-        }
+        assert_eq!(
+            ExtProgramTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+            ExtProgramTable::transition_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtInstructionTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+            ExtInstructionTable::transition_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtProcessorTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+            ExtProcessorTable::transition_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtOpStackTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+            ExtOpStackTable::transition_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtRamTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+            ExtRamTable::transition_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtJumpStackTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+            ExtJumpStackTable::transition_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtHashTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+            ExtHashTable::transition_quotient_degree_bounds(2, 2).len()
+        );
+
+        assert_eq!(
+            ExtProgramTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+            ExtProgramTable::terminal_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtInstructionTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+            ExtInstructionTable::terminal_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtProcessorTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+            ExtProcessorTable::terminal_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtOpStackTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+            ExtOpStackTable::terminal_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtRamTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+            ExtRamTable::terminal_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtJumpStackTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+            ExtJumpStackTable::terminal_quotient_degree_bounds(2, 2).len()
+        );
+        assert_eq!(
+            ExtHashTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+            ExtHashTable::terminal_quotient_degree_bounds(2, 2).len()
+        );
     }
 
     #[test]
-    fn triton_table_constraints_evaluate_to_zero_test_on_halt() {
+    fn triton_table_constraints_evaluate_to_zero_on_halt_test() {
         let zero = XFieldElement::zero();
         let source_code_and_input = test_halt();
-        let (_, _, _, ext_tables, challenges, _) =
+        let (_, _, _, _, challenges, _) =
             parse_simulate_pad_extend(&source_code_and_input.source_code, vec![], vec![]);
 
-        for table in (&ext_tables).into_iter() {
-            if let Some(row) = table.data().get(0) {
-                let evaluated_bcs = table.evaluate_initial_constraints(row, &challenges);
-                let num_initial_constraints = evaluated_bcs.len();
-                for (constraint_idx, ebc) in evaluated_bcs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        ebc,
-                        "Failed initial constraint on {}. Constraint index: {}/{}. Row index: {}/{}",
-                        table.name(),
-                        num_initial_constraints,
-                        constraint_idx,
-                        0,
-                        table.data().len()
-                    );
-                }
-            }
+        // todo change once simulate_pad_extend returns master tables
+        let num_rows = 16;
+        let master_base_table = Array2::zeros([num_rows, NUM_BASE_COLUMNS]);
+        let master_ext_table = Array2::zeros([num_rows, NUM_EXT_COLUMNS]);
 
-            for (row_idx, curr_row) in table.data().iter().enumerate() {
-                let evaluated_ccs = table.evaluate_consistency_constraints(curr_row, &challenges);
-                for (constraint_idx, ecc) in evaluated_ccs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        ecc,
-                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}/{}",
-                        table.name(),
-                        constraint_idx,
-                        row_idx,
-                        table.data().len()
-                    );
-                }
-            }
+        let evaluated_initial_constraints = evaluate_all_initial_constraints(
+            master_base_table.row(0),
+            master_ext_table.row(0),
+            &challenges,
+        );
+        let num_initial_constraints = evaluated_initial_constraints.len();
+        for (constraint_idx, ebc) in evaluated_initial_constraints.into_iter().enumerate() {
+            assert_eq!(
+                zero, ebc,
+                "Failed initial constraint {constraint_idx}/{num_initial_constraints}.",
+            );
+        }
 
-            for (row_idx, (curr_row, next_row)) in table.data().iter().tuple_windows().enumerate() {
-                let evaluated_tcs =
-                    table.evaluate_transition_constraints(curr_row, next_row, &challenges);
-                for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        evaluated_tc,
-                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}/{}",
-                        table.name(),
-                        constraint_idx,
-                        row_idx,
-                        table.data().len()
-                    );
-                }
+        for row_idx in 0..num_rows {
+            let base_row = master_base_table.row(row_idx);
+            let ext_row = master_ext_table.row(row_idx);
+            let evaluated_consistency_constraints =
+                evaluate_all_consistency_constraints(base_row, ext_row, &challenges);
+            let num_consistency_constraints = evaluated_consistency_constraints.len();
+            for (constraint_idx, ecc) in evaluated_consistency_constraints.into_iter().enumerate() {
+                assert_eq!(
+                    zero, ecc,
+                    "Failed consistency constraint {}/{}. Row index: {}/{}",
+                    constraint_idx, num_consistency_constraints, row_idx, num_rows,
+                );
             }
+        }
 
-            if let Some(row) = table.data().last() {
-                let evaluated_termcs = table.evaluate_terminal_constraints(row, &challenges);
-                for (constraint_idx, etermc) in evaluated_termcs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        etermc,
-                        "Failed terminal constraint on {}. Constraint index: {}. Row index: {}",
-                        table.name(),
-                        constraint_idx,
-                        table.data().len() - 1,
-                    );
-                }
+        for row_idx in 0..num_rows - 1 {
+            let base_row = master_base_table.row(row_idx);
+            let ext_row = master_ext_table.row(row_idx);
+            let next_base_row = master_base_table.row(row_idx + 1);
+            let next_ext_row = master_ext_table.row(row_idx + 1);
+            let evaluated_transition_constraints = evaluate_all_transition_constraints(
+                base_row,
+                ext_row,
+                next_base_row,
+                next_ext_row,
+                &challenges,
+            );
+            let num_transition_constraints = evaluated_transition_constraints.len();
+            for (constraint_idx, etc) in evaluated_transition_constraints.into_iter().enumerate() {
+                assert_eq!(
+                    zero, etc,
+                    "Failed transition constraint {}/{}. Row index: {}/{}",
+                    constraint_idx, num_transition_constraints, row_idx, num_rows,
+                );
             }
+        }
+
+        let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
+            master_base_table.row(num_rows - 1),
+            master_ext_table.row(num_rows - 1),
+            &challenges,
+        );
+        let num_terminal_constraints = evaluated_terminal_constraints.len();
+        for (constraint_idx, etermc) in evaluated_terminal_constraints.into_iter().enumerate() {
+            assert_eq!(
+                zero, etermc,
+                "Failed terminal constraint {constraint_idx}/{num_terminal_constraints}.",
+            );
         }
     }
 
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
         let zero = XFieldElement::zero();
-        let (_, _, _, ext_tables, challenges, _) =
+        let (_, _, _, _, challenges, _) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
 
-        for table in (&ext_tables).into_iter() {
-            if let Some(row) = table.data().get(0) {
-                let evaluated_bcs = table.evaluate_initial_constraints(row, &challenges);
-                for (constraint_idx, ebc) in evaluated_bcs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        ebc,
-                        "Failed initial constraint on {}. Constraint index: {}. Row index: {}",
-                        table.name(),
-                        constraint_idx,
-                        0,
-                    );
-                }
-            }
+        // todo use actual master tables once parse_simulate_pad_extend is changed
+        let mbt = MasterBaseTable {
+            padded_height: 4,
+            num_trace_randomizers: 2,
+            num_randomizer_polynomials: 1,
+            program_len: 2,
+            main_execution_len: 2,
+            hash_coprocessor_execution_len: 3,
+            randomized_padded_trace_len: 8,
+            rand_trace_to_padded_trace_unit_distance: 2,
+            fri_domain: ArithmeticDomain {
+                offset: BFieldElement::one(),
+                generator: BFieldElement::primitive_root_of_unity(8).unwrap(),
+                length: 32,
+            },
+            master_base_matrix: ArrayBase::ones([32, NUM_BASE_COLUMNS]),
+        };
+        let met = MasterExtTable {
+            padded_height: 4,
+            num_trace_randomizers: 2,
+            randomized_padded_trace_len: 8,
+            rand_trace_to_padded_trace_unit_distance: 2,
+            fri_domain: ArithmeticDomain {
+                offset: BFieldElement::one(),
+                generator: BFieldElement::primitive_root_of_unity(8).unwrap(),
+                length: 32,
+            },
+            master_ext_matrix: ArrayBase::ones([32, NUM_EXT_COLUMNS]),
+        };
 
-            for (row_idx, curr_row) in table.data().iter().enumerate() {
-                let evaluated_ccs = table.evaluate_consistency_constraints(curr_row, &challenges);
-                for (constraint_idx, ecc) in evaluated_ccs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        ecc,
-                        "Failed consistency constraint {}. Constraint index: {}. Row index: {}/{}",
-                        table.name(),
-                        constraint_idx,
-                        row_idx,
-                        table.data().len()
-                    );
-                }
-            }
+        let fbr = mbt.master_base_matrix.row(0);
+        let fer = met.master_ext_matrix.row(0);
+        let evaluated_initial_constraints = [
+            ExtProgramTable::evaluate_initial_constraints(fbr, fer, &challenges),
+            ExtInstructionTable::evaluate_initial_constraints(fbr, fer, &challenges),
+            ExtProcessorTable::evaluate_initial_constraints(fbr, fer, &challenges),
+            ExtOpStackTable::evaluate_initial_constraints(fbr, fer, &challenges),
+            ExtRamTable::evaluate_initial_constraints(fbr, fer, &challenges),
+            ExtJumpStackTable::evaluate_initial_constraints(fbr, fer, &challenges),
+            ExtHashTable::evaluate_initial_constraints(fbr, fer, &challenges),
+        ]
+        .concat();
+        for (idx, xfe) in evaluated_initial_constraints.into_iter().enumerate() {
+            assert_eq!(
+                zero, xfe,
+                "Failed initial constraint with global index {idx}.",
+            )
+        }
 
-            for (row_idx, (current_row, next_row)) in
-                table.data().iter().tuple_windows().enumerate()
-            {
-                let evaluated_tcs =
-                    table.evaluate_transition_constraints(current_row, next_row, &challenges);
-                for (constraint_idx, evaluated_tc) in evaluated_tcs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        evaluated_tc,
-                        "Failed transition constraint on {}. Constraint index: {}. Row index: {}/{}",
-                        table.name(),
-                        constraint_idx,
-                        row_idx,
-                        table.data().len()
-                    );
-                }
+        for (row_idx, (br, er)) in mbt
+            .master_base_matrix
+            .rows()
+            .into_iter()
+            .zip_eq(met.master_ext_matrix.rows().into_iter())
+            .enumerate()
+        {
+            let evaluated_consistency_constraints = [
+                ExtProgramTable::evaluate_consistency_constraints(br, er, &challenges),
+                ExtInstructionTable::evaluate_consistency_constraints(br, er, &challenges),
+                ExtProcessorTable::evaluate_consistency_constraints(br, er, &challenges),
+                ExtOpStackTable::evaluate_consistency_constraints(br, er, &challenges),
+                ExtRamTable::evaluate_consistency_constraints(br, er, &challenges),
+                ExtJumpStackTable::evaluate_consistency_constraints(br, er, &challenges),
+                ExtHashTable::evaluate_consistency_constraints(br, er, &challenges),
+            ]
+            .concat();
+            for (idx, xfe) in evaluated_consistency_constraints.into_iter().enumerate() {
+                assert_eq!(
+                    zero, xfe,
+                    "Failed consistency constraint with global index {idx} on row {row_idx}.",
+                )
             }
+        }
 
-            if let Some(row) = table.data().last() {
-                let evaluated_termcs = table.evaluate_terminal_constraints(row, &challenges);
-                for (constraint_idx, etermc) in evaluated_termcs.into_iter().enumerate() {
-                    assert_eq!(
-                        zero,
-                        etermc,
-                        "Failed terminal constraint on {}. Constraint index: {}. Row index: {}",
-                        table.name(),
-                        constraint_idx,
-                        table.data().len() - 1,
-                    );
-                }
+        for row_idx in 0..mbt.master_base_matrix.nrows() - 1 {
+            let curr_base_row = mbt.master_base_matrix.row(row_idx);
+            let curr_ext_row = met.master_ext_matrix.row(row_idx);
+            let next_base_row = mbt.master_base_matrix.row(row_idx + 1);
+            let next_ext_row = met.master_ext_matrix.row(row_idx + 1);
+            let evaluated_transition_constraints = [
+                ExtProgramTable::evaluate_transition_constraints(
+                    curr_base_row,
+                    curr_ext_row,
+                    next_base_row,
+                    next_ext_row,
+                    &challenges,
+                ),
+                ExtInstructionTable::evaluate_transition_constraints(
+                    curr_base_row,
+                    curr_ext_row,
+                    next_base_row,
+                    next_ext_row,
+                    &challenges,
+                ),
+                ExtProcessorTable::evaluate_transition_constraints(
+                    curr_base_row,
+                    curr_ext_row,
+                    next_base_row,
+                    next_ext_row,
+                    &challenges,
+                ),
+                ExtOpStackTable::evaluate_transition_constraints(
+                    curr_base_row,
+                    curr_ext_row,
+                    next_base_row,
+                    next_ext_row,
+                    &challenges,
+                ),
+                ExtRamTable::evaluate_transition_constraints(
+                    curr_base_row,
+                    curr_ext_row,
+                    next_base_row,
+                    next_ext_row,
+                    &challenges,
+                ),
+                ExtJumpStackTable::evaluate_transition_constraints(
+                    curr_base_row,
+                    curr_ext_row,
+                    next_base_row,
+                    next_ext_row,
+                    &challenges,
+                ),
+                ExtHashTable::evaluate_transition_constraints(
+                    curr_base_row,
+                    curr_ext_row,
+                    next_base_row,
+                    next_ext_row,
+                    &challenges,
+                ),
+            ]
+            .concat();
+            for (idx, xfe) in evaluated_transition_constraints.into_iter().enumerate() {
+                assert_eq!(
+                    zero, xfe,
+                    "Failed transition constraint with global index {idx} on row {row_idx}.",
+                )
             }
+        }
+
+        let lbr = mbt
+            .master_base_matrix
+            .row(mbt.master_base_matrix.nrows() - 1);
+        let ler = met.master_ext_matrix.row(met.master_ext_matrix.nrows() - 1);
+        let evaluated_terminal_constraints = [
+            ExtProgramTable::evaluate_terminal_constraints(lbr, ler, &challenges),
+            ExtInstructionTable::evaluate_terminal_constraints(lbr, ler, &challenges),
+            ExtProcessorTable::evaluate_terminal_constraints(lbr, ler, &challenges),
+            ExtOpStackTable::evaluate_terminal_constraints(lbr, ler, &challenges),
+            ExtRamTable::evaluate_terminal_constraints(lbr, ler, &challenges),
+            ExtJumpStackTable::evaluate_terminal_constraints(lbr, ler, &challenges),
+            ExtHashTable::evaluate_terminal_constraints(lbr, ler, &challenges),
+        ]
+        .concat();
+        for (idx, xfe) in evaluated_terminal_constraints.into_iter().enumerate() {
+            assert_eq!(
+                zero, xfe,
+                "Failed terminal constraint with global index {idx}",
+            )
         }
     }
 
