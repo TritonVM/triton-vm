@@ -44,7 +44,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
             prof_stop!(maybe_profiler, "prove");
 
             if let Some(profiler) = maybe_profiler.as_mut() {
-                profiler.finish();
+                profiler.finish(None);
                 report = profiler.report();
             }
             maybe_profiler = None;

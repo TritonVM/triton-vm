@@ -901,7 +901,7 @@ pub mod triton_vm_tests {
             profiler.stop(&num_cycles_string);
             profiler.stop(&program_idx_string);
         }
-        profiler.finish();
+        profiler.finish(None);
         println!("{}", profiler.report());
     }
 

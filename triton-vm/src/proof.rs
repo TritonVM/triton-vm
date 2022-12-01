@@ -4,6 +4,12 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proof(pub Vec<BFieldElement>);
 
+impl Proof {
+    pub fn padded_height(&self) -> usize {
+        self.0[0].value() as usize
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claim {
     pub input: Vec<BFieldElement>,

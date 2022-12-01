@@ -35,7 +35,7 @@ fn prove_halt(_criterion: &mut Criterion) {
     let proof = stark.prove(aet, &mut maybe_profiler);
 
     if let Some(profiler) = &mut maybe_profiler {
-        profiler.finish();
+        profiler.finish(Some(proof.padded_height()));
         report = profiler.report();
     };
 
