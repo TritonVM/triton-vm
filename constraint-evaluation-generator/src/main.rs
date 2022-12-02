@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use std::collections::HashSet;
+use std::fmt::Write;
 use std::process::Command;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -418,7 +419,7 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     // expression for the value, and then put it into scope through a let expression
     if circuit.visited_counter == requested_visited_count && !in_scope.contains(&circuit.id) {
         let binding_name = get_binding_name(circuit);
-        output.push_str(&format!("let {binding_name} =\n"));
+        writeln!(output, "let {binding_name} =").unwrap();
         evaluate_single_node(requested_visited_count, circuit, in_scope, output);
         output.push_str(";\n");
 

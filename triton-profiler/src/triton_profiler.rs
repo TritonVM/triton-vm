@@ -34,6 +34,7 @@ pub struct TritonProfiler {
     stack: Vec<(usize, String)>,
     profile: Vec<Task>,
     total_time: Duration,
+    clock_frequency: usize,
 }
 
 impl TritonProfiler {
@@ -45,6 +46,7 @@ impl TritonProfiler {
             stack: vec![],
             profile: vec![],
             total_time: Duration::ZERO,
+            clock_frequency: 0,
         }
     }
 
@@ -75,9 +77,8 @@ impl TritonProfiler {
             self.stack.is_empty(),
             "Cannot generate report before stack is empty."
         );
-        assert_ne!(
-            Duration::ZERO,
-            self.total_time,
+        assert!(
+            self.total_time != Duration::ZERO,
             "Cannot generate report before profiler has finished. Call `finish()` first."
         );
 
@@ -152,6 +153,7 @@ impl TritonProfiler {
             tasks: report,
             name: self.name.clone(),
             total_time: self.total_time,
+            clock_frequency: self.clock_frequency,
         }
     }
 
@@ -176,7 +178,7 @@ impl TritonProfiler {
         });
 
         if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
-            println!("start: {name}");
+            println!("stop: {name}; took {now:.2?}");
         }
     }
 
@@ -232,7 +234,7 @@ impl TritonProfiler {
         self.profile[index].time = duration;
 
         if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
-            println!("stop:  {name} – took {duration:.2?}");
+            println!("stop: {name}");
         }
     }
 
@@ -264,13 +266,16 @@ impl TritonProfiler {
         }
     }
 
-    pub fn finish(&mut self) {
+    pub fn finish(&mut self, cycle_count: Option<usize>) {
         assert!(!self.profile.is_empty(), "Nothing to finish.");
         assert!(
             self.stack.is_empty(),
             "Cannot finish before stack is empty."
         );
         self.total_time = self.timer.elapsed();
+        if let Some(cycle_count) = cycle_count {
+            self.clock_frequency = cycle_count / self.total_time.as_secs() as usize;
+        }
     }
 }
 
@@ -348,6 +353,7 @@ pub struct Report {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
+    clock_frequency: usize,
 }
 
 impl Report {
@@ -356,6 +362,7 @@ impl Report {
             name: "".to_string(),
             tasks: vec![],
             total_time: Duration::ZERO,
+            clock_frequency: 0,
         }
     }
 
@@ -372,6 +379,8 @@ impl Report {
 
 impl Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "clock frquency is {} hertz", self.clock_frequency)?;
+
         let max_name_width = self
             .tasks
             .iter()
@@ -530,7 +539,7 @@ pub mod triton_profiler_tests {
                 profiler.stop(&name);
             }
         }
-        profiler.finish();
+        profiler.finish(None);
 
         let profile = profiler.report();
         println!("{}", profile);
