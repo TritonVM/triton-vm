@@ -9,9 +9,14 @@ use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView2;
-use ndarray::Axis;
+use ndarray::{par_azip, Axis};
 use num_traits::One;
+use num_traits::Zero;
 use rayon::prelude::*;
+use triton_profiler::prof_itr0;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
@@ -28,11 +33,6 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
-use triton_profiler::prof_itr0;
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
-
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::EvalArg;
@@ -47,25 +47,7 @@ use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
-use crate::table::table_collection::all_consistency_quotient_degree_bounds;
-use crate::table::table_collection::all_initial_quotient_degree_bounds;
-use crate::table::table_collection::all_quotient_degree_bounds;
-use crate::table::table_collection::all_quotients;
-use crate::table::table_collection::all_terminal_quotient_degree_bounds;
-use crate::table::table_collection::all_transition_quotient_degree_bounds;
-use crate::table::table_collection::base_degree_bounds;
-use crate::table::table_collection::derive_trace_domain_generator;
-use crate::table::table_collection::evaluate_all_consistency_constraints;
-use crate::table::table_collection::evaluate_all_initial_constraints;
-use crate::table::table_collection::evaluate_all_terminal_constraints;
-use crate::table::table_collection::evaluate_all_transition_constraints;
-use crate::table::table_collection::extension_degree_bounds;
-use crate::table::table_collection::max_degree_with_origin;
-use crate::table::table_collection::ExtTableCollection;
-use crate::table::table_collection::MasterBaseTable;
-use crate::table::table_collection::MasterTable;
-use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_collection::*;
 
 pub type StarkHasher = RescuePrimeRegular;
 pub type Maker = CpuParallel;
@@ -148,7 +130,7 @@ impl Stark {
     pub fn new(claim: Claim, parameters: StarkParameters) -> Self {
         let max_degree_with_origin =
             max_degree_with_origin(claim.padded_height, parameters.num_trace_randomizers);
-        let max_degree = (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as i64;
+        let max_degree = (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as Degree;
         let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
         let fri_domain_generator =
             BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
@@ -227,64 +209,34 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
         prof_stop!(maybe_profiler, "ext tables");
 
-        prof_start!(maybe_profiler, "degree bounds");
-        prof_start!(maybe_profiler, "base");
-        let base_degree_bounds = base_degree_bounds(
-            master_base_table.padded_height,
-            master_base_table.num_trace_randomizers,
-        );
-        prof_stop!(maybe_profiler, "base");
-
-        prof_start!(maybe_profiler, "extension");
-        let extension_degree_bounds = extension_degree_bounds(
-            master_ext_table.padded_height,
-            master_ext_table.num_trace_randomizers,
-        );
-        prof_stop!(maybe_profiler, "extension");
-
-        prof_start!(maybe_profiler, "quotient");
+        prof_start!(maybe_profiler, "quotient degree bounds");
         let mut quotient_degree_bounds = all_quotient_degree_bounds(
             master_base_table.padded_height,
             self.parameters.num_trace_randomizers,
         );
-        prof_stop!(maybe_profiler, "quotient");
-        prof_stop!(maybe_profiler, "degree bounds");
-
-        /* todo continue >>> here <<< */
+        prof_stop!(maybe_profiler, "quotient degree bounds");
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let quotient_domain = self.quotient_domain();
         let unit_distance = self.fri.domain.length / quotient_domain.length;
-        let base_quotient_domain_codewords: Vec<_> = fri_domain_base_master_table
+        let base_quotient_domain_codewords = fri_domain_base_master_table
             .master_base_matrix
-            .axis_iter(Axis(1))
-            .into_par_iter()
-            .map(|c| {
-                c.to_owned()
-                    .into_iter()
-                    .step_by(unit_distance)
-                    .collect_vec()
-            })
-            .collect();
-        let extension_quotient_domain_codewords: Vec<_> = fri_domain_ext_master_table
+            .slice(s![..; unit_distance, ..]);
+        let extension_quotient_domain_codewords = fri_domain_ext_master_table
             .master_ext_matrix
-            .slice(s![..; unit_distance, ..])
-            .rows()
-            .into_iter()
-            .map(|row| row.to_vec())
-            .collect();
-        let full_quotient_domain_tables = ExtTableCollection::with_data(
-            master_base_table.padded_height,
-            base_quotient_domain_codewords.clone(),
-            extension_quotient_domain_codewords.clone(),
-        );
+            .slice(s![..; unit_distance, ..]);
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
+        /* todo continue >>> here <<< change all_quotients to actually return the quotients */
+
         prof_start!(maybe_profiler, "quotient codewords");
+        let num_quotients = quotient_degree_bounds.len();
         let mut quotient_codewords = all_quotients(
-            &master_base_table,
-            &master_ext_table,
+            base_quotient_domain_codewords,
+            extension_quotient_domain_codewords,
+            master_base_table.padded_height,
             quotient_domain,
+            num_quotients,
             &extension_challenges,
             maybe_profiler,
         );
@@ -294,7 +246,7 @@ impl Stark {
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = 2 * NUM_BASE_COLUMNS
             + 2 * NUM_EXT_COLUMNS
-            + 2 * quotient_degree_bounds.len()
+            + 2 * num_quotients
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
@@ -332,30 +284,35 @@ impl Stark {
             .terminal_quotient_codeword(
                 master_ext_table.master_ext_matrix.view(),
                 quotient_domain,
-                derive_trace_domain_generator(full_quotient_domain_tables.padded_height as u64),
+                derive_trace_domain_generator(master_base_table.padded_height as u64),
             );
-        quotient_codewords.push(grand_cross_table_arg_quotient_codeword);
+        // todo incorporate this from the beginning or ensure that the memory layout is correct
+        let gctaqc = Array1::from(grand_cross_table_arg_quotient_codeword);
+        quotient_codewords
+            .push(Axis(0), gctaqc.view())
+            .expect("Temporary code is failing.");
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(
-                &full_quotient_domain_tables,
+                master_base_table.padded_height,
                 self.parameters.num_trace_randomizers,
             );
         quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
         prof_stop!(maybe_profiler, "grand cross table");
 
         prof_start!(maybe_profiler, "nonlinear combination");
+        prof_start!(maybe_profiler, "create combination codeword");
         let combination_codeword = self.create_combination_codeword(
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
-            quotient_codewords,
-            non_lin_combi_weights.to_vec(),
-            base_degree_bounds,
-            extension_degree_bounds,
+            quotient_codewords.view(),
+            non_lin_combi_weights,
             quotient_degree_bounds,
-            maybe_profiler,
+            master_base_table.padded_height,
+            master_base_table.num_trace_randomizers,
         );
+        prof_stop!(maybe_profiler, "create combination codeword");
 
         prof_start!(maybe_profiler, "LDE 3");
         let fri_combination_codeword_without_randomizer =
@@ -499,138 +456,115 @@ impl Stark {
     fn create_combination_codeword(
         &self,
         quotient_domain: ArithmeticDomain,
-        base_codewords: Vec<Vec<BFieldElement>>,
-        extension_codewords: Vec<Vec<XFieldElement>>,
-        quotient_codewords: Vec<Vec<XFieldElement>>,
-        weights: Vec<XFieldElement>,
-        base_degree_bounds: Vec<i64>,
-        extension_degree_bounds: Vec<i64>,
-        quotient_degree_bounds: Vec<i64>,
-        maybe_profiler: &mut Option<TritonProfiler>,
+        base_codewords: ArrayView2<BFieldElement>,
+        extension_codewords: ArrayView2<XFieldElement>,
+        quotient_codewords: ArrayView2<XFieldElement>,
+        weights: &[XFieldElement],
+        quotient_degree_bounds: Vec<Degree>,
+        padded_height: usize,
+        num_trace_randomizers: usize,
     ) -> Vec<XFieldElement> {
-        prof_start!(maybe_profiler, "create combination codeword");
-        let base_codewords_lifted = base_codewords
-            .into_iter()
-            .map(|base_codeword| {
-                base_codeword
-                    .into_iter()
-                    .map(|bfe| bfe.lift())
-                    .collect_vec()
-            })
-            .collect_vec();
-        let mut weights_iterator = weights.into_iter();
-        let mut combination_codeword: Vec<XFieldElement> = vec![0.into(); quotient_domain.length];
+        let (base_weights, remaining_weights) = weights.split_at(2 * NUM_BASE_COLUMNS);
+        let (ext_weights, quot_weights) = remaining_weights.split_at(2 * NUM_EXT_COLUMNS);
 
+        assert_eq!(base_weights.len(), 2 * base_codewords.ncols());
+        assert_eq!(ext_weights.len(), 2 * extension_codewords.ncols());
+        assert_eq!(quot_weights.len(), 2 * quotient_codewords.ncols());
+
+        // todo Propagate this domain-specific knowledge to the rest of the code base:
+        //  `base_degree_bounds` and `ext_degree_bounds` is always just `interpolant_degree`
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        let base_and_ext_col_shift = self.max_degree - interpolant_degree;
         let quotient_domain_values = quotient_domain.domain_values();
+        let shifted_domain_values: Array1<BFieldElement> = quotient_domain_values
+            .clone()
+            .into_par_iter()
+            .map(|domain_value| domain_value.mod_pow_u32(base_and_ext_col_shift as u32))
+            .collect::<Vec<_>>()
+            .into();
 
-        for (codewords, bounds, identifier) in [
-            (base_codewords_lifted, base_degree_bounds, "base"),
-            (extension_codewords, extension_degree_bounds, "ext"),
-            (quotient_codewords, quotient_degree_bounds, "quot"),
-        ] {
-            if std::env::var("DEBUG").is_ok() {
-                println!(" --- next up: {identifier} codewords");
-            }
-            for (idx, (codeword, degree_bound)) in
-                codewords.into_iter().zip_eq(bounds.iter()).enumerate()
-            {
-                let shift = (self.max_degree as Degree - degree_bound) as u32;
-                let codeword_shifted =
-                    Self::shift_codeword(&quotient_domain_values, &codeword, shift);
+        let mut combination_codeword = vec![XFieldElement::zero(); quotient_domain.length];
 
-                combination_codeword = Self::non_linearly_add_to_codeword(
-                    &combination_codeword,
-                    &codeword,
-                    &weights_iterator.next().unwrap(),
-                    &codeword_shifted,
-                    &weights_iterator.next().unwrap(),
-                );
-                self.debug_check_degrees(
-                    quotient_domain,
-                    &idx,
-                    degree_bound,
-                    &shift,
-                    &codeword,
-                    &codeword_shifted,
-                    identifier,
-                );
-            }
+        for (idx, (codeword, weights)) in base_codewords
+            .columns()
+            .into_iter()
+            .zip_eq(base_weights.chunks_exact(2))
+            .enumerate()
+        {
+            par_azip!((acc in &mut combination_codeword,
+                &bfe in codeword)
+                    *acc += weights[0] * bfe);
+            par_azip!((acc in &mut combination_codeword,
+                &bfe in codeword,
+                &shift in shifted_domain_values.view())
+                    *acc += weights[1] * bfe * shift);
+            self.debug_check_degree(idx, &combination_codeword);
         }
-
         if std::env::var("DEBUG").is_ok() {
-            println!(
-                "The combination codeword corresponds to a polynomial of degree {}",
-                quotient_domain.interpolate(&combination_codeword).degree()
-            );
+            println!(" --- next up: extension codewords");
         }
-
-        prof_stop!(maybe_profiler, "create combination codeword");
+        for (idx, (codeword, weights)) in extension_codewords
+            .columns()
+            .into_iter()
+            .zip_eq(ext_weights.chunks_exact(2))
+            .enumerate()
+        {
+            par_azip!((acc in &mut combination_codeword,
+                &xfe in codeword)
+                    *acc += weights[0] * xfe);
+            par_azip!((acc in &mut combination_codeword,
+                &xfe in codeword,
+                &shift in shifted_domain_values.view())
+                    *acc += weights[1] * xfe * shift);
+            self.debug_check_degree(idx, &combination_codeword);
+        }
+        if std::env::var("DEBUG").is_ok() {
+            println!(" --- next up: quotient codewords");
+        }
+        for (idx, ((codeword, weights), degree_bound)) in quotient_codewords
+            .columns()
+            .into_iter()
+            .zip_eq(quot_weights.chunks_exact(2))
+            .zip_eq(quotient_degree_bounds)
+            .enumerate()
+        {
+            par_azip!((acc in &mut combination_codeword,
+                &xfe in codeword)
+                    *acc += weights[0] * xfe);
+            let shift = self.max_degree - degree_bound;
+            let shifted_domain_values: Array1<BFieldElement> = quotient_domain_values
+                .clone()
+                .into_par_iter()
+                .map(|domain_value| domain_value.mod_pow_u32(shift as u32))
+                .collect::<Vec<_>>()
+                .into();
+            par_azip!((acc in &mut combination_codeword,
+                &xfe in codeword,
+                &shift in shifted_domain_values.view())
+                    *acc += weights[1] * xfe * shift);
+            self.debug_check_degree(idx, &combination_codeword);
+        }
 
         combination_codeword
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn debug_check_degrees(
-        &self,
-        domain: ArithmeticDomain,
-        idx: &usize,
-        degree_bound: &Degree,
-        shift: &u32,
-        extension_codeword: &[XFieldElement],
-        extension_codeword_shifted: &[XFieldElement],
-        poly_type: &str,
-    ) {
+    fn debug_check_degree(&self, index: usize, combination_codeword: &[XFieldElement]) {
         if std::env::var("DEBUG").is_err() {
             return;
         }
-        let interpolated = domain.interpolate(extension_codeword);
-        let interpolated_shifted = domain.interpolate(extension_codeword_shifted);
-        let int_shift_deg = interpolated_shifted.degree();
-        let maybe_excl_mark = if int_shift_deg > self.max_degree as isize {
+        let max_degree = self.max_degree;
+        let degree = self.fri.domain.interpolate(combination_codeword).degree();
+        let maybe_excl_mark = if degree > max_degree as isize {
             "!!!"
-        } else if int_shift_deg != -1 && int_shift_deg != self.max_degree as isize {
-            " ! "
+        } else if degree != -1 && degree != max_degree as isize {
+            "!"
         } else {
-            "   "
+            ""
         };
         println!(
-            "{maybe_excl_mark} The shifted {poly_type} codeword with index {idx:>2} \
-            must be of maximal degree {}. Got {}. Predicted degree of unshifted codeword: \
-            {degree_bound}. Actual degree of unshifted codeword: {}. Shift = {shift}.",
-            self.max_degree,
-            int_shift_deg,
-            interpolated.degree(),
+            "{maybe_excl_mark:^3} combination codeword has degree {degree} after absorbing \
+            shifted codeword with index {index:>2}. Must be of maximal degree {max_degree}."
         );
-    }
-
-    fn non_linearly_add_to_codeword(
-        combination_codeword: &Vec<XFieldElement>,
-        summand: &Vec<XFieldElement>,
-        weight: &XFieldElement,
-        summand_shifted: &Vec<XFieldElement>,
-        weight_shifted: &XFieldElement,
-    ) -> Vec<XFieldElement> {
-        combination_codeword
-            .par_iter()
-            .zip_eq(summand.par_iter())
-            .map(|(cc_elem, &summand_elem)| *cc_elem + *weight * summand_elem)
-            .zip_eq(summand_shifted.par_iter())
-            .map(|(cc_elem, &summand_shifted_elem)| {
-                cc_elem + *weight_shifted * summand_shifted_elem
-            })
-            .collect()
-    }
-
-    fn shift_codeword(
-        quotient_domain_values: &[BFieldElement],
-        codeword: &[XFieldElement],
-        shift: u32,
-    ) -> Vec<XFieldElement> {
-        quotient_domain_values
-            .par_iter()
-            .zip_eq(codeword.par_iter())
-            .map(|(x, &codeword_element)| (codeword_element * x.mod_pow_u32(shift)))
-            .collect()
     }
 
     fn sample_weights(seed: Digest, num_weights: usize) -> Vec<XFieldElement> {
@@ -668,16 +602,10 @@ impl Stark {
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "dequeue");
 
-        prof_start!(maybe_profiler, "degree bounds");
-        prof_start!(maybe_profiler, "generate tables");
-        let ext_table_collection = ExtTableCollection::for_verifier(padded_height, maybe_profiler);
-        prof_stop!(maybe_profiler, "generate tables");
-
-        prof_start!(maybe_profiler, "quotient");
+        prof_start!(maybe_profiler, "quotient degree bounds");
         let quotient_degree_bounds =
             all_quotient_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
-        prof_stop!(maybe_profiler, "quotient");
-        prof_stop!(maybe_profiler, "degree bounds");
+        prof_stop!(maybe_profiler, "quotient degree bounds");
 
         // Get weights for nonlinear combination. Concretely, sample 2 weights for each base, and
         // extension polynomial and each quotients, because transition constraints check 2 rows.
@@ -971,10 +899,8 @@ impl Stark {
 
             prof_start!(maybe_profiler, "grand cross-table argument");
 
-            let grand_cross_table_arg_degree_bound = grand_cross_table_arg.quotient_degree_bound(
-                &ext_table_collection,
-                self.parameters.num_trace_randomizers,
-            );
+            let grand_cross_table_arg_degree_bound = grand_cross_table_arg
+                .quotient_degree_bound(padded_height, self.parameters.num_trace_randomizers);
             let shift = self.max_degree - grand_cross_table_arg_degree_bound;
             let grand_cross_table_arg_evaluated =
                 grand_cross_table_arg.evaluate_non_linear_sum_of_differences(ext_row);
@@ -1062,9 +988,11 @@ pub(crate) mod triton_stark_tests {
     use std::ops::Mul;
 
     use itertools::izip;
-    use ndarray::{Array1, Array2, ArrayBase};
-    use num_traits::{One, Zero};
-    use twenty_first::shared_math::ntt::ntt;
+    use ndarray::Array1;
+    use ndarray::Array2;
+    use ndarray::ArrayBase;
+    use num_traits::One;
+    use num_traits::Zero;
     use twenty_first::shared_math::other::log_2_floor;
 
     use crate::cross_table_arguments::EvalArg;
@@ -1073,7 +1001,8 @@ pub(crate) mod triton_stark_tests {
     use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::base_matrix::BaseMatrices;
     use crate::table::base_table::InheritsFromTable;
-    use crate::table::extension_table::{Evaluable, Quotientable};
+    use crate::table::extension_table::Evaluable;
+    use crate::table::extension_table::Quotientable;
     use crate::table::hash_table::ExtHashTable;
     use crate::table::instruction_table::ExtInstructionTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
@@ -1195,43 +1124,6 @@ pub(crate) mod triton_stark_tests {
         let all_degrees = all_degrees_with_origin(padded_height, num_trace_randomizers);
         for deg in all_degrees {
             println!("{}", deg);
-        }
-    }
-
-    #[test]
-    pub fn shift_codeword_test() {
-        let claim = Claim {
-            input: vec![],
-            program: vec![],
-            output: vec![],
-            padded_height: 32,
-        };
-        let parameters = StarkParameters::default();
-        let stark = Stark::new(claim, parameters);
-        let fri_x_values = stark.fri.domain.domain_values();
-
-        let mut test_codeword: Vec<XFieldElement> = vec![0.into(); stark.fri.domain.length];
-        let poly_degree = 4;
-        test_codeword[0..=poly_degree].copy_from_slice(&[
-            2.into(),
-            42.into(),
-            1.into(),
-            3.into(),
-            17.into(),
-        ]);
-
-        ntt(
-            &mut test_codeword,
-            stark.fri.domain.generator,
-            log_2_floor(stark.fri.domain.length as u128) as u32,
-        );
-        for shift in [0, 1, 5, 17, 63, 121, 128] {
-            let shifted_codeword = Stark::shift_codeword(&fri_x_values, &test_codeword, shift);
-            let interpolated_shifted_codeword = stark.fri.domain.interpolate(&shifted_codeword);
-            assert_eq!(
-                (poly_degree + shift as usize) as isize,
-                interpolated_shifted_codeword.degree()
-            );
         }
     }
 

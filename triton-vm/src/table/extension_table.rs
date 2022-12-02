@@ -300,7 +300,7 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         transpose(&transposed_quotient_codewords)
     }
 
-    // todo get quotient degree bounds by type, not by table
+    // todo get quotients by type, not by table
     fn all_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
@@ -355,20 +355,6 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             consistency_quotients,
             transition_quotients,
             terminal_quotients,
-        ]
-        .concat()
-    }
-
-    // todo get quotient degree bounds by type, not by table
-    fn all_quotient_degree_bounds(
-        padded_height: usize,
-        num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
-        vec![
-            Self::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-            Self::consistency_quotient_degree_bounds(padded_height, num_trace_randomizers),
-            Self::transition_quotient_degree_bounds(padded_height, num_trace_randomizers),
-            Self::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
         ]
         .concat()
     }

@@ -396,6 +396,7 @@ impl MasterBaseTable {
         master_ext_table
     }
 
+    // todo: move randomizer codewords to extension table, stay type-native
     pub fn randomizer_polynomials(&self) -> Vec<Vec<XFieldElement>> {
         self.master_base_matrix
             .slice(s![.., ..EXTENSION_DEGREE * self.num_randomizer_polynomials])
@@ -503,12 +504,18 @@ impl MasterExtTable {
     }
 }
 
-pub fn base_degree_bounds(padded_height: usize, num_trace_randomizers: usize) -> Vec<Degree> {
-    vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_BASE_COLUMNS]
+pub fn base_degree_bounds(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> [Degree; NUM_BASE_COLUMNS] {
+    [interpolant_degree(padded_height, num_trace_randomizers); NUM_BASE_COLUMNS]
 }
 
-pub fn extension_degree_bounds(padded_height: usize, num_trace_randomizers: usize) -> Vec<Degree> {
-    vec![interpolant_degree(padded_height, num_trace_randomizers); NUM_EXT_COLUMNS]
+pub fn extension_degree_bounds(
+    padded_height: usize,
+    num_trace_randomizers: usize,
+) -> [Degree; NUM_EXT_COLUMNS] {
+    [interpolant_degree(padded_height, num_trace_randomizers); NUM_EXT_COLUMNS]
 }
 
 pub fn all_degrees_with_origin(
@@ -553,6 +560,7 @@ pub fn all_initial_quotient_degree_bounds(
     ]
     .concat()
 }
+
 pub fn all_consistency_quotient_degree_bounds(
     padded_height: usize,
     num_trace_randomizers: usize,
@@ -569,6 +577,7 @@ pub fn all_consistency_quotient_degree_bounds(
     ]
     .concat()
 }
+
 pub fn all_transition_quotient_degree_bounds(
     padded_height: usize,
     num_trace_randomizers: usize,
@@ -585,6 +594,7 @@ pub fn all_transition_quotient_degree_bounds(
     ]
     .concat()
 }
+
 pub fn all_terminal_quotient_degree_bounds(
     padded_height: usize,
     num_trace_randomizers: usize,
@@ -614,39 +624,29 @@ pub fn all_quotient_degree_bounds(
     .concat()
 }
 
+// todo: get quotients by type, not by table -> no recomputing zerofiers
 pub fn all_quotients(
-    master_base_table: &MasterBaseTable,
-    master_ext_table: &MasterExtTable,
+    base_quotient_domain_codewords: ArrayView2<BFieldElement>,
+    extension_quotient_domain_codewords: ArrayView2<XFieldElement>,
+    padded_height: usize,
     quotient_domain: ArithmeticDomain,
+    num_quotients: usize,
     challenges: &AllChallenges,
     maybe_profiler: &mut Option<TritonProfiler>,
-) -> Vec<Vec<XFieldElement>> {
+) -> Array2<XFieldElement> {
     assert_eq!(
-        master_base_table.padded_height,
-        master_ext_table.padded_height
-    );
-    assert_eq!(master_base_table.fri_domain, master_ext_table.fri_domain);
-    assert_eq!(
-        master_base_table.num_trace_randomizers,
-        master_ext_table.num_trace_randomizers
+        base_quotient_domain_codewords.nrows(),
+        extension_quotient_domain_codewords.nrows()
     );
 
-    let unit_distance = master_base_table.fri_domain.length / quotient_domain.length;
-    let quotient_domain_master_base_table = master_base_table
-        .master_base_matrix
-        .slice(s![..; unit_distance, ..]);
-    let quotient_domain_master_ext_table = master_ext_table
-        .master_ext_matrix
-        .slice(s![..; unit_distance, ..]);
-
-    let padded_height = master_base_table.padded_height;
     let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
 
-    // todo: get quotients by type, not by table -> no recomputing zerofiers
+    let all_quotients = Array2::zeros([quotient_domain.length, num_quotients]);
+
     prof_start!(maybe_profiler, "program table");
     let program_table_quotients = ExtProgramTable::all_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
+        base_quotient_domain_codewords,
+        extension_quotient_domain_codewords,
         quotient_domain,
         challenges,
         trace_domain_generator,
@@ -657,8 +657,8 @@ pub fn all_quotients(
 
     prof_start!(maybe_profiler, "instruction table");
     let instruction_table_quotients = ExtInstructionTable::all_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
+        base_quotient_domain_codewords,
+        extension_quotient_domain_codewords,
         quotient_domain,
         challenges,
         trace_domain_generator,
@@ -669,8 +669,8 @@ pub fn all_quotients(
 
     prof_start!(maybe_profiler, "processor table");
     let processor_table_quotients = ExtProcessorTable::all_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
+        base_quotient_domain_codewords,
+        extension_quotient_domain_codewords,
         quotient_domain,
         challenges,
         trace_domain_generator,
@@ -681,8 +681,8 @@ pub fn all_quotients(
 
     prof_start!(maybe_profiler, "op stack table");
     let op_stack_table_quotients = ExtOpStackTable::all_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
+        base_quotient_domain_codewords,
+        extension_quotient_domain_codewords,
         quotient_domain,
         challenges,
         trace_domain_generator,
@@ -693,8 +693,8 @@ pub fn all_quotients(
 
     prof_start!(maybe_profiler, "ram table");
     let ram_table_quotients = ExtRamTable::all_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
+        base_quotient_domain_codewords,
+        extension_quotient_domain_codewords,
         quotient_domain,
         challenges,
         trace_domain_generator,
@@ -705,8 +705,8 @@ pub fn all_quotients(
 
     prof_start!(maybe_profiler, "jump stack table");
     let jump_stack_table_quotients = ExtJumpStackTable::all_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
+        base_quotient_domain_codewords,
+        extension_quotient_domain_codewords,
         quotient_domain,
         challenges,
         trace_domain_generator,
@@ -717,8 +717,8 @@ pub fn all_quotients(
 
     prof_start!(maybe_profiler, "hash table");
     let hash_table_quotients = ExtHashTable::all_quotients(
-        quotient_domain_master_base_table,
-        quotient_domain_master_ext_table,
+        base_quotient_domain_codewords,
+        extension_quotient_domain_codewords,
         quotient_domain,
         challenges,
         trace_domain_generator,
@@ -727,16 +727,7 @@ pub fn all_quotients(
     );
     prof_stop!(maybe_profiler, "hash table");
 
-    [
-        program_table_quotients,
-        instruction_table_quotients,
-        processor_table_quotients,
-        op_stack_table_quotients,
-        ram_table_quotients,
-        jump_stack_table_quotients,
-        hash_table_quotients,
-    ]
-    .concat()
+    all_quotients
 }
 
 pub fn evaluate_all_initial_constraints(

@@ -3,9 +3,11 @@ use std::ops::Add;
 use std::ops::Mul;
 
 use itertools::Itertools;
-use ndarray::{ArrayView1, ArrayView2};
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use num_traits::One;
 use num_traits::Zero;
+use rayon::prelude::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::FiniteField;
@@ -15,7 +17,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_collection::interpolant_degree;
-use crate::table::table_collection::ExtTableCollection;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::InstructionExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn;
@@ -96,13 +97,8 @@ pub trait CrossTableArg {
             )
     }
 
-    fn quotient_degree_bound(
-        &self,
-        ext_codeword_tables: &ExtTableCollection,
-        num_trace_randomizers: usize,
-    ) -> Degree {
-        let column_interpolant_degree =
-            interpolant_degree(ext_codeword_tables.padded_height, num_trace_randomizers);
+    fn quotient_degree_bound(&self, padded_height: usize, num_trace_randomizers: usize) -> Degree {
+        let column_interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let lhs_interpolant_degree = column_interpolant_degree * self.from().len() as Degree;
         let rhs_interpolant_degree = column_interpolant_degree * self.to().len() as Degree;
         let terminal_zerofier_degree = 1;
@@ -466,11 +462,11 @@ impl GrandCrossTableArg {
 
     pub fn quotient_degree_bound(
         &self,
-        ext_codeword_tables: &ExtTableCollection,
+        padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Degree {
         self.into_iter()
-            .map(|(arg, _)| arg.quotient_degree_bound(ext_codeword_tables, num_trace_randomizers))
+            .map(|(arg, _)| arg.quotient_degree_bound(padded_height, num_trace_randomizers))
             .max()
             .unwrap_or(0)
     }
@@ -497,7 +493,7 @@ impl GrandCrossTableArg {
     }
 }
 
-fn pointwise_operation<F>(
+pub fn pointwise_operation<F: Sync>(
     left: Vec<XFieldElement>,
     right: Vec<XFieldElement>,
     operation: F,
@@ -505,10 +501,10 @@ fn pointwise_operation<F>(
 where
     F: Fn(XFieldElement, XFieldElement) -> XFieldElement,
 {
-    left.into_iter()
-        .zip_eq(right.into_iter())
+    left.into_par_iter()
+        .zip_eq(right.into_par_iter())
         .map(|(l, r)| operation(l, r))
-        .collect_vec()
+        .collect::<Vec<_>>()
 }
 
 fn weighted_difference_codeword(
@@ -517,10 +513,10 @@ fn weighted_difference_codeword(
     weight: XFieldElement,
 ) -> Vec<XFieldElement> {
     from_codeword
-        .iter()
-        .zip_eq(to_codeword.iter())
+        .par_iter()
+        .zip_eq(to_codeword.par_iter())
         .map(|(&from, &to)| weight * (from - to))
-        .collect_vec()
+        .collect::<Vec<_>>()
 }
 
 #[cfg(test)]
@@ -576,13 +572,15 @@ mod permutation_argument_tests {
             input_terminal,
             output_terminal,
         );
+
+        let padded_height = ext_codeword_tables.padded_height;
         let quotient_degree_bound = gxta
             .program_to_instruction
-            .quotient_degree_bound(&ext_codeword_tables, num_trace_randomizers);
+            .quotient_degree_bound(padded_height, num_trace_randomizers);
         for (arg, _) in gxta.into_iter().take(7) {
             assert_eq!(
                 quotient_degree_bound,
-                arg.quotient_degree_bound(&ext_codeword_tables, num_trace_randomizers)
+                arg.quotient_degree_bound(padded_height, num_trace_randomizers)
             );
         }
     }

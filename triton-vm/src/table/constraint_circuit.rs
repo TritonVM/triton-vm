@@ -1,16 +1,21 @@
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
-use std::cmp::{self};
+use std::cmp;
 use std::collections::HashSet;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::Sum;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul, Sub};
+use std::ops::Add;
+use std::ops::Mul;
+use std::ops::Sub;
 use std::rc::Rc;
 
-use num_traits::{One, Zero};
+use num_traits::One;
+use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -436,7 +441,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Return max degree after evaluating the circuit with an input of specified degree
-    pub fn symbolic_degree_bound(&self, max_degrees: &[i64]) -> i64 {
+    pub fn symbolic_degree_bound(&self, max_degrees: &[Degree]) -> Degree {
         assert_eq!(
             self.var_count,
             max_degrees.len(),
@@ -483,7 +488,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Return degree of the multivariate polynomial represented by this circuit
-    pub fn degree(&self) -> i64 {
+    pub fn degree(&self) -> Degree {
         match &self.expression {
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs_degree = lhs.borrow().degree();
@@ -539,8 +544,8 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    /// Return true if the contained multivariate polynomial consists of only a single term. This means that it can be
-    /// pretty-printed without parentheses.
+    /// Return true if the contained multivariate polynomial consists of only a single term. This
+    /// means that it can be pretty-printed without parentheses.
     pub fn print_without_parentheses(&self) -> bool {
         !matches!(&self.expression, BinaryOperation(_, _, _))
     }
@@ -736,7 +741,7 @@ fn binop<T: TableChallenges, II: InputIndicator>(
                 visited_counter: 0,
                 expression: BinaryOperation(
                     binop,
-                    // Switch rhs and lhs for symmetric operators to check for membership in hash set
+                    // Switch rhs and lhs for symmetric operators to check membership in hash set
                     Rc::clone(&rhs.circuit),
                     Rc::clone(&lhs.circuit),
                 ),
@@ -898,7 +903,7 @@ mod constraint_circuit_tests {
 
     use itertools::Itertools;
     use rand::{thread_rng, RngCore};
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
+    use twenty_first::shared_math::mpolynomial::{Degree, MPolynomial};
     use twenty_first::shared_math::other::random_elements;
 
     use crate::table::challenges::AllChallenges;
@@ -1090,15 +1095,16 @@ mod constraint_circuit_tests {
     #[test]
     fn mpol_circuit_hash_is_unchanged_by_meta_data_test() {
         // From https://doc.rust-lang.org/std/collections/struct.HashSet.html
-        // "It is a logic error for a key to be modified in such a way that the key’s hash, as determined by the Hash
-        // trait, or its equality, as determined by the Eq trait, changes while it is in the map. This is normally only
-        // possible through Cell, RefCell, global state, I/O, or unsafe code. The behavior resulting from such a logic
-        // error is not specified, but will be encapsulated to the HashSet that observed the logic error and not result
-        // in undefined behavior. This could include panics, incorrect results, aborts, memory leaks, and
-        // non-termination."
+        // "It is a logic error for a key to be modified in such a way that the key’s hash, as
+        // determined by the Hash trait, or its equality, as determined by the Eq trait, changes
+        // while it is in the map. This is normally only possible through Cell, RefCell, global
+        // state, I/O, or unsafe code. The behavior resulting from such a logic error is not
+        // specified, but will be encapsulated to the HashSet that observed the logic error and not
+        // result in undefined behavior. This could include panics, incorrect results, aborts,
+        // memory leaks, and non-termination."
         // This means that the hash of a node may not depend on: `visited_counter`, `counter`,
-        // `id_counter_ref`, or `all_nodes`. The reason for this constraint is that `all_nodes` contains
-        // the digest of all nodes in the multi tree.
+        // `id_counter_ref`, or `all_nodes`. The reason for this constraint is that `all_nodes`
+        // contains the digest of all nodes in the multi tree.
         let challenges = AllChallenges::placeholder();
         let (circuit, _mpol, _circuit_builder) =
             circuit_mpol_builder(&challenges.instruction_table_challenges);
@@ -1142,16 +1148,23 @@ mod constraint_circuit_tests {
             assert_eq!(
                 circuit.circuit.as_ref().borrow().degree(),
                 mpol.degree(),
-                "circuit degree and equivalent mpol degree must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuit.circuit.as_ref().borrow()
+                "circuit degree and equivalent mpol degree must match before constant folding. \
+                circuit: {}\n\n mpol: {mpol}.\n iteration {i}",
+                circuit.circuit.as_ref().borrow()
             );
 
             // Also compare with symbolic evaluation
-            let rand_degree = (thread_rng().next_u32() % 200) as i64;
+            let rand_degree = (thread_rng().next_u32() % 200) as Degree;
             let interpolated_degrees = vec![rand_degree; circuit_builder.var_count];
             assert_eq!(
-                circuit.circuit.as_ref().borrow().symbolic_degree_bound(&interpolated_degrees),
+                circuit
+                    .circuit
+                    .as_ref()
+                    .borrow()
+                    .symbolic_degree_bound(&interpolated_degrees),
                 mpol.symbolic_degree_bound(&interpolated_degrees),
-                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n interpolated degree: {rand_degree}\niteration {i}",
+                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: \
+                {mpol}.\n interpolated degree: {rand_degree}\niteration {i}",
                 circuit.circuit.as_ref().borrow()
             );
 
@@ -1162,18 +1175,24 @@ mod constraint_circuit_tests {
             let partial_evaluated =
                 circuits[0].partial_evaluate(&challenges.instruction_table_challenges);
             assert_eq!(
-                mpol,
-                partial_evaluated, "Circuit before and after constant folding must agree after parital evaluate.\n before: {copied_circuit}\nafter: {}", circuits[0]
+                mpol, partial_evaluated,
+                "Circuit before and after constant folding must agree after partial evaluate.\
+                \n before: {copied_circuit}\nafter: {}",
+                circuits[0]
             );
             assert_eq!(
                 circuits[0].degree(),
                 mpol.degree(),
-                "circuit degree and equivalent mpol degree must match after constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
+                "circuit degree and equivalent mpol degree must match after constant folding. \
+                circuit: {}\n\n mpol: {mpol}.\n iteration {i}",
+                circuits[0]
             );
             assert_eq!(
                 circuits[0].degree(),
                 partial_evaluated.degree(),
-                "circuit degree and the degree of its partial evaluation must agree. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
+                "circuit degree and the degree of its partial evaluation must agree. circuit: {}\
+                \n\n mpol: {mpol}.\n iteration {i}",
+                circuits[0]
             );
 
             // Also compare with symbolic evaluation
@@ -1181,7 +1200,9 @@ mod constraint_circuit_tests {
             assert_eq!(
                 circuits[0].symbolic_degree_bound(&interpolated_degrees),
                 partial_evaluated.symbolic_degree_bound(&interpolated_degrees),
-                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
+                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: \
+                {mpol}.\n iteration {i}",
+                circuits[0]
             );
         }
     }
@@ -1460,7 +1481,11 @@ mod constraint_circuit_tests {
         }
 
         for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
-            assert_eq!(before, after, "Constant folding must leave partially evaluated constraints unchanged for {table_name} table constraint {i}");
+            assert_eq!(
+                before, after,
+                "Constant folding must leave partially evaluated constraints unchanged for \
+                {table_name} table constraint {i}"
+            );
         }
 
         assert!(
@@ -1481,7 +1506,8 @@ mod constraint_circuit_tests {
 
         ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
         println!(
-            "nodes in {table_name} constraint multitree after applying challenges and constant folding again: {}",
+            "nodes in {table_name} constraint multitree after applying challenges and constant \
+            folding again: {}",
             node_counter(&mut constraints)
         );
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap();
