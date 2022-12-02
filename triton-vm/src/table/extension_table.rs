@@ -1,19 +1,14 @@
 use std::fmt::Display;
 
 use itertools::Itertools;
-use ndarray::{s, ArrayView1, ArrayView2};
-use num_traits::One;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::transpose;
-use twenty_first::shared_math::traits::{FiniteField, Inverse, ModPowU32};
 use twenty_first::shared_math::x_field_element::XFieldElement;
-
-use triton_profiler::triton_profiler::TritonProfiler;
-use triton_profiler::{prof_start, prof_stop};
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::table_collection::interpolant_degree;
@@ -150,102 +145,74 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         .concat()
     }
 
-    fn initial_quotients(
+    fn fill_initial_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quotient_domain: ArithmeticDomain,
+        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &AllChallenges,
-    ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(quotient_domain.length, master_base_table.nrows());
-        debug_assert_eq!(quotient_domain.length, master_ext_table.nrows());
+    ) {
+        debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
+        debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
 
-        let zerofier_codeword = quotient_domain
-            .domain_values()
-            .into_iter()
-            .map(|x| x - BFieldElement::one())
-            .collect();
-        let zerofier_inverse = BFieldElement::batch_inversion(zerofier_codeword);
-
-        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
-            .par_iter()
+        zerofier_inverse
+            .into_iter() // todo: into_par_iter – but how?
             .enumerate()
-            .map(|(domain_index, &z_inv)| {
-                let base_row = master_base_table.slice(s![domain_index, ..]);
-                let ext_row = master_ext_table.slice(s![domain_index, ..]);
-                let evaluated_bcs =
-                    Self::evaluate_initial_constraints(base_row, ext_row, challenges);
-                evaluated_bcs.iter().map(|&ebc| ebc * z_inv).collect()
-            })
-            .collect();
-        transpose(&transposed_quotient_codewords)
+            .for_each(|(domain_index, &z_inv)| {
+                let mut quotient_table_row = Array1::from(Self::evaluate_initial_constraints(
+                    master_base_table.slice(s![domain_index, ..]),
+                    master_ext_table.slice(s![domain_index, ..]),
+                    challenges,
+                ));
+                quotient_table_row.mapv_inplace(|a| a * z_inv);
+                quotient_table_row.move_into(quot_table.row_mut(domain_index));
+            });
     }
 
-    fn consistency_quotients(
+    fn fill_consistency_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quotient_domain: ArithmeticDomain,
+        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &AllChallenges,
-        padded_height: usize,
-    ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(quotient_domain.length, master_base_table.nrows());
-        debug_assert_eq!(quotient_domain.length, master_ext_table.nrows());
+    ) {
+        debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
+        debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
 
-        let zerofier_codeword = quotient_domain
-            .domain_values()
-            .iter()
-            .map(|x| x.mod_pow_u32(padded_height as u32) - BFieldElement::one())
-            .collect();
-        let zerofier_inverse = BFieldElement::batch_inversion(zerofier_codeword);
-
-        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
-            .par_iter()
+        zerofier_inverse
+            .into_iter() // todo: into_par_iter – but how?
             .enumerate()
-            .map(|(domain_index, &z_inv)| {
-                let base_row = master_base_table.slice(s![domain_index, ..]);
-                let ext_row = master_ext_table.slice(s![domain_index, ..]);
-                let evaluated_ccs =
-                    Self::evaluate_consistency_constraints(base_row, ext_row, challenges);
-                evaluated_ccs.iter().map(|&ecc| ecc * z_inv).collect()
-            })
-            .collect();
-        transpose(&transposed_quotient_codewords)
+            .for_each(|(domain_index, &z_inv)| {
+                let mut quotient_table_row = Array1::from(Self::evaluate_consistency_constraints(
+                    master_base_table.slice(s![domain_index, ..]),
+                    master_ext_table.slice(s![domain_index, ..]),
+                    challenges,
+                ));
+                quotient_table_row.mapv_inplace(|a| a * z_inv);
+                quotient_table_row.move_into(quot_table.row_mut(domain_index));
+            });
     }
 
-    fn transition_quotients(
+    fn fill_transition_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quotient_domain: ArithmeticDomain,
+        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &AllChallenges,
-        trace_domain_generator: BFieldElement,
+        quotient_domain: ArithmeticDomain,
         padded_height: usize,
-    ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(quotient_domain.length, master_base_table.nrows());
-        debug_assert_eq!(quotient_domain.length, master_ext_table.nrows());
+    ) {
+        debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
+        debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
 
-        let one = XFieldElement::one();
-        let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        let domain_values = quotient_domain.domain_values();
-
-        let subgroup_zerofier: Vec<_> = domain_values
-            .par_iter()
-            .map(|domain_value| domain_value.mod_pow_u32(padded_height as u32) - one)
-            .collect();
-        let subgroup_zerofier_inverse = XFieldElement::batch_inversion(subgroup_zerofier);
-        let zerofier_inverse: Vec<_> = domain_values
-            .into_par_iter()
-            .zip_eq(subgroup_zerofier_inverse.into_par_iter())
-            .map(|(domain_value, sub_z_inv)| {
-                (domain_value - trace_domain_generator_inverse) * sub_z_inv
-            })
-            .collect();
         // the relation between the quotient domain and the trace domain
         let unit_distance = quotient_domain.length / padded_height;
 
         let domain_length_bit_mask = quotient_domain.length - 1;
-        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
-            .par_iter()
+        zerofier_inverse
+            .into_iter() // todo: into_par_iter – but how?
             .enumerate()
-            .map(|(current_row_index, &z_inv)| {
+            .for_each(|(current_row_index, &z_inv)| {
                 // `&domain_length_bit_mask` performs the modulo operation cheaply:
                 // `domain.length - 1` is a bit-mask with all 1s because `domain.length` is 2^k
                 // for some k.
@@ -254,109 +221,40 @@ pub trait Quotientable: ExtensionTable + Evaluable {
                 let current_ext_row = master_ext_table.slice(s![current_row_index, ..]);
                 let next_base_row = master_base_table.slice(s![next_row_index, ..]);
                 let next_ext_row = master_ext_table.slice(s![next_row_index, ..]);
-                let evaluated_tcs = Self::evaluate_transition_constraints(
+                let mut quotient_table_row = Array1::from(Self::evaluate_transition_constraints(
                     current_base_row,
                     current_ext_row,
                     next_base_row,
                     next_ext_row,
                     challenges,
-                );
-                evaluated_tcs.iter().map(|&etc| etc * z_inv).collect()
-            })
-            .collect();
-        transpose(&transposed_quotient_codewords)
+                ));
+                quotient_table_row.mapv_inplace(|a| a * z_inv);
+                quotient_table_row.move_into(quot_table.row_mut(current_row_index));
+            });
     }
 
-    fn terminal_quotients(
+    fn fill_terminal_quotients(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: ArrayView2<XFieldElement>,
-        quotient_domain: ArithmeticDomain,
+        quot_table: &mut ArrayViewMut2<XFieldElement>,
+        zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &AllChallenges,
-        trace_domain_generator: BFieldElement,
-    ) -> Vec<Vec<XFieldElement>> {
-        debug_assert_eq!(quotient_domain.length, master_base_table.nrows());
-        debug_assert_eq!(quotient_domain.length, master_ext_table.nrows());
+    ) {
+        debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
+        debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
 
-        // The zerofier for the terminal quotient has a root in the last
-        // value in the cyclical group generated from the trace domain's generator.
-        let zerofier_codeword = quotient_domain
-            .domain_values()
-            .into_iter()
-            .map(|x| x - trace_domain_generator.inverse())
-            .collect_vec();
-        let zerofier_inverse = BFieldElement::batch_inversion(zerofier_codeword);
-
-        let transposed_quotient_codewords: Vec<_> = zerofier_inverse
-            .par_iter()
+        zerofier_inverse
+            .into_iter() // todo: into_par_iter – but how?
             .enumerate()
-            .map(|(domain_index, &z_inv)| {
-                let base_row = master_base_table.slice(s![domain_index, ..]);
-                let ext_row = master_ext_table.slice(s![domain_index, ..]);
-                let evaluated_termcs =
-                    Self::evaluate_terminal_constraints(base_row, ext_row, challenges);
-                evaluated_termcs.iter().map(|&etc| etc * z_inv).collect()
-            })
-            .collect();
-        transpose(&transposed_quotient_codewords)
-    }
-
-    // todo get quotients by type, not by table
-    fn all_quotients(
-        master_base_table: ArrayView2<BFieldElement>,
-        master_ext_table: ArrayView2<XFieldElement>,
-        quotient_domain: ArithmeticDomain,
-        challenges: &AllChallenges,
-        trace_domain_generator: BFieldElement,
-        padded_height: usize,
-        maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> Vec<Vec<XFieldElement>> {
-        prof_start!(maybe_profiler, "initial quotients");
-        let initial_quotients = Self::initial_quotients(
-            master_base_table,
-            master_ext_table,
-            quotient_domain,
-            challenges,
-        );
-        prof_stop!(maybe_profiler, "initial quotients");
-
-        prof_start!(maybe_profiler, "consistency quotients");
-        let consistency_quotients = Self::consistency_quotients(
-            master_base_table,
-            master_ext_table,
-            quotient_domain,
-            challenges,
-            padded_height,
-        );
-        prof_stop!(maybe_profiler, "consistency quotients");
-
-        prof_start!(maybe_profiler, "transition quotients");
-        let transition_quotients = Self::transition_quotients(
-            master_base_table,
-            master_ext_table,
-            quotient_domain,
-            challenges,
-            trace_domain_generator,
-            padded_height,
-        );
-        prof_stop!(maybe_profiler, "transition quotients");
-
-        prof_start!(maybe_profiler, "terminal quotients");
-        let terminal_quotients = Self::terminal_quotients(
-            master_base_table,
-            master_ext_table,
-            quotient_domain,
-            challenges,
-            trace_domain_generator,
-        );
-        prof_stop!(maybe_profiler, "terminal quotients");
-
-        vec![
-            initial_quotients,
-            consistency_quotients,
-            transition_quotients,
-            terminal_quotients,
-        ]
-        .concat()
+            .for_each(|(domain_index, &z_inv)| {
+                let mut quotient_table_row = Array1::from(Self::evaluate_terminal_constraints(
+                    master_base_table.slice(s![domain_index, ..]),
+                    master_ext_table.slice(s![domain_index, ..]),
+                    challenges,
+                ));
+                quotient_table_row.mapv_inplace(|a| a * z_inv);
+                quotient_table_row.move_into(quot_table.row_mut(domain_index));
+            });
     }
 
     fn initial_quotient_degree_bounds(

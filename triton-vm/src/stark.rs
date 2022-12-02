@@ -227,8 +227,6 @@ impl Stark {
             .slice(s![..; unit_distance, ..]);
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
-        /* todo continue >>> here <<< change all_quotients to actually return the quotients */
-
         prof_start!(maybe_profiler, "quotient codewords");
         let num_grand_cross_table_args = 1;
         let num_quotients = quotient_degree_bounds.len() + num_grand_cross_table_args;
@@ -242,6 +240,8 @@ impl Stark {
             maybe_profiler,
         );
         prof_stop!(maybe_profiler, "quotient codewords");
+
+        /* todo continue >>> here <<< try to implement Quotientable for cross_table_arg */
 
         prof_start!(maybe_profiler, "grand cross table");
         let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_quotients);
