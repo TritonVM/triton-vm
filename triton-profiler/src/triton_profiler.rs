@@ -69,7 +69,11 @@ impl TritonProfiler {
         false
     }
 
-    pub fn finish_and_report(&mut self, cycle_count: Option<usize>) -> Report {
+    pub fn finish_and_report(
+        &mut self,
+        cycle_count: Option<usize>,
+        padded_height: Option<usize>,
+    ) -> Report {
         assert!(!self.profile.is_empty(), "Nothing to report on.");
         assert!(
             self.stack.is_empty(),
@@ -155,6 +159,7 @@ impl TritonProfiler {
             name: self.name.clone(),
             total_time: self.total_time,
             cycle_count,
+            padded_height,
         }
     }
 
@@ -343,6 +348,7 @@ pub struct Report {
     tasks: Vec<TaskReport>,
     total_time: Duration,
     cycle_count: Option<usize>,
+    padded_height: Option<usize>,
 }
 
 impl Report {
@@ -352,6 +358,7 @@ impl Report {
             tasks: vec![],
             total_time: Duration::ZERO,
             cycle_count: None,
+            padded_height: None,
         }
     }
 
@@ -453,6 +460,19 @@ impl Display for Report {
             }
         }
 
+        if let Some(padded_height) = self.padded_height {
+            let total_time = self.total_time.as_millis() as usize;
+            if total_time != 0 {
+                let optimal_freq = 1_000 * padded_height / total_time;
+                writeln!(f)?;
+                writeln!(
+                    f,
+                    "Optimal clock frequency is {} Hz ({} clock cycles padded / {} ms)",
+                    optimal_freq, padded_height, total_time
+                )?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -540,7 +560,7 @@ pub mod triton_profiler_tests {
             }
         }
 
-        let report = profiler.finish_and_report(None);
+        let report = profiler.finish_and_report(None, None);
         println!("{}", report);
     }
 }
