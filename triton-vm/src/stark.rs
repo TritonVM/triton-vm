@@ -230,7 +230,8 @@ impl Stark {
         /* todo continue >>> here <<< change all_quotients to actually return the quotients */
 
         prof_start!(maybe_profiler, "quotient codewords");
-        let num_quotients = quotient_degree_bounds.len();
+        let num_grand_cross_table_args = 1;
+        let num_quotients = quotient_degree_bounds.len() + num_grand_cross_table_args;
         let mut quotient_codewords = all_quotients(
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
@@ -243,11 +244,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "quotient codewords");
 
         prof_start!(maybe_profiler, "grand cross table");
-        let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = 2 * NUM_BASE_COLUMNS
-            + 2 * NUM_EXT_COLUMNS
-            + 2 * num_quotients
-            + 2 * num_grand_cross_table_args;
+        let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_quotients);
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
         let grand_cross_table_arg_and_non_lin_combi_weights_seed =
