@@ -235,7 +235,7 @@ impl TritonProfiler {
         self.profile[index].time = duration;
 
         if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
-            println!("stop: {name}");
+            println!("stop:  {name} – took {duration:.2?}");
         }
     }
 
