@@ -77,8 +77,9 @@ impl TritonProfiler {
             self.stack.is_empty(),
             "Cannot generate report before stack is empty."
         );
-        assert!(
-            self.total_time != Duration::ZERO,
+        assert_ne!(
+            self.total_time,
+            Duration::ZERO,
             "Cannot generate report before profiler has finished. Call `finish()` first."
         );
 
@@ -178,7 +179,7 @@ impl TritonProfiler {
         });
 
         if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
-            println!("stop: {name}; took {now:.2?}");
+            println!("start: {name}");
         }
     }
 
@@ -234,7 +235,7 @@ impl TritonProfiler {
         self.profile[index].time = duration;
 
         if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
-            println!("stop: {name}");
+            println!("stop:  {name} – took {duration:.2?}");
         }
     }
 
