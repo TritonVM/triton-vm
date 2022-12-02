@@ -40,12 +40,11 @@ fn prove_fib_100(criterion: &mut Criterion) {
     group.bench_function(fib_100, |bencher| {
         bencher.iter(|| {
             prof_start!(maybe_profiler, "prove");
-            let proof = stark.prove(aet.clone(), &mut maybe_profiler);
+            let _proof = stark.prove(aet.clone(), &mut maybe_profiler);
             prof_stop!(maybe_profiler, "prove");
 
             if let Some(profiler) = maybe_profiler.as_mut() {
-                // FIXME: Insert cycle count and padded height separately.
-                report = profiler.finish_and_report(Some(proof.padded_height()));
+                profiler.finish_and_report(None, None);
             }
             maybe_profiler = None;
         });
