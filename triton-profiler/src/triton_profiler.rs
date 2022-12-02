@@ -178,7 +178,7 @@ impl TritonProfiler {
         });
 
         if std::env::var(GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME).is_ok() {
-            println!("stop: {name}; took {now:.2?}");
+            println!("start: {name}");
         }
     }
 
