@@ -77,8 +77,9 @@ impl TritonProfiler {
             self.stack.is_empty(),
             "Cannot generate report before stack is empty."
         );
-        assert!(
-            self.total_time != Duration::ZERO,
+        assert_ne!(
+            self.total_time,
+            Duration::ZERO,
             "Cannot generate report before profiler has finished. Call `finish()` first."
         );
 
