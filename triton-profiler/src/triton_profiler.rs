@@ -274,7 +274,10 @@ impl TritonProfiler {
         );
         self.total_time = self.timer.elapsed();
         if let Some(cycle_count) = cycle_count {
-            self.clock_frequency = cycle_count / self.total_time.as_secs() as usize;
+            let total_time = self.total_time.as_secs() as usize;
+            if total_time != 0 {
+                self.clock_frequency = cycle_count / total_time;
+            }
         }
     }
 }
