@@ -6,7 +6,8 @@ pub struct Proof(pub Vec<BFieldElement>);
 
 impl Proof {
     pub fn padded_height(&self) -> usize {
-        self.0[0].value() as usize
+        // FIXME: This is very brittle.
+        self.0[1].value() as usize
     }
 }
 

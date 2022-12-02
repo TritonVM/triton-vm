@@ -34,7 +34,6 @@ pub struct TritonProfiler {
     stack: Vec<(usize, String)>,
     profile: Vec<Task>,
     total_time: Duration,
-    clock_frequency: usize,
 }
 
 impl TritonProfiler {
@@ -46,7 +45,6 @@ impl TritonProfiler {
             stack: vec![],
             profile: vec![],
             total_time: Duration::ZERO,
-            clock_frequency: 0,
         }
     }
 
@@ -71,12 +69,14 @@ impl TritonProfiler {
         false
     }
 
-    pub fn report(&self) -> Report {
+    pub fn finish_and_report(&mut self, cycle_count: Option<usize>) -> Report {
         assert!(!self.profile.is_empty(), "Nothing to report on.");
         assert!(
             self.stack.is_empty(),
             "Cannot generate report before stack is empty."
         );
+
+        self.total_time = self.timer.elapsed();
         assert_ne!(
             self.total_time,
             Duration::ZERO,
@@ -154,7 +154,7 @@ impl TritonProfiler {
             tasks: report,
             name: self.name.clone(),
             total_time: self.total_time,
-            clock_frequency: self.clock_frequency,
+            cycle_count,
         }
     }
 
@@ -266,21 +266,6 @@ impl TritonProfiler {
             self.plain_stop();
         }
     }
-
-    pub fn finish(&mut self, cycle_count: Option<usize>) {
-        assert!(!self.profile.is_empty(), "Nothing to finish.");
-        assert!(
-            self.stack.is_empty(),
-            "Cannot finish before stack is empty."
-        );
-        self.total_time = self.timer.elapsed();
-        if let Some(cycle_count) = cycle_count {
-            let total_time = self.total_time.as_secs() as usize;
-            if total_time != 0 {
-                self.clock_frequency = cycle_count / total_time;
-            }
-        }
-    }
 }
 
 impl Profiler for TritonProfiler {
@@ -357,7 +342,7 @@ pub struct Report {
     name: String,
     tasks: Vec<TaskReport>,
     total_time: Duration,
-    clock_frequency: usize,
+    cycle_count: Option<usize>,
 }
 
 impl Report {
@@ -366,7 +351,7 @@ impl Report {
             name: "".to_string(),
             tasks: vec![],
             total_time: Duration::ZERO,
-            clock_frequency: 0,
+            cycle_count: None,
         }
     }
 
@@ -455,8 +440,18 @@ impl Display for Report {
             ))?;
         }
 
-        writeln!(f)?;
-        writeln!(f, "Clock frequency is {} Hz", self.clock_frequency)?;
+        if let Some(cycle_count) = self.cycle_count {
+            let total_time = self.total_time.as_millis() as usize;
+            if total_time != 0 {
+                let freq = 1_000 * cycle_count / total_time;
+                writeln!(f)?;
+                writeln!(
+                    f,
+                    "Clock frequency is {} Hz ({} clock cycles padded / {} ms)",
+                    freq, cycle_count, total_time
+                )?;
+            }
+        }
 
         Ok(())
     }
@@ -544,9 +539,8 @@ pub mod triton_profiler_tests {
                 profiler.stop(&name);
             }
         }
-        profiler.finish(None);
 
-        let profile = profiler.report();
-        println!("{}", profile);
+        let report = profiler.finish_and_report(None);
+        println!("{}", report);
     }
 }

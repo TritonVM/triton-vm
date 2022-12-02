@@ -901,8 +901,10 @@ pub mod triton_vm_tests {
             profiler.stop(&num_cycles_string);
             profiler.stop(&program_idx_string);
         }
-        profiler.finish(None);
-        println!("{}", profiler.report());
+
+        // There is not a distinct cycle count; this profiler accumulates over many program executions.
+        let report = profiler.finish_and_report(None);
+        println!("{}", report);
     }
 
     fn _assert_air_constraints_on_matrix(

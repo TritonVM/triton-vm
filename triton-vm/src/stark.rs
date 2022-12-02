@@ -1800,8 +1800,8 @@ pub(crate) mod triton_stark_tests {
             prof_start!(profiler, &fri_dom_len_str);
             prof_stop!(profiler, &fri_dom_len_str);
             if let Some(mut p) = profiler {
-                p.finish(Some(proof.padded_height()));
-                println!("{}", p.report())
+                let report = p.finish_and_report(Some(proof.padded_height()));
+                println!("{}", report);
             }
         }
     }

@@ -35,8 +35,8 @@ fn prove_halt(_criterion: &mut Criterion) {
     let proof = stark.prove(aet, &mut maybe_profiler);
 
     if let Some(profiler) = &mut maybe_profiler {
-        profiler.finish(Some(proof.padded_height()));
-        report = profiler.report();
+        // FIXME: Insert cycle count and padded height separately.
+        report = profiler.finish_and_report(Some(proof.padded_height()));
     };
 
     // save proof

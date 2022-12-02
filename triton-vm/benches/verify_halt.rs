@@ -65,8 +65,7 @@ fn verify_halt(criterion: &mut Criterion) {
             prof_stop!(maybe_profiler, "verify");
 
             if let Some(profiler) = maybe_profiler.as_mut() {
-                profiler.finish(Some(proof.padded_height()));
-                report = profiler.report();
+                report = profiler.finish_and_report(Some(proof.padded_height()));
             }
             maybe_profiler = None;
         });
