@@ -383,8 +383,6 @@ impl Report {
 
 impl Display for Report {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "clock frquency is {} hertz", self.clock_frequency)?;
-
         let max_name_width = self
             .tasks
             .iter()
@@ -456,6 +454,9 @@ impl Display for Report {
                 task_name_colored, padding, task_time_colored, relative_time_string_colored,
             ))?;
         }
+
+        writeln!(f)?;
+        writeln!(f, "Clock frequency is {} Hz", self.clock_frequency)?;
 
         Ok(())
     }
