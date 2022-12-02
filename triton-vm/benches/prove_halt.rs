@@ -36,7 +36,7 @@ fn prove_halt(_criterion: &mut Criterion) {
 
     if let Some(profiler) = &mut maybe_profiler {
         // FIXME: Insert cycle count and padded height separately.
-        report = profiler.finish_and_report(Some(proof.padded_height()));
+        report = profiler.finish_and_report(None, Some(proof.padded_height()));
     };
 
     // save proof

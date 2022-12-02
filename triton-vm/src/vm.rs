@@ -903,7 +903,7 @@ pub mod triton_vm_tests {
         }
 
         // There is not a distinct cycle count; this profiler accumulates over many program executions.
-        let report = profiler.finish_and_report(None);
+        let report = profiler.finish_and_report(None, None);
         println!("{}", report);
     }
 
