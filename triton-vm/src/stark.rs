@@ -241,8 +241,6 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "quotient codewords");
 
-        /* todo continue >>> here <<< try to implement Quotientable for cross_table_arg */
-
         prof_start!(maybe_profiler, "grand cross table");
         let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_quotients);
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -324,19 +322,14 @@ impl Stark {
         prof_stop!(maybe_profiler, "nonlinear combination");
 
         prof_start!(maybe_profiler, "Merkle tree 3");
-        let mut combination_codeword_digests: Vec<Digest> =
-            Vec::with_capacity(fri_combination_codeword.len());
-        fri_combination_codeword
-            .clone()
-            .into_par_iter()
-            .map(|elem| StarkHasher::hash(&elem))
-            .collect_into_vec(&mut combination_codeword_digests);
-        let combination_tree: MerkleTree<StarkHasher, Maker> =
+        let combination_codeword_digests = fri_combination_codeword
+            .par_iter()
+            .map(StarkHasher::hash)
+            .collect::<Vec<_>>();
+        let combination_tree: MerkleTree<StarkHasher, _> =
             Maker::from_digests(&combination_codeword_digests);
-        let combination_root: Digest = combination_tree.get_root();
-
+        let combination_root = combination_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root));
-
         prof_stop!(maybe_profiler, "Merkle tree 3");
 
         // Get indices of slices that go across codewords to prove nonlinear combination
