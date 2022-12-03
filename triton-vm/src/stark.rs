@@ -6,10 +6,10 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
+use ndarray::par_azip;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView2;
-use ndarray::{par_azip, Axis};
 use num_traits::One;
 use num_traits::Zero;
 use rayon::prelude::*;
@@ -279,15 +279,14 @@ impl Stark {
         );
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
-                master_ext_table.master_ext_matrix.view(),
+                extension_quotient_domain_codewords,
                 quotient_domain,
                 derive_trace_domain_generator(master_base_table.padded_height as u64),
             );
-        // todo incorporate this from the beginning or ensure that the memory layout is correct
-        let gctaqc = Array1::from(grand_cross_table_arg_quotient_codeword);
-        quotient_codewords
-            .push(Axis(0), gctaqc.view())
-            .expect("Temporary code is failing.");
+        // Add the grand cross-table argument's quotient to the quotient codewords. The memory for
+        // this was allocated in the call to `all_quotients`.
+        grand_cross_table_arg_quotient_codeword
+            .move_into(&mut quotient_codewords.slice_mut(s![.., quotient_codewords.ncols() - 1]));
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(

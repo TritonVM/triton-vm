@@ -1,22 +1,19 @@
 use std::cmp::max;
-use std::ops::Add;
 use std::ops::Mul;
 
-use itertools::Itertools;
+use ndarray::par_azip;
+use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use num_traits::One;
-use num_traits::Zero;
-use rayon::prelude::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_collection::interpolant_degree;
+use crate::table::table_collection::terminal_quotient_zerofier_inverse;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::InstructionExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn;
@@ -52,51 +49,44 @@ pub trait CrossTableArg {
         master_ext_table: ArrayView2<XFieldElement>,
         quotient_domain: ArithmeticDomain,
         trace_domain_generator: BFieldElement,
-    ) -> Vec<XFieldElement> {
+    ) -> Array1<XFieldElement> {
         let from_codeword = self.combined_from_codeword(master_ext_table);
         let to_codeword = self.combined_to_codeword(master_ext_table);
+        let zerofier_inverse =
+            terminal_quotient_zerofier_inverse(quotient_domain, trace_domain_generator);
 
-        let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        let zerofier = quotient_domain
-            .domain_values()
-            .into_iter()
-            .map(|x| x - trace_domain_generator_inverse)
-            .collect();
-        let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
-
-        zerofier_inverse
-            .into_iter()
-            .zip_eq(from_codeword.iter().zip_eq(to_codeword.iter()))
-            .map(|(z, (&from, &to))| (from - to) * z)
-            .collect_vec()
+        (from_codeword - to_codeword) * zerofier_inverse
     }
 
+    /// Hadamard (element-wise) product of the `from` codewords.
     fn combined_from_codeword(
         &self,
         master_ext_table: ArrayView2<XFieldElement>,
-    ) -> Vec<XFieldElement> {
+    ) -> Array1<XFieldElement> {
         self.from()
             .iter()
-            .map(|&from_col| master_ext_table.column(from_col).to_vec())
+            .map(|&from_col| master_ext_table.column(from_col))
             .fold(
-                vec![XFieldElement::one(); master_ext_table.nrows()],
-                |accumulator, factor| pointwise_operation(accumulator, factor, XFieldElement::mul),
+                Array1::ones(master_ext_table.nrows()),
+                |accumulator, factor| accumulator * factor,
             )
     }
 
+    /// Hadamard (element-wise) product of the `to` codewords.
     fn combined_to_codeword(
         &self,
         master_ext_table: ArrayView2<XFieldElement>,
-    ) -> Vec<XFieldElement> {
+    ) -> Array1<XFieldElement> {
         self.to()
             .iter()
-            .map(|&to_col| master_ext_table.column(to_col).to_vec())
+            .map(|&to_col| master_ext_table.column(to_col))
             .fold(
-                vec![XFieldElement::one(); master_ext_table.nrows()],
-                |accumulator, factor| pointwise_operation(accumulator, factor, XFieldElement::mul),
+                Array1::ones(master_ext_table.nrows()),
+                |accumulator, factor| accumulator * factor,
             )
     }
 
+    /// The highest possible degree of the quotient for this cross-table argument.
     fn quotient_degree_bound(&self, padded_height: usize, num_trace_randomizers: usize) -> Degree {
         let column_interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let lhs_interpolant_degree = column_interpolant_degree * self.from().len() as Degree;
@@ -114,7 +104,7 @@ pub trait CrossTableArg {
             .iter()
             .map(|&from_col| master_ext_table_row[from_col])
             .fold(XFieldElement::one(), XFieldElement::mul);
-        let rhs: XFieldElement = self
+        let rhs = self
             .to()
             .iter()
             .map(|&to_col| master_ext_table_row[to_col])
@@ -155,7 +145,10 @@ impl CrossTableArg for PermArg {
         XFieldElement::one()
     }
 
-    /// Compute the product for a permutation argument using `initial`, `challenge`, and `symbols`.
+    /// Compute the product for a permutation argument as specified by `initial`, `challenge`,
+    /// and `symbols`. This amounts to evaluating polynomial
+    ///  `f(x) = initial · Π_i (x - symbols[i])`
+    /// at point `challenge`, i.e., returns `f(challenge)`.
     fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,
@@ -163,7 +156,7 @@ impl CrossTableArg for PermArg {
     ) -> XFieldElement {
         symbols
             .iter()
-            .map(|&symbol| challenge - symbol.lift())
+            .map(|&symbol| challenge - symbol)
             .fold(initial, XFieldElement::mul)
     }
 }
@@ -238,17 +231,17 @@ impl CrossTableArg for EvalArg {
         XFieldElement::one()
     }
 
-    /// Compute the running evaluation for an evaluation argument as specified by `initial`,
-    /// `challenge`, and `symbols`. This amounts to evaluating polynomial
+    /// Compute the evaluation for an evaluation argument as specified by `initial`, `challenge`,
+    /// and `symbols`. This amounts to evaluating polynomial
     /// `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i`
-    /// at position challenge, i.e., returns `f(challenge)`.
+    /// at point `challenge`, i.e., returns `f(challenge)`.
     fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,
         challenge: XFieldElement,
     ) -> XFieldElement {
-        symbols.iter().fold(initial, |running_evaluation, symbol| {
-            challenge * running_evaluation + symbol.lift()
+        symbols.iter().fold(initial, |running_evaluation, &symbol| {
+            challenge * running_evaluation + symbol
         })
     }
 }
@@ -401,63 +394,35 @@ impl GrandCrossTableArg {
         master_ext_table: ArrayView2<XFieldElement>,
         quotient_domain: ArithmeticDomain,
         trace_domain_generator: BFieldElement,
-    ) -> Vec<XFieldElement> {
-        let mut non_linear_sum_codeword = vec![XFieldElement::zero(); quotient_domain.length];
+    ) -> Array1<XFieldElement> {
+        let mut non_linear_sum_codeword = Array1::zeros(quotient_domain.length);
 
         // cross-table arguments
         for (arg, weight) in self.into_iter() {
             let from_codeword = arg.combined_from_codeword(master_ext_table);
             let to_codeword = arg.combined_to_codeword(master_ext_table);
-            let non_linear_summand =
-                weighted_difference_codeword(&from_codeword, &to_codeword, weight);
-            non_linear_sum_codeword = pointwise_operation(
-                non_linear_sum_codeword,
-                non_linear_summand,
-                XFieldElement::add,
+            par_azip!((accumulator in &mut non_linear_sum_codeword,
+                &from in &from_codeword,
+                &to in &to_codeword)
+                *accumulator += weight * (from - to)
             );
         }
 
         // standard input
-        let input_terminal_codeword = vec![self.input_terminal; quotient_domain.length];
-        let processor_in_codeword = master_ext_table.column(self.input_to_processor).to_vec();
-        let non_linear_summand = weighted_difference_codeword(
-            &input_terminal_codeword,
-            &processor_in_codeword,
-            self.input_to_processor_weight,
-        );
-        non_linear_sum_codeword = pointwise_operation(
-            non_linear_sum_codeword,
-            non_linear_summand,
-            XFieldElement::add,
+        let processor_in_codeword = master_ext_table.column(self.input_to_processor);
+        par_azip!((accumulator in &mut non_linear_sum_codeword, &to in &processor_in_codeword)
+            *accumulator += self.input_to_processor_weight * (self.input_terminal - to)
         );
 
         // standard output
-        let processor_out_codeword = master_ext_table.column(self.processor_to_output).to_vec();
-        let output_terminal_codeword = vec![self.output_terminal; quotient_domain.length];
-        let non_linear_summand = weighted_difference_codeword(
-            &processor_out_codeword,
-            &output_terminal_codeword,
-            self.processor_to_output_weight,
-        );
-        non_linear_sum_codeword = pointwise_operation(
-            non_linear_sum_codeword,
-            non_linear_summand,
-            XFieldElement::add,
+        let processor_out_codeword = master_ext_table.column(self.processor_to_output);
+        par_azip!((accumulator in &mut non_linear_sum_codeword, &from in &processor_out_codeword)
+            *accumulator += self.processor_to_output_weight * (from - self.output_terminal)
         );
 
-        let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        let zerofier = quotient_domain
-            .domain_values()
-            .into_iter()
-            .map(|x| x - trace_domain_generator_inverse)
-            .collect();
-        let zerofier_inverse = BFieldElement::batch_inversion(zerofier);
-
-        zerofier_inverse
-            .into_iter()
-            .zip_eq(non_linear_sum_codeword.into_iter())
-            .map(|(z, nls)| nls * z)
-            .collect_vec()
+        let zerofier_inverse =
+            terminal_quotient_zerofier_inverse(quotient_domain, trace_domain_generator);
+        non_linear_sum_codeword * zerofier_inverse
     }
 
     pub fn quotient_degree_bound(
@@ -491,32 +456,6 @@ impl GrandCrossTableArg {
 
         non_linear_sum
     }
-}
-
-pub fn pointwise_operation<F: Sync>(
-    left: Vec<XFieldElement>,
-    right: Vec<XFieldElement>,
-    operation: F,
-) -> Vec<XFieldElement>
-where
-    F: Fn(XFieldElement, XFieldElement) -> XFieldElement,
-{
-    left.into_par_iter()
-        .zip_eq(right.into_par_iter())
-        .map(|(l, r)| operation(l, r))
-        .collect::<Vec<_>>()
-}
-
-fn weighted_difference_codeword(
-    from_codeword: &[XFieldElement],
-    to_codeword: &[XFieldElement],
-    weight: XFieldElement,
-) -> Vec<XFieldElement> {
-    from_codeword
-        .par_iter()
-        .zip_eq(to_codeword.par_iter())
-        .map(|(&from, &to)| weight * (from - to))
-        .collect::<Vec<_>>()
 }
 
 #[cfg(test)]
