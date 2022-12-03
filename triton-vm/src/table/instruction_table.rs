@@ -1,26 +1,40 @@
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use ndarray::s;
+use ndarray::ArrayViewMut2;
+use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use InstructionTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::EvalArg;
+use crate::cross_table_arguments::PermArg;
+use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_table::Extendable;
+use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::Table;
+use crate::table::base_table::TableLike;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::Row;
-
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::TableChallenges;
-use super::constraint_circuit::DualRowIndicator::{self, *};
-use super::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad,
-};
-use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
-use super::table_column::InstructionBaseTableColumn::{self, *};
-use super::table_column::InstructionExtTableColumn::{self, *};
+use crate::table::extension_table::ExtensionTable;
+use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_column::InstructionBaseTableColumn;
+use crate::table::table_column::InstructionBaseTableColumn::*;
+use crate::table::table_column::InstructionExtTableColumn;
+use crate::table::table_column::InstructionExtTableColumn::*;
+use crate::table::table_column::ProcessorBaseTableColumn;
 
 pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
@@ -319,6 +333,48 @@ impl InstructionTable {
             "InstructionTable".to_string(),
         );
         Self { inherited_table }
+    }
+
+    pub fn fill_trace(
+        instruction_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+        program: &[BFieldElement],
+    ) {
+        // Pre-process the AET's processor trace to find the number of occurrences of each unique
+        // row when only looking at the IP, CI, and NIA columns. Unless the prover is cheating,
+        // this is equivalent to looking at only the instruction pointer (IP) column, because the
+        // program is static.
+        let program_len = program.len();
+        let mut processor_trace_row_counts = vec![0; program_len];
+        for row in aet.processor_matrix.iter() {
+            let ip = row[usize::from(ProcessorBaseTableColumn::IP)].value() as usize;
+            assert!(ip < program_len, "IP out of bounds – cheating?");
+            processor_trace_row_counts[ip] += 1;
+        }
+
+        let mut next_row_in_instruction_table: usize = 0;
+        for (address, &instruction) in program.iter().enumerate() {
+            // Use zero in the last row.
+            let &nia = program.get(address + 1).unwrap_or(&BFieldElement::zero());
+            // Gets a “+1” to account for the row from the program table.
+            let number_of_rows_for_this_instruction = processor_trace_row_counts[address] + 1;
+            let last_row_for_this_instruction =
+                next_row_in_instruction_table + number_of_rows_for_this_instruction;
+            let mut instruction_sub_table = instruction_table.slice_mut(s![
+                next_row_in_instruction_table..last_row_for_this_instruction,
+                ..
+            ]);
+            instruction_sub_table
+                .slice_mut(s![.., usize::from(Address)])
+                .fill(BFieldElement::new(address as u64));
+            instruction_sub_table
+                .slice_mut(s![.., usize::from(CI)])
+                .fill(instruction);
+            instruction_sub_table
+                .slice_mut(s![.., usize::from(NIA)])
+                .fill(nia);
+            next_row_in_instruction_table = last_row_for_this_instruction;
+        }
     }
 
     pub fn extend(&self, challenges: &InstructionTableChallenges) -> ExtInstructionTable {
