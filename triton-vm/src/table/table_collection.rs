@@ -24,7 +24,6 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
@@ -184,7 +183,6 @@ where
 pub struct MasterBaseTable {
     pub padded_height: usize,
     pub num_trace_randomizers: usize,
-    pub num_randomizer_polynomials: usize,
 
     pub program_len: usize,
     pub main_execution_len: usize,
@@ -203,6 +201,7 @@ pub struct MasterBaseTable {
 pub struct MasterExtTable {
     pub padded_height: usize,
     pub num_trace_randomizers: usize,
+    pub num_randomizer_polynomials: usize,
 
     pub randomized_padded_trace_len: usize,
 
@@ -270,7 +269,6 @@ impl MasterBaseTable {
         aet: AlgebraicExecutionTrace,
         program: &[BFieldElement],
         num_trace_randomizers: usize,
-        num_randomizer_polynomials: usize,
         fri_domain: ArithmeticDomain,
     ) -> Self {
         let padded_height = Self::padded_height(&aet, program);
@@ -282,19 +280,12 @@ impl MasterBaseTable {
         let hash_coprocessor_execution_len = aet.hash_matrix.len();
 
         let num_rows = randomized_padded_trace_len;
-        let num_columns = num_randomizer_polynomials + NUM_BASE_COLUMNS;
-        let mut master_base_matrix = Array2::zeros([num_rows, num_columns].f());
-
-        // randomizer polynomials
-        let num_randomizer_columns = EXTENSION_DEGREE * num_randomizer_polynomials;
-        master_base_matrix
-            .slice_mut(s![.., ..num_randomizer_columns])
-            .par_mapv_inplace(|_| random::<BFieldElement>());
+        let num_columns = NUM_BASE_COLUMNS;
+        let master_base_matrix = Array2::zeros([num_rows, num_columns].f());
 
         let mut master_base_table = Self {
             padded_height,
             num_trace_randomizers,
-            num_randomizer_polynomials,
             program_len,
             main_execution_len,
             hash_coprocessor_execution_len,
@@ -362,12 +353,23 @@ impl MasterBaseTable {
     /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
     /// table. The `.extend()` for each table is specific to that table, but always involves
     /// adding some number of columns.
-    pub fn extend(&self, challenges: &AllChallenges) -> MasterExtTable {
-        let master_ext_matrix = Array2::zeros([self.fri_domain.length, NUM_EXT_COLUMNS].f());
+    pub fn extend(
+        &self,
+        challenges: &AllChallenges,
+        num_randomizer_polynomials: usize,
+    ) -> MasterExtTable {
+        // randomizer polynomials
+        let num_rows = self.fri_domain.length;
+        let num_columns = NUM_EXT_COLUMNS + num_randomizer_polynomials;
+        let mut master_ext_matrix = Array2::zeros([num_rows, num_columns].f());
+        master_ext_matrix
+            .slice_mut(s![.., NUM_EXT_COLUMNS..])
+            .par_mapv_inplace(|_| random::<XFieldElement>());
 
         let mut master_ext_table = MasterExtTable {
             padded_height: self.padded_height,
             num_trace_randomizers: self.num_trace_randomizers,
+            num_randomizer_polynomials,
             randomized_padded_trace_len: self.randomized_padded_trace_len,
             rand_trace_to_padded_trace_unit_distance: self.rand_trace_to_padded_trace_unit_distance,
             fri_domain: self.fri_domain,
@@ -387,24 +389,6 @@ impl MasterBaseTable {
         master_ext_table
     }
 
-    // todo: move randomizer codewords to extension table, stay type-native
-    pub fn randomizer_polynomials(&self) -> Vec<Vec<XFieldElement>> {
-        self.master_base_matrix
-            .slice(s![.., ..EXTENSION_DEGREE * self.num_randomizer_polynomials])
-            .exact_chunks([self.fri_domain.length, EXTENSION_DEGREE])
-            .into_iter()
-            .map(|three_entire_cols| {
-                three_entire_cols
-                    .axis_iter(Axis(0))
-                    .into_par_iter()
-                    .map(|three_bfes| {
-                        XFieldElement::new([three_bfes[0], three_bfes[1], three_bfes[2]])
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
     fn table_slice_info(id: TableId) -> (usize, usize) {
         use TableId::*;
         match id {
@@ -419,25 +403,17 @@ impl MasterBaseTable {
     }
 
     pub fn table(&self, id: TableId) -> ArrayView2<BFieldElement> {
-        let num_randomizer_columns = EXTENSION_DEGREE * self.num_randomizer_polynomials;
         let (table_start, table_end) = Self::table_slice_info(id);
-        let starting_col = num_randomizer_columns + table_start;
-        let ending_col = num_randomizer_columns + table_end;
-
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         self.master_base_matrix
-            .slice(s![..; unit_distance, starting_col..ending_col])
+            .slice(s![..; unit_distance, table_start..table_end])
     }
 
     pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<BFieldElement> {
-        let num_randomizer_columns = EXTENSION_DEGREE * self.num_randomizer_polynomials;
         let (table_start, table_end) = Self::table_slice_info(id);
-        let starting_col = num_randomizer_columns + table_start;
-        let ending_col = num_randomizer_columns + table_end;
-
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         self.master_base_matrix
-            .slice_mut(s![..; unit_distance, starting_col..ending_col])
+            .slice_mut(s![..; unit_distance, table_start..table_end])
     }
 }
 
@@ -447,6 +423,15 @@ impl MasterExtTable {
             master_ext_matrix: self.low_degree_extend_all_columns(),
             ..*self
         }
+    }
+
+    pub fn randomizer_polynomials(&self) -> Vec<Array1<XFieldElement>> {
+        let mut randomizer_polynomials = Vec::with_capacity(self.num_randomizer_polynomials);
+        for col_idx in NUM_EXT_COLUMNS..self.master_ext_matrix.ncols() {
+            let randomizer_polynomial = self.master_ext_matrix.column(col_idx);
+            randomizer_polynomials.push(randomizer_polynomial.to_owned());
+        }
+        randomizer_polynomials
     }
 
     /// requires underlying Array2 to be stored row-major order
@@ -482,16 +467,16 @@ impl MasterExtTable {
 
     pub fn table(&self, id: TableId) -> ArrayView2<XFieldElement> {
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
-        let (starting_col, ending_col) = Self::table_slice_info(id);
+        let (table_start, table_end) = Self::table_slice_info(id);
         self.master_ext_matrix
-            .slice(s![..; unit_distance, starting_col..ending_col])
+            .slice(s![..; unit_distance, table_start..table_end])
     }
 
     pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<XFieldElement> {
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
-        let (starting_col, ending_col) = Self::table_slice_info(id);
+        let (table_start, table_end) = Self::table_slice_info(id);
         self.master_ext_matrix
-            .slice_mut(s![..; unit_distance, starting_col..ending_col])
+            .slice_mut(s![..; unit_distance, table_start..table_end])
     }
 }
 

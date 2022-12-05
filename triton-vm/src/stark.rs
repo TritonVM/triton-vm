@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::ops::Add;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -9,6 +10,7 @@ use itertools::Itertools;
 use ndarray::par_azip;
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::ArrayBase;
 use ndarray::ArrayView2;
 use num_traits::One;
 use num_traits::Zero;
@@ -30,7 +32,8 @@ use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::merkle_tree::{CpuParallel, MerkleTree};
+use twenty_first::util_types::merkle_tree::CpuParallel;
+use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
@@ -161,7 +164,6 @@ impl Stark {
             aet,
             &self.claim.program,
             self.parameters.num_trace_randomizers,
-            self.parameters.num_randomizer_polynomials,
             self.fri.domain,
         );
         prof_stop!(maybe_profiler, "create");
@@ -193,7 +195,10 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
-        let mut master_ext_table = master_base_table.extend(&extension_challenges);
+        let mut master_ext_table = master_base_table.extend(
+            &extension_challenges,
+            self.parameters.num_randomizer_polynomials,
+        );
         prof_stop!(maybe_profiler, "extend");
 
         prof_start!(maybe_profiler, "ext tables");
@@ -309,16 +314,16 @@ impl Stark {
         prof_stop!(maybe_profiler, "create combination codeword");
 
         prof_start!(maybe_profiler, "LDE 3");
-        let fri_combination_codeword_without_randomizer =
-            quotient_domain.low_degree_extension(&combination_codeword, self.fri.domain);
+        let fri_combination_codeword_without_randomizer = Array1::from(
+            quotient_domain.low_degree_extension(&combination_codeword, self.fri.domain),
+        );
         prof_stop!(maybe_profiler, "LDE 3");
 
-        let x_rand_codeword = fri_domain_base_master_table.randomizer_polynomials()[0].clone();
-        let fri_combination_codeword: Vec<_> = fri_combination_codeword_without_randomizer
-            .into_par_iter()
-            .zip_eq(x_rand_codeword.into_par_iter())
-            .map(|(cc_elem, rand_elem)| cc_elem + rand_elem)
-            .collect();
+        let fri_combination_codeword = fri_domain_ext_master_table
+            .randomizer_polynomials()
+            .into_iter()
+            .fold(fri_combination_codeword_without_randomizer, ArrayBase::add)
+            .to_vec();
         prof_stop!(maybe_profiler, "nonlinear combination");
 
         prof_start!(maybe_profiler, "Merkle tree 3");
@@ -1047,7 +1052,6 @@ pub(crate) mod triton_stark_tests {
             aet,
             &program.to_bwords(),
             stark.parameters.num_trace_randomizers,
-            stark.parameters.num_randomizer_polynomials,
             stark.fri.domain,
         );
 
@@ -1072,7 +1076,10 @@ pub(crate) mod triton_stark_tests {
             parse_simulate_pad(code, stdin, secret_in);
 
         let dummy_challenges = AllChallenges::placeholder();
-        let master_ext_table = master_base_table.extend(&dummy_challenges);
+        let master_ext_table = master_base_table.extend(
+            &dummy_challenges,
+            stark.parameters.num_randomizer_polynomials,
+        );
 
         (
             stark,
