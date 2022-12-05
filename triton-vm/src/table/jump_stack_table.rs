@@ -65,19 +65,6 @@ pub struct ExtJumpStackTable {
     pub(crate) inherited_table: Table<XFieldElement>,
 }
 
-impl Default for ExtJumpStackTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtJumpStackTable".to_string(),
-            ),
-        }
-    }
-}
-
 impl QuotientableExtensionTable for ExtJumpStackTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtJumpStackTable {

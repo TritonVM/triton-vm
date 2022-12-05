@@ -71,19 +71,6 @@ pub struct ExtHashTable {
     pub(crate) inherited_table: Table<XFieldElement>,
 }
 
-impl Default for ExtHashTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtHashTable".to_string(),
-            ),
-        }
-    }
-}
-
 impl QuotientableExtensionTable for ExtHashTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtHashTable {

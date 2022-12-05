@@ -62,19 +62,6 @@ pub struct ExtProgramTable {
     pub(crate) inherited_table: Table<XFieldElement>,
 }
 
-impl Default for ExtProgramTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtProgramTable".to_string(),
-            ),
-        }
-    }
-}
-
 impl QuotientableExtensionTable for ExtProgramTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtProgramTable {

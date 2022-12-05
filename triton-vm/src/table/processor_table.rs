@@ -663,19 +663,6 @@ impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
     }
 }
 
-impl Default for ExtProcessorTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtProcessorTable".to_string(),
-            ),
-        }
-    }
-}
-
 impl TableLike<BFieldElement> for ProcessorTable {}
 
 impl Extendable for ProcessorTable {

@@ -66,19 +66,6 @@ pub struct ExtRamTable {
     pub(crate) inherited_table: Table<XFieldElement>,
 }
 
-impl Default for ExtRamTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtRamTable".to_string(),
-            ),
-        }
-    }
-}
-
 impl QuotientableExtensionTable for ExtRamTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtRamTable {

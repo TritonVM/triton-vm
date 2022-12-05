@@ -121,19 +121,6 @@ pub struct ExtInstructionTable {
     pub(crate) inherited_table: Table<XFieldElement>,
 }
 
-impl Default for ExtInstructionTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtInstructionTable".to_string(),
-            ),
-        }
-    }
-}
-
 impl QuotientableExtensionTable for ExtInstructionTable {}
 
 impl InheritsFromTable<XFieldElement> for ExtInstructionTable {
