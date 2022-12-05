@@ -1,27 +1,42 @@
+use std::collections::HashMap;
+
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use ndarray::s;
+use ndarray::ArrayViewMut2;
+use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use RamTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, PermArg};
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::PermArg;
+use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_table::Extendable;
-use crate::table::base_table::{InheritsFromTable, Table, TableLike};
+use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::Table;
+use crate::table::base_table::TableLike;
 use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::Row;
-use crate::table::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator,
-};
-use crate::table::extension_table::{ExtensionTable, QuotientableExtensionTable};
-use crate::table::table_column::RamBaseTableColumn::{self, *};
-use crate::table::table_column::RamExtTableColumn::{self, *};
-
-use super::constraint_circuit::DualRowIndicator::*;
+use crate::table::extension_table::ExtensionTable;
+use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::table::table_column::RamBaseTableColumn;
+use crate::table::table_column::RamBaseTableColumn::*;
+use crate::table::table_column::RamExtTableColumn;
+use crate::table::table_column::RamExtTableColumn::*;
 
 pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -84,6 +99,92 @@ impl RamTable {
     pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
         let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "RamTable".to_string());
         Self { inherited_table }
+    }
+
+    pub fn fill_trace(ram_table: &mut ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace) {
+        // Store the registers relevant for the Ram Table, i.e., CLK, RAMP, and RAMV, with RAMP
+        // as the key. Preserves, thus allows reusing, the order of the processor's rows, which
+        // are sorted by CLK. Note that the Ram Table must not be sorted by RAMP, but must form
+        // contiguous regions of RAMP values.
+        let mut pre_processed_ram_table: HashMap<_, Vec<_>> = HashMap::new();
+        for processor_row in aet.processor_matrix.iter() {
+            let clk = processor_row[usize::from(ProcessorBaseTableColumn::CLK)];
+            let ramp = processor_row[usize::from(ProcessorBaseTableColumn::RAMP)];
+            let ramv = processor_row[usize::from(ProcessorBaseTableColumn::RAMV)];
+            let ram_row = (clk, ramv);
+            pre_processed_ram_table
+                .entry(ramp)
+                .and_modify(|v| v.push(ram_row))
+                .or_insert_with(|| vec![ram_row]);
+        }
+
+        // Compute Bézout coefficient polynomials.
+        let num_of_ramps = pre_processed_ram_table.keys().len();
+        let polynomial_with_ramps_as_roots = pre_processed_ram_table.keys().fold(
+            Polynomial::from_constant(BFieldElement::one()),
+            |acc, &ramp| acc * Polynomial::new(vec![-ramp, BFieldElement::one()]), // … · (x - ramp)
+        );
+        let formal_derivative = polynomial_with_ramps_as_roots.formal_derivative();
+        let (gcd, bezout_0, bezout_1) =
+            Polynomial::xgcd(polynomial_with_ramps_as_roots, formal_derivative);
+        assert!(gcd.is_one(), "Each RAMP value must occur at most once.");
+        assert!(
+            bezout_0.degree() < num_of_ramps as isize,
+            "The Bézout coefficient 0 must be of degree at most {}.",
+            num_of_ramps - 1
+        );
+        assert!(
+            bezout_1.degree() <= num_of_ramps as isize,
+            "The Bézout coefficient 1 must be of degree at most {num_of_ramps}."
+        );
+        let mut bezout_coefficient_polynomial_coefficients_0 = bezout_0.coefficients;
+        let mut bezout_coefficient_polynomial_coefficients_1 = bezout_1.coefficients;
+        bezout_coefficient_polynomial_coefficients_0.resize(num_of_ramps, BFieldElement::zero());
+        bezout_coefficient_polynomial_coefficients_1.resize(num_of_ramps, BFieldElement::zero());
+        let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
+        let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
+        ram_table[(0, usize::from(BezoutCoefficient0))] = current_bcpc_0;
+        ram_table[(0, usize::from(BezoutCoefficient1))] = current_bcpc_1;
+
+        // Move the rows into the Ram Table, as contiguous regions of RAMP values, sorted by CLK.
+        let mut ram_table_row = 0;
+        for (ramp, ram_table_rows) in pre_processed_ram_table {
+            for (clk, ramv) in ram_table_rows {
+                ram_table[[ram_table_row, usize::from(CLK)]] = clk;
+                ram_table[[ram_table_row, usize::from(RAMP)]] = ramp;
+                ram_table[[ram_table_row, usize::from(RAMV)]] = ramv;
+                ram_table_row += 1;
+            }
+        }
+        assert_eq!(ram_table_row, aet.processor_matrix.len());
+
+        // - Set inverse of clock difference - 1.
+        // - Set inverse of RAMP difference.
+        // - Fill in the Bézout coefficients if the RAMP has changed.
+        // The Ram Table and the Processor Table have the same length.
+        for row_idx in 0..aet.processor_matrix.len() - 1 {
+            let (mut curr_row, mut next_row) =
+                ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
+
+            let clk_diff = next_row[usize::from(CLK)] - curr_row[usize::from(CLK)];
+            let clk_diff_minus_1 = clk_diff - BFieldElement::one();
+            let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
+            curr_row[usize::from(InverseOfClkDiffMinusOne)] = clk_diff_minus_1_inverse;
+
+            let ramp_diff = next_row[usize::from(RAMP)] - curr_row[usize::from(RAMP)];
+            let ramp_diff_inverse = ramp_diff.inverse_or_zero();
+            curr_row[usize::from(InverseOfRampDifference)] = ramp_diff_inverse;
+
+            if ramp_diff != BFieldElement::zero() {
+                current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
+                current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
+            }
+            next_row[usize::from(BezoutCoefficient0)] = current_bcpc_0;
+            next_row[usize::from(BezoutCoefficient1)] = current_bcpc_1;
+        }
+
+        assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
+        assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
     }
 
     pub fn extend(&self, challenges: &RamTableChallenges) -> ExtRamTable {

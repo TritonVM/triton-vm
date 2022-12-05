@@ -13,22 +13,23 @@ use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
 use strum::EnumCount;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::other::roundup_npo2;
-use twenty_first::shared_math::traits::{FiniteField, ModPowU32};
-use twenty_first::shared_math::traits::{Inverse, PrimitiveRootOfUnity};
+use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::traits::ModPowU32;
+use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
-
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
@@ -345,6 +346,8 @@ impl MasterBaseTable {
         InstructionTable::fill_trace(instruction_table, &aet, program);
         let op_stack_table = &mut master_base_table.table_mut(TableId::OpStackTable);
         OpStackTable::fill_trace(op_stack_table, &aet);
+        let ram_table = &mut master_base_table.table_mut(TableId::RamTable);
+        RamTable::fill_trace(ram_table, &aet);
         let jump_stack_table = &mut master_base_table.table_mut(TableId::JumpStackTable);
         JumpStackTable::fill_trace(jump_stack_table, &aet);
 
