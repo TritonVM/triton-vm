@@ -1,8 +1,14 @@
-use itertools::Itertools;
-use ndarray::{par_azip, s, Array1, ArrayView2, ArrayViewMut2};
-use num_traits::{One, Zero};
+use ndarray::par_azip;
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
+use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -211,8 +217,7 @@ impl ProgramTable {
         is_padding_column.fill(BFieldElement::one());
     }
 
-    /// todo rename to “extend()” once the old “extend()” is removed
-    pub fn the_new_extend_method_is_in_place(
+    pub fn extend(
         base_table: &ArrayView2<BFieldElement>,
         ext_table: &mut ArrayViewMut2<XFieldElement>,
         challenges: &ProgramTableChallenges,
@@ -252,26 +257,6 @@ impl ProgramTable {
             .last()
             .expect("Program Table must not be empty.");
         last_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
-    }
-
-    /// todo delete this stub
-    pub fn extend(&self, _challenges: &ProgramTableChallenges) -> ExtProgramTable {
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
-
-        let data_with_0 = {
-            let mut tmp = self.data().clone();
-            tmp.push(vec![BFieldElement::zero(); BASE_WIDTH]);
-            tmp
-        };
-
-        for (_, _) in data_with_0.into_iter().tuple_windows() {
-            let extension_row = [0.into(); FULL_WIDTH];
-            extension_matrix.push(extension_row.to_vec());
-        }
-
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
-        ExtProgramTable { inherited_table }
     }
 
     pub fn for_verifier() -> ExtProgramTable {

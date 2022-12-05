@@ -380,7 +380,7 @@ impl MasterBaseTable {
         // to keep each table's `.extend()` homogenous.
         let base_program_table = self.table(TableId::ProgramTable);
         let mut ext_program_table = master_ext_table.table_mut(TableId::ProgramTable);
-        ProgramTable::the_new_extend_method_is_in_place(
+        ProgramTable::extend(
             &base_program_table,
             &mut ext_program_table,
             &challenges.program_table_challenges,
