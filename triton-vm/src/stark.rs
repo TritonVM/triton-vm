@@ -120,10 +120,10 @@ impl fmt::Display for StarkValidationError {
 }
 
 pub struct Stark {
-    parameters: StarkParameters,
-    claim: Claim,
-    max_degree: Degree,
-    fri: Fri<StarkHasher>,
+    pub parameters: StarkParameters,
+    pub claim: Claim,
+    pub max_degree: Degree,
+    pub fri: Fri<StarkHasher>,
 }
 
 impl Stark {
@@ -978,8 +978,6 @@ pub(crate) mod triton_stark_tests {
 
     use itertools::izip;
     use ndarray::Array1;
-    use ndarray::Array2;
-    use ndarray::ArrayBase;
     use num_traits::One;
     use num_traits::Zero;
     use twenty_first::shared_math::other::log_2_floor;
@@ -988,8 +986,6 @@ pub(crate) mod triton_stark_tests {
     use crate::instruction::sample_programs;
     use crate::shared_tests::*;
     use crate::table::base_matrix::AlgebraicExecutionTrace;
-    use crate::table::base_matrix::BaseMatrices;
-    use crate::table::base_table::InheritsFromTable;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
     use crate::table::hash_table::ExtHashTable;
@@ -1000,7 +996,6 @@ pub(crate) mod triton_stark_tests {
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
     use crate::table::table_collection::all_degrees_with_origin;
-    use crate::table::table_collection::BaseTableCollection;
     use crate::table::table_collection::MasterExtTable;
     use crate::table::table_collection::TableId::ProcessorTable;
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
@@ -1012,24 +1007,6 @@ pub(crate) mod triton_stark_tests {
     use crate::vm::Program;
 
     use super::*;
-
-    #[test]
-    fn all_tables_pad_to_same_height_test() {
-        let code = "read_io read_io push -1 mul add split push 0 eq swap1 pop "; // simulates LTE
-        let input_symbols = vec![5_u64.into(), 7_u64.into()];
-        let (aet, _, program) = parse_setup_simulate(code, input_symbols, vec![]);
-        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
-        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
-        base_tables.pad();
-        let padded_height = base_tables.padded_height;
-        assert_eq!(padded_height, base_tables.program_table.data().len());
-        assert_eq!(padded_height, base_tables.instruction_table.data().len());
-        assert_eq!(padded_height, base_tables.processor_table.data().len());
-        assert_eq!(padded_height, base_tables.op_stack_table.data().len());
-        assert_eq!(padded_height, base_tables.ram_table.data().len());
-        assert_eq!(padded_height, base_tables.jump_stack_table.data().len());
-        assert_eq!(padded_height, base_tables.hash_table.data().len());
-    }
 
     pub fn parse_setup_simulate(
         code: &str,
@@ -1052,28 +1029,32 @@ pub(crate) mod triton_stark_tests {
         code: &str,
         stdin: Vec<BFieldElement>,
         secret_in: Vec<BFieldElement>,
-    ) -> (
-        BaseTableCollection,
-        BaseTableCollection,
-        usize,
-        Vec<BFieldElement>,
-    ) {
-        let (aet, stdout, program) = parse_setup_simulate(code, stdin, secret_in);
-        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
+    ) -> (Stark, MasterBaseTable, MasterBaseTable) {
+        let (aet, stdout, program) = parse_setup_simulate(code, stdin.clone(), secret_in);
 
-        let num_trace_randomizers = 2;
-        let mut base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
+        let claim = Claim {
+            input: stdin,
+            program: program.to_bwords(),
+            output: stdout,
+            padded_height: 0,
+        };
+        let log_expansion_factor = 2;
+        let security_level = 32;
+        let parameters = StarkParameters::new(security_level, 1 << log_expansion_factor);
+        let stark = Stark::new(claim, parameters);
 
-        let unpadded_base_tables = base_tables.clone();
+        let mut master_base_table = MasterBaseTable::new(
+            aet,
+            &program.to_bwords(),
+            stark.parameters.num_trace_randomizers,
+            stark.parameters.num_randomizer_polynomials,
+            stark.fri.domain,
+        );
 
-        base_tables.pad();
+        let unpadded_master_base_table = master_base_table.clone();
+        master_base_table.pad();
 
-        (
-            base_tables,
-            unpadded_base_tables,
-            num_trace_randomizers,
-            stdout,
-        )
+        (stark, unpadded_master_base_table, master_base_table)
     }
 
     pub fn parse_simulate_pad_extend(
@@ -1081,37 +1062,31 @@ pub(crate) mod triton_stark_tests {
         stdin: Vec<BFieldElement>,
         secret_in: Vec<BFieldElement>,
     ) -> (
-        Vec<BFieldElement>,
-        BaseTableCollection,
-        BaseTableCollection,
-        ExtTableCollection,
+        Stark,
+        MasterBaseTable,
+        MasterBaseTable,
+        MasterExtTable,
         AllChallenges,
-        usize,
     ) {
-        let (base_tables, unpadded_base_tables, num_trace_randomizers, stdout) =
+        let (stark, unpadded_master_base_table, master_base_table) =
             parse_simulate_pad(code, stdin, secret_in);
 
         let dummy_challenges = AllChallenges::placeholder();
-        let ext_tables = ExtTableCollection::extend_tables(&base_tables, &dummy_challenges);
+        let master_ext_table = master_base_table.extend(&dummy_challenges);
 
         (
-            stdout,
-            unpadded_base_tables,
-            base_tables,
-            ext_tables,
+            stark,
+            unpadded_master_base_table,
+            master_base_table,
+            master_ext_table,
             dummy_challenges,
-            num_trace_randomizers,
         )
     }
 
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
     #[test]
     pub fn print_all_constraint_degrees() {
-        let (_, _, _, ext_tables, _, num_trace_randomizers) =
-            parse_simulate_pad_extend("halt", vec![], vec![]);
-        let padded_height = ext_tables.padded_height;
-        let all_degrees = all_degrees_with_origin(padded_height, num_trace_randomizers);
-        for deg in all_degrees {
+        for deg in all_degrees_with_origin(2, 2) {
             println!("{}", deg);
         }
     }
@@ -1119,33 +1094,24 @@ pub(crate) mod triton_stark_tests {
     // 1. simulate(), pad(), extend(), test terminals
     #[test]
     pub fn check_io_terminals() {
-        let read_nop_code = "
-            read_io read_io read_io
-            nop nop
-            write_io push 17 write_io
-        ";
-        let input_symbols = vec![
-            BFieldElement::new(3),
-            BFieldElement::new(5),
-            BFieldElement::new(7),
-        ];
-        let (stdout, _, _, ext_table_collection, all_challenges, _) =
-            parse_simulate_pad_extend(read_nop_code, input_symbols.clone(), vec![]);
+        let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io";
+        let input_symbols = [3, 5, 7].map(BFieldElement::new).to_vec();
+        let (stark, _, _, master_ext_table, all_challenges) =
+            parse_simulate_pad_extend(read_nop_code, input_symbols, vec![]);
 
-        let ptie = ext_table_collection.data(ProcessorTable).last().unwrap()
-            [usize::from(InputTableEvalArg)];
+        let processor_table = master_ext_table.table(ProcessorTable);
+        let processor_table_last_row = processor_table.slice(s![-1, ..]);
+        let ptie = processor_table_last_row[usize::from(InputTableEvalArg)];
         let ine = EvalArg::compute_terminal(
-            &input_symbols,
+            &stark.claim.input,
             EvalArg::default_initial(),
             all_challenges.input_challenges.processor_eval_indeterminate,
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
-        let ptoe = ext_table_collection.data(ProcessorTable).last().unwrap()
-            [usize::from(OutputTableEvalArg)];
-
+        let ptoe = processor_table_last_row[usize::from(OutputTableEvalArg)];
         let oute = EvalArg::compute_terminal(
-            &stdout,
+            &stark.claim.output,
             EvalArg::default_initial(),
             all_challenges
                 .output_challenges
@@ -1164,14 +1130,11 @@ pub(crate) mod triton_stark_tests {
             let code = code_with_input.source_code;
             let input = code_with_input.input;
             let secret_input = code_with_input.secret_input.clone();
-            let (output, _, _, ext_table_collection, all_challenges, _) =
-                parse_simulate_pad_extend(&code, input.clone(), secret_input);
-
-            // todo replace once simulate_pad_extend returns master tables
-            let master_ext_table = Array2::<XFieldElement>::zeros([16, NUM_EXT_COLUMNS]);
+            let (stark, _, master_base_table, master_ext_table, all_challenges) =
+                parse_simulate_pad_extend(&code, input, secret_input);
 
             let input_terminal = EvalArg::compute_terminal(
-                &input,
+                &stark.claim.input,
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges
@@ -1179,7 +1142,7 @@ pub(crate) mod triton_stark_tests {
             );
 
             let output_terminal = EvalArg::compute_terminal(
-                &output,
+                &stark.claim.output,
                 EvalArg::default_initial(),
                 all_challenges
                     .processor_table_challenges
@@ -1192,16 +1155,21 @@ pub(crate) mod triton_stark_tests {
                 output_terminal,
             );
 
+            let padded_height = master_base_table.padded_height;
             for (idx, (arg, _)) in grand_cross_table_arg.into_iter().enumerate() {
                 let from = arg
                     .from()
                     .iter()
-                    .map(|&from_column| *master_ext_table.column(from_column).last().unwrap())
+                    .map(|&from_column| {
+                        master_ext_table.master_ext_matrix[(padded_height - 1, from_column)]
+                    })
                     .fold(XFieldElement::one(), XFieldElement::mul);
                 let to = arg
                     .to()
                     .iter()
-                    .map(|&to_column| *master_ext_table.column(to_column).last().unwrap())
+                    .map(|&to_column| {
+                        master_ext_table.master_ext_matrix[(padded_height - 1, to_column)]
+                    })
                     .fold(XFieldElement::one(), XFieldElement::mul);
                 assert_eq!(
                     from, to,
@@ -1209,15 +1177,15 @@ pub(crate) mod triton_stark_tests {
                 );
             }
 
-            let ptie = ext_table_collection.data(ProcessorTable).last().unwrap()
-                [usize::from(InputTableEvalArg)];
+            let processor_table = master_ext_table.table(ProcessorTable);
+            let processor_table_last_row = processor_table.slice(s![-1, ..]);
+            let ptie = processor_table_last_row[usize::from(InputTableEvalArg)];
             assert_eq!(
                 ptie, input_terminal,
                 "The input terminal must match for TASM snipped #{code_idx}."
             );
 
-            let ptoe = ext_table_collection.data(ProcessorTable).last().unwrap()
-                [usize::from(OutputTableEvalArg)];
+            let ptoe = processor_table_last_row[usize::from(OutputTableEvalArg)];
             assert_eq!(
                 ptoe, output_terminal,
                 "The output terminal must match for TASM snipped #{code_idx}."
@@ -1268,26 +1236,6 @@ pub(crate) mod triton_stark_tests {
         ExtHashTable::evaluate_consistency_constraints(br, er, &challenges);
         ExtHashTable::evaluate_transition_constraints(br, er, br, er, &challenges);
         ExtHashTable::evaluate_terminal_constraints(br, er, &challenges);
-    }
-
-    #[test]
-    fn extend_does_not_change_base_table() {
-        let (base_tables, _, _, _) =
-            parse_simulate_pad(sample_programs::FIBONACCI_LT, vec![], vec![]);
-
-        let dummy_challenges = AllChallenges::placeholder();
-        let ext_tables = ExtTableCollection::extend_tables(&base_tables, &dummy_challenges);
-
-        for (base_table, extension_table) in base_tables.into_iter().zip(ext_tables.into_iter()) {
-            for column in 0..base_table.base_width() {
-                for row in 0..base_tables.padded_height {
-                    assert_eq!(
-                        base_table.data()[row][column].lift(),
-                        extension_table.data()[row][column]
-                    );
-                }
-            }
-        }
     }
 
     #[test]
@@ -1491,17 +1439,12 @@ pub(crate) mod triton_stark_tests {
     fn triton_table_constraints_evaluate_to_zero_on_halt_test() {
         let zero = XFieldElement::zero();
         let source_code_and_input = test_halt();
-        let (_, _, _, _, challenges, _) =
+        let (_, _, master_base_table, master_ext_table, challenges) =
             parse_simulate_pad_extend(&source_code_and_input.source_code, vec![], vec![]);
 
-        // todo change once simulate_pad_extend returns master tables
-        let num_rows = 16;
-        let master_base_table = Array2::zeros([num_rows, NUM_BASE_COLUMNS]);
-        let master_ext_table = Array2::zeros([num_rows, NUM_EXT_COLUMNS]);
-
         let evaluated_initial_constraints = evaluate_all_initial_constraints(
-            master_base_table.row(0),
-            master_ext_table.row(0),
+            master_base_table.master_base_matrix.row(0),
+            master_ext_table.master_ext_matrix.row(0),
             &challenges,
         );
         let num_initial_constraints = evaluated_initial_constraints.len();
@@ -1512,9 +1455,10 @@ pub(crate) mod triton_stark_tests {
             );
         }
 
+        let num_rows = master_base_table.master_base_matrix.nrows();
         for row_idx in 0..num_rows {
-            let base_row = master_base_table.row(row_idx);
-            let ext_row = master_ext_table.row(row_idx);
+            let base_row = master_base_table.master_base_matrix.row(row_idx);
+            let ext_row = master_ext_table.master_ext_matrix.row(row_idx);
             let evaluated_consistency_constraints =
                 evaluate_all_consistency_constraints(base_row, ext_row, &challenges);
             let num_consistency_constraints = evaluated_consistency_constraints.len();
@@ -1528,10 +1472,10 @@ pub(crate) mod triton_stark_tests {
         }
 
         for row_idx in 0..num_rows - 1 {
-            let base_row = master_base_table.row(row_idx);
-            let ext_row = master_ext_table.row(row_idx);
-            let next_base_row = master_base_table.row(row_idx + 1);
-            let next_ext_row = master_ext_table.row(row_idx + 1);
+            let base_row = master_base_table.master_base_matrix.row(row_idx);
+            let ext_row = master_ext_table.master_ext_matrix.row(row_idx);
+            let next_base_row = master_base_table.master_base_matrix.row(row_idx + 1);
+            let next_ext_row = master_ext_table.master_ext_matrix.row(row_idx + 1);
             let evaluated_transition_constraints = evaluate_all_transition_constraints(
                 base_row,
                 ext_row,
@@ -1550,8 +1494,8 @@ pub(crate) mod triton_stark_tests {
         }
 
         let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
-            master_base_table.row(num_rows - 1),
-            master_ext_table.row(num_rows - 1),
+            master_base_table.master_base_matrix.row(num_rows - 1),
+            master_ext_table.master_ext_matrix.row(num_rows - 1),
             &challenges,
         );
         let num_terminal_constraints = evaluated_terminal_constraints.len();
@@ -1566,38 +1510,8 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
         let zero = XFieldElement::zero();
-        let (_, _, _, _, challenges, _) =
+        let (_, _, mbt, met, challenges) =
             parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
-
-        // todo use actual master tables once parse_simulate_pad_extend is changed
-        let mbt = MasterBaseTable {
-            padded_height: 4,
-            num_trace_randomizers: 2,
-            num_randomizer_polynomials: 1,
-            program_len: 2,
-            main_execution_len: 2,
-            hash_coprocessor_execution_len: 3,
-            randomized_padded_trace_len: 8,
-            rand_trace_to_padded_trace_unit_distance: 2,
-            fri_domain: ArithmeticDomain {
-                offset: BFieldElement::one(),
-                generator: BFieldElement::primitive_root_of_unity(8).unwrap(),
-                length: 32,
-            },
-            master_base_matrix: ArrayBase::ones([32, NUM_BASE_COLUMNS]),
-        };
-        let met = MasterExtTable {
-            padded_height: 4,
-            num_trace_randomizers: 2,
-            randomized_padded_trace_len: 8,
-            rand_trace_to_padded_trace_unit_distance: 2,
-            fri_domain: ArithmeticDomain {
-                offset: BFieldElement::one(),
-                generator: BFieldElement::primitive_root_of_unity(8).unwrap(),
-                length: 32,
-            },
-            master_ext_matrix: ArrayBase::ones([32, NUM_EXT_COLUMNS]),
-        };
 
         let fbr = mbt.master_base_matrix.row(0);
         let fer = met.master_ext_matrix.row(0);

@@ -54,7 +54,7 @@ impl ArithmeticDomain {
             domain_values.push(accumulator * self.offset);
             accumulator *= self.generator;
         }
-
+        // todo insert assert on the accumulator being equal to one?
         domain_values
     }
 }

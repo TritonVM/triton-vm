@@ -214,18 +214,15 @@ pub mod triton_vm_tests {
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
+    use triton_profiler::triton_profiler::TritonProfiler;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other;
     use twenty_first::shared_math::other::roundup_npo2;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
-    use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
-
-    use triton_profiler::triton_profiler::TritonProfiler;
 
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
     use crate::shared_tests::SourceCodeAndInput;
-    use crate::table::base_matrix::BaseMatrices;
     use crate::table::base_matrix::ProcessorMatrixRow;
     use crate::table::base_table::Extendable;
     use crate::table::base_table::InheritsFromTable;
@@ -311,68 +308,6 @@ pub mod triton_vm_tests {
         let computed_symbol = stdout[0];
 
         assert_eq!(expected_symbol, computed_symbol);
-    }
-
-    #[test]
-    fn hello_world() {
-        let code = sample_programs::HELLO_WORLD_1;
-        let program = Program::from_code(code).unwrap();
-
-        println!("{}", program);
-
-        let (aet, stdout, err) = program.simulate_no_input();
-        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
-
-        println!("{:?}", err);
-        for row in base_matrices.processor_matrix.clone() {
-            println!("{}", ProcessorMatrixRow { row });
-        }
-
-        // check `output_matrix`
-        let expected_output = vec![
-            10, 33, 100, 108, 114, 111, 87, 32, 44, 111, 108, 108, 101, 72,
-        ]
-        .into_iter()
-        .rev()
-        .map(BFieldElement::new)
-        .collect_vec();
-
-        assert_eq!(expected_output, stdout);
-
-        // each `hash` operation result in 8 rows
-        let hash_instruction_count = 0;
-        let prc_rows_count = base_matrices.processor_matrix.len();
-        assert!(hash_instruction_count <= 8 * prc_rows_count);
-
-        // noRows(jump_stack_table) == noRows(processor_table)
-        let jmp_rows_count = base_matrices.jump_stack_matrix.len();
-        let prc_rows_count = base_matrices.processor_matrix.len();
-        assert_eq!(jmp_rows_count, prc_rows_count);
-    }
-
-    #[test]
-    fn hash_hash_hash_test() {
-        let code = sample_programs::HASH_HASH_HASH_HALT;
-        let program = Program::from_code(code).unwrap();
-
-        println!("{}", program);
-
-        let (aet, _, err) = program.simulate_no_input();
-        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
-
-        // noRows(jump_stack_table) == noRows(processor_table)
-        assert_eq!(
-            base_matrices.jump_stack_matrix.len(),
-            base_matrices.processor_matrix.len()
-        );
-
-        for row in base_matrices.processor_matrix {
-            println!("{}", ProcessorMatrixRow { row });
-        }
-        println!("Errors: {:?}", err);
-
-        // each of three `hash` instructions result in NUM_ROUNDS+1 rows.
-        assert_eq!(3 * (NUM_ROUNDS + 1), base_matrices.hash_matrix.len());
     }
 
     pub fn test_hash_nop_nop_lt() -> SourceCodeAndInput {

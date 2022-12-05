@@ -487,11 +487,11 @@ mod permutation_argument_tests {
         let code = code_with_input.source_code;
         let input = code_with_input.input;
         let secret_input = code_with_input.secret_input;
-        let (output, _, _, ext_codeword_tables, all_challenges, _) =
-            parse_simulate_pad_extend(&code, input.clone(), secret_input);
+        let (stark, _, master_base_table, _, all_challenges) =
+            parse_simulate_pad_extend(&code, input, secret_input);
 
         let input_terminal = EvalArg::compute_terminal(
-            &input,
+            &stark.claim.input,
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
@@ -499,7 +499,7 @@ mod permutation_argument_tests {
         );
 
         let output_terminal = EvalArg::compute_terminal(
-            &output,
+            &stark.claim.output,
             EvalArg::default_initial(),
             all_challenges
                 .processor_table_challenges
@@ -512,7 +512,7 @@ mod permutation_argument_tests {
             output_terminal,
         );
 
-        let padded_height = ext_codeword_tables.padded_height;
+        let padded_height = master_base_table.padded_height;
         let quotient_degree_bound = gxta
             .program_to_instruction
             .quotient_degree_bound(padded_height, num_trace_randomizers);

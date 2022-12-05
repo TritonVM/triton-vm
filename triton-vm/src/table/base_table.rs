@@ -1,11 +1,10 @@
-use super::super::arithmetic_domain::ArithmeticDomain;
-use itertools::Itertools;
-use rand_distr::{Distribution, Standard};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use std::ops::{Mul, MulAssign, Range};
+use std::ops::Mul;
+use std::ops::MulAssign;
+
+use rand_distr::Distribution;
+use rand_distr::Standard;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::other::{random_elements, roundup_npo2};
-use twenty_first::shared_math::traits::{FiniteField, PrimitiveRootOfUnity};
+use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 // todo: replace the complicated trait structure with
@@ -117,54 +116,5 @@ where
 
     fn name(&self) -> String {
         self.inherited_table().name.clone()
-    }
-
-    fn randomized_low_deg_extension(
-        &self,
-        fri_domain: ArithmeticDomain,
-        num_trace_randomizers: usize,
-        columns: Range<usize>,
-    ) -> Table<FF> {
-        let all_trace_columns = self.data();
-        let padded_height = all_trace_columns.len();
-
-        assert_ne!(
-            0,
-            padded_height,
-            "{}: Low-degree extension must be performed on some codeword, but got nothing.",
-            self.name()
-        );
-        assert!(
-            padded_height.is_power_of_two(),
-            "{}: Table data must be padded before interpolation",
-            self.name()
-        );
-
-        let randomized_trace_domain_len =
-            roundup_npo2((padded_height + num_trace_randomizers) as u64);
-        let randomized_trace_domain_gen =
-            BFieldElement::primitive_root_of_unity(randomized_trace_domain_len).unwrap();
-        let randomized_trace_domain = ArithmeticDomain::new(
-            1_u32.into(),
-            randomized_trace_domain_gen,
-            randomized_trace_domain_len as usize,
-        );
-
-        // how many elements to skip in the randomized trace domain to only refer to elements
-        // in the non-randomized trace domain
-        let unit_distance = randomized_trace_domain_len as usize / padded_height;
-
-        let fri_domain_codewords = columns
-            .into_par_iter()
-            .map(|idx| {
-                let trace = all_trace_columns.iter().map(|row| row[idx]).collect_vec();
-                let mut randomized_trace = random_elements(randomized_trace_domain_len as usize);
-                for i in 0..padded_height {
-                    randomized_trace[unit_distance * i] = trace[i]
-                }
-                randomized_trace_domain.low_degree_extension(&randomized_trace, fri_domain)
-            })
-            .collect();
-        self.inherited_table().with_data(fri_domain_codewords)
     }
 }

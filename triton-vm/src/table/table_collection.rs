@@ -12,7 +12,6 @@ use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
-use strum::EnumCount;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
@@ -34,15 +33,9 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
-use crate::table::base_matrix::BaseMatrices;
-use crate::table::base_table::Extendable;
-use crate::table::base_table::InheritsFromTable;
-use crate::table::base_table::Table;
-use crate::table::base_table::TableLike;
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::extension_table::Evaluable;
-use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::Quotientable;
 use crate::table::hash_table::ExtHashTable;
 use crate::table::hash_table::HashTable;
@@ -58,7 +51,6 @@ use crate::table::program_table::ExtProgramTable;
 use crate::table::program_table::ProgramTable;
 use crate::table::ram_table::ExtRamTable;
 use crate::table::ram_table::RamTable;
-use crate::table::table_column::*;
 use crate::table::*;
 
 pub const NUM_TABLES: usize = 7;
@@ -110,34 +102,6 @@ pub const EXT_JUMP_STACK_TABLE_END: usize =
     EXT_JUMP_STACK_TABLE_START + jump_stack_table::EXT_WIDTH;
 pub const EXT_HASH_TABLE_START: usize = EXT_JUMP_STACK_TABLE_END;
 pub const EXT_HASH_TABLE_END: usize = EXT_HASH_TABLE_START + hash_table::EXT_WIDTH;
-
-#[derive(Debug, Clone)]
-pub struct BaseTableCollection {
-    /// The number of `data` rows after padding
-    pub padded_height: usize,
-
-    pub program_table: ProgramTable,
-    pub instruction_table: InstructionTable,
-    pub processor_table: ProcessorTable,
-    pub op_stack_table: OpStackTable,
-    pub ram_table: RamTable,
-    pub jump_stack_table: JumpStackTable,
-    pub hash_table: HashTable,
-}
-
-#[derive(Debug, Clone)]
-pub struct ExtTableCollection {
-    /// The number of `data` rows after padding
-    pub padded_height: usize,
-
-    pub program_table: ExtProgramTable,
-    pub instruction_table: ExtInstructionTable,
-    pub processor_table: ExtProcessorTable,
-    pub op_stack_table: ExtOpStackTable,
-    pub ram_table: ExtRamTable,
-    pub jump_stack_table: ExtJumpStackTable,
-    pub hash_table: ExtHashTable,
-}
 
 /// A `TableId` uniquely determines one of Triton VM's tables.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -395,6 +359,9 @@ impl MasterBaseTable {
         CpuParallel::from_digests(&hashed_rows)
     }
 
+    /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
+    /// table. The `.extend()` for each table is specific to that table, but always involves
+    /// adding some number of columns.
     pub fn extend(&self, challenges: &AllChallenges) -> MasterExtTable {
         let master_ext_matrix = Array2::zeros([self.fri_domain.length, NUM_EXT_COLUMNS].f());
 
@@ -407,6 +374,8 @@ impl MasterBaseTable {
             master_ext_matrix,
         };
 
+        // Each table only needs their own challenges, but `AllChallenges` are passed everywhere
+        // to keep each table's `.extend()` homogenous.
         let base_program_table = self.table(TableId::ProgramTable);
         let mut ext_program_table = master_ext_table.table_mut(TableId::ProgramTable);
         ProgramTable::the_new_extend_method_is_in_place(
@@ -1235,14 +1204,6 @@ pub fn evaluate_all_constraints(
     .concat()
 }
 
-/// Convert vector-of-arrays to vector-of-vectors.
-fn to_vec_vecs<T: Sized + Clone, const S: usize>(vector_of_arrays: &[[T; S]]) -> Vec<Vec<T>> {
-    vector_of_arrays
-        .iter()
-        .map(|arr| arr.to_vec())
-        .collect_vec()
-}
-
 pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
     let randomized_trace_length = roundup_npo2((padded_height + num_trace_randomizers) as u64);
     (randomized_trace_length - 1) as Degree
@@ -1257,606 +1218,88 @@ pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
     BFieldElement::primitive_root_of_unity(padded_height).unwrap()
 }
 
-impl BaseTableCollection {
-    pub fn from_base_matrices(base_matrices: &BaseMatrices) -> Self {
-        let padded_height = Self::padded_height(base_matrices);
-
-        let program_table = ProgramTable::new_prover(to_vec_vecs(&base_matrices.program_matrix));
-        let processor_table =
-            ProcessorTable::new_prover(to_vec_vecs(&base_matrices.processor_matrix));
-        let instruction_table =
-            InstructionTable::new_prover(to_vec_vecs(&base_matrices.instruction_matrix));
-        let op_stack_table = OpStackTable::new_prover(to_vec_vecs(&base_matrices.op_stack_matrix));
-        let ram_table = RamTable::new_prover(to_vec_vecs(&base_matrices.ram_matrix));
-        let jump_stack_table =
-            JumpStackTable::new_prover(to_vec_vecs(&base_matrices.jump_stack_matrix));
-        let hash_table = HashTable::new_prover(to_vec_vecs(&base_matrices.hash_matrix));
-
-        BaseTableCollection {
-            padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
-    }
-
-    pub fn padded_height(base_matrices: &BaseMatrices) -> usize {
-        let max_height = [
-            1, // minimum max height
-            base_matrices.program_matrix.len(),
-            base_matrices.processor_matrix.len(),
-            base_matrices.instruction_matrix.len(),
-            base_matrices.op_stack_matrix.len(),
-            base_matrices.ram_matrix.len(),
-            base_matrices.jump_stack_matrix.len(),
-            base_matrices.hash_matrix.len(),
-        ]
-        .into_iter()
-        .max()
-        .unwrap();
-
-        roundup_npo2(max_height as u64) as usize
-    }
-
-    pub fn all_base_columns(&self) -> Vec<Vec<BFieldElement>> {
-        self.into_iter()
-            .map(|table| table.data().clone())
-            .collect_vec()
-            .concat()
-    }
-
-    pub fn pad(&mut self) {
-        let padded_height = self.padded_height;
-        self.program_table.pad(padded_height);
-        self.instruction_table.pad(padded_height);
-        self.processor_table.pad(padded_height);
-        self.op_stack_table.pad(padded_height);
-        self.ram_table.pad(padded_height);
-        self.jump_stack_table.pad(padded_height);
-        self.hash_table.pad(padded_height);
-    }
-}
-
-impl<'a> IntoIterator for &'a BaseTableCollection {
-    type Item = &'a dyn TableLike<BFieldElement>;
-
-    type IntoIter = std::array::IntoIter<&'a dyn TableLike<BFieldElement>, NUM_TABLES>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        [
-            &self.program_table as &'a dyn TableLike<BFieldElement>,
-            &self.instruction_table as &'a dyn TableLike<BFieldElement>,
-            &self.processor_table as &'a dyn TableLike<BFieldElement>,
-            &self.op_stack_table as &'a dyn TableLike<BFieldElement>,
-            &self.ram_table as &'a dyn TableLike<BFieldElement>,
-            &self.jump_stack_table as &'a dyn TableLike<BFieldElement>,
-            &self.hash_table as &'a dyn TableLike<BFieldElement>,
-        ]
-        .into_iter()
-    }
-}
-
-impl ExtTableCollection {
-    pub fn with_padded_height(padded_height: usize) -> Self {
-        ExtTableCollection {
-            padded_height,
-            program_table: Default::default(),
-            instruction_table: Default::default(),
-            processor_table: Default::default(),
-            op_stack_table: Default::default(),
-            ram_table: Default::default(),
-            jump_stack_table: Default::default(),
-            hash_table: Default::default(),
-        }
-    }
-
-    /// todo: Temporary method, to be replaced in issue #139
-    pub fn with_data(
-        padded_height: usize,
-        base_codewords: Vec<Vec<BFieldElement>>,
-        extension_codewords: Vec<Vec<XFieldElement>>,
-    ) -> Self {
-        let (base_program_table_data, base_codewords) =
-            base_codewords.split_at(ProgramBaseTableColumn::COUNT);
-        let (ext_program_table_data, extension_codewords) =
-            extension_codewords.split_at(ProgramExtTableColumn::COUNT);
-        let lifted_base_program_table_data: Vec<_> = base_program_table_data
-            .into_par_iter()
-            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
-            .collect();
-        let program_table_full_data = vec![
-            lifted_base_program_table_data,
-            ext_program_table_data.to_vec(),
-        ]
-        .concat();
-        let program_table = ExtProgramTable::new(Table::new(
-            ProgramBaseTableColumn::COUNT,
-            ProgramBaseTableColumn::COUNT + ProgramExtTableColumn::COUNT,
-            program_table_full_data,
-            "ExtProgramTable over quotient domain".to_string(),
-        ));
-
-        let (base_instruction_table_data, base_codewords) =
-            base_codewords.split_at(InstructionBaseTableColumn::COUNT);
-        let (ext_instruction_table_data, extension_codewords) =
-            extension_codewords.split_at(InstructionExtTableColumn::COUNT);
-        let lifted_base_instruction_table_data: Vec<_> = base_instruction_table_data
-            .into_par_iter()
-            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
-            .collect();
-        let instruction_table_full_data = vec![
-            lifted_base_instruction_table_data,
-            ext_instruction_table_data.to_vec(),
-        ]
-        .concat();
-        let instruction_table = ExtInstructionTable::new(Table::new(
-            InstructionBaseTableColumn::COUNT,
-            InstructionBaseTableColumn::COUNT + InstructionExtTableColumn::COUNT,
-            instruction_table_full_data,
-            "ExtInstructionTable over quotient domain".to_string(),
-        ));
-
-        let (base_processor_table_data, base_codewords) =
-            base_codewords.split_at(ProcessorBaseTableColumn::COUNT);
-        let (ext_processor_table_data, extension_codewords) =
-            extension_codewords.split_at(ProcessorExtTableColumn::COUNT);
-        let lifted_base_processor_table_data: Vec<_> = base_processor_table_data
-            .into_par_iter()
-            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
-            .collect();
-        let processor_table_full_data = vec![
-            lifted_base_processor_table_data,
-            ext_processor_table_data.to_vec(),
-        ]
-        .concat();
-        let processor_table = ExtProcessorTable::new(Table::new(
-            ProcessorBaseTableColumn::COUNT,
-            ProcessorBaseTableColumn::COUNT + ProcessorExtTableColumn::COUNT,
-            processor_table_full_data,
-            "ExtProcessorTable over quotient domain".to_string(),
-        ));
-
-        let (base_op_stack_table_data, base_codewords) =
-            base_codewords.split_at(OpStackBaseTableColumn::COUNT);
-        let (ext_op_stack_table_data, extension_codewords) =
-            extension_codewords.split_at(OpStackExtTableColumn::COUNT);
-        let lifted_base_op_stack_table_data: Vec<_> = base_op_stack_table_data
-            .into_par_iter()
-            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
-            .collect();
-        let op_stack_table_full_data = vec![
-            lifted_base_op_stack_table_data,
-            ext_op_stack_table_data.to_vec(),
-        ]
-        .concat();
-        let op_stack_table = ExtOpStackTable::new(Table::new(
-            OpStackBaseTableColumn::COUNT,
-            OpStackBaseTableColumn::COUNT + OpStackExtTableColumn::COUNT,
-            op_stack_table_full_data,
-            "ExtOpStackTable over quotient domain".to_string(),
-        ));
-
-        let (base_ram_table_data, base_codewords) =
-            base_codewords.split_at(RamBaseTableColumn::COUNT);
-        let (ext_ram_table_data, extension_codewords) =
-            extension_codewords.split_at(RamExtTableColumn::COUNT);
-        let lifted_base_ram_table_data: Vec<_> = base_ram_table_data
-            .into_par_iter()
-            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
-            .collect();
-        let ram_table_full_data =
-            vec![lifted_base_ram_table_data, ext_ram_table_data.to_vec()].concat();
-        let ram_table = ExtRamTable::new(Table::new(
-            RamBaseTableColumn::COUNT,
-            RamBaseTableColumn::COUNT + RamExtTableColumn::COUNT,
-            ram_table_full_data,
-            "ExtRamTable over quotient domain".to_string(),
-        ));
-
-        let (base_jump_stack_table_data, base_codewords) =
-            base_codewords.split_at(JumpStackBaseTableColumn::COUNT);
-        let (ext_jump_stack_table_data, extension_codewords) =
-            extension_codewords.split_at(JumpStackExtTableColumn::COUNT);
-        let lifted_base_jump_stack_table_data: Vec<_> = base_jump_stack_table_data
-            .into_par_iter()
-            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
-            .collect();
-        let jump_stack_table_full_data = vec![
-            lifted_base_jump_stack_table_data,
-            ext_jump_stack_table_data.to_vec(),
-        ]
-        .concat();
-        let jump_stack_table = ExtJumpStackTable::new(Table::new(
-            JumpStackBaseTableColumn::COUNT,
-            JumpStackBaseTableColumn::COUNT + JumpStackExtTableColumn::COUNT,
-            jump_stack_table_full_data,
-            "ExtJumpStackTable over quotient domain".to_string(),
-        ));
-
-        let (base_hash_table_data, base_codewords) =
-            base_codewords.split_at(HashBaseTableColumn::COUNT);
-        let (ext_hash_table_data, extension_codewords) =
-            extension_codewords.split_at(HashExtTableColumn::COUNT);
-        let lifted_base_hash_table_data: Vec<_> = base_hash_table_data
-            .into_par_iter()
-            .map(|codeword| codeword.par_iter().map(|bfe| bfe.lift()).collect())
-            .collect();
-        let hash_table_full_data =
-            vec![lifted_base_hash_table_data, ext_hash_table_data.to_vec()].concat();
-        let hash_table = ExtHashTable::new(Table::new(
-            HashBaseTableColumn::COUNT,
-            HashBaseTableColumn::COUNT + HashExtTableColumn::COUNT,
-            hash_table_full_data,
-            "ExtHashTable over quotient domain".to_string(),
-        ));
-
-        assert!(base_codewords.is_empty());
-        assert!(extension_codewords.is_empty());
-
-        Self {
-            padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
-    }
-
-    pub fn for_verifier(padded_height: usize, maybe_profiler: &mut Option<TritonProfiler>) -> Self {
-        prof_start!(maybe_profiler, "program table");
-        let ext_program_table = ProgramTable::for_verifier();
-        prof_stop!(maybe_profiler, "program table");
-        prof_start!(maybe_profiler, "instruction table");
-        let ext_instruction_table = InstructionTable::for_verifier();
-        prof_stop!(maybe_profiler, "instruction table");
-        prof_start!(maybe_profiler, "processor table");
-        let ext_processor_table = ProcessorTable::for_verifier();
-        prof_stop!(maybe_profiler, "processor table");
-        prof_start!(maybe_profiler, "op stack table");
-        let ext_op_stack_table = OpStackTable::for_verifier();
-        prof_stop!(maybe_profiler, "op stack table");
-        prof_start!(maybe_profiler, "ram table");
-        let ext_ram_table = RamTable::for_verifier();
-        prof_stop!(maybe_profiler, "ram table");
-        prof_start!(maybe_profiler, "jump stack table");
-        let ext_jump_stack_table = JumpStackTable::for_verifier();
-        prof_stop!(maybe_profiler, "jump stack table");
-        prof_start!(maybe_profiler, "hash table");
-        let ext_hash_table = HashTable::for_verifier();
-        prof_stop!(maybe_profiler, "hash table");
-
-        ExtTableCollection {
-            padded_height,
-            program_table: ext_program_table,
-            instruction_table: ext_instruction_table,
-            processor_table: ext_processor_table,
-            op_stack_table: ext_op_stack_table,
-            ram_table: ext_ram_table,
-            jump_stack_table: ext_jump_stack_table,
-            hash_table: ext_hash_table,
-        }
-    }
-
-    /// Create an ExtTableCollection from a BaseTableCollection by `.extend()`ing each base table.
-    /// The `.extend()` for each table is specific to that table, but always
-    /// involves adding some number of columns. Each table only needs their
-    /// own challenges, but `AllChallenges` are passed everywhere to keep each table's `.extend()`
-    /// homogenous.
-    pub fn extend_tables(
-        base_tables: &BaseTableCollection,
-        all_challenges: &AllChallenges,
-    ) -> Self {
-        let padded_height = base_tables.padded_height;
-        let program_table = base_tables
-            .program_table
-            .extend(&all_challenges.program_table_challenges);
-        let instruction_table = base_tables
-            .instruction_table
-            .extend(&all_challenges.instruction_table_challenges);
-        let processor_table = base_tables
-            .processor_table
-            .extend(&all_challenges.processor_table_challenges);
-        let op_stack_table = base_tables
-            .op_stack_table
-            .extend(&all_challenges.op_stack_table_challenges);
-        let ram_table = base_tables
-            .ram_table
-            .extend(&all_challenges.ram_table_challenges);
-        let jump_stack_table = base_tables
-            .jump_stack_table
-            .extend(&all_challenges.jump_stack_table_challenges);
-        let hash_table = base_tables
-            .hash_table
-            .extend(&all_challenges.hash_table_challenges);
-
-        ExtTableCollection {
-            padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
-    }
-
-    /// todo – remove this once the master table is in place
-    pub fn dummy_fri_domain_tables(padded_height: usize) -> Self {
-        let program_table = ExtProgramTable::default();
-        let instruction_table = ExtInstructionTable::default();
-        let processor_table = ExtProcessorTable::default();
-        let op_stack_table = ExtOpStackTable::default();
-        let ram_table = ExtRamTable::default();
-        let jump_stack_table = ExtJumpStackTable::default();
-        let hash_table = ExtHashTable::default();
-        ExtTableCollection {
-            padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
-    }
-
-    pub fn collect_all_columns(&self) -> Vec<Vec<XFieldElement>> {
-        let mut all_ext_cols = vec![];
-
-        for table in self.into_iter() {
-            for col in table.data().iter() {
-                all_ext_cols.push(col.clone());
-            }
-        }
-        all_ext_cols
-    }
-
-    pub fn data(&self, table_id: TableId) -> &Vec<Vec<XFieldElement>> {
-        use TableId::*;
-
-        match table_id {
-            ProgramTable => self.program_table.data(),
-            InstructionTable => self.instruction_table.data(),
-            ProcessorTable => self.processor_table.data(),
-            OpStackTable => self.op_stack_table.data(),
-            RamTable => self.ram_table.data(),
-            JumpStackTable => self.jump_stack_table.data(),
-            HashTable => self.hash_table.data(),
-        }
-    }
-
-    pub fn join(
-        base_codeword_tables: BaseTableCollection,
-        ext_codeword_tables: ExtTableCollection,
-    ) -> ExtTableCollection {
-        let padded_height = base_codeword_tables.padded_height;
-
-        let program_base_matrix = base_codeword_tables.program_table.data();
-        let lifted_program_base_matrix = program_base_matrix
-            .iter()
-            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let program_ext_matrix = ext_codeword_tables.program_table.data();
-        let full_program_matrix =
-            vec![lifted_program_base_matrix, program_ext_matrix.to_vec()].concat();
-        let joined_program_table = ext_codeword_tables
-            .program_table
-            .inherited_table()
-            .with_data(full_program_matrix);
-        let program_table = ExtProgramTable {
-            inherited_table: joined_program_table,
-        };
-
-        let instruction_base_matrix = base_codeword_tables.instruction_table.data();
-        let lifted_instruction_base_matrix = instruction_base_matrix
-            .iter()
-            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let instruction_ext_matrix = ext_codeword_tables.instruction_table.data();
-        let full_instruction_matrix = vec![
-            lifted_instruction_base_matrix,
-            instruction_ext_matrix.to_vec(),
-        ]
-        .concat();
-        let joined_instruction_table = ext_codeword_tables
-            .instruction_table
-            .inherited_table()
-            .with_data(full_instruction_matrix);
-        let instruction_table = ExtInstructionTable {
-            inherited_table: joined_instruction_table,
-        };
-
-        let processor_base_matrix = base_codeword_tables.processor_table.data();
-        let lifted_processor_base_matrix = processor_base_matrix
-            .iter()
-            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let processor_ext_matrix = ext_codeword_tables.processor_table.data();
-        let full_processor_matrix =
-            vec![lifted_processor_base_matrix, processor_ext_matrix.to_vec()].concat();
-        let joined_processor_table = ext_codeword_tables
-            .processor_table
-            .inherited_table()
-            .with_data(full_processor_matrix);
-        let processor_table = ExtProcessorTable {
-            inherited_table: joined_processor_table,
-        };
-
-        let op_stack_base_matrix = base_codeword_tables.op_stack_table.data();
-        let lifted_op_stack_base_matrix = op_stack_base_matrix
-            .iter()
-            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let op_stack_ext_matrix = ext_codeword_tables.op_stack_table.data();
-        let full_op_stack_matrix =
-            vec![lifted_op_stack_base_matrix, op_stack_ext_matrix.to_vec()].concat();
-        let joined_op_stack_table = ext_codeword_tables
-            .op_stack_table
-            .inherited_table()
-            .with_data(full_op_stack_matrix);
-        let op_stack_table = ExtOpStackTable {
-            inherited_table: joined_op_stack_table,
-        };
-
-        let ram_base_matrix = base_codeword_tables.ram_table.data();
-        let lifted_ram_base_matrix = ram_base_matrix
-            .iter()
-            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let ram_ext_matrix = ext_codeword_tables.ram_table.data();
-        let full_ram_matrix = vec![lifted_ram_base_matrix, ram_ext_matrix.to_vec()].concat();
-        let joined_ram_table = ext_codeword_tables
-            .ram_table
-            .inherited_table()
-            .with_data(full_ram_matrix);
-        let ram_table = ExtRamTable {
-            inherited_table: joined_ram_table,
-        };
-
-        let jump_stack_base_matrix = base_codeword_tables.jump_stack_table.data();
-        let lifted_jump_stack_base_matrix = jump_stack_base_matrix
-            .iter()
-            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let jump_stack_ext_matrix = ext_codeword_tables.jump_stack_table.data();
-        let full_jump_stack_matrix = vec![
-            lifted_jump_stack_base_matrix,
-            jump_stack_ext_matrix.to_vec(),
-        ]
-        .concat();
-        let joined_jump_stack_table = ext_codeword_tables
-            .jump_stack_table
-            .inherited_table()
-            .with_data(full_jump_stack_matrix);
-        let jump_stack_table = ExtJumpStackTable {
-            inherited_table: joined_jump_stack_table,
-        };
-
-        let hash_base_matrix = base_codeword_tables.hash_table.data();
-        let lifted_hash_base_matrix = hash_base_matrix
-            .iter()
-            .map(|cdwd| cdwd.iter().map(|bfe| bfe.lift()).collect_vec())
-            .collect_vec();
-        let hash_ext_matrix = ext_codeword_tables.hash_table.data();
-        let full_hash_matrix = vec![lifted_hash_base_matrix, hash_ext_matrix.to_vec()].concat();
-        let joined_hash_table = ext_codeword_tables
-            .hash_table
-            .inherited_table()
-            .with_data(full_hash_matrix);
-        let hash_table = ExtHashTable {
-            inherited_table: joined_hash_table,
-        };
-
-        ExtTableCollection {
-            padded_height,
-            program_table,
-            instruction_table,
-            processor_table,
-            op_stack_table,
-            ram_table,
-            jump_stack_table,
-            hash_table,
-        }
-    }
-}
-
-impl<'a> IntoIterator for &'a ExtTableCollection {
-    type Item = &'a dyn ExtensionTable;
-
-    type IntoIter = std::array::IntoIter<&'a dyn ExtensionTable, NUM_TABLES>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        [
-            &self.program_table as &'a dyn ExtensionTable,
-            &self.instruction_table as &'a dyn ExtensionTable,
-            &self.processor_table as &'a dyn ExtensionTable,
-            &self.op_stack_table as &'a dyn ExtensionTable,
-            &self.ram_table as &'a dyn ExtensionTable,
-            &self.jump_stack_table as &'a dyn ExtensionTable,
-            &self.hash_table as &'a dyn ExtensionTable,
-        ]
-        .into_iter()
-    }
-}
-
 #[cfg(test)]
 mod table_collection_tests {
-    use crate::table::{
-        hash_table, instruction_table, jump_stack_table, op_stack_table, processor_table,
-        program_table, ram_table,
-    };
-
-    use super::*;
-
-    fn dummy_ext_table_collection() -> ExtTableCollection {
-        let max_padded_height = 1;
-        ExtTableCollection::with_padded_height(max_padded_height)
-    }
+    use crate::stark::triton_stark_tests::parse_simulate_pad;
+    use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
+    use crate::table::hash_table;
+    use crate::table::instruction_table;
+    use crate::table::jump_stack_table;
+    use crate::table::op_stack_table;
+    use crate::table::processor_table;
+    use crate::table::program_table;
+    use crate::table::ram_table;
+    use crate::table::table_collection::TableId::*;
+    use crate::table::table_collection::NUM_BASE_COLUMNS;
+    use crate::table::table_collection::NUM_COLUMNS;
+    use crate::table::table_collection::NUM_EXT_COLUMNS;
 
     #[test]
     fn base_table_width_is_correct() {
-        let base_matrices = BaseMatrices::default();
-        let base_tables = BaseTableCollection::from_base_matrices(&base_matrices);
+        let (_, _, master_base_table) = parse_simulate_pad("halt", vec![], vec![]);
 
         assert_eq!(
             program_table::BASE_WIDTH,
-            base_tables.program_table.base_width()
+            master_base_table.table(ProgramTable).ncols()
         );
         assert_eq!(
             instruction_table::BASE_WIDTH,
-            base_tables.instruction_table.base_width()
+            master_base_table.table(InstructionTable).ncols()
         );
         assert_eq!(
             processor_table::BASE_WIDTH,
-            base_tables.processor_table.base_width()
+            master_base_table.table(ProcessorTable).ncols()
         );
         assert_eq!(
             op_stack_table::BASE_WIDTH,
-            base_tables.op_stack_table.base_width()
+            master_base_table.table(OpStackTable).ncols()
         );
-        assert_eq!(ram_table::BASE_WIDTH, base_tables.ram_table.base_width());
+        assert_eq!(
+            ram_table::BASE_WIDTH,
+            master_base_table.table(RamTable).ncols()
+        );
         assert_eq!(
             jump_stack_table::BASE_WIDTH,
-            base_tables.jump_stack_table.base_width()
+            master_base_table.table(JumpStackTable).ncols()
         );
-        assert_eq!(hash_table::BASE_WIDTH, base_tables.hash_table.base_width());
+        assert_eq!(
+            hash_table::BASE_WIDTH,
+            master_base_table.table(HashTable).ncols()
+        );
     }
 
     #[test]
     fn ext_table_width_is_correct() {
-        let ext_tables = dummy_ext_table_collection();
+        let (_, _, _, master_ext_table, _) = parse_simulate_pad_extend("halt", vec![], vec![]);
 
         assert_eq!(
             program_table::FULL_WIDTH,
-            ext_tables.program_table.full_width()
+            master_ext_table.table(ProgramTable).ncols()
         );
         assert_eq!(
             instruction_table::FULL_WIDTH,
-            ext_tables.instruction_table.full_width()
+            master_ext_table.table(InstructionTable).ncols()
         );
         assert_eq!(
             processor_table::FULL_WIDTH,
-            ext_tables.processor_table.full_width()
+            master_ext_table.table(ProcessorTable).ncols()
         );
         assert_eq!(
             op_stack_table::FULL_WIDTH,
-            ext_tables.op_stack_table.full_width()
+            master_ext_table.table(OpStackTable).ncols()
         );
-        assert_eq!(ram_table::FULL_WIDTH, ext_tables.ram_table.full_width());
+        assert_eq!(
+            ram_table::FULL_WIDTH,
+            master_ext_table.table(RamTable).ncols()
+        );
         assert_eq!(
             jump_stack_table::FULL_WIDTH,
-            ext_tables.jump_stack_table.full_width()
+            master_ext_table.table(JumpStackTable).ncols()
         );
-        assert_eq!(hash_table::FULL_WIDTH, ext_tables.hash_table.full_width());
+        assert_eq!(
+            hash_table::FULL_WIDTH,
+            master_ext_table.table(HashTable).ncols()
+        );
     }
 
     /// intended use: `cargo t print_all_table_widths -- --nocapture`
@@ -1864,29 +1307,59 @@ mod table_collection_tests {
     fn print_all_table_widths() {
         println!("| table name         | #base cols | #ext cols | full width |");
         println!("|:-------------------|-----------:|----------:|-----------:|");
-        for table in dummy_ext_table_collection().into_iter() {
-            println!(
-                "| {:<18} | {:>10} | {:>9} | {:>10} |",
-                table.name().split_off(8),
-                table.base_width(),
-                table.full_width() - table.base_width(),
-                table.full_width(),
-            );
-        }
-        let sum_base_columns: usize = dummy_ext_table_collection()
-            .into_iter()
-            .map(|table| table.base_width())
-            .sum();
-        let sum_full_widths: usize = dummy_ext_table_collection()
-            .into_iter()
-            .map(|table| table.full_width())
-            .sum();
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "ProgramTable",
+            program_table::BASE_WIDTH,
+            program_table::EXT_WIDTH,
+            program_table::FULL_WIDTH
+        );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "InstructionTable",
+            instruction_table::BASE_WIDTH,
+            instruction_table::EXT_WIDTH,
+            instruction_table::FULL_WIDTH
+        );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "ProcessorTable",
+            processor_table::BASE_WIDTH,
+            processor_table::EXT_WIDTH,
+            processor_table::FULL_WIDTH
+        );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "OpStackTable",
+            op_stack_table::BASE_WIDTH,
+            op_stack_table::EXT_WIDTH,
+            op_stack_table::FULL_WIDTH
+        );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "RamTable",
+            ram_table::BASE_WIDTH,
+            ram_table::EXT_WIDTH,
+            ram_table::FULL_WIDTH
+        );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "JumpStackTable",
+            jump_stack_table::BASE_WIDTH,
+            jump_stack_table::EXT_WIDTH,
+            jump_stack_table::FULL_WIDTH
+        );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "HashTable",
+            hash_table::BASE_WIDTH,
+            hash_table::EXT_WIDTH,
+            hash_table::FULL_WIDTH
+        );
         println!("|                    |            |           |            |");
         println!(
             "| Sum                | {:>10} | {:>9} | {:>10} |",
-            sum_base_columns,
-            sum_full_widths - sum_base_columns,
-            sum_full_widths
+            NUM_BASE_COLUMNS, NUM_EXT_COLUMNS, NUM_COLUMNS,
         );
     }
 }
