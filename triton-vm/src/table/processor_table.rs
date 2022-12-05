@@ -355,22 +355,6 @@ impl ProcessorTable {
         let inherited_table = self.new_from_lifted_matrix(extension_matrix);
         ExtProcessorTable { inherited_table }
     }
-
-    pub fn for_verifier() -> ExtProcessorTable {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            vec![],
-            "ExtProcessorTable".to_string(),
-        );
-        let base_table = Self { inherited_table };
-        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
-
-        ExtProcessorTable {
-            inherited_table: extension_table,
-        }
-    }
 }
 
 impl ExtProcessorTable {

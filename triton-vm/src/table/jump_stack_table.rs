@@ -432,22 +432,6 @@ impl JumpStackTable {
         let inherited_table = self.new_from_lifted_matrix(extension_matrix);
         ExtJumpStackTable { inherited_table }
     }
-
-    pub fn for_verifier() -> ExtJumpStackTable {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            vec![],
-            "ExtJumpStackTable".to_string(),
-        );
-        let base_table = Self { inherited_table };
-        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
-
-        ExtJumpStackTable {
-            inherited_table: extension_table,
-        }
-    }
 }
 
 impl ExtJumpStackTable {

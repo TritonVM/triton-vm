@@ -258,22 +258,6 @@ impl ProgramTable {
             .expect("Program Table must not be empty.");
         last_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
     }
-
-    pub fn for_verifier() -> ExtProgramTable {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            vec![],
-            "ExtProgramTable".to_string(),
-        );
-        let base_table = Self { inherited_table };
-        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
-
-        ExtProgramTable {
-            inherited_table: extension_table,
-        }
-    }
 }
 
 impl ExtProgramTable {
