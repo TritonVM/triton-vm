@@ -388,39 +388,17 @@ impl From<HashExtTableColumn> for usize {
 
 // --------------------------------------------------------------------
 
-pub trait BaseTableColumn:
+pub trait MasterBaseTableColumn:
     Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display
 {
-}
-
-pub trait ExtTableColumn:
-    Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display
-{
-}
-
-pub trait MasterBaseTableColumn: BaseTableColumn {
     fn master_table_index(&self) -> usize;
 }
 
-pub trait MasterExtTableColumn: ExtTableColumn {
+pub trait MasterExtTableColumn:
+    Into<usize> + EnumCount + IntoEnumIterator + Hash + Copy + Eq + Display
+{
     fn master_table_index(&self) -> usize;
 }
-
-impl BaseTableColumn for ProgramBaseTableColumn {}
-impl BaseTableColumn for InstructionBaseTableColumn {}
-impl BaseTableColumn for ProcessorBaseTableColumn {}
-impl BaseTableColumn for OpStackBaseTableColumn {}
-impl BaseTableColumn for RamBaseTableColumn {}
-impl BaseTableColumn for JumpStackBaseTableColumn {}
-impl BaseTableColumn for HashBaseTableColumn {}
-
-impl ExtTableColumn for ProgramExtTableColumn {}
-impl ExtTableColumn for InstructionExtTableColumn {}
-impl ExtTableColumn for ProcessorExtTableColumn {}
-impl ExtTableColumn for OpStackExtTableColumn {}
-impl ExtTableColumn for RamExtTableColumn {}
-impl ExtTableColumn for JumpStackExtTableColumn {}
-impl ExtTableColumn for HashExtTableColumn {}
 
 impl MasterBaseTableColumn for ProgramBaseTableColumn {
     fn master_table_index(&self) -> usize {
