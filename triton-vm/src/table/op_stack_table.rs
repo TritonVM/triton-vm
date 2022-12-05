@@ -289,10 +289,11 @@ impl OpStackTable {
         Self { inherited_table }
     }
 
+    /// Fills the trace table in-place and returns all clock jump differences greater than 1.
     pub fn fill_trace(
         op_stack_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
-    ) {
+    ) -> Vec<BFieldElement> {
         // Store the registers relevant for the Op Stack Table, i.e., CLK, IB1, OSP, and OSV,
         // with OSP as the key. Preserves, thus allows reusing, the order of the processor's
         // rows, which are sorted by CLK.
@@ -329,8 +330,10 @@ impl OpStackTable {
         }
         assert_eq!(aet.processor_matrix.len(), op_stack_table_row);
 
-        // Set inverse of (clock difference - 1).
+        // Set inverse of (clock difference - 1). Also, collect all clock jump differences
+        // greater than 1.
         // The Op Stack Table and the Processor Table have the same length.
+        let mut clock_jump_differences_greater_than_1 = vec![];
         for row_idx in 0..aet.processor_matrix.len() - 1 {
             let (mut curr_row, next_row) =
                 op_stack_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
@@ -338,7 +341,12 @@ impl OpStackTable {
             let clk_diff_minus_1 = clk_diff - BFieldElement::one();
             let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
             curr_row[usize::from(InverseOfClkDiffMinusOne)] = clk_diff_minus_1_inverse;
+
+            if curr_row[usize::from(OSP)] == next_row[usize::from(OSP)] && clk_diff.value() > 1 {
+                clock_jump_differences_greater_than_1.push(clk_diff);
+            }
         }
+        clock_jump_differences_greater_than_1
     }
 
     pub fn extend(&self, challenges: &OpStackTableChallenges) -> ExtOpStackTable {

@@ -101,7 +101,11 @@ impl RamTable {
         Self { inherited_table }
     }
 
-    pub fn fill_trace(ram_table: &mut ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace) {
+    /// Fills the trace table in-place and returns all clock jump differences greater than 1.
+    pub fn fill_trace(
+        ram_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) -> Vec<BFieldElement> {
         // Store the registers relevant for the Ram Table, i.e., CLK, RAMP, and RAMV, with RAMP
         // as the key. Preserves, thus allows reusing, the order of the processor's rows, which
         // are sorted by CLK. Note that the Ram Table must not be sorted by RAMP, but must form
@@ -161,7 +165,9 @@ impl RamTable {
         // - Set inverse of clock difference - 1.
         // - Set inverse of RAMP difference.
         // - Fill in the Bézout coefficients if the RAMP has changed.
+        // - Collect all clock jump differences greater than 1.
         // The Ram Table and the Processor Table have the same length.
+        let mut clock_jump_differences_greater_than_1 = vec![];
         for row_idx in 0..aet.processor_matrix.len() - 1 {
             let (mut curr_row, mut next_row) =
                 ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
@@ -181,10 +187,16 @@ impl RamTable {
             }
             next_row[usize::from(BezoutCoefficient0)] = current_bcpc_0;
             next_row[usize::from(BezoutCoefficient1)] = current_bcpc_1;
+
+            if ramp_diff != BFieldElement::zero() && clk_diff.value() > 1 {
+                clock_jump_differences_greater_than_1.push(clk_diff);
+            }
         }
 
         assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
         assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
+
+        clock_jump_differences_greater_than_1
     }
 
     pub fn extend(&self, challenges: &RamTableChallenges) -> ExtRamTable {

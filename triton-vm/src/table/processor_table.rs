@@ -4,29 +4,49 @@ use std::collections::HashMap;
 use std::ops::Mul;
 
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::ArrayBase;
+use ndarray::ArrayViewMut2;
+use ndarray::Ix1;
+use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProcessorTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
-use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::EvalArg;
+use crate::cross_table_arguments::PermArg;
+use crate::instruction::all_instructions_without_args;
+use crate::instruction::AnInstruction::*;
+use crate::instruction::Instruction;
 use crate::ord_n::Ord7;
-use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
-use crate::table::constraint_circuit::{InputIndicator, SingleRowIndicator};
+use crate::table::base_matrix::AlgebraicExecutionTrace;
+use crate::table::base_table::Extendable;
+use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::Table;
+use crate::table::base_table::TableLike;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::InputIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::extension_table::ExtensionTable;
-use crate::table::table_column::ProcessorBaseTableColumn::{self, *};
-use crate::table::table_column::ProcessorExtTableColumn::{self, *};
-
-use super::challenges::TableChallenges;
-use super::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad, DualRowIndicator,
-};
-use super::extension_table::QuotientableExtensionTable;
+use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn::*;
+use crate::table::table_column::ProcessorExtTableColumn;
+use crate::table::table_column::ProcessorExtTableColumn::*;
 
 pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
 pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
@@ -60,6 +80,48 @@ impl ProcessorTable {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProcessorTable".to_string());
         Self { inherited_table }
+    }
+
+    pub fn fill_trace(
+        processor_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+        mut all_clk_jump_diffs: Vec<BFieldElement>,
+    ) {
+        all_clk_jump_diffs.sort_by_key(|bfe| std::cmp::Reverse(bfe.value()));
+
+        // - fill the processor table from the AET
+        // - add all clock jump differences and their inverses
+        // - add inverses of unique clock jump difference differences
+        let zero = BFieldElement::zero();
+        let mut previous_row: Option<ArrayBase<_, Ix1>> = None;
+        for (row_idx, &processor_row) in aet.processor_matrix.iter().enumerate() {
+            let mut row = Array1::from(processor_row.to_vec());
+
+            let clk_jump_difference = all_clk_jump_diffs.pop().unwrap_or(zero);
+            let clk_jump_difference_inv = clk_jump_difference.inverse_or_zero();
+            row[usize::from(ClockJumpDifference)] = clk_jump_difference;
+            row[usize::from(ClockJumpDifferenceInverse)] = clk_jump_difference_inv;
+
+            if let Some(prow) = previous_row {
+                let previous_clk_jump_difference = prow[usize::from(ClockJumpDifference)];
+                if previous_clk_jump_difference != clk_jump_difference {
+                    let clk_diff_diff: BFieldElement =
+                        clk_jump_difference - previous_clk_jump_difference;
+                    let clk_diff_diff_inv = clk_diff_diff.inverse();
+                    row[usize::from(UniqueClockJumpDiffDiffInverse)] = clk_diff_diff_inv;
+                }
+            }
+
+            previous_row = Some(row.clone());
+            row.move_into(processor_table.slice_mut(s![row_idx, ..]));
+        }
+
+        assert!(
+            all_clk_jump_diffs.is_empty(),
+            "Processor Table must record all clock jump differences, but didn't have enough space \
+            for the remaining {}.",
+            all_clk_jump_diffs.len()
+        );
     }
 
     pub fn extend(&self, challenges: &ProcessorTableChallenges) -> ExtProcessorTable {

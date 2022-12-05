@@ -345,11 +345,22 @@ impl MasterBaseTable {
         let instruction_table = &mut master_base_table.table_mut(TableId::InstructionTable);
         InstructionTable::fill_trace(instruction_table, &aet, program);
         let op_stack_table = &mut master_base_table.table_mut(TableId::OpStackTable);
-        OpStackTable::fill_trace(op_stack_table, &aet);
+        let op_stack_clk_jump_diffs = OpStackTable::fill_trace(op_stack_table, &aet);
         let ram_table = &mut master_base_table.table_mut(TableId::RamTable);
-        RamTable::fill_trace(ram_table, &aet);
+        let ram_clk_jump_diffs = RamTable::fill_trace(ram_table, &aet);
         let jump_stack_table = &mut master_base_table.table_mut(TableId::JumpStackTable);
-        JumpStackTable::fill_trace(jump_stack_table, &aet);
+        let jump_stack_clk_jump_diffs = JumpStackTable::fill_trace(jump_stack_table, &aet);
+
+        // memory-like tables must be filled in before clock jump differences are known, hence
+        // the break from the usual order
+        let all_clk_jump_diffs = [
+            op_stack_clk_jump_diffs,
+            ram_clk_jump_diffs,
+            jump_stack_clk_jump_diffs,
+        ]
+        .concat();
+        let processor_table = &mut master_base_table.table_mut(TableId::ProcessorTable);
+        ProcessorTable::fill_trace(processor_table, &aet, all_clk_jump_diffs);
 
         master_base_table
     }
