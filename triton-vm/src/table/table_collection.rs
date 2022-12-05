@@ -343,6 +343,8 @@ impl MasterBaseTable {
         ProgramTable::fill_trace(program_table, program);
         let instruction_table = &mut master_base_table.table_mut(TableId::InstructionTable);
         InstructionTable::fill_trace(instruction_table, &aet, program);
+        let op_stack_table = &mut master_base_table.table_mut(TableId::OpStackTable);
+        OpStackTable::fill_trace(op_stack_table, &aet);
 
         master_base_table
     }
