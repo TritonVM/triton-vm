@@ -1,26 +1,41 @@
+use std::cmp::Ordering;
+
 use itertools::Itertools;
+use ndarray::s;
+use ndarray::ArrayViewMut2;
 use num_traits::One;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use JumpStackTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, PermArg};
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::PermArg;
 use crate::instruction::Instruction;
+use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_table::Extendable;
+use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::Table;
+use crate::table::base_table::TableLike;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::Row;
-use crate::table::table_column::JumpStackBaseTableColumn::{self, *};
-use crate::table::table_column::JumpStackExtTableColumn::{self, *};
-
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::TableChallenges;
-use super::constraint_circuit::DualRowIndicator::*;
-use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
+use crate::table::extension_table::ExtensionTable;
+use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_column::JumpStackBaseTableColumn;
+use crate::table::table_column::JumpStackBaseTableColumn::*;
+use crate::table::table_column::JumpStackExtTableColumn;
+use crate::table::table_column::JumpStackExtTableColumn::*;
+use crate::table::table_column::ProcessorBaseTableColumn;
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -295,6 +310,59 @@ impl JumpStackTable {
         let inherited_table =
             Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "JumpStackTable".to_string());
         Self { inherited_table }
+    }
+
+    pub fn fill_trace(
+        jump_stack_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) {
+        // Store the registers relevant for the Jump Stack Table, i.e., CLK, CI, JSP, JSO, JSD,
+        // with JSP as the key. Preserves, thus allows reusing, the order of the processor's
+        // rows, which are sorted by CLK.
+        let mut pre_processed_jump_stack_table: Vec<Vec<_>> = vec![];
+        for processor_row in aet.processor_matrix.iter() {
+            let clk = processor_row[usize::from(ProcessorBaseTableColumn::CLK)];
+            let ci = processor_row[usize::from(ProcessorBaseTableColumn::CI)];
+            let jsp = processor_row[usize::from(ProcessorBaseTableColumn::JSP)];
+            let jso = processor_row[usize::from(ProcessorBaseTableColumn::JSO)];
+            let jsd = processor_row[usize::from(ProcessorBaseTableColumn::JSD)];
+            // The (honest) prover can only grow the Jump Stack's size by at most 1 per execution
+            // step. Hence, the following (a) works, and (b) sorts.
+            let jsp_val = jsp.value() as usize;
+            let jump_stack_row = (clk, ci, jso, jsd);
+            match jsp_val.cmp(&pre_processed_jump_stack_table.len()) {
+                Ordering::Less => pre_processed_jump_stack_table[jsp_val].push(jump_stack_row),
+                Ordering::Equal => pre_processed_jump_stack_table.push(vec![jump_stack_row]),
+                Ordering::Greater => panic!("JSP must increase by at most 1 per execution step."),
+            }
+        }
+
+        // Move the rows into the Jump Stack Table, sorted by JSP first, CLK second.
+        let mut jump_stack_table_row = 0;
+        for (jsp_val, rows_with_this_jsp) in pre_processed_jump_stack_table.into_iter().enumerate()
+        {
+            let jsp = BFieldElement::new(jsp_val as u64);
+            for (clk, ci, jso, jsd) in rows_with_this_jsp {
+                jump_stack_table[(jump_stack_table_row, usize::from(CLK))] = clk;
+                jump_stack_table[(jump_stack_table_row, usize::from(CI))] = ci;
+                jump_stack_table[(jump_stack_table_row, usize::from(JSP))] = jsp;
+                jump_stack_table[(jump_stack_table_row, usize::from(JSO))] = jso;
+                jump_stack_table[(jump_stack_table_row, usize::from(JSD))] = jsd;
+                jump_stack_table_row += 1;
+            }
+        }
+        assert_eq!(aet.processor_matrix.len(), jump_stack_table_row);
+
+        // Set inverse of (clock difference - 1).
+        // The Jump Stack Table and the Processor Table have the same length.
+        for row_idx in 0..aet.processor_matrix.len() - 1 {
+            let (mut curr_row, next_row) =
+                jump_stack_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
+            let clk_diff = next_row[usize::from(CLK)] - curr_row[usize::from(CLK)];
+            let clk_diff_minus_1 = clk_diff - BFieldElement::one();
+            let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
+            curr_row[usize::from(InverseOfClkDiffMinusOne)] = clk_diff_minus_1_inverse;
+        }
     }
 
     pub fn extend(&self, challenges: &JumpStackTableChallenges) -> ExtJumpStackTable {
