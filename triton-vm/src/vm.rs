@@ -205,10 +205,11 @@ impl Program {
 
 #[cfg(test)]
 pub mod triton_vm_tests {
+    use ndarray::Array1;
+    use ndarray::ArrayView1;
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
-    use ndarray::Array1;
     use num_traits::One;
     use num_traits::Zero;
     use rand::rngs::ThreadRng;
@@ -216,25 +217,28 @@ pub mod triton_vm_tests {
     use rand::RngCore;
     use triton_profiler::triton_profiler::TritonProfiler;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
-    use twenty_first::shared_math::other;
-    use twenty_first::shared_math::other::roundup_npo2;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::traits::FiniteField;
 
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
     use crate::shared_tests::SourceCodeAndInput;
+    use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::base_matrix::ProcessorMatrixRow;
-    use crate::table::base_table::Extendable;
-    use crate::table::base_table::InheritsFromTable;
-    use crate::table::challenges::AllChallenges;
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ExtProcessorTable;
-    use crate::table::processor_table::ProcessorTable;
-    use crate::table::table_collection::NUM_BASE_COLUMNS;
-    use crate::table::table_collection::NUM_EXT_COLUMNS;
+    use crate::table::table_collection::TableId::ProcessorTable;
     use crate::table::table_column::ProcessorBaseTableColumn;
 
     use super::*;
+
+    fn pretty_print_array_view<FF: FiniteField>(array: ArrayView1<FF>) -> String {
+        array
+            .iter()
+            .map(|ff| format!("{ff}"))
+            .collect_vec()
+            .join(", ")
+    }
 
     #[test]
     fn initialise_table_test() {
@@ -247,11 +251,7 @@ pub mod triton_vm_tests {
 
         println!(
             "VM output: [{}]",
-            stdout
-                .iter()
-                .map(|s| format!("{s}"))
-                .collect_vec()
-                .join(", ")
+            pretty_print_array_view(Array1::from(stdout).view())
         );
 
         if let Some(e) = err {
@@ -291,14 +291,8 @@ pub mod triton_vm_tests {
         let stdin = vec![42_u64.into(), 56_u64.into()];
         let (_, stdout, err) = program.simulate(stdin, vec![]);
 
-        println!(
-            "VM output: [{}]",
-            stdout
-                .iter()
-                .map(|s| format!("{s}"))
-                .collect_vec()
-                .join(", ")
-        );
+        let stdout = Array1::from(stdout);
+        println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
 
         if let Some(e) = err {
             panic!("Execution failed: {e}");
@@ -773,82 +767,62 @@ pub mod triton_vm_tests {
     fn processor_table_constraints_evaluate_to_zero(all_programs: &[SourceCodeAndInput]) {
         let mut profiler = TritonProfiler::new("Table Constraints Evaluate to Zero Test");
         for (code_idx, program) in all_programs.iter().enumerate() {
-            let (aet, output, err) = program.simulate();
+            let (stark, _, master_base_table, master_ext_table, challenges) =
+                parse_simulate_pad_extend(
+                    &program.source_code,
+                    program.input.clone(),
+                    program.secret_input.clone(),
+                );
 
             println!("\nChecking transition constraints for program number {code_idx}");
-            println!(
-                "VM output: [{}]",
-                output
-                    .iter()
-                    .map(|s| format!("{s}"))
-                    .collect_vec()
-                    .join(", ")
-            );
-            if let Some(e) = err {
-                panic!("The VM is not happy: {}", e);
-            }
+            let stdout = Array1::from(stark.claim.output);
+            println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
 
-            let processor_matrix = aet
-                .processor_matrix
-                .iter()
-                .map(|row| row.to_vec())
-                .collect_vec();
-            let num_cycles = processor_matrix.len();
+            let num_cycles = master_base_table
+                .table(ProcessorTable)
+                .rows()
+                .into_iter()
+                .filter(|row| row[usize::from(ProcessorBaseTableColumn::IsPadding)].is_zero())
+                .count();
 
-            let mut processor_table = ProcessorTable::new_prover(processor_matrix);
-            let padded_height = roundup_npo2(processor_table.data().len() as u64) as usize;
-            processor_table.pad(padded_height);
-
-            assert!(
-                other::is_power_of_two(processor_table.data().len()),
-                "Matrix length must be power of 2 after padding"
-            );
-
-            let challenges = AllChallenges::placeholder();
-            let ext_processor_table =
-                processor_table.extend(&challenges.processor_table_challenges);
+            let base_processor_table = master_base_table.table(ProcessorTable);
+            let ext_processor_table = master_ext_table.table(ProcessorTable);
 
             let program_idx_string = format!("Program number {code_idx:>2}");
             profiler.start(&program_idx_string);
-            for (row_idx, (current_row, next_row)) in ext_processor_table
-                .data()
-                .iter()
-                .tuple_windows()
-                .enumerate()
-            {
+            for row_idx in 0..ext_processor_table.nrows() - 1 {
+                let current_base_row = base_processor_table.row(row_idx);
+                let current_ext_row = ext_processor_table.row(row_idx);
+                let next_base_row = base_processor_table.row(row_idx + 1);
+                let next_ext_row = ext_processor_table.row(row_idx + 1);
                 for (tc_idx, tc_evaluation_result) in
-                    // todo rework this once master tables are being produced
                     ExtProcessorTable::evaluate_transition_constraints(
-                            Array1::zeros(NUM_BASE_COLUMNS).view(),
-                            Array1::zeros(NUM_EXT_COLUMNS).view(),
-                            Array1::zeros(NUM_BASE_COLUMNS).view(),
-                            Array1::zeros(NUM_EXT_COLUMNS).view(),
-                            &challenges,
-                        )
-                        .iter()
-                        .enumerate()
+                        current_base_row,
+                        current_ext_row,
+                        next_base_row,
+                        next_ext_row,
+                        &challenges,
+                    )
+                    .iter()
+                    .enumerate()
                 {
                     if !tc_evaluation_result.is_zero() {
-                        let ci = current_row[ProcessorBaseTableColumn::CI as usize].coefficients[0]
-                            .value();
+                        let ci =
+                            current_base_row[usize::from(ProcessorBaseTableColumn::CI)].value();
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
                             {tc_evaluation_result} but must be 0.\n\
                             Instruction: {:?} – opcode: {:?}\n\
-                            Evaluation Point, current row: [{:?}]\n\
-                            Evaluation Point, next row:    [{:?}]",
+                            Evaluation Point, current base row: [{:?}]\n\
+                            Evaluation Point, current ext row:  [{:?}]\n\
+                            Evaluation Point, next base row:    [{:?}]\n
+                            Evaluation Point, next ext row:     [{:?}]",
                             AnInstruction::<BFieldElement>::try_from(ci,).unwrap(),
                             ci,
-                            current_row
-                                .iter()
-                                .map(|xfe| format!("{xfe}"))
-                                .collect_vec()
-                                .join(", "),
-                            next_row
-                                .iter()
-                                .map(|xfe| format!("{xfe}"))
-                                .collect_vec()
-                                .join(", ")
+                            pretty_print_array_view(current_base_row),
+                            pretty_print_array_view(current_ext_row),
+                            pretty_print_array_view(next_base_row),
+                            pretty_print_array_view(next_ext_row),
                         );
                     }
                 }
