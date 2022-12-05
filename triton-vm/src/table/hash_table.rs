@@ -1,29 +1,44 @@
 use itertools::Itertools;
+use ndarray::Array1;
+use ndarray::ArrayViewMut2;
 use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_regular::ALPHA;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::rescue_prime_regular::{
-    ALPHA, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
-};
+use twenty_first::shared_math::rescue_prime_regular::MDS;
+use twenty_first::shared_math::rescue_prime_regular::MDS_INV;
+use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
+use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg};
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::EvalArg;
+use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::base_table::Extendable;
+use crate::table::base_table::InheritsFromTable;
+use crate::table::base_table::Table;
+use crate::table::base_table::TableLike;
 use crate::table::challenges::TableChallenges;
-use crate::table::constraint_circuit::DualRowIndicator::{CurrentRow, NextRow};
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::CurrentRow;
+use crate::table::constraint_circuit::DualRowIndicator::NextRow;
+use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::Row;
-use crate::table::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad, DualRowIndicator,
-    SingleRowIndicator,
-};
+use crate::table::extension_table::ExtensionTable;
+use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::hash_table::HashTableChallengeId::*;
-use crate::table::table_column::HashBaseTableColumn::{self, *};
-use crate::table::table_column::HashExtTableColumn::{self, *};
-
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
+use crate::table::table_column::HashBaseTableColumn;
+use crate::table::table_column::HashBaseTableColumn::*;
+use crate::table::table_column::HashExtTableColumn;
+use crate::table::table_column::HashExtTableColumn::*;
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
@@ -469,6 +484,17 @@ impl HashTable {
         Self { inherited_table }
     }
 
+    // todo: make the AET use ndarray, then this becomes a simple memcopy
+    pub fn fill_trace(
+        hash_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) {
+        for (row_idx, hash_table_row) in aet.hash_matrix.iter().enumerate() {
+            let row = Array1::from(hash_table_row.to_vec());
+            row.move_into(hash_table.row_mut(row_idx));
+        }
+    }
+
     pub fn extend(&self, challenges: &HashTableChallenges) -> ExtHashTable {
         let mut from_processor_running_evaluation = EvalArg::default_initial();
         let mut to_processor_running_evaluation = EvalArg::default_initial();
@@ -669,11 +695,13 @@ impl ExtensionTable for ExtHashTable {}
 
 #[cfg(test)]
 mod constraint_tests {
-    use super::*;
+    use ndarray::Array2;
+
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::extension_table::Evaluable;
     use crate::table::table_collection::NUM_EXT_COLUMNS;
-    use ndarray::Array2;
+
+    use super::*;
 
     #[test]
     fn hash_table_satisfies_constraints_test() {

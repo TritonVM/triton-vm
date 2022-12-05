@@ -350,6 +350,8 @@ impl MasterBaseTable {
         let ram_clk_jump_diffs = RamTable::fill_trace(ram_table, &aet);
         let jump_stack_table = &mut master_base_table.table_mut(TableId::JumpStackTable);
         let jump_stack_clk_jump_diffs = JumpStackTable::fill_trace(jump_stack_table, &aet);
+        let hash_table = &mut master_base_table.table_mut(TableId::HashTable);
+        HashTable::fill_trace(hash_table, &aet);
 
         // memory-like tables must be filled in before clock jump differences are known, hence
         // the break from the usual order
