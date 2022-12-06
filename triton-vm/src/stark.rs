@@ -1833,7 +1833,7 @@ pub(crate) mod triton_stark_tests {
         // let padded_height = BaseTableCollection::padded_height(&base_matrices);
         let padded_height = 0;
         let claim = Claim {
-            input: stdin.clone(),
+            input: stdin,
             program: serialized_program,
             output,
             padded_height,
