@@ -1805,4 +1805,46 @@ pub(crate) mod triton_stark_tests {
             }
         }
     }
+
+    #[test]
+    fn prove_verify_zkp_shootout() {
+        let code = "
+            push 2
+            push 2
+            add
+            push 4
+            eq
+            assert
+            halt";
+        let program = Program::from_code(code).unwrap();
+
+        let stdin = vec![];
+        let secret_in = vec![];
+        let (trace, output, err) = program.simulate(stdin.clone(), secret_in);
+
+        assert!(err.is_none(), "can't have those errors");
+
+        let security_level = 32;
+        let expansion_factor = 4;
+        let parameters = StarkParameters::new(security_level, expansion_factor);
+
+        let serialized_program = program.to_bwords();
+        // let base_matrices = BaseMatrices::new(trace.clone(), &serialized_program);
+        // let padded_height = BaseTableCollection::padded_height(&base_matrices);
+        let padded_height = 0;
+        let claim = Claim {
+            input: stdin.clone(),
+            program: serialized_program,
+            output,
+            padded_height,
+        };
+
+        let stark = Stark::new(claim, parameters);
+        let proof = stark.prove(trace, &mut None);
+
+        match stark.verify(proof, &mut None) {
+            Ok(result) => assert!(result, "computer says no"),
+            Err(err) => panic!("{err:?}",),
+        }
+    }
 }
