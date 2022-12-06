@@ -335,13 +335,8 @@ fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
     let mut constraint_evaluation_expressions: Vec<String> = vec![];
     for constraint in constraint_circuits.iter() {
         // Build code for expressions that evaluate to the constraints
-        let mut constraint_evaluation = String::default();
-        let _dependent_symbols = evaluate_single_node(
-            1,
-            constraint,
-            &HashSet::default(),
-            &mut constraint_evaluation,
-        );
+        let (constraint_evaluation, _dependent_symbols) =
+            evaluate_single_node(1, constraint, &HashSet::default());
 
         constraint_evaluation_expressions.push(constraint_evaluation);
     }
@@ -419,7 +414,8 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     if circuit.visited_counter == requested_visited_count && !in_scope.contains(&circuit.id) {
         let binding_name = get_binding_name(circuit);
         output.push_str(&format!("let {binding_name} =\n"));
-        evaluate_single_node(requested_visited_count, circuit, in_scope, output);
+        let (to_output, _) = evaluate_single_node(requested_visited_count, circuit, in_scope);
+        output.push_str(&to_output);
         output.push_str(";\n");
 
         let new_insertion = in_scope.insert(circuit.id.clone());
@@ -444,56 +440,49 @@ fn get_binding_name<T: TableChallenges, II: InputIndicator>(
     }
 }
 
-/// Add to `output` the code for evaluating a single node.
-/// Return a list of symbols that this evaluation depends on.
+/// Return (1) the code for evaluating a single node and (2) a list of symbols that this evaluation
+/// depends on.
 fn evaluate_single_node<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<T, II>,
     in_scope: &HashSet<CircuitId>,
-    output: &mut String,
-) -> Vec<String> {
+) -> (String, Vec<String>) {
+    let mut output = String::default();
     // If this node has already been declared, or visit counter is higher than requested,
     // than the node value *must* be in scope, meaning that we can just reference it.
     if circuit.visited_counter > requested_visited_count || in_scope.contains(&circuit.id) {
         let binding_name = get_binding_name(circuit);
         output.push_str(&binding_name);
         return match &circuit.expression {
-            CircuitExpression::BinaryOperation(_, _, _) => vec![binding_name],
-            _ => vec![],
+            CircuitExpression::BinaryOperation(_, _, _) => (output, vec![binding_name]),
+            _ => (output, vec![]),
         };
     }
 
-    // If variable is not already in scope, then we must generate the expression to
-    // evaluate it.
-    let mut ret = vec![];
+    // If variable is not already in scope, then we must generate the expression to evaluate it.
+    let mut dependent_symbols = vec![];
     match &circuit.expression {
         CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
             output.push('(');
-            let lhs_symbols = evaluate_single_node(
-                requested_visited_count,
-                &lhs.as_ref().borrow(),
-                in_scope,
-                output,
-            );
+            let (to_output, lhs_symbols) =
+                evaluate_single_node(requested_visited_count, &lhs.as_ref().borrow(), in_scope);
+            output.push_str(&to_output);
             output.push(')');
             output.push_str(&binop.to_string());
             output.push('(');
-            let rhs_symbols = evaluate_single_node(
-                requested_visited_count,
-                &rhs.as_ref().borrow(),
-                in_scope,
-                output,
-            );
+            let (to_output, rhs_symbols) =
+                evaluate_single_node(requested_visited_count, &rhs.as_ref().borrow(), in_scope);
+            output.push_str(&to_output);
             output.push(')');
 
             let ret_as_vec = vec![lhs_symbols, rhs_symbols].concat();
             let ret_as_hash_set: HashSet<String> = ret_as_vec.into_iter().collect();
-            ret = ret_as_hash_set.into_iter().collect_vec()
+            dependent_symbols = ret_as_hash_set.into_iter().collect_vec()
         }
         _ => output.push_str(&get_binding_name(circuit)),
     }
 
-    ret
+    (output, dependent_symbols)
 }
 
 fn print_bfe(bfe: &BFieldElement) -> String {
