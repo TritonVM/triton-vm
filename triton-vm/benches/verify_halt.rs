@@ -30,7 +30,7 @@ fn verify_halt(criterion: &mut Criterion) {
     };
     let parameters = StarkParameters::default();
     let stark = Stark::new(claim, parameters);
-
+    let mut cycle_count = None;
     let filename = "halt.tsp";
     let proof = if proof_file_exists(filename) {
         match load_proof(filename) {
@@ -42,8 +42,8 @@ fn verify_halt(criterion: &mut Criterion) {
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
+        cycle_count = Some(aet.processor_matrix.len());
         let proof = stark.prove(aet, &mut None);
-
         if let Err(e) = save_proof(filename, proof.clone()) {
             panic!("Problem! could not save proof to disk: {:?}", e);
         }
@@ -65,7 +65,7 @@ fn verify_halt(criterion: &mut Criterion) {
             prof_stop!(maybe_profiler, "verify");
 
             if let Some(profiler) = maybe_profiler.as_mut() {
-                report = profiler.finish_and_report(None, Some(proof.padded_height()));
+                report = profiler.finish_and_report(cycle_count, Some(proof.padded_height()));
             }
             maybe_profiler = None;
         });

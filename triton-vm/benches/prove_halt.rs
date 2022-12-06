@@ -32,11 +32,13 @@ fn prove_halt(_criterion: &mut Criterion) {
         panic!("The VM encountered the following problem: {}", error);
     }
 
+    let clock_cycle = aet.processor_matrix.len();
+
     let proof = stark.prove(aet, &mut maybe_profiler);
 
     if let Some(profiler) = &mut maybe_profiler {
         // FIXME: Insert cycle count and padded height separately.
-        report = profiler.finish_and_report(None, Some(proof.padded_height()));
+        report = profiler.finish_and_report(Some(clock_cycle), Some(proof.padded_height()));
     };
 
     // save proof

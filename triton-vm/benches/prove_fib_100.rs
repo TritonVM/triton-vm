@@ -36,17 +36,23 @@ fn prove_fib_100(criterion: &mut Criterion) {
         padded_height: 0,
     };
     let stark = Stark::new(claim, Default::default());
+    //start the profiler
+    prof_start!(maybe_profiler, "prove");
+    let proof = stark.prove(aet.clone(), &mut maybe_profiler);
+    let padded_height = Some(proof.padded_height());
 
+    prof_stop!(maybe_profiler, "prove");
+
+    let cycle_count = Some(aet.processor_matrix.len());
+
+    if let Some(profiler) = maybe_profiler.as_mut() {
+        report = profiler.finish_and_report(cycle_count, padded_height);
+    }
+    //start the benchmarking
     group.bench_function(fib_100, |bencher| {
         bencher.iter(|| {
-            prof_start!(maybe_profiler, "prove");
-            let _proof = stark.prove(aet.clone(), &mut maybe_profiler);
-            prof_stop!(maybe_profiler, "prove");
-
-            if let Some(profiler) = maybe_profiler.as_mut() {
-                profiler.finish_and_report(None, None);
-            }
-            maybe_profiler = None;
+            // TODO 2: Remove profiler from benchmark:
+            let _proof = stark.prove(aet.clone(), &mut None);
         });
     });
 

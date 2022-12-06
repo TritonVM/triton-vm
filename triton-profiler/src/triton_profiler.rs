@@ -454,7 +454,7 @@ impl Display for Report {
                 writeln!(f)?;
                 writeln!(
                     f,
-                    "Clock frequency is {} Hz ({} clock cycles padded / {} ms)",
+                    "Clock frequency is {} Hz ({} clock cycles / {} ms)",
                     freq, cycle_count, total_time
                 )?;
             }
@@ -467,7 +467,7 @@ impl Display for Report {
                 writeln!(f)?;
                 writeln!(
                     f,
-                    "Optimal clock frequency is {} Hz ({} clock cycles padded / {} ms)",
+                    "Optimal clock frequency is {} Hz ({} padded height / {} ms)",
                     optimal_freq, padded_height, total_time
                 )?;
             }
