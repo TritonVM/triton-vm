@@ -30,7 +30,6 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
@@ -747,13 +746,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "nonlinear combination");
         prof_start!(maybe_profiler, "index");
-        let (indexed_randomizer_rows, indexed_base_table_rows, indexed_ext_table_rows) =
-            Self::index_revealed_rows(
-                self.parameters.num_randomizer_polynomials,
-                revealed_indices,
-                base_table_rows,
-                ext_table_rows,
-            );
+        let (indexed_base_table_rows, indexed_ext_table_rows, indexed_randomizer_rows) =
+            Self::index_revealed_rows(revealed_indices, base_table_rows, ext_table_rows);
         prof_stop!(maybe_profiler, "index");
 
         // =======================================
@@ -801,6 +795,8 @@ impl Stark {
             for (&base_row_element, degree_bound) in
                 base_row.iter().zip_eq(base_degree_bounds.iter())
             {
+                // todo for base & ext tables, this shift is always max_degree - interpolant_degree.
+                //  Pre-compute the corresponding shifted current_fri_domain_value.
                 let shift = self.max_degree - degree_bound;
                 let base_row_element_shifted =
                     base_row_element * current_fri_domain_value.mod_pow_u32(shift as u32);
@@ -912,11 +908,7 @@ impl Stark {
                 .zip_eq(summands.par_iter())
                 .map(|(&weight, &summand)| weight * summand)
                 .sum();
-            let randomizer_codewords_contribution: XFieldElement = indexed_randomizer_rows
-                [&current_row_idx]
-                .clone()
-                .into_iter()
-                .sum();
+            let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
             if revealed_combination_leaf != inner_product + randomizer_codewords_contribution {
                 return Err(anyhow!(StarkValidationError::CombinationLeafInequality));
             }
@@ -935,44 +927,35 @@ impl Stark {
     //  Also, the proof stream should probably just return Array1<FF> or even Array2<FF> instead.
     #[allow(clippy::type_complexity)]
     fn index_revealed_rows(
-        num_randomizer_polynomials: usize,
         revealed_indices: Vec<usize>,
         revealed_base_rows: Vec<Vec<BFieldElement>>,
         revealed_ext_rows: Vec<Vec<XFieldElement>>,
     ) -> (
-        HashMap<usize, Array1<XFieldElement>>,
         HashMap<usize, Array1<BFieldElement>>,
+        HashMap<usize, Array1<XFieldElement>>,
         HashMap<usize, Array1<XFieldElement>>,
     ) {
         assert_eq!(revealed_indices.len(), revealed_base_rows.len());
         assert_eq!(revealed_indices.len(), revealed_ext_rows.len());
 
-        let num_randomizer_columns = EXTENSION_DEGREE * num_randomizer_polynomials;
-
-        let mut indexed_revealed_rand_rows: HashMap<usize, Array1<XFieldElement>> = HashMap::new();
         let mut indexed_revealed_base_rows: HashMap<usize, Array1<BFieldElement>> = HashMap::new();
         let mut indexed_revealed_ext_rows: HashMap<usize, Array1<XFieldElement>> = HashMap::new();
+        let mut indexed_revealed_rand_rows: HashMap<usize, Array1<XFieldElement>> = HashMap::new();
 
         for (i, &idx) in revealed_indices.iter().enumerate() {
-            let rand_vec = revealed_base_rows[i][..num_randomizer_columns]
-                .iter()
-                .tuples()
-                .map(|(&c0, &c1, &c2)| XFieldElement::new([c0, c1, c2]))
-                .collect_vec();
-            let rand_row = Array1::from(rand_vec);
+            let base_row = Array1::from(revealed_base_rows[i].to_vec());
+            let ext_row = Array1::from(revealed_ext_rows[i][..NUM_EXT_COLUMNS].to_vec());
+            let rand_row = Array1::from(revealed_ext_rows[i][NUM_EXT_COLUMNS..].to_vec());
 
-            let base_row = Array1::from(revealed_base_rows[i][num_randomizer_columns..].to_vec());
-            let ext_row = Array1::from(revealed_ext_rows[i].clone());
-
-            indexed_revealed_rand_rows.insert(idx, rand_row);
             indexed_revealed_base_rows.insert(idx, base_row);
             indexed_revealed_ext_rows.insert(idx, ext_row);
+            indexed_revealed_rand_rows.insert(idx, rand_row);
         }
 
         (
-            indexed_revealed_rand_rows,
             indexed_revealed_base_rows,
             indexed_revealed_ext_rows,
+            indexed_revealed_rand_rows,
         )
     }
 }
