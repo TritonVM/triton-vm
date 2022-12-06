@@ -124,6 +124,20 @@ impl ProcessorTable {
         );
     }
 
+    pub fn pad_trace(
+        processor_table: &mut ArrayViewMut2<BFieldElement>,
+        processor_table_len: usize,
+    ) {
+        let clocks = Array1::from_iter(
+            (processor_table_len..processor_table.nrows()).map(|a| BFieldElement::new(a as u64)),
+        );
+        clocks.move_into(processor_table.slice_mut(s![processor_table_len.., usize::from(CLK)]));
+
+        processor_table
+            .slice_mut(s![processor_table_len.., usize::from(IsPadding)])
+            .fill(BFieldElement::one());
+    }
+
     pub fn extend(&self, challenges: &ProcessorTableChallenges) -> ExtProcessorTable {
         let mut unique_clock_jump_differences = vec![];
         let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());

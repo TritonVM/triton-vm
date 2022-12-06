@@ -324,12 +324,14 @@ impl MasterBaseTable {
 
     pub fn pad(&mut self) {
         let program_len = self.program_len;
-        let instruction_table_len = program_len + self.main_execution_len;
+        let main_execution_len = self.main_execution_len;
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
         ProgramTable::pad_trace(program_table, program_len);
         let instruction_table = &mut self.table_mut(TableId::InstructionTable);
-        InstructionTable::pad_trace(instruction_table, instruction_table_len);
+        InstructionTable::pad_trace(instruction_table, program_len + main_execution_len);
+        let processor_table = &mut self.table_mut(TableId::ProcessorTable);
+        ProcessorTable::pad_trace(processor_table, main_execution_len);
     }
 
     pub fn to_fri_domain_table(&self) -> Self {

@@ -192,16 +192,14 @@ impl ProgramTable {
     }
 
     pub fn pad_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program_len: usize) {
-        let padded_height = program_table.nrows();
+        let addresses = Array1::from_iter(
+            (program_len..program_table.nrows()).map(|a| BFieldElement::new(a as u64)),
+        );
+        addresses.move_into(program_table.slice_mut(s![program_len.., usize::from(Address)]));
 
-        let address_column = program_table.slice_mut(s![program_len.., usize::from(Address)]);
-        let addresses =
-            Array1::from_iter((program_len..padded_height).map(|a| BFieldElement::new(a as u64)));
-        addresses.move_into(address_column);
-
-        let mut is_padding_column =
-            program_table.slice_mut(s![program_len.., usize::from(IsPadding)]);
-        is_padding_column.fill(BFieldElement::one());
+        program_table
+            .slice_mut(s![program_len.., usize::from(IsPadding)])
+            .fill(BFieldElement::one());
     }
 
     pub fn extend(

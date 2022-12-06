@@ -377,14 +377,13 @@ impl InstructionTable {
             .map(|&x| x.value())
             .max()
             .unwrap_or(0);
-        let mut address_column =
-            instruction_table.slice_mut(s![instruction_table_len.., usize::from(Address)]);
-        let padding_address = BFieldElement::new(highest_encountered_address + 1);
-        address_column.fill(padding_address);
+        instruction_table
+            .slice_mut(s![instruction_table_len.., usize::from(Address)])
+            .fill(BFieldElement::new(highest_encountered_address + 1));
 
-        let mut is_padding_column =
-            instruction_table.slice_mut(s![instruction_table_len.., usize::from(IsPadding)]);
-        is_padding_column.fill(BFieldElement::one());
+        instruction_table
+            .slice_mut(s![instruction_table_len.., usize::from(IsPadding)])
+            .fill(BFieldElement::one());
     }
 
     pub fn extend(&self, challenges: &InstructionTableChallenges) -> ExtInstructionTable {
