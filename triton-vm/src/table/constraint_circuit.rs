@@ -72,81 +72,120 @@ pub trait InputIndicator:
 {
 }
 
-/// A `SingleRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// A `SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>` describes the position of a variable in
 /// a constraint polynomial that operates on a single execution trace table at a
 /// time.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum SingleRowIndicator<const COLUMN_COUNT: usize> {
-    Row(usize),
+pub enum SingleRowIndicator<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> {
+    BaseRow(usize),
+    ExtRow(usize),
 }
 
-impl<const COLUMN_COUNT: usize> Display for SingleRowIndicator<COLUMN_COUNT> {
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
+    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let input_indicator: String = match self {
-            SingleRowIndicator::Row(i) => format!("row[{i}]"),
+            SingleRowIndicator::BaseRow(i) => format!("base_row[{i}]"),
+            SingleRowIndicator::ExtRow(i) => format!("ext_row[{i}]"),
         };
 
         writeln!(f, "{input_indicator}")
     }
 }
 
-impl<const COLUMN_COUNT: usize> From<usize> for SingleRowIndicator<COLUMN_COUNT> {
-    fn from(val: usize) -> Self {
-        assert!(val < COLUMN_COUNT, "Cannot index out of width of table");
-        SingleRowIndicator::Row(val)
-    }
-}
-
-impl<const COLUMN_COUNT: usize> From<SingleRowIndicator<COLUMN_COUNT>> for usize {
-    fn from(val: SingleRowIndicator<COLUMN_COUNT>) -> usize {
-        match val {
-            SingleRowIndicator::Row(i) => i,
-        }
-    }
-}
-
-impl<const COLUMN_COUNT: usize> InputIndicator for SingleRowIndicator<COLUMN_COUNT> {}
-
-/// A `DualRowIndicator<COLUMN_COUNT>` describes the position of a variable in
-/// a constraint polynomial that operates on pairs of rows (current and next).
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum DualRowIndicator<const COLUMN_COUNT: usize> {
-    CurrentRow(usize),
-    NextRow(usize),
-}
-
-impl<const COLUMN_COUNT: usize> Display for DualRowIndicator<COLUMN_COUNT> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let input_indicator: String = match self {
-            DualRowIndicator::CurrentRow(i) => format!("current_row[{i}]"),
-            DualRowIndicator::NextRow(i) => format!("next_row[{i}]"),
-        };
-
-        writeln!(f, "{input_indicator}")
-    }
-}
-
-impl<const COLUMN_COUNT: usize> InputIndicator for DualRowIndicator<COLUMN_COUNT> {}
-
-impl<const COLUMN_COUNT: usize> From<usize> for DualRowIndicator<COLUMN_COUNT> {
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> From<usize>
+    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
     fn from(val: usize) -> Self {
         assert!(
-            val < 2 * COLUMN_COUNT,
-            "Cannot index out of two times the width of the table"
+            val < BASE_COLUMN_COUNT + EXT_COLUMN_COUNT,
+            "Cannot index out of width of table"
         );
-        if val < COLUMN_COUNT {
-            DualRowIndicator::CurrentRow(val)
+        if val < BASE_COLUMN_COUNT {
+            SingleRowIndicator::BaseRow(val)
         } else {
-            DualRowIndicator::NextRow(val - COLUMN_COUNT)
+            SingleRowIndicator::ExtRow(val - BASE_COLUMN_COUNT)
         }
     }
 }
 
-impl<const COLUMN_COUNT: usize> From<DualRowIndicator<COLUMN_COUNT>> for usize {
-    fn from(val: DualRowIndicator<COLUMN_COUNT>) -> Self {
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize>
+    From<SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>> for usize
+{
+    fn from(val: SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>) -> usize {
         match val {
-            DualRowIndicator::CurrentRow(i) => i,
-            DualRowIndicator::NextRow(i) => COLUMN_COUNT + i,
+            SingleRowIndicator::BaseRow(i) => i,
+            SingleRowIndicator::ExtRow(i) => BASE_COLUMN_COUNT + i,
+        }
+    }
+}
+
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
+    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
+}
+
+/// A `DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>` describes the position of a variable in
+/// a constraint polynomial that operates on pairs of rows (current and next).
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum DualRowIndicator<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> {
+    CurrentBaseRow(usize),
+    CurrentExtRow(usize),
+    NextBaseRow(usize),
+    NextExtRow(usize),
+}
+
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
+    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let input_indicator: String = match self {
+            DualRowIndicator::CurrentBaseRow(i) => format!("current_base_row[{i}]"),
+            DualRowIndicator::CurrentExtRow(i) => format!("current_ext_row[{i}]"),
+            DualRowIndicator::NextBaseRow(i) => format!("next_base_row[{i}]"),
+            DualRowIndicator::NextExtRow(i) => format!("next_ext_row[{i}]"),
+        };
+
+        writeln!(f, "{input_indicator}")
+    }
+}
+
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
+    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
+}
+
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> From<usize>
+    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
+    fn from(val: usize) -> Self {
+        let total_column_count = BASE_COLUMN_COUNT + EXT_COLUMN_COUNT;
+        assert!(
+            val < 2 * total_column_count,
+            "Cannot index out of two times the width of the table"
+        );
+        if val < BASE_COLUMN_COUNT {
+            DualRowIndicator::CurrentBaseRow(val)
+        } else if val < total_column_count {
+            DualRowIndicator::CurrentExtRow(val - BASE_COLUMN_COUNT)
+        } else if val < total_column_count + BASE_COLUMN_COUNT {
+            DualRowIndicator::NextBaseRow(val - total_column_count)
+        } else {
+            DualRowIndicator::NextExtRow(val - total_column_count - BASE_COLUMN_COUNT)
+        }
+    }
+}
+
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize>
+    From<DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>> for usize
+{
+    fn from(val: DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>) -> Self {
+        match val {
+            DualRowIndicator::CurrentBaseRow(i) => i,
+            DualRowIndicator::CurrentExtRow(i) => BASE_COLUMN_COUNT + i,
+            DualRowIndicator::NextBaseRow(i) => BASE_COLUMN_COUNT + EXT_COLUMN_COUNT + i,
+            DualRowIndicator::NextExtRow(i) => 2 * BASE_COLUMN_COUNT + EXT_COLUMN_COUNT + i,
         }
     }
 }
@@ -570,18 +609,6 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    /// Return Some(index) iff the circuit node represents a linear function with one
-    /// term and a coefficient of one. Returns the index in which the multivariate
-    /// polynomial is linear. Returns None otherwise.
-    pub fn get_linear_one_index(&self) -> Option<usize> {
-        if let Input(input) = self.expression {
-            let index: usize = input.into();
-            Some(index)
-        } else {
-            None
-        }
-    }
-
     /// Return true iff the evaluation value of this node depends on a challenge
     pub fn is_randomized(&self) -> bool {
         match &self.expression {
@@ -953,14 +980,14 @@ mod constraint_circuit_tests {
     fn circuit_mpol_builder(
         challenges: &InstructionTableChallenges,
     ) -> (
-        ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50>>,
+        ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50, 40>>,
         MPolynomial<XFieldElement>,
-        ConstraintCircuitBuilder<InstructionTableChallenges, DualRowIndicator<50>>,
+        ConstraintCircuitBuilder<InstructionTableChallenges, DualRowIndicator<50, 40>>,
     ) {
-        let var_count = 100;
+        let var_count = 2 * (50 + 40);
         let circuit_builder: ConstraintCircuitBuilder<
             InstructionTableChallenges,
-            DualRowIndicator<50>,
+            DualRowIndicator<50, 40>,
         > = ConstraintCircuitBuilder::new(var_count);
         let mpol_variables = MPolynomial::<XFieldElement>::variables(var_count);
         let b_constants: Vec<BFieldElement> = random_elements(var_count);
@@ -969,18 +996,18 @@ mod constraint_circuit_tests {
         let mut rng = thread_rng();
         let rand: usize = rng.next_u64() as usize;
         let mut ret_mpol = mpol_variables[rand % var_count].clone();
-        let circuit_input: DualRowIndicator<50> = (rand % var_count).into();
+        let circuit_input: DualRowIndicator<50, 40> = (rand % var_count).into();
         let mut ret_circuit = circuit_builder.input(circuit_input);
         for _ in 0..100 {
             let rand: usize = rng.next_u64() as usize;
             let choices = 6;
             let (mpol, circuit): (
                 MPolynomial<XFieldElement>,
-                ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50>>,
+                ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50, 40>>,
             ) = if rand % choices == 0 {
                 // p(x, y, z) = x
                 let mp = mpol_variables[rand % var_count].clone();
-                let input_value: DualRowIndicator<50> = (rand % var_count).into();
+                let input_value: DualRowIndicator<50, 40> = (rand % var_count).into();
                 (mp.clone(), circuit_builder.input(input_value))
             } else if rand % choices == 1 {
                 // p(x, y, z) = c
@@ -1009,7 +1036,7 @@ mod constraint_circuit_tests {
                 )
             } else {
                 // p(x, y, z) = rand_i * x
-                let input_value: DualRowIndicator<50> = (rand % var_count).into();
+                let input_value: DualRowIndicator<50, 40> = (rand % var_count).into();
                 (
                     mpol_variables[rand % var_count]
                         .clone()
@@ -1209,13 +1236,13 @@ mod constraint_circuit_tests {
 
     #[test]
     fn circuit_equality_check_and_constant_folding_test() {
-        let var_count = 10;
+        let var_count = 2 * (5 + 3);
         let circuit_builder: ConstraintCircuitBuilder<
             InstructionTableChallenges,
-            DualRowIndicator<5>,
+            DualRowIndicator<5, 3>,
         > = ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.input(DualRowIndicator::CurrentRow(0));
-        let var_4 = circuit_builder.input(DualRowIndicator::NextRow(4));
+        let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
+        let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
         let four = circuit_builder.x_constant(4.into());
         let one = circuit_builder.x_constant(1.into());
         let zero = circuit_builder.x_constant(0.into());
@@ -1405,8 +1432,8 @@ mod constraint_circuit_tests {
 
     #[test]
     fn mpol_algebra_and_circuit_building_is_equivalent_simple_test() {
-        let var_count = 10;
-        let variables = MPolynomial::<XFieldElement>::variables(10);
+        let var_count = 2 * (5 + 3);
+        let variables = MPolynomial::<XFieldElement>::variables(var_count);
         let four_mpol = MPolynomial::<XFieldElement>::from_constant(
             XFieldElement::new_const(4u64.into()),
             var_count,
@@ -1419,21 +1446,19 @@ mod constraint_circuit_tests {
 
         let circuit_builder: ConstraintCircuitBuilder<
             InstructionTableChallenges,
-            DualRowIndicator<5>,
+            DualRowIndicator<5, 3>,
         > = ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.input(DualRowIndicator::CurrentRow(0));
-        let var_4 = circuit_builder.input(DualRowIndicator::CurrentRow(4));
-        let var_8 = circuit_builder.input(DualRowIndicator::NextRow(3));
-        let var_9 = circuit_builder.input(DualRowIndicator::NextRow(4));
+        let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
+        let var_4 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(4));
+        let var_8 = circuit_builder.input(DualRowIndicator::NextBaseRow(0));
+        let var_9 = circuit_builder.input(DualRowIndicator::NextBaseRow(1));
 
         let four = circuit_builder.x_constant(4.into());
 
         let expr_circuit = (var_0 + var_4) * (var_8 - var_9) * four.clone() * four;
 
         // Verify that IDs are unique
-        ConstraintCircuit::<InstructionTableChallenges, DualRowIndicator<5>>::assert_has_unique_ids(
-            &mut [expr_circuit.clone().consume()],
-        );
+        ConstraintCircuit::assert_has_unique_ids(&mut [expr_circuit.clone().consume()]);
 
         // Verify that partial evaluation agrees with the flat polynomial representation
         let expr_circuit_partial_evaluated = expr_circuit

@@ -28,13 +28,18 @@ use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_collection::NUM_BASE_COLUMNS;
+use crate::table::table_collection::NUM_COLUMNS;
+use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::JumpStackBaseTableColumn;
 use crate::table::table_column::JumpStackBaseTableColumn::*;
 use crate::table::table_column::JumpStackExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn::*;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
@@ -128,18 +133,23 @@ impl Extendable for JumpStackTable {
 impl TableLike<XFieldElement> for ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            JumpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let clk = circuit_builder.input(Row(CLK.into()));
-        let jsp = circuit_builder.input(Row(JSP.into()));
-        let jso = circuit_builder.input(Row(JSO.into()));
-        let jsd = circuit_builder.input(Row(JSD.into()));
-        let ci = circuit_builder.input(Row(CI.into()));
-        let rppa = circuit_builder.input(Row(RunningProductPermArg.into()));
-        let rpcjd = circuit_builder.input(Row(AllClockJumpDifferencesPermArg.into()));
+        let clk = circuit_builder.input(BaseRow(CLK.master_table_index()));
+        let jsp = circuit_builder.input(BaseRow(JSP.master_table_index()));
+        let jso = circuit_builder.input(BaseRow(JSO.master_table_index()));
+        let jsd = circuit_builder.input(BaseRow(JSD.master_table_index()));
+        let ci = circuit_builder.input(BaseRow(CI.master_table_index()));
+        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
+        let rpcjd =
+            circuit_builder.input(ExtRow(AllClockJumpDifferencesPermArg.master_table_index()));
 
         let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermRowIndeterminate);
         // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and can thus be omitted.
@@ -160,37 +170,53 @@ impl ExtJumpStackTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            JumpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            JumpStackTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
         let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
             circuit_builder.b_constant(Instruction::Call(Default::default()).opcode_b());
         let return_opcode = circuit_builder.b_constant(Instruction::Return.opcode_b());
 
-        let clk = circuit_builder.input(CurrentRow(CLK.into()));
-        let ci = circuit_builder.input(CurrentRow(CI.into()));
-        let jsp = circuit_builder.input(CurrentRow(JSP.into()));
-        let jso = circuit_builder.input(CurrentRow(JSO.into()));
-        let jsd = circuit_builder.input(CurrentRow(JSD.into()));
-        let clk_di = circuit_builder.input(CurrentRow(InverseOfClkDiffMinusOne.into()));
-        let rppa = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
-        let rpcjd = circuit_builder.input(CurrentRow(AllClockJumpDifferencesPermArg.into()));
+        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_table_index()));
+        let ci = circuit_builder.input(CurrentBaseRow(CI.master_table_index()));
+        let jsp = circuit_builder.input(CurrentBaseRow(JSP.master_table_index()));
+        let jso = circuit_builder.input(CurrentBaseRow(JSO.master_table_index()));
+        let jsd = circuit_builder.input(CurrentBaseRow(JSD.master_table_index()));
+        let clk_di = circuit_builder.input(CurrentBaseRow(
+            InverseOfClkDiffMinusOne.master_table_index(),
+        ));
+        let rppa = circuit_builder.input(CurrentExtRow(RunningProductPermArg.master_table_index()));
+        let rpcjd = circuit_builder.input(CurrentExtRow(
+            AllClockJumpDifferencesPermArg.master_table_index(),
+        ));
 
-        let clk_next = circuit_builder.input(NextRow(CLK.into()));
-        let ci_next = circuit_builder.input(NextRow(CI.into()));
-        let jsp_next = circuit_builder.input(NextRow(JSP.into()));
-        let jso_next = circuit_builder.input(NextRow(JSO.into()));
-        let jsd_next = circuit_builder.input(NextRow(JSD.into()));
-        let clk_di_next = circuit_builder.input(NextRow(InverseOfClkDiffMinusOne.into()));
-        let rppa_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
-        let rpcjd_next = circuit_builder.input(NextRow(AllClockJumpDifferencesPermArg.into()));
+        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_table_index()));
+        let ci_next = circuit_builder.input(NextBaseRow(CI.master_table_index()));
+        let jsp_next = circuit_builder.input(NextBaseRow(JSP.master_table_index()));
+        let jso_next = circuit_builder.input(NextBaseRow(JSO.master_table_index()));
+        let jsd_next = circuit_builder.input(NextBaseRow(JSD.master_table_index()));
+        let clk_di_next =
+            circuit_builder.input(NextBaseRow(InverseOfClkDiffMinusOne.master_table_index()));
+        let rppa_next =
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
+        let rpcjd_next = circuit_builder.input(NextExtRow(
+            AllClockJumpDifferencesPermArg.master_table_index(),
+        ));
 
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change
@@ -282,8 +308,12 @@ impl ExtJumpStackTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<JumpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            JumpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         vec![]
     }
 }

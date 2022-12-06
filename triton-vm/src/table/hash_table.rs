@@ -28,13 +28,15 @@ use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
-use crate::table::constraint_circuit::DualRowIndicator::CurrentRow;
-use crate::table::constraint_circuit::DualRowIndicator::NextRow;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::hash_table::HashTableChallengeId::*;
+use crate::table::table_collection::NUM_BASE_COLUMNS;
+use crate::table::table_collection::NUM_COLUMNS;
+use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::HashExtTableColumn;
@@ -94,23 +96,27 @@ impl Extendable for HashTable {
 impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            HashTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let challenge = |c| circuit_builder.challenge(c);
         let one = circuit_builder.b_constant(1_u32.into());
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
 
-        let round_number = circuit_builder.input(Row(ROUNDNUMBER.into()));
+        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.into()));
         let running_evaluation_from_processor =
-            circuit_builder.input(Row(FromProcessorRunningEvaluation.into()));
+            circuit_builder.input(ExtRow(FromProcessorRunningEvaluation.into()));
         let running_evaluation_to_processor =
-            circuit_builder.input(Row(ToProcessorRunningEvaluation.into()));
+            circuit_builder.input(ExtRow(ToProcessorRunningEvaluation.into()));
         let state = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
         ]
-        .map(|st| circuit_builder.input(Row(st.into())));
+        .map(|st| circuit_builder.input(BaseRow(st.into())));
 
         let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
 
@@ -156,18 +162,22 @@ impl ExtHashTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            HashTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
-        let round_number = circuit_builder.input(Row(ROUNDNUMBER.into()));
-        let state10 = circuit_builder.input(Row(STATE10.into()));
-        let state11 = circuit_builder.input(Row(STATE11.into()));
-        let state12 = circuit_builder.input(Row(STATE12.into()));
-        let state13 = circuit_builder.input(Row(STATE13.into()));
-        let state14 = circuit_builder.input(Row(STATE14.into()));
-        let state15 = circuit_builder.input(Row(STATE15.into()));
+        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.into()));
+        let state10 = circuit_builder.input(BaseRow(STATE10.into()));
+        let state11 = circuit_builder.input(BaseRow(STATE11.into()));
+        let state12 = circuit_builder.input(BaseRow(STATE12.into()));
+        let state13 = circuit_builder.input(BaseRow(STATE13.into()));
+        let state14 = circuit_builder.input(BaseRow(STATE14.into()));
+        let state15 = circuit_builder.input(BaseRow(STATE15.into()));
 
         let round_number_deselector = |round_number_to_deselect| {
             (0..=NUM_ROUNDS + 1)
@@ -189,7 +199,7 @@ impl ExtHashTable {
         let round_constant_offset: usize = CONSTANT0A.into();
         for round_constant_col_index in 0..NUM_ROUND_CONSTANTS {
             let round_constant_input =
-                circuit_builder.input(Row(round_constant_col_index + round_constant_offset));
+                circuit_builder.input(BaseRow(round_constant_col_index + round_constant_offset));
             let round_constant_constraint_circuit = (1..=NUM_ROUNDS)
                 .map(|i| {
                     let round_constant_idx =
@@ -208,9 +218,10 @@ impl ExtHashTable {
             .collect()
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<HashTableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         let from_processor_eval_indeterminate =
@@ -218,17 +229,17 @@ impl ExtHashTable {
         let to_processor_eval_indeterminate =
             circuit_builder.challenge(ToProcessorEvalIndeterminate);
 
-        let round_number = circuit_builder.input(CurrentRow(ROUNDNUMBER.into()));
+        let round_number = circuit_builder.input(CurrentBaseRow(ROUNDNUMBER.into()));
         let running_evaluation_from_processor =
-            circuit_builder.input(CurrentRow(FromProcessorRunningEvaluation.into()));
+            circuit_builder.input(CurrentExtRow(FromProcessorRunningEvaluation.into()));
         let running_evaluation_to_processor =
-            circuit_builder.input(CurrentRow(ToProcessorRunningEvaluation.into()));
+            circuit_builder.input(CurrentExtRow(ToProcessorRunningEvaluation.into()));
 
-        let round_number_next = circuit_builder.input(NextRow(ROUNDNUMBER.into()));
+        let round_number_next = circuit_builder.input(NextBaseRow(ROUNDNUMBER.into()));
         let running_evaluation_from_processor_next =
-            circuit_builder.input(NextRow(FromProcessorRunningEvaluation.into()));
+            circuit_builder.input(NextExtRow(FromProcessorRunningEvaluation.into()));
         let running_evaluation_to_processor_next =
-            circuit_builder.input(NextRow(ToProcessorRunningEvaluation.into()));
+            circuit_builder.input(NextExtRow(ToProcessorRunningEvaluation.into()));
 
         // round number
         // round numbers evolve as
@@ -277,7 +288,7 @@ impl ExtHashTable {
             CONSTANT14A,
             CONSTANT15A,
         ]
-        .map(|c| circuit_builder.input(CurrentRow(c.into())));
+        .map(|c| circuit_builder.input(CurrentBaseRow(c.into())));
         let round_constants_b: [_; STATE_SIZE] = [
             CONSTANT0B,
             CONSTANT1B,
@@ -296,14 +307,14 @@ impl ExtHashTable {
             CONSTANT14B,
             CONSTANT15B,
         ]
-        .map(|c| circuit_builder.input(CurrentRow(c.into())));
+        .map(|c| circuit_builder.input(CurrentBaseRow(c.into())));
 
         let state: [_; STATE_SIZE] = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
             STATE10, STATE11, STATE12, STATE13, STATE14, STATE15,
         ];
-        let current_state = state.map(|s| circuit_builder.input(CurrentRow(s.into())));
-        let next_state = state.map(|s| circuit_builder.input(NextRow(s.into())));
+        let current_state = state.map(|s| circuit_builder.input(CurrentBaseRow(s.into())));
+        let next_state = state.map(|s| circuit_builder.input(NextBaseRow(s.into())));
 
         // left-hand-side, starting at current round and going forward
 
@@ -454,8 +465,12 @@ impl ExtHashTable {
         .collect()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            HashTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no more constraints
         vec![]
     }

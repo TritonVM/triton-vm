@@ -26,9 +26,14 @@ use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_collection::NUM_BASE_COLUMNS;
+use crate::table::table_collection::NUM_COLUMNS;
+use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn::*;
 use crate::table::table_column::ProgramExtTableColumn;
@@ -94,13 +99,18 @@ impl Extendable for ProgramTable {
 impl TableLike<XFieldElement> for ExtProgramTable {}
 
 impl ExtProgramTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProgramTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let address = circuit_builder.input(Row(Address.into()));
-        let running_evaluation = circuit_builder.input(Row(RunningEvaluation.into()));
+        let address = circuit_builder.input(BaseRow(Address.master_table_index()));
+        let running_evaluation =
+            circuit_builder.input(ExtRow(RunningEvaluation.master_table_index()));
 
         let first_address_is_zero = address;
 
@@ -112,29 +122,39 @@ impl ExtProgramTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProgramTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let is_padding = circuit_builder.input(Row(IsPadding.into()));
+        let is_padding = circuit_builder.input(BaseRow(IsPadding.master_table_index()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
         vec![is_padding_is_bit.consume()]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
-        let address = circuit_builder.input(CurrentRow(Address.into()));
-        let address_next = circuit_builder.input(NextRow(Address.into()));
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProgramTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
         let one = circuit_builder.b_constant(1u32.into());
-        let instruction = circuit_builder.input(CurrentRow(Instruction.into()));
-        let is_padding = circuit_builder.input(CurrentRow(IsPadding.into()));
-        let running_evaluation = circuit_builder.input(CurrentRow(RunningEvaluation.into()));
-        let instruction_next = circuit_builder.input(NextRow(Instruction.into()));
-        let is_padding_next = circuit_builder.input(NextRow(IsPadding.into()));
-        let running_evaluation_next = circuit_builder.input(NextRow(RunningEvaluation.into()));
+        let address = circuit_builder.input(CurrentBaseRow(Address.master_table_index()));
+        let instruction = circuit_builder.input(CurrentBaseRow(Instruction.master_table_index()));
+        let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_table_index()));
+        let running_evaluation =
+            circuit_builder.input(CurrentExtRow(RunningEvaluation.master_table_index()));
+        let address_next = circuit_builder.input(NextBaseRow(Address.master_table_index()));
+        let instruction_next = circuit_builder.input(NextBaseRow(Instruction.master_table_index()));
+        let is_padding_next = circuit_builder.input(NextBaseRow(IsPadding.master_table_index()));
+        let running_evaluation_next =
+            circuit_builder.input(NextExtRow(RunningEvaluation.master_table_index()));
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_padding_is_0_or_remains_unchanged =
@@ -162,8 +182,12 @@ impl ExtProgramTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProgramTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProgramTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no further constraints
         vec![]
     }

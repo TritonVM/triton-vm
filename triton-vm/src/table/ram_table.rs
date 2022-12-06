@@ -29,9 +29,14 @@ use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_collection::NUM_BASE_COLUMNS;
+use crate::table::table_collection::NUM_COLUMNS;
+use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::table::table_column::RamBaseTableColumn;
 use crate::table::table_column::RamBaseTableColumn::*;
@@ -335,26 +340,34 @@ impl Extendable for RamTable {
 impl TableLike<XFieldElement> for ExtRamTable {}
 
 impl ExtRamTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<RamTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            RamTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         use RamTableChallengeId::*;
 
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let one = circuit_builder.b_constant(1_u32.into());
 
         let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
         let rppa_challenge = circuit_builder.challenge(ProcessorPermIndeterminate);
 
-        let clk = circuit_builder.input(Row(CLK.into()));
-        let ramp = circuit_builder.input(Row(RAMP.into()));
-        let ramv = circuit_builder.input(Row(RAMV.into()));
-        let bcpc0 = circuit_builder.input(Row(BezoutCoefficientPolynomialCoefficient0.into()));
-        let bcpc1 = circuit_builder.input(Row(BezoutCoefficientPolynomialCoefficient1.into()));
-        let rp = circuit_builder.input(Row(RunningProductOfRAMP.into()));
-        let fd = circuit_builder.input(Row(FormalDerivative.into()));
-        let bc0 = circuit_builder.input(Row(BezoutCoefficient0.into()));
-        let bc1 = circuit_builder.input(Row(BezoutCoefficient1.into()));
-        let rppa = circuit_builder.input(Row(RunningProductPermArg.into()));
+        let clk = circuit_builder.input(BaseRow(CLK.master_table_index()));
+        let ramp = circuit_builder.input(BaseRow(RAMP.master_table_index()));
+        let ramv = circuit_builder.input(BaseRow(RAMV.master_table_index()));
+        let bcpc0 = circuit_builder.input(BaseRow(
+            BezoutCoefficientPolynomialCoefficient0.master_table_index(),
+        ));
+        let bcpc1 = circuit_builder.input(BaseRow(
+            BezoutCoefficientPolynomialCoefficient1.master_table_index(),
+        ));
+        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_table_index()));
+        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_table_index()));
+        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_table_index()));
+        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_table_index()));
+        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
 
         let clk_is_0 = clk;
         let ramp_is_0 = ramp;
@@ -383,15 +396,20 @@ impl ExtRamTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<RamTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            RamTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<RamTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<RamTableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
         let one = circuit_builder.b_constant(1u32.into());
 
         let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
@@ -402,35 +420,47 @@ impl ExtRamTable {
         let ramp_weight = circuit_builder.challenge(RampWeight);
         let ramv_weight = circuit_builder.challenge(RamvWeight);
 
-        let clk = circuit_builder.input(CurrentRow(CLK.into()));
-        let ramp = circuit_builder.input(CurrentRow(RAMP.into()));
-        let ramv = circuit_builder.input(CurrentRow(RAMV.into()));
-        let iord = circuit_builder.input(CurrentRow(InverseOfRampDifference.into()));
-        let bcpc0 =
-            circuit_builder.input(CurrentRow(BezoutCoefficientPolynomialCoefficient0.into()));
-        let bcpc1 =
-            circuit_builder.input(CurrentRow(BezoutCoefficientPolynomialCoefficient1.into()));
-        let rp = circuit_builder.input(CurrentRow(RunningProductOfRAMP.into()));
-        let fd = circuit_builder.input(CurrentRow(FormalDerivative.into()));
-        let bc0 = circuit_builder.input(CurrentRow(BezoutCoefficient0.into()));
-        let bc1 = circuit_builder.input(CurrentRow(BezoutCoefficient1.into()));
-        let clk_di = circuit_builder.input(CurrentRow(InverseOfClkDiffMinusOne.into()));
-        let rpcjd = circuit_builder.input(CurrentRow(AllClockJumpDifferencesPermArg.into()));
-        let rppa = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
+        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_table_index()));
+        let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_table_index()));
+        let ramv = circuit_builder.input(CurrentBaseRow(RAMV.master_table_index()));
+        let iord =
+            circuit_builder.input(CurrentBaseRow(InverseOfRampDifference.master_table_index()));
+        let bcpc0 = circuit_builder.input(CurrentBaseRow(
+            BezoutCoefficientPolynomialCoefficient0.master_table_index(),
+        ));
+        let bcpc1 = circuit_builder.input(CurrentBaseRow(
+            BezoutCoefficientPolynomialCoefficient1.master_table_index(),
+        ));
+        let clk_di = circuit_builder.input(CurrentBaseRow(
+            InverseOfClkDiffMinusOne.master_table_index(),
+        ));
+        let rp = circuit_builder.input(CurrentExtRow(RunningProductOfRAMP.master_table_index()));
+        let fd = circuit_builder.input(CurrentExtRow(FormalDerivative.master_table_index()));
+        let bc0 = circuit_builder.input(CurrentExtRow(BezoutCoefficient0.master_table_index()));
+        let bc1 = circuit_builder.input(CurrentExtRow(BezoutCoefficient1.master_table_index()));
+        let rpcjd = circuit_builder.input(CurrentExtRow(
+            AllClockJumpDifferencesPermArg.master_table_index(),
+        ));
+        let rppa = circuit_builder.input(CurrentExtRow(RunningProductPermArg.master_table_index()));
 
-        let clk_next = circuit_builder.input(NextRow(CLK.into()));
-        let ramp_next = circuit_builder.input(NextRow(RAMP.into()));
-        let ramv_next = circuit_builder.input(NextRow(RAMV.into()));
-        let bcpc0_next =
-            circuit_builder.input(NextRow(BezoutCoefficientPolynomialCoefficient0.into()));
-        let bcpc1_next =
-            circuit_builder.input(NextRow(BezoutCoefficientPolynomialCoefficient1.into()));
-        let rp_next = circuit_builder.input(NextRow(RunningProductOfRAMP.into()));
-        let fd_next = circuit_builder.input(NextRow(FormalDerivative.into()));
-        let bc0_next = circuit_builder.input(NextRow(BezoutCoefficient0.into()));
-        let bc1_next = circuit_builder.input(NextRow(BezoutCoefficient1.into()));
-        let rpcjd_next = circuit_builder.input(NextRow(AllClockJumpDifferencesPermArg.into()));
-        let rppa_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
+        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_table_index()));
+        let ramp_next = circuit_builder.input(NextBaseRow(RAMP.master_table_index()));
+        let ramv_next = circuit_builder.input(NextBaseRow(RAMV.master_table_index()));
+        let bcpc0_next = circuit_builder.input(NextBaseRow(
+            BezoutCoefficientPolynomialCoefficient0.master_table_index(),
+        ));
+        let bcpc1_next = circuit_builder.input(NextBaseRow(
+            BezoutCoefficientPolynomialCoefficient1.master_table_index(),
+        ));
+        let rp_next = circuit_builder.input(NextExtRow(RunningProductOfRAMP.master_table_index()));
+        let fd_next = circuit_builder.input(NextExtRow(FormalDerivative.master_table_index()));
+        let bc0_next = circuit_builder.input(NextExtRow(BezoutCoefficient0.master_table_index()));
+        let bc1_next = circuit_builder.input(NextExtRow(BezoutCoefficient1.master_table_index()));
+        let rpcjd_next = circuit_builder.input(NextExtRow(
+            AllClockJumpDifferencesPermArg.master_table_index(),
+        ));
+        let rppa_next =
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
 
         let ramp_diff = ramp_next.clone() - ramp.clone();
         let ramp_changes = ramp_diff.clone() * iord.clone();
@@ -513,15 +543,19 @@ impl ExtRamTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<RamTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            RamTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let rp = circuit_builder.input(Row(RunningProductOfRAMP.into()));
-        let fd = circuit_builder.input(Row(FormalDerivative.into()));
-        let bc0 = circuit_builder.input(Row(BezoutCoefficient0.into()));
-        let bc1 = circuit_builder.input(Row(BezoutCoefficient1.into()));
+        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_table_index()));
+        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_table_index()));
+        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_table_index()));
+        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_table_index()));
 
         let bezout_relation_holds = bc0 * rp + bc1 * fd - one;
 

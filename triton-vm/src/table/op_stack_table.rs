@@ -28,9 +28,14 @@ use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
+use crate::table::table_collection::NUM_BASE_COLUMNS;
+use crate::table::table_collection::NUM_COLUMNS;
+use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::OpStackBaseTableColumn;
 use crate::table::table_column::OpStackBaseTableColumn::*;
 use crate::table::table_column::OpStackExtTableColumn;
@@ -126,17 +131,22 @@ impl Extendable for OpStackTable {
 impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let clk = circuit_builder.input(Row(CLK.into()));
-        let ib1 = circuit_builder.input(Row(IB1ShrinkStack.into()));
-        let osp = circuit_builder.input(Row(OSP.into()));
-        let osv = circuit_builder.input(Row(OSV.into()));
-        let rppa = circuit_builder.input(Row(RunningProductPermArg.into()));
-        let rpcjd = circuit_builder.input(Row(AllClockJumpDifferencesPermArg.into()));
+        let clk = circuit_builder.input(BaseRow(CLK.master_table_index()));
+        let ib1 = circuit_builder.input(BaseRow(IB1ShrinkStack.master_table_index()));
+        let osp = circuit_builder.input(BaseRow(OSP.master_table_index()));
+        let osv = circuit_builder.input(BaseRow(OSV.master_table_index()));
+        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
+        let rpcjd =
+            circuit_builder.input(ExtRow(AllClockJumpDifferencesPermArg.master_table_index()));
 
         let clk_is_0 = clk;
         let osv_is_0 = osv;
@@ -165,34 +175,51 @@ impl ExtOpStackTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let circuit_builder = ConstraintCircuitBuilder::<
             OpStackTableChallenges,
-            DualRowIndicator<FULL_WIDTH>,
-        >::new(2 * FULL_WIDTH);
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >::new(2 * NUM_COLUMNS);
         let one = circuit_builder.b_constant(1u32.into());
 
-        let clk = circuit_builder.input(CurrentRow(CLK.into()));
-        let ib1_shrink_stack = circuit_builder.input(CurrentRow(IB1ShrinkStack.into()));
-        let osp = circuit_builder.input(CurrentRow(OSP.into()));
-        let osv = circuit_builder.input(CurrentRow(OSV.into()));
-        let clk_di = circuit_builder.input(CurrentRow(InverseOfClkDiffMinusOne.into()));
-        let rpcjd = circuit_builder.input(CurrentRow(AllClockJumpDifferencesPermArg.into()));
-        let rppa = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
+        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_table_index()));
+        let ib1_shrink_stack =
+            circuit_builder.input(CurrentBaseRow(IB1ShrinkStack.master_table_index()));
+        let osp = circuit_builder.input(CurrentBaseRow(OSP.master_table_index()));
+        let osv = circuit_builder.input(CurrentBaseRow(OSV.master_table_index()));
+        let clk_di = circuit_builder.input(CurrentBaseRow(
+            InverseOfClkDiffMinusOne.master_table_index(),
+        ));
+        let rpcjd = circuit_builder.input(CurrentExtRow(
+            AllClockJumpDifferencesPermArg.master_table_index(),
+        ));
+        let rppa = circuit_builder.input(CurrentExtRow(RunningProductPermArg.master_table_index()));
 
-        let clk_next = circuit_builder.input(NextRow(CLK.into()));
-        let ib1_shrink_stack_next = circuit_builder.input(NextRow(IB1ShrinkStack.into()));
-        let osp_next = circuit_builder.input(NextRow(OSP.into()));
-        let osv_next = circuit_builder.input(NextRow(OSV.into()));
-        let rpcjd_next = circuit_builder.input(NextRow(AllClockJumpDifferencesPermArg.into()));
-        let rppa_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
+        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_table_index()));
+        let ib1_shrink_stack_next =
+            circuit_builder.input(NextBaseRow(IB1ShrinkStack.master_table_index()));
+        let osp_next = circuit_builder.input(NextBaseRow(OSP.master_table_index()));
+        let osv_next = circuit_builder.input(NextBaseRow(OSV.master_table_index()));
+        let rpcjd_next = circuit_builder.input(NextExtRow(
+            AllClockJumpDifferencesPermArg.master_table_index(),
+        ));
+        let rppa_next =
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
 
         // the osp increases by 1 or the osp does not change
         //
@@ -258,8 +285,12 @@ impl ExtOpStackTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no further constraints
         vec![]
     }

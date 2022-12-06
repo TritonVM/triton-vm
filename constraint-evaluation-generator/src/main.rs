@@ -405,10 +405,10 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     // through the `points` input argument, and we do not declare constants.
     if circuit.visited_counter > requested_visited_count
         || in_scope.contains(&circuit.id)
-        || matches!(circuit.expression, CircuitExpression::BConstant(_))
-        || matches!(circuit.expression, CircuitExpression::XConstant(_))
-        || matches!(circuit.expression, CircuitExpression::Challenge(_))
-        || circuit.get_linear_one_index().is_some()
+        || !matches!(
+            circuit.expression,
+            CircuitExpression::BinaryOperation(_, _, _)
+        )
     {
         return;
     }
