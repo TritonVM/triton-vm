@@ -104,10 +104,9 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> From<usize>
             val < BASE_COLUMN_COUNT + EXT_COLUMN_COUNT,
             "Cannot index out of width of table"
         );
-        if val < BASE_COLUMN_COUNT {
-            SingleRowIndicator::BaseRow(val)
-        } else {
-            SingleRowIndicator::ExtRow(val - BASE_COLUMN_COUNT)
+        match val < BASE_COLUMN_COUNT {
+            true => SingleRowIndicator::BaseRow(val),
+            false => SingleRowIndicator::ExtRow(val - BASE_COLUMN_COUNT),
         }
     }
 }
@@ -177,18 +176,18 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> From<usize>
 {
     fn from(val: usize) -> Self {
         let total_column_count = BASE_COLUMN_COUNT + EXT_COLUMN_COUNT;
-        assert!(
-            val < 2 * total_column_count,
-            "Cannot index out of two times the width of the table"
-        );
-        if val < BASE_COLUMN_COUNT {
-            DualRowIndicator::CurrentBaseRow(val)
-        } else if val < total_column_count {
-            DualRowIndicator::CurrentExtRow(val - BASE_COLUMN_COUNT)
-        } else if val < total_column_count + BASE_COLUMN_COUNT {
-            DualRowIndicator::NextBaseRow(val - total_column_count)
-        } else {
-            DualRowIndicator::NextExtRow(val - total_column_count - BASE_COLUMN_COUNT)
+        match val {
+            i if i < BASE_COLUMN_COUNT => DualRowIndicator::CurrentBaseRow(i),
+            i if BASE_COLUMN_COUNT <= i && i < total_column_count => {
+                DualRowIndicator::CurrentExtRow(i - BASE_COLUMN_COUNT)
+            }
+            i if total_column_count <= i && i < total_column_count + BASE_COLUMN_COUNT => {
+                DualRowIndicator::NextBaseRow(i - total_column_count)
+            }
+            i if total_column_count + BASE_COLUMN_COUNT <= i && i < 2 * total_column_count => {
+                DualRowIndicator::NextExtRow(i - total_column_count - BASE_COLUMN_COUNT)
+            }
+            _ => panic!("Cannot index out of two times the width of the table"),
         }
     }
 }
@@ -197,11 +196,12 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize>
     From<DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>> for usize
 {
     fn from(val: DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>) -> Self {
+        let total_column_count = BASE_COLUMN_COUNT + EXT_COLUMN_COUNT;
         match val {
             DualRowIndicator::CurrentBaseRow(i) => i,
             DualRowIndicator::CurrentExtRow(i) => BASE_COLUMN_COUNT + i,
-            DualRowIndicator::NextBaseRow(i) => BASE_COLUMN_COUNT + EXT_COLUMN_COUNT + i,
-            DualRowIndicator::NextExtRow(i) => 2 * BASE_COLUMN_COUNT + EXT_COLUMN_COUNT + i,
+            DualRowIndicator::NextBaseRow(i) => total_column_count + i,
+            DualRowIndicator::NextExtRow(i) => total_column_count + BASE_COLUMN_COUNT + i,
         }
     }
 }
@@ -1620,5 +1620,24 @@ mod constraint_circuit_tests {
             challenges.ram_table_challenges,
             "ram",
         );
+    }
+
+    #[test]
+    fn usize_to_input_indicator_to_usize_is_identity() {
+        const NUM_BASE_COLS: usize = 5;
+        const NUM_EXT_COLS: usize = 2;
+        const NUM_COLS: usize = NUM_BASE_COLS + NUM_EXT_COLS;
+
+        for i in 0..NUM_COLS {
+            let input_indicator: SingleRowIndicator<NUM_BASE_COLS, NUM_EXT_COLS> = i.into();
+            let j: usize = input_indicator.into();
+            assert_eq!(i, j);
+        }
+
+        for i in 0..2 * NUM_COLS {
+            let input_indicator: DualRowIndicator<NUM_BASE_COLS, NUM_EXT_COLS> = i.into();
+            let j: usize = input_indicator.into();
+            assert_eq!(i, j);
+        }
     }
 }
