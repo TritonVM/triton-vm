@@ -544,113 +544,40 @@ mod table_column_tests {
         );
 
         assert_eq!(
-            program_table::FULL_WIDTH,
+            program_table::EXT_WIDTH,
             usize::from(ProgramExtTableColumn::iter().last().unwrap()) + 1,
-            "ProgramTable's BASE_WIDTH is 1 + its max column index",
+            "ProgramTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
-            instruction_table::FULL_WIDTH,
+            instruction_table::EXT_WIDTH,
             usize::from(InstructionExtTableColumn::iter().last().unwrap()) + 1,
-            "InstructionTable's BASE_WIDTH is 1 + its max column index",
+            "InstructionTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
-            processor_table::FULL_WIDTH,
+            processor_table::EXT_WIDTH,
             usize::from(ProcessorExtTableColumn::iter().last().unwrap()) + 1,
-            "ProcessorTable's BASE_WIDTH is 1 + its max column index",
+            "ProcessorTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
-            op_stack_table::FULL_WIDTH,
+            op_stack_table::EXT_WIDTH,
             usize::from(OpStackExtTableColumn::iter().last().unwrap()) + 1,
-            "OpStackTable's BASE_WIDTH is 1 + its max column index",
+            "OpStack:Table's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
-            ram_table::FULL_WIDTH,
+            ram_table::EXT_WIDTH,
             usize::from(RamExtTableColumn::iter().last().unwrap()) + 1,
-            "RamTable's BASE_WIDTH is 1 + its max column index",
+            "RamTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
-            jump_stack_table::FULL_WIDTH,
+            jump_stack_table::EXT_WIDTH,
             usize::from(JumpStackExtTableColumn::iter().last().unwrap()) + 1,
-            "JumpStackTable's BASE_WIDTH is 1 + its max column index",
+            "JumpStack:Table's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
-            hash_table::FULL_WIDTH,
+            hash_table::EXT_WIDTH,
             usize::from(HashExtTableColumn::iter().last().unwrap()) + 1,
-            "HashTable's BASE_WIDTH is 1 + its max column index",
+            "HashTable's EXT_WIDTH is 1 + its max column index",
         );
-    }
-
-    #[test]
-    fn individual_tables_are_contiguous() {
-        let mut expected_column_index = 0;
-        for column in ProgramBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-        for column in ProgramExtTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-
-        let mut expected_column_index = 0;
-        for column in InstructionBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-        for column in InstructionExtTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-
-        let mut expected_column_index = 0;
-        for column in ProcessorBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-        for column in ProcessorExtTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-
-        let mut expected_column_index = 0;
-        for column in OpStackBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-        for column in OpStackExtTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-
-        let mut expected_column_index = 0;
-        for column in RamBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-        for column in RamExtTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-
-        let mut expected_column_index = 0;
-        for column in JumpStackBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-        for column in JumpStackExtTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-
-        let mut expected_column_index = 0;
-        for column in HashBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
-        for column in HashExtTableColumn::iter() {
-            assert_eq!(expected_column_index, usize::from(column));
-            expected_column_index += 1;
-        }
     }
 
     #[test]

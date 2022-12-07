@@ -30,7 +30,6 @@ use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
@@ -105,7 +104,7 @@ impl ExtProgramTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
         let address = circuit_builder.input(BaseRow(Address.master_table_index()));
@@ -128,7 +127,7 @@ impl ExtProgramTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
         let is_padding = circuit_builder.input(BaseRow(IsPadding.master_table_index()));
@@ -143,7 +142,7 @@ impl ExtProgramTable {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
         let address = circuit_builder.input(CurrentBaseRow(Address.master_table_index()));
         let instruction = circuit_builder.input(CurrentBaseRow(Instruction.master_table_index()));

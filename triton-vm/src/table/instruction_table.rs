@@ -31,7 +31,6 @@ use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::InstructionBaseTableColumn;
 use crate::table::table_column::InstructionBaseTableColumn::*;
@@ -167,7 +166,7 @@ impl ExtInstructionTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
         let running_product_initial = circuit_builder.x_constant(PermArg::default_initial());
@@ -208,7 +207,7 @@ impl ExtInstructionTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
 
         let is_padding = circuit_builder.input(BaseRow(IsPadding.master_table_index()));
@@ -226,7 +225,7 @@ impl ExtInstructionTable {
         let circuit_builder: ConstraintCircuitBuilder<
             InstructionTableChallenges,
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        > = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
+        > = ConstraintCircuitBuilder::new();
         let one: ConstraintCircuitMonad<
             InstructionTableChallenges,
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,

@@ -32,7 +32,6 @@ use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
@@ -137,7 +136,7 @@ impl ExtOpStackTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
         let clk = circuit_builder.input(BaseRow(CLK.master_table_index()));
@@ -194,7 +193,7 @@ impl ExtOpStackTable {
         let circuit_builder = ConstraintCircuitBuilder::<
             OpStackTableChallenges,
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >::new(2 * NUM_COLUMNS);
+        >::new();
         let one = circuit_builder.b_constant(1u32.into());
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_table_index()));

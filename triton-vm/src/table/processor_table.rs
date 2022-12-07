@@ -43,7 +43,6 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
@@ -1136,7 +1135,7 @@ pub struct SingleRowConstraints {
 
 impl Default for SingleRowConstraints {
     fn default() -> Self {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let base_row_variables = (0..NUM_BASE_COLUMNS)
             .map(|i| circuit_builder.input(SingleRowIndicator::BaseRow(i)))
             .collect_vec()
@@ -1673,7 +1672,7 @@ pub struct DualRowConstraints {
 
 impl Default for DualRowConstraints {
     fn default() -> Self {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let current_base_row_variables = (0..NUM_BASE_COLUMNS)
             .map(|i| circuit_builder.input(DualRowIndicator::CurrentBaseRow(i)))
             .collect_vec()
@@ -4208,6 +4207,8 @@ impl ExtensionTable for ExtProcessorTable {}
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
+    use ndarray::Array2;
+
     use crate::ord_n::Ord16;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::base_matrix::ProcessorMatrixRow;
@@ -4226,20 +4227,12 @@ mod constraint_polynomial_tests {
         }
     }
 
-    fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Vec<XFieldElement> {
-        let fake_extension_columns = [BFieldElement::zero(); NUM_EXT_COLUMNS].to_vec();
-
+    fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Array2<BFieldElement> {
         let (_, unpadded_master_base_table, _) = parse_simulate_pad(source_code, vec![], vec![]);
-        let master_table = unpadded_master_base_table.master_base_matrix;
-
-        let test_row = [
-            master_table.slice(s![row_num, ..]).to_vec(),
-            fake_extension_columns.clone(),
-            master_table.slice(s![row_num + 1, ..]).to_vec(),
-            fake_extension_columns,
-        ]
-        .concat();
-        test_row.into_iter().map(|belem| belem.lift()).collect()
+        unpadded_master_base_table
+            .master_base_matrix
+            .slice(s![row_num..=row_num + 1, ..])
+            .to_owned()
     }
 
     fn get_transition_constraints_for_instruction(
@@ -4286,46 +4279,48 @@ mod constraint_polynomial_tests {
 
     fn test_constraints_for_rows_with_debug_info(
         instruction: Instruction,
-        test_rows: &[Vec<XFieldElement>],
+        master_base_tables: &[Array2<BFieldElement>],
         debug_cols_curr_row: &[ProcessorBaseTableColumn],
         debug_cols_next_row: &[ProcessorBaseTableColumn],
     ) {
-        for (case_idx, test_row) in test_rows.iter().enumerate() {
+        let challenges = AllChallenges::placeholder();
+        let fake_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
+        for (case_idx, test_rows) in master_base_tables.iter().enumerate() {
+            let curr_row = test_rows.slice(s![0, ..]);
+            let next_row = test_rows.slice(s![1, ..]);
+
             // Print debug information
             println!(
-                "Testing all constraint polynomials of {} for test row with index {}…",
-                instruction, case_idx
+                "Testing all constraints of {instruction} for test row with index {case_idx}…"
             );
-            for c in debug_cols_curr_row {
-                print!("{} = {}, ", c, test_row[(*c).master_table_index()]);
+            for &c in debug_cols_curr_row {
+                print!("{} = {}, ", c, curr_row[c.master_table_index()]);
             }
-            for c in debug_cols_next_row {
-                print!(
-                    "{}' = {}, ",
-                    c,
-                    test_row[(*c).master_table_index() + NUM_COLUMNS]
-                );
+            for &c in debug_cols_next_row {
+                print!("{}' = {}, ", c, next_row[c.master_table_index()]);
             }
             println!();
 
-            // We need dummy challenges to do partial evaluate. Even though we are
-            // not looking at extension constraints, only base constraints
-            let dummy_challenges = AllChallenges::placeholder();
-            for (poly_idx, poly) in get_transition_constraints_for_instruction(instruction)
-                .iter()
-                .enumerate()
+            for (constraint_idx, constraint_circuit) in
+                get_transition_constraints_for_instruction(instruction)
+                    .into_iter()
+                    .enumerate()
             {
+                let evaluation_result = constraint_circuit.consume().evaluate(
+                    test_rows.view(),
+                    fake_ext_table.view(),
+                    &challenges.processor_table_challenges,
+                );
                 assert_eq!(
-                    instruction.opcode_b().lift(),
-                    test_row[CI.master_table_index()],
+                    instruction.opcode_b(),
+                    curr_row[CI.master_table_index()],
                     "The test is trying to check the wrong transition constraint polynomials."
                 );
                 assert_eq!(
                     XFieldElement::zero(),
-                    poly.partial_evaluate(&dummy_challenges.processor_table_challenges).evaluate(test_row),
-                    "For case {}, transition constraint polynomial with index {} must evaluate to zero.",
-                    case_idx,
-                    poly_idx,
+                    evaluation_result,
+                    "For case {case_idx}, transition constraint polynomial with \
+                    index {constraint_idx} must evaluate to zero. Got {evaluation_result} instead.",
                 );
             }
         }
@@ -4539,60 +4534,61 @@ mod constraint_polynomial_tests {
         let mut factory = DualRowConstraints::default();
         let deselectors = InstructionDeselectors::new(&mut factory);
 
-        let mut row = vec![0.into(); 2 * NUM_COLUMNS];
+        let mut master_base_table = Array2::zeros([2, NUM_BASE_COLUMNS]);
+        let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
 
-        // We need dummy challenges to do partial evaluate. Even though we are
-        // not looking at extension constraints, only base constraints
+        // We need dummy challenges to evaluate.
         let dummy_challenges = AllChallenges::placeholder();
         for instruction in all_instructions_without_args() {
             use ProcessorBaseTableColumn::*;
             let deselector = deselectors.get(instruction);
 
-            println!(
-                "\n\nThe Deselector for instruction {} is:\n{}",
-                instruction, deselector
-            );
+            println!("\n\nThe Deselector for instruction {instruction} is:\n{deselector}",);
 
             // Negative tests
             for other_instruction in all_instructions_without_args()
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {
-                row[IB0.master_table_index()] = other_instruction.ib(Ord7::IB0).lift();
-                row[IB1.master_table_index()] = other_instruction.ib(Ord7::IB1).lift();
-                row[IB2.master_table_index()] = other_instruction.ib(Ord7::IB2).lift();
-                row[IB3.master_table_index()] = other_instruction.ib(Ord7::IB3).lift();
-                row[IB4.master_table_index()] = other_instruction.ib(Ord7::IB4).lift();
-                row[IB5.master_table_index()] = other_instruction.ib(Ord7::IB5).lift();
-                row[IB6.master_table_index()] = other_instruction.ib(Ord7::IB6).lift();
-                let result = deselector
-                    .partial_evaluate(&dummy_challenges.processor_table_challenges)
-                    .evaluate(&row);
+                let mut curr_row = master_base_table.slice_mut(s![0, ..]);
+                curr_row[IB0.master_table_index()] = other_instruction.ib(Ord7::IB0);
+                curr_row[IB1.master_table_index()] = other_instruction.ib(Ord7::IB1);
+                curr_row[IB2.master_table_index()] = other_instruction.ib(Ord7::IB2);
+                curr_row[IB3.master_table_index()] = other_instruction.ib(Ord7::IB3);
+                curr_row[IB4.master_table_index()] = other_instruction.ib(Ord7::IB4);
+                curr_row[IB5.master_table_index()] = other_instruction.ib(Ord7::IB5);
+                curr_row[IB6.master_table_index()] = other_instruction.ib(Ord7::IB6);
+                let result = deselector.clone().consume().evaluate(
+                    master_base_table.view(),
+                    master_ext_table.view(),
+                    &dummy_challenges.processor_table_challenges,
+                );
 
                 assert!(
                     result.is_zero(),
-                    "Deselector for {} should return 0 for all other instructions, including {} whose opcode is {}",
-                    instruction,
-                    other_instruction,
+                    "Deselector for {instruction} should return 0 for all other instructions, \
+                    including {other_instruction} whose opcode is {}",
                     other_instruction.opcode()
                 )
             }
 
             // Positive tests
-            row[IB0.master_table_index()] = instruction.ib(Ord7::IB0).lift();
-            row[IB1.master_table_index()] = instruction.ib(Ord7::IB1).lift();
-            row[IB2.master_table_index()] = instruction.ib(Ord7::IB2).lift();
-            row[IB3.master_table_index()] = instruction.ib(Ord7::IB3).lift();
-            row[IB4.master_table_index()] = instruction.ib(Ord7::IB4).lift();
-            row[IB5.master_table_index()] = instruction.ib(Ord7::IB5).lift();
-            row[IB6.master_table_index()] = instruction.ib(Ord7::IB6).lift();
-            let result = deselector
-                .partial_evaluate(&dummy_challenges.processor_table_challenges)
-                .evaluate(&row);
+            let mut curr_row = master_base_table.slice_mut(s![0, ..]);
+            curr_row[IB0.master_table_index()] = instruction.ib(Ord7::IB0);
+            curr_row[IB1.master_table_index()] = instruction.ib(Ord7::IB1);
+            curr_row[IB2.master_table_index()] = instruction.ib(Ord7::IB2);
+            curr_row[IB3.master_table_index()] = instruction.ib(Ord7::IB3);
+            curr_row[IB4.master_table_index()] = instruction.ib(Ord7::IB4);
+            curr_row[IB5.master_table_index()] = instruction.ib(Ord7::IB5);
+            curr_row[IB6.master_table_index()] = instruction.ib(Ord7::IB6);
+            let result = deselector.consume().evaluate(
+                master_base_table.view(),
+                master_ext_table.view(),
+                &dummy_challenges.processor_table_challenges,
+            );
             assert!(
                 !result.is_zero(),
-                "Deselector for {} should be non-zero when CI is {}",
-                instruction,
+                "Deselector for {instruction} should be non-zero when CI is {}",
                 instruction.opcode()
             )
         }
@@ -4634,20 +4630,12 @@ mod constraint_polynomial_tests {
             (WriteIo, factory.instruction_write_io()),
         ];
 
-        // We need dummy challenges to do partial evaluate. Even though we are
-        // not looking at extension constraints, only base constraints
-        let dummy_challenges = AllChallenges::placeholder();
-
         println!("| Instruction     | #polys | max deg | Degrees");
         println!("|:----------------|-------:|--------:|:------------");
         for (instruction, constraints) in all_instructions_and_their_transition_constraints {
             let degrees = constraints
                 .iter()
-                .map(|circuit| {
-                    circuit
-                        .partial_evaluate(&dummy_challenges.processor_table_challenges)
-                        .degree()
-                })
+                .map(|circuit| circuit.clone().consume().degree())
                 .collect_vec();
             let max_degree = degrees.iter().max().unwrap_or(&0);
             let degrees_str = degrees.iter().map(|d| format!("{d}")).join(", ");

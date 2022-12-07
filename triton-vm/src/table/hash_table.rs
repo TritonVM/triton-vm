@@ -35,7 +35,6 @@ use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::hash_table::HashTableChallengeId::*;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::*;
@@ -102,7 +101,7 @@ impl ExtHashTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let one = circuit_builder.b_constant(1_u32.into());
 
@@ -168,7 +167,7 @@ impl ExtHashTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.into()));
@@ -221,7 +220,7 @@ impl ExtHashTable {
     pub fn ext_transition_constraints_as_circuits() -> Vec<
         ConstraintCircuit<HashTableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         let from_processor_eval_indeterminate =

@@ -262,9 +262,9 @@ impl Quotientable for {table_mod_name} {{
 }
 
 fn turn_circuits_into_degree_bounds_string<T: TableChallenges, II: InputIndicator>(
-    transition_constraint_circuits: &[ConstraintCircuit<T, II>],
+    constraint_circuits: &[ConstraintCircuit<T, II>],
 ) -> String {
-    transition_constraint_circuits
+    constraint_circuits
         .iter()
         .map(|circuit| circuit.degree())
         .map(|degree| format!("interpolant_degree * {degree} as Degree - zerofier_degree"))

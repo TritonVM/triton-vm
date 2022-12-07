@@ -33,7 +33,6 @@ use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
@@ -348,7 +347,7 @@ impl ExtRamTable {
     > {
         use RamTableChallengeId::*;
 
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
         let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
@@ -409,7 +408,7 @@ impl ExtRamTable {
     pub fn ext_transition_constraints_as_circuits() -> Vec<
         ConstraintCircuit<RamTableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
 
         let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
@@ -549,7 +548,7 @@ impl ExtRamTable {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
         let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_table_index()));
