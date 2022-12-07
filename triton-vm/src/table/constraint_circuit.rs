@@ -42,18 +42,6 @@ impl Display for BinOp {
     }
 }
 
-/// Data structure for uniquely identifying each node
-#[derive(Debug, Clone, Hash, PartialEq)]
-pub struct CircuitId(usize);
-
-impl Eq for CircuitId {}
-
-impl Display for CircuitId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 /// An `InputIndicator` is a type that describes the position of a variable in
 /// a constraint polynomial in the row layout applicable for a certain kind of
 /// constraint polynomial.
@@ -251,7 +239,7 @@ impl<T: TableChallenges, II: InputIndicator> Hash for ConstraintCircuitMonad<T, 
 
 #[derive(Clone, Debug)]
 pub struct ConstraintCircuit<T: TableChallenges, II: InputIndicator> {
-    pub id: CircuitId,
+    pub id: usize,
     pub visited_counter: usize,
     pub expression: CircuitExpression<T, II>,
     pub var_count: usize,
@@ -360,7 +348,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
 
     /// Verify that all IDs in the subtree are unique. Panics otherwise.
     fn inner_has_unique_ids(&mut self, ids: &mut HashSet<usize>) {
-        let new_value = ids.insert(self.id.0);
+        let new_value = ids.insert(self.id);
         assert!(
             !self.visited_counter.is_zero() || new_value,
             "ID = {} was repeated",
@@ -761,7 +749,7 @@ fn binop<T: TableChallenges, II: InputIndicator>(
         circuit: Rc::new(RefCell::new(ConstraintCircuit {
             visited_counter: 0,
             expression: BinaryOperation(binop, Rc::clone(&lhs.circuit), Rc::clone(&rhs.circuit)),
-            id: CircuitId(new_index),
+            id: new_index,
             var_count: lhs.circuit.as_ref().borrow().var_count,
         })),
         id_counter_ref: Rc::clone(&lhs.id_counter_ref),
@@ -788,7 +776,7 @@ fn binop<T: TableChallenges, II: InputIndicator>(
                     Rc::clone(&rhs.circuit),
                     Rc::clone(&lhs.circuit),
                 ),
-                id: CircuitId(new_index),
+                id: new_index,
                 var_count: lhs.circuit.as_ref().borrow().var_count,
             })),
             id_counter_ref: Rc::clone(&lhs.id_counter_ref),
@@ -913,7 +901,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitBuilder<T, II> {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
                 visited_counter: 0usize,
                 expression,
-                id: CircuitId(new_id),
+                id: new_id,
                 var_count: self.var_count,
             })),
             id_counter_ref: Rc::clone(&self.id_counter),

@@ -6,9 +6,9 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use triton_vm::table::challenges::TableChallenges;
-use triton_vm::table::constraint_circuit::{
-    CircuitExpression, CircuitId, ConstraintCircuit, InputIndicator,
-};
+use triton_vm::table::constraint_circuit::CircuitExpression;
+use triton_vm::table::constraint_circuit::ConstraintCircuit;
+use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::hash_table::ExtHashTable;
 use triton_vm::table::instruction_table::ExtInstructionTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
@@ -347,7 +347,7 @@ fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
     circuits: &[ConstraintCircuit<T, II>],
 ) -> String {
-    let mut in_scope: HashSet<CircuitId> = HashSet::new();
+    let mut in_scope: HashSet<usize> = HashSet::new();
     let mut output = String::default();
 
     for circuit in circuits.iter() {
@@ -365,7 +365,7 @@ fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
 fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<T, II>,
-    in_scope: &mut HashSet<CircuitId>,
+    in_scope: &mut HashSet<usize>,
     output: &mut String,
 ) {
     if circuit.visited_counter < requested_visited_count {
@@ -412,7 +412,7 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
         output.push_str(&to_output);
         output.push_str(";\n");
 
-        let new_insertion = in_scope.insert(circuit.id.clone());
+        let new_insertion = in_scope.insert(circuit.id);
         // sanity check: don't declare same node multiple times
         assert!(new_insertion);
     }
@@ -456,7 +456,7 @@ fn is_bfield_element<T: TableChallenges, II: InputIndicator>(
 fn evaluate_single_node<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<T, II>,
-    in_scope: &HashSet<CircuitId>,
+    in_scope: &HashSet<usize>,
 ) -> (String, Vec<String>) {
     let mut output = String::default();
     // If this node has already been declared, or visit counter is higher than requested,
