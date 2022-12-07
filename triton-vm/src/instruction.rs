@@ -1034,38 +1034,6 @@ pub mod sample_programs {
         halt
     ";
 
-    // leave the stack with the n first fibonacci numbers.  f_0 = 0; f_1 = 1
-    // buttom-up approach
-    pub const FIBONACCI_SOURCE: &str = "
-    push 0
-    push 1
-    push n=6
-    -- case: n==0 || n== 1
-    dup0
-    dup0
-    dup0
-    mul
-    eq
-    skiz
-    call $basecase
-    -- case: n>1
-    call $nextline
-    call $fib
-    swap1 - n on top
-    push 18446744069414584320
-    add
-    skiz
-    recurse
-    call $basecase
-    dup0     :basecase
-    push 0
-    eq
-    skiz
-    pop
-    pop - remove 1      :endone
-    halt
-";
-
     pub const FIBONACCI_VIT: &str = "
         push 0
         push 1
