@@ -70,6 +70,8 @@ impl Display for CircuitId {
 pub trait InputIndicator:
     Debug + Clone + Copy + Hash + PartialEq + Eq + Display + From<usize> + Into<usize>
 {
+    /// `true` iff `self` refers to a column in the base table.
+    fn is_base_table_row(&self) -> bool;
 }
 
 /// A `SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>` describes the position of a variable in
@@ -124,6 +126,12 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize>
 impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
     for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
 {
+    fn is_base_table_row(&self) -> bool {
+        match self {
+            SingleRowIndicator::BaseRow(_) => true,
+            SingleRowIndicator::ExtRow(_) => false,
+        }
+    }
 }
 
 /// A `DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>` describes the position of a variable in
@@ -154,6 +162,14 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
 impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
     for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
 {
+    fn is_base_table_row(&self) -> bool {
+        match self {
+            DualRowIndicator::CurrentBaseRow(_) => true,
+            DualRowIndicator::CurrentExtRow(_) => false,
+            DualRowIndicator::NextBaseRow(_) => true,
+            DualRowIndicator::NextExtRow(_) => false,
+        }
+    }
 }
 
 impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> From<usize>

@@ -149,76 +149,54 @@ fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     let transition_constraint_strings = turn_circuits_into_string(transition_constraint_circuits);
     let terminal_constraint_strings = turn_circuits_into_string(terminal_constraint_circuits);
 
-    // maybe-prefixes to supress clippy's warnings for unused variables
-    let initial_challenges_used = if initial_constraint_strings.contains("challenges") {
-        ""
-    } else {
-        "_"
-    };
-    let consistency_challenges_used = if consistency_constraint_strings.contains("challenges") {
-        ""
-    } else {
-        "_"
-    };
-    let terminal_challenges_used = if terminal_constraint_strings.contains("challenges") {
-        ""
-    } else {
-        "_"
-    };
-    let consistency_constraints_exist = if consistency_constraints_degrees.is_empty() {
-        "_"
-    } else {
-        ""
-    };
-    let terminal_constraints_exist = if terminal_constraints_degrees.is_empty() {
-        "_"
-    } else {
-        ""
-    };
-
     format!(
         "
+use ndarray::ArrayView1;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::table::challenges::AllChallenges;
 use crate::table::challenges::TableChallenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
-use crate::table::table_collection::interpolant_degree;
 use crate::table::{table_name_snake}::{table_mod_name};
 use crate::table::{table_name_snake}::{challenge_enum_name}::*;
+use crate::table::table_collection::interpolant_degree;
 
 // This file has been auto-generated. Any modifications _will_ be lost.
 // To re-generate, execute:
 // `cargo run --bin constraint-evaluation-generator`
 impl Evaluable for {table_mod_name} {{
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_initial_constraints(
-        &self,
-        row: &[XFieldElement],
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
-        let {initial_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        let challenges = &challenges.{table_name_snake}_challenges;
         {initial_constraint_strings}
     }}
 
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_consistency_constraints(
-        &self,
-        {consistency_constraints_exist}row: &[XFieldElement],
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
-        let {consistency_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        let challenges = &challenges.{table_name_snake}_challenges;
         {consistency_constraint_strings}
     }}
 
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_transition_constraints(
-        &self,
-        current_row: &[XFieldElement],
-        next_row: &[XFieldElement],
+        current_base_row: ArrayView1<BFieldElement>,
+        current_ext_row: ArrayView1<XFieldElement>,
+        next_base_row: ArrayView1<BFieldElement>,
+        next_ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
         let challenges = &challenges.{table_name_snake}_challenges;
@@ -226,19 +204,20 @@ impl Evaluable for {table_mod_name} {{
     }}
 
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_terminal_constraints(
-        &self,
-        {terminal_constraints_exist}row: &[XFieldElement],
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
-        let {terminal_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        let challenges = &challenges.{table_name_snake}_challenges;
         {terminal_constraint_strings}
     }}
 }}
 
 impl Quotientable for {table_mod_name} {{
-    fn get_initial_quotient_degree_bounds(
-        &self,
+    #[allow(unused_variables)]
+    fn initial_quotient_degree_bounds(
         padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
@@ -247,19 +226,18 @@ impl Quotientable for {table_mod_name} {{
         [{initial_constraints_degrees}].to_vec()
     }}
 
-    fn get_consistency_quotient_degree_bounds(
-        &self,
+    #[allow(unused_variables)]
+    fn consistency_quotient_degree_bounds(
         padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
-        let {consistency_constraints_exist}zerofier_degree = padded_height as Degree;
-        let {consistency_constraints_exist}interpolant_degree =
-            interpolant_degree(padded_height, num_trace_randomizers);
+        let zerofier_degree = padded_height as Degree;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         [{consistency_constraints_degrees}].to_vec()
     }}
 
-    fn get_transition_quotient_degree_bounds(
-        &self,
+    #[allow(unused_variables)]
+    fn transition_quotient_degree_bounds(
         padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
@@ -268,13 +246,13 @@ impl Quotientable for {table_mod_name} {{
         [{transition_constraints_degrees}].to_vec()
     }}
 
-    fn get_terminal_quotient_degree_bounds(
-        &self,
+    #[allow(unused_variables)]
+    fn terminal_quotient_degree_bounds(
         padded_height: usize,
         num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
-        let {terminal_constraints_exist}zerofier_degree = 1 as Degree;
-        let {terminal_constraints_exist}interpolant_degree =
+        let zerofier_degree = 1 as Degree;
+        let interpolant_degree =
             interpolant_degree(padded_height, num_trace_randomizers);
         [{terminal_constraints_degrees}].to_vec()
     }}
@@ -332,18 +310,34 @@ fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
 
     let shared_declarations = shared_evaluations.join("");
 
-    let mut constraint_evaluation_expressions: Vec<String> = vec![];
+    let mut base_constraint_evaluation_expressions: Vec<String> = vec![];
+    let mut ext_constraint_evaluation_expressions: Vec<String> = vec![];
     for constraint in constraint_circuits.iter() {
         // Build code for expressions that evaluate to the constraints
         let (constraint_evaluation, _dependent_symbols) =
             evaluate_single_node(1, constraint, &HashSet::default());
-
-        constraint_evaluation_expressions.push(constraint_evaluation);
+        match is_bfield_element(constraint) {
+            true => base_constraint_evaluation_expressions.push(constraint_evaluation),
+            false => ext_constraint_evaluation_expressions.push(constraint_evaluation),
+        }
     }
 
-    let constraint_evaluations_joined = constraint_evaluation_expressions.join(",\n");
+    let base_constraint_evaluations_joined = base_constraint_evaluation_expressions.join(",\n");
+    let ext_constraint_evaluations_joined = ext_constraint_evaluation_expressions.join(",\n");
 
-    format!("{shared_declarations}\n\nvec![{constraint_evaluations_joined}]")
+    format!(
+        "{shared_declarations}
+
+        let base_constraints = [{base_constraint_evaluations_joined}];
+        let ext_constraints = [{ext_constraint_evaluations_joined}];
+
+        base_constraints
+            .map(|v| BFieldElement::lift(&v))
+            .iter()
+            .chain(ext_constraints.iter())
+            .cloned()
+            .collect()"
+    )
 }
 
 /// Produce the code to evaluate code for all nodes that share a value number of
@@ -437,6 +431,23 @@ fn get_binding_name<T: TableChallenges, II: InputIndicator>(
             format!("challenges.get_challenge({challenge_id})")
         }
         CircuitExpression::BinaryOperation(_, _, _) => format!("node_{}", circuit.id),
+    }
+}
+
+/// Recursively check whether a node is composed of only BFieldElements, i.e., only uses
+/// (1) inputs from base rows, (2) constants from the B-field, and (3) binary operations on
+/// BFieldElements.
+fn is_bfield_element<T: TableChallenges, II: InputIndicator>(
+    circuit: &ConstraintCircuit<T, II>,
+) -> bool {
+    match &circuit.expression {
+        CircuitExpression::XConstant(_) => false,
+        CircuitExpression::BConstant(_) => true,
+        CircuitExpression::Input(indicator) => indicator.is_base_table_row(),
+        CircuitExpression::Challenge(_) => false,
+        CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+            is_bfield_element(&lhs.as_ref().borrow()) && is_bfield_element(&rhs.as_ref().borrow())
+        }
     }
 }
 
