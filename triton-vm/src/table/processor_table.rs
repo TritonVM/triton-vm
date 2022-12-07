@@ -16,7 +16,6 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -46,6 +45,8 @@ use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn::*;
 use crate::table::table_column::ProcessorExtTableColumn;
@@ -1114,7 +1115,7 @@ pub struct SingleRowConstraints {
     variables: [ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    >; FULL_WIDTH],
+    >; NUM_COLUMNS],
     circuit_builder: ConstraintCircuitBuilder<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
@@ -1132,7 +1133,7 @@ pub struct SingleRowConstraints {
 impl Default for SingleRowConstraints {
     fn default() -> Self {
         let circuit_builder = ConstraintCircuitBuilder::new(NUM_COLUMNS);
-        let variables_as_circuits = (0..FULL_WIDTH)
+        let variables_as_circuits = (0..NUM_COLUMNS)
             .map(|i| {
                 let input: SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS> = i.into();
                 circuit_builder.input(input)
@@ -1202,7 +1203,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(CLK)].clone()
+        self.variables[CLK.master_table_index()].clone()
     }
     pub fn is_padding(
         &self,
@@ -1210,7 +1211,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IsPadding)].clone()
+        self.variables[IsPadding.master_table_index()].clone()
     }
     pub fn ip(
         &self,
@@ -1218,7 +1219,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IP)].clone()
+        self.variables[IP.master_table_index()].clone()
     }
     pub fn ci(
         &self,
@@ -1226,7 +1227,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(CI)].clone()
+        self.variables[CI.master_table_index()].clone()
     }
     pub fn nia(
         &self,
@@ -1234,7 +1235,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(NIA)].clone()
+        self.variables[NIA.master_table_index()].clone()
     }
     pub fn ib0(
         &self,
@@ -1242,7 +1243,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB0)].clone()
+        self.variables[IB0.master_table_index()].clone()
     }
     pub fn ib1(
         &self,
@@ -1250,7 +1251,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB1)].clone()
+        self.variables[IB1.master_table_index()].clone()
     }
     pub fn ib2(
         &self,
@@ -1258,7 +1259,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB2)].clone()
+        self.variables[IB2.master_table_index()].clone()
     }
     pub fn ib3(
         &self,
@@ -1266,7 +1267,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB3)].clone()
+        self.variables[IB3.master_table_index()].clone()
     }
     pub fn ib4(
         &self,
@@ -1274,7 +1275,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB4)].clone()
+        self.variables[IB4.master_table_index()].clone()
     }
     pub fn ib5(
         &self,
@@ -1282,7 +1283,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB5)].clone()
+        self.variables[IB5.master_table_index()].clone()
     }
     pub fn ib6(
         &self,
@@ -1290,7 +1291,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB6)].clone()
+        self.variables[IB6.master_table_index()].clone()
     }
     pub fn jsp(
         &self,
@@ -1298,7 +1299,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JSP)].clone()
+        self.variables[JSP.master_table_index()].clone()
     }
     pub fn jsd(
         &self,
@@ -1306,7 +1307,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JSD)].clone()
+        self.variables[JSD.master_table_index()].clone()
     }
     pub fn jso(
         &self,
@@ -1314,7 +1315,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JSO)].clone()
+        self.variables[JSO.master_table_index()].clone()
     }
     pub fn st0(
         &self,
@@ -1322,7 +1323,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST0)].clone()
+        self.variables[ST0.master_table_index()].clone()
     }
     pub fn st1(
         &self,
@@ -1330,7 +1331,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST1)].clone()
+        self.variables[ST1.master_table_index()].clone()
     }
     pub fn st2(
         &self,
@@ -1338,7 +1339,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST2)].clone()
+        self.variables[ST2.master_table_index()].clone()
     }
     pub fn st3(
         &self,
@@ -1346,7 +1347,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST3)].clone()
+        self.variables[ST3.master_table_index()].clone()
     }
     pub fn st4(
         &self,
@@ -1354,7 +1355,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST4)].clone()
+        self.variables[ST4.master_table_index()].clone()
     }
     pub fn st5(
         &self,
@@ -1362,7 +1363,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST5)].clone()
+        self.variables[ST5.master_table_index()].clone()
     }
     pub fn st6(
         &self,
@@ -1370,7 +1371,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST6)].clone()
+        self.variables[ST6.master_table_index()].clone()
     }
     pub fn st7(
         &self,
@@ -1378,7 +1379,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST7)].clone()
+        self.variables[ST7.master_table_index()].clone()
     }
     pub fn st8(
         &self,
@@ -1386,7 +1387,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST8)].clone()
+        self.variables[ST8.master_table_index()].clone()
     }
     pub fn st9(
         &self,
@@ -1394,7 +1395,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST9)].clone()
+        self.variables[ST9.master_table_index()].clone()
     }
     pub fn st10(
         &self,
@@ -1402,7 +1403,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST10)].clone()
+        self.variables[ST10.master_table_index()].clone()
     }
     pub fn st11(
         &self,
@@ -1410,7 +1411,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST11)].clone()
+        self.variables[ST11.master_table_index()].clone()
     }
     pub fn st12(
         &self,
@@ -1418,7 +1419,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST12)].clone()
+        self.variables[ST12.master_table_index()].clone()
     }
     pub fn st13(
         &self,
@@ -1426,7 +1427,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST13)].clone()
+        self.variables[ST13.master_table_index()].clone()
     }
     pub fn st14(
         &self,
@@ -1434,7 +1435,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST14)].clone()
+        self.variables[ST14.master_table_index()].clone()
     }
     pub fn st15(
         &self,
@@ -1442,7 +1443,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST15)].clone()
+        self.variables[ST15.master_table_index()].clone()
     }
     pub fn osp(
         &self,
@@ -1450,7 +1451,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OSP)].clone()
+        self.variables[OSP.master_table_index()].clone()
     }
     pub fn osv(
         &self,
@@ -1458,7 +1459,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OSV)].clone()
+        self.variables[OSV.master_table_index()].clone()
     }
     pub fn hv0(
         &self,
@@ -1466,7 +1467,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV0)].clone()
+        self.variables[HV0.master_table_index()].clone()
     }
     pub fn hv1(
         &self,
@@ -1474,7 +1475,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV1)].clone()
+        self.variables[HV1.master_table_index()].clone()
     }
     pub fn hv2(
         &self,
@@ -1482,7 +1483,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV2)].clone()
+        self.variables[HV2.master_table_index()].clone()
     }
     pub fn hv3(
         &self,
@@ -1490,7 +1491,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV3)].clone()
+        self.variables[HV3.master_table_index()].clone()
     }
     pub fn ramv(
         &self,
@@ -1498,7 +1499,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(RAMV)].clone()
+        self.variables[RAMV.master_table_index()].clone()
     }
     pub fn ramp(
         &self,
@@ -1506,7 +1507,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(RAMP)].clone()
+        self.variables[RAMP.master_table_index()].clone()
     }
 
     pub fn cjd(
@@ -1515,7 +1516,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ClockJumpDifference)].clone()
+        self.variables[ClockJumpDifference.master_table_index()].clone()
     }
 
     pub fn invm(
@@ -1524,7 +1525,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ClockJumpDifferenceInverse)].clone()
+        self.variables[ClockJumpDifferenceInverse.master_table_index()].clone()
     }
 
     pub fn invu(
@@ -1533,7 +1534,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+        self.variables[UniqueClockJumpDiffDiffInverse.master_table_index()].clone()
     }
 
     pub fn rer(
@@ -1542,7 +1543,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(SelectedClockCyclesEvalArg)].clone()
+        self.variables[SelectedClockCyclesEvalArg.master_table_index()].clone()
     }
 
     pub fn reu(
@@ -1551,7 +1552,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+        self.variables[UniqueClockJumpDifferencesEvalArg.master_table_index()].clone()
     }
 
     pub fn rpm(
@@ -1560,7 +1561,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
+        self.variables[AllClockJumpDifferencesPermArg.master_table_index()].clone()
     }
 
     pub fn running_evaluation_standard_input(
@@ -1569,7 +1570,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(InputTableEvalArg)].clone()
+        self.variables[InputTableEvalArg.master_table_index()].clone()
     }
     pub fn running_evaluation_standard_output(
         &self,
@@ -1577,7 +1578,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OutputTableEvalArg)].clone()
+        self.variables[OutputTableEvalArg.master_table_index()].clone()
     }
     pub fn running_product_instruction_table(
         &self,
@@ -1585,7 +1586,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(InstructionTablePermArg)].clone()
+        self.variables[InstructionTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_op_stack_table(
         &self,
@@ -1593,7 +1594,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OpStackTablePermArg)].clone()
+        self.variables[OpStackTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_ram_table(
         &self,
@@ -1601,7 +1602,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(RamTablePermArg)].clone()
+        self.variables[RamTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_jump_stack_table(
         &self,
@@ -1609,7 +1610,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JumpStackTablePermArg)].clone()
+        self.variables[JumpStackTablePermArg.master_table_index()].clone()
     }
     pub fn running_evaluation_to_hash_table(
         &self,
@@ -1617,7 +1618,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ToHashTableEvalArg)].clone()
+        self.variables[ToHashTableEvalArg.master_table_index()].clone()
     }
     pub fn running_evaluation_from_hash_table(
         &self,
@@ -1625,7 +1626,7 @@ impl SingleRowConstraints {
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(FromHashTableEvalArg)].clone()
+        self.variables[FromHashTableEvalArg.master_table_index()].clone()
     }
 }
 
@@ -1634,7 +1635,7 @@ pub struct DualRowConstraints {
     variables: [ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    >; 2 * FULL_WIDTH],
+    >; 2 * NUM_COLUMNS],
     circuit_builder: ConstraintCircuitBuilder<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
@@ -1656,7 +1657,7 @@ pub struct DualRowConstraints {
 impl Default for DualRowConstraints {
     fn default() -> Self {
         let circuit_builder = ConstraintCircuitBuilder::new(2 * NUM_COLUMNS);
-        let variables_as_circuits = (0..2 * FULL_WIDTH)
+        let variables_as_circuits = (0..2 * NUM_COLUMNS)
             .map(|i| {
                 let input: DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS> = i.into();
                 circuit_builder.input(input)
@@ -2347,9 +2348,9 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let operand = self.variables[usize::from(ST0)].clone();
-        let shifted_operand = self.variables[FULL_WIDTH + usize::from(ST1)].clone();
-        let lsb = self.variables[FULL_WIDTH + usize::from(ST0)].clone();
+        let operand = self.variables[ST0.master_table_index()].clone();
+        let shifted_operand = self.variables[NUM_COLUMNS + ST1.master_table_index()].clone();
+        let lsb = self.variables[NUM_COLUMNS + ST0.master_table_index()].clone();
 
         let lsb_is_a_bit = lsb.clone() * (lsb.clone() - self.one());
         let correct_decomposition = self.two() * shifted_operand + lsb - operand;
@@ -2599,17 +2600,13 @@ impl DualRowConstraints {
         self.circuit_builder.b_constant(constant)
     }
 
-    pub fn constant_x(&self, constant: XFieldElement) -> MPolynomial<XFieldElement> {
-        MPolynomial::from_constant(constant, 2 * FULL_WIDTH)
-    }
-
     pub fn clk(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(CLK)].clone()
+        self.variables[CLK.master_table_index()].clone()
     }
 
     pub fn ip(
@@ -2618,7 +2615,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IP)].clone()
+        self.variables[IP.master_table_index()].clone()
     }
 
     pub fn ci(
@@ -2627,7 +2624,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(CI)].clone()
+        self.variables[CI.master_table_index()].clone()
     }
 
     pub fn nia(
@@ -2636,7 +2633,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(NIA)].clone()
+        self.variables[NIA.master_table_index()].clone()
     }
 
     pub fn ib0(
@@ -2645,7 +2642,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB0)].clone()
+        self.variables[IB0.master_table_index()].clone()
     }
 
     pub fn ib1(
@@ -2654,7 +2651,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB1)].clone()
+        self.variables[IB1.master_table_index()].clone()
     }
 
     pub fn ib2(
@@ -2663,7 +2660,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB2)].clone()
+        self.variables[IB2.master_table_index()].clone()
     }
 
     pub fn ib3(
@@ -2672,7 +2669,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB3)].clone()
+        self.variables[IB3.master_table_index()].clone()
     }
 
     pub fn ib4(
@@ -2681,7 +2678,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB4)].clone()
+        self.variables[IB4.master_table_index()].clone()
     }
 
     pub fn ib5(
@@ -2690,7 +2687,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB5)].clone()
+        self.variables[IB5.master_table_index()].clone()
     }
 
     pub fn ib6(
@@ -2699,7 +2696,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IB6)].clone()
+        self.variables[IB6.master_table_index()].clone()
     }
 
     pub fn jsp(
@@ -2708,7 +2705,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JSP)].clone()
+        self.variables[JSP.master_table_index()].clone()
     }
 
     pub fn jsd(
@@ -2717,7 +2714,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JSD)].clone()
+        self.variables[JSD.master_table_index()].clone()
     }
 
     pub fn jso(
@@ -2726,7 +2723,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JSO)].clone()
+        self.variables[JSO.master_table_index()].clone()
     }
 
     pub fn st0(
@@ -2735,7 +2732,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST0)].clone()
+        self.variables[ST0.master_table_index()].clone()
     }
 
     pub fn st1(
@@ -2744,7 +2741,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST1)].clone()
+        self.variables[ST1.master_table_index()].clone()
     }
 
     pub fn st2(
@@ -2753,7 +2750,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST2)].clone()
+        self.variables[ST2.master_table_index()].clone()
     }
 
     pub fn st3(
@@ -2762,7 +2759,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST3)].clone()
+        self.variables[ST3.master_table_index()].clone()
     }
 
     pub fn st4(
@@ -2771,7 +2768,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST4)].clone()
+        self.variables[ST4.master_table_index()].clone()
     }
 
     pub fn st5(
@@ -2780,7 +2777,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST5)].clone()
+        self.variables[ST5.master_table_index()].clone()
     }
 
     pub fn st6(
@@ -2789,7 +2786,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST6)].clone()
+        self.variables[ST6.master_table_index()].clone()
     }
 
     pub fn st7(
@@ -2798,7 +2795,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST7)].clone()
+        self.variables[ST7.master_table_index()].clone()
     }
 
     pub fn st8(
@@ -2807,7 +2804,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST8)].clone()
+        self.variables[ST8.master_table_index()].clone()
     }
 
     pub fn st9(
@@ -2816,7 +2813,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST9)].clone()
+        self.variables[ST9.master_table_index()].clone()
     }
 
     pub fn st10(
@@ -2825,7 +2822,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST10)].clone()
+        self.variables[ST10.master_table_index()].clone()
     }
 
     pub fn st11(
@@ -2834,7 +2831,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST11)].clone()
+        self.variables[ST11.master_table_index()].clone()
     }
 
     pub fn st12(
@@ -2843,7 +2840,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST12)].clone()
+        self.variables[ST12.master_table_index()].clone()
     }
 
     pub fn st13(
@@ -2852,7 +2849,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST13)].clone()
+        self.variables[ST13.master_table_index()].clone()
     }
 
     pub fn st14(
@@ -2861,7 +2858,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST14)].clone()
+        self.variables[ST14.master_table_index()].clone()
     }
 
     pub fn st15(
@@ -2870,7 +2867,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ST15)].clone()
+        self.variables[ST15.master_table_index()].clone()
     }
 
     pub fn osp(
@@ -2879,7 +2876,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OSP)].clone()
+        self.variables[OSP.master_table_index()].clone()
     }
 
     pub fn osv(
@@ -2888,7 +2885,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OSV)].clone()
+        self.variables[OSV.master_table_index()].clone()
     }
 
     pub fn hv0(
@@ -2897,7 +2894,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV0)].clone()
+        self.variables[HV0.master_table_index()].clone()
     }
 
     pub fn hv1(
@@ -2906,7 +2903,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV1)].clone()
+        self.variables[HV1.master_table_index()].clone()
     }
 
     pub fn hv2(
@@ -2915,7 +2912,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV2)].clone()
+        self.variables[HV2.master_table_index()].clone()
     }
 
     pub fn hv3(
@@ -2924,7 +2921,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(HV3)].clone()
+        self.variables[HV3.master_table_index()].clone()
     }
 
     pub fn ramp(
@@ -2933,7 +2930,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(RAMP)].clone()
+        self.variables[RAMP.master_table_index()].clone()
     }
 
     pub fn ramv(
@@ -2942,7 +2939,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(RAMV)].clone()
+        self.variables[RAMV.master_table_index()].clone()
     }
 
     pub fn is_padding(
@@ -2951,7 +2948,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(IsPadding)].clone()
+        self.variables[IsPadding.master_table_index()].clone()
     }
 
     pub fn cjd(
@@ -2960,7 +2957,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ClockJumpDifference)].clone()
+        self.variables[ClockJumpDifference.master_table_index()].clone()
     }
 
     pub fn invm(
@@ -2969,7 +2966,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ClockJumpDifferenceInverse)].clone()
+        self.variables[ClockJumpDifferenceInverse.master_table_index()].clone()
     }
 
     pub fn invu(
@@ -2978,7 +2975,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+        self.variables[UniqueClockJumpDiffDiffInverse.master_table_index()].clone()
     }
 
     pub fn rer(
@@ -2987,7 +2984,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(SelectedClockCyclesEvalArg)].clone()
+        self.variables[SelectedClockCyclesEvalArg.master_table_index()].clone()
     }
 
     pub fn reu(
@@ -2996,7 +2993,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+        self.variables[UniqueClockJumpDifferencesEvalArg.master_table_index()].clone()
     }
 
     pub fn rpm(
@@ -3005,7 +3002,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
+        self.variables[AllClockJumpDifferencesPermArg.master_table_index()].clone()
     }
 
     pub fn running_evaluation_standard_input(
@@ -3014,7 +3011,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(InputTableEvalArg)].clone()
+        self.variables[InputTableEvalArg.master_table_index()].clone()
     }
     pub fn running_evaluation_standard_output(
         &self,
@@ -3022,7 +3019,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OutputTableEvalArg)].clone()
+        self.variables[OutputTableEvalArg.master_table_index()].clone()
     }
     pub fn running_product_instruction_table(
         &self,
@@ -3030,7 +3027,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(InstructionTablePermArg)].clone()
+        self.variables[InstructionTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_op_stack_table(
         &self,
@@ -3038,7 +3035,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(OpStackTablePermArg)].clone()
+        self.variables[OpStackTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_ram_table(
         &self,
@@ -3046,7 +3043,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(RamTablePermArg)].clone()
+        self.variables[RamTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_jump_stack_table(
         &self,
@@ -3054,7 +3051,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(JumpStackTablePermArg)].clone()
+        self.variables[JumpStackTablePermArg.master_table_index()].clone()
     }
     pub fn running_evaluation_to_hash_table(
         &self,
@@ -3062,7 +3059,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(ToHashTableEvalArg)].clone()
+        self.variables[ToHashTableEvalArg.master_table_index()].clone()
     }
     pub fn running_evaluation_from_hash_table(
         &self,
@@ -3070,18 +3067,18 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[usize::from(FromHashTableEvalArg)].clone()
+        self.variables[FromHashTableEvalArg.master_table_index()].clone()
     }
 
     // Property: All polynomial variables that contain '_next' have the same
-    // variable position / value as the one without '_next', +/- FULL_WIDTH.
+    // variable position / value as the one without '_next', +/- NUM_COLUMNS.
     pub fn clk_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(CLK)].clone()
+        self.variables[NUM_COLUMNS + CLK.master_table_index()].clone()
     }
 
     pub fn ip_next(
@@ -3090,7 +3087,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IP)].clone()
+        self.variables[NUM_COLUMNS + IP.master_table_index()].clone()
     }
 
     pub fn ci_next(
@@ -3099,7 +3096,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(CI)].clone()
+        self.variables[NUM_COLUMNS + CI.master_table_index()].clone()
     }
 
     pub fn nia_next(
@@ -3108,7 +3105,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(NIA)].clone()
+        self.variables[NUM_COLUMNS + NIA.master_table_index()].clone()
     }
 
     pub fn ib0_next(
@@ -3117,7 +3114,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IB0)].clone()
+        self.variables[NUM_COLUMNS + IB0.master_table_index()].clone()
     }
     pub fn ib1_next(
         &self,
@@ -3125,7 +3122,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IB1)].clone()
+        self.variables[NUM_COLUMNS + IB1.master_table_index()].clone()
     }
     pub fn ib2_next(
         &self,
@@ -3133,7 +3130,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IB2)].clone()
+        self.variables[NUM_COLUMNS + IB2.master_table_index()].clone()
     }
     pub fn ib3_next(
         &self,
@@ -3141,7 +3138,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IB3)].clone()
+        self.variables[NUM_COLUMNS + IB3.master_table_index()].clone()
     }
     pub fn ib4_next(
         &self,
@@ -3149,7 +3146,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IB4)].clone()
+        self.variables[NUM_COLUMNS + IB4.master_table_index()].clone()
     }
     pub fn ib5_next(
         &self,
@@ -3157,7 +3154,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IB5)].clone()
+        self.variables[NUM_COLUMNS + IB5.master_table_index()].clone()
     }
     pub fn ib6_next(
         &self,
@@ -3165,7 +3162,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IB6)].clone()
+        self.variables[NUM_COLUMNS + IB6.master_table_index()].clone()
     }
 
     pub fn jsp_next(
@@ -3174,7 +3171,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(JSP)].clone()
+        self.variables[NUM_COLUMNS + JSP.master_table_index()].clone()
     }
 
     pub fn jsd_next(
@@ -3183,7 +3180,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(JSD)].clone()
+        self.variables[NUM_COLUMNS + JSD.master_table_index()].clone()
     }
 
     pub fn jso_next(
@@ -3192,7 +3189,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(JSO)].clone()
+        self.variables[NUM_COLUMNS + JSO.master_table_index()].clone()
     }
 
     pub fn st0_next(
@@ -3201,7 +3198,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST0)].clone()
+        self.variables[NUM_COLUMNS + ST0.master_table_index()].clone()
     }
 
     pub fn st1_next(
@@ -3210,7 +3207,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST1)].clone()
+        self.variables[NUM_COLUMNS + ST1.master_table_index()].clone()
     }
 
     pub fn st2_next(
@@ -3219,7 +3216,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST2)].clone()
+        self.variables[NUM_COLUMNS + ST2.master_table_index()].clone()
     }
 
     pub fn st3_next(
@@ -3228,7 +3225,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST3)].clone()
+        self.variables[NUM_COLUMNS + ST3.master_table_index()].clone()
     }
 
     pub fn st4_next(
@@ -3237,7 +3234,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST4)].clone()
+        self.variables[NUM_COLUMNS + ST4.master_table_index()].clone()
     }
 
     pub fn st5_next(
@@ -3246,7 +3243,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST5)].clone()
+        self.variables[NUM_COLUMNS + ST5.master_table_index()].clone()
     }
 
     pub fn st6_next(
@@ -3255,7 +3252,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST6)].clone()
+        self.variables[NUM_COLUMNS + ST6.master_table_index()].clone()
     }
 
     pub fn st7_next(
@@ -3264,7 +3261,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST7)].clone()
+        self.variables[NUM_COLUMNS + ST7.master_table_index()].clone()
     }
 
     pub fn st8_next(
@@ -3273,7 +3270,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST8)].clone()
+        self.variables[NUM_COLUMNS + ST8.master_table_index()].clone()
     }
 
     pub fn st9_next(
@@ -3282,7 +3279,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST9)].clone()
+        self.variables[NUM_COLUMNS + ST9.master_table_index()].clone()
     }
 
     pub fn st10_next(
@@ -3291,7 +3288,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST10)].clone()
+        self.variables[NUM_COLUMNS + ST10.master_table_index()].clone()
     }
 
     pub fn st11_next(
@@ -3300,7 +3297,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST11)].clone()
+        self.variables[NUM_COLUMNS + ST11.master_table_index()].clone()
     }
 
     pub fn st12_next(
@@ -3309,7 +3306,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST12)].clone()
+        self.variables[NUM_COLUMNS + ST12.master_table_index()].clone()
     }
 
     pub fn st13_next(
@@ -3318,7 +3315,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST13)].clone()
+        self.variables[NUM_COLUMNS + ST13.master_table_index()].clone()
     }
 
     pub fn st14_next(
@@ -3327,7 +3324,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST14)].clone()
+        self.variables[NUM_COLUMNS + ST14.master_table_index()].clone()
     }
 
     pub fn st15_next(
@@ -3336,7 +3333,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ST15)].clone()
+        self.variables[NUM_COLUMNS + ST15.master_table_index()].clone()
     }
 
     pub fn osp_next(
@@ -3345,7 +3342,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(OSP)].clone()
+        self.variables[NUM_COLUMNS + OSP.master_table_index()].clone()
     }
 
     pub fn osv_next(
@@ -3354,7 +3351,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(OSV)].clone()
+        self.variables[NUM_COLUMNS + OSV.master_table_index()].clone()
     }
 
     pub fn ramp_next(
@@ -3363,7 +3360,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(RAMP)].clone()
+        self.variables[NUM_COLUMNS + RAMP.master_table_index()].clone()
     }
 
     pub fn ramv_next(
@@ -3372,7 +3369,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(RAMV)].clone()
+        self.variables[NUM_COLUMNS + RAMV.master_table_index()].clone()
     }
 
     pub fn is_padding_next(
@@ -3381,7 +3378,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(IsPadding)].clone()
+        self.variables[NUM_COLUMNS + IsPadding.master_table_index()].clone()
     }
 
     pub fn cjd_next(
@@ -3390,7 +3387,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ClockJumpDifference)].clone()
+        self.variables[NUM_COLUMNS + ClockJumpDifference.master_table_index()].clone()
     }
 
     pub fn invm_next(
@@ -3399,7 +3396,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ClockJumpDifferenceInverse)].clone()
+        self.variables[NUM_COLUMNS + ClockJumpDifferenceInverse.master_table_index()].clone()
     }
 
     pub fn invu_next(
@@ -3408,7 +3405,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+        self.variables[NUM_COLUMNS + UniqueClockJumpDiffDiffInverse.master_table_index()].clone()
     }
 
     pub fn rer_next(
@@ -3417,7 +3414,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(SelectedClockCyclesEvalArg)].clone()
+        self.variables[NUM_COLUMNS + SelectedClockCyclesEvalArg.master_table_index()].clone()
     }
 
     pub fn reu_next(
@@ -3426,7 +3423,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+        self.variables[NUM_COLUMNS + UniqueClockJumpDifferencesEvalArg.master_table_index()].clone()
     }
 
     pub fn rpm_next(
@@ -3435,7 +3432,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone()
+        self.variables[NUM_COLUMNS + AllClockJumpDifferencesPermArg.master_table_index()].clone()
     }
 
     pub fn running_evaluation_standard_input_next(
@@ -3444,7 +3441,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(InputTableEvalArg)].clone()
+        self.variables[NUM_COLUMNS + InputTableEvalArg.master_table_index()].clone()
     }
     pub fn running_evaluation_standard_output_next(
         &self,
@@ -3452,7 +3449,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(OutputTableEvalArg)].clone()
+        self.variables[NUM_COLUMNS + OutputTableEvalArg.master_table_index()].clone()
     }
     pub fn running_product_instruction_table_next(
         &self,
@@ -3460,7 +3457,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(InstructionTablePermArg)].clone()
+        self.variables[NUM_COLUMNS + InstructionTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_op_stack_table_next(
         &self,
@@ -3468,7 +3465,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(OpStackTablePermArg)].clone()
+        self.variables[NUM_COLUMNS + OpStackTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_ram_table_next(
         &self,
@@ -3476,7 +3473,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(RamTablePermArg)].clone()
+        self.variables[NUM_COLUMNS + RamTablePermArg.master_table_index()].clone()
     }
     pub fn running_product_jump_stack_table_next(
         &self,
@@ -3484,7 +3481,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(JumpStackTablePermArg)].clone()
+        self.variables[NUM_COLUMNS + JumpStackTablePermArg.master_table_index()].clone()
     }
     pub fn running_evaluation_to_hash_table_next(
         &self,
@@ -3492,7 +3489,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(ToHashTableEvalArg)].clone()
+        self.variables[NUM_COLUMNS + ToHashTableEvalArg.master_table_index()].clone()
     }
     pub fn running_evaluation_from_hash_table_next(
         &self,
@@ -3500,7 +3497,7 @@ impl DualRowConstraints {
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.variables[FULL_WIDTH + usize::from(FromHashTableEvalArg)].clone()
+        self.variables[NUM_COLUMNS + FromHashTableEvalArg.master_table_index()].clone()
     }
 
     pub fn decompose_arg(
@@ -4269,10 +4266,14 @@ mod constraint_polynomial_tests {
                 instruction, case_idx
             );
             for c in debug_cols_curr_row {
-                print!("{} = {}, ", c, test_row[usize::from(*c)]);
+                print!("{} = {}, ", c, test_row[(*c).master_table_index()]);
             }
             for c in debug_cols_next_row {
-                print!("{}' = {}, ", c, test_row[*c as usize + FULL_WIDTH]);
+                print!(
+                    "{}' = {}, ",
+                    c,
+                    test_row[(*c).master_table_index() + NUM_COLUMNS]
+                );
             }
             println!();
 
@@ -4285,7 +4286,7 @@ mod constraint_polynomial_tests {
             {
                 assert_eq!(
                     instruction.opcode_b().lift(),
-                    test_row[usize::from(CI)],
+                    test_row[CI.master_table_index()],
                     "The test is trying to check the wrong transition constraint polynomials."
                 );
                 assert_eq!(
@@ -4526,13 +4527,13 @@ mod constraint_polynomial_tests {
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {
-                row[usize::from(IB0)] = other_instruction.ib(Ord7::IB0).lift();
-                row[usize::from(IB1)] = other_instruction.ib(Ord7::IB1).lift();
-                row[usize::from(IB2)] = other_instruction.ib(Ord7::IB2).lift();
-                row[usize::from(IB3)] = other_instruction.ib(Ord7::IB3).lift();
-                row[usize::from(IB4)] = other_instruction.ib(Ord7::IB4).lift();
-                row[usize::from(IB5)] = other_instruction.ib(Ord7::IB5).lift();
-                row[usize::from(IB6)] = other_instruction.ib(Ord7::IB6).lift();
+                row[IB0.master_table_index()] = other_instruction.ib(Ord7::IB0).lift();
+                row[IB1.master_table_index()] = other_instruction.ib(Ord7::IB1).lift();
+                row[IB2.master_table_index()] = other_instruction.ib(Ord7::IB2).lift();
+                row[IB3.master_table_index()] = other_instruction.ib(Ord7::IB3).lift();
+                row[IB4.master_table_index()] = other_instruction.ib(Ord7::IB4).lift();
+                row[IB5.master_table_index()] = other_instruction.ib(Ord7::IB5).lift();
+                row[IB6.master_table_index()] = other_instruction.ib(Ord7::IB6).lift();
                 let result = deselector
                     .partial_evaluate(&dummy_challenges.processor_table_challenges)
                     .evaluate(&row);
@@ -4547,13 +4548,13 @@ mod constraint_polynomial_tests {
             }
 
             // Positive tests
-            row[usize::from(IB0)] = instruction.ib(Ord7::IB0).lift();
-            row[usize::from(IB1)] = instruction.ib(Ord7::IB1).lift();
-            row[usize::from(IB2)] = instruction.ib(Ord7::IB2).lift();
-            row[usize::from(IB3)] = instruction.ib(Ord7::IB3).lift();
-            row[usize::from(IB4)] = instruction.ib(Ord7::IB4).lift();
-            row[usize::from(IB5)] = instruction.ib(Ord7::IB5).lift();
-            row[usize::from(IB6)] = instruction.ib(Ord7::IB6).lift();
+            row[IB0.master_table_index()] = instruction.ib(Ord7::IB0).lift();
+            row[IB1.master_table_index()] = instruction.ib(Ord7::IB1).lift();
+            row[IB2.master_table_index()] = instruction.ib(Ord7::IB2).lift();
+            row[IB3.master_table_index()] = instruction.ib(Ord7::IB3).lift();
+            row[IB4.master_table_index()] = instruction.ib(Ord7::IB4).lift();
+            row[IB5.master_table_index()] = instruction.ib(Ord7::IB5).lift();
+            row[IB6.master_table_index()] = instruction.ib(Ord7::IB6).lift();
             let result = deselector
                 .partial_evaluate(&dummy_challenges.processor_table_challenges)
                 .evaluate(&row);
