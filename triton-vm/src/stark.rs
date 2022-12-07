@@ -110,10 +110,10 @@ impl fmt::Display for StarkValidationError {
 }
 
 pub struct Stark {
-    parameters: StarkParameters,
-    claim: Claim,
-    max_degree: Degree,
-    fri: Fri<StarkHasher>,
+    pub parameters: StarkParameters,
+    pub claim: Claim,
+    pub max_degree: Degree,
+    pub fri: Fri<StarkHasher>,
 }
 
 impl Stark {
@@ -1399,7 +1399,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn extend_does_not_change_base_table() {
         let (base_tables, _, _, _) =
-            parse_simulate_pad(sample_programs::FIBONACCI_LT, vec![], vec![]);
+            parse_simulate_pad(sample_programs::FIB_FIXED_7_LT, vec![], vec![]);
 
         let dummy_challenges = AllChallenges::placeholder();
         let ext_tables = ExtTableCollection::extend_tables(&base_tables, &dummy_challenges);
@@ -1479,7 +1479,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn number_of_quotient_degree_bound_matches_number_of_constraints_test() {
         let (_, _, _, ext_tables, challenges, num_trace_randomizers) =
-            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
+            parse_simulate_pad_extend(sample_programs::FIB_FIXED_7_LT, vec![], vec![]);
         let padded_height = ext_tables.padded_height;
 
         for table in ext_tables.into_iter() {
@@ -1613,7 +1613,7 @@ pub(crate) mod triton_stark_tests {
     fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
         let zero = XFieldElement::zero();
         let (_, _, _, ext_tables, challenges, _) =
-            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
+            parse_simulate_pad_extend(sample_programs::FIB_FIXED_7_LT, vec![], vec![]);
 
         for table in (&ext_tables).into_iter() {
             if let Some(row) = table.data().get(0) {
@@ -1782,6 +1782,28 @@ pub(crate) mod triton_stark_tests {
             panic!("The Verifier is unhappy! {}", e);
         }
         assert!(result.unwrap());
+    }
+
+    #[test]
+    fn prove_verify_fib_shootout_test() {
+        let cases = [(7, 21)];
+
+        let code = sample_programs::FIB_SHOOTOUT;
+
+        for (n, expected) in cases {
+            let stdin = vec![];
+            let secret_in = vec![BFieldElement::new(n)];
+            let (stark, proof) = parse_simulate_prove(code, stdin, secret_in, &mut None);
+            match stark.verify(proof, &mut None) {
+                Ok(result) => assert!(result, "The Verifier disagrees!"),
+                Err(err) => panic!("The Verifier is unhappy! {}", err),
+            }
+
+            assert_eq!(
+                vec![BFieldElement::zero(), BFieldElement::new(expected)],
+                stark.claim.output
+            );
+        }
     }
 
     #[test]

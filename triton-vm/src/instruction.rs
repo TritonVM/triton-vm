@@ -1068,7 +1068,33 @@ pub mod sample_programs {
         return
     ";
 
-    pub const FIBONACCI_LT: &str = "
+    pub const FIB_SHOOTOUT: &str = "
+        push 0
+        push 1
+        divine
+
+        call fib-loop
+        write_io
+        write_io
+        halt
+
+        fib-loop:
+            dup0 skiz call fib-step
+            dup0 skiz recurse
+            return
+
+        fib-step:
+            push -1
+            add
+            swap2
+            dup1
+            add
+            swap1
+            swap2
+            return
+    ";
+
+    pub const FIB_FIXED_7_LT: &str = "
         push 0
         push 1
         push 7

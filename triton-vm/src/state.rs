@@ -1072,7 +1072,7 @@ mod vm_state_tests {
 
     #[test]
     fn run_tvm_fibonacci_lt_test() {
-        let code = sample_programs::FIBONACCI_LT;
+        let code = sample_programs::FIB_FIXED_7_LT;
         let program = Program::from_code(code).unwrap();
         let (trace, _out, _err) = program.run(vec![], vec![]);
 
