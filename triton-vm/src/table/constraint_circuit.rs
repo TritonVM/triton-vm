@@ -55,11 +55,12 @@ impl Display for BinOp {
 /// `From<usize>` and `Into<usize>` occur for the purpose of this conversion.
 ///
 /// Having `Clone + Copy + Hash + PartialEq + Eq` help put these in containers.
-pub trait InputIndicator:
-    Debug + Clone + Copy + Hash + PartialEq + Eq + Display + From<usize> + Into<usize>
-{
+pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display {
     /// `true` iff `self` refers to a column in the base table.
     fn is_base_table_row(&self) -> bool;
+
+    fn base_row_index(&self) -> usize;
+    fn ext_row_index(&self) -> usize;
 }
 
 /// A `SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>` describes the position of a variable in
@@ -84,32 +85,6 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
     }
 }
 
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> From<usize>
-    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
-{
-    fn from(val: usize) -> Self {
-        assert!(
-            val < BASE_COLUMN_COUNT + EXT_COLUMN_COUNT,
-            "Cannot index out of width of table"
-        );
-        match val < BASE_COLUMN_COUNT {
-            true => SingleRowIndicator::BaseRow(val),
-            false => SingleRowIndicator::ExtRow(val - BASE_COLUMN_COUNT),
-        }
-    }
-}
-
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize>
-    From<SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>> for usize
-{
-    fn from(val: SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>) -> usize {
-        match val {
-            SingleRowIndicator::BaseRow(i) => i,
-            SingleRowIndicator::ExtRow(i) => BASE_COLUMN_COUNT + i,
-        }
-    }
-}
-
 impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
     for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
 {
@@ -117,6 +92,20 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicat
         match self {
             SingleRowIndicator::BaseRow(_) => true,
             SingleRowIndicator::ExtRow(_) => false,
+        }
+    }
+
+    fn base_row_index(&self) -> usize {
+        match self {
+            SingleRowIndicator::BaseRow(i) => *i,
+            SingleRowIndicator::ExtRow(_) => panic!("not a base row"),
+        }
+    }
+
+    fn ext_row_index(&self) -> usize {
+        match self {
+            SingleRowIndicator::BaseRow(_) => panic!("not an ext row"),
+            SingleRowIndicator::ExtRow(i) => *i,
         }
     }
 }
@@ -157,39 +146,22 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicat
             DualRowIndicator::NextExtRow(_) => false,
         }
     }
-}
 
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> From<usize>
-    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
-{
-    fn from(val: usize) -> Self {
-        let total_column_count = BASE_COLUMN_COUNT + EXT_COLUMN_COUNT;
-        match val {
-            i if i < BASE_COLUMN_COUNT => DualRowIndicator::CurrentBaseRow(i),
-            i if BASE_COLUMN_COUNT <= i && i < total_column_count => {
-                DualRowIndicator::CurrentExtRow(i - BASE_COLUMN_COUNT)
-            }
-            i if total_column_count <= i && i < total_column_count + BASE_COLUMN_COUNT => {
-                DualRowIndicator::NextBaseRow(i - total_column_count)
-            }
-            i if total_column_count + BASE_COLUMN_COUNT <= i && i < 2 * total_column_count => {
-                DualRowIndicator::NextExtRow(i - total_column_count - BASE_COLUMN_COUNT)
-            }
-            _ => panic!("Cannot index out of two times the width of the table"),
+    fn base_row_index(&self) -> usize {
+        match self {
+            DualRowIndicator::CurrentBaseRow(i) => *i,
+            DualRowIndicator::CurrentExtRow(_) => panic!("not a base row"),
+            DualRowIndicator::NextBaseRow(i) => *i,
+            DualRowIndicator::NextExtRow(_) => panic!("not a base row"),
         }
     }
-}
 
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize>
-    From<DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>> for usize
-{
-    fn from(val: DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>) -> Self {
-        let total_column_count = BASE_COLUMN_COUNT + EXT_COLUMN_COUNT;
-        match val {
-            DualRowIndicator::CurrentBaseRow(i) => i,
-            DualRowIndicator::CurrentExtRow(i) => BASE_COLUMN_COUNT + i,
-            DualRowIndicator::NextBaseRow(i) => total_column_count + i,
-            DualRowIndicator::NextExtRow(i) => total_column_count + BASE_COLUMN_COUNT + i,
+    fn ext_row_index(&self) -> usize {
+        match self {
+            DualRowIndicator::CurrentBaseRow(_) => panic!("not an ext row"),
+            DualRowIndicator::CurrentExtRow(i) => *i,
+            DualRowIndicator::NextBaseRow(_) => panic!("not an ext row"),
+            DualRowIndicator::NextExtRow(i) => *i,
         }
     }
 }
@@ -484,18 +456,27 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Return max degree after evaluating the circuit with an input of specified degree
-    pub fn symbolic_degree_bound(&self, max_degrees: &[Degree]) -> Degree {
+    pub fn symbolic_degree_bound(
+        &self,
+        max_base_degrees: &[Degree],
+        max_ext_degrees: &[Degree],
+    ) -> Degree {
         assert_eq!(
+            // todo this assertion is kinda dumb now. Kill it, allong with mpolys.
             self.var_count,
-            max_degrees.len(),
+            max_base_degrees.len(),
             "max_degrees length and var_count must match. Got: {}, {}.",
-            max_degrees.len(),
+            max_base_degrees.len(),
             self.var_count
         );
         match &self.expression {
             BinaryOperation(binop, lhs, rhs) => {
-                let lhs_degree = lhs.borrow().symbolic_degree_bound(max_degrees);
-                let rhs_degree = rhs.borrow().symbolic_degree_bound(max_degrees);
+                let lhs_degree = lhs
+                    .borrow()
+                    .symbolic_degree_bound(max_base_degrees, max_ext_degrees);
+                let rhs_degree = rhs
+                    .borrow()
+                    .symbolic_degree_bound(max_base_degrees, max_ext_degrees);
                 match binop {
                     BinOp::Add | BinOp::Sub => cmp::max(lhs_degree, rhs_degree),
                     BinOp::Mul => {
@@ -508,10 +489,10 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
                     }
                 }
             }
-            Input(input) => {
-                let index: usize = (*input).into();
-                max_degrees[index]
-            }
+            Input(input) => match input.is_base_table_row() {
+                true => max_base_degrees[input.base_row_index()],
+                false => max_ext_degrees[input.ext_row_index()],
+            },
             XConstant(xfe) => {
                 if xfe.is_zero() {
                     -1
@@ -643,7 +624,10 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
                 MPolynomial::<XFieldElement>::from_constant(bfe.lift(), self.var_count)
             }
             Input(input) => {
-                let mpol_index: usize = (*input).into();
+                let mpol_index = match input.is_base_table_row() {
+                    true => input.base_row_index(),
+                    false => input.ext_row_index() + 17, // todo kill flatten
+                };
                 MPolynomial::<XFieldElement>::variables(self.var_count)[mpol_index].clone()
             }
             Challenge(challenge_id) => MPolynomial::<XFieldElement>::from_constant(
@@ -1000,7 +984,7 @@ mod constraint_circuit_tests {
         let mut rng = thread_rng();
         let rand: usize = rng.next_u64() as usize;
         let mut ret_mpol = mpol_variables[rand % var_count].clone();
-        let circuit_input: DualRowIndicator<50, 40> = (rand % var_count).into();
+        let circuit_input: DualRowIndicator<50, 40> = DualRowIndicator::NextBaseRow(rand % 50);
         let mut ret_circuit = circuit_builder.input(circuit_input);
         for _ in 0..100 {
             let rand: usize = rng.next_u64() as usize;
@@ -1011,7 +995,8 @@ mod constraint_circuit_tests {
             ) = if rand % choices == 0 {
                 // p(x, y, z) = x
                 let mp = mpol_variables[rand % var_count].clone();
-                let input_value: DualRowIndicator<50, 40> = (rand % var_count).into();
+                let input_value: DualRowIndicator<50, 40> =
+                    DualRowIndicator::CurrentBaseRow(rand % 50);
                 (mp.clone(), circuit_builder.input(input_value))
             } else if rand % choices == 1 {
                 // p(x, y, z) = c
@@ -1040,7 +1025,8 @@ mod constraint_circuit_tests {
                 )
             } else {
                 // p(x, y, z) = rand_i * x
-                let input_value: DualRowIndicator<50, 40> = (rand % var_count).into();
+                let input_value: DualRowIndicator<50, 40> =
+                    DualRowIndicator::CurrentExtRow(rand % 40);
                 (
                     mpol_variables[rand % var_count]
                         .clone()
@@ -1192,7 +1178,7 @@ mod constraint_circuit_tests {
                     .circuit
                     .as_ref()
                     .borrow()
-                    .symbolic_degree_bound(&interpolated_degrees),
+                    .symbolic_degree_bound(&interpolated_degrees, &interpolated_degrees),
                 mpol.symbolic_degree_bound(&interpolated_degrees),
                 "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: \
                 {mpol}.\n interpolated degree: {rand_degree}\niteration {i}",
@@ -1229,7 +1215,7 @@ mod constraint_circuit_tests {
             // Also compare with symbolic evaluation
             let interpolated_degrees = vec![rand_degree; circuit_builder.var_count];
             assert_eq!(
-                circuits[0].symbolic_degree_bound(&interpolated_degrees),
+                circuits[0].symbolic_degree_bound(&interpolated_degrees, &interpolated_degrees),
                 partial_evaluated.symbolic_degree_bound(&interpolated_degrees),
                 "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: \
                 {mpol}.\n iteration {i}",
@@ -1475,6 +1461,7 @@ mod constraint_circuit_tests {
         challenges: T,
         table_name: &str,
     ) {
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
         println!(
             "nodes in {table_name} table constraint multitree prior to constant folding: {}",
             node_counter(&mut constraints)
@@ -1497,6 +1484,7 @@ mod constraint_circuit_tests {
             "nodes in {table_name} constraint multitree after constant folding: {}",
             node_counter(&mut constraints)
         );
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
 
         let mut after_fold: Vec<MPolynomial<XFieldElement>> = vec![];
         for circuit in constraints.iter() {
@@ -1539,6 +1527,7 @@ mod constraint_circuit_tests {
             folding again: {}",
             node_counter(&mut constraints)
         );
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap();
 
         println!("Max degree constraint for {table_name} table: {circuit_degree}");
@@ -1608,24 +1597,5 @@ mod constraint_circuit_tests {
             challenges.ram_table_challenges,
             "ram",
         );
-    }
-
-    #[test]
-    fn usize_to_input_indicator_to_usize_is_identity() {
-        const NUM_BASE_COLS: usize = 5;
-        const NUM_EXT_COLS: usize = 2;
-        const NUM_COLS: usize = NUM_BASE_COLS + NUM_EXT_COLS;
-
-        for i in 0..NUM_COLS {
-            let input_indicator: SingleRowIndicator<NUM_BASE_COLS, NUM_EXT_COLS> = i.into();
-            let j: usize = input_indicator.into();
-            assert_eq!(i, j);
-        }
-
-        for i in 0..2 * NUM_COLS {
-            let input_indicator: DualRowIndicator<NUM_BASE_COLS, NUM_EXT_COLS> = i.into();
-            let j: usize = input_indicator.into();
-            assert_eq!(i, j);
-        }
     }
 }

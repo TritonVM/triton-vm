@@ -8,13 +8,6 @@ use std::hash::Hash;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
 
-use crate::table::hash_table;
-use crate::table::instruction_table;
-use crate::table::jump_stack_table;
-use crate::table::op_stack_table;
-use crate::table::processor_table;
-use crate::table::program_table;
-use crate::table::ram_table;
 use crate::table::table_collection::EXT_HASH_TABLE_START;
 use crate::table::table_collection::EXT_INSTRUCTION_TABLE_START;
 use crate::table::table_collection::EXT_JUMP_STACK_TABLE_START;
@@ -261,7 +254,7 @@ impl From<ProgramExtTableColumn> for usize {
         ProgramExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + program_table::BASE_WIDTH)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
@@ -281,7 +274,7 @@ impl From<InstructionExtTableColumn> for usize {
         InstructionExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + instruction_table::BASE_WIDTH)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
@@ -301,7 +294,7 @@ impl From<ProcessorExtTableColumn> for usize {
         ProcessorExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + processor_table::BASE_WIDTH)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
@@ -321,7 +314,7 @@ impl From<OpStackExtTableColumn> for usize {
         OpStackExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + op_stack_table::BASE_WIDTH)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
@@ -341,7 +334,7 @@ impl From<RamExtTableColumn> for usize {
         RamExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + ram_table::BASE_WIDTH)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
@@ -361,7 +354,7 @@ impl From<JumpStackExtTableColumn> for usize {
         JumpStackExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + jump_stack_table::BASE_WIDTH)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
@@ -381,7 +374,7 @@ impl From<HashExtTableColumn> for usize {
         HashExtTableColumn::iter()
             .enumerate()
             .find(|&(_n, col)| column == col)
-            .map(|(n, _col)| n + hash_table::BASE_WIDTH)
+            .map(|(n, _col)| n)
             .unwrap()
     }
 }
@@ -444,43 +437,43 @@ impl MasterBaseTableColumn for HashBaseTableColumn {
 
 impl MasterExtTableColumn for ProgramExtTableColumn {
     fn master_table_index(&self) -> usize {
-        EXT_PROGRAM_TABLE_START + usize::from(*self) - program_table::BASE_WIDTH
+        EXT_PROGRAM_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterExtTableColumn for InstructionExtTableColumn {
     fn master_table_index(&self) -> usize {
-        EXT_INSTRUCTION_TABLE_START + usize::from(*self) - instruction_table::BASE_WIDTH
+        EXT_INSTRUCTION_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterExtTableColumn for ProcessorExtTableColumn {
     fn master_table_index(&self) -> usize {
-        EXT_PROCESSOR_TABLE_START + usize::from(*self) - processor_table::BASE_WIDTH
+        EXT_PROCESSOR_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterExtTableColumn for OpStackExtTableColumn {
     fn master_table_index(&self) -> usize {
-        EXT_OP_STACK_TABLE_START + usize::from(*self) - op_stack_table::BASE_WIDTH
+        EXT_OP_STACK_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterExtTableColumn for RamExtTableColumn {
     fn master_table_index(&self) -> usize {
-        EXT_RAM_TABLE_START + usize::from(*self) - ram_table::BASE_WIDTH
+        EXT_RAM_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterExtTableColumn for JumpStackExtTableColumn {
     fn master_table_index(&self) -> usize {
-        EXT_JUMP_STACK_TABLE_START + usize::from(*self) - jump_stack_table::BASE_WIDTH
+        EXT_JUMP_STACK_TABLE_START + usize::from(*self)
     }
 }
 
 impl MasterExtTableColumn for HashExtTableColumn {
     fn master_table_index(&self) -> usize {
-        EXT_HASH_TABLE_START + usize::from(*self) - hash_table::BASE_WIDTH
+        EXT_HASH_TABLE_START + usize::from(*self)
     }
 }
 
