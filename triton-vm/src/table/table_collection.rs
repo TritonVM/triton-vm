@@ -334,6 +334,8 @@ impl MasterBaseTable {
         ProcessorTable::pad_trace(processor_table, main_execution_len);
         let op_stack_table = &mut self.table_mut(TableId::OpStackTable);
         OpStackTable::pad_trace(op_stack_table, main_execution_len);
+        let jump_stack_table = &mut self.table_mut(TableId::JumpStackTable);
+        JumpStackTable::pad_trace(jump_stack_table, main_execution_len);
     }
 
     pub fn to_fri_domain_table(&self) -> Self {
