@@ -1,9 +1,13 @@
 use std::cmp::Ordering;
 
 use itertools::Itertools;
+use ndarray::parallel::prelude::*;
 use ndarray::s;
+use ndarray::Array1;
 use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
@@ -86,44 +90,6 @@ impl TableLike<BFieldElement> for OpStackTable {}
 impl Extendable for OpStackTable {
     fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
         panic!("This function should not be called: the Op Stack Table implements `.pad` directly.")
-    }
-
-    fn pad(&mut self, padded_height: usize) {
-        let max_clock = self.data().len() as u64 - 1;
-        let num_padding_rows = padded_height - self.data().len();
-
-        let template_index = self
-            .data()
-            .iter()
-            .enumerate()
-            .find(|(_, row)| row[usize::from(CLK)].value() == max_clock)
-            .map(|(idx, _)| idx)
-            .expect("Op Stack Table must contain row with clock cycle equal to max cycle.");
-        let insertion_index = template_index + 1;
-
-        let padding_template = &mut self.mut_data()[template_index];
-        padding_template[usize::from(InverseOfClkDiffMinusOne)] = 0_u64.into();
-
-        let mut padding_rows = vec![];
-        while padding_rows.len() < num_padding_rows {
-            let mut padding_row = padding_template.clone();
-            padding_row[usize::from(CLK)] += (padding_rows.len() as u32 + 1).into();
-            padding_rows.push(padding_row)
-        }
-
-        if let Some(row) = padding_rows.last_mut() {
-            if let Some(next_row) = self.data().get(insertion_index) {
-                let clk_diff = next_row[usize::from(CLK)] - row[usize::from(CLK)];
-                row[usize::from(InverseOfClkDiffMinusOne)] =
-                    (clk_diff - BFieldElement::one()).inverse_or_zero();
-            }
-        }
-
-        let old_tail_length = self.data().len() - insertion_index;
-        self.mut_data().append(&mut padding_rows);
-        self.mut_data()[insertion_index..].rotate_left(old_tail_length);
-
-        assert_eq!(padded_height, self.data().len());
     }
 }
 
@@ -364,6 +330,79 @@ impl OpStackTable {
             }
         }
         clock_jump_differences_greater_than_1
+    }
+
+    pub fn pad_trace(
+        op_stack_table: &mut ArrayViewMut2<BFieldElement>,
+        processor_table_len: usize,
+    ) {
+        assert!(
+            processor_table_len > 0,
+            "Processor Table must have at least 1 row."
+        );
+
+        // Set up indices for relevant sections of the table.
+        let max_clk_before_padding = processor_table_len - 1;
+        let max_clk_before_padding_row_idx = op_stack_table
+            .rows()
+            .into_iter()
+            .enumerate()
+            .find(|(_, row)| row[usize::from(CLK)].value() as usize == max_clk_before_padding)
+            .map(|(idx, _)| idx)
+            .expect("Op Stack Table must contain row with clock cycle equal to max cycle.");
+        let padded_height = op_stack_table.nrows();
+        let num_padding_rows = padded_height - processor_table_len;
+        let padding_section_start = max_clk_before_padding_row_idx + 1;
+        let padding_section_end = padding_section_start + num_padding_rows;
+        let rows_that_need_moving_insertion_idx = padding_section_end + 1;
+
+        // Move all rows below the row with highest CLK to the end of the table.
+        let rows_that_need_moving = op_stack_table
+            .slice(s![
+                max_clk_before_padding_row_idx + 1..processor_table_len,
+                ..
+            ])
+            .to_owned();
+        rows_that_need_moving.move_into(
+            &mut op_stack_table.slice_mut(s![rows_that_need_moving_insertion_idx.., ..]),
+        );
+
+        // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row
+        // before the gap. This is the padding section.
+        let mut padding_row_template = op_stack_table
+            .row(max_clk_before_padding_row_idx)
+            .to_owned();
+        padding_row_template[usize::from(InverseOfClkDiffMinusOne)] = BFieldElement::zero();
+        let mut padding_section =
+            op_stack_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
+        padding_section
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .for_each(|padding_row| padding_row_template.clone().move_into(padding_row));
+
+        // CLK keeps increasing by 1 also in the padding section.
+        let new_clk_values = Array1::from_iter(
+            (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
+        );
+        new_clk_values.move_into(padding_section.slice_mut(s![.., usize::from(CLK)]));
+
+        // InverseOfClkDiffMinusOne must be consistent at the padding section's boundaries.
+        op_stack_table[[
+            max_clk_before_padding_row_idx,
+            usize::from(InverseOfClkDiffMinusOne),
+        ]] = BFieldElement::zero();
+        if rows_that_need_moving_insertion_idx > 0 {
+            let max_clk_after_padding = padded_height - 1;
+            let clk_diff_minus_one_at_padding_section_lower_boundary = op_stack_table
+                [[rows_that_need_moving_insertion_idx, usize::from(CLK)]]
+                - BFieldElement::new(max_clk_after_padding as u64)
+                - BFieldElement::one();
+            let last_row_in_padding_section_idx = rows_that_need_moving_insertion_idx - 1;
+            op_stack_table[[
+                last_row_in_padding_section_idx,
+                usize::from(InverseOfClkDiffMinusOne),
+            ]] = clk_diff_minus_one_at_padding_section_lower_boundary.inverse_or_zero();
+        }
     }
 
     pub fn extend(&self, challenges: &OpStackTableChallenges) -> ExtOpStackTable {
