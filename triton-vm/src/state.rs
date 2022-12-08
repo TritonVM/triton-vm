@@ -286,7 +286,7 @@ impl<'pgm> VMState<'pgm> {
 
             ReadMem => {
                 let ramp = self.op_stack.safe_peek(ST1);
-                let ramv = self.memory_get(&ramp)?;
+                let ramv = self.memory_get(&ramp);
                 self.op_stack.pop()?;
                 self.op_stack.push(ramv);
                 self.ramp = ramp.value();
@@ -630,11 +630,11 @@ impl<'pgm> VMState<'pgm> {
             .ok_or_else(|| vm_fail(JumpStackTooShallow))
     }
 
-    fn memory_get(&self, mem_addr: &BFieldElement) -> Result<BFieldElement> {
+    fn memory_get(&self, mem_addr: &BFieldElement) -> BFieldElement {
         self.ram
             .get(mem_addr)
             .copied()
-            .ok_or_else(|| vm_fail(MemoryAddressNotFound))
+            .unwrap_or_else(BFieldElement::zero)
     }
 
     fn assert_vector(&self) -> bool {
@@ -1112,5 +1112,13 @@ mod vm_state_tests {
         for state in trace.iter() {
             println!("{}", state);
         }
+    }
+
+    #[test]
+    fn read_mem_unitialized() {
+        let program = Program::from_code("read_mem halt").unwrap();
+        let (trace, _out, err) = program.run(vec![], vec![]);
+        assert!(err.is_none(), "Reading from uninitialized memory address");
+        assert_eq!(2, trace.len());
     }
 }

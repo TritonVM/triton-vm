@@ -10,7 +10,6 @@ pub enum InstructionError {
     OpStackTooShallow,
     JumpStackTooShallow,
     AssertionFailed(usize, u32, BFieldElement),
-    MemoryAddressNotFound,
     InverseOfZero,
     RunawayInstructionArg,
     UngracefulTermination,
@@ -38,10 +37,6 @@ impl Display for InstructionError {
                     "Assertion failed: st0 must be 1. ip: {}, clk: {}, st0: {}",
                     ip, clk, st0
                 )
-            }
-
-            MemoryAddressNotFound => {
-                write!(f, "Memory address not found")
             }
 
             InverseOfZero => {
