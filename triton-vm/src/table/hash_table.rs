@@ -496,6 +496,11 @@ impl HashTable {
         }
     }
 
+    pub fn pad_trace(_hash_table: &mut ArrayViewMut2<BFieldElement>) {
+        // Hash Table is “padded” with all-zero rows. It is also initialized with all-zero rows.
+        // Hence, no need to do anything.
+    }
+
     pub fn extend(&self, challenges: &HashTableChallenges) -> ExtHashTable {
         let mut from_processor_running_evaluation = EvalArg::default_initial();
         let mut to_processor_running_evaluation = EvalArg::default_initial();

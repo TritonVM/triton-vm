@@ -338,6 +338,8 @@ impl MasterBaseTable {
         RamTable::pad_trace(ram_table, main_execution_len);
         let jump_stack_table = &mut self.table_mut(TableId::JumpStackTable);
         JumpStackTable::pad_trace(jump_stack_table, main_execution_len);
+        let hash_table = &mut self.table_mut(TableId::HashTable);
+        HashTable::pad_trace(hash_table);
     }
 
     pub fn to_fri_domain_table(&self) -> Self {
