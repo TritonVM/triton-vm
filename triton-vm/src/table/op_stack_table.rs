@@ -294,6 +294,8 @@ impl OpStackTable {
         );
 
         // Set up indices for relevant sections of the table.
+        let padded_height = op_stack_table.nrows();
+        let num_padding_rows = padded_height - processor_table_len;
         let max_clk_before_padding = processor_table_len - 1;
         let max_clk_before_padding_row_idx = op_stack_table
             .rows()
@@ -302,22 +304,28 @@ impl OpStackTable {
             .find(|(_, row)| row[usize::from(CLK)].value() as usize == max_clk_before_padding)
             .map(|(idx, _)| idx)
             .expect("Op Stack Table must contain row with clock cycle equal to max cycle.");
-        let padded_height = op_stack_table.nrows();
-        let num_padding_rows = padded_height - processor_table_len;
-        let padding_section_start = max_clk_before_padding_row_idx + 1;
+        let rows_to_move_source_section_start = max_clk_before_padding_row_idx + 1;
+        let rows_to_move_source_section_end = processor_table_len;
+        let num_rows_to_move = rows_to_move_source_section_end - rows_to_move_source_section_start;
+        let rows_to_move_dest_section_start = rows_to_move_source_section_start + num_padding_rows;
+        let rows_to_move_dest_section_end = rows_to_move_dest_section_start + num_rows_to_move;
+        let padding_section_start = rows_to_move_source_section_start;
         let padding_section_end = padding_section_start + num_padding_rows;
-        let rows_that_need_moving_insertion_idx = padding_section_end + 1;
+        assert_eq!(padded_height, rows_to_move_dest_section_end);
 
-        // Move all rows below the row with highest CLK to the end of the table.
-        let rows_that_need_moving = op_stack_table
-            .slice(s![
-                max_clk_before_padding_row_idx + 1..processor_table_len,
+        // Move all rows below the row with highest CLK to the end of the table – if they exist.
+        if num_rows_to_move > 0 {
+            let rows_to_move = op_stack_table
+                .slice(s![
+                    rows_to_move_source_section_start..rows_to_move_source_section_end,
+                    ..
+                ])
+                .to_owned();
+            rows_to_move.move_into(&mut op_stack_table.slice_mut(s![
+                rows_to_move_dest_section_start..rows_to_move_dest_section_end,
                 ..
-            ])
-            .to_owned();
-        rows_that_need_moving.move_into(
-            &mut op_stack_table.slice_mut(s![rows_that_need_moving_insertion_idx.., ..]),
-        );
+            ]));
+        }
 
         // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row
         // before the gap. This is the padding section.
@@ -343,13 +351,13 @@ impl OpStackTable {
             max_clk_before_padding_row_idx,
             usize::from(InverseOfClkDiffMinusOne),
         ]] = BFieldElement::zero();
-        if rows_that_need_moving_insertion_idx > 0 {
+        if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
             let max_clk_after_padding = padded_height - 1;
             let clk_diff_minus_one_at_padding_section_lower_boundary = op_stack_table
-                [[rows_that_need_moving_insertion_idx, usize::from(CLK)]]
+                [[rows_to_move_dest_section_start, usize::from(CLK)]]
                 - BFieldElement::new(max_clk_after_padding as u64)
                 - BFieldElement::one();
-            let last_row_in_padding_section_idx = rows_that_need_moving_insertion_idx - 1;
+            let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
             op_stack_table[[
                 last_row_in_padding_section_idx,
                 usize::from(InverseOfClkDiffMinusOne),
