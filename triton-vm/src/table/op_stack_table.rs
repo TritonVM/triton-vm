@@ -22,10 +22,6 @@ use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::PermArg;
 use crate::op_stack::OP_STACK_REG_COUNT;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
-use crate::table::base_table::Extendable;
-use crate::table::base_table::InheritsFromTable;
-use crate::table::base_table::Table;
-use crate::table::base_table::TableLike;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -54,46 +50,12 @@ pub const EXT_WIDTH: usize = OpStackExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
-pub struct OpStackTable {
-    inherited_table: Table<BFieldElement>,
-}
-
-impl InheritsFromTable<BFieldElement> for OpStackTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
+pub struct OpStackTable {}
 
 #[derive(Debug, Clone)]
-pub struct ExtOpStackTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
+pub struct ExtOpStackTable {}
 
 impl QuotientableExtensionTable for ExtOpStackTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtOpStackTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for OpStackTable {}
-
-impl Extendable for OpStackTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        panic!("This function should not be called: the Op Stack Table implements `.pad` directly.")
-    }
-}
-
-impl TableLike<XFieldElement> for ExtOpStackTable {}
 
 impl ExtOpStackTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -262,16 +224,6 @@ impl ExtOpStackTable {
 }
 
 impl OpStackTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table =
-            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "OpStackTable".to_string());
-        Self { inherited_table }
-    }
-
     /// Fills the trace table in-place and returns all clock jump differences greater than 1.
     pub fn fill_trace(
         op_stack_table: &mut ArrayViewMut2<BFieldElement>,
@@ -406,12 +358,13 @@ impl OpStackTable {
     }
 
     pub fn extend(&self, challenges: &OpStackTableChallenges) -> ExtOpStackTable {
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
+        let fake_data = vec![vec![BFieldElement::zero()]];
+        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
         let mut running_product = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in self.data().iter() {
+        for row in fake_data.iter() {
             let mut extension_row = [0.into(); FULL_WIDTH];
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
@@ -454,15 +407,8 @@ impl OpStackTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
-        ExtOpStackTable { inherited_table }
-    }
-}
-
-impl ExtOpStackTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
+        assert_eq!(fake_data.len(), extension_matrix.len());
+        ExtOpStackTable {}
     }
 }
 

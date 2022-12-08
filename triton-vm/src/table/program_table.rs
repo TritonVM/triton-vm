@@ -16,10 +16,6 @@ use ProgramTableChallengeId::*;
 
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::EvalArg;
-use crate::table::base_table::Extendable;
-use crate::table::base_table::InheritsFromTable;
-use crate::table::base_table::Table;
-use crate::table::base_table::TableLike;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -47,55 +43,12 @@ pub const EXT_WIDTH: usize = ProgramExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
-pub struct ProgramTable {
-    inherited_table: Table<BFieldElement>,
-}
-
-impl InheritsFromTable<BFieldElement> for ProgramTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
+pub struct ProgramTable {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExtProgramTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
+pub struct ExtProgramTable {}
 
 impl QuotientableExtensionTable for ExtProgramTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtProgramTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for ProgramTable {}
-
-impl Extendable for ProgramTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        let zero = BFieldElement::zero();
-        let one = BFieldElement::one();
-
-        let mut padding_row = [zero; BASE_WIDTH];
-        if let Some(row) = self.data().last() {
-            padding_row[usize::from(Address)] = row[usize::from(Address)] + one;
-        }
-        padding_row[usize::from(IsPadding)] = one;
-
-        (None, vec![padding_row.to_vec()])
-    }
-}
-
-impl TableLike<XFieldElement> for ExtProgramTable {}
 
 impl ExtProgramTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -193,16 +146,6 @@ impl ExtProgramTable {
 }
 
 impl ProgramTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table =
-            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProgramTable".to_string());
-        Self { inherited_table }
-    }
-
     pub fn fill_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program: &[BFieldElement]) {
         let program_len = program.len();
         let address_column = program_table.slice_mut(s![..program_len, usize::from(Address)]);
@@ -265,12 +208,6 @@ impl ProgramTable {
             .last()
             .expect("Program Table must not be empty.");
         last_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
-    }
-}
-
-impl ExtProgramTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
     }
 }
 

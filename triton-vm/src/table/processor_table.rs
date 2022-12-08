@@ -29,10 +29,6 @@ use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
 use crate::ord_n::Ord7;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
-use crate::table::base_table::Extendable;
-use crate::table::base_table::InheritsFromTable;
-use crate::table::base_table::Table;
-use crate::table::base_table::TableLike;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -60,31 +56,9 @@ pub const EXT_WIDTH: usize = ProcessorExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
-pub struct ProcessorTable {
-    inherited_table: Table<BFieldElement>,
-}
-
-impl InheritsFromTable<BFieldElement> for ProcessorTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
+pub struct ProcessorTable {}
 
 impl ProcessorTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table =
-            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProcessorTable".to_string());
-        Self { inherited_table }
-    }
-
     pub fn fill_trace(
         processor_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
@@ -142,8 +116,9 @@ impl ProcessorTable {
     }
 
     pub fn extend(&self, challenges: &ProcessorTableChallenges) -> ExtProcessorTable {
+        let fake_data = vec![vec![BFieldElement::zero()]];
         let mut unique_clock_jump_differences = vec![];
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
+        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
 
         let mut input_table_running_evaluation = EvalArg::default_initial();
         let mut output_table_running_evaluation = EvalArg::default_initial();
@@ -159,7 +134,7 @@ impl ProcessorTable {
             PermArg::default_initial() * PermArg::default_initial() * PermArg::default_initial();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in self.data().iter() {
+        for row in fake_data.iter() {
             let mut extension_row = [0.into(); FULL_WIDTH];
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
@@ -368,17 +343,12 @@ impl ProcessorTable {
                 selected_clock_cycles_running_evaluation;
         }
 
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
-        ExtProcessorTable { inherited_table }
+        assert_eq!(fake_data.len(), extension_matrix.len());
+        ExtProcessorTable {}
     }
 }
 
 impl ExtProcessorTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-
     /// Instruction-specific transition constraints are combined with deselectors in such a way
     /// that arbitrary sets of mutually exclusive combinations are summed, i.e.,
     ///
@@ -682,42 +652,9 @@ pub struct IOChallenges {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExtProcessorTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
+pub struct ExtProcessorTable {}
 
 impl QuotientableExtensionTable for ExtProcessorTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for ProcessorTable {}
-
-impl Extendable for ProcessorTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        let zero = BFieldElement::zero();
-        let one = BFieldElement::one();
-        if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            padding_row[usize::from(CLK)] += one;
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row])
-        } else {
-            let mut padding_row = vec![zero; BASE_WIDTH];
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row])
-        }
-    }
-}
-
-impl TableLike<XFieldElement> for ExtProcessorTable {}
 
 impl ExtProcessorTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<

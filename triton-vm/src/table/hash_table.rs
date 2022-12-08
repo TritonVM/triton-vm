@@ -19,10 +19,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::EvalArg;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
-use crate::table::base_table::Extendable;
-use crate::table::base_table::InheritsFromTable;
-use crate::table::base_table::Table;
-use crate::table::base_table::TableLike;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -53,46 +49,12 @@ pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE * 2;
 pub const TOTAL_NUM_CONSTANTS: usize = NUM_ROUND_CONSTANTS * NUM_ROUNDS;
 
 #[derive(Debug, Clone)]
-pub struct HashTable {
-    inherited_table: Table<BFieldElement>,
-}
-
-impl InheritsFromTable<BFieldElement> for HashTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
+pub struct HashTable {}
 
 #[derive(Debug, Clone)]
-pub struct ExtHashTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
+pub struct ExtHashTable {}
 
 impl QuotientableExtensionTable for ExtHashTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtHashTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for HashTable {}
-
-impl Extendable for HashTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
-    }
-}
-
-impl TableLike<XFieldElement> for ExtHashTable {}
 
 impl ExtHashTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -476,15 +438,6 @@ impl ExtHashTable {
 }
 
 impl HashTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "HashTable".to_string());
-        Self { inherited_table }
-    }
-
     // todo: make the AET use ndarray, then this becomes a simple memcopy
     pub fn fill_trace(
         hash_table: &mut ArrayViewMut2<BFieldElement>,
@@ -502,11 +455,12 @@ impl HashTable {
     }
 
     pub fn extend(&self, challenges: &HashTableChallenges) -> ExtHashTable {
+        let fake_data = vec![vec![BFieldElement::zero()]];
         let mut from_processor_running_evaluation = EvalArg::default_initial();
         let mut to_processor_running_evaluation = EvalArg::default_initial();
 
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
-        for row in self.data().iter() {
+        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
+        for row in fake_data.iter() {
             let mut extension_row = [0.into(); FULL_WIDTH];
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
@@ -586,18 +540,8 @@ impl HashTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let extension_table = self.new_from_lifted_matrix(extension_matrix);
-
-        ExtHashTable {
-            inherited_table: extension_table,
-        }
-    }
-}
-
-impl ExtHashTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
+        assert_eq!(fake_data.len(), extension_matrix.len());
+        ExtHashTable {}
     }
 }
 
@@ -689,6 +633,8 @@ impl ExtensionTable for ExtHashTable {}
 
 #[cfg(test)]
 mod constraint_tests {
+    use num_traits::Zero;
+
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::extension_table::Evaluable;
 

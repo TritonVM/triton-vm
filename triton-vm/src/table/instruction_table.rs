@@ -16,10 +16,6 @@ use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::EvalArg;
 use crate::cross_table_arguments::PermArg;
 use crate::table::base_matrix::AlgebraicExecutionTrace;
-use crate::table::base_table::Extendable;
-use crate::table::base_table::InheritsFromTable;
-use crate::table::base_table::Table;
-use crate::table::base_table::TableLike;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -49,9 +45,7 @@ pub const EXT_WIDTH: usize = InstructionExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
-pub struct InstructionTable {
-    inherited_table: Table<BFieldElement>,
-}
+pub struct InstructionTable {}
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash, Eq)]
 pub enum InstructionTableChallengeId {
@@ -110,54 +104,10 @@ impl TableChallenges for InstructionTableChallenges {
     }
 }
 
-impl InheritsFromTable<BFieldElement> for InstructionTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
 #[derive(Debug, Clone)]
-pub struct ExtInstructionTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
+pub struct ExtInstructionTable {}
 
 impl QuotientableExtensionTable for ExtInstructionTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtInstructionTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for InstructionTable {}
-
-impl Extendable for InstructionTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        let zero = BFieldElement::zero();
-        let one = BFieldElement::one();
-        if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            // address keeps increasing
-            padding_row[usize::from(Address)] += one;
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row])
-        } else {
-            let mut padding_row = [zero; BASE_WIDTH];
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row.to_vec()])
-        }
-    }
-}
-
-impl TableLike<XFieldElement> for ExtInstructionTable {}
 
 impl ExtInstructionTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -336,20 +286,6 @@ impl ExtInstructionTable {
 }
 
 impl InstructionTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            matrix,
-            "InstructionTable".to_string(),
-        );
-        Self { inherited_table }
-    }
-
     pub fn fill_trace(
         instruction_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
@@ -415,12 +351,13 @@ impl InstructionTable {
     }
 
     pub fn extend(&self, challenges: &InstructionTableChallenges) -> ExtInstructionTable {
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
+        let fake_data = vec![vec![BFieldElement::zero()]];
+        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
         let mut processor_table_running_product = PermArg::default_initial();
         let mut program_table_running_evaluation = EvalArg::default_initial();
         let mut previous_row: Option<Vec<_>> = None;
 
-        for row in self.data().iter() {
+        for row in fake_data.iter() {
             let mut extension_row = [0.into(); FULL_WIDTH];
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
@@ -474,15 +411,8 @@ impl InstructionTable {
             extension_matrix.push(extension_row.to_vec());
         }
 
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
-        ExtInstructionTable { inherited_table }
-    }
-}
-
-impl ExtInstructionTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
+        assert_eq!(fake_data.len(), extension_matrix.len());
+        ExtInstructionTable {}
     }
 }
 

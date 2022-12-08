@@ -13,12 +13,11 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::table::table_collection::interpolant_degree;
 
-use super::base_table::TableLike;
 use super::challenges::AllChallenges;
 
 // Generic methods specifically for tables that have been extended
 
-pub trait ExtensionTable: TableLike<XFieldElement> + Sync {}
+pub trait ExtensionTable {}
 
 const ERROR_MESSAGE_GENERATE_CONSTRAINTS: &str =
     "Constraints must be in place. Run: `cargo run --bin constraint-evaluation-generator`";
