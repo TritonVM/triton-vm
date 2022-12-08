@@ -15,8 +15,8 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::error::vm_err;
 use crate::instruction::DivinationHint;
 use crate::ord_n::{Ord16, Ord7};
-use crate::table::base_matrix::ProcessorMatrixRow;
 use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
+use crate::table::processor_table::ProcessorMatrixRow;
 use crate::table::table_column::{
     InstructionBaseTableColumn, JumpStackBaseTableColumn, OpStackBaseTableColumn,
     ProcessorBaseTableColumn, RamBaseTableColumn,

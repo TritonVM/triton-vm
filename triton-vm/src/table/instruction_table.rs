@@ -15,7 +15,6 @@ use InstructionTableChallengeId::*;
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::EvalArg;
 use crate::cross_table_arguments::PermArg;
-use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -35,6 +34,7 @@ use crate::table::table_column::InstructionExtTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;

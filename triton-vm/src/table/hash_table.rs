@@ -18,7 +18,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::EvalArg;
-use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -36,6 +35,7 @@ use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::HashExtTableColumn::*;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;

@@ -11,7 +11,14 @@ use crate::instruction::Instruction;
 use crate::instruction::LabelledInstruction;
 use crate::state::VMOutput;
 use crate::state::VMState;
-use crate::table::base_matrix::AlgebraicExecutionTrace;
+use crate::table::hash_table;
+use crate::table::processor_table;
+
+#[derive(Debug, Clone, Default)]
+pub struct AlgebraicExecutionTrace {
+    pub processor_matrix: Vec<[BFieldElement; processor_table::BASE_WIDTH]>,
+    pub hash_matrix: Vec<[BFieldElement; hash_table::BASE_WIDTH]>,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
@@ -224,9 +231,9 @@ pub mod triton_vm_tests {
     use crate::instruction::AnInstruction;
     use crate::shared_tests::SourceCodeAndInput;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
-    use crate::table::base_matrix::ProcessorMatrixRow;
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ExtProcessorTable;
+    use crate::table::processor_table::ProcessorMatrixRow;
     use crate::table::table_collection::TableId::ProcessorTable;
     use crate::table::table_column::ProcessorBaseTableColumn;
 

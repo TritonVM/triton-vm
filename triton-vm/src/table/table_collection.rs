@@ -31,7 +31,6 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
-use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::extension_table::Evaluable;
@@ -51,6 +50,7 @@ use crate::table::program_table::ProgramTable;
 use crate::table::ram_table::ExtRamTable;
 use crate::table::ram_table::RamTable;
 use crate::table::*;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const NUM_TABLES: usize = 7;
 

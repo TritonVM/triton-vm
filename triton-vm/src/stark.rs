@@ -47,9 +47,9 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
-use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::AllChallenges;
 use crate::table::table_collection::*;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub type StarkHasher = RescuePrimeRegular;
 pub type Maker = CpuParallel;
@@ -973,7 +973,6 @@ pub(crate) mod triton_stark_tests {
     use crate::cross_table_arguments::EvalArg;
     use crate::instruction::sample_programs;
     use crate::shared_tests::*;
-    use crate::table::base_matrix::AlgebraicExecutionTrace;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
     use crate::table::hash_table::ExtHashTable;
@@ -992,6 +991,7 @@ pub(crate) mod triton_stark_tests {
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
+    use crate::vm::AlgebraicExecutionTrace;
     use crate::vm::Program;
 
     use super::*;

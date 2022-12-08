@@ -21,7 +21,6 @@ use OpStackTableChallengeId::*;
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::PermArg;
 use crate::op_stack::OP_STACK_REG_COUNT;
-use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -40,6 +39,7 @@ use crate::table::table_column::OpStackBaseTableColumn::*;
 use crate::table::table_column::OpStackExtTableColumn;
 use crate::table::table_column::OpStackExtTableColumn::*;
 use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;

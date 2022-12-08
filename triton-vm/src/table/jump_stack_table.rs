@@ -16,12 +16,13 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use std::fmt::Display;
+use std::fmt::Formatter;
 use JumpStackTableChallengeId::*;
 
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::PermArg;
 use crate::instruction::Instruction;
-use crate::table::base_matrix::AlgebraicExecutionTrace;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -40,6 +41,7 @@ use crate::table::table_column::JumpStackExtTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
@@ -493,3 +495,23 @@ impl TableChallenges for JumpStackTableChallenges {
 }
 
 impl ExtensionTable for ExtJumpStackTable {}
+
+pub struct JumpStackMatrixRow {
+    pub row: [BFieldElement; BASE_WIDTH],
+}
+
+impl Display for JumpStackMatrixRow {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let width = 5;
+        write!(
+            f,
+            "│ CLK: {:>width$} │ CI:  {:>width$} │ \
+            JSP: {:>width$} │ JSO: {:>width$} │ JSD: {:>width$} │",
+            self.row[usize::from(CLK)].value(),
+            self.row[usize::from(CI)].value(),
+            self.row[usize::from(JSP)].value(),
+            self.row[usize::from(JSO)].value(),
+            self.row[usize::from(JSD)].value(),
+        )
+    }
+}

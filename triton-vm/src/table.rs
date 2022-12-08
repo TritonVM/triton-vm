@@ -1,4 +1,3 @@
-pub mod base_matrix;
 pub mod challenges;
 pub mod constraint_circuit;
 pub mod constraints;
