@@ -8,6 +8,7 @@ use std::vec;
 use anyhow::{bail, Result};
 use itertools::Itertools;
 use num_traits::One;
+use regex::Regex;
 use strum::{EnumCount, IntoEnumIterator};
 use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -393,7 +394,9 @@ fn convert_labels_helper(
     }
 }
 
-pub fn parse(code: &str) -> Result<Vec<LabelledInstruction>> {
+pub fn parse(code_with_comments: &str) -> Result<Vec<LabelledInstruction>> {
+    let remove_comments = Regex::new(r"//.*?(?:\n|$)").expect("a regex that matches comments");
+    let code = remove_comments.replace_all(code_with_comments, "");
     let mut tokens = code.split_whitespace();
     let mut instructions = vec![];
 
@@ -1069,13 +1072,14 @@ pub mod sample_programs {
     ";
 
     pub const FIB_SHOOTOUT: &str = "
+        // Initialize stack: _ 0 1 i
         push 0
         push 1
         divine
 
         call fib-loop
-        write_io
-        write_io
+        write_io  // After loop, this is 0
+        write_io  // After loop, this is fib(i)
         halt
 
         fib-loop:
@@ -1083,6 +1087,8 @@ pub mod sample_programs {
             dup0 skiz recurse
             return
 
+        // Before: _ a b i
+        // After: _ b (a+b) (i-1)
         fib-step:
             push -1
             add
