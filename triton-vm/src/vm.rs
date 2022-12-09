@@ -212,20 +212,21 @@ impl Program {
 
 #[cfg(test)]
 pub mod triton_vm_tests {
-    use ndarray::Array1;
-    use ndarray::ArrayView1;
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
+    use ndarray::Array1;
+    use ndarray::ArrayView1;
     use num_traits::One;
     use num_traits::Zero;
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
-    use triton_profiler::triton_profiler::TritonProfiler;
     use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
+
+    use triton_profiler::triton_profiler::TritonProfiler;
 
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
@@ -235,6 +236,7 @@ pub mod triton_vm_tests {
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::processor_table::ProcessorMatrixRow;
     use crate::table::table_collection::TableId::ProcessorTable;
+    use crate::table::table_column::BaseTableColumn;
     use crate::table::table_column::ProcessorBaseTableColumn;
 
     use super::*;
@@ -789,7 +791,7 @@ pub mod triton_vm_tests {
                 .table(ProcessorTable)
                 .rows()
                 .into_iter()
-                .filter(|row| row[usize::from(ProcessorBaseTableColumn::IsPadding)].is_zero())
+                .filter(|row| row[ProcessorBaseTableColumn::IsPadding.table_index()].is_zero())
                 .count();
 
             let base_processor_table = master_base_table.table(ProcessorTable);
@@ -815,7 +817,7 @@ pub mod triton_vm_tests {
                 {
                     if !tc_evaluation_result.is_zero() {
                         let ci =
-                            current_base_row[usize::from(ProcessorBaseTableColumn::CI)].value();
+                            current_base_row[ProcessorBaseTableColumn::CI.table_index()].value();
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
                             {tc_evaluation_result} but must be 0.\n\

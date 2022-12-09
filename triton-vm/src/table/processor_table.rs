@@ -1,6 +1,7 @@
 use std::cmp::max;
 use std::cmp::Eq;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::ops::Mul;
 
 use itertools::Itertools;
@@ -19,7 +20,6 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use std::fmt::Display;
 use ProcessorTableChallengeId::*;
 
 use crate::cross_table_arguments::CrossTableArg;
@@ -40,6 +40,8 @@ use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
@@ -77,16 +79,16 @@ impl ProcessorTable {
 
             let clk_jump_difference = all_clk_jump_diffs.pop().unwrap_or(zero);
             let clk_jump_difference_inv = clk_jump_difference.inverse_or_zero();
-            row[usize::from(ClockJumpDifference)] = clk_jump_difference;
-            row[usize::from(ClockJumpDifferenceInverse)] = clk_jump_difference_inv;
+            row[ClockJumpDifference.table_index()] = clk_jump_difference;
+            row[ClockJumpDifferenceInverse.table_index()] = clk_jump_difference_inv;
 
             if let Some(prow) = previous_row {
-                let previous_clk_jump_difference = prow[usize::from(ClockJumpDifference)];
+                let previous_clk_jump_difference = prow[ClockJumpDifference.table_index()];
                 if previous_clk_jump_difference != clk_jump_difference {
                     let clk_diff_diff: BFieldElement =
                         clk_jump_difference - previous_clk_jump_difference;
                     let clk_diff_diff_inv = clk_diff_diff.inverse();
-                    row[usize::from(UniqueClockJumpDiffDiffInverse)] = clk_diff_diff_inv;
+                    row[UniqueClockJumpDiffDiffInverse.table_index()] = clk_diff_diff_inv;
                 }
             }
 
@@ -109,10 +111,10 @@ impl ProcessorTable {
         let clocks = Array1::from_iter(
             (processor_table_len..processor_table.nrows()).map(|a| BFieldElement::new(a as u64)),
         );
-        clocks.move_into(processor_table.slice_mut(s![processor_table_len.., usize::from(CLK)]));
+        clocks.move_into(processor_table.slice_mut(s![processor_table_len.., CLK.table_index()]));
 
         processor_table
-            .slice_mut(s![processor_table_len.., usize::from(IsPadding)])
+            .slice_mut(s![processor_table_len.., IsPadding.table_index()])
             .fill(BFieldElement::one());
     }
 
@@ -142,46 +144,47 @@ impl ProcessorTable {
 
             // Input table
             if let Some(prow) = previous_row.clone() {
-                if prow[usize::from(CI)] == Instruction::ReadIo.opcode_b() {
-                    let input_symbol = extension_row[usize::from(ST0)];
+                if prow[CI.table_index()] == Instruction::ReadIo.opcode_b() {
+                    let input_symbol = extension_row[ST0.table_index()];
                     input_table_running_evaluation = input_table_running_evaluation
                         * challenges.standard_input_eval_indeterminate
                         + input_symbol;
                 }
             }
-            extension_row[usize::from(InputTableEvalArg)] = input_table_running_evaluation;
+            extension_row[InputTableEvalArg.table_index()] = input_table_running_evaluation;
 
             // Output table
-            if row[usize::from(CI)] == Instruction::WriteIo.opcode_b() {
-                let output_symbol = extension_row[usize::from(ST0)];
+            if row[CI.table_index()] == Instruction::WriteIo.opcode_b() {
+                let output_symbol = extension_row[ST0.table_index()];
                 output_table_running_evaluation = output_table_running_evaluation
                     * challenges.standard_output_eval_indeterminate
                     + output_symbol;
             }
-            extension_row[usize::from(OutputTableEvalArg)] = output_table_running_evaluation;
+            extension_row[OutputTableEvalArg.table_index()] = output_table_running_evaluation;
 
             // Instruction table
-            let ip = extension_row[usize::from(IP)];
-            let ci = extension_row[usize::from(CI)];
-            let nia = extension_row[usize::from(NIA)];
+            let ip = extension_row[IP.table_index()];
+            let ci = extension_row[CI.table_index()];
+            let nia = extension_row[NIA.table_index()];
 
             let ip_w = challenges.instruction_table_ip_weight;
             let ci_w = challenges.instruction_table_ci_processor_weight;
             let nia_w = challenges.instruction_table_nia_weight;
 
-            if row[usize::from(IsPadding)].is_zero() {
+            if row[IsPadding.table_index()].is_zero() {
                 let compressed_row_for_instruction_table_permutation_argument =
                     ip * ip_w + ci * ci_w + nia * nia_w;
                 instruction_table_running_product *= challenges.instruction_perm_indeterminate
                     - compressed_row_for_instruction_table_permutation_argument;
             }
-            extension_row[usize::from(InstructionTablePermArg)] = instruction_table_running_product;
+            extension_row[InstructionTablePermArg.table_index()] =
+                instruction_table_running_product;
 
             // OpStack table
-            let clk = extension_row[usize::from(CLK)];
-            let ib1 = extension_row[usize::from(IB1)];
-            let osp = extension_row[usize::from(OSP)];
-            let osv = extension_row[usize::from(OSV)];
+            let clk = extension_row[CLK.table_index()];
+            let ib1 = extension_row[IB1.table_index()];
+            let osp = extension_row[OSP.table_index()];
+            let osv = extension_row[OSV.table_index()];
 
             let compressed_row_for_op_stack_table_permutation_argument = clk
                 * challenges.op_stack_table_clk_weight
@@ -190,11 +193,11 @@ impl ProcessorTable {
                 + osv * challenges.op_stack_table_osv_weight;
             opstack_table_running_product *= challenges.op_stack_perm_indeterminate
                 - compressed_row_for_op_stack_table_permutation_argument;
-            extension_row[usize::from(OpStackTablePermArg)] = opstack_table_running_product;
+            extension_row[OpStackTablePermArg.table_index()] = opstack_table_running_product;
 
             // RAM Table
-            let ramv = extension_row[usize::from(RAMV)];
-            let ramp = extension_row[usize::from(RAMP)];
+            let ramv = extension_row[RAMV.table_index()];
+            let ramp = extension_row[RAMP.table_index()];
 
             let compressed_row_for_ram_table_permutation_argument = clk
                 * challenges.ram_table_clk_weight
@@ -202,12 +205,12 @@ impl ProcessorTable {
                 + ramp * challenges.ram_table_ramp_weight;
             ram_table_running_product *= challenges.ram_perm_indeterminate
                 - compressed_row_for_ram_table_permutation_argument;
-            extension_row[usize::from(RamTablePermArg)] = ram_table_running_product;
+            extension_row[RamTablePermArg.table_index()] = ram_table_running_product;
 
             // JumpStack Table
-            let jsp = extension_row[usize::from(JSP)];
-            let jso = extension_row[usize::from(JSO)];
-            let jsd = extension_row[usize::from(JSD)];
+            let jsp = extension_row[JSP.table_index()];
+            let jso = extension_row[JSO.table_index()];
+            let jsd = extension_row[JSD.table_index()];
             let compressed_row_for_jump_stack_table = clk * challenges.jump_stack_table_clk_weight
                 + ci * challenges.jump_stack_table_ci_weight
                 + jsp * challenges.jump_stack_table_jsp_weight
@@ -215,21 +218,21 @@ impl ProcessorTable {
                 + jsd * challenges.jump_stack_table_jsd_weight;
             jump_stack_running_product *=
                 challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
-            extension_row[usize::from(JumpStackTablePermArg)] = jump_stack_running_product;
+            extension_row[JumpStackTablePermArg.table_index()] = jump_stack_running_product;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
-            if row[usize::from(CI)] == Instruction::Hash.opcode_b() {
+            if row[CI.table_index()] == Instruction::Hash.opcode_b() {
                 let st_0_through_9 = [
-                    extension_row[usize::from(ST0)],
-                    extension_row[usize::from(ST1)],
-                    extension_row[usize::from(ST2)],
-                    extension_row[usize::from(ST3)],
-                    extension_row[usize::from(ST4)],
-                    extension_row[usize::from(ST5)],
-                    extension_row[usize::from(ST6)],
-                    extension_row[usize::from(ST7)],
-                    extension_row[usize::from(ST8)],
-                    extension_row[usize::from(ST9)],
+                    extension_row[ST0.table_index()],
+                    extension_row[ST1.table_index()],
+                    extension_row[ST2.table_index()],
+                    extension_row[ST3.table_index()],
+                    extension_row[ST4.table_index()],
+                    extension_row[ST5.table_index()],
+                    extension_row[ST6.table_index()],
+                    extension_row[ST7.table_index()],
+                    extension_row[ST8.table_index()],
+                    extension_row[ST9.table_index()],
                 ];
                 let compressed_row_for_hash_input: XFieldElement = st_0_through_9
                     .into_iter()
@@ -254,17 +257,17 @@ impl ProcessorTable {
                     * challenges.to_hash_table_eval_indeterminate
                     + compressed_row_for_hash_input;
             }
-            extension_row[usize::from(ToHashTableEvalArg)] = to_hash_table_running_evaluation;
+            extension_row[ToHashTableEvalArg.table_index()] = to_hash_table_running_evaluation;
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
             if let Some(prow) = previous_row.clone() {
-                if prow[usize::from(CI)] == Instruction::Hash.opcode_b() {
+                if prow[CI.table_index()] == Instruction::Hash.opcode_b() {
                     let st_5_through_9 = [
-                        extension_row[usize::from(ST5)],
-                        extension_row[usize::from(ST6)],
-                        extension_row[usize::from(ST7)],
-                        extension_row[usize::from(ST8)],
-                        extension_row[usize::from(ST9)],
+                        extension_row[ST5.table_index()],
+                        extension_row[ST6.table_index()],
+                        extension_row[ST7.table_index()],
+                        extension_row[ST8.table_index()],
+                        extension_row[ST9.table_index()],
                     ];
                     let compressed_row_for_hash_digest: XFieldElement = st_5_through_9
                         .into_iter()
@@ -285,20 +288,20 @@ impl ProcessorTable {
                         + compressed_row_for_hash_digest;
                 }
             }
-            extension_row[usize::from(FromHashTableEvalArg)] = from_hash_table_running_evaluation;
+            extension_row[FromHashTableEvalArg.table_index()] = from_hash_table_running_evaluation;
 
             // Clock Jump Difference
-            let current_clock_jump_difference = row[usize::from(ClockJumpDifference)].lift();
+            let current_clock_jump_difference = row[ClockJumpDifference.table_index()].lift();
             if !current_clock_jump_difference.is_zero() {
                 all_clock_jump_differences_running_product *= challenges
                     .all_clock_jump_differences_multi_perm_indeterminate
                     - current_clock_jump_difference;
             }
-            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+            extension_row[AllClockJumpDifferencesPermArg.table_index()] =
                 all_clock_jump_differences_running_product;
 
             if let Some(prow) = previous_row {
-                let previous_clock_jump_difference = prow[usize::from(ClockJumpDifference)].lift();
+                let previous_clock_jump_difference = prow[ClockJumpDifference.table_index()].lift();
                 if previous_clock_jump_difference != current_clock_jump_difference
                     && !current_clock_jump_difference.is_zero()
                 {
@@ -314,7 +317,7 @@ impl ProcessorTable {
                     .unique_clock_jump_differences_eval_indeterminate
                     + current_clock_jump_difference;
             }
-            extension_row[usize::from(UniqueClockJumpDifferencesEvalArg)] =
+            extension_row[UniqueClockJumpDifferencesEvalArg.table_index()] =
                 unique_clock_jump_differences_running_evaluation;
 
             previous_row = Some(row.clone());
@@ -334,13 +337,13 @@ impl ProcessorTable {
         // second pass over Processor Table to compute evaluation over
         // all relevant clock cycles
         for extension_row in extension_matrix.iter_mut() {
-            let current_clk = extension_row[usize::from(CLK)];
+            let current_clk = extension_row[CLK.table_index()];
             if unique_clock_jump_differences.contains(&current_clk) {
                 selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
                     * challenges.unique_clock_jump_differences_eval_indeterminate
                     + current_clk;
             }
-            extension_row[usize::from(SelectedClockCyclesEvalArg)] =
+            extension_row[SelectedClockCyclesEvalArg.table_index()] =
                 selected_clock_cycles_running_evaluation;
         }
 
@@ -4157,15 +4160,15 @@ impl Display for ProcessorMatrixRow {
             row(f, "".into())
         }
 
-        let instruction = self.row[usize::from(CI)].value().try_into().unwrap();
+        let instruction = self.row[CI.table_index()].value().try_into().unwrap();
         let instruction_with_arg = match instruction {
-            Push(_) => Push(self.row[usize::from(NIA)]),
-            Call(_) => Call(self.row[usize::from(NIA)]),
-            Dup(_) => Dup((self.row[usize::from(NIA)].value() as u32)
+            Push(_) => Push(self.row[NIA.table_index()]),
+            Call(_) => Call(self.row[NIA.table_index()]),
+            Dup(_) => Dup((self.row[NIA.table_index()].value() as u32)
                 .try_into()
                 .unwrap()),
             Swap(_) => Swap(
-                (self.row[usize::from(NIA)].value() as u32)
+                (self.row[NIA.table_index()].value() as u32)
                     .try_into()
                     .unwrap(),
             ),
@@ -4185,34 +4188,34 @@ impl Display for ProcessorMatrixRow {
             f,
             format!(
                 "ip:   {:>width$} ╷ ci:   {:>width$} ╷ nia: {:>width$} │ {:>17}",
-                self.row[usize::from(IP)].value(),
-                self.row[usize::from(CI)].value(),
-                self.row[usize::from(NIA)].value(),
-                self.row[usize::from(CLK)].value(),
+                self.row[IP.table_index()].value(),
+                self.row[CI.table_index()].value(),
+                self.row[NIA.table_index()].value(),
+                self.row[CLK.table_index()].value(),
             ),
         )?;
 
         writeln!(
             f,
             "│ jsp:  {:>width$} │ jso:  {:>width$} │ jsd: {:>width$} ╰───────────────────┤",
-            self.row[usize::from(JSP)].value(),
-            self.row[usize::from(JSO)].value(),
-            self.row[usize::from(JSD)].value(),
+            self.row[JSP.table_index()].value(),
+            self.row[JSO.table_index()].value(),
+            self.row[JSD.table_index()].value(),
         )?;
         row(
             f,
             format!(
                 "ramp: {:>width$} │ ramv: {:>width$} │",
-                self.row[usize::from(RAMP)].value(),
-                self.row[usize::from(RAMV)].value(),
+                self.row[RAMP.table_index()].value(),
+                self.row[RAMV.table_index()].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "osp:  {:>width$} │ osv:  {:>width$} ╵",
-                self.row[usize::from(OSP)].value(),
-                self.row[usize::from(OSV)].value(),
+                self.row[OSP.table_index()].value(),
+                self.row[OSV.table_index()].value(),
             ),
         )?;
 
@@ -4222,40 +4225,40 @@ impl Display for ProcessorMatrixRow {
             f,
             format!(
                 "st0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST0)].value(),
-                self.row[usize::from(ST1)].value(),
-                self.row[usize::from(ST2)].value(),
-                self.row[usize::from(ST3)].value(),
+                self.row[ST0.table_index()].value(),
+                self.row[ST1.table_index()].value(),
+                self.row[ST2.table_index()].value(),
+                self.row[ST3.table_index()].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "st4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST4)].value(),
-                self.row[usize::from(ST5)].value(),
-                self.row[usize::from(ST6)].value(),
-                self.row[usize::from(ST7)].value(),
+                self.row[ST4.table_index()].value(),
+                self.row[ST5.table_index()].value(),
+                self.row[ST6.table_index()].value(),
+                self.row[ST7.table_index()].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "st8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST8)].value(),
-                self.row[usize::from(ST9)].value(),
-                self.row[usize::from(ST10)].value(),
-                self.row[usize::from(ST11)].value(),
+                self.row[ST8.table_index()].value(),
+                self.row[ST9.table_index()].value(),
+                self.row[ST10.table_index()].value(),
+                self.row[ST11.table_index()].value(),
             ),
         )?;
         row(
             f,
             format!(
                 "st12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(ST12)].value(),
-                self.row[usize::from(ST13)].value(),
-                self.row[usize::from(ST14)].value(),
-                self.row[usize::from(ST15)].value(),
+                self.row[ST12.table_index()].value(),
+                self.row[ST13.table_index()].value(),
+                self.row[ST14.table_index()].value(),
+                self.row[ST15.table_index()].value(),
             ),
         )?;
 
@@ -4265,10 +4268,10 @@ impl Display for ProcessorMatrixRow {
             f,
             format!(
                 "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
-                self.row[usize::from(HV0)].value(),
-                self.row[usize::from(HV1)].value(),
-                self.row[usize::from(HV2)].value(),
-                self.row[usize::from(HV3)].value(),
+                self.row[HV0.table_index()].value(),
+                self.row[HV1.table_index()].value(),
+                self.row[HV2.table_index()].value(),
+                self.row[HV3.table_index()].value(),
             ),
         )?;
         let w = 2;
@@ -4277,13 +4280,13 @@ impl Display for ProcessorMatrixRow {
             format!(
                 "ib0-6:    \
                 [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
-                self.row[usize::from(IB0)].value(),
-                self.row[usize::from(IB1)].value(),
-                self.row[usize::from(IB2)].value(),
-                self.row[usize::from(IB3)].value(),
-                self.row[usize::from(IB4)].value(),
-                self.row[usize::from(IB5)].value(),
-                self.row[usize::from(IB6)].value(),
+                self.row[IB0.table_index()].value(),
+                self.row[IB1.table_index()].value(),
+                self.row[IB2.table_index()].value(),
+                self.row[IB3.table_index()].value(),
+                self.row[IB4.table_index()].value(),
+                self.row[IB5.table_index()].value(),
+                self.row[IB6.table_index()].value(),
             ),
         )?;
         write!(
@@ -4313,7 +4316,7 @@ impl Display for ExtProcessorMatrixRow {
                    col: ProcessorExtTableColumn|
          -> std::fmt::Result {
             // without the extra `format!()`, alignment in `writeln!()` fails
-            let formatted_col_elem = format!("{}", self.row[usize::from(col)]);
+            let formatted_col_elem = format!("{}", self.row[col.table_index()]);
             writeln!(form, "     │ {: <18}  {:>73} │", desc, formatted_col_elem,)
         };
 

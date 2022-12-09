@@ -32,6 +32,8 @@ use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
@@ -70,9 +72,9 @@ impl RamTable {
         // contiguous regions of RAMP values.
         let mut pre_processed_ram_table: HashMap<_, Vec<_>> = HashMap::new();
         for processor_row in aet.processor_matrix.iter() {
-            let clk = processor_row[usize::from(ProcessorBaseTableColumn::CLK)];
-            let ramp = processor_row[usize::from(ProcessorBaseTableColumn::RAMP)];
-            let ramv = processor_row[usize::from(ProcessorBaseTableColumn::RAMV)];
+            let clk = processor_row[ProcessorBaseTableColumn::CLK.table_index()];
+            let ramp = processor_row[ProcessorBaseTableColumn::RAMP.table_index()];
+            let ramv = processor_row[ProcessorBaseTableColumn::RAMV.table_index()];
             let ram_row = (clk, ramv);
             pre_processed_ram_table
                 .entry(ramp)
@@ -105,16 +107,16 @@ impl RamTable {
         bezout_coefficient_polynomial_coefficients_1.resize(num_of_ramps, BFieldElement::zero());
         let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
         let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
-        ram_table[(0, usize::from(BezoutCoefficient0))] = current_bcpc_0;
-        ram_table[(0, usize::from(BezoutCoefficient1))] = current_bcpc_1;
+        ram_table[[0, BezoutCoefficient0.table_index()]] = current_bcpc_0;
+        ram_table[[0, BezoutCoefficient1.table_index()]] = current_bcpc_1;
 
         // Move the rows into the Ram Table, as contiguous regions of RAMP values, sorted by CLK.
         let mut ram_table_row = 0;
         for (ramp, ram_table_rows) in pre_processed_ram_table {
             for (clk, ramv) in ram_table_rows {
-                ram_table[[ram_table_row, usize::from(CLK)]] = clk;
-                ram_table[[ram_table_row, usize::from(RAMP)]] = ramp;
-                ram_table[[ram_table_row, usize::from(RAMV)]] = ramv;
+                ram_table[[ram_table_row, CLK.table_index()]] = clk;
+                ram_table[[ram_table_row, RAMP.table_index()]] = ramp;
+                ram_table[[ram_table_row, RAMV.table_index()]] = ramv;
                 ram_table_row += 1;
             }
         }
@@ -130,21 +132,21 @@ impl RamTable {
             let (mut curr_row, mut next_row) =
                 ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
 
-            let clk_diff = next_row[usize::from(CLK)] - curr_row[usize::from(CLK)];
+            let clk_diff = next_row[CLK.table_index()] - curr_row[CLK.table_index()];
             let clk_diff_minus_1 = clk_diff - BFieldElement::one();
             let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
-            curr_row[usize::from(InverseOfClkDiffMinusOne)] = clk_diff_minus_1_inverse;
+            curr_row[InverseOfClkDiffMinusOne.table_index()] = clk_diff_minus_1_inverse;
 
-            let ramp_diff = next_row[usize::from(RAMP)] - curr_row[usize::from(RAMP)];
+            let ramp_diff = next_row[RAMP.table_index()] - curr_row[RAMP.table_index()];
             let ramp_diff_inverse = ramp_diff.inverse_or_zero();
-            curr_row[usize::from(InverseOfRampDifference)] = ramp_diff_inverse;
+            curr_row[InverseOfRampDifference.table_index()] = ramp_diff_inverse;
 
             if ramp_diff != BFieldElement::zero() {
                 current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
                 current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
             }
-            next_row[usize::from(BezoutCoefficientPolynomialCoefficient0)] = current_bcpc_0;
-            next_row[usize::from(BezoutCoefficientPolynomialCoefficient1)] = current_bcpc_1;
+            next_row[BezoutCoefficientPolynomialCoefficient0.table_index()] = current_bcpc_0;
+            next_row[BezoutCoefficientPolynomialCoefficient1.table_index()] = current_bcpc_1;
 
             if ramp_diff != BFieldElement::zero() && clk_diff.value() > 1 {
                 clock_jump_differences_greater_than_1.push(clk_diff);
@@ -171,7 +173,7 @@ impl RamTable {
             .rows()
             .into_iter()
             .enumerate()
-            .find(|(_, row)| row[usize::from(CLK)].value() as usize == max_clk_before_padding)
+            .find(|(_, row)| row[CLK.table_index()].value() as usize == max_clk_before_padding)
             .map(|(idx, _)| idx)
             .expect("Ram Table must contain row with clock cycle equal to max cycle.");
         let rows_to_move_source_section_start = max_clk_before_padding_row_idx + 1;
@@ -200,9 +202,9 @@ impl RamTable {
         // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row
         // before the gap. This is the padding section.
         let mut padding_row_template = ram_table.row(max_clk_before_padding_row_idx).to_owned();
-        let ramp_difference_inverse = padding_row_template[usize::from(InverseOfRampDifference)];
-        padding_row_template[usize::from(InverseOfRampDifference)] = BFieldElement::zero();
-        padding_row_template[usize::from(InverseOfClkDiffMinusOne)] = BFieldElement::zero();
+        let ramp_difference_inverse = padding_row_template[InverseOfRampDifference.table_index()];
+        padding_row_template[InverseOfRampDifference.table_index()] = BFieldElement::zero();
+        padding_row_template[InverseOfClkDiffMinusOne.table_index()] = BFieldElement::zero();
         let mut padding_section =
             ram_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
         padding_section
@@ -214,32 +216,32 @@ impl RamTable {
         let new_clk_values = Array1::from_iter(
             (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
         );
-        new_clk_values.move_into(padding_section.slice_mut(s![.., usize::from(CLK)]));
+        new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.table_index()]));
 
         // InverseOfRampDifference and InverseOfClkDiffMinusOne must be consistent at the padding
         // section's boundaries.
         ram_table[[
             max_clk_before_padding_row_idx,
-            usize::from(InverseOfRampDifference),
+            InverseOfRampDifference.table_index(),
         ]] = BFieldElement::zero();
         ram_table[[
             max_clk_before_padding_row_idx,
-            usize::from(InverseOfClkDiffMinusOne),
+            InverseOfClkDiffMinusOne.table_index(),
         ]] = BFieldElement::zero();
         if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
             let max_clk_after_padding = padded_height - 1;
             let clk_diff_minus_one_at_padding_section_lower_boundary = ram_table
-                [[rows_to_move_dest_section_start, usize::from(CLK)]]
+                [[rows_to_move_dest_section_start, CLK.table_index()]]
                 - BFieldElement::new(max_clk_after_padding as u64)
                 - BFieldElement::one();
             let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
             ram_table[[
                 last_row_in_padding_section_idx,
-                usize::from(InverseOfRampDifference),
+                InverseOfRampDifference.table_index(),
             ]] = ramp_difference_inverse;
             ram_table[[
                 last_row_in_padding_section_idx,
-                usize::from(InverseOfClkDiffMinusOne),
+                InverseOfClkDiffMinusOne.table_index(),
             ]] = clk_diff_minus_one_at_padding_section_lower_boundary.inverse_or_zero();
         }
     }
@@ -251,12 +253,12 @@ impl RamTable {
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
 
         // initialize columns establishing Bézout relation
-        let ramp_first_row = fake_data.first().unwrap()[usize::from(RAMP)];
+        let ramp_first_row = fake_data.first().unwrap()[RAMP.table_index()];
         let mut running_product_of_ramp = challenges.bezout_relation_indeterminate - ramp_first_row;
         let mut formal_derivative = XFieldElement::one();
         let mut bezout_coefficient_0 = XFieldElement::zero();
         let bcpc_first_row =
-            fake_data.first().unwrap()[usize::from(BezoutCoefficientPolynomialCoefficient1)];
+            fake_data.first().unwrap()[BezoutCoefficientPolynomialCoefficient1.table_index()];
         let mut bezout_coefficient_1 = bcpc_first_row.lift();
 
         let mut previous_row: Option<Vec<BFieldElement>> = None;
@@ -265,15 +267,17 @@ impl RamTable {
             extension_row[..BASE_WIDTH]
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
-            let clk = extension_row[usize::from(CLK)];
-            let ramp = extension_row[usize::from(RAMP)];
-            let ramv = extension_row[usize::from(RAMV)];
+            let clk = extension_row[CLK.table_index()];
+            let ramp = extension_row[RAMP.table_index()];
+            let ramv = extension_row[RAMV.table_index()];
 
             if let Some(prow) = previous_row {
-                if prow[usize::from(RAMP)] != row[usize::from(RAMP)] {
+                if prow[RAMP.table_index()] != row[RAMP.table_index()] {
                     // accumulate coefficient for Bézout relation, proving new RAMP is unique
-                    let bcpc0 = extension_row[usize::from(BezoutCoefficientPolynomialCoefficient0)];
-                    let bcpc1 = extension_row[usize::from(BezoutCoefficientPolynomialCoefficient1)];
+                    let bcpc0 =
+                        extension_row[BezoutCoefficientPolynomialCoefficient0.table_index()];
+                    let bcpc1 =
+                        extension_row[BezoutCoefficientPolynomialCoefficient1.table_index()];
                     let bezout_challenge = challenges.bezout_relation_indeterminate;
 
                     formal_derivative =
@@ -284,7 +288,7 @@ impl RamTable {
                 } else {
                     // prove that clock jump is directed forward
                     let clock_jump_difference =
-                        (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
+                        (row[CLK.table_index()] - prow[CLK.table_index()]).lift();
                     if clock_jump_difference != XFieldElement::one() {
                         all_clock_jump_differences_running_product *= challenges
                             .all_clock_jump_differences_multi_perm_indeterminate
@@ -293,11 +297,11 @@ impl RamTable {
                 }
             }
 
-            extension_row[usize::from(RunningProductOfRAMP)] = running_product_of_ramp;
-            extension_row[usize::from(FormalDerivative)] = formal_derivative;
-            extension_row[usize::from(BezoutCoefficient0)] = bezout_coefficient_0;
-            extension_row[usize::from(BezoutCoefficient1)] = bezout_coefficient_1;
-            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+            extension_row[RunningProductOfRAMP.table_index()] = running_product_of_ramp;
+            extension_row[FormalDerivative.table_index()] = formal_derivative;
+            extension_row[BezoutCoefficient0.table_index()] = bezout_coefficient_0;
+            extension_row[BezoutCoefficient1.table_index()] = bezout_coefficient_1;
+            extension_row[AllClockJumpDifferencesPermArg.table_index()] =
                 all_clock_jump_differences_running_product;
 
             // permutation argument to Processor Table
@@ -312,7 +316,7 @@ impl RamTable {
             // compute the running product of the compressed column for permutation argument
             running_product_for_perm_arg *=
                 challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
-            extension_row[usize::from(RunningProductPermArg)] = running_product_for_perm_arg;
+            extension_row[RunningProductPermArg.table_index()] = running_product_for_perm_arg;
 
             previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());

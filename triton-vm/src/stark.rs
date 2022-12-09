@@ -985,6 +985,7 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_collection::all_degrees_with_origin;
     use crate::table::table_collection::MasterExtTable;
     use crate::table::table_collection::TableId::ProcessorTable;
+    use crate::table::table_column::ExtTableColumn;
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
@@ -1084,14 +1085,14 @@ pub(crate) mod triton_stark_tests {
     // 1. simulate(), pad(), extend(), test terminals
     #[test]
     pub fn check_io_terminals() {
-        let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io";
+        let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io halt";
         let input_symbols = [3, 5, 7].map(BFieldElement::new).to_vec();
         let (stark, _, _, master_ext_table, all_challenges) =
             parse_simulate_pad_extend(read_nop_code, input_symbols, vec![]);
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
-        let ptie = processor_table_last_row[usize::from(InputTableEvalArg)];
+        let ptie = processor_table_last_row[InputTableEvalArg.table_index()];
         let ine = EvalArg::compute_terminal(
             &stark.claim.input,
             EvalArg::default_initial(),
@@ -1099,7 +1100,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
-        let ptoe = processor_table_last_row[usize::from(OutputTableEvalArg)];
+        let ptoe = processor_table_last_row[OutputTableEvalArg.table_index()];
         let oute = EvalArg::compute_terminal(
             &stark.claim.output,
             EvalArg::default_initial(),
@@ -1169,13 +1170,13 @@ pub(crate) mod triton_stark_tests {
 
             let processor_table = master_ext_table.table(ProcessorTable);
             let processor_table_last_row = processor_table.slice(s![-1, ..]);
-            let ptie = processor_table_last_row[usize::from(InputTableEvalArg)];
+            let ptie = processor_table_last_row[InputTableEvalArg.table_index()];
             assert_eq!(
                 ptie, input_terminal,
                 "The input terminal must match for TASM snipped #{code_idx}."
             );
 
-            let ptoe = processor_table_last_row[usize::from(OutputTableEvalArg)];
+            let ptoe = processor_table_last_row[OutputTableEvalArg.table_index()];
             assert_eq!(
                 ptoe, output_terminal,
                 "The output terminal must match for TASM snipped #{code_idx}."

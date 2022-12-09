@@ -27,6 +27,8 @@ use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn;
@@ -148,12 +150,12 @@ impl ExtProgramTable {
 impl ProgramTable {
     pub fn fill_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program: &[BFieldElement]) {
         let program_len = program.len();
-        let address_column = program_table.slice_mut(s![..program_len, usize::from(Address)]);
+        let address_column = program_table.slice_mut(s![..program_len, Address.table_index()]);
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);
 
         let mut instruction_column =
-            program_table.slice_mut(s![..program_len, usize::from(Instruction)]);
+            program_table.slice_mut(s![..program_len, Instruction.table_index()]);
         par_azip!((ic in &mut instruction_column, &instr in program)  *ic = instr);
     }
 
@@ -161,10 +163,10 @@ impl ProgramTable {
         let addresses = Array1::from_iter(
             (program_len..program_table.nrows()).map(|a| BFieldElement::new(a as u64)),
         );
-        addresses.move_into(program_table.slice_mut(s![program_len.., usize::from(Address)]));
+        addresses.move_into(program_table.slice_mut(s![program_len.., Address.table_index()]));
 
         program_table
-            .slice_mut(s![program_len.., usize::from(IsPadding)])
+            .slice_mut(s![program_len.., IsPadding.table_index()])
             .fill(BFieldElement::one());
     }
 
@@ -180,17 +182,17 @@ impl ProgramTable {
             let next_row = window.slice(s![1, ..]);
             let mut extension_row = ext_table.slice_mut(s![idx, ..]);
 
-            let address = row[usize::from(Address)].lift();
-            let instruction = row[usize::from(Instruction)].lift();
-            let next_instruction = next_row[usize::from(Instruction)].lift();
+            let address = row[Address.table_index()].lift();
+            let instruction = row[Instruction.table_index()].lift();
+            let next_instruction = next_row[Instruction.table_index()].lift();
 
             // The running evaluation linking Program Table and Instruction Table does record the
             // initial in the first row, contrary to most other running evaluations and products.
             // The running product's final value, allowing for a meaningful cross-table argument,
             // is recorded in the first padding row. This row is guaranteed to exist.
-            extension_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
+            extension_row[RunningEvaluation.table_index()] = instruction_table_running_evaluation;
             // update the running evaluation if not a padding row
-            if row[usize::from(IsPadding)].is_zero() {
+            if row[IsPadding.table_index()].is_zero() {
                 // compress address, instruction, and next instruction (or argument) into one value
                 let compressed_row_for_evaluation_argument = address * challenges.address_weight
                     + instruction * challenges.instruction_weight
@@ -207,7 +209,7 @@ impl ProgramTable {
             .into_iter()
             .last()
             .expect("Program Table must not be empty.");
-        last_row[usize::from(RunningEvaluation)] = instruction_table_running_evaluation;
+        last_row[RunningEvaluation.table_index()] = instruction_table_running_evaluation;
     }
 }
 

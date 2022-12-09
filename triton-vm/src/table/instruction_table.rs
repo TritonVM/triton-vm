@@ -27,6 +27,8 @@ use crate::table::extension_table::ExtensionTable;
 use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::InstructionBaseTableColumn;
 use crate::table::table_column::InstructionBaseTableColumn::*;
 use crate::table::table_column::InstructionExtTableColumn;
@@ -298,7 +300,7 @@ impl InstructionTable {
         let program_len = program.len();
         let mut processor_trace_row_counts = vec![0; program_len];
         for row in aet.processor_matrix.iter() {
-            let ip = row[usize::from(ProcessorBaseTableColumn::IP)].value() as usize;
+            let ip = row[ProcessorBaseTableColumn::IP.table_index()].value() as usize;
             assert!(ip < program_len, "IP out of bounds – cheating?");
             processor_trace_row_counts[ip] += 1;
         }
@@ -316,13 +318,13 @@ impl InstructionTable {
                 ..
             ]);
             instruction_sub_table
-                .slice_mut(s![.., usize::from(Address)])
+                .slice_mut(s![.., Address.table_index()])
                 .fill(BFieldElement::new(address as u64));
             instruction_sub_table
-                .slice_mut(s![.., usize::from(CI)])
+                .slice_mut(s![.., CI.table_index()])
                 .fill(instruction);
             instruction_sub_table
-                .slice_mut(s![.., usize::from(NIA)])
+                .slice_mut(s![.., NIA.table_index()])
                 .fill(nia);
             next_row_in_instruction_table = last_row_for_this_instruction;
         }
@@ -336,17 +338,17 @@ impl InstructionTable {
         //  - set `padding_address` to the highest address in the instruction table + 1
         //  - fill all padding rows' `address` field with `padding_address`
         let highest_encountered_address = instruction_table
-            .slice(s![..instruction_table_len, usize::from(Address)])
+            .slice(s![..instruction_table_len, Address.table_index()])
             .iter()
             .map(|&x| x.value())
             .max()
             .unwrap_or(0);
         instruction_table
-            .slice_mut(s![instruction_table_len.., usize::from(Address)])
+            .slice_mut(s![instruction_table_len.., Address.table_index()])
             .fill(BFieldElement::new(highest_encountered_address + 1));
 
         instruction_table
-            .slice_mut(s![instruction_table_len.., usize::from(IsPadding)])
+            .slice_mut(s![instruction_table_len.., IsPadding.table_index()])
             .fill(BFieldElement::one());
     }
 
@@ -367,32 +369,32 @@ impl InstructionTable {
             // Not different: update running product of Permutation Argument with Processor Table.
             let mut is_duplicate_row = false;
             if let Some(prow) = previous_row {
-                if prow[usize::from(Address)] == row[usize::from(Address)] {
+                if prow[Address.table_index()] == row[Address.table_index()] {
                     is_duplicate_row = true;
-                    debug_assert_eq!(prow[usize::from(CI)], row[usize::from(CI)]);
-                    debug_assert_eq!(prow[usize::from(NIA)], row[usize::from(NIA)]);
+                    debug_assert_eq!(prow[CI.table_index()], row[CI.table_index()]);
+                    debug_assert_eq!(prow[NIA.table_index()], row[NIA.table_index()]);
                 } else {
                     debug_assert_eq!(
-                        prow[usize::from(Address)] + BFieldElement::one(),
-                        row[usize::from(Address)]
+                        prow[Address.table_index()] + BFieldElement::one(),
+                        row[Address.table_index()]
                     );
                 }
             }
 
             // Compress values of current row for Permutation Argument with Processor Table
-            let ip = row[usize::from(Address)].lift();
-            let ci = row[usize::from(CI)].lift();
-            let nia = row[usize::from(NIA)].lift();
+            let ip = row[Address.table_index()].lift();
+            let ci = row[CI.table_index()].lift();
+            let nia = row[NIA.table_index()].lift();
             let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
                 + ci * challenges.ci_processor_weight
                 + nia * challenges.nia_processor_weight;
 
             // Update running product if same row has been seen before and not padding row
-            if is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
+            if is_duplicate_row && row[IsPadding.table_index()].is_zero() {
                 processor_table_running_product *= challenges.processor_perm_indeterminate
                     - compressed_row_for_permutation_argument;
             }
-            extension_row[usize::from(RunningProductPermArg)] = processor_table_running_product;
+            extension_row[RunningProductPermArg.table_index()] = processor_table_running_product;
 
             // Compress values of current row for Evaluation Argument with Program Table
             let compressed_row_for_evaluation_argument = ip * challenges.address_weight
@@ -400,12 +402,12 @@ impl InstructionTable {
                 + nia * challenges.next_instruction_weight;
 
             // Update running evaluation if same row has _not_ been seen before and not padding row
-            if !is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
+            if !is_duplicate_row && row[IsPadding.table_index()].is_zero() {
                 program_table_running_evaluation = program_table_running_evaluation
                     * challenges.program_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
-            extension_row[usize::from(RunningEvaluation)] = program_table_running_evaluation;
+            extension_row[RunningEvaluation.table_index()] = program_table_running_evaluation;
 
             previous_row = Some(row.clone());
             extension_matrix.push(extension_row.to_vec());

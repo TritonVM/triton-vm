@@ -31,10 +31,14 @@ use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::hash_table::HashTableChallengeId::*;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::HashExtTableColumn::*;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
@@ -69,15 +73,15 @@ impl ExtHashTable {
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
 
-        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.into()));
+        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_table_index()));
         let running_evaluation_from_processor =
-            circuit_builder.input(ExtRow(FromProcessorRunningEvaluation.into()));
+            circuit_builder.input(ExtRow(FromProcessorRunningEvaluation.master_table_index()));
         let running_evaluation_to_processor =
-            circuit_builder.input(ExtRow(ToProcessorRunningEvaluation.into()));
+            circuit_builder.input(ExtRow(ToProcessorRunningEvaluation.master_table_index()));
         let state = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
         ]
-        .map(|st| circuit_builder.input(BaseRow(st.into())));
+        .map(|st| circuit_builder.input(BaseRow(st.master_table_index())));
 
         let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
 
@@ -132,13 +136,13 @@ impl ExtHashTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
-        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.into()));
-        let state10 = circuit_builder.input(BaseRow(STATE10.into()));
-        let state11 = circuit_builder.input(BaseRow(STATE11.into()));
-        let state12 = circuit_builder.input(BaseRow(STATE12.into()));
-        let state13 = circuit_builder.input(BaseRow(STATE13.into()));
-        let state14 = circuit_builder.input(BaseRow(STATE14.into()));
-        let state15 = circuit_builder.input(BaseRow(STATE15.into()));
+        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_table_index()));
+        let state10 = circuit_builder.input(BaseRow(STATE10.master_table_index()));
+        let state11 = circuit_builder.input(BaseRow(STATE11.master_table_index()));
+        let state12 = circuit_builder.input(BaseRow(STATE12.master_table_index()));
+        let state13 = circuit_builder.input(BaseRow(STATE13.master_table_index()));
+        let state14 = circuit_builder.input(BaseRow(STATE14.master_table_index()));
+        let state15 = circuit_builder.input(BaseRow(STATE15.master_table_index()));
 
         let round_number_deselector = |round_number_to_deselect| {
             (0..=NUM_ROUNDS + 1)
@@ -157,7 +161,7 @@ impl ExtHashTable {
             round_number_is_not_1_or * state15,
         ];
 
-        let round_constant_offset: usize = CONSTANT0A.into();
+        let round_constant_offset = CONSTANT0A.master_table_index();
         for round_constant_col_index in 0..NUM_ROUND_CONSTANTS {
             let round_constant_input =
                 circuit_builder.input(BaseRow(round_constant_col_index + round_constant_offset));
@@ -190,17 +194,22 @@ impl ExtHashTable {
         let to_processor_eval_indeterminate =
             circuit_builder.challenge(ToProcessorEvalIndeterminate);
 
-        let round_number = circuit_builder.input(CurrentBaseRow(ROUNDNUMBER.into()));
-        let running_evaluation_from_processor =
-            circuit_builder.input(CurrentExtRow(FromProcessorRunningEvaluation.into()));
-        let running_evaluation_to_processor =
-            circuit_builder.input(CurrentExtRow(ToProcessorRunningEvaluation.into()));
+        let round_number = circuit_builder.input(CurrentBaseRow(ROUNDNUMBER.master_table_index()));
+        let running_evaluation_from_processor = circuit_builder.input(CurrentExtRow(
+            FromProcessorRunningEvaluation.master_table_index(),
+        ));
+        let running_evaluation_to_processor = circuit_builder.input(CurrentExtRow(
+            ToProcessorRunningEvaluation.master_table_index(),
+        ));
 
-        let round_number_next = circuit_builder.input(NextBaseRow(ROUNDNUMBER.into()));
-        let running_evaluation_from_processor_next =
-            circuit_builder.input(NextExtRow(FromProcessorRunningEvaluation.into()));
-        let running_evaluation_to_processor_next =
-            circuit_builder.input(NextExtRow(ToProcessorRunningEvaluation.into()));
+        let round_number_next =
+            circuit_builder.input(NextBaseRow(ROUNDNUMBER.master_table_index()));
+        let running_evaluation_from_processor_next = circuit_builder.input(NextExtRow(
+            FromProcessorRunningEvaluation.master_table_index(),
+        ));
+        let running_evaluation_to_processor_next = circuit_builder.input(NextExtRow(
+            ToProcessorRunningEvaluation.master_table_index(),
+        ));
 
         // round number
         // round numbers evolve as
@@ -249,7 +258,7 @@ impl ExtHashTable {
             CONSTANT14A,
             CONSTANT15A,
         ]
-        .map(|c| circuit_builder.input(CurrentBaseRow(c.into())));
+        .map(|c| circuit_builder.input(CurrentBaseRow(c.master_table_index())));
         let round_constants_b: [_; STATE_SIZE] = [
             CONSTANT0B,
             CONSTANT1B,
@@ -268,14 +277,15 @@ impl ExtHashTable {
             CONSTANT14B,
             CONSTANT15B,
         ]
-        .map(|c| circuit_builder.input(CurrentBaseRow(c.into())));
+        .map(|c| circuit_builder.input(CurrentBaseRow(c.master_table_index())));
 
         let state: [_; STATE_SIZE] = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
             STATE10, STATE11, STATE12, STATE13, STATE14, STATE15,
         ];
-        let current_state = state.map(|s| circuit_builder.input(CurrentBaseRow(s.into())));
-        let next_state = state.map(|s| circuit_builder.input(NextBaseRow(s.into())));
+        let current_state =
+            state.map(|s| circuit_builder.input(CurrentBaseRow(s.master_table_index())));
+        let next_state = state.map(|s| circuit_builder.input(NextBaseRow(s.master_table_index())));
 
         // left-hand-side, starting at current round and going forward
 
@@ -466,18 +476,18 @@ impl HashTable {
                 .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
 
             // Add compressed input to running evaluation if round index marks beginning of hashing
-            if row[usize::from(ROUNDNUMBER)].value() == 1 {
+            if row[ROUNDNUMBER.table_index()].value() == 1 {
                 let state_for_input = [
-                    extension_row[usize::from(STATE0)],
-                    extension_row[usize::from(STATE1)],
-                    extension_row[usize::from(STATE2)],
-                    extension_row[usize::from(STATE3)],
-                    extension_row[usize::from(STATE4)],
-                    extension_row[usize::from(STATE5)],
-                    extension_row[usize::from(STATE6)],
-                    extension_row[usize::from(STATE7)],
-                    extension_row[usize::from(STATE8)],
-                    extension_row[usize::from(STATE9)],
+                    extension_row[STATE0.table_index()],
+                    extension_row[STATE1.table_index()],
+                    extension_row[STATE2.table_index()],
+                    extension_row[STATE3.table_index()],
+                    extension_row[STATE4.table_index()],
+                    extension_row[STATE5.table_index()],
+                    extension_row[STATE6.table_index()],
+                    extension_row[STATE7.table_index()],
+                    extension_row[STATE8.table_index()],
+                    extension_row[STATE9.table_index()],
                 ];
                 let compressed_state_for_input: XFieldElement = state_for_input
                     .iter()
@@ -503,17 +513,17 @@ impl HashTable {
                     * challenges.from_processor_eval_indeterminate
                     + compressed_state_for_input;
             }
-            extension_row[usize::from(FromProcessorRunningEvaluation)] =
+            extension_row[FromProcessorRunningEvaluation.table_index()] =
                 from_processor_running_evaluation;
 
             // Add compressed digest to running evaluation if round index marks end of hashing
-            if row[usize::from(ROUNDNUMBER)].value() == NUM_ROUNDS as u64 + 1 {
+            if row[ROUNDNUMBER.table_index()].value() == NUM_ROUNDS as u64 + 1 {
                 let state_for_output = [
-                    extension_row[usize::from(STATE0)],
-                    extension_row[usize::from(STATE1)],
-                    extension_row[usize::from(STATE2)],
-                    extension_row[usize::from(STATE3)],
-                    extension_row[usize::from(STATE4)],
+                    extension_row[STATE0.table_index()],
+                    extension_row[STATE1.table_index()],
+                    extension_row[STATE2.table_index()],
+                    extension_row[STATE3.table_index()],
+                    extension_row[STATE4.table_index()],
                 ];
                 let compressed_state_for_output: XFieldElement = state_for_output
                     .iter()
@@ -534,7 +544,7 @@ impl HashTable {
                     * challenges.to_processor_eval_indeterminate
                     + compressed_state_for_output;
             }
-            extension_row[usize::from(ToProcessorRunningEvaluation)] =
+            extension_row[ToProcessorRunningEvaluation.table_index()] =
                 to_processor_running_evaluation;
 
             extension_matrix.push(extension_row.to_vec());

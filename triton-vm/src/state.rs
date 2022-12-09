@@ -1,34 +1,47 @@
-use anyhow::Result;
-use itertools::Itertools;
-use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::Display;
 
+use anyhow::Result;
+use itertools::Itertools;
+use num_traits::One;
+use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::rescue_prime_regular::{
-    RescuePrimeRegular, DIGEST_LENGTH, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
-};
+use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
+use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
+use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::vm_err;
+use crate::error::vm_fail;
+use crate::error::InstructionError::*;
+use crate::instruction::AnInstruction::*;
 use crate::instruction::DivinationHint;
-use crate::ord_n::{Ord16, Ord7};
-use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
+use crate::instruction::Instruction;
+use crate::op_stack::OpStack;
+use crate::ord_n::Ord16;
+use crate::ord_n::Ord16::*;
+use crate::ord_n::Ord7;
+use crate::ord_n::Ord7::*;
+use crate::table::hash_table;
+use crate::table::hash_table::NUM_ROUND_CONSTANTS;
+use crate::table::hash_table::TOTAL_NUM_CONSTANTS;
+use crate::table::instruction_table;
+use crate::table::jump_stack_table;
+use crate::table::op_stack_table;
+use crate::table::processor_table;
 use crate::table::processor_table::ProcessorMatrixRow;
-use crate::table::table_column::{
-    InstructionBaseTableColumn, JumpStackBaseTableColumn, OpStackBaseTableColumn,
-    ProcessorBaseTableColumn, RamBaseTableColumn,
-};
-
-use super::error::{vm_fail, InstructionError::*};
-use super::instruction::{AnInstruction::*, Instruction};
-use super::op_stack::OpStack;
-use super::ord_n::{Ord16::*, Ord7::*};
-use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table};
-use super::table::{processor_table, ram_table};
-use super::vm::Program;
+use crate::table::ram_table;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::InstructionBaseTableColumn;
+use crate::table::table_column::JumpStackBaseTableColumn;
+use crate::table::table_column::OpStackBaseTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::table::table_column::RamBaseTableColumn;
+use crate::vm::Program;
 
 /// The number of state registers for hashing-specific instructions.
 pub const STATE_REGISTER_COUNT: usize = 16;
@@ -442,9 +455,9 @@ impl<'pgm> VMState<'pgm> {
         use InstructionBaseTableColumn::*;
         let mut row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
 
-        row[usize::from(Address)] = (self.instruction_pointer as u32).into();
-        row[usize::from(CI)] = current_instruction.opcode_b();
-        row[usize::from(NIA)] = self.nia();
+        row[Address.table_index()] = (self.instruction_pointer as u32).into();
+        row[CI.table_index()] = current_instruction.opcode_b();
+        row[NIA.table_index()] = self.nia();
 
         row
     }
@@ -457,44 +470,44 @@ impl<'pgm> VMState<'pgm> {
         let hvs = self.derive_helper_variables();
         let ramp = self.ramp.into();
 
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(IP)] = (self.instruction_pointer as u32).into();
-        row[usize::from(CI)] = current_instruction.opcode_b();
-        row[usize::from(NIA)] = self.nia();
-        row[usize::from(IB0)] = current_instruction.ib(Ord7::IB0);
-        row[usize::from(IB1)] = current_instruction.ib(Ord7::IB1);
-        row[usize::from(IB2)] = current_instruction.ib(Ord7::IB2);
-        row[usize::from(IB3)] = current_instruction.ib(Ord7::IB3);
-        row[usize::from(IB4)] = current_instruction.ib(Ord7::IB4);
-        row[usize::from(IB5)] = current_instruction.ib(Ord7::IB5);
-        row[usize::from(IB6)] = current_instruction.ib(Ord7::IB6);
-        row[usize::from(JSP)] = self.jsp();
-        row[usize::from(JSO)] = self.jso();
-        row[usize::from(JSD)] = self.jsd();
-        row[usize::from(ST0)] = self.op_stack.st(Ord16::ST0);
-        row[usize::from(ST1)] = self.op_stack.st(Ord16::ST1);
-        row[usize::from(ST2)] = self.op_stack.st(Ord16::ST2);
-        row[usize::from(ST3)] = self.op_stack.st(Ord16::ST3);
-        row[usize::from(ST4)] = self.op_stack.st(Ord16::ST4);
-        row[usize::from(ST5)] = self.op_stack.st(Ord16::ST5);
-        row[usize::from(ST6)] = self.op_stack.st(Ord16::ST6);
-        row[usize::from(ST7)] = self.op_stack.st(Ord16::ST7);
-        row[usize::from(ST8)] = self.op_stack.st(Ord16::ST8);
-        row[usize::from(ST9)] = self.op_stack.st(Ord16::ST9);
-        row[usize::from(ST10)] = self.op_stack.st(Ord16::ST10);
-        row[usize::from(ST11)] = self.op_stack.st(Ord16::ST11);
-        row[usize::from(ST12)] = self.op_stack.st(Ord16::ST12);
-        row[usize::from(ST13)] = self.op_stack.st(Ord16::ST13);
-        row[usize::from(ST14)] = self.op_stack.st(Ord16::ST14);
-        row[usize::from(ST15)] = self.op_stack.st(Ord16::ST15);
-        row[usize::from(OSP)] = self.op_stack.osp();
-        row[usize::from(OSV)] = self.op_stack.osv();
-        row[usize::from(HV0)] = hvs[0];
-        row[usize::from(HV1)] = hvs[1];
-        row[usize::from(HV2)] = hvs[2];
-        row[usize::from(HV3)] = hvs[3];
-        row[usize::from(RAMP)] = ramp;
-        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
+        row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
+        row[IP.table_index()] = (self.instruction_pointer as u32).into();
+        row[CI.table_index()] = current_instruction.opcode_b();
+        row[NIA.table_index()] = self.nia();
+        row[IB0.table_index()] = current_instruction.ib(Ord7::IB0);
+        row[IB1.table_index()] = current_instruction.ib(Ord7::IB1);
+        row[IB2.table_index()] = current_instruction.ib(Ord7::IB2);
+        row[IB3.table_index()] = current_instruction.ib(Ord7::IB3);
+        row[IB4.table_index()] = current_instruction.ib(Ord7::IB4);
+        row[IB5.table_index()] = current_instruction.ib(Ord7::IB5);
+        row[IB6.table_index()] = current_instruction.ib(Ord7::IB6);
+        row[JSP.table_index()] = self.jsp();
+        row[JSO.table_index()] = self.jso();
+        row[JSD.table_index()] = self.jsd();
+        row[ST0.table_index()] = self.op_stack.st(Ord16::ST0);
+        row[ST1.table_index()] = self.op_stack.st(Ord16::ST1);
+        row[ST2.table_index()] = self.op_stack.st(Ord16::ST2);
+        row[ST3.table_index()] = self.op_stack.st(Ord16::ST3);
+        row[ST4.table_index()] = self.op_stack.st(Ord16::ST4);
+        row[ST5.table_index()] = self.op_stack.st(Ord16::ST5);
+        row[ST6.table_index()] = self.op_stack.st(Ord16::ST6);
+        row[ST7.table_index()] = self.op_stack.st(Ord16::ST7);
+        row[ST8.table_index()] = self.op_stack.st(Ord16::ST8);
+        row[ST9.table_index()] = self.op_stack.st(Ord16::ST9);
+        row[ST10.table_index()] = self.op_stack.st(Ord16::ST10);
+        row[ST11.table_index()] = self.op_stack.st(Ord16::ST11);
+        row[ST12.table_index()] = self.op_stack.st(Ord16::ST12);
+        row[ST13.table_index()] = self.op_stack.st(Ord16::ST13);
+        row[ST14.table_index()] = self.op_stack.st(Ord16::ST14);
+        row[ST15.table_index()] = self.op_stack.st(Ord16::ST15);
+        row[OSP.table_index()] = self.op_stack.osp();
+        row[OSV.table_index()] = self.op_stack.osv();
+        row[HV0.table_index()] = hvs[0];
+        row[HV1.table_index()] = hvs[1];
+        row[HV2.table_index()] = hvs[2];
+        row[HV3.table_index()] = hvs[3];
+        row[RAMP.table_index()] = ramp;
+        row[RAMV.table_index()] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
 
         row
     }
@@ -506,10 +519,10 @@ impl<'pgm> VMState<'pgm> {
         use OpStackBaseTableColumn::*;
         let mut row = [BFieldElement::zero(); op_stack_table::BASE_WIDTH];
 
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(IB1ShrinkStack)] = current_instruction.ib(IB1);
-        row[usize::from(OSP)] = self.op_stack.osp();
-        row[usize::from(OSV)] = self.op_stack.osv();
+        row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
+        row[IB1ShrinkStack.table_index()] = current_instruction.ib(IB1);
+        row[OSP.table_index()] = self.op_stack.osp();
+        row[OSV.table_index()] = self.op_stack.osv();
 
         row
     }
@@ -520,9 +533,9 @@ impl<'pgm> VMState<'pgm> {
 
         let mut row = [BFieldElement::zero(); ram_table::BASE_WIDTH];
 
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(RAMP)] = ramp;
-        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
+        row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
+        row[RAMP.table_index()] = ramp;
+        row[RAMV.table_index()] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
         // value of InverseOfRampDifference is only known after sorting the RAM Table, thus not set
 
         row
@@ -535,11 +548,11 @@ impl<'pgm> VMState<'pgm> {
         use JumpStackBaseTableColumn::*;
         let mut row = [BFieldElement::zero(); jump_stack_table::BASE_WIDTH];
 
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(CI)] = current_instruction.opcode_b();
-        row[usize::from(JSP)] = self.jsp();
-        row[usize::from(JSO)] = self.jso();
-        row[usize::from(JSD)] = self.jsd();
+        row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
+        row[CI.table_index()] = current_instruction.opcode_b();
+        row[JSP.table_index()] = self.jsp();
+        row[JSO.table_index()] = self.jso();
+        row[JSD.table_index()] = self.jsd();
 
         row
     }
@@ -789,7 +802,6 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 mod vm_state_tests {
-
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::rescue_prime_digest::Digest;
     use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
