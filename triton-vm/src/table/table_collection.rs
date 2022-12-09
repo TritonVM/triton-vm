@@ -12,9 +12,6 @@ use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
@@ -28,6 +25,10 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
+
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
@@ -1236,6 +1237,8 @@ pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
 
 #[cfg(test)]
 mod table_collection_tests {
+    use ndarray::s;
+
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::hash_table;
@@ -1246,6 +1249,7 @@ mod table_collection_tests {
     use crate::table::program_table;
     use crate::table::ram_table;
     use crate::table::table_collection::TableId::*;
+    use crate::table::table_collection::EXT_HASH_TABLE_END;
     use crate::table::table_collection::NUM_BASE_COLUMNS;
     use crate::table::table_collection::NUM_COLUMNS;
     use crate::table::table_collection::NUM_EXT_COLUMNS;
@@ -1286,35 +1290,43 @@ mod table_collection_tests {
 
     #[test]
     fn ext_table_width_is_correct() {
-        let (_, _, _, master_ext_table, _) = parse_simulate_pad_extend("halt", vec![], vec![]);
+        let (stark, _, _, master_ext_table, _) = parse_simulate_pad_extend("halt", vec![], vec![]);
 
         assert_eq!(
-            program_table::FULL_WIDTH,
+            program_table::EXT_WIDTH,
             master_ext_table.table(ProgramTable).ncols()
         );
         assert_eq!(
-            instruction_table::FULL_WIDTH,
+            instruction_table::EXT_WIDTH,
             master_ext_table.table(InstructionTable).ncols()
         );
         assert_eq!(
-            processor_table::FULL_WIDTH,
+            processor_table::EXT_WIDTH,
             master_ext_table.table(ProcessorTable).ncols()
         );
         assert_eq!(
-            op_stack_table::FULL_WIDTH,
+            op_stack_table::EXT_WIDTH,
             master_ext_table.table(OpStackTable).ncols()
         );
         assert_eq!(
-            ram_table::FULL_WIDTH,
+            ram_table::EXT_WIDTH,
             master_ext_table.table(RamTable).ncols()
         );
         assert_eq!(
-            jump_stack_table::FULL_WIDTH,
+            jump_stack_table::EXT_WIDTH,
             master_ext_table.table(JumpStackTable).ncols()
         );
         assert_eq!(
-            hash_table::FULL_WIDTH,
+            hash_table::EXT_WIDTH,
             master_ext_table.table(HashTable).ncols()
+        );
+        // use some domain-specific knowledge to also check for the randomizer columns
+        assert_eq!(
+            stark.parameters.num_randomizer_polynomials,
+            master_ext_table
+                .master_ext_matrix
+                .slice(s![.., EXT_HASH_TABLE_END..])
+                .ncols()
         );
     }
 

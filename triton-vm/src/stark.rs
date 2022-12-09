@@ -56,11 +56,11 @@ pub type Maker = CpuParallel;
 pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
 
 pub struct StarkParameters {
-    security_level: usize,
-    fri_expansion_factor: usize,
-    num_trace_randomizers: usize,
-    num_randomizer_polynomials: usize,
-    num_colinearity_checks: usize,
+    pub security_level: usize,
+    pub fri_expansion_factor: usize,
+    pub num_trace_randomizers: usize,
+    pub num_randomizer_polynomials: usize,
+    pub num_colinearity_checks: usize,
 }
 
 impl StarkParameters {
@@ -1082,7 +1082,6 @@ pub(crate) mod triton_stark_tests {
         }
     }
 
-    // 1. simulate(), pad(), extend(), test terminals
     #[test]
     pub fn check_io_terminals() {
         let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io halt";
