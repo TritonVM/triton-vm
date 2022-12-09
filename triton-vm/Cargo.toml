@@ -5,7 +5,11 @@ edition = "2021"
 authors = ["Triton Software AG"]
 
 license = "Apache-2.0"
-description = "A virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR) for use in combination with a STARK proof system to allow proving correct execution of arbitrary programs in zero-knowledge."
+description = """
+A virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR)
+for use in combination with a STARK proof system to allow proving correct execution of arbitrary programs
+in zero-knowledge.
+"""
 homepage = "https://triton-vm.org/"
 documentation = "https://github.com/TritonVM/triton-vm/tree/master/specification"
 repository = "https://github.com/TritonVM/triton-vm"
