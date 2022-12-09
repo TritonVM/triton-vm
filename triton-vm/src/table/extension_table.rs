@@ -256,6 +256,22 @@ pub trait Quotientable: ExtensionTable + Evaluable {
             });
     }
 
+    fn num_initial_quotients() -> usize {
+        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
+    }
+
+    fn num_consistency_quotients() -> usize {
+        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
+    }
+
+    fn num_transition_quotients() -> usize {
+        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
+    }
+
+    fn num_terminal_quotients() -> usize {
+        panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
+    }
+
     fn initial_quotient_degree_bounds(
         _padded_height: usize,
         _num_trace_randomizers: usize,

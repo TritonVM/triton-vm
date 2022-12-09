@@ -553,6 +553,53 @@ pub fn max_degree_with_origin(
         .unwrap_or_default()
 }
 
+pub fn num_all_table_quotients() -> usize {
+    num_all_initial_quotients()
+        + num_all_consistency_quotients()
+        + num_all_transition_quotients()
+        + num_all_terminal_quotients()
+}
+
+pub fn num_all_initial_quotients() -> usize {
+    ExtProgramTable::num_initial_quotients()
+        + ExtInstructionTable::num_initial_quotients()
+        + ExtProcessorTable::num_initial_quotients()
+        + ExtOpStackTable::num_initial_quotients()
+        + ExtRamTable::num_initial_quotients()
+        + ExtJumpStackTable::num_initial_quotients()
+        + ExtHashTable::num_initial_quotients()
+}
+
+pub fn num_all_consistency_quotients() -> usize {
+    ExtProgramTable::num_consistency_quotients()
+        + ExtInstructionTable::num_consistency_quotients()
+        + ExtProcessorTable::num_consistency_quotients()
+        + ExtOpStackTable::num_consistency_quotients()
+        + ExtRamTable::num_consistency_quotients()
+        + ExtJumpStackTable::num_consistency_quotients()
+        + ExtHashTable::num_consistency_quotients()
+}
+
+pub fn num_all_transition_quotients() -> usize {
+    ExtProgramTable::num_transition_quotients()
+        + ExtInstructionTable::num_transition_quotients()
+        + ExtProcessorTable::num_transition_quotients()
+        + ExtOpStackTable::num_transition_quotients()
+        + ExtRamTable::num_transition_quotients()
+        + ExtJumpStackTable::num_transition_quotients()
+        + ExtHashTable::num_transition_quotients()
+}
+
+pub fn num_all_terminal_quotients() -> usize {
+    ExtProgramTable::num_terminal_quotients()
+        + ExtInstructionTable::num_terminal_quotients()
+        + ExtProcessorTable::num_terminal_quotients()
+        + ExtOpStackTable::num_terminal_quotients()
+        + ExtRamTable::num_terminal_quotients()
+        + ExtJumpStackTable::num_terminal_quotients()
+        + ExtHashTable::num_terminal_quotients()
+}
+
 pub fn all_initial_quotient_degree_bounds(
     padded_height: usize,
     num_trace_randomizers: usize,
@@ -698,17 +745,16 @@ pub fn fill_all_initial_quotients(
     zerofier_inverse: ArrayView1<BFieldElement>,
     challenges: &AllChallenges,
 ) {
-    let num_program_quotients = ExtProgramTable::initial_quotient_degree_bounds(2, 2).len();
-    let num_instruction_quotients = ExtInstructionTable::initial_quotient_degree_bounds(2, 2).len();
-    let num_processor_quotients = ExtProcessorTable::initial_quotient_degree_bounds(2, 2).len();
-    let num_op_stack_quotients = ExtOpStackTable::initial_quotient_degree_bounds(2, 2).len();
-    let num_ram_quotients = ExtRamTable::initial_quotient_degree_bounds(2, 2).len();
-    let num_jump_stack_quotients = ExtJumpStackTable::initial_quotient_degree_bounds(2, 2).len();
+    let num_program_quotients = ExtProgramTable::num_initial_quotients();
+    let num_instruction_quotients = ExtInstructionTable::num_initial_quotients();
+    let num_processor_quotients = ExtProcessorTable::num_initial_quotients();
+    let num_op_stack_quotients = ExtOpStackTable::num_initial_quotients();
+    let num_ram_quotients = ExtRamTable::num_initial_quotients();
+    let num_jump_stack_quotients = ExtJumpStackTable::num_initial_quotients();
 
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
     let mut program_quot_table = quot_table.slice_mut(s![.., ..num_program_quotients]);
-
     ExtProgramTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -778,14 +824,12 @@ pub fn fill_all_consistency_quotients(
     zerofier_inverse: ArrayView1<BFieldElement>,
     challenges: &AllChallenges,
 ) {
-    let num_program_quotients = ExtProgramTable::consistency_quotient_degree_bounds(2, 2).len();
-    let num_instruction_quotients =
-        ExtInstructionTable::consistency_quotient_degree_bounds(2, 2).len();
-    let num_processor_quotients = ExtProcessorTable::consistency_quotient_degree_bounds(2, 2).len();
-    let num_op_stack_quotients = ExtOpStackTable::consistency_quotient_degree_bounds(2, 2).len();
-    let num_ram_quotients = ExtRamTable::consistency_quotient_degree_bounds(2, 2).len();
-    let num_jump_stack_quotients =
-        ExtJumpStackTable::consistency_quotient_degree_bounds(2, 2).len();
+    let num_program_quotients = ExtProgramTable::num_consistency_quotients();
+    let num_instruction_quotients = ExtInstructionTable::num_consistency_quotients();
+    let num_processor_quotients = ExtProcessorTable::num_consistency_quotients();
+    let num_op_stack_quotients = ExtOpStackTable::num_consistency_quotients();
+    let num_ram_quotients = ExtRamTable::num_consistency_quotients();
+    let num_jump_stack_quotients = ExtJumpStackTable::num_consistency_quotients();
 
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
@@ -861,13 +905,12 @@ pub fn fill_all_transition_quotients(
     quotient_domain: ArithmeticDomain,
     padded_height: usize,
 ) {
-    let num_program_quotients = ExtProgramTable::transition_quotient_degree_bounds(2, 2).len();
-    let num_instruction_quotients =
-        ExtInstructionTable::transition_quotient_degree_bounds(2, 2).len();
-    let num_processor_quotients = ExtProcessorTable::transition_quotient_degree_bounds(2, 2).len();
-    let num_op_stack_quotients = ExtOpStackTable::transition_quotient_degree_bounds(2, 2).len();
-    let num_ram_quotients = ExtRamTable::transition_quotient_degree_bounds(2, 2).len();
-    let num_jump_stack_quotients = ExtJumpStackTable::transition_quotient_degree_bounds(2, 2).len();
+    let num_program_quotients = ExtProgramTable::num_transition_quotients();
+    let num_instruction_quotients = ExtInstructionTable::num_transition_quotients();
+    let num_processor_quotients = ExtProcessorTable::num_transition_quotients();
+    let num_op_stack_quotients = ExtOpStackTable::num_transition_quotients();
+    let num_ram_quotients = ExtRamTable::num_transition_quotients();
+    let num_jump_stack_quotients = ExtJumpStackTable::num_transition_quotients();
 
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
@@ -956,13 +999,12 @@ pub fn fill_all_terminal_quotients(
     zerofier_inverse: ArrayView1<BFieldElement>,
     challenges: &AllChallenges,
 ) {
-    let num_program_quotients = ExtProgramTable::terminal_quotient_degree_bounds(2, 2).len();
-    let num_instruction_quotients =
-        ExtInstructionTable::terminal_quotient_degree_bounds(2, 2).len();
-    let num_processor_quotients = ExtProcessorTable::terminal_quotient_degree_bounds(2, 2).len();
-    let num_op_stack_quotients = ExtOpStackTable::terminal_quotient_degree_bounds(2, 2).len();
-    let num_ram_quotients = ExtRamTable::terminal_quotient_degree_bounds(2, 2).len();
-    let num_jump_stack_quotients = ExtJumpStackTable::terminal_quotient_degree_bounds(2, 2).len();
+    let num_program_quotients = ExtProgramTable::num_terminal_quotients();
+    let num_instruction_quotients = ExtInstructionTable::num_terminal_quotients();
+    let num_processor_quotients = ExtProcessorTable::num_terminal_quotients();
+    let num_op_stack_quotients = ExtOpStackTable::num_terminal_quotients();
+    let num_ram_quotients = ExtRamTable::num_terminal_quotients();
+    let num_jump_stack_quotients = ExtJumpStackTable::num_terminal_quotients();
 
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
@@ -1058,10 +1100,11 @@ pub fn all_quotients(
     let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
     let mut all_quotients = Array2::zeros([quotient_domain.length, num_quotients]);
 
-    let num_initial_quotients = all_initial_quotient_degree_bounds(2, 2).len();
-    let num_consistency_quotients = all_consistency_quotient_degree_bounds(2, 2).len();
-    let num_transition_quotients = all_transition_quotient_degree_bounds(2, 2).len();
-    let num_terminal_quotients = all_terminal_quotient_degree_bounds(2, 2).len();
+    // todo >>> continue here <<< the number is not the index – do some summing.
+    let num_initial_quotients = num_all_initial_quotients();
+    let num_consistency_quotients = num_all_consistency_quotients();
+    let num_transition_quotients = num_all_transition_quotients();
+    let num_terminal_quotients = num_all_terminal_quotients();
 
     prof_start!(maybe_profiler, "initial");
     let mut initial_quot_table = all_quotients.slice_mut(s![.., ..num_initial_quotients]);

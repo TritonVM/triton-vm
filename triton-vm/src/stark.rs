@@ -233,7 +233,7 @@ impl Stark {
 
         prof_start!(maybe_profiler, "quotient codewords");
         let num_grand_cross_table_args = 1;
-        let num_quotients = quotient_degree_bounds.len() + num_grand_cross_table_args;
+        let num_quotients = num_all_table_quotients() + num_grand_cross_table_args;
         let mut quotient_codewords = all_quotients(
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
@@ -595,18 +595,13 @@ impl Stark {
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "dequeue");
 
-        prof_start!(maybe_profiler, "quotient degree bounds");
-        let quotient_degree_bounds =
-            all_quotient_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
-        prof_stop!(maybe_profiler, "quotient degree bounds");
-
         // Get weights for nonlinear combination. Concretely, sample 2 weights for each base, and
         // extension polynomial and each quotients, because transition constraints check 2 rows.
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = 2 * NUM_BASE_COLUMNS
             + 2 * NUM_EXT_COLUMNS
-            + 2 * quotient_degree_bounds.len()
+            + 2 * num_all_table_quotients()
             + 2 * num_grand_cross_table_args;
         let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
@@ -1240,40 +1235,40 @@ pub(crate) mod triton_stark_tests {
             "hash table",
         ];
         let all_init = [
-            ExtProgramTable::initial_quotient_degree_bounds(2, 2).len(),
-            ExtInstructionTable::initial_quotient_degree_bounds(2, 2).len(),
-            ExtProcessorTable::initial_quotient_degree_bounds(2, 2).len(),
-            ExtOpStackTable::initial_quotient_degree_bounds(2, 2).len(),
-            ExtRamTable::initial_quotient_degree_bounds(2, 2).len(),
-            ExtJumpStackTable::initial_quotient_degree_bounds(2, 2).len(),
-            ExtHashTable::initial_quotient_degree_bounds(2, 2).len(),
+            ExtProgramTable::num_initial_quotients(),
+            ExtInstructionTable::num_initial_quotients(),
+            ExtProcessorTable::num_initial_quotients(),
+            ExtOpStackTable::num_initial_quotients(),
+            ExtRamTable::num_initial_quotients(),
+            ExtJumpStackTable::num_initial_quotients(),
+            ExtHashTable::num_initial_quotients(),
         ];
         let all_cons = [
-            ExtProgramTable::consistency_quotient_degree_bounds(2, 2).len(),
-            ExtInstructionTable::consistency_quotient_degree_bounds(2, 2).len(),
-            ExtProcessorTable::consistency_quotient_degree_bounds(2, 2).len(),
-            ExtOpStackTable::consistency_quotient_degree_bounds(2, 2).len(),
-            ExtRamTable::consistency_quotient_degree_bounds(2, 2).len(),
-            ExtJumpStackTable::consistency_quotient_degree_bounds(2, 2).len(),
-            ExtHashTable::consistency_quotient_degree_bounds(2, 2).len(),
+            ExtProgramTable::num_consistency_quotients(),
+            ExtInstructionTable::num_consistency_quotients(),
+            ExtProcessorTable::num_consistency_quotients(),
+            ExtOpStackTable::num_consistency_quotients(),
+            ExtRamTable::num_consistency_quotients(),
+            ExtJumpStackTable::num_consistency_quotients(),
+            ExtHashTable::num_consistency_quotients(),
         ];
         let all_trans = [
-            ExtProgramTable::transition_quotient_degree_bounds(2, 2).len(),
-            ExtInstructionTable::transition_quotient_degree_bounds(2, 2).len(),
-            ExtProcessorTable::transition_quotient_degree_bounds(2, 2).len(),
-            ExtOpStackTable::transition_quotient_degree_bounds(2, 2).len(),
-            ExtRamTable::transition_quotient_degree_bounds(2, 2).len(),
-            ExtJumpStackTable::transition_quotient_degree_bounds(2, 2).len(),
-            ExtHashTable::transition_quotient_degree_bounds(2, 2).len(),
+            ExtProgramTable::num_transition_quotients(),
+            ExtInstructionTable::num_transition_quotients(),
+            ExtProcessorTable::num_transition_quotients(),
+            ExtOpStackTable::num_transition_quotients(),
+            ExtRamTable::num_transition_quotients(),
+            ExtJumpStackTable::num_transition_quotients(),
+            ExtHashTable::num_transition_quotients(),
         ];
         let all_term = [
-            ExtProgramTable::terminal_quotient_degree_bounds(2, 2).len(),
-            ExtInstructionTable::terminal_quotient_degree_bounds(2, 2).len(),
-            ExtProcessorTable::terminal_quotient_degree_bounds(2, 2).len(),
-            ExtOpStackTable::terminal_quotient_degree_bounds(2, 2).len(),
-            ExtRamTable::terminal_quotient_degree_bounds(2, 2).len(),
-            ExtJumpStackTable::terminal_quotient_degree_bounds(2, 2).len(),
-            ExtHashTable::terminal_quotient_degree_bounds(2, 2).len(),
+            ExtProgramTable::num_terminal_quotients(),
+            ExtInstructionTable::num_terminal_quotients(),
+            ExtProcessorTable::num_terminal_quotients(),
+            ExtOpStackTable::num_terminal_quotients(),
+            ExtRamTable::num_terminal_quotients(),
+            ExtJumpStackTable::num_terminal_quotients(),
+            ExtHashTable::num_terminal_quotients(),
         ];
 
         let num_total_init: usize = all_init.iter().sum();
@@ -1309,118 +1304,230 @@ pub(crate) mod triton_stark_tests {
         let er = ext_row.view();
 
         assert_eq!(
+            ExtProgramTable::num_initial_quotients(),
             ExtProgramTable::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProgramTable::num_initial_quotients(),
             ExtProgramTable::initial_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtInstructionTable::num_initial_quotients(),
             ExtInstructionTable::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtInstructionTable::num_initial_quotients(),
             ExtInstructionTable::initial_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtProcessorTable::num_initial_quotients(),
             ExtProcessorTable::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProcessorTable::num_initial_quotients(),
             ExtProcessorTable::initial_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtOpStackTable::num_initial_quotients(),
             ExtOpStackTable::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtOpStackTable::num_initial_quotients(),
             ExtOpStackTable::initial_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtRamTable::num_initial_quotients(),
             ExtRamTable::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtRamTable::num_initial_quotients(),
             ExtRamTable::initial_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtJumpStackTable::num_initial_quotients(),
             ExtJumpStackTable::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtJumpStackTable::num_initial_quotients(),
             ExtJumpStackTable::initial_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtHashTable::num_initial_quotients(),
             ExtHashTable::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtHashTable::num_initial_quotients(),
             ExtHashTable::initial_quotient_degree_bounds(2, 2).len()
         );
 
         assert_eq!(
+            ExtProgramTable::num_consistency_quotients(),
             ExtProgramTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProgramTable::num_consistency_quotients(),
             ExtProgramTable::consistency_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtInstructionTable::num_consistency_quotients(),
             ExtInstructionTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtInstructionTable::num_consistency_quotients(),
             ExtInstructionTable::consistency_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtProcessorTable::num_consistency_quotients(),
             ExtProcessorTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProcessorTable::num_consistency_quotients(),
             ExtProcessorTable::consistency_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtOpStackTable::num_consistency_quotients(),
             ExtOpStackTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtOpStackTable::num_consistency_quotients(),
             ExtOpStackTable::consistency_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtRamTable::num_consistency_quotients(),
             ExtRamTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtRamTable::num_consistency_quotients(),
             ExtRamTable::consistency_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtJumpStackTable::num_consistency_quotients(),
             ExtJumpStackTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtJumpStackTable::num_consistency_quotients(),
             ExtJumpStackTable::consistency_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtHashTable::num_consistency_quotients(),
             ExtHashTable::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtHashTable::num_consistency_quotients(),
             ExtHashTable::consistency_quotient_degree_bounds(2, 2).len()
         );
 
         assert_eq!(
+            ExtProgramTable::num_transition_quotients(),
             ExtProgramTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProgramTable::num_transition_quotients(),
             ExtProgramTable::transition_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtInstructionTable::num_transition_quotients(),
             ExtInstructionTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtInstructionTable::num_transition_quotients(),
             ExtInstructionTable::transition_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtProcessorTable::num_transition_quotients(),
             ExtProcessorTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProcessorTable::num_transition_quotients(),
             ExtProcessorTable::transition_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtOpStackTable::num_transition_quotients(),
             ExtOpStackTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtOpStackTable::num_transition_quotients(),
             ExtOpStackTable::transition_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtRamTable::num_transition_quotients(),
             ExtRamTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtRamTable::num_transition_quotients(),
             ExtRamTable::transition_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtJumpStackTable::num_transition_quotients(),
             ExtJumpStackTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtJumpStackTable::num_transition_quotients(),
             ExtJumpStackTable::transition_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtHashTable::num_transition_quotients(),
             ExtHashTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtHashTable::num_transition_quotients(),
             ExtHashTable::transition_quotient_degree_bounds(2, 2).len()
         );
 
         assert_eq!(
+            ExtProgramTable::num_terminal_quotients(),
             ExtProgramTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProgramTable::num_terminal_quotients(),
             ExtProgramTable::terminal_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtInstructionTable::num_terminal_quotients(),
             ExtInstructionTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtInstructionTable::num_terminal_quotients(),
             ExtInstructionTable::terminal_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtProcessorTable::num_terminal_quotients(),
             ExtProcessorTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtProcessorTable::num_terminal_quotients(),
             ExtProcessorTable::terminal_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtOpStackTable::num_terminal_quotients(),
             ExtOpStackTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtOpStackTable::num_terminal_quotients(),
             ExtOpStackTable::terminal_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtRamTable::num_terminal_quotients(),
             ExtRamTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtRamTable::num_terminal_quotients(),
             ExtRamTable::terminal_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtJumpStackTable::num_terminal_quotients(),
             ExtJumpStackTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtJumpStackTable::num_terminal_quotients(),
             ExtJumpStackTable::terminal_quotient_degree_bounds(2, 2).len()
         );
         assert_eq!(
+            ExtHashTable::num_terminal_quotients(),
             ExtHashTable::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtHashTable::num_terminal_quotients(),
             ExtHashTable::terminal_quotient_degree_bounds(2, 2).len()
         );
     }

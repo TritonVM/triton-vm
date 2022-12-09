@@ -135,6 +135,11 @@ fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let table_mod_name = format!("Ext{table_id_name}");
 
+    let num_initial_constraints = initial_constraint_circuits.len();
+    let num_consistency_constraints = consistency_constraint_circuits.len();
+    let num_transition_constraints = transition_constraint_circuits.len();
+    let num_terminal_constraints = terminal_constraint_circuits.len();
+
     let initial_constraints_degrees =
         turn_circuits_into_degree_bounds_string(initial_constraint_circuits);
     let consistency_constraints_degrees =
@@ -216,6 +221,22 @@ impl Evaluable for {table_mod_name} {{
 }}
 
 impl Quotientable for {table_mod_name} {{
+    fn num_initial_quotients() -> usize {{
+        {num_initial_constraints}
+    }}
+
+    fn num_consistency_quotients() -> usize {{
+        {num_consistency_constraints}
+    }}
+
+    fn num_transition_quotients() -> usize {{
+        {num_transition_constraints}
+    }}
+
+    fn num_terminal_quotients() -> usize {{
+        {num_terminal_constraints}
+    }}
+
     #[allow(unused_variables)]
     fn initial_quotient_degree_bounds(
         padded_height: usize,
