@@ -745,16 +745,28 @@ pub fn fill_all_initial_quotients(
     zerofier_inverse: ArrayView1<BFieldElement>,
     challenges: &AllChallenges,
 ) {
-    let num_program_quotients = ExtProgramTable::num_initial_quotients();
-    let num_instruction_quotients = ExtInstructionTable::num_initial_quotients();
-    let num_processor_quotients = ExtProcessorTable::num_initial_quotients();
-    let num_op_stack_quotients = ExtOpStackTable::num_initial_quotients();
-    let num_ram_quotients = ExtRamTable::num_initial_quotients();
-    let num_jump_stack_quotients = ExtJumpStackTable::num_initial_quotients();
-
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
-    let mut program_quot_table = quot_table.slice_mut(s![.., ..num_program_quotients]);
+    let program_section_start = 0;
+    let program_section_end = program_section_start + ExtProgramTable::num_initial_quotients();
+    let instruction_section_start = program_section_end;
+    let instruction_section_end =
+        instruction_section_start + ExtInstructionTable::num_initial_quotients();
+    let processor_section_start = instruction_section_end;
+    let processor_section_end =
+        processor_section_start + ExtProcessorTable::num_initial_quotients();
+    let op_stack_section_start = processor_section_end;
+    let op_stack_section_end = op_stack_section_start + ExtOpStackTable::num_initial_quotients();
+    let ram_section_start = op_stack_section_end;
+    let ram_section_end = ram_section_start + ExtRamTable::num_initial_quotients();
+    let jump_stack_section_start = ram_section_end;
+    let jump_stack_section_end =
+        jump_stack_section_start + ExtJumpStackTable::num_initial_quotients();
+    let hash_section_start = jump_stack_section_end;
+    let hash_section_end = hash_section_start + ExtHashTable::num_initial_quotients();
+
+    let mut program_quot_table =
+        quot_table.slice_mut(s![.., program_section_start..program_section_end]);
     ExtProgramTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -763,7 +775,7 @@ pub fn fill_all_initial_quotients(
         challenges,
     );
     let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., num_program_quotients..num_instruction_quotients]);
+        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
     ExtInstructionTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -772,7 +784,7 @@ pub fn fill_all_initial_quotients(
         challenges,
     );
     let mut processor_quot_table =
-        quot_table.slice_mut(s![.., num_instruction_quotients..num_processor_quotients]);
+        quot_table.slice_mut(s![.., processor_section_start..processor_section_end]);
     ExtProcessorTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -781,7 +793,7 @@ pub fn fill_all_initial_quotients(
         challenges,
     );
     let mut op_stack_quot_table =
-        quot_table.slice_mut(s![.., num_processor_quotients..num_op_stack_quotients]);
+        quot_table.slice_mut(s![.., op_stack_section_start..op_stack_section_end]);
     ExtOpStackTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -789,8 +801,7 @@ pub fn fill_all_initial_quotients(
         zerofier_inverse,
         challenges,
     );
-    let mut ram_quot_table =
-        quot_table.slice_mut(s![.., num_op_stack_quotients..num_ram_quotients]);
+    let mut ram_quot_table = quot_table.slice_mut(s![.., ram_section_start..ram_section_end]);
     ExtRamTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -799,7 +810,7 @@ pub fn fill_all_initial_quotients(
         challenges,
     );
     let mut jump_stack_quot_table =
-        quot_table.slice_mut(s![.., num_ram_quotients..num_jump_stack_quotients]);
+        quot_table.slice_mut(s![.., jump_stack_section_start..jump_stack_section_end]);
     ExtJumpStackTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -807,7 +818,7 @@ pub fn fill_all_initial_quotients(
         zerofier_inverse,
         challenges,
     );
-    let mut hash_quot_table = quot_table.slice_mut(s![.., num_jump_stack_quotients..]);
+    let mut hash_quot_table = quot_table.slice_mut(s![.., hash_section_start..hash_section_end]);
     ExtHashTable::fill_initial_quotients(
         master_base_table,
         master_ext_table,
@@ -824,16 +835,29 @@ pub fn fill_all_consistency_quotients(
     zerofier_inverse: ArrayView1<BFieldElement>,
     challenges: &AllChallenges,
 ) {
-    let num_program_quotients = ExtProgramTable::num_consistency_quotients();
-    let num_instruction_quotients = ExtInstructionTable::num_consistency_quotients();
-    let num_processor_quotients = ExtProcessorTable::num_consistency_quotients();
-    let num_op_stack_quotients = ExtOpStackTable::num_consistency_quotients();
-    let num_ram_quotients = ExtRamTable::num_consistency_quotients();
-    let num_jump_stack_quotients = ExtJumpStackTable::num_consistency_quotients();
-
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
-    let mut program_quot_table = quot_table.slice_mut(s![.., ..num_program_quotients]);
+    let program_section_start = 0;
+    let program_section_end = program_section_start + ExtProgramTable::num_consistency_quotients();
+    let instruction_section_start = program_section_end;
+    let instruction_section_end =
+        instruction_section_start + ExtInstructionTable::num_consistency_quotients();
+    let processor_section_start = instruction_section_end;
+    let processor_section_end =
+        processor_section_start + ExtProcessorTable::num_consistency_quotients();
+    let op_stack_section_start = processor_section_end;
+    let op_stack_section_end =
+        op_stack_section_start + ExtOpStackTable::num_consistency_quotients();
+    let ram_section_start = op_stack_section_end;
+    let ram_section_end = ram_section_start + ExtRamTable::num_consistency_quotients();
+    let jump_stack_section_start = ram_section_end;
+    let jump_stack_section_end =
+        jump_stack_section_start + ExtJumpStackTable::num_consistency_quotients();
+    let hash_section_start = jump_stack_section_end;
+    let hash_section_end = hash_section_start + ExtHashTable::num_consistency_quotients();
+
+    let mut program_quot_table =
+        quot_table.slice_mut(s![.., program_section_start..program_section_end]);
     ExtProgramTable::fill_consistency_quotients(
         master_base_table,
         master_ext_table,
@@ -842,7 +866,7 @@ pub fn fill_all_consistency_quotients(
         challenges,
     );
     let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., num_program_quotients..num_instruction_quotients]);
+        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
     ExtInstructionTable::fill_consistency_quotients(
         master_base_table,
         master_ext_table,
@@ -851,7 +875,7 @@ pub fn fill_all_consistency_quotients(
         challenges,
     );
     let mut processor_quot_table =
-        quot_table.slice_mut(s![.., num_instruction_quotients..num_processor_quotients]);
+        quot_table.slice_mut(s![.., processor_section_start..processor_section_end]);
     ExtProcessorTable::fill_consistency_quotients(
         master_base_table,
         master_ext_table,
@@ -860,7 +884,7 @@ pub fn fill_all_consistency_quotients(
         challenges,
     );
     let mut op_stack_quot_table =
-        quot_table.slice_mut(s![.., num_processor_quotients..num_op_stack_quotients]);
+        quot_table.slice_mut(s![.., op_stack_section_start..op_stack_section_end]);
     ExtOpStackTable::fill_consistency_quotients(
         master_base_table,
         master_ext_table,
@@ -868,8 +892,7 @@ pub fn fill_all_consistency_quotients(
         zerofier_inverse,
         challenges,
     );
-    let mut ram_quot_table =
-        quot_table.slice_mut(s![.., num_op_stack_quotients..num_ram_quotients]);
+    let mut ram_quot_table = quot_table.slice_mut(s![.., ram_section_start..ram_section_end]);
     ExtRamTable::fill_consistency_quotients(
         master_base_table,
         master_ext_table,
@@ -878,7 +901,7 @@ pub fn fill_all_consistency_quotients(
         challenges,
     );
     let mut jump_stack_quot_table =
-        quot_table.slice_mut(s![.., num_ram_quotients..num_jump_stack_quotients]);
+        quot_table.slice_mut(s![.., jump_stack_section_start..jump_stack_section_end]);
     ExtJumpStackTable::fill_consistency_quotients(
         master_base_table,
         master_ext_table,
@@ -886,7 +909,7 @@ pub fn fill_all_consistency_quotients(
         zerofier_inverse,
         challenges,
     );
-    let mut hash_quot_table = quot_table.slice_mut(s![.., num_jump_stack_quotients..]);
+    let mut hash_quot_table = quot_table.slice_mut(s![.., hash_section_start..hash_section_end]);
     ExtHashTable::fill_consistency_quotients(
         master_base_table,
         master_ext_table,
@@ -905,17 +928,28 @@ pub fn fill_all_transition_quotients(
     quotient_domain: ArithmeticDomain,
     padded_height: usize,
 ) {
-    let num_program_quotients = ExtProgramTable::num_transition_quotients();
-    let num_instruction_quotients = ExtInstructionTable::num_transition_quotients();
-    let num_processor_quotients = ExtProcessorTable::num_transition_quotients();
-    let num_op_stack_quotients = ExtOpStackTable::num_transition_quotients();
-    let num_ram_quotients = ExtRamTable::num_transition_quotients();
-    let num_jump_stack_quotients = ExtJumpStackTable::num_transition_quotients();
-
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
-    let mut program_quot_table = quot_table.slice_mut(s![.., ..num_program_quotients]);
+    let program_section_start = 0;
+    let program_section_end = program_section_start + ExtProgramTable::num_transition_quotients();
+    let instruction_section_start = program_section_end;
+    let instruction_section_end =
+        instruction_section_start + ExtInstructionTable::num_transition_quotients();
+    let processor_section_start = instruction_section_end;
+    let processor_section_end =
+        processor_section_start + ExtProcessorTable::num_transition_quotients();
+    let op_stack_section_start = processor_section_end;
+    let op_stack_section_end = op_stack_section_start + ExtOpStackTable::num_transition_quotients();
+    let ram_section_start = op_stack_section_end;
+    let ram_section_end = ram_section_start + ExtRamTable::num_transition_quotients();
+    let jump_stack_section_start = ram_section_end;
+    let jump_stack_section_end =
+        jump_stack_section_start + ExtJumpStackTable::num_transition_quotients();
+    let hash_section_start = jump_stack_section_end;
+    let hash_section_end = hash_section_start + ExtHashTable::num_transition_quotients();
 
+    let mut program_quot_table =
+        quot_table.slice_mut(s![.., program_section_start..program_section_end]);
     ExtProgramTable::fill_transition_quotients(
         master_base_table,
         master_ext_table,
@@ -926,7 +960,7 @@ pub fn fill_all_transition_quotients(
         padded_height,
     );
     let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., num_program_quotients..num_instruction_quotients]);
+        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
     ExtInstructionTable::fill_transition_quotients(
         master_base_table,
         master_ext_table,
@@ -937,7 +971,7 @@ pub fn fill_all_transition_quotients(
         padded_height,
     );
     let mut processor_quot_table =
-        quot_table.slice_mut(s![.., num_instruction_quotients..num_processor_quotients]);
+        quot_table.slice_mut(s![.., processor_section_start..processor_section_end]);
     ExtProcessorTable::fill_transition_quotients(
         master_base_table,
         master_ext_table,
@@ -948,7 +982,7 @@ pub fn fill_all_transition_quotients(
         padded_height,
     );
     let mut op_stack_quot_table =
-        quot_table.slice_mut(s![.., num_processor_quotients..num_op_stack_quotients]);
+        quot_table.slice_mut(s![.., op_stack_section_start..op_stack_section_end]);
     ExtOpStackTable::fill_transition_quotients(
         master_base_table,
         master_ext_table,
@@ -958,8 +992,7 @@ pub fn fill_all_transition_quotients(
         quotient_domain,
         padded_height,
     );
-    let mut ram_quot_table =
-        quot_table.slice_mut(s![.., num_op_stack_quotients..num_ram_quotients]);
+    let mut ram_quot_table = quot_table.slice_mut(s![.., ram_section_start..ram_section_end]);
     ExtRamTable::fill_transition_quotients(
         master_base_table,
         master_ext_table,
@@ -970,7 +1003,7 @@ pub fn fill_all_transition_quotients(
         padded_height,
     );
     let mut jump_stack_quot_table =
-        quot_table.slice_mut(s![.., num_ram_quotients..num_jump_stack_quotients]);
+        quot_table.slice_mut(s![.., jump_stack_section_start..jump_stack_section_end]);
     ExtJumpStackTable::fill_transition_quotients(
         master_base_table,
         master_ext_table,
@@ -980,7 +1013,7 @@ pub fn fill_all_transition_quotients(
         quotient_domain,
         padded_height,
     );
-    let mut hash_quot_table = quot_table.slice_mut(s![.., num_jump_stack_quotients..]);
+    let mut hash_quot_table = quot_table.slice_mut(s![.., hash_section_start..hash_section_end]);
     ExtHashTable::fill_transition_quotients(
         master_base_table,
         master_ext_table,
@@ -999,16 +1032,28 @@ pub fn fill_all_terminal_quotients(
     zerofier_inverse: ArrayView1<BFieldElement>,
     challenges: &AllChallenges,
 ) {
-    let num_program_quotients = ExtProgramTable::num_terminal_quotients();
-    let num_instruction_quotients = ExtInstructionTable::num_terminal_quotients();
-    let num_processor_quotients = ExtProcessorTable::num_terminal_quotients();
-    let num_op_stack_quotients = ExtOpStackTable::num_terminal_quotients();
-    let num_ram_quotients = ExtRamTable::num_terminal_quotients();
-    let num_jump_stack_quotients = ExtJumpStackTable::num_terminal_quotients();
-
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
-    let mut program_quot_table = quot_table.slice_mut(s![.., ..num_program_quotients]);
+    let program_section_start = 0;
+    let program_section_end = program_section_start + ExtProgramTable::num_terminal_quotients();
+    let instruction_section_start = program_section_end;
+    let instruction_section_end =
+        instruction_section_start + ExtInstructionTable::num_terminal_quotients();
+    let processor_section_start = instruction_section_end;
+    let processor_section_end =
+        processor_section_start + ExtProcessorTable::num_terminal_quotients();
+    let op_stack_section_start = processor_section_end;
+    let op_stack_section_end = op_stack_section_start + ExtOpStackTable::num_terminal_quotients();
+    let ram_section_start = op_stack_section_end;
+    let ram_section_end = ram_section_start + ExtRamTable::num_terminal_quotients();
+    let jump_stack_section_start = ram_section_end;
+    let jump_stack_section_end =
+        jump_stack_section_start + ExtJumpStackTable::num_terminal_quotients();
+    let hash_section_start = jump_stack_section_end;
+    let hash_section_end = hash_section_start + ExtHashTable::num_terminal_quotients();
+
+    let mut program_quot_table =
+        quot_table.slice_mut(s![.., program_section_start..program_section_end]);
     ExtProgramTable::fill_terminal_quotients(
         master_base_table,
         master_ext_table,
@@ -1017,7 +1062,7 @@ pub fn fill_all_terminal_quotients(
         challenges,
     );
     let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., num_program_quotients..num_instruction_quotients]);
+        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
     ExtInstructionTable::fill_terminal_quotients(
         master_base_table,
         master_ext_table,
@@ -1026,7 +1071,7 @@ pub fn fill_all_terminal_quotients(
         challenges,
     );
     let mut processor_quot_table =
-        quot_table.slice_mut(s![.., num_instruction_quotients..num_processor_quotients]);
+        quot_table.slice_mut(s![.., processor_section_start..processor_section_end]);
     ExtProcessorTable::fill_terminal_quotients(
         master_base_table,
         master_ext_table,
@@ -1035,7 +1080,7 @@ pub fn fill_all_terminal_quotients(
         challenges,
     );
     let mut op_stack_quot_table =
-        quot_table.slice_mut(s![.., num_processor_quotients..num_op_stack_quotients]);
+        quot_table.slice_mut(s![.., op_stack_section_start..op_stack_section_end]);
     ExtOpStackTable::fill_terminal_quotients(
         master_base_table,
         master_ext_table,
@@ -1043,8 +1088,7 @@ pub fn fill_all_terminal_quotients(
         zerofier_inverse,
         challenges,
     );
-    let mut ram_quot_table =
-        quot_table.slice_mut(s![.., num_op_stack_quotients..num_ram_quotients]);
+    let mut ram_quot_table = quot_table.slice_mut(s![.., ram_section_start..ram_section_end]);
     ExtRamTable::fill_terminal_quotients(
         master_base_table,
         master_ext_table,
@@ -1053,7 +1097,7 @@ pub fn fill_all_terminal_quotients(
         challenges,
     );
     let mut jump_stack_quot_table =
-        quot_table.slice_mut(s![.., num_ram_quotients..num_jump_stack_quotients]);
+        quot_table.slice_mut(s![.., jump_stack_section_start..jump_stack_section_end]);
     ExtJumpStackTable::fill_terminal_quotients(
         master_base_table,
         master_ext_table,
@@ -1061,7 +1105,7 @@ pub fn fill_all_terminal_quotients(
         zerofier_inverse,
         challenges,
     );
-    let mut hash_quot_table = quot_table.slice_mut(s![.., num_jump_stack_quotients..]);
+    let mut hash_quot_table = quot_table.slice_mut(s![.., hash_section_start..hash_section_end]);
     ExtHashTable::fill_terminal_quotients(
         master_base_table,
         master_ext_table,
@@ -1100,14 +1144,23 @@ pub fn all_quotients(
     let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
     let mut all_quotients = Array2::zeros([quotient_domain.length, num_quotients]);
 
-    // todo >>> continue here <<< the number is not the index – do some summing.
-    let num_initial_quotients = num_all_initial_quotients();
-    let num_consistency_quotients = num_all_consistency_quotients();
-    let num_transition_quotients = num_all_transition_quotients();
-    let num_terminal_quotients = num_all_terminal_quotients();
+    let initial_quotient_section_start = 0;
+    let initial_quotient_section_end = initial_quotient_section_start + num_all_initial_quotients();
+    let consistency_quotient_section_start = initial_quotient_section_end;
+    let consistency_quotient_section_end =
+        consistency_quotient_section_start + num_all_consistency_quotients();
+    let transition_quotient_section_start = consistency_quotient_section_end;
+    let transition_quotient_section_end =
+        transition_quotient_section_start + num_all_transition_quotients();
+    let terminal_quotient_section_start = transition_quotient_section_end;
+    let terminal_quotient_section_end =
+        terminal_quotient_section_start + num_all_terminal_quotients();
 
     prof_start!(maybe_profiler, "initial");
-    let mut initial_quot_table = all_quotients.slice_mut(s![.., ..num_initial_quotients]);
+    let mut initial_quot_table = all_quotients.slice_mut(s![
+        ..,
+        initial_quotient_section_start..initial_quotient_section_end
+    ]);
     let initial_quotient_zerofier_inverse = initial_quotient_zerofier_inverse(quotient_domain);
     fill_all_initial_quotients(
         quotient_domain_master_base_table,
@@ -1119,8 +1172,10 @@ pub fn all_quotients(
     prof_stop!(maybe_profiler, "initial");
 
     prof_start!(maybe_profiler, "consistency");
-    let mut consistency_quotients =
-        all_quotients.slice_mut(s![.., num_initial_quotients..num_consistency_quotients]);
+    let mut consistency_quotients = all_quotients.slice_mut(s![
+        ..,
+        consistency_quotient_section_start..consistency_quotient_section_end
+    ]);
     let consistency_quotient_zerofier_inverse =
         consistency_quotient_zerofier_inverse(quotient_domain, padded_height);
     fill_all_consistency_quotients(
@@ -1133,8 +1188,10 @@ pub fn all_quotients(
     prof_stop!(maybe_profiler, "consistency");
 
     prof_start!(maybe_profiler, "transition");
-    let mut transition_quotients =
-        all_quotients.slice_mut(s![.., num_consistency_quotients..num_transition_quotients]);
+    let mut transition_quotients = all_quotients.slice_mut(s![
+        ..,
+        transition_quotient_section_start..transition_quotient_section_end
+    ]);
     let transition_quotient_zerofier_inverse = transition_quotient_zerofier_inverse(
         quotient_domain,
         trace_domain_generator,
@@ -1152,8 +1209,10 @@ pub fn all_quotients(
     prof_stop!(maybe_profiler, "transition");
 
     prof_start!(maybe_profiler, "terminal");
-    let mut terminal_quot_table =
-        all_quotients.slice_mut(s![.., num_transition_quotients..num_terminal_quotients]);
+    let mut terminal_quot_table = all_quotients.slice_mut(s![
+        ..,
+        terminal_quotient_section_start..terminal_quotient_section_end
+    ]);
     let initial_quotient_zerofier_inverse =
         terminal_quotient_zerofier_inverse(quotient_domain, trace_domain_generator);
     fill_all_terminal_quotients(
