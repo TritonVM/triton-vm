@@ -121,7 +121,15 @@ where
 {
     fn randomized_padded_trace_len(&self) -> usize;
     fn rand_trace_to_padded_trace_unit_distance(&self) -> usize;
+
+    /// Presents underlying trace data, excluding trace randomizers. Makes little sense over the
+    /// FRI domain.
+    fn trace_table(&self) -> ArrayView2<FF>;
+
+    /// Presents all underlying data.
     fn master_matrix(&self) -> ArrayView2<FF>;
+
+    /// Presents all underlying data in a mutable manner.
     fn master_matrix_mut(&mut self) -> ArrayViewMut2<FF>;
     fn fri_domain(&self) -> ArithmeticDomain;
 
@@ -222,6 +230,11 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
         self.rand_trace_to_padded_trace_unit_distance
     }
 
+    fn trace_table(&self) -> ArrayView2<BFieldElement> {
+        self.master_base_matrix
+            .slice(s![..; self.rand_trace_to_padded_trace_unit_distance, ..])
+    }
+
     fn master_matrix(&self) -> ArrayView2<BFieldElement> {
         self.master_base_matrix.view()
     }
@@ -242,6 +255,11 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 
     fn rand_trace_to_padded_trace_unit_distance(&self) -> usize {
         self.rand_trace_to_padded_trace_unit_distance
+    }
+
+    fn trace_table(&self) -> ArrayView2<XFieldElement> {
+        self.master_ext_matrix
+            .slice(s![..; self.rand_trace_to_padded_trace_unit_distance, ..])
     }
 
     fn master_matrix(&self) -> ArrayView2<XFieldElement> {

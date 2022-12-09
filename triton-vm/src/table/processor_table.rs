@@ -4350,6 +4350,7 @@ mod constraint_polynomial_tests {
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
     use crate::table::processor_table::ProcessorMatrixRow;
+    use crate::table::table_collection::MasterTable;
     use crate::vm::Program;
 
     use super::*;
@@ -4367,7 +4368,7 @@ mod constraint_polynomial_tests {
     fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Array2<BFieldElement> {
         let (_, unpadded_master_base_table, _) = parse_simulate_pad(source_code, vec![], vec![]);
         unpadded_master_base_table
-            .master_base_matrix
+            .trace_table()
             .slice(s![row_num..=row_num + 1, ..])
             .to_owned()
     }
@@ -4438,6 +4439,11 @@ mod constraint_polynomial_tests {
             }
             println!();
 
+            assert_eq!(
+                instruction.opcode_b(),
+                curr_row[CI.master_table_index()],
+                "The test is trying to check the wrong transition constraint polynomials."
+            );
             for (constraint_idx, constraint_circuit) in
                 get_transition_constraints_for_instruction(instruction)
                     .into_iter()
@@ -4447,11 +4453,6 @@ mod constraint_polynomial_tests {
                     test_rows.view(),
                     fake_ext_table.view(),
                     &challenges.processor_table_challenges,
-                );
-                assert_eq!(
-                    instruction.opcode_b(),
-                    curr_row[CI.master_table_index()],
-                    "The test is trying to check the wrong transition constraint polynomials."
                 );
                 assert_eq!(
                     XFieldElement::zero(),
