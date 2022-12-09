@@ -59,6 +59,7 @@ impl QuotientableExtensionTable for ExtRamTable {}
 
 impl RamTable {
     /// Fills the trace table in-place and returns all clock jump differences greater than 1.
+    // todo change spec to allow arbitrary order of RAMP, as long as they form contiguous regions
     pub fn fill_trace(
         ram_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
@@ -142,8 +143,8 @@ impl RamTable {
                 current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
                 current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
             }
-            next_row[usize::from(BezoutCoefficient0)] = current_bcpc_0;
-            next_row[usize::from(BezoutCoefficient1)] = current_bcpc_1;
+            next_row[usize::from(BezoutCoefficientPolynomialCoefficient0)] = current_bcpc_0;
+            next_row[usize::from(BezoutCoefficientPolynomialCoefficient1)] = current_bcpc_1;
 
             if ramp_diff != BFieldElement::zero() && clk_diff.value() > 1 {
                 clock_jump_differences_greater_than_1.push(clk_diff);
@@ -156,7 +157,6 @@ impl RamTable {
         clock_jump_differences_greater_than_1
     }
 
-    // todo change spec to allow arbitrary order of RAMP, as long as they form contiguous regions
     pub fn pad_trace(ram_table: &mut ArrayViewMut2<BFieldElement>, processor_table_len: usize) {
         assert!(
             processor_table_len > 0,
