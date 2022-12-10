@@ -422,6 +422,13 @@ impl MasterBaseTable {
             &mut ext_instruction_table,
             &challenges.instruction_table_challenges,
         );
+        let base_processor_table = self.table(TableId::ProcessorTable);
+        let mut ext_processor_table = master_ext_table.table_mut(TableId::ProcessorTable);
+        ProcessorTable::extend(
+            &base_processor_table,
+            &mut ext_processor_table,
+            &challenges.processor_table_challenges,
+        );
 
         master_ext_table
     }

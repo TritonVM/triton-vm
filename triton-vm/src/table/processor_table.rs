@@ -8,6 +8,8 @@ use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayBase;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Ix1;
 use num_traits::One;
@@ -118,99 +120,89 @@ impl ProcessorTable {
             .fill(BFieldElement::one());
     }
 
-    pub fn extend(&self, challenges: &ProcessorTableChallenges) -> ExtProcessorTable {
-        let fake_data = vec![vec![BFieldElement::zero()]];
+    pub fn extend(
+        base_table: &ArrayView2<BFieldElement>,
+        ext_table: &mut ArrayViewMut2<XFieldElement>,
+        challenges: &ProcessorTableChallenges,
+    ) {
         let mut unique_clock_jump_differences = vec![];
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
 
         let mut input_table_running_evaluation = EvalArg::default_initial();
         let mut output_table_running_evaluation = EvalArg::default_initial();
         let mut instruction_table_running_product = PermArg::default_initial();
-        let mut opstack_table_running_product = PermArg::default_initial();
+        let mut op_stack_table_running_product = PermArg::default_initial();
         let mut ram_table_running_product = PermArg::default_initial();
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut to_hash_table_running_evaluation = EvalArg::default_initial();
         let mut from_hash_table_running_evaluation = EvalArg::default_initial();
-        let mut selected_clock_cycles_running_evaluation = EvalArg::default_initial();
         let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
         let mut all_clock_jump_differences_running_product =
             PermArg::default_initial() * PermArg::default_initial() * PermArg::default_initial();
 
-        let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in fake_data.iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            let mut extension_row = ext_table.row_mut(row_idx);
 
             // Input table
-            if let Some(prow) = previous_row.clone() {
-                if prow[CI.table_index()] == Instruction::ReadIo.opcode_b() {
-                    let input_symbol = extension_row[ST0.table_index()];
+            if let Some(prev_row) = previous_row {
+                if prev_row[CI.table_index()] == Instruction::ReadIo.opcode_b() {
+                    let input_symbol = current_row[ST0.table_index()];
                     input_table_running_evaluation = input_table_running_evaluation
                         * challenges.standard_input_eval_indeterminate
                         + input_symbol;
                 }
             }
-            extension_row[InputTableEvalArg.table_index()] = input_table_running_evaluation;
 
             // Output table
-            if row[CI.table_index()] == Instruction::WriteIo.opcode_b() {
-                let output_symbol = extension_row[ST0.table_index()];
+            if current_row[CI.table_index()] == Instruction::WriteIo.opcode_b() {
+                let output_symbol = current_row[ST0.table_index()];
                 output_table_running_evaluation = output_table_running_evaluation
                     * challenges.standard_output_eval_indeterminate
                     + output_symbol;
             }
-            extension_row[OutputTableEvalArg.table_index()] = output_table_running_evaluation;
 
             // Instruction table
-            let ip = extension_row[IP.table_index()];
-            let ci = extension_row[CI.table_index()];
-            let nia = extension_row[NIA.table_index()];
-
-            let ip_w = challenges.instruction_table_ip_weight;
-            let ci_w = challenges.instruction_table_ci_processor_weight;
-            let nia_w = challenges.instruction_table_nia_weight;
-
-            if row[IsPadding.table_index()].is_zero() {
-                let compressed_row_for_instruction_table_permutation_argument =
-                    ip * ip_w + ci * ci_w + nia * nia_w;
+            if current_row[IsPadding.table_index()].is_zero() {
+                let ip = current_row[IP.table_index()];
+                let ci = current_row[CI.table_index()];
+                let nia = current_row[NIA.table_index()];
+                let compressed_row_for_instruction_table_permutation_argument = ip
+                    * challenges.instruction_table_ip_weight
+                    + ci * challenges.instruction_table_ci_processor_weight
+                    + nia * challenges.instruction_table_nia_weight;
                 instruction_table_running_product *= challenges.instruction_perm_indeterminate
                     - compressed_row_for_instruction_table_permutation_argument;
             }
-            extension_row[InstructionTablePermArg.table_index()] =
-                instruction_table_running_product;
 
             // OpStack table
-            let clk = extension_row[CLK.table_index()];
-            let ib1 = extension_row[IB1.table_index()];
-            let osp = extension_row[OSP.table_index()];
-            let osv = extension_row[OSV.table_index()];
-
+            let clk = current_row[CLK.table_index()];
+            let ib1 = current_row[IB1.table_index()];
+            let osp = current_row[OSP.table_index()];
+            let osv = current_row[OSV.table_index()];
             let compressed_row_for_op_stack_table_permutation_argument = clk
                 * challenges.op_stack_table_clk_weight
                 + ib1 * challenges.op_stack_table_ib1_weight
                 + osp * challenges.op_stack_table_osp_weight
                 + osv * challenges.op_stack_table_osv_weight;
-            opstack_table_running_product *= challenges.op_stack_perm_indeterminate
+            op_stack_table_running_product *= challenges.op_stack_perm_indeterminate
                 - compressed_row_for_op_stack_table_permutation_argument;
-            extension_row[OpStackTablePermArg.table_index()] = opstack_table_running_product;
 
             // RAM Table
-            let ramv = extension_row[RAMV.table_index()];
-            let ramp = extension_row[RAMP.table_index()];
-
+            let ramv = current_row[RAMV.table_index()];
+            let ramp = current_row[RAMP.table_index()];
             let compressed_row_for_ram_table_permutation_argument = clk
                 * challenges.ram_table_clk_weight
                 + ramv * challenges.ram_table_ramv_weight
                 + ramp * challenges.ram_table_ramp_weight;
             ram_table_running_product *= challenges.ram_perm_indeterminate
                 - compressed_row_for_ram_table_permutation_argument;
-            extension_row[RamTablePermArg.table_index()] = ram_table_running_product;
 
             // JumpStack Table
-            let jsp = extension_row[JSP.table_index()];
-            let jso = extension_row[JSO.table_index()];
-            let jsd = extension_row[JSD.table_index()];
+            let ci = current_row[CI.table_index()];
+            let jsp = current_row[JSP.table_index()];
+            let jso = current_row[JSO.table_index()];
+            let jsd = current_row[JSD.table_index()];
             let compressed_row_for_jump_stack_table = clk * challenges.jump_stack_table_clk_weight
                 + ci * challenges.jump_stack_table_ci_weight
                 + jsp * challenges.jump_stack_table_jsp_weight
@@ -218,69 +210,62 @@ impl ProcessorTable {
                 + jsd * challenges.jump_stack_table_jsd_weight;
             jump_stack_running_product *=
                 challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
-            extension_row[JumpStackTablePermArg.table_index()] = jump_stack_running_product;
 
-            // Hash Table – Hash's input from Processor to Hash Coprocessor
-            if row[CI.table_index()] == Instruction::Hash.opcode_b() {
+            if current_row[CI.table_index()] == Instruction::Hash.opcode_b() {
                 let st_0_through_9 = [
-                    extension_row[ST0.table_index()],
-                    extension_row[ST1.table_index()],
-                    extension_row[ST2.table_index()],
-                    extension_row[ST3.table_index()],
-                    extension_row[ST4.table_index()],
-                    extension_row[ST5.table_index()],
-                    extension_row[ST6.table_index()],
-                    extension_row[ST7.table_index()],
-                    extension_row[ST8.table_index()],
-                    extension_row[ST9.table_index()],
+                    current_row[ST0.table_index()],
+                    current_row[ST1.table_index()],
+                    current_row[ST2.table_index()],
+                    current_row[ST3.table_index()],
+                    current_row[ST4.table_index()],
+                    current_row[ST5.table_index()],
+                    current_row[ST6.table_index()],
+                    current_row[ST7.table_index()],
+                    current_row[ST8.table_index()],
+                    current_row[ST9.table_index()],
+                ];
+                let hash_table_stack_input_challenges = [
+                    challenges.hash_table_stack_input_weight0,
+                    challenges.hash_table_stack_input_weight1,
+                    challenges.hash_table_stack_input_weight2,
+                    challenges.hash_table_stack_input_weight3,
+                    challenges.hash_table_stack_input_weight4,
+                    challenges.hash_table_stack_input_weight5,
+                    challenges.hash_table_stack_input_weight6,
+                    challenges.hash_table_stack_input_weight7,
+                    challenges.hash_table_stack_input_weight8,
+                    challenges.hash_table_stack_input_weight9,
                 ];
                 let compressed_row_for_hash_input: XFieldElement = st_0_through_9
                     .into_iter()
-                    .zip_eq(
-                        [
-                            challenges.hash_table_stack_input_weight0,
-                            challenges.hash_table_stack_input_weight1,
-                            challenges.hash_table_stack_input_weight2,
-                            challenges.hash_table_stack_input_weight3,
-                            challenges.hash_table_stack_input_weight4,
-                            challenges.hash_table_stack_input_weight5,
-                            challenges.hash_table_stack_input_weight6,
-                            challenges.hash_table_stack_input_weight7,
-                            challenges.hash_table_stack_input_weight8,
-                            challenges.hash_table_stack_input_weight9,
-                        ]
-                        .into_iter(),
-                    )
+                    .zip_eq(hash_table_stack_input_challenges.into_iter())
                     .map(|(st, weight)| weight * st)
                     .sum();
                 to_hash_table_running_evaluation = to_hash_table_running_evaluation
                     * challenges.to_hash_table_eval_indeterminate
                     + compressed_row_for_hash_input;
             }
-            extension_row[ToHashTableEvalArg.table_index()] = to_hash_table_running_evaluation;
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
-            if let Some(prow) = previous_row.clone() {
-                if prow[CI.table_index()] == Instruction::Hash.opcode_b() {
+            if let Some(prev_row) = previous_row {
+                if prev_row[CI.table_index()] == Instruction::Hash.opcode_b() {
                     let st_5_through_9 = [
-                        extension_row[ST5.table_index()],
-                        extension_row[ST6.table_index()],
-                        extension_row[ST7.table_index()],
-                        extension_row[ST8.table_index()],
-                        extension_row[ST9.table_index()],
+                        current_row[ST5.table_index()],
+                        current_row[ST6.table_index()],
+                        current_row[ST7.table_index()],
+                        current_row[ST8.table_index()],
+                        current_row[ST9.table_index()],
+                    ];
+                    let hash_table_digest_output_challenges = [
+                        challenges.hash_table_digest_output_weight0,
+                        challenges.hash_table_digest_output_weight1,
+                        challenges.hash_table_digest_output_weight2,
+                        challenges.hash_table_digest_output_weight3,
+                        challenges.hash_table_digest_output_weight4,
                     ];
                     let compressed_row_for_hash_digest: XFieldElement = st_5_through_9
                         .into_iter()
-                        .zip_eq(
-                            [
-                                challenges.hash_table_digest_output_weight0,
-                                challenges.hash_table_digest_output_weight1,
-                                challenges.hash_table_digest_output_weight2,
-                                challenges.hash_table_digest_output_weight3,
-                                challenges.hash_table_digest_output_weight4,
-                            ]
-                            .into_iter(),
-                        )
+                        .zip_eq(hash_table_digest_output_challenges.into_iter())
                         .map(|(st, weight)| weight * st)
                         .sum();
                     from_hash_table_running_evaluation = from_hash_table_running_evaluation
@@ -288,20 +273,17 @@ impl ProcessorTable {
                         + compressed_row_for_hash_digest;
                 }
             }
-            extension_row[FromHashTableEvalArg.table_index()] = from_hash_table_running_evaluation;
 
             // Clock Jump Difference
-            let current_clock_jump_difference = row[ClockJumpDifference.table_index()].lift();
+            let current_clock_jump_difference = current_row[ClockJumpDifference.table_index()];
             if !current_clock_jump_difference.is_zero() {
                 all_clock_jump_differences_running_product *= challenges
                     .all_clock_jump_differences_multi_perm_indeterminate
                     - current_clock_jump_difference;
             }
-            extension_row[AllClockJumpDifferencesPermArg.table_index()] =
-                all_clock_jump_differences_running_product;
 
-            if let Some(prow) = previous_row {
-                let previous_clock_jump_difference = prow[ClockJumpDifference.table_index()].lift();
+            if let Some(prev_row) = previous_row {
+                let previous_clock_jump_difference = prev_row[ClockJumpDifference.table_index()];
                 if previous_clock_jump_difference != current_clock_jump_difference
                     && !current_clock_jump_difference.is_zero()
                 {
@@ -317,16 +299,26 @@ impl ProcessorTable {
                     .unique_clock_jump_differences_eval_indeterminate
                     + current_clock_jump_difference;
             }
+
+            extension_row[InputTableEvalArg.table_index()] = input_table_running_evaluation;
+            extension_row[OutputTableEvalArg.table_index()] = output_table_running_evaluation;
+            extension_row[InstructionTablePermArg.table_index()] =
+                instruction_table_running_product;
+            extension_row[OpStackTablePermArg.table_index()] = op_stack_table_running_product;
+            extension_row[RamTablePermArg.table_index()] = ram_table_running_product;
+            extension_row[JumpStackTablePermArg.table_index()] = jump_stack_running_product;
+            extension_row[ToHashTableEvalArg.table_index()] = to_hash_table_running_evaluation;
+            extension_row[FromHashTableEvalArg.table_index()] = from_hash_table_running_evaluation;
+            extension_row[AllClockJumpDifferencesPermArg.table_index()] =
+                all_clock_jump_differences_running_product;
             extension_row[UniqueClockJumpDifferencesEvalArg.table_index()] =
                 unique_clock_jump_differences_running_evaluation;
-
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
+            previous_row = Some(current_row);
         }
 
         if std::env::var("DEBUG").is_ok() {
             let mut unique_clock_jump_differences_copy = unique_clock_jump_differences.clone();
-            unique_clock_jump_differences_copy.sort_by_key(|xfe| xfe.unlift().unwrap().value());
+            unique_clock_jump_differences_copy.sort_by_key(|&bfe| bfe.value());
             unique_clock_jump_differences_copy.dedup();
             assert_eq!(
                 unique_clock_jump_differences_copy,
@@ -334,10 +326,11 @@ impl ProcessorTable {
             );
         }
 
-        // second pass over Processor Table to compute evaluation over
-        // all relevant clock cycles
-        for extension_row in extension_matrix.iter_mut() {
-            let current_clk = extension_row[CLK.table_index()];
+        // second pass over Processor Table to compute evaluation over all relevant clock cycles
+        let mut selected_clock_cycles_running_evaluation = EvalArg::default_initial();
+        for row_idx in 0..base_table.nrows() {
+            let current_clk = base_table[[row_idx, CLK.table_index()]];
+            let mut extension_row = ext_table.row_mut(row_idx);
             if unique_clock_jump_differences.contains(&current_clk) {
                 selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
                     * challenges.unique_clock_jump_differences_eval_indeterminate
@@ -346,9 +339,6 @@ impl ProcessorTable {
             extension_row[SelectedClockCyclesEvalArg.table_index()] =
                 selected_clock_cycles_running_evaluation;
         }
-
-        assert_eq!(fake_data.len(), extension_matrix.len());
-        ExtProcessorTable {}
     }
 }
 
