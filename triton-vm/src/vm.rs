@@ -222,7 +222,6 @@ pub mod triton_vm_tests {
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
 
@@ -843,21 +842,6 @@ pub mod triton_vm_tests {
         }
         profiler.finish();
         println!("{}", profiler.report());
-    }
-
-    fn _assert_air_constraints_on_matrix(
-        table_data: &[Vec<BFieldElement>],
-        air_constraints: &[MPolynomial<BFieldElement>],
-    ) {
-        for step in 0..table_data.len() - 1 {
-            let register: Vec<BFieldElement> = table_data[step].clone();
-            let next_register: Vec<BFieldElement> = table_data[step + 1].clone();
-            let point: Vec<BFieldElement> = vec![register, next_register].concat();
-
-            for air_constraint in air_constraints.iter() {
-                assert!(air_constraint.evaluate(&point).is_zero());
-            }
-        }
     }
 
     #[test]

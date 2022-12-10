@@ -327,13 +327,13 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Count how many times each reachable node is reached when traversing from
     /// the starting points that are given as input. The result is stored in the
     /// `visited_counter` field in each node.
-    pub fn traverse_multiple(mpols: &mut [ConstraintCircuit<T, II>]) {
-        for mpol in mpols.iter_mut() {
+    pub fn traverse_multiple(ccs: &mut [ConstraintCircuit<T, II>]) {
+        for cc in ccs.iter_mut() {
             assert!(
-                mpol.visited_counter.is_zero(),
+                cc.visited_counter.is_zero(),
                 "visited counter must be zero before starting count"
             );
-            mpol.traverse_single();
+            cc.traverse_single();
         }
     }
 
@@ -474,7 +474,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
+    /// Reduce size of multitree by simplifying constant expressions such as `1·X` to `X`.
     pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<T, II>]) {
         for circuit in circuits.iter_mut() {
             let mut mutated = circuit.constant_fold_inner();
@@ -923,7 +923,6 @@ mod constraint_circuit_tests {
     use itertools::Itertools;
     use rand::thread_rng;
     use rand::RngCore;
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::table::challenges::AllChallenges;
@@ -970,99 +969,66 @@ mod constraint_circuit_tests {
         counter
     }
 
-    fn circuit_mpol_builder(
-        challenges: &InstructionTableChallenges,
-    ) -> (
+    fn random_circuit_builder() -> (
         ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50, 40>>,
-        MPolynomial<XFieldElement>,
         ConstraintCircuitBuilder<InstructionTableChallenges, DualRowIndicator<50, 40>>,
     ) {
-        let var_count = 2 * (50 + 40);
-        let circuit_builder: ConstraintCircuitBuilder<
-            InstructionTableChallenges,
-            DualRowIndicator<50, 40>,
-        > = ConstraintCircuitBuilder::new();
-        let mpol_variables = MPolynomial::<XFieldElement>::variables(var_count);
+        let mut rng = thread_rng();
+        let num_base_columns = 50;
+        let num_ext_columns = 40;
+        let var_count = 2 * (num_base_columns + num_ext_columns);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let b_constants: Vec<BFieldElement> = random_elements(var_count);
         let x_constants: Vec<XFieldElement> = random_elements(var_count);
-        let zero = MPolynomial::from_constant(XFieldElement::zero(), var_count);
-        let mut rng = thread_rng();
-        let rand: usize = rng.next_u64() as usize;
-        let mut ret_mpol = mpol_variables[rand % var_count].clone();
-        let circuit_input: DualRowIndicator<50, 40> = DualRowIndicator::NextBaseRow(rand % 50);
+        let circuit_input =
+            DualRowIndicator::NextBaseRow(rng.next_u64() as usize % num_base_columns);
         let mut ret_circuit = circuit_builder.input(circuit_input);
         for _ in 0..100 {
-            let rand: usize = rng.next_u64() as usize;
-            let choices = 6;
-            let (mpol, circuit): (
-                MPolynomial<XFieldElement>,
-                ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50, 40>>,
-            ) = if rand % choices == 0 {
-                // p(x, y, z) = x
-                let mp = mpol_variables[rand % var_count].clone();
-                let input_value: DualRowIndicator<50, 40> =
-                    DualRowIndicator::CurrentBaseRow(rand % 50);
-                (mp.clone(), circuit_builder.input(input_value))
-            } else if rand % choices == 1 {
-                // p(x, y, z) = c
-                (
-                    MPolynomial::from_constant(x_constants[rand % var_count], var_count),
-                    circuit_builder.x_constant(x_constants[rand % var_count]),
-                )
-            } else if rand % choices == 2 {
-                // p(x, y, z) = rand_i
-                (
-                    MPolynomial::from_constant(challenges.processor_perm_indeterminate, var_count),
-                    circuit_builder
-                        .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
-                )
-            } else if rand % choices == 3 {
-                // p(x, y, z) = 0
-                (
-                    zero.clone(),
-                    circuit_builder.x_constant(XFieldElement::zero()),
-                )
-            } else if rand % choices == 4 {
-                // p(x, y, z) = bfe
-                (
-                    MPolynomial::from_constant(b_constants[rand % var_count].lift(), var_count),
-                    circuit_builder.b_constant(b_constants[rand % var_count]),
-                )
-            } else {
-                // p(x, y, z) = rand_i * x
-                let input_value: DualRowIndicator<50, 40> =
-                    DualRowIndicator::CurrentExtRow(rand % 40);
-                (
-                    mpol_variables[rand % var_count]
-                        .clone()
-                        .scalar_mul(challenges.processor_perm_indeterminate),
-                    circuit_builder.input(input_value)
-                        * circuit_builder
-                            .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
-                )
-            };
-            let operation_indicator = rand % 3;
-            match operation_indicator {
+            let circuit = match rng.next_u64() % 6 {
                 0 => {
-                    ret_mpol = ret_mpol.clone() * mpol;
-                    ret_circuit = ret_circuit * circuit;
+                    // p(x, y, z) = x
+                    circuit_builder.input(DualRowIndicator::CurrentBaseRow(
+                        rng.next_u64() as usize % num_base_columns,
+                    ))
                 }
                 1 => {
-                    ret_mpol = ret_mpol.clone() + mpol;
-                    ret_circuit = ret_circuit + circuit;
+                    // p(x, y, z) = xfe
+                    circuit_builder.x_constant(x_constants[rng.next_u64() as usize % var_count])
                 }
                 2 => {
-                    ret_mpol = ret_mpol.clone() - mpol;
-                    ret_circuit = ret_circuit - circuit;
+                    // p(x, y, z) = rand_i
+                    circuit_builder
+                        .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate)
                 }
-                _ => panic!(),
+                3 => {
+                    // p(x, y, z) = 0
+                    circuit_builder.x_constant(XFieldElement::zero())
+                }
+                4 => {
+                    // p(x, y, z) = bfe
+                    circuit_builder.b_constant(b_constants[rng.next_u64() as usize % var_count])
+                }
+                5 => {
+                    // p(x, y, z) = rand_i * x
+                    let input_value =
+                        DualRowIndicator::CurrentExtRow(rng.next_u64() as usize % num_ext_columns);
+                    let challenge = InstructionTableChallengeId::ProcessorPermIndeterminate;
+                    circuit_builder.input(input_value) * circuit_builder.challenge(challenge)
+                }
+                _ => unreachable!(),
+            };
+            match rng.next_u32() % 3 {
+                0 => ret_circuit = ret_circuit * circuit,
+                1 => ret_circuit = ret_circuit + circuit,
+                2 => ret_circuit = ret_circuit - circuit,
+                _ => unreachable!(),
             }
         }
 
-        (ret_circuit, ret_mpol, circuit_builder)
+        (ret_circuit, circuit_builder)
     }
 
-    // Make a deep copy of a MPolCircuit and return it as a MPolCircuitRef
+    // Make a deep copy of a Multicircuit and return it as a ConstraintCircuitMonad
     fn deep_copy_inner<T: TableChallenges, II: InputIndicator>(
         val: &ConstraintCircuit<T, II>,
         builder: &mut ConstraintCircuitBuilder<T, II>,
@@ -1089,19 +1055,15 @@ mod constraint_circuit_tests {
 
     #[test]
     fn equality_and_hash_agree_test() {
-        // Since the MPolCircuits are put into a hash set, I think it's important
-        // that `Eq` and `Hash` agree whether two nodes are equal or not. So if
-        // k1 == k2 => h(k1) == h(k2)
+        // The Multicircuits are put into a hash set. Hence, it is important that `Eq` and `Hash`
+        // agree whether two nodes are equal: k1 == k2 => h(k1) == h(k2)
         for _ in 0..100 {
-            let challenges = AllChallenges::placeholder();
-            let (circuit, _mpol, circuit_builder) =
-                circuit_mpol_builder(&challenges.instruction_table_challenges);
+            let (circuit, circuit_builder) = random_circuit_builder();
             let mut hasher0 = DefaultHasher::new();
             circuit.hash(&mut hasher0);
             let hash0 = hasher0.finish();
             assert_eq!(circuit, circuit);
 
-            // let zero = circuit_builder.deterministic_input(MPolynomial::zero(100));
             let zero = circuit_builder.x_constant(0.into());
             let same_circuit = circuit.clone() + zero;
             let mut hasher1 = DefaultHasher::new();
@@ -1115,7 +1077,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn mpol_circuit_hash_is_unchanged_by_meta_data_test() {
+    fn multi_circuit_hash_is_unchanged_by_meta_data_test() {
         // From https://doc.rust-lang.org/std/collections/struct.HashSet.html
         // "It is a logic error for a key to be modified in such a way that the key’s hash, as
         // determined by the Hash trait, or its equality, as determined by the Eq trait, changes
@@ -1127,9 +1089,7 @@ mod constraint_circuit_tests {
         // This means that the hash of a node may not depend on: `visited_counter`, `counter`,
         // `id_counter_ref`, or `all_nodes`. The reason for this constraint is that `all_nodes`
         // contains the digest of all nodes in the multi tree.
-        let challenges = AllChallenges::placeholder();
-        let (circuit, _mpol, _circuit_builder) =
-            circuit_mpol_builder(&challenges.instruction_table_challenges);
+        let (circuit, _circuit_builder) = random_circuit_builder();
         let mut hasher0 = DefaultHasher::new();
         circuit.hash(&mut hasher0);
         let digest_prior = hasher0.finish();
@@ -1240,9 +1200,7 @@ mod constraint_circuit_tests {
     #[test]
     fn constant_folding_pbt() {
         for _ in 0..1000 {
-            let challenges = AllChallenges::placeholder();
-            let (circuit, _mpol, circuit_builder) =
-                circuit_mpol_builder(&challenges.instruction_table_challenges);
+            let (circuit, circuit_builder) = random_circuit_builder();
             let one = circuit_builder.x_constant(1.into());
             let zero = circuit_builder.x_constant(0.into());
 
