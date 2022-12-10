@@ -1,4 +1,5 @@
 use ndarray::s;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::One;
@@ -359,41 +360,27 @@ impl InstructionTable {
     ) {
         let mut program_table_running_evaluation = EvalArg::default_initial();
         let mut processor_table_running_product = PermArg::default_initial();
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
 
-        // initialize the running evaluation to absorb the first row
-        let ip = base_table[[0, Address.table_index()]];
-        let ci = base_table[[0, CI.table_index()]];
-        let nia = base_table[[0, NIA.table_index()]];
-        let compressed_row_for_evaluation_argument = ip * challenges.address_weight
-            + ci * challenges.instruction_weight
-            + nia * challenges.next_instruction_weight;
-        program_table_running_evaluation = program_table_running_evaluation
-            * challenges.program_eval_indeterminate
-            + compressed_row_for_evaluation_argument;
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            let mut extension_row = ext_table.row_mut(row_idx);
 
-        ext_table[[0, RunningEvaluation.table_index()]] = program_table_running_evaluation;
-        ext_table[[0, RunningProductPermArg.table_index()]] = processor_table_running_product;
+            let ip = current_row[Address.table_index()];
+            let ci = current_row[CI.table_index()];
+            let nia = current_row[NIA.table_index()];
 
-        for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
-            let row = window.slice(s![0, ..]);
-            let next_row = window.slice(s![1, ..]);
-            let mut extension_row = ext_table.slice_mut(s![idx + 1, ..]);
-
-            let ip = row[Address.table_index()];
-            let ci = row[CI.table_index()];
-            let nia = row[NIA.table_index()];
-
-            // Is the next row a padding row?
+            // Is the current row a padding row?
             // Padding Row: don't updated anything.
-            // Not padding row: Is the next row's address different from the current row's address?
+            // Not padding row: Is previous row's address different from current row's address?
             //   Different: update running evaluation of Evaluation Argument with Program Table.
             //   Not different: update running product of Permutation Argument with Processor Table.
-            let is_duplicate_row = row[Address.table_index()] == next_row[Address.table_index()];
-            if !is_duplicate_row && next_row[IsPadding.table_index()].is_zero() {
-                debug_assert_eq!(
-                    row[Address.table_index()] + BFieldElement::one(),
-                    next_row[Address.table_index()]
-                );
+            let is_duplicate_row = if let Some(prev_row) = previous_row {
+                prev_row[Address.table_index()] == current_row[Address.table_index()]
+            } else {
+                false
+            };
+            if !is_duplicate_row && current_row[IsPadding.table_index()].is_zero() {
                 let compressed_row_for_evaluation_argument = ip * challenges.address_weight
                     + ci * challenges.instruction_weight
                     + nia * challenges.next_instruction_weight;
@@ -401,9 +388,7 @@ impl InstructionTable {
                     * challenges.program_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
-            if is_duplicate_row && next_row[IsPadding.table_index()].is_zero() {
-                debug_assert_eq!(row[CI.table_index()], next_row[CI.table_index()]);
-                debug_assert_eq!(row[NIA.table_index()], next_row[NIA.table_index()]);
+            if is_duplicate_row && current_row[IsPadding.table_index()].is_zero() {
                 let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
                     + ci * challenges.ci_processor_weight
                     + nia * challenges.nia_processor_weight;
@@ -413,6 +398,7 @@ impl InstructionTable {
 
             extension_row[RunningEvaluation.table_index()] = program_table_running_evaluation;
             extension_row[RunningProductPermArg.table_index()] = processor_table_running_product;
+            previous_row = Some(current_row);
         }
     }
 }
