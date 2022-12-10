@@ -391,7 +391,7 @@ impl MasterBaseTable {
         num_randomizer_polynomials: usize,
     ) -> MasterExtTable {
         // randomizer polynomials
-        let num_rows = self.fri_domain.length;
+        let num_rows = self.master_base_matrix.nrows();
         let num_columns = NUM_EXT_COLUMNS + num_randomizer_polynomials;
         let mut master_ext_matrix = Array2::zeros([num_rows, num_columns].f());
         master_ext_matrix

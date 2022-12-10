@@ -125,6 +125,9 @@ impl ProcessorTable {
         ext_table: &mut ArrayViewMut2<XFieldElement>,
         challenges: &ProcessorTableChallenges,
     ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut unique_clock_jump_differences = vec![];
 
         let mut input_table_running_evaluation = EvalArg::default_initial();

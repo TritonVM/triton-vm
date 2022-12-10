@@ -358,6 +358,9 @@ impl InstructionTable {
         ext_table: &mut ArrayViewMut2<XFieldElement>,
         challenges: &InstructionTableChallenges,
     ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut program_table_running_evaluation = EvalArg::default_initial();
         let mut processor_table_running_product = PermArg::default_initial();
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;

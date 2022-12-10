@@ -175,6 +175,9 @@ impl ProgramTable {
         ext_table: &mut ArrayViewMut2<XFieldElement>,
         challenges: &ProgramTableChallenges,
     ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut instruction_table_running_evaluation = EvalArg::default_initial();
 
         for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
