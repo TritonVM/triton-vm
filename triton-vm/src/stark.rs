@@ -288,7 +288,7 @@ impl Stark {
         // Add the grand cross-table argument's quotient to the quotient codewords. The memory for
         // this was allocated in the call to `all_quotients`.
         grand_cross_table_arg_quotient_codeword
-            .move_into(&mut quotient_codewords.slice_mut(s![.., quotient_codewords.ncols() - 1]));
+            .move_into(&mut quotient_codewords.slice_mut(s![.., -1]));
 
         let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
             .quotient_degree_bound(
@@ -303,7 +303,7 @@ impl Stark {
         let combination_codeword = self.create_combination_codeword(
             quotient_domain,
             base_quotient_domain_codewords,
-            extension_quotient_domain_codewords,
+            extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
             quotient_codewords.view(),
             non_lin_combi_weights,
             quotient_degree_bounds,
