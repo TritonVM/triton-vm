@@ -182,10 +182,6 @@ impl ProgramTable {
             let next_row = window.slice(s![1, ..]);
             let mut extension_row = ext_table.slice_mut(s![idx, ..]);
 
-            let address = row[Address.table_index()].lift();
-            let instruction = row[Instruction.table_index()].lift();
-            let next_instruction = next_row[Instruction.table_index()].lift();
-
             // The running evaluation linking Program Table and Instruction Table does record the
             // initial in the first row, contrary to most other running evaluations and products.
             // The running product's final value, allowing for a meaningful cross-table argument,
@@ -193,11 +189,12 @@ impl ProgramTable {
             extension_row[RunningEvaluation.table_index()] = instruction_table_running_evaluation;
             // update the running evaluation if not a padding row
             if row[IsPadding.table_index()].is_zero() {
-                // compress address, instruction, and next instruction (or argument) into one value
+                let address = row[Address.table_index()];
+                let instruction = row[Instruction.table_index()];
+                let next_instruction = next_row[Instruction.table_index()];
                 let compressed_row_for_evaluation_argument = address * challenges.address_weight
                     + instruction * challenges.instruction_weight
                     + next_instruction * challenges.next_instruction_weight;
-
                 instruction_table_running_evaluation = instruction_table_running_evaluation
                     * challenges.instruction_eval_indeterminate
                     + compressed_row_for_evaluation_argument;

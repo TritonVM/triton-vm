@@ -408,14 +408,19 @@ impl MasterBaseTable {
             master_ext_matrix,
         };
 
-        // Each table only needs their own challenges, but `AllChallenges` are passed everywhere
-        // to keep each table's `.extend()` homogenous.
         let base_program_table = self.table(TableId::ProgramTable);
         let mut ext_program_table = master_ext_table.table_mut(TableId::ProgramTable);
         ProgramTable::extend(
             &base_program_table,
             &mut ext_program_table,
             &challenges.program_table_challenges,
+        );
+        let base_instruction_table = self.table(TableId::InstructionTable);
+        let mut ext_instruction_table = master_ext_table.table_mut(TableId::InstructionTable);
+        InstructionTable::extend(
+            &base_instruction_table,
+            &mut ext_instruction_table,
+            &challenges.instruction_table_challenges,
         );
 
         master_ext_table

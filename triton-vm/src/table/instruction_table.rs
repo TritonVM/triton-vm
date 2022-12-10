@@ -1,5 +1,5 @@
-use itertools::Itertools;
 use ndarray::s;
+use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::One;
 use num_traits::Zero;
@@ -352,69 +352,68 @@ impl InstructionTable {
             .fill(BFieldElement::one());
     }
 
-    pub fn extend(&self, challenges: &InstructionTableChallenges) -> ExtInstructionTable {
-        let fake_data = vec![vec![BFieldElement::zero()]];
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
-        let mut processor_table_running_product = PermArg::default_initial();
+    pub fn extend(
+        base_table: &ArrayView2<BFieldElement>,
+        ext_table: &mut ArrayViewMut2<XFieldElement>,
+        challenges: &InstructionTableChallenges,
+    ) {
         let mut program_table_running_evaluation = EvalArg::default_initial();
-        let mut previous_row: Option<Vec<_>> = None;
+        let mut processor_table_running_product = PermArg::default_initial();
 
-        for row in fake_data.iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        // initialize the running evaluation to absorb the first row
+        let ip = base_table[[0, Address.table_index()]];
+        let ci = base_table[[0, CI.table_index()]];
+        let nia = base_table[[0, NIA.table_index()]];
+        let compressed_row_for_evaluation_argument = ip * challenges.address_weight
+            + ci * challenges.instruction_weight
+            + nia * challenges.next_instruction_weight;
+        program_table_running_evaluation = program_table_running_evaluation
+            * challenges.program_eval_indeterminate
+            + compressed_row_for_evaluation_argument;
 
-            // Is the current row's address different from the previous row's address?
-            // Different: update running evaluation of Evaluation Argument with Program Table.
-            // Not different: update running product of Permutation Argument with Processor Table.
-            let mut is_duplicate_row = false;
-            if let Some(prow) = previous_row {
-                if prow[Address.table_index()] == row[Address.table_index()] {
-                    is_duplicate_row = true;
-                    debug_assert_eq!(prow[CI.table_index()], row[CI.table_index()]);
-                    debug_assert_eq!(prow[NIA.table_index()], row[NIA.table_index()]);
-                } else {
-                    debug_assert_eq!(
-                        prow[Address.table_index()] + BFieldElement::one(),
-                        row[Address.table_index()]
-                    );
-                }
-            }
+        ext_table[[0, RunningEvaluation.table_index()]] = program_table_running_evaluation;
+        ext_table[[0, RunningProductPermArg.table_index()]] = processor_table_running_product;
 
-            // Compress values of current row for Permutation Argument with Processor Table
-            let ip = row[Address.table_index()].lift();
-            let ci = row[CI.table_index()].lift();
-            let nia = row[NIA.table_index()].lift();
-            let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
-                + ci * challenges.ci_processor_weight
-                + nia * challenges.nia_processor_weight;
+        for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
+            let row = window.slice(s![0, ..]);
+            let next_row = window.slice(s![1, ..]);
+            let mut extension_row = ext_table.slice_mut(s![idx + 1, ..]);
 
-            // Update running product if same row has been seen before and not padding row
-            if is_duplicate_row && row[IsPadding.table_index()].is_zero() {
-                processor_table_running_product *= challenges.processor_perm_indeterminate
-                    - compressed_row_for_permutation_argument;
-            }
-            extension_row[RunningProductPermArg.table_index()] = processor_table_running_product;
+            let ip = row[Address.table_index()];
+            let ci = row[CI.table_index()];
+            let nia = row[NIA.table_index()];
 
-            // Compress values of current row for Evaluation Argument with Program Table
-            let compressed_row_for_evaluation_argument = ip * challenges.address_weight
-                + ci * challenges.instruction_weight
-                + nia * challenges.next_instruction_weight;
-
-            // Update running evaluation if same row has _not_ been seen before and not padding row
-            if !is_duplicate_row && row[IsPadding.table_index()].is_zero() {
+            // Is the next row a padding row?
+            // Padding Row: don't updated anything.
+            // Not padding row: Is the next row's address different from the current row's address?
+            //   Different: update running evaluation of Evaluation Argument with Program Table.
+            //   Not different: update running product of Permutation Argument with Processor Table.
+            let is_duplicate_row = row[Address.table_index()] == next_row[Address.table_index()];
+            if !is_duplicate_row && next_row[IsPadding.table_index()].is_zero() {
+                debug_assert_eq!(
+                    row[Address.table_index()] + BFieldElement::one(),
+                    next_row[Address.table_index()]
+                );
+                let compressed_row_for_evaluation_argument = ip * challenges.address_weight
+                    + ci * challenges.instruction_weight
+                    + nia * challenges.next_instruction_weight;
                 program_table_running_evaluation = program_table_running_evaluation
                     * challenges.program_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
+            if is_duplicate_row && next_row[IsPadding.table_index()].is_zero() {
+                debug_assert_eq!(row[CI.table_index()], next_row[CI.table_index()]);
+                debug_assert_eq!(row[NIA.table_index()], next_row[NIA.table_index()]);
+                let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
+                    + ci * challenges.ci_processor_weight
+                    + nia * challenges.nia_processor_weight;
+                processor_table_running_product *= challenges.processor_perm_indeterminate
+                    - compressed_row_for_permutation_argument;
+            }
+
             extension_row[RunningEvaluation.table_index()] = program_table_running_evaluation;
-
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
+            extension_row[RunningProductPermArg.table_index()] = processor_table_running_product;
         }
-
-        assert_eq!(fake_data.len(), extension_matrix.len());
-        ExtInstructionTable {}
     }
 }
 
