@@ -234,7 +234,7 @@ pub mod triton_vm_tests {
     use crate::table::extension_table::Evaluable;
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::processor_table::ProcessorMatrixRow;
-    use crate::table::table_collection::TableId::ProcessorTable;
+    use crate::table::table_collection::MasterTable;
     use crate::table::table_column::BaseTableColumn;
     use crate::table::table_column::ProcessorBaseTableColumn;
 
@@ -781,28 +781,30 @@ pub mod triton_vm_tests {
                     program.input.clone(),
                     program.secret_input.clone(),
                 );
+            assert_eq!(
+                master_base_table.master_base_matrix.nrows(),
+                master_ext_table.master_ext_matrix.nrows()
+            );
+            let master_base_trace_table = master_base_table.trace_table();
+            let master_ext_trace_table = master_ext_table.trace_table();
+            assert_eq!(
+                master_base_trace_table.nrows(),
+                master_ext_trace_table.nrows()
+            );
 
             println!("\nChecking transition constraints for program number {code_idx}");
             let stdout = Array1::from(stark.claim.output);
             println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
-
-            let num_cycles = master_base_table
-                .table(ProcessorTable)
-                .rows()
-                .into_iter()
-                .filter(|row| row[ProcessorBaseTableColumn::IsPadding.table_index()].is_zero())
-                .count();
-
-            let base_processor_table = master_base_table.table(ProcessorTable);
-            let ext_processor_table = master_ext_table.table(ProcessorTable);
+            let num_cycles = master_base_table.main_execution_len;
+            println!("Number of cycles: {num_cycles}");
 
             let program_idx_string = format!("Program number {code_idx:>2}");
             profiler.start(&program_idx_string);
-            for row_idx in 0..ext_processor_table.nrows() - 1 {
-                let current_base_row = base_processor_table.row(row_idx);
-                let current_ext_row = ext_processor_table.row(row_idx);
-                let next_base_row = base_processor_table.row(row_idx + 1);
-                let next_ext_row = ext_processor_table.row(row_idx + 1);
+            for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                let current_base_row = master_base_trace_table.row(row_idx);
+                let current_ext_row = master_ext_trace_table.row(row_idx);
+                let next_base_row = master_base_trace_table.row(row_idx + 1);
+                let next_ext_row = master_ext_trace_table.row(row_idx + 1);
                 for (tc_idx, tc_evaluation_result) in
                     ExtProcessorTable::evaluate_transition_constraints(
                         current_base_row,
@@ -820,13 +822,12 @@ pub mod triton_vm_tests {
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
                             {tc_evaluation_result} but must be 0.\n\
-                            Instruction: {:?} – opcode: {:?}\n\
+                            Instruction: {:?} – opcode: {ci}\n\
                             Evaluation Point, current base row: [{:?}]\n\
                             Evaluation Point, current ext row:  [{:?}]\n\
                             Evaluation Point, next base row:    [{:?}]\n
                             Evaluation Point, next ext row:     [{:?}]",
-                            AnInstruction::<BFieldElement>::try_from(ci,).unwrap(),
-                            ci,
+                            AnInstruction::<BFieldElement>::try_from(ci).unwrap(),
                             pretty_print_array_view(current_base_row),
                             pretty_print_array_view(current_ext_row),
                             pretty_print_array_view(next_base_row),

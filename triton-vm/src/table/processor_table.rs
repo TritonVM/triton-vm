@@ -71,6 +71,7 @@ impl ProcessorTable {
     ) {
         all_clk_jump_diffs.sort_by_key(|bfe| std::cmp::Reverse(bfe.value()));
 
+        // todo: make AET use Array2 instead of Vec<Vec<_>>, then this is a simple memcopy
         // - fill the processor table from the AET
         // - add all clock jump differences and their inverses
         // - add inverses of unique clock jump difference differences
