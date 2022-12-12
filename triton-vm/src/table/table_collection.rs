@@ -1366,6 +1366,7 @@ pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
 #[cfg(test)]
 mod table_collection_tests {
     use ndarray::s;
+    use strum::IntoEnumIterator;
 
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
@@ -1381,6 +1382,22 @@ mod table_collection_tests {
     use crate::table::table_collection::NUM_BASE_COLUMNS;
     use crate::table::table_collection::NUM_COLUMNS;
     use crate::table::table_collection::NUM_EXT_COLUMNS;
+    use crate::table::table_column::HashBaseTableColumn;
+    use crate::table::table_column::HashExtTableColumn;
+    use crate::table::table_column::InstructionBaseTableColumn;
+    use crate::table::table_column::InstructionExtTableColumn;
+    use crate::table::table_column::JumpStackBaseTableColumn;
+    use crate::table::table_column::JumpStackExtTableColumn;
+    use crate::table::table_column::MasterBaseTableColumn;
+    use crate::table::table_column::MasterExtTableColumn;
+    use crate::table::table_column::OpStackBaseTableColumn;
+    use crate::table::table_column::OpStackExtTableColumn;
+    use crate::table::table_column::ProcessorBaseTableColumn;
+    use crate::table::table_column::ProcessorExtTableColumn;
+    use crate::table::table_column::ProgramBaseTableColumn;
+    use crate::table::table_column::ProgramExtTableColumn;
+    use crate::table::table_column::RamBaseTableColumn;
+    use crate::table::table_column::RamExtTableColumn;
 
     #[test]
     fn base_table_width_is_correct() {
@@ -1517,5 +1534,99 @@ mod table_collection_tests {
             "| Sum                | {:>10} | {:>9} | {:>10} |",
             NUM_BASE_COLUMNS, NUM_EXT_COLUMNS, NUM_COLUMNS,
         );
+    }
+
+    /// intended use: `cargo t print_all_master_table_indices -- --nocapture`
+    #[test]
+    fn print_all_master_table_indices() {
+        println!("idx | table       | base column");
+        println!("---:|:------------|:-----------");
+        for column in ProgramBaseTableColumn::iter() {
+            println!(
+                "{:>3} | program     | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in InstructionBaseTableColumn::iter() {
+            println!(
+                "{:>3} | instruction | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in ProcessorBaseTableColumn::iter() {
+            println!(
+                "{:>3} | processor   | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in OpStackBaseTableColumn::iter() {
+            println!(
+                "{:>3} | op stack    | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in RamBaseTableColumn::iter() {
+            println!(
+                "{:>3} | ram         | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in JumpStackBaseTableColumn::iter() {
+            println!(
+                "{:>3} | jump stack  | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in HashBaseTableColumn::iter() {
+            println!(
+                "{:>3} | hash        | {column}",
+                column.master_table_index()
+            );
+        }
+        println!();
+        println!("idx | table       | extension column");
+        println!("---:|:------------|:----------------");
+        for column in ProgramExtTableColumn::iter() {
+            println!(
+                "{:>3} | program     | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in InstructionExtTableColumn::iter() {
+            println!(
+                "{:>3} | instruction | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in ProcessorExtTableColumn::iter() {
+            println!(
+                "{:>3} | processor   | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in OpStackExtTableColumn::iter() {
+            println!(
+                "{:>3} | op stack    | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in RamExtTableColumn::iter() {
+            println!(
+                "{:>3} | ram         | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in JumpStackExtTableColumn::iter() {
+            println!(
+                "{:>3} | jump stack  | {column}",
+                column.master_table_index()
+            );
+        }
+        for column in HashExtTableColumn::iter() {
+            println!(
+                "{:>3} | hash        | {column}",
+                column.master_table_index()
+            );
+        }
     }
 }
