@@ -8,6 +8,7 @@ use ndarray::s;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use ndarray::Zip;
 use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
@@ -151,40 +152,32 @@ where
     where
         Self: Sync,
     {
-        // todo assert that underlying Array2 is is actually stored in column-major order
+        // This is a weak assertion: a non-contiguous row-major layout is also not standard.
+        assert!(!self.master_matrix().is_standard_layout());
         let randomized_trace_domain_len = self.randomized_padded_trace_len();
         let randomized_trace_domain_gen =
             BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64)
-                .expect("Length of randomized trace domain must be a power of 2");
+                .expect("Length of randomized trace domain must be a power of 2.");
         let randomized_trace_domain = ArithmeticDomain::new(
             BFieldElement::one(),
             randomized_trace_domain_gen,
             randomized_trace_domain_len,
         );
 
-        // todo
-        //  - create Array2 with dimensions [fri.domain.length, master_base_table.ncols()]
-        //  - per column: do LDE, move result in new Array2's column
-        //  - change memory layout of Array2 from column-major to row-major (“into_shape_and_order”)
-        //  - try: is it faster to create Array2 in row-major, move columns in, no transform?
-        let a: Vec<_> = self
-            .master_matrix()
-            .slice(s![..randomized_trace_domain_len, ..])
-            .axis_iter(Axis(1)) // Axis(1) corresponds to getting all columns.
-            .into_iter()
-            .map(|column| {
-                let randomized_trace = column
-                    .as_slice()
-                    .expect("Column must be contiguous & non-empty.");
-                randomized_trace_domain.low_degree_extension(randomized_trace, self.fri_domain())
-            })
-            .collect::<Vec<_>>()
-            .concat();
-
         let num_rows = self.fri_domain().length;
         let num_columns = self.master_matrix().ncols();
-        Array2::from_shape_vec([num_rows, num_columns], a)
-            .expect("FRI domain codewords must fit into Array2 of given dimensions.")
+        let mut extended_columns = Array2::zeros([num_rows, num_columns]);
+        Zip::from(extended_columns.axis_iter_mut(Axis(1)))
+            .and(self.master_matrix().axis_iter(Axis(1)))
+            .par_for_each(|lde_column, trace_column| {
+                let randomized_trace = trace_column
+                    .as_slice()
+                    .expect("Column must be contiguous & non-empty.");
+                let fri_codeword = randomized_trace_domain
+                    .low_degree_extension(randomized_trace, self.fri_domain());
+                Array1::from(fri_codeword).move_into(lde_column);
+            });
+        extended_columns
     }
 }
 
