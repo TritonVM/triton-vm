@@ -1534,10 +1534,23 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_halt_test() {
+        triton_table_constraints_evaluate_to_zero(test_halt());
+    }
+
+    #[test]
+    fn triton_table_constraints_evaluate_to_zero_on_fibonacci_test() {
+        let source_code_and_input =
+            SourceCodeAndInput::without_input(sample_programs::FIBONACCI_LT);
+        triton_table_constraints_evaluate_to_zero(source_code_and_input);
+    }
+
+    pub fn triton_table_constraints_evaluate_to_zero(source_code_and_input: SourceCodeAndInput) {
         let zero = XFieldElement::zero();
-        let source_code_and_input = test_halt();
-        let (_, _, master_base_table, master_ext_table, challenges) =
-            parse_simulate_pad_extend(&source_code_and_input.source_code, vec![], vec![]);
+        let (_, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
+            &source_code_and_input.source_code,
+            source_code_and_input.input,
+            source_code_and_input.secret_input,
+        );
 
         assert_eq!(
             master_base_table.master_base_matrix.nrows(),
@@ -1618,143 +1631,6 @@ pub(crate) mod triton_stark_tests {
                 "Failed terminal constraint with global index {constraint_idx}. \
                 Total number of terminal constraints: {num_terminal_constraints}.",
             );
-        }
-    }
-
-    #[test]
-    fn triton_table_constraints_evaluate_to_zero_test_on_simple_program() {
-        let zero = XFieldElement::zero();
-        let (_, _, mbt, met, challenges) =
-            parse_simulate_pad_extend(sample_programs::FIBONACCI_LT, vec![], vec![]);
-
-        let fbr = mbt.master_base_matrix.row(0);
-        let fer = met.master_ext_matrix.row(0);
-        let evaluated_initial_constraints = [
-            ExtProgramTable::evaluate_initial_constraints(fbr, fer, &challenges),
-            ExtInstructionTable::evaluate_initial_constraints(fbr, fer, &challenges),
-            ExtProcessorTable::evaluate_initial_constraints(fbr, fer, &challenges),
-            ExtOpStackTable::evaluate_initial_constraints(fbr, fer, &challenges),
-            ExtRamTable::evaluate_initial_constraints(fbr, fer, &challenges),
-            ExtJumpStackTable::evaluate_initial_constraints(fbr, fer, &challenges),
-            ExtHashTable::evaluate_initial_constraints(fbr, fer, &challenges),
-        ]
-        .concat();
-        for (idx, xfe) in evaluated_initial_constraints.into_iter().enumerate() {
-            assert_eq!(
-                zero, xfe,
-                "Failed initial constraint with global index {idx}.",
-            )
-        }
-
-        for (row_idx, (br, er)) in mbt
-            .master_base_matrix
-            .rows()
-            .into_iter()
-            .zip_eq(met.master_ext_matrix.rows().into_iter())
-            .enumerate()
-        {
-            let evaluated_consistency_constraints = [
-                ExtProgramTable::evaluate_consistency_constraints(br, er, &challenges),
-                ExtInstructionTable::evaluate_consistency_constraints(br, er, &challenges),
-                ExtProcessorTable::evaluate_consistency_constraints(br, er, &challenges),
-                ExtOpStackTable::evaluate_consistency_constraints(br, er, &challenges),
-                ExtRamTable::evaluate_consistency_constraints(br, er, &challenges),
-                ExtJumpStackTable::evaluate_consistency_constraints(br, er, &challenges),
-                ExtHashTable::evaluate_consistency_constraints(br, er, &challenges),
-            ]
-            .concat();
-            for (idx, xfe) in evaluated_consistency_constraints.into_iter().enumerate() {
-                assert_eq!(
-                    zero, xfe,
-                    "Failed consistency constraint with global index {idx} on row {row_idx}.",
-                )
-            }
-        }
-
-        for row_idx in 0..mbt.master_base_matrix.nrows() - 1 {
-            let curr_base_row = mbt.master_base_matrix.row(row_idx);
-            let curr_ext_row = met.master_ext_matrix.row(row_idx);
-            let next_base_row = mbt.master_base_matrix.row(row_idx + 1);
-            let next_ext_row = met.master_ext_matrix.row(row_idx + 1);
-            let evaluated_transition_constraints = [
-                ExtProgramTable::evaluate_transition_constraints(
-                    curr_base_row,
-                    curr_ext_row,
-                    next_base_row,
-                    next_ext_row,
-                    &challenges,
-                ),
-                ExtInstructionTable::evaluate_transition_constraints(
-                    curr_base_row,
-                    curr_ext_row,
-                    next_base_row,
-                    next_ext_row,
-                    &challenges,
-                ),
-                ExtProcessorTable::evaluate_transition_constraints(
-                    curr_base_row,
-                    curr_ext_row,
-                    next_base_row,
-                    next_ext_row,
-                    &challenges,
-                ),
-                ExtOpStackTable::evaluate_transition_constraints(
-                    curr_base_row,
-                    curr_ext_row,
-                    next_base_row,
-                    next_ext_row,
-                    &challenges,
-                ),
-                ExtRamTable::evaluate_transition_constraints(
-                    curr_base_row,
-                    curr_ext_row,
-                    next_base_row,
-                    next_ext_row,
-                    &challenges,
-                ),
-                ExtJumpStackTable::evaluate_transition_constraints(
-                    curr_base_row,
-                    curr_ext_row,
-                    next_base_row,
-                    next_ext_row,
-                    &challenges,
-                ),
-                ExtHashTable::evaluate_transition_constraints(
-                    curr_base_row,
-                    curr_ext_row,
-                    next_base_row,
-                    next_ext_row,
-                    &challenges,
-                ),
-            ]
-            .concat();
-            for (idx, xfe) in evaluated_transition_constraints.into_iter().enumerate() {
-                assert_eq!(
-                    zero, xfe,
-                    "Failed transition constraint with global index {idx} on row {row_idx}.",
-                )
-            }
-        }
-
-        let lbr = mbt
-            .master_base_matrix
-            .row(mbt.master_base_matrix.nrows() - 1);
-        let ler = met.master_ext_matrix.row(met.master_ext_matrix.nrows() - 1);
-        let evaluated_terminal_constraints = [
-            ExtProgramTable::evaluate_terminal_constraints(lbr, ler, &challenges),
-            ExtInstructionTable::evaluate_terminal_constraints(lbr, ler, &challenges),
-            ExtProcessorTable::evaluate_terminal_constraints(lbr, ler, &challenges),
-            ExtOpStackTable::evaluate_terminal_constraints(lbr, ler, &challenges),
-            ExtRamTable::evaluate_terminal_constraints(lbr, ler, &challenges),
-            ExtJumpStackTable::evaluate_terminal_constraints(lbr, ler, &challenges),
-            ExtHashTable::evaluate_terminal_constraints(lbr, ler, &challenges),
-        ]
-        .concat();
-        for (idx, xfe) in evaluated_terminal_constraints.into_iter().enumerate() {
-            assert_eq!(
-                zero, xfe,
-                "Failed terminal constraint with global index {idx}",
-            )
         }
     }
 
