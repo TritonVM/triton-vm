@@ -341,16 +341,15 @@ impl JumpStackTable {
 
         // Move all rows below the row with highest CLK to the end of the table – if they exist.
         if num_rows_to_move > 0 {
+            let rows_to_move_source_range =
+                rows_to_move_source_section_start..rows_to_move_source_section_end;
+            let rows_to_move_dest_range =
+                rows_to_move_dest_section_start..rows_to_move_dest_section_end;
             let rows_to_move = jump_stack_table
-                .slice(s![
-                    rows_to_move_source_section_start..rows_to_move_source_section_end,
-                    ..
-                ])
+                .slice(s![rows_to_move_source_range, ..])
                 .to_owned();
-            rows_to_move.move_into(&mut jump_stack_table.slice_mut(s![
-                rows_to_move_dest_section_start..rows_to_move_dest_section_end,
-                ..
-            ]));
+            rows_to_move
+                .move_into(&mut jump_stack_table.slice_mut(s![rows_to_move_dest_range, ..]));
         }
 
         // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row

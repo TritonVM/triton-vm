@@ -1559,7 +1559,8 @@ pub(crate) mod triton_stark_tests {
         for (constraint_idx, ebc) in evaluated_initial_constraints.into_iter().enumerate() {
             assert_eq!(
                 zero, ebc,
-                "Failed initial constraint {constraint_idx}/{num_initial_constraints}.",
+                "Failed initial constraint with global index {constraint_idx}. \
+                Total number of initial constraints: {num_initial_constraints}.",
             );
         }
 
@@ -1573,8 +1574,10 @@ pub(crate) mod triton_stark_tests {
             for (constraint_idx, ecc) in evaluated_consistency_constraints.into_iter().enumerate() {
                 assert_eq!(
                     zero, ecc,
-                    "Failed consistency constraint {}/{}. Row index: {}/{}",
-                    constraint_idx, num_consistency_constraints, row_idx, num_rows,
+                    "Failed consistency constraint with global index {constraint_idx}. \
+                    Total number of consistency constraints: {num_consistency_constraints}. \
+                    Row index: {row_idx}. \
+                    Total rows: {num_rows}",
                 );
             }
         }
@@ -1595,8 +1598,10 @@ pub(crate) mod triton_stark_tests {
             for (constraint_idx, etc) in evaluated_transition_constraints.into_iter().enumerate() {
                 assert_eq!(
                     zero, etc,
-                    "Failed transition constraint {}/{}. Row index: {}/{}",
-                    constraint_idx, num_transition_constraints, row_idx, num_rows,
+                    "Failed transition constraint with global index {constraint_idx}. \
+                    Total number of transition constraints: {num_transition_constraints}. \
+                    Row index: {row_idx}. \
+                    Total rows: {num_rows}",
                 );
             }
         }
@@ -1610,7 +1615,8 @@ pub(crate) mod triton_stark_tests {
         for (constraint_idx, etermc) in evaluated_terminal_constraints.into_iter().enumerate() {
             assert_eq!(
                 zero, etermc,
-                "Failed terminal constraint {constraint_idx}/{num_terminal_constraints}.",
+                "Failed terminal constraint with global index {constraint_idx}. \
+                Total number of terminal constraints: {num_terminal_constraints}.",
             );
         }
     }

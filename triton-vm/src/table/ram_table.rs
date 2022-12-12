@@ -188,16 +188,14 @@ impl RamTable {
 
         // Move all rows below the row with highest CLK to the end of the table – if they exist.
         if num_rows_to_move > 0 {
+            let rows_to_move_source_range =
+                rows_to_move_source_section_start..rows_to_move_source_section_end;
+            let rows_to_move_dest_range =
+                rows_to_move_dest_section_start..rows_to_move_dest_section_end;
             let rows_to_move = ram_table
-                .slice(s![
-                    rows_to_move_source_section_start..rows_to_move_source_section_end,
-                    ..
-                ])
+                .slice(s![rows_to_move_source_range, ..])
                 .to_owned();
-            rows_to_move.move_into(&mut ram_table.slice_mut(s![
-                rows_to_move_dest_section_start..rows_to_move_dest_section_end,
-                ..
-            ]));
+            rows_to_move.move_into(&mut ram_table.slice_mut(s![rows_to_move_dest_range, ..]));
         }
 
         // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row
@@ -214,10 +212,9 @@ impl RamTable {
             .for_each(|padding_row| padding_row_template.clone().move_into(padding_row));
 
         // CLK keeps increasing by 1 also in the padding section.
-        let new_clk_values = Array1::from_iter(
-            (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
-        );
-        new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.table_index()]));
+        let clk_range = processor_table_len..padded_height;
+        let clk_col = Array1::from_iter(clk_range.map(|clk| BFieldElement::new(clk as u64)));
+        clk_col.move_into(padding_section.slice_mut(s![.., CLK.table_index()]));
 
         // InverseOfRampDifference and InverseOfClkDiffMinusOne must be consistent at the padding
         // section's boundaries.
