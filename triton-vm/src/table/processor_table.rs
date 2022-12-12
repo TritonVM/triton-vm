@@ -131,8 +131,8 @@ impl ProcessorTable {
     }
 
     pub fn extend(
-        base_table: &ArrayView2<BFieldElement>,
-        ext_table: &mut ArrayViewMut2<XFieldElement>,
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
         challenges: &ProcessorTableChallenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());

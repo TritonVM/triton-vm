@@ -408,26 +408,25 @@ impl MasterBaseTable {
             master_ext_matrix,
         };
 
-        let base_program_table = self.table(TableId::ProgramTable);
-        let mut ext_program_table = master_ext_table.table_mut(TableId::ProgramTable);
         ProgramTable::extend(
-            &base_program_table,
-            &mut ext_program_table,
+            self.table(TableId::ProgramTable),
+            master_ext_table.table_mut(TableId::ProgramTable),
             &challenges.program_table_challenges,
         );
-        let base_instruction_table = self.table(TableId::InstructionTable);
-        let mut ext_instruction_table = master_ext_table.table_mut(TableId::InstructionTable);
         InstructionTable::extend(
-            &base_instruction_table,
-            &mut ext_instruction_table,
+            self.table(TableId::InstructionTable),
+            master_ext_table.table_mut(TableId::InstructionTable),
             &challenges.instruction_table_challenges,
         );
-        let base_processor_table = self.table(TableId::ProcessorTable);
-        let mut ext_processor_table = master_ext_table.table_mut(TableId::ProcessorTable);
         ProcessorTable::extend(
-            &base_processor_table,
-            &mut ext_processor_table,
+            self.table(TableId::ProcessorTable),
+            master_ext_table.table_mut(TableId::ProcessorTable),
             &challenges.processor_table_challenges,
+        );
+        OpStackTable::extend(
+            self.table(TableId::OpStackTable),
+            master_ext_table.table_mut(TableId::OpStackTable),
+            &challenges.op_stack_table_challenges,
         );
 
         master_ext_table

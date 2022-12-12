@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
 
-use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use num_traits::One;
@@ -367,58 +368,51 @@ impl OpStackTable {
         }
     }
 
-    pub fn extend(&self, challenges: &OpStackTableChallenges) -> ExtOpStackTable {
-        let fake_data = vec![vec![BFieldElement::zero()]];
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &OpStackTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut running_product = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
 
-        let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in fake_data.iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            let mut extension_row = ext_table.row_mut(row_idx);
 
-            let clk = extension_row[CLK.table_index()];
-            let ib1 = extension_row[IB1ShrinkStack.table_index()];
-            let osp = extension_row[OSP.table_index()];
-            let osv = extension_row[OSV.table_index()];
+            let clk = current_row[CLK.table_index()];
+            let ib1 = current_row[IB1ShrinkStack.table_index()];
+            let osp = current_row[OSP.table_index()];
+            let osv = current_row[OSV.table_index()];
 
-            let clk_w = challenges.clk_weight;
-            let ib1_w = challenges.ib1_weight;
-            let osp_w = challenges.osp_weight;
-            let osv_w = challenges.osv_weight;
-
-            // compress multiple values within one row so they become one value
-            let compressed_row_for_permutation_argument =
-                clk * clk_w + ib1 * ib1_w + osp * osp_w + osv * osv_w;
-
-            // compute the running *product* of the compressed column (for permutation argument)
+            let compressed_row_for_permutation_argument = clk * challenges.clk_weight
+                + ib1 * challenges.ib1_weight
+                + osp * challenges.osp_weight
+                + osv * challenges.osv_weight;
             running_product *=
                 challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
-            extension_row[RunningProductPermArg.table_index()] = running_product;
 
             // clock jump difference
-            if let Some(prow) = previous_row {
-                if prow[OSP.table_index()] == row[OSP.table_index()] {
+            if let Some(prev_row) = previous_row {
+                if prev_row[OSP.table_index()] == current_row[OSP.table_index()] {
                     let clock_jump_difference =
-                        (row[CLK.table_index()] - prow[CLK.table_index()]).lift();
-                    if clock_jump_difference != XFieldElement::one() {
+                        current_row[CLK.table_index()] - prev_row[CLK.table_index()];
+                    if !clock_jump_difference.is_one() {
                         all_clock_jump_differences_running_product *= challenges
                             .all_clock_jump_differences_multi_perm_indeterminate
                             - clock_jump_difference;
                     }
                 }
             }
+            extension_row[RunningProductPermArg.table_index()] = running_product;
             extension_row[AllClockJumpDifferencesPermArg.table_index()] =
                 all_clock_jump_differences_running_product;
-
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
+            previous_row = Some(current_row);
         }
-
-        assert_eq!(fake_data.len(), extension_matrix.len());
-        ExtOpStackTable {}
     }
 }
 
