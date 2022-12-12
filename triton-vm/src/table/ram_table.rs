@@ -345,22 +345,22 @@ impl ExtRamTable {
         let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_table_index()));
         let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
 
-        let clk_is_0 = clk;
-        let ramp_is_0 = ramp;
-        let ramv_is_0 = ramv;
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
         let formal_derivative_is_1 = fd - one;
-        // This should be rp - (bezout_challenge - ramp). However, `ramp` is already constrained to
-        // be 0, and can thus be omitted.
-        let running_product_polynomial_is_initialized_correctly = rp - bezout_challenge;
-        let running_product_permutation_argument_is_initialized_correctly = rppa - rppa_challenge;
+        let running_product_polynomial_is_initialized_correctly =
+            rp - (bezout_challenge - ramp.clone());
+
+        let clk_weight = circuit_builder.challenge(ClkWeight);
+        let ramp_weight = circuit_builder.challenge(RampWeight);
+        let ramv_weight = circuit_builder.challenge(RamvWeight);
+        let compressed_row_for_permutation_argument =
+            clk * clk_weight + ramp * ramp_weight + ramv * ramv_weight;
+        let running_product_permutation_argument_is_initialized_correctly =
+            rppa - (rppa_challenge - compressed_row_for_permutation_argument);
 
         [
-            clk_is_0,
-            ramp_is_0,
-            ramv_is_0,
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
@@ -449,9 +449,6 @@ impl ExtRamTable {
         let ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff =
             ramp_diff.clone() * (ramp_changes.clone() - one.clone());
 
-        // The ramp does not change or the new ramv is 0
-        let ramp_does_not_change_or_ramv_becomes_0 = ramp_diff.clone() * ramv_next.clone();
-
         // The ramp does change or the ramv does not change or the clk increases by 1
         let ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1 =
             (ramp_changes.clone() - one.clone())
@@ -502,7 +499,6 @@ impl ExtRamTable {
         [
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
-            ramp_does_not_change_or_ramv_becomes_0,
             ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1,
             bcbp0_only_changes_if_ramp_changes,
             bcbp1_only_changes_if_ramp_changes,
