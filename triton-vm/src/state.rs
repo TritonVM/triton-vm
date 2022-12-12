@@ -25,22 +25,13 @@ use crate::op_stack::OpStack;
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
 use crate::ord_n::Ord7;
-use crate::ord_n::Ord7::*;
 use crate::table::hash_table;
 use crate::table::hash_table::NUM_ROUND_CONSTANTS;
 use crate::table::hash_table::TOTAL_NUM_CONSTANTS;
-use crate::table::instruction_table;
-use crate::table::jump_stack_table;
-use crate::table::op_stack_table;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorMatrixRow;
-use crate::table::ram_table;
 use crate::table::table_column::BaseTableColumn;
-use crate::table::table_column::InstructionBaseTableColumn;
-use crate::table::table_column::JumpStackBaseTableColumn;
-use crate::table::table_column::OpStackBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
-use crate::table::table_column::RamBaseTableColumn;
 use crate::vm::Program;
 
 /// The number of state registers for hashing-specific instructions.
@@ -448,20 +439,6 @@ impl<'pgm> VMState<'pgm> {
         Ok(vm_output)
     }
 
-    pub fn to_instruction_row(
-        &self,
-        current_instruction: Instruction,
-    ) -> [BFieldElement; instruction_table::BASE_WIDTH] {
-        use InstructionBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
-
-        row[Address.table_index()] = (self.instruction_pointer as u32).into();
-        row[CI.table_index()] = current_instruction.opcode_b();
-        row[NIA.table_index()] = self.nia();
-
-        row
-    }
-
     pub fn to_processor_row(&self) -> [BFieldElement; processor_table::BASE_WIDTH] {
         use ProcessorBaseTableColumn::*;
         let mut row = [BFieldElement::zero(); processor_table::BASE_WIDTH];
@@ -508,51 +485,6 @@ impl<'pgm> VMState<'pgm> {
         row[HV3.table_index()] = hvs[3];
         row[RAMP.table_index()] = ramp;
         row[RAMV.table_index()] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
-
-        row
-    }
-
-    pub fn to_op_stack_row(
-        &self,
-        current_instruction: Instruction,
-    ) -> [BFieldElement; op_stack_table::BASE_WIDTH] {
-        use OpStackBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); op_stack_table::BASE_WIDTH];
-
-        row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
-        row[IB1ShrinkStack.table_index()] = current_instruction.ib(IB1);
-        row[OSP.table_index()] = self.op_stack.osp();
-        row[OSV.table_index()] = self.op_stack.osv();
-
-        row
-    }
-
-    pub fn to_ram_row(&self) -> [BFieldElement; ram_table::BASE_WIDTH] {
-        use RamBaseTableColumn::*;
-        let ramp = self.op_stack.st(ST1);
-
-        let mut row = [BFieldElement::zero(); ram_table::BASE_WIDTH];
-
-        row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
-        row[RAMP.table_index()] = ramp;
-        row[RAMV.table_index()] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
-        // value of InverseOfRampDifference is only known after sorting the RAM Table, thus not set
-
-        row
-    }
-
-    pub fn to_jump_stack_row(
-        &self,
-        current_instruction: Instruction,
-    ) -> [BFieldElement; jump_stack_table::BASE_WIDTH] {
-        use JumpStackBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); jump_stack_table::BASE_WIDTH];
-
-        row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
-        row[CI.table_index()] = current_instruction.opcode_b();
-        row[JSP.table_index()] = self.jsp();
-        row[JSO.table_index()] = self.jso();
-        row[JSD.table_index()] = self.jsd();
 
         row
     }
