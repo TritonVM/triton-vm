@@ -407,7 +407,7 @@ impl ExtRamTable {
         let bcpc1 = circuit_builder.input(CurrentBaseRow(
             BezoutCoefficientPolynomialCoefficient1.master_table_index(),
         ));
-        let clk_di = circuit_builder.input(CurrentBaseRow(
+        let clk_diff_minus_one_inv = circuit_builder.input(CurrentBaseRow(
             InverseOfClkDiffMinusOne.master_table_index(),
         ));
         let rp = circuit_builder.input(CurrentExtRow(RunningProductOfRAMP.master_table_index()));
@@ -438,22 +438,22 @@ impl ExtRamTable {
         let rppa_next =
             circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
 
-        let ramp_diff = ramp_next.clone() - ramp.clone();
+        let ramp_diff = ramp_next.clone() - ramp;
         let ramp_changes = ramp_diff.clone() * iord.clone();
 
         // iord is 0 or iord is the inverse of (ramp' - ramp)
-        let iord_is_0_or_iord_is_inverse_of_ramp_diff =
-            iord.clone() * (ramp_changes.clone() - one.clone());
+        let iord_is_0_or_iord_is_inverse_of_ramp_diff = iord * (ramp_changes.clone() - one.clone());
 
         // (ramp' - ramp) is zero or iord is the inverse of (ramp' - ramp)
         let ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff =
             ramp_diff.clone() * (ramp_changes.clone() - one.clone());
 
         // The ramp does change or the ramv does not change or the clk increases by 1
+        let clk_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
         let ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1 =
             (ramp_changes.clone() - one.clone())
                 * (ramv_next.clone() - ramv)
-                * (clk_next.clone() - (clk.clone() + one.clone()));
+                * clk_diff_minus_one.clone();
 
         let bcbp0_only_changes_if_ramp_changes =
             (one.clone() - ramp_changes.clone()) * (bcpc0_next.clone() - bcpc0);
@@ -473,23 +473,28 @@ impl ExtRamTable {
             * (bc0_next.clone() - bezout_challenge.clone() * bc0.clone() - bcpc0_next)
             + (one.clone() - ramp_changes.clone()) * (bc0_next - bc0);
 
-        let bezout_coefficient_1_is_constructed_correctly = ramp_diff
+        let bezout_coefficient_1_is_constructed_correctly = ramp_diff.clone()
             * (bc1_next.clone() - bezout_challenge * bc1.clone() - bcpc1_next)
-            + (one.clone() - ramp_changes) * (bc1_next - bc1);
+            + (one.clone() - ramp_changes.clone()) * (bc1_next - bc1);
 
-        let clk_di_is_inverse_of_clkd =
-            clk_di.clone() * (clk_next.clone() - clk.clone() - one.clone());
-        let clk_di_is_zero_or_inverse_of_clkd = clk_di.clone() * clk_di_is_inverse_of_clkd.clone();
+        let clk_di_is_inverse_of_clk_diff =
+            clk_diff_minus_one_inv.clone() * clk_diff_minus_one.clone();
+        let clk_di_is_zero_or_inverse_of_clkd =
+            clk_diff_minus_one_inv.clone() * clk_di_is_inverse_of_clk_diff.clone();
         let clkd_is_zero_or_inverse_of_clk_di =
-            (clk_next.clone() - clk.clone() - one.clone()) * clk_di_is_inverse_of_clkd;
+            clk_diff_minus_one.clone() * clk_di_is_inverse_of_clk_diff;
 
-        let rpcjd_updates_correctly = (clk_next.clone() - clk.clone() - one.clone())
-            * (rpcjd_next.clone() - rpcjd.clone())
-            + (one.clone() - (ramp_next.clone() - ramp.clone()) * iord)
-                * (rpcjd_next.clone() - rpcjd.clone())
-            + (one.clone() - (clk_next.clone() - clk - one) * clk_di)
-                * ramp.clone()
-                * (rpcjd_next - rpcjd * (cjd_challenge - ramp));
+        // Running product of clock jump differences (“rpcjd”) updates iff
+        //  - the RAMP remains the same, and
+        //  - the clock difference is greater than 1.
+        let clk_diff = clk_next.clone() - clk;
+        let clk_diff_eq_one = one.clone() - clk_diff.clone();
+        let clk_diff_gt_one = one - clk_diff_minus_one * clk_diff_minus_one_inv;
+        let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
+        let rpcjd_absorbs_clk_diff = rpcjd_next - rpcjd * (cjd_challenge - clk_diff);
+        let rpcjd_updates_correctly = ramp_changes * clk_diff_eq_one * rpcjd_absorbs_clk_diff
+            + ramp_diff * rpcjd_remains.clone()
+            + clk_diff_gt_one * rpcjd_remains;
 
         let compressed_row_for_permutation_argument =
             clk_next * clk_weight + ramp_next * ramp_weight + ramv_next * ramv_weight;
