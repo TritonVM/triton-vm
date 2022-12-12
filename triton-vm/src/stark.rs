@@ -1544,6 +1544,33 @@ pub(crate) mod triton_stark_tests {
         triton_table_constraints_evaluate_to_zero(source_code_and_input);
     }
 
+    #[test]
+    fn triton_table_constraints_evaluate_to_zero_on_small_programs_test() {
+        for (program_idx, program) in small_tasm_test_programs().into_iter().enumerate() {
+            println!("Testing program with index {program_idx}.");
+            triton_table_constraints_evaluate_to_zero(program);
+            println!();
+        }
+    }
+
+    #[test]
+    fn triton_table_constraints_evaluate_to_zero_on_property_based_programs_test() {
+        for (program_idx, program) in property_based_test_programs().into_iter().enumerate() {
+            println!("Testing program with index {program_idx}.");
+            triton_table_constraints_evaluate_to_zero(program);
+            println!();
+        }
+    }
+
+    #[test]
+    fn triton_table_constraints_evaluate_to_zero_on_bigger_programs_test() {
+        for (program_idx, program) in bigger_tasm_test_programs().into_iter().enumerate() {
+            println!("Testing program with index {program_idx}.");
+            triton_table_constraints_evaluate_to_zero(program);
+            println!();
+        }
+    }
+
     pub fn triton_table_constraints_evaluate_to_zero(source_code_and_input: SourceCodeAndInput) {
         let zero = XFieldElement::zero();
         let (_, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
