@@ -817,7 +817,7 @@ pub mod triton_vm_tests {
                     .enumerate()
                 {
                     if !tc_evaluation_result.is_zero() {
-                        let ci_idx = ProcessorBaseTableColumn::CI.master_table_index();
+                        let ci_idx = ProcessorBaseTableColumn::CI.master_base_table_index();
                         let ci = current_base_row[ci_idx].value();
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \

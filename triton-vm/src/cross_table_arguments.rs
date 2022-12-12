@@ -164,39 +164,41 @@ impl CrossTableArg for PermArg {
 impl PermArg {
     pub fn processor_instruction_perm_arg() -> Self {
         Self {
-            from: vec![ProcessorExtTableColumn::InstructionTablePermArg.master_table_index()],
-            to: vec![InstructionExtTableColumn::RunningProductPermArg.master_table_index()],
+            from: vec![ProcessorExtTableColumn::InstructionTablePermArg.master_ext_table_index()],
+            to: vec![InstructionExtTableColumn::RunningProductPermArg.master_ext_table_index()],
         }
     }
 
     pub fn processor_jump_stack_perm_arg() -> Self {
         Self {
-            from: vec![ProcessorExtTableColumn::JumpStackTablePermArg.master_table_index()],
-            to: vec![JumpStackExtTableColumn::RunningProductPermArg.master_table_index()],
+            from: vec![ProcessorExtTableColumn::JumpStackTablePermArg.master_ext_table_index()],
+            to: vec![JumpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()],
         }
     }
 
     pub fn processor_op_stack_perm_arg() -> Self {
         Self {
-            from: vec![ProcessorExtTableColumn::OpStackTablePermArg.master_table_index()],
-            to: vec![OpStackExtTableColumn::RunningProductPermArg.master_table_index()],
+            from: vec![ProcessorExtTableColumn::OpStackTablePermArg.master_ext_table_index()],
+            to: vec![OpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()],
         }
     }
 
     pub fn processor_ram_perm_arg() -> Self {
         Self {
-            from: vec![ProcessorExtTableColumn::RamTablePermArg.master_table_index()],
-            to: vec![RamExtTableColumn::RunningProductPermArg.master_table_index()],
+            from: vec![ProcessorExtTableColumn::RamTablePermArg.master_ext_table_index()],
+            to: vec![RamExtTableColumn::RunningProductPermArg.master_ext_table_index()],
         }
     }
 
     pub fn clock_jump_difference_multi_table_perm_arg() -> Self {
         Self {
-            from: vec![ProcessorExtTableColumn::AllClockJumpDifferencesPermArg.master_table_index()],
+            from: vec![
+                ProcessorExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()
+            ],
             to: vec![
-                OpStackExtTableColumn::AllClockJumpDifferencesPermArg.master_table_index(),
-                RamExtTableColumn::AllClockJumpDifferencesPermArg.master_table_index(),
-                JumpStackExtTableColumn::AllClockJumpDifferencesPermArg.master_table_index(),
+                OpStackExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index(),
+                RamExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index(),
+                JumpStackExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index(),
             ],
         }
     }
@@ -249,22 +251,22 @@ impl CrossTableArg for EvalArg {
 impl EvalArg {
     pub fn program_instruction_eval_arg() -> Self {
         Self {
-            from: vec![ProgramExtTableColumn::RunningEvaluation.master_table_index()],
-            to: vec![InstructionExtTableColumn::RunningEvaluation.master_table_index()],
+            from: vec![ProgramExtTableColumn::RunningEvaluation.master_ext_table_index()],
+            to: vec![InstructionExtTableColumn::RunningEvaluation.master_ext_table_index()],
         }
     }
 
     pub fn processor_to_hash_eval_arg() -> Self {
         Self {
-            from: vec![ProcessorExtTableColumn::ToHashTableEvalArg.master_table_index()],
-            to: vec![HashExtTableColumn::FromProcessorRunningEvaluation.master_table_index()],
+            from: vec![ProcessorExtTableColumn::ToHashTableEvalArg.master_ext_table_index()],
+            to: vec![HashExtTableColumn::FromProcessorRunningEvaluation.master_ext_table_index()],
         }
     }
 
     pub fn hash_to_processor_eval_arg() -> Self {
         Self {
-            from: vec![HashExtTableColumn::ToProcessorRunningEvaluation.master_table_index()],
-            to: vec![ProcessorExtTableColumn::FromHashTableEvalArg.master_table_index()],
+            from: vec![HashExtTableColumn::ToProcessorRunningEvaluation.master_ext_table_index()],
+            to: vec![ProcessorExtTableColumn::FromHashTableEvalArg.master_ext_table_index()],
         }
     }
 
@@ -380,11 +382,12 @@ impl GrandCrossTableArg {
             all_clock_jump_differences_weight: weights_stack.pop().unwrap(),
 
             input_terminal,
-            input_to_processor: ProcessorExtTableColumn::InputTableEvalArg.master_table_index(),
+            input_to_processor: ProcessorExtTableColumn::InputTableEvalArg.master_ext_table_index(),
             input_to_processor_weight: weights_stack.pop().unwrap(),
 
             output_terminal,
-            processor_to_output: ProcessorExtTableColumn::OutputTableEvalArg.master_table_index(),
+            processor_to_output: ProcessorExtTableColumn::OutputTableEvalArg
+                .master_ext_table_index(),
             processor_to_output_weight: weights_stack.pop().unwrap(),
         }
     }

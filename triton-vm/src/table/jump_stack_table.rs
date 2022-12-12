@@ -72,14 +72,15 @@ impl ExtJumpStackTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let clk = circuit_builder.input(BaseRow(CLK.master_table_index()));
-        let jsp = circuit_builder.input(BaseRow(JSP.master_table_index()));
-        let jso = circuit_builder.input(BaseRow(JSO.master_table_index()));
-        let jsd = circuit_builder.input(BaseRow(JSD.master_table_index()));
-        let ci = circuit_builder.input(BaseRow(CI.master_table_index()));
-        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
-        let rpcjd =
-            circuit_builder.input(ExtRow(AllClockJumpDifferencesPermArg.master_table_index()));
+        let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
+        let jsp = circuit_builder.input(BaseRow(JSP.master_base_table_index()));
+        let jso = circuit_builder.input(BaseRow(JSO.master_base_table_index()));
+        let jsd = circuit_builder.input(BaseRow(JSD.master_base_table_index()));
+        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
+        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
+        let rpcjd = circuit_builder.input(ExtRow(
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        ));
 
         let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermRowIndeterminate);
         // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and can thus be omitted.
@@ -122,30 +123,33 @@ impl ExtJumpStackTable {
             circuit_builder.b_constant(Instruction::Call(Default::default()).opcode_b());
         let return_opcode = circuit_builder.b_constant(Instruction::Return.opcode_b());
 
-        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_table_index()));
-        let ci = circuit_builder.input(CurrentBaseRow(CI.master_table_index()));
-        let jsp = circuit_builder.input(CurrentBaseRow(JSP.master_table_index()));
-        let jso = circuit_builder.input(CurrentBaseRow(JSO.master_table_index()));
-        let jsd = circuit_builder.input(CurrentBaseRow(JSD.master_table_index()));
+        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
+        let ci = circuit_builder.input(CurrentBaseRow(CI.master_base_table_index()));
+        let jsp = circuit_builder.input(CurrentBaseRow(JSP.master_base_table_index()));
+        let jso = circuit_builder.input(CurrentBaseRow(JSO.master_base_table_index()));
+        let jsd = circuit_builder.input(CurrentBaseRow(JSD.master_base_table_index()));
         let clk_di = circuit_builder.input(CurrentBaseRow(
-            InverseOfClkDiffMinusOne.master_table_index(),
+            InverseOfClkDiffMinusOne.master_base_table_index(),
         ));
-        let rppa = circuit_builder.input(CurrentExtRow(RunningProductPermArg.master_table_index()));
+        let rppa = circuit_builder.input(CurrentExtRow(
+            RunningProductPermArg.master_ext_table_index(),
+        ));
         let rpcjd = circuit_builder.input(CurrentExtRow(
-            AllClockJumpDifferencesPermArg.master_table_index(),
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
         ));
 
-        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_table_index()));
-        let ci_next = circuit_builder.input(NextBaseRow(CI.master_table_index()));
-        let jsp_next = circuit_builder.input(NextBaseRow(JSP.master_table_index()));
-        let jso_next = circuit_builder.input(NextBaseRow(JSO.master_table_index()));
-        let jsd_next = circuit_builder.input(NextBaseRow(JSD.master_table_index()));
-        let clk_di_next =
-            circuit_builder.input(NextBaseRow(InverseOfClkDiffMinusOne.master_table_index()));
+        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
+        let ci_next = circuit_builder.input(NextBaseRow(CI.master_base_table_index()));
+        let jsp_next = circuit_builder.input(NextBaseRow(JSP.master_base_table_index()));
+        let jso_next = circuit_builder.input(NextBaseRow(JSO.master_base_table_index()));
+        let jsd_next = circuit_builder.input(NextBaseRow(JSD.master_base_table_index()));
+        let clk_di_next = circuit_builder.input(NextBaseRow(
+            InverseOfClkDiffMinusOne.master_base_table_index(),
+        ));
         let rppa_next =
-            circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
         let rpcjd_next = circuit_builder.input(NextExtRow(
-            AllClockJumpDifferencesPermArg.master_table_index(),
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
         ));
 
         // 1. The jump stack pointer jsp increases by 1

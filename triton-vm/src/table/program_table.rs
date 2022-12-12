@@ -62,9 +62,9 @@ impl ExtProgramTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let address = circuit_builder.input(BaseRow(Address.master_table_index()));
+        let address = circuit_builder.input(BaseRow(Address.master_base_table_index()));
         let running_evaluation =
-            circuit_builder.input(ExtRow(RunningEvaluation.master_table_index()));
+            circuit_builder.input(ExtRow(RunningEvaluation.master_ext_table_index()));
 
         let first_address_is_zero = address;
 
@@ -85,7 +85,7 @@ impl ExtProgramTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let is_padding = circuit_builder.input(BaseRow(IsPadding.master_table_index()));
+        let is_padding = circuit_builder.input(BaseRow(IsPadding.master_base_table_index()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
         vec![is_padding_is_bit.consume()]
@@ -99,16 +99,19 @@ impl ExtProgramTable {
     > {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
-        let address = circuit_builder.input(CurrentBaseRow(Address.master_table_index()));
-        let instruction = circuit_builder.input(CurrentBaseRow(Instruction.master_table_index()));
-        let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_table_index()));
+        let address = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
+        let instruction =
+            circuit_builder.input(CurrentBaseRow(Instruction.master_base_table_index()));
+        let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_base_table_index()));
         let running_evaluation =
-            circuit_builder.input(CurrentExtRow(RunningEvaluation.master_table_index()));
-        let address_next = circuit_builder.input(NextBaseRow(Address.master_table_index()));
-        let instruction_next = circuit_builder.input(NextBaseRow(Instruction.master_table_index()));
-        let is_padding_next = circuit_builder.input(NextBaseRow(IsPadding.master_table_index()));
+            circuit_builder.input(CurrentExtRow(RunningEvaluation.master_ext_table_index()));
+        let address_next = circuit_builder.input(NextBaseRow(Address.master_base_table_index()));
+        let instruction_next =
+            circuit_builder.input(NextBaseRow(Instruction.master_base_table_index()));
+        let is_padding_next =
+            circuit_builder.input(NextBaseRow(IsPadding.master_base_table_index()));
         let running_evaluation_next =
-            circuit_builder.input(NextExtRow(RunningEvaluation.master_table_index()));
+            circuit_builder.input(NextExtRow(RunningEvaluation.master_ext_table_index()));
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_padding_is_0_or_remains_unchanged =

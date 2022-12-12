@@ -330,20 +330,20 @@ impl ExtRamTable {
         let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
         let rppa_challenge = circuit_builder.challenge(ProcessorPermIndeterminate);
 
-        let clk = circuit_builder.input(BaseRow(CLK.master_table_index()));
-        let ramp = circuit_builder.input(BaseRow(RAMP.master_table_index()));
-        let ramv = circuit_builder.input(BaseRow(RAMV.master_table_index()));
+        let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
+        let ramp = circuit_builder.input(BaseRow(RAMP.master_base_table_index()));
+        let ramv = circuit_builder.input(BaseRow(RAMV.master_base_table_index()));
         let bcpc0 = circuit_builder.input(BaseRow(
-            BezoutCoefficientPolynomialCoefficient0.master_table_index(),
+            BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
         ));
         let bcpc1 = circuit_builder.input(BaseRow(
-            BezoutCoefficientPolynomialCoefficient1.master_table_index(),
+            BezoutCoefficientPolynomialCoefficient1.master_base_table_index(),
         ));
-        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_table_index()));
-        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_table_index()));
-        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_table_index()));
-        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_table_index()));
-        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
+        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_ext_table_index()));
+        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_ext_table_index()));
+        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_ext_table_index()));
+        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
+        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
 
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
@@ -396,47 +396,54 @@ impl ExtRamTable {
         let ramp_weight = circuit_builder.challenge(RampWeight);
         let ramv_weight = circuit_builder.challenge(RamvWeight);
 
-        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_table_index()));
-        let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_table_index()));
-        let ramv = circuit_builder.input(CurrentBaseRow(RAMV.master_table_index()));
-        let iord =
-            circuit_builder.input(CurrentBaseRow(InverseOfRampDifference.master_table_index()));
+        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
+        let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_base_table_index()));
+        let ramv = circuit_builder.input(CurrentBaseRow(RAMV.master_base_table_index()));
+        let iord = circuit_builder.input(CurrentBaseRow(
+            InverseOfRampDifference.master_base_table_index(),
+        ));
         let bcpc0 = circuit_builder.input(CurrentBaseRow(
-            BezoutCoefficientPolynomialCoefficient0.master_table_index(),
+            BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
         ));
         let bcpc1 = circuit_builder.input(CurrentBaseRow(
-            BezoutCoefficientPolynomialCoefficient1.master_table_index(),
+            BezoutCoefficientPolynomialCoefficient1.master_base_table_index(),
         ));
         let clk_diff_minus_one_inv = circuit_builder.input(CurrentBaseRow(
-            InverseOfClkDiffMinusOne.master_table_index(),
+            InverseOfClkDiffMinusOne.master_base_table_index(),
         ));
-        let rp = circuit_builder.input(CurrentExtRow(RunningProductOfRAMP.master_table_index()));
-        let fd = circuit_builder.input(CurrentExtRow(FormalDerivative.master_table_index()));
-        let bc0 = circuit_builder.input(CurrentExtRow(BezoutCoefficient0.master_table_index()));
-        let bc1 = circuit_builder.input(CurrentExtRow(BezoutCoefficient1.master_table_index()));
+        let rp =
+            circuit_builder.input(CurrentExtRow(RunningProductOfRAMP.master_ext_table_index()));
+        let fd = circuit_builder.input(CurrentExtRow(FormalDerivative.master_ext_table_index()));
+        let bc0 = circuit_builder.input(CurrentExtRow(BezoutCoefficient0.master_ext_table_index()));
+        let bc1 = circuit_builder.input(CurrentExtRow(BezoutCoefficient1.master_ext_table_index()));
         let rpcjd = circuit_builder.input(CurrentExtRow(
-            AllClockJumpDifferencesPermArg.master_table_index(),
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
         ));
-        let rppa = circuit_builder.input(CurrentExtRow(RunningProductPermArg.master_table_index()));
+        let rppa = circuit_builder.input(CurrentExtRow(
+            RunningProductPermArg.master_ext_table_index(),
+        ));
 
-        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_table_index()));
-        let ramp_next = circuit_builder.input(NextBaseRow(RAMP.master_table_index()));
-        let ramv_next = circuit_builder.input(NextBaseRow(RAMV.master_table_index()));
+        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
+        let ramp_next = circuit_builder.input(NextBaseRow(RAMP.master_base_table_index()));
+        let ramv_next = circuit_builder.input(NextBaseRow(RAMV.master_base_table_index()));
         let bcpc0_next = circuit_builder.input(NextBaseRow(
-            BezoutCoefficientPolynomialCoefficient0.master_table_index(),
+            BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
         ));
         let bcpc1_next = circuit_builder.input(NextBaseRow(
-            BezoutCoefficientPolynomialCoefficient1.master_table_index(),
+            BezoutCoefficientPolynomialCoefficient1.master_base_table_index(),
         ));
-        let rp_next = circuit_builder.input(NextExtRow(RunningProductOfRAMP.master_table_index()));
-        let fd_next = circuit_builder.input(NextExtRow(FormalDerivative.master_table_index()));
-        let bc0_next = circuit_builder.input(NextExtRow(BezoutCoefficient0.master_table_index()));
-        let bc1_next = circuit_builder.input(NextExtRow(BezoutCoefficient1.master_table_index()));
+        let rp_next =
+            circuit_builder.input(NextExtRow(RunningProductOfRAMP.master_ext_table_index()));
+        let fd_next = circuit_builder.input(NextExtRow(FormalDerivative.master_ext_table_index()));
+        let bc0_next =
+            circuit_builder.input(NextExtRow(BezoutCoefficient0.master_ext_table_index()));
+        let bc1_next =
+            circuit_builder.input(NextExtRow(BezoutCoefficient1.master_ext_table_index()));
         let rpcjd_next = circuit_builder.input(NextExtRow(
-            AllClockJumpDifferencesPermArg.master_table_index(),
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
         ));
         let rppa_next =
-            circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
 
         let ramp_diff = ramp_next.clone() - ramp;
         let ramp_changes = ramp_diff.clone() * iord.clone();
@@ -529,10 +536,10 @@ impl ExtRamTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_table_index()));
-        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_table_index()));
-        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_table_index()));
-        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_table_index()));
+        let rp = circuit_builder.input(ExtRow(RunningProductOfRAMP.master_ext_table_index()));
+        let fd = circuit_builder.input(ExtRow(FormalDerivative.master_ext_table_index()));
+        let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_ext_table_index()));
+        let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
 
         let bezout_relation_holds = bc0 * rp + bc1 * fd - one;
 

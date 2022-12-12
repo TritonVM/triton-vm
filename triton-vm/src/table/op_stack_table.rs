@@ -70,13 +70,14 @@ impl ExtOpStackTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let clk = circuit_builder.input(BaseRow(CLK.master_table_index()));
-        let ib1 = circuit_builder.input(BaseRow(IB1ShrinkStack.master_table_index()));
-        let osp = circuit_builder.input(BaseRow(OSP.master_table_index()));
-        let osv = circuit_builder.input(BaseRow(OSV.master_table_index()));
-        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
-        let rpcjd =
-            circuit_builder.input(ExtRow(AllClockJumpDifferencesPermArg.master_table_index()));
+        let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
+        let ib1 = circuit_builder.input(BaseRow(IB1ShrinkStack.master_base_table_index()));
+        let osp = circuit_builder.input(BaseRow(OSP.master_base_table_index()));
+        let osv = circuit_builder.input(BaseRow(OSV.master_base_table_index()));
+        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
+        let rpcjd = circuit_builder.input(ExtRow(
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        ));
 
         let clk_is_0 = clk;
         let osv_is_0 = osv;
@@ -127,29 +128,31 @@ impl ExtOpStackTable {
         >::new();
         let one = circuit_builder.b_constant(1u32.into());
 
-        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_table_index()));
+        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
         let ib1_shrink_stack =
-            circuit_builder.input(CurrentBaseRow(IB1ShrinkStack.master_table_index()));
-        let osp = circuit_builder.input(CurrentBaseRow(OSP.master_table_index()));
-        let osv = circuit_builder.input(CurrentBaseRow(OSV.master_table_index()));
+            circuit_builder.input(CurrentBaseRow(IB1ShrinkStack.master_base_table_index()));
+        let osp = circuit_builder.input(CurrentBaseRow(OSP.master_base_table_index()));
+        let osv = circuit_builder.input(CurrentBaseRow(OSV.master_base_table_index()));
         let clk_di = circuit_builder.input(CurrentBaseRow(
-            InverseOfClkDiffMinusOne.master_table_index(),
+            InverseOfClkDiffMinusOne.master_base_table_index(),
         ));
         let rpcjd = circuit_builder.input(CurrentExtRow(
-            AllClockJumpDifferencesPermArg.master_table_index(),
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
         ));
-        let rppa = circuit_builder.input(CurrentExtRow(RunningProductPermArg.master_table_index()));
+        let rppa = circuit_builder.input(CurrentExtRow(
+            RunningProductPermArg.master_ext_table_index(),
+        ));
 
-        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_table_index()));
+        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
         let ib1_shrink_stack_next =
-            circuit_builder.input(NextBaseRow(IB1ShrinkStack.master_table_index()));
-        let osp_next = circuit_builder.input(NextBaseRow(OSP.master_table_index()));
-        let osv_next = circuit_builder.input(NextBaseRow(OSV.master_table_index()));
+            circuit_builder.input(NextBaseRow(IB1ShrinkStack.master_base_table_index()));
+        let osp_next = circuit_builder.input(NextBaseRow(OSP.master_base_table_index()));
+        let osv_next = circuit_builder.input(NextBaseRow(OSV.master_base_table_index()));
         let rpcjd_next = circuit_builder.input(NextExtRow(
-            AllClockJumpDifferencesPermArg.master_table_index(),
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
         ));
         let rppa_next =
-            circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
 
         // the osp increases by 1 or the osp does not change
         //

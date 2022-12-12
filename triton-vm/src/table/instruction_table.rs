@@ -124,13 +124,13 @@ impl ExtInstructionTable {
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
         let running_product_initial = circuit_builder.x_constant(PermArg::default_initial());
 
-        let ip = circuit_builder.input(BaseRow(Address.master_table_index()));
-        let ci = circuit_builder.input(BaseRow(CI.master_table_index()));
-        let nia = circuit_builder.input(BaseRow(NIA.master_table_index()));
+        let ip = circuit_builder.input(BaseRow(Address.master_base_table_index()));
+        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
+        let nia = circuit_builder.input(BaseRow(NIA.master_base_table_index()));
         let running_evaluation =
-            circuit_builder.input(ExtRow(RunningEvaluation.master_table_index()));
+            circuit_builder.input(ExtRow(RunningEvaluation.master_ext_table_index()));
         let running_product =
-            circuit_builder.input(ExtRow(RunningProductPermArg.master_table_index()));
+            circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
 
         // Note that “ip = 0” is enforced by a separate constraint. This means we can drop summand
         // `ip_weight * ip` from the compressed row.
@@ -163,7 +163,7 @@ impl ExtInstructionTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
 
-        let is_padding = circuit_builder.input(BaseRow(IsPadding.master_table_index()));
+        let is_padding = circuit_builder.input(BaseRow(IsPadding.master_base_table_index()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
         vec![is_padding_is_bit.consume()]
@@ -183,15 +183,19 @@ impl ExtInstructionTable {
             InstructionTableChallenges,
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         > = circuit_builder.b_constant(1u32.into());
-        let addr = circuit_builder.input(CurrentBaseRow(Address.master_table_index()));
+        let addr = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
 
-        let addr_next = circuit_builder.input(NextBaseRow(Address.master_table_index()));
-        let current_instruction = circuit_builder.input(CurrentBaseRow(CI.master_table_index()));
-        let current_instruction_next = circuit_builder.input(NextBaseRow(CI.master_table_index()));
-        let next_instruction = circuit_builder.input(CurrentBaseRow(NIA.master_table_index()));
-        let next_instruction_next = circuit_builder.input(NextBaseRow(NIA.master_table_index()));
-        let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_table_index()));
-        let is_padding_next = circuit_builder.input(NextBaseRow(IsPadding.master_table_index()));
+        let addr_next = circuit_builder.input(NextBaseRow(Address.master_base_table_index()));
+        let current_instruction =
+            circuit_builder.input(CurrentBaseRow(CI.master_base_table_index()));
+        let current_instruction_next =
+            circuit_builder.input(NextBaseRow(CI.master_base_table_index()));
+        let next_instruction = circuit_builder.input(CurrentBaseRow(NIA.master_base_table_index()));
+        let next_instruction_next =
+            circuit_builder.input(NextBaseRow(NIA.master_base_table_index()));
+        let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_base_table_index()));
+        let is_padding_next =
+            circuit_builder.input(NextBaseRow(IsPadding.master_base_table_index()));
 
         // Base table constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
@@ -205,14 +209,15 @@ impl ExtInstructionTable {
         // Extension table constraints
         let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermIndeterminate);
         let running_evaluation =
-            circuit_builder.input(CurrentExtRow(RunningEvaluation.master_table_index()));
+            circuit_builder.input(CurrentExtRow(RunningEvaluation.master_ext_table_index()));
         let running_evaluation_next =
-            circuit_builder.input(NextExtRow(RunningEvaluation.master_table_index()));
+            circuit_builder.input(NextExtRow(RunningEvaluation.master_ext_table_index()));
 
-        let running_product =
-            circuit_builder.input(CurrentExtRow(RunningProductPermArg.master_table_index()));
+        let running_product = circuit_builder.input(CurrentExtRow(
+            RunningProductPermArg.master_ext_table_index(),
+        ));
         let running_product_next =
-            circuit_builder.input(NextExtRow(RunningProductPermArg.master_table_index()));
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
 
         // The running evaluation is updated if and only if
         // 1. the address changes, and

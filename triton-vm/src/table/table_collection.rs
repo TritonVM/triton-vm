@@ -1544,43 +1544,43 @@ mod table_collection_tests {
         for column in ProgramBaseTableColumn::iter() {
             println!(
                 "{:>3} | program     | {column}",
-                column.master_table_index()
+                column.master_base_table_index()
             );
         }
         for column in InstructionBaseTableColumn::iter() {
             println!(
                 "{:>3} | instruction | {column}",
-                column.master_table_index()
+                column.master_base_table_index()
             );
         }
         for column in ProcessorBaseTableColumn::iter() {
             println!(
                 "{:>3} | processor   | {column}",
-                column.master_table_index()
+                column.master_base_table_index()
             );
         }
         for column in OpStackBaseTableColumn::iter() {
             println!(
                 "{:>3} | op stack    | {column}",
-                column.master_table_index()
+                column.master_base_table_index()
             );
         }
         for column in RamBaseTableColumn::iter() {
             println!(
                 "{:>3} | ram         | {column}",
-                column.master_table_index()
+                column.master_base_table_index()
             );
         }
         for column in JumpStackBaseTableColumn::iter() {
             println!(
                 "{:>3} | jump stack  | {column}",
-                column.master_table_index()
+                column.master_base_table_index()
             );
         }
         for column in HashBaseTableColumn::iter() {
             println!(
                 "{:>3} | hash        | {column}",
-                column.master_table_index()
+                column.master_base_table_index()
             );
         }
         println!();
@@ -1589,43 +1589,43 @@ mod table_collection_tests {
         for column in ProgramExtTableColumn::iter() {
             println!(
                 "{:>3} | program     | {column}",
-                column.master_table_index()
+                column.master_ext_table_index()
             );
         }
         for column in InstructionExtTableColumn::iter() {
             println!(
                 "{:>3} | instruction | {column}",
-                column.master_table_index()
+                column.master_ext_table_index()
             );
         }
         for column in ProcessorExtTableColumn::iter() {
             println!(
                 "{:>3} | processor   | {column}",
-                column.master_table_index()
+                column.master_ext_table_index()
             );
         }
         for column in OpStackExtTableColumn::iter() {
             println!(
                 "{:>3} | op stack    | {column}",
-                column.master_table_index()
+                column.master_ext_table_index()
             );
         }
         for column in RamExtTableColumn::iter() {
             println!(
                 "{:>3} | ram         | {column}",
-                column.master_table_index()
+                column.master_ext_table_index()
             );
         }
         for column in JumpStackExtTableColumn::iter() {
             println!(
                 "{:>3} | jump stack  | {column}",
-                column.master_table_index()
+                column.master_ext_table_index()
             );
         }
         for column in HashExtTableColumn::iter() {
             println!(
                 "{:>3} | hash        | {column}",
-                column.master_table_index()
+                column.master_ext_table_index()
             );
         }
     }
