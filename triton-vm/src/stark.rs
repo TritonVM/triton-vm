@@ -491,7 +491,7 @@ impl Stark {
                 &bfe in codeword,
                 &shift in shifted_domain_values.view())
                     *acc += weights[1] * bfe * shift);
-            self.debug_check_degree(idx, &combination_codeword);
+            self.debug_check_degree(idx, &combination_codeword, quotient_domain);
         }
         if std::env::var("DEBUG").is_ok() {
             println!(" --- next up: extension codewords");
@@ -509,7 +509,7 @@ impl Stark {
                 &xfe in codeword,
                 &shift in shifted_domain_values.view())
                     *acc += weights[1] * xfe * shift);
-            self.debug_check_degree(idx, &combination_codeword);
+            self.debug_check_degree(idx, &combination_codeword, quotient_domain);
         }
         if std::env::var("DEBUG").is_ok() {
             println!(" --- next up: quotient codewords");
@@ -535,18 +535,23 @@ impl Stark {
                 &xfe in codeword,
                 &shift in shifted_domain_values.view())
                     *acc += weights[1] * xfe * shift);
-            self.debug_check_degree(idx, &combination_codeword);
+            self.debug_check_degree(idx, &combination_codeword, quotient_domain);
         }
 
         combination_codeword
     }
 
-    fn debug_check_degree(&self, index: usize, combination_codeword: &[XFieldElement]) {
+    fn debug_check_degree(
+        &self,
+        index: usize,
+        combination_codeword: &[XFieldElement],
+        quotient_domain: ArithmeticDomain,
+    ) {
         if std::env::var("DEBUG").is_err() {
             return;
         }
         let max_degree = self.max_degree;
-        let degree = self.fri.domain.interpolate(combination_codeword).degree();
+        let degree = quotient_domain.interpolate(combination_codeword).degree();
         let maybe_excl_mark = if degree > max_degree as isize {
             "!!!"
         } else if degree != -1 && degree != max_degree as isize {
