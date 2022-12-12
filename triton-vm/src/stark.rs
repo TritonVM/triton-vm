@@ -1539,9 +1539,20 @@ pub(crate) mod triton_stark_tests {
         let (_, _, master_base_table, master_ext_table, challenges) =
             parse_simulate_pad_extend(&source_code_and_input.source_code, vec![], vec![]);
 
+        assert_eq!(
+            master_base_table.master_base_matrix.nrows(),
+            master_ext_table.master_ext_matrix.nrows()
+        );
+        let master_base_trace_table = master_base_table.trace_table();
+        let master_ext_trace_table = master_ext_table.trace_table();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
+
         let evaluated_initial_constraints = evaluate_all_initial_constraints(
-            master_base_table.master_base_matrix.row(0),
-            master_ext_table.master_ext_matrix.row(0),
+            master_base_trace_table.row(0),
+            master_ext_trace_table.row(0),
             &challenges,
         );
         let num_initial_constraints = evaluated_initial_constraints.len();
@@ -1552,10 +1563,10 @@ pub(crate) mod triton_stark_tests {
             );
         }
 
-        let num_rows = master_base_table.master_base_matrix.nrows();
+        let num_rows = master_base_trace_table.nrows();
         for row_idx in 0..num_rows {
-            let base_row = master_base_table.master_base_matrix.row(row_idx);
-            let ext_row = master_ext_table.master_ext_matrix.row(row_idx);
+            let base_row = master_base_trace_table.row(row_idx);
+            let ext_row = master_ext_trace_table.row(row_idx);
             let evaluated_consistency_constraints =
                 evaluate_all_consistency_constraints(base_row, ext_row, &challenges);
             let num_consistency_constraints = evaluated_consistency_constraints.len();
@@ -1569,10 +1580,10 @@ pub(crate) mod triton_stark_tests {
         }
 
         for row_idx in 0..num_rows - 1 {
-            let base_row = master_base_table.master_base_matrix.row(row_idx);
-            let ext_row = master_ext_table.master_ext_matrix.row(row_idx);
-            let next_base_row = master_base_table.master_base_matrix.row(row_idx + 1);
-            let next_ext_row = master_ext_table.master_ext_matrix.row(row_idx + 1);
+            let base_row = master_base_trace_table.row(row_idx);
+            let ext_row = master_ext_trace_table.row(row_idx);
+            let next_base_row = master_base_trace_table.row(row_idx + 1);
+            let next_ext_row = master_ext_trace_table.row(row_idx + 1);
             let evaluated_transition_constraints = evaluate_all_transition_constraints(
                 base_row,
                 ext_row,
@@ -1591,8 +1602,8 @@ pub(crate) mod triton_stark_tests {
         }
 
         let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
-            master_base_table.master_base_matrix.row(num_rows - 1),
-            master_ext_table.master_ext_matrix.row(num_rows - 1),
+            master_base_trace_table.row(num_rows - 1),
+            master_ext_trace_table.row(num_rows - 1),
             &challenges,
         );
         let num_terminal_constraints = evaluated_terminal_constraints.len();

@@ -642,6 +642,7 @@ mod constraint_tests {
 
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::extension_table::Evaluable;
+    use crate::table::table_collection::MasterTable;
 
     use super::*;
 
@@ -650,10 +651,20 @@ mod constraint_tests {
         let source_code = "hash hash hash halt";
         let (_, _, master_base_table, master_ext_table, challenges) =
             parse_simulate_pad_extend(source_code, vec![], vec![]);
+        assert_eq!(
+            master_base_table.master_base_matrix.nrows(),
+            master_ext_table.master_ext_matrix.nrows()
+        );
+        let master_base_trace_table = master_base_table.trace_table();
+        let master_ext_trace_table = master_ext_table.trace_table();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
 
-        let num_rows = master_base_table.master_base_matrix.nrows();
-        let first_base_row = master_base_table.master_base_matrix.row(0);
-        let first_ext_row = master_ext_table.master_ext_matrix.row(0);
+        let num_rows = master_base_trace_table.nrows();
+        let first_base_row = master_base_trace_table.row(0);
+        let first_ext_row = master_ext_trace_table.row(0);
         for (idx, v) in
             ExtHashTable::evaluate_initial_constraints(first_base_row, first_ext_row, &challenges)
                 .iter()
@@ -663,8 +674,8 @@ mod constraint_tests {
         }
 
         for row_idx in 0..num_rows {
-            let base_row = master_base_table.master_base_matrix.row(row_idx);
-            let ext_row = master_ext_table.master_ext_matrix.row(row_idx);
+            let base_row = master_base_trace_table.row(row_idx);
+            let ext_row = master_ext_trace_table.row(row_idx);
             for (constraint_idx, v) in
                 ExtHashTable::evaluate_consistency_constraints(base_row, ext_row, &challenges)
                     .iter()
@@ -678,10 +689,10 @@ mod constraint_tests {
         }
 
         for row_idx in 0..num_rows - 1 {
-            let base_row = master_base_table.master_base_matrix.row(row_idx);
-            let ext_row = master_ext_table.master_ext_matrix.row(row_idx);
-            let next_base_row = master_base_table.master_base_matrix.row(row_idx + 1);
-            let next_ext_row = master_ext_table.master_ext_matrix.row(row_idx + 1);
+            let base_row = master_base_trace_table.row(row_idx);
+            let ext_row = master_ext_trace_table.row(row_idx);
+            let next_base_row = master_base_trace_table.row(row_idx + 1);
+            let next_ext_row = master_ext_trace_table.row(row_idx + 1);
             for (constraint_idx, v) in ExtHashTable::evaluate_transition_constraints(
                 base_row,
                 ext_row,
@@ -699,8 +710,8 @@ mod constraint_tests {
             }
         }
 
-        let last_base_row = master_base_table.master_base_matrix.row(num_rows - 1);
-        let last_ext_row = master_ext_table.master_ext_matrix.row(num_rows - 1);
+        let last_base_row = master_base_trace_table.row(num_rows - 1);
+        let last_ext_row = master_ext_trace_table.row(num_rows - 1);
         for (idx, v) in
             ExtHashTable::evaluate_terminal_constraints(last_base_row, last_ext_row, &challenges)
                 .iter()
