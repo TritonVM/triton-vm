@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
-use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use num_traits::One;
@@ -246,38 +247,38 @@ impl RamTable {
         }
     }
 
-    pub fn extend(&self, challenges: &RamTableChallenges) -> ExtRamTable {
-        let fake_data = vec![vec![BFieldElement::zero()]];
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &RamTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut running_product_for_perm_arg = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
 
         // initialize columns establishing Bézout relation
-        let ramp_first_row = fake_data.first().unwrap()[RAMP.table_index()];
-        let mut running_product_of_ramp = challenges.bezout_relation_indeterminate - ramp_first_row;
+        let mut running_product_of_ramp =
+            challenges.bezout_relation_indeterminate - base_table.row(0)[RAMP.table_index()];
         let mut formal_derivative = XFieldElement::one();
-        let mut bezout_coefficient_0 = XFieldElement::zero();
-        let bcpc_first_row =
-            fake_data.first().unwrap()[BezoutCoefficientPolynomialCoefficient1.table_index()];
-        let mut bezout_coefficient_1 = bcpc_first_row.lift();
+        let mut bezout_coefficient_0 =
+            base_table.row(0)[BezoutCoefficientPolynomialCoefficient0.table_index()].lift();
+        let mut bezout_coefficient_1 =
+            base_table.row(0)[BezoutCoefficientPolynomialCoefficient1.table_index()].lift();
 
-        let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in fake_data.iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            let clk = current_row[CLK.table_index()];
+            let ramp = current_row[RAMP.table_index()];
+            let ramv = current_row[RAMV.table_index()];
 
-            let clk = extension_row[CLK.table_index()];
-            let ramp = extension_row[RAMP.table_index()];
-            let ramv = extension_row[RAMV.table_index()];
-
-            if let Some(prow) = previous_row {
-                if prow[RAMP.table_index()] != row[RAMP.table_index()] {
+            if let Some(prev_row) = previous_row {
+                if prev_row[RAMP.table_index()] != current_row[RAMP.table_index()] {
                     // accumulate coefficient for Bézout relation, proving new RAMP is unique
-                    let bcpc0 =
-                        extension_row[BezoutCoefficientPolynomialCoefficient0.table_index()];
-                    let bcpc1 =
-                        extension_row[BezoutCoefficientPolynomialCoefficient1.table_index()];
+                    let bcpc0 = current_row[BezoutCoefficientPolynomialCoefficient0.table_index()];
+                    let bcpc1 = current_row[BezoutCoefficientPolynomialCoefficient1.table_index()];
                     let bezout_challenge = challenges.bezout_relation_indeterminate;
 
                     formal_derivative =
@@ -288,8 +289,8 @@ impl RamTable {
                 } else {
                     // prove that clock jump is directed forward
                     let clock_jump_difference =
-                        (row[CLK.table_index()] - prow[CLK.table_index()]).lift();
-                    if clock_jump_difference != XFieldElement::one() {
+                        current_row[CLK.table_index()] - prev_row[CLK.table_index()];
+                    if !clock_jump_difference.is_one() {
                         all_clock_jump_differences_running_product *= challenges
                             .all_clock_jump_differences_multi_perm_indeterminate
                             - clock_jump_difference;
@@ -297,33 +298,23 @@ impl RamTable {
                 }
             }
 
+            // permutation argument to Processor Table
+            let compressed_row_for_permutation_argument = clk * challenges.clk_weight
+                + ramp * challenges.ramp_weight
+                + ramv * challenges.ramv_weight;
+            running_product_for_perm_arg *=
+                challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
+
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[RunningProductPermArg.table_index()] = running_product_for_perm_arg;
             extension_row[RunningProductOfRAMP.table_index()] = running_product_of_ramp;
             extension_row[FormalDerivative.table_index()] = formal_derivative;
             extension_row[BezoutCoefficient0.table_index()] = bezout_coefficient_0;
             extension_row[BezoutCoefficient1.table_index()] = bezout_coefficient_1;
             extension_row[AllClockJumpDifferencesPermArg.table_index()] =
                 all_clock_jump_differences_running_product;
-
-            // permutation argument to Processor Table
-            let clk_w = challenges.clk_weight;
-            let ramp_w = challenges.ramp_weight;
-            let ramv_w = challenges.ramv_weight;
-
-            // compress multiple values within one row so they become one value
-            let compressed_row_for_permutation_argument =
-                clk * clk_w + ramp * ramp_w + ramv * ramv_w;
-
-            // compute the running product of the compressed column for permutation argument
-            running_product_for_perm_arg *=
-                challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
-            extension_row[RunningProductPermArg.table_index()] = running_product_for_perm_arg;
-
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
+            previous_row = Some(current_row);
         }
-
-        assert_eq!(fake_data.len(), extension_matrix.len());
-        ExtRamTable {}
     }
 }
 

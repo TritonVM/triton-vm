@@ -428,6 +428,11 @@ impl MasterBaseTable {
             master_ext_table.table_mut(TableId::OpStackTable),
             &challenges.op_stack_table_challenges,
         );
+        RamTable::extend(
+            self.table(TableId::RamTable),
+            master_ext_table.table_mut(TableId::RamTable),
+            &challenges.ram_table_challenges,
+        );
 
         master_ext_table
     }
