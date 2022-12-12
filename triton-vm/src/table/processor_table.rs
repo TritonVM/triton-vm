@@ -5,12 +5,14 @@ use std::fmt::Display;
 use std::ops::Mul;
 
 use itertools::Itertools;
+use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayBase;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use ndarray::Ix1;
 use num_traits::One;
 use num_traits::Zero;
@@ -111,14 +113,21 @@ impl ProcessorTable {
         processor_table: &mut ArrayViewMut2<BFieldElement>,
         processor_table_len: usize,
     ) {
-        let clocks = Array1::from_iter(
-            (processor_table_len..processor_table.nrows()).map(|a| BFieldElement::new(a as u64)),
+        assert!(
+            processor_table_len > 0,
+            "Processor Table must have at least one row."
         );
-        clocks.move_into(processor_table.slice_mut(s![processor_table_len.., CLK.table_index()]));
-
+        let mut padding_template = processor_table.row(processor_table_len - 1).to_owned();
+        padding_template[IsPadding.table_index()] = BFieldElement::one();
         processor_table
-            .slice_mut(s![processor_table_len.., IsPadding.table_index()])
-            .fill(BFieldElement::one());
+            .slice_mut(s![processor_table_len.., ..])
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .for_each(|mut row| row.assign(&padding_template));
+
+        let clk_range = processor_table_len..processor_table.nrows();
+        let clk_col = Array1::from_iter(clk_range.map(|a| BFieldElement::new(a as u64)));
+        clk_col.move_into(processor_table.slice_mut(s![processor_table_len.., CLK.table_index()]));
     }
 
     pub fn extend(
@@ -1712,10 +1721,7 @@ impl DualRowConstraints {
             13 => hv3 * hv2 * (self.one() - hv1) * hv0,
             14 => hv3 * hv2 * hv1 * (self.one() - hv0),
             15 => hv3 * hv2 * hv1 * hv0,
-            _ => panic!(
-                "No indicator polynomial with index {} exists: there are only 16.",
-                i
-            ),
+            _ => panic!("No indicator polynomial with index {i} exists: there are only 16."),
         }
     }
 

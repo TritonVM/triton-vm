@@ -235,7 +235,7 @@ pub mod triton_vm_tests {
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::processor_table::ProcessorMatrixRow;
     use crate::table::table_collection::MasterTable;
-    use crate::table::table_column::BaseTableColumn;
+    use crate::table::table_column::MasterBaseTableColumn;
     use crate::table::table_column::ProcessorBaseTableColumn;
 
     use super::*;
@@ -817,8 +817,8 @@ pub mod triton_vm_tests {
                     .enumerate()
                 {
                     if !tc_evaluation_result.is_zero() {
-                        let ci =
-                            current_base_row[ProcessorBaseTableColumn::CI.table_index()].value();
+                        let ci_idx = ProcessorBaseTableColumn::CI.master_table_index();
+                        let ci = current_base_row[ci_idx].value();
                         panic!(
                             "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
                             {tc_evaluation_result} but must be 0.\n\
