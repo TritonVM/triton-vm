@@ -173,11 +173,11 @@ impl Stark {
 
         prof_start!(maybe_profiler, "LDE");
         master_base_table.randomize_trace();
-        let fri_domain_base_master_table = master_base_table.to_fri_domain_table();
+        let fri_domain_master_base_table = master_base_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
-        let base_merkle_tree = fri_domain_base_master_table.merkle_tree();
+        let base_merkle_tree = fri_domain_master_base_table.merkle_tree();
         let base_merkle_tree_root = base_merkle_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree");
 
@@ -223,7 +223,7 @@ impl Stark {
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let quotient_domain = self.quotient_domain();
         let unit_distance = self.fri.domain.length / quotient_domain.length;
-        let base_quotient_domain_codewords = fri_domain_base_master_table
+        let base_quotient_domain_codewords = fri_domain_master_base_table
             .master_base_matrix
             .slice(s![..; unit_distance, ..]);
         let extension_quotient_domain_codewords = fri_domain_ext_master_table
@@ -364,7 +364,7 @@ impl Stark {
             self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
 
         let revealed_base_elems = Self::get_revealed_elements(
-            fri_domain_base_master_table.master_base_matrix.view(),
+            fri_domain_master_base_table.master_base_matrix.view(),
             &revealed_indices,
         );
         let auth_paths_base = base_merkle_tree.get_authentication_structure(&revealed_indices);
