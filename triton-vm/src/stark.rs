@@ -179,7 +179,7 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         let extension_challenge_seed = proof_stream.prover_fiat_shamir();
         let extension_challenge_weights =
-            Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
+            StarkHasher::sample_weights(&extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
@@ -258,8 +258,8 @@ impl Stark {
 
         let grand_cross_table_arg_and_non_lin_combi_weights_seed =
             proof_stream.prover_fiat_shamir();
-        let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
-            grand_cross_table_arg_and_non_lin_combi_weights_seed,
+        let grand_cross_table_arg_and_non_lin_combi_weights = StarkHasher::sample_weights(
+            &grand_cross_table_arg_and_non_lin_combi_weights_seed,
             num_grand_cross_table_arg_weights + num_non_lin_combi_weights,
         );
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
@@ -346,11 +346,11 @@ impl Stark {
         // Get indices of slices that go across codewords to prove nonlinear combination
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let indices_seed = proof_stream.prover_fiat_shamir();
-        let cross_codeword_slice_indices = StarkHasher::sample_indices(
-            self.parameters.security_level,
-            &indices_seed,
-            self.fri.domain.length,
-        );
+        let cross_codeword_slice_indices = {
+            let upper_bound = self.fri.domain.length;
+            let num_indices = self.parameters.security_level;
+            StarkHasher::sample_indices(&indices_seed, upper_bound, num_indices)
+        };
         prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
         prof_start!(maybe_profiler, "FRI");
@@ -638,13 +638,6 @@ impl Stark {
         (x_randomizer_codeword, b_randomizer_codewords)
     }
 
-    fn sample_weights(seed: Digest, num_weights: usize) -> Vec<XFieldElement> {
-        StarkHasher::get_n_hash_rounds(&seed, num_weights)
-            .iter()
-            .map(XFieldElement::sample)
-            .collect()
-    }
-
     pub fn verify(
         &self,
         proof: Proof,
@@ -661,7 +654,7 @@ impl Stark {
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
 
         let extension_challenge_weights =
-            Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
+            StarkHasher::sample_weights(&extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let extension_challenges = AllChallenges::create_challenges(extension_challenge_weights);
         if self.claim.padded_height != padded_height && self.claim.padded_height != 0 {
             return Err(anyhow::Error::new(
@@ -710,8 +703,8 @@ impl Stark {
 
         let grand_cross_table_arg_and_non_lin_combi_weights_seed =
             proof_stream.verifier_fiat_shamir();
-        let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
-            grand_cross_table_arg_and_non_lin_combi_weights_seed,
+        let grand_cross_table_arg_and_non_lin_combi_weights = StarkHasher::sample_weights(
+            &grand_cross_table_arg_and_non_lin_combi_weights_seed,
             num_grand_cross_table_arg_weights + num_non_lin_combi_weights,
         );
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
@@ -743,11 +736,11 @@ impl Stark {
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
 
         let indices_seed = proof_stream.verifier_fiat_shamir();
-        let combination_check_indices = StarkHasher::sample_indices(
-            self.parameters.security_level,
-            &indices_seed,
-            self.fri.domain.length,
-        );
+        let combination_check_indices = {
+            let upper_bound = self.fri.domain.length;
+            let num_indices = self.parameters.security_level;
+            StarkHasher::sample_indices(&indices_seed, upper_bound, num_indices)
+        };
         prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
         // verify low degree of combination polynomial with FRI
