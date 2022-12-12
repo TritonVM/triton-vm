@@ -108,8 +108,8 @@ impl RamTable {
         bezout_coefficient_polynomial_coefficients_1.resize(num_of_ramps, BFieldElement::zero());
         let mut current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
         let mut current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
-        ram_table[[0, BezoutCoefficient0.table_index()]] = current_bcpc_0;
-        ram_table[[0, BezoutCoefficient1.table_index()]] = current_bcpc_1;
+        ram_table[[0, BezoutCoefficientPolynomialCoefficient0.table_index()]] = current_bcpc_0;
+        ram_table[[0, BezoutCoefficientPolynomialCoefficient1.table_index()]] = current_bcpc_1;
 
         // Move the rows into the Ram Table, as contiguous regions of RAMP values, sorted by CLK.
         let mut ram_table_row = 0;
