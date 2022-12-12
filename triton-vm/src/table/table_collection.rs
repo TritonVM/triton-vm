@@ -438,6 +438,11 @@ impl MasterBaseTable {
             master_ext_table.table_mut(TableId::JumpStackTable),
             &challenges.jump_stack_table_challenges,
         );
+        HashTable::extend(
+            self.table(TableId::HashTable),
+            master_ext_table.table_mut(TableId::HashTable),
+            &challenges.hash_table_challenges,
+        );
 
         master_ext_table
     }

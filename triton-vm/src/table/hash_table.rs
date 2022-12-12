@@ -1,7 +1,8 @@
 use itertools::Itertools;
 use ndarray::Array1;
+use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
-use num_traits::Zero;
+use num_traits::One;
 use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
@@ -464,94 +465,88 @@ impl HashTable {
         // Hence, no need to do anything.
     }
 
-    pub fn extend(&self, challenges: &HashTableChallenges) -> ExtHashTable {
-        let fake_data = vec![vec![BFieldElement::zero()]];
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &HashTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut from_processor_running_evaluation = EvalArg::default_initial();
         let mut to_processor_running_evaluation = EvalArg::default_initial();
 
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
-        for row in fake_data.iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
 
             // Add compressed input to running evaluation if round index marks beginning of hashing
-            if row[ROUNDNUMBER.table_index()].value() == 1 {
+            if current_row[ROUNDNUMBER.table_index()].is_one() {
                 let state_for_input = [
-                    extension_row[STATE0.table_index()],
-                    extension_row[STATE1.table_index()],
-                    extension_row[STATE2.table_index()],
-                    extension_row[STATE3.table_index()],
-                    extension_row[STATE4.table_index()],
-                    extension_row[STATE5.table_index()],
-                    extension_row[STATE6.table_index()],
-                    extension_row[STATE7.table_index()],
-                    extension_row[STATE8.table_index()],
-                    extension_row[STATE9.table_index()],
+                    current_row[STATE0.table_index()],
+                    current_row[STATE1.table_index()],
+                    current_row[STATE2.table_index()],
+                    current_row[STATE3.table_index()],
+                    current_row[STATE4.table_index()],
+                    current_row[STATE5.table_index()],
+                    current_row[STATE6.table_index()],
+                    current_row[STATE7.table_index()],
+                    current_row[STATE8.table_index()],
+                    current_row[STATE9.table_index()],
+                ];
+                let stack_input_weights = [
+                    challenges.stack_input_weight0,
+                    challenges.stack_input_weight1,
+                    challenges.stack_input_weight2,
+                    challenges.stack_input_weight3,
+                    challenges.stack_input_weight4,
+                    challenges.stack_input_weight5,
+                    challenges.stack_input_weight6,
+                    challenges.stack_input_weight7,
+                    challenges.stack_input_weight8,
+                    challenges.stack_input_weight9,
                 ];
                 let compressed_state_for_input: XFieldElement = state_for_input
                     .iter()
-                    .zip_eq(
-                        [
-                            challenges.stack_input_weight0,
-                            challenges.stack_input_weight1,
-                            challenges.stack_input_weight2,
-                            challenges.stack_input_weight3,
-                            challenges.stack_input_weight4,
-                            challenges.stack_input_weight5,
-                            challenges.stack_input_weight6,
-                            challenges.stack_input_weight7,
-                            challenges.stack_input_weight8,
-                            challenges.stack_input_weight9,
-                        ]
-                        .iter(),
-                    )
+                    .zip_eq(stack_input_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
-
                 from_processor_running_evaluation = from_processor_running_evaluation
                     * challenges.from_processor_eval_indeterminate
                     + compressed_state_for_input;
             }
-            extension_row[FromProcessorRunningEvaluation.table_index()] =
-                from_processor_running_evaluation;
 
             // Add compressed digest to running evaluation if round index marks end of hashing
-            if row[ROUNDNUMBER.table_index()].value() == NUM_ROUNDS as u64 + 1 {
+            if current_row[ROUNDNUMBER.table_index()].value() == NUM_ROUNDS as u64 + 1 {
                 let state_for_output = [
-                    extension_row[STATE0.table_index()],
-                    extension_row[STATE1.table_index()],
-                    extension_row[STATE2.table_index()],
-                    extension_row[STATE3.table_index()],
-                    extension_row[STATE4.table_index()],
+                    current_row[STATE0.table_index()],
+                    current_row[STATE1.table_index()],
+                    current_row[STATE2.table_index()],
+                    current_row[STATE3.table_index()],
+                    current_row[STATE4.table_index()],
+                ];
+                let digest_output_weights = [
+                    challenges.digest_output_weight0,
+                    challenges.digest_output_weight1,
+                    challenges.digest_output_weight2,
+                    challenges.digest_output_weight3,
+                    challenges.digest_output_weight4,
                 ];
                 let compressed_state_for_output: XFieldElement = state_for_output
                     .iter()
-                    .zip_eq(
-                        [
-                            challenges.digest_output_weight0,
-                            challenges.digest_output_weight1,
-                            challenges.digest_output_weight2,
-                            challenges.digest_output_weight3,
-                            challenges.digest_output_weight4,
-                        ]
-                        .iter(),
-                    )
+                    .zip_eq(digest_output_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
-
                 to_processor_running_evaluation = to_processor_running_evaluation
                     * challenges.to_processor_eval_indeterminate
                     + compressed_state_for_output;
             }
+
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[FromProcessorRunningEvaluation.table_index()] =
+                from_processor_running_evaluation;
             extension_row[ToProcessorRunningEvaluation.table_index()] =
                 to_processor_running_evaluation;
-
-            extension_matrix.push(extension_row.to_vec());
         }
-
-        assert_eq!(fake_data.len(), extension_matrix.len());
-        ExtHashTable {}
     }
 }
 
