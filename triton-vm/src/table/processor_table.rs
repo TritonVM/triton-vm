@@ -155,7 +155,6 @@ impl ProcessorTable {
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
-            let mut extension_row = ext_table.row_mut(row_idx);
 
             // Input table
             if let Some(prev_row) = previous_row {
@@ -313,6 +312,7 @@ impl ProcessorTable {
                     + current_clock_jump_difference;
             }
 
+            let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.table_index()] = output_table_running_evaluation;
             extension_row[InstructionTablePermArg.table_index()] =

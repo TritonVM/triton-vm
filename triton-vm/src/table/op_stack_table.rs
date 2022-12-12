@@ -382,8 +382,6 @@ impl OpStackTable {
 
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
-            let mut extension_row = ext_table.row_mut(row_idx);
-
             let clk = current_row[CLK.table_index()];
             let ib1 = current_row[IB1ShrinkStack.table_index()];
             let osp = current_row[OSP.table_index()];
@@ -408,6 +406,8 @@ impl OpStackTable {
                     }
                 }
             }
+
+            let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[RunningProductPermArg.table_index()] = running_product;
             extension_row[AllClockJumpDifferencesPermArg.table_index()] =
                 all_clock_jump_differences_running_product;

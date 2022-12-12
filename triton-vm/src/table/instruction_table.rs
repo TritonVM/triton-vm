@@ -367,8 +367,6 @@ impl InstructionTable {
 
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
-            let mut extension_row = ext_table.row_mut(row_idx);
-
             let ip = current_row[Address.table_index()];
             let ci = current_row[CI.table_index()];
             let nia = current_row[NIA.table_index()];
@@ -399,6 +397,7 @@ impl InstructionTable {
                     - compressed_row_for_permutation_argument;
             }
 
+            let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[RunningEvaluation.table_index()] = program_table_running_evaluation;
             extension_row[RunningProductPermArg.table_index()] = processor_table_running_product;
             previous_row = Some(current_row);
