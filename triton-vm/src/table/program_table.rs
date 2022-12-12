@@ -1,4 +1,3 @@
-use ndarray::par_azip;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView2;
@@ -157,9 +156,10 @@ impl ProgramTable {
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);
 
-        let mut instruction_column =
+        let instructions = Array1::from(program.to_owned());
+        let instruction_column =
             program_table.slice_mut(s![..program_len, Instruction.table_index()]);
-        par_azip!((ic in &mut instruction_column, &instr in program)  *ic = instr);
+        instructions.move_into(instruction_column);
     }
 
     pub fn pad_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program_len: usize) {

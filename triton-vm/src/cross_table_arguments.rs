@@ -1,10 +1,10 @@
 use std::cmp::max;
 use std::ops::Mul;
 
-use ndarray::par_azip;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
+use ndarray::Zip;
 use num_traits::One;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
@@ -404,24 +404,25 @@ impl GrandCrossTableArg {
         for (arg, weight) in self.into_iter() {
             let from_codeword = arg.combined_from_codeword(master_ext_table);
             let to_codeword = arg.combined_to_codeword(master_ext_table);
-            par_azip!((accumulator in &mut non_linear_sum_codeword,
-                &from in &from_codeword,
-                &to in &to_codeword)
-                *accumulator += weight * (from - to)
-            );
+            Zip::from(&mut non_linear_sum_codeword)
+                .and(&from_codeword)
+                .and(&to_codeword)
+                .par_for_each(|accumulator, &from, &to| *accumulator += weight * (from - to));
         }
 
         // standard input
-        let processor_in_codeword = master_ext_table.column(self.input_to_processor);
-        par_azip!((accumulator in &mut non_linear_sum_codeword, &to in &processor_in_codeword)
-            *accumulator += self.input_to_processor_weight * (self.input_terminal - to)
-        );
+        Zip::from(&mut non_linear_sum_codeword)
+            .and(master_ext_table.column(self.input_to_processor))
+            .par_for_each(|accumulator, &to| {
+                *accumulator += self.input_to_processor_weight * (self.input_terminal - to)
+            });
 
         // standard output
-        let processor_out_codeword = master_ext_table.column(self.processor_to_output);
-        par_azip!((accumulator in &mut non_linear_sum_codeword, &from in &processor_out_codeword)
-            *accumulator += self.processor_to_output_weight * (from - self.output_terminal)
-        );
+        Zip::from(&mut non_linear_sum_codeword)
+            .and(master_ext_table.column(self.processor_to_output))
+            .par_for_each(|accumulator, &from| {
+                *accumulator += self.processor_to_output_weight * (from - self.output_terminal)
+            });
 
         let zerofier_inverse =
             terminal_quotient_zerofier_inverse(quotient_domain, trace_domain_generator);

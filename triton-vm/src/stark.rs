@@ -7,11 +7,11 @@ use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
-use ndarray::par_azip;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayBase;
 use ndarray::ArrayView2;
+use ndarray::Zip;
 use num_traits::One;
 use num_traits::Zero;
 use rayon::prelude::*;
@@ -469,12 +469,8 @@ impl Stark {
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let base_and_ext_col_shift = self.max_degree - interpolant_degree;
         let quotient_domain_values = quotient_domain.domain_values();
-        let shifted_domain_values: Array1<BFieldElement> = quotient_domain_values
-            .clone()
-            .into_par_iter()
-            .map(|domain_value| domain_value.mod_pow_u32(base_and_ext_col_shift as u32))
-            .collect::<Vec<_>>()
-            .into();
+        let shifted_domain_values =
+            Self::degree_shift_domain(&quotient_domain_values, base_and_ext_col_shift);
 
         let mut combination_codeword = vec![XFieldElement::zero(); quotient_domain.length];
 
@@ -484,13 +480,12 @@ impl Stark {
             .zip_eq(base_weights.chunks_exact(2))
             .enumerate()
         {
-            par_azip!((acc in &mut combination_codeword,
-                &bfe in codeword)
-                    *acc += weights[0] * bfe);
-            par_azip!((acc in &mut combination_codeword,
-                &bfe in codeword,
-                &shift in shifted_domain_values.view())
-                    *acc += weights[1] * bfe * shift);
+            Zip::from(&mut combination_codeword)
+                .and(codeword)
+                .and(shifted_domain_values.view())
+                .par_for_each(|acc, &bfe, &shift| {
+                    *acc += weights[0] * bfe + weights[1] * bfe * shift
+                });
             self.debug_check_degree(idx, &combination_codeword, quotient_domain);
         }
         if std::env::var("DEBUG").is_ok() {
@@ -502,13 +497,12 @@ impl Stark {
             .zip_eq(ext_weights.chunks_exact(2))
             .enumerate()
         {
-            par_azip!((acc in &mut combination_codeword,
-                &xfe in codeword)
-                    *acc += weights[0] * xfe);
-            par_azip!((acc in &mut combination_codeword,
-                &xfe in codeword,
-                &shift in shifted_domain_values.view())
-                    *acc += weights[1] * xfe * shift);
+            Zip::from(&mut combination_codeword)
+                .and(codeword)
+                .and(shifted_domain_values.view())
+                .par_for_each(|acc, &xfe, &shift| {
+                    *acc += weights[0] * xfe + weights[1] * xfe * shift
+                });
             self.debug_check_degree(idx, &combination_codeword, quotient_domain);
         }
         if std::env::var("DEBUG").is_ok() {
@@ -521,24 +515,29 @@ impl Stark {
             .zip_eq(quotient_degree_bounds)
             .enumerate()
         {
-            par_azip!((acc in &mut combination_codeword,
-                &xfe in codeword)
-                    *acc += weights[0] * xfe);
-            let shift = self.max_degree - degree_bound;
-            let shifted_domain_values: Array1<BFieldElement> = quotient_domain_values
-                .clone()
-                .into_par_iter()
-                .map(|domain_value| domain_value.mod_pow_u32(shift as u32))
-                .collect::<Vec<_>>()
-                .into();
-            par_azip!((acc in &mut combination_codeword,
-                &xfe in codeword,
-                &shift in shifted_domain_values.view())
-                    *acc += weights[1] * xfe * shift);
+            let shifted_domain_values =
+                Self::degree_shift_domain(&quotient_domain_values, self.max_degree - degree_bound);
+            Zip::from(&mut combination_codeword)
+                .and(codeword)
+                .and(shifted_domain_values.view())
+                .par_for_each(|acc, &xfe, &shift| {
+                    *acc += weights[0] * xfe + weights[1] * xfe * shift
+                });
             self.debug_check_degree(idx, &combination_codeword, quotient_domain);
         }
 
         combination_codeword
+    }
+
+    fn degree_shift_domain(
+        domain_values: &[BFieldElement],
+        shift: Degree,
+    ) -> Array1<BFieldElement> {
+        domain_values
+            .into_par_iter()
+            .map(|domain_value| domain_value.mod_pow_u32(shift as u32))
+            .collect::<Vec<_>>()
+            .into()
     }
 
     fn debug_check_degree(
