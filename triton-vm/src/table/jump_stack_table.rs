@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
 
-use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use num_traits::One;
@@ -390,64 +391,53 @@ impl JumpStackTable {
         }
     }
 
-    pub fn extend(&self, challenges: &JumpStackTableChallenges) -> ExtJumpStackTable {
-        let fake_data = vec![vec![BFieldElement::zero()]];
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(fake_data.len());
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &JumpStackTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut running_product = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
 
-        let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in fake_data.iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            let clk = current_row[CLK.table_index()];
+            let ci = current_row[CI.table_index()];
+            let jsp = current_row[JSP.table_index()];
+            let jso = current_row[JSO.table_index()];
+            let jsd = current_row[JSD.table_index()];
 
-            let (clk, ci, jsp, jso, jsd) = (
-                extension_row[CLK.table_index()],
-                extension_row[CI.table_index()],
-                extension_row[JSP.table_index()],
-                extension_row[JSO.table_index()],
-                extension_row[JSD.table_index()],
-            );
-
-            let (clk_w, ci_w, jsp_w, jso_w, jsd_w) = (
-                challenges.clk_weight,
-                challenges.ci_weight,
-                challenges.jsp_weight,
-                challenges.jso_weight,
-                challenges.jsd_weight,
-            );
-
-            // compress multiple values within one row so they become one value
-            let compressed_row_for_permutation_argument =
-                clk * clk_w + ci * ci_w + jsp * jsp_w + jso * jso_w + jsd * jsd_w;
-
-            // compute the running *product* of the compressed column (for permutation argument)
+            let compressed_row_for_permutation_argument = clk * challenges.clk_weight
+                + ci * challenges.ci_weight
+                + jsp * challenges.jsp_weight
+                + jso * challenges.jso_weight
+                + jsd * challenges.jsd_weight;
             running_product *=
                 challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
-            extension_row[RunningProductPermArg.table_index()] = running_product;
 
             // clock jump difference
-            if let Some(prow) = previous_row {
-                if prow[JSP.table_index()] == row[JSP.table_index()] {
+            if let Some(prev_row) = previous_row {
+                if prev_row[JSP.table_index()] == current_row[JSP.table_index()] {
                     let clock_jump_difference =
-                        (row[CLK.table_index()] - prow[CLK.table_index()]).lift();
-                    if clock_jump_difference != XFieldElement::one() {
+                        current_row[CLK.table_index()] - prev_row[CLK.table_index()];
+                    if !clock_jump_difference.is_one() {
                         all_clock_jump_differences_running_product *= challenges
                             .all_clock_jump_differences_multi_perm_indeterminate
                             - clock_jump_difference;
                     }
                 }
             }
+
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[RunningProductPermArg.table_index()] = running_product;
             extension_row[AllClockJumpDifferencesPermArg.table_index()] =
                 all_clock_jump_differences_running_product;
-
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
+            previous_row = Some(current_row);
         }
-
-        assert_eq!(fake_data.len(), extension_matrix.len());
-        ExtJumpStackTable {}
     }
 }
 

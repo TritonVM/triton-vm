@@ -433,6 +433,11 @@ impl MasterBaseTable {
             master_ext_table.table_mut(TableId::RamTable),
             &challenges.ram_table_challenges,
         );
+        JumpStackTable::extend(
+            self.table(TableId::JumpStackTable),
+            master_ext_table.table_mut(TableId::JumpStackTable),
+            &challenges.jump_stack_table_challenges,
+        );
 
         master_ext_table
     }
