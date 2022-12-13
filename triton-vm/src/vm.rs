@@ -226,6 +226,7 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::traits::FiniteField;
 
     use triton_profiler::triton_profiler::TritonProfiler;
+    use twenty_first::shared_math::other::random_elements;
 
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
@@ -643,6 +644,77 @@ pub mod triton_vm_tests {
         SourceCodeAndInput::without_input(&source_code)
     }
 
+    pub fn property_based_test_program_for_random_ram_access() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let num_memory_accesses = rng.gen_range(10..50);
+        let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
+        let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
+
+        // Write everything to RAM.
+        let mut source_code = String::new();
+        for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
+            source_code.push_str(&format!(
+                "push {memory_address} push {memory_value} write_mem pop pop "
+            ));
+        }
+
+        // Read back in random order and check that the values did not change.
+        // For repeated sampling from the same range, better performance can be achieved by using
+        // `Uniform`. However, this is a test, and not very many samples – it's fine.
+        let mut reading_permutation = (0..num_memory_accesses).collect_vec();
+        for i in 0..num_memory_accesses {
+            let j = rng.gen_range(0..num_memory_accesses);
+            reading_permutation.swap(i, j);
+        }
+        for idx in reading_permutation {
+            let memory_address = memory_addresses[idx];
+            let memory_value = memory_values[idx];
+            source_code.push_str(&format!(
+                "push {memory_address} push 0 read_mem push {memory_value} eq assert pop "
+            ));
+        }
+
+        // Overwrite half the values with new ones.
+        let mut writing_permutation = (0..num_memory_accesses).collect_vec();
+        for i in 0..num_memory_accesses {
+            let j = rng.gen_range(0..num_memory_accesses);
+            writing_permutation.swap(i, j);
+        }
+        for idx in 0..num_memory_accesses / 2 {
+            let memory_address = memory_addresses[writing_permutation[idx]];
+            let new_memory_value = rng.gen();
+            memory_values[writing_permutation[idx]] = new_memory_value;
+            source_code.push_str(&format!(
+                "push {memory_address} push {new_memory_value} write_mem pop pop "
+            ));
+        }
+
+        // Read back all, i.e., unchanged and overwritten values in (different from before) random
+        // order and check that the values did not change.
+        let mut reading_permutation = (0..num_memory_accesses).collect_vec();
+        for i in 0..num_memory_accesses {
+            let j = rng.gen_range(0..num_memory_accesses);
+            reading_permutation.swap(i, j);
+        }
+        for idx in reading_permutation {
+            let memory_address = memory_addresses[idx];
+            let memory_value = memory_values[idx];
+            source_code.push_str(&format!(
+                "push {memory_address} push 0 read_mem push {memory_value} eq assert pop "
+            ));
+        }
+
+        source_code.push_str("halt");
+        SourceCodeAndInput::without_input(&source_code)
+    }
+
+    #[test]
+    // Sanity check for the relatively complex property-based test for random RAM access.
+    fn run_dont_prove_property_based_test_for_random_ram_access() {
+        let source_code_and_input = property_based_test_program_for_random_ram_access();
+        source_code_and_input.run();
+    }
+
     #[test]
     #[should_panic(expected = "st0 must be 1.")]
     pub fn negative_property_is_u32_test() {
@@ -739,6 +811,7 @@ pub mod triton_vm_tests {
             property_based_test_program_for_lte(),
             property_based_test_program_for_div(),
             property_based_test_program_for_is_u32(),
+            property_based_test_program_for_random_ram_access(),
         ]
     }
 
