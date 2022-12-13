@@ -64,6 +64,7 @@ pub enum InstructionExtTableColumn {
 pub enum ProcessorBaseTableColumn {
     CLK,
     IsPadding,
+    PreviousInstruction,
     IP,
     CI,
     NIA,
@@ -150,6 +151,7 @@ pub enum OpStackExtTableColumn {
 pub enum RamBaseTableColumn {
     CLK,
     InverseOfClkDiffMinusOne,
+    PreviousInstruction,
     RAMP,
     RAMV,
     InverseOfRampDifference,

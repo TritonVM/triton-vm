@@ -52,7 +52,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 130;
+    pub const TOTAL_CHALLENGES: usize = 131;
 
     pub fn create_challenges(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_challenges = ProcessorTableChallenges {
@@ -77,6 +77,7 @@ impl AllChallenges {
             ram_table_clk_weight: weights.pop().unwrap(),
             ram_table_ramp_weight: weights.pop().unwrap(),
             ram_table_ramv_weight: weights.pop().unwrap(),
+            ram_table_previous_instruction_weight: weights.pop().unwrap(),
 
             jump_stack_table_clk_weight: weights.pop().unwrap(),
             jump_stack_table_ci_weight: weights.pop().unwrap(),
@@ -148,8 +149,10 @@ impl AllChallenges {
             bezout_relation_indeterminate: weights.pop().unwrap(),
             processor_perm_indeterminate: processor_table_challenges.ram_perm_indeterminate,
             clk_weight: processor_table_challenges.ram_table_clk_weight,
-            ramv_weight: processor_table_challenges.ram_table_ramv_weight,
             ramp_weight: processor_table_challenges.ram_table_ramp_weight,
+            ramv_weight: processor_table_challenges.ram_table_ramv_weight,
+            previous_instruction_weight: processor_table_challenges
+                .ram_table_previous_instruction_weight,
             all_clock_jump_differences_multi_perm_indeterminate: processor_table_challenges
                 .all_clock_jump_differences_multi_perm_indeterminate,
         };

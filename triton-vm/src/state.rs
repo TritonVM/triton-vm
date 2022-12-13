@@ -69,6 +69,9 @@ pub struct VMState<'pgm> {
     /// Current instruction's address in program memory
     pub instruction_pointer: usize,
 
+    /// The instruction that was executed last
+    pub previous_instruction: BFieldElement,
+
     /// RAM pointer
     pub ramp: u64,
 }
@@ -189,6 +192,11 @@ impl<'pgm> VMState<'pgm> {
         // All instructions increase the cycle count
         self.cycle_count += 1;
         let mut vm_output = None;
+        let fallback_previous_instruction = self.previous_instruction;
+        self.previous_instruction = match self.current_instruction() {
+            Ok(instruction) => instruction.opcode_b(),
+            Err(_) => fallback_previous_instruction,
+        };
 
         match self.current_instruction()? {
             Pop => {
@@ -448,6 +456,7 @@ impl<'pgm> VMState<'pgm> {
         let ramp = self.ramp.into();
 
         row[CLK.table_index()] = BFieldElement::new(self.cycle_count as u64);
+        row[PreviousInstruction.table_index()] = self.previous_instruction;
         row[IP.table_index()] = (self.instruction_pointer as u32).into();
         row[CI.table_index()] = current_instruction.opcode_b();
         row[NIA.table_index()] = self.nia();

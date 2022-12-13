@@ -203,10 +203,12 @@ impl ProcessorTable {
             // RAM Table
             let ramv = current_row[RAMV.table_index()];
             let ramp = current_row[RAMP.table_index()];
+            let previous_instruction = current_row[PreviousInstruction.table_index()];
             let compressed_row_for_ram_table_permutation_argument = clk
                 * challenges.ram_table_clk_weight
                 + ramv * challenges.ram_table_ramv_weight
-                + ramp * challenges.ram_table_ramp_weight;
+                + ramp * challenges.ram_table_ramp_weight
+                + previous_instruction * challenges.ram_table_previous_instruction_weight;
             ram_table_running_product *= challenges.ram_perm_indeterminate
                 - compressed_row_for_ram_table_permutation_argument;
 
@@ -505,6 +507,7 @@ pub enum ProcessorTableChallengeId {
     RamTableClkWeight,
     RamTableRamvWeight,
     RamTableRampWeight,
+    RamTablePreviousInstructionWeight,
 
     JumpStackTableClkWeight,
     JumpStackTableCiWeight,
@@ -568,6 +571,7 @@ pub struct ProcessorTableChallenges {
     pub ram_table_clk_weight: XFieldElement,
     pub ram_table_ramp_weight: XFieldElement,
     pub ram_table_ramv_weight: XFieldElement,
+    pub ram_table_previous_instruction_weight: XFieldElement,
 
     pub jump_stack_table_clk_weight: XFieldElement,
     pub jump_stack_table_ci_weight: XFieldElement,
@@ -622,6 +626,7 @@ impl TableChallenges for ProcessorTableChallenges {
             RamTableClkWeight => self.ram_table_clk_weight,
             RamTableRamvWeight => self.ram_table_ramv_weight,
             RamTableRampWeight => self.ram_table_ramp_weight,
+            RamTablePreviousInstructionWeight => self.ram_table_previous_instruction_weight,
             JumpStackTableClkWeight => self.jump_stack_table_clk_weight,
             JumpStackTableCiWeight => self.jump_stack_table_ci_weight,
             JumpStackTableJspWeight => self.jump_stack_table_jsp_weight,
@@ -702,6 +707,7 @@ impl ExtProcessorTable {
         let osv_is_0 = factory.osv();
         let ramv_is_0 = factory.ramv();
         let ramp_is_0 = factory.ramp();
+        let previous_instruction = factory.previous_instruction();
 
         // The running evaluation of relevant clock cycles `rer` starts with the initial.
         let rer_starts_correctly = factory.rer() - constant_x(EvalArg::default_initial());
@@ -827,6 +833,7 @@ impl ExtProcessorTable {
             osv_is_0,
             ramv_is_0,
             ramp_is_0,
+            previous_instruction,
             rer_starts_correctly,
             reu_starts_correctly,
             rpm_starts_correctly,
@@ -950,6 +957,7 @@ impl ExtProcessorTable {
         // constraints common to all instructions
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
         transition_constraints.insert(1, factory.is_padding_is_zero_or_does_not_change());
+        transition_constraints.insert(2, factory.previous_instruction_is_copied_correctly());
 
         // constraints related to clock jump difference argument
 
@@ -1457,6 +1465,14 @@ impl SingleRowConstraints {
     > {
         self.base_row_variables[RAMP.master_base_table_index()].clone()
     }
+    pub fn previous_instruction(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[PreviousInstruction.master_base_table_index()].clone()
+    }
 
     pub fn cjd(
         &self,
@@ -1690,6 +1706,15 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.is_padding() * (self.is_padding_next() - self.is_padding())
+    }
+
+    pub fn previous_instruction_is_copied_correctly(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        (self.previous_instruction_next() - self.ci()) * (self.one() - self.is_padding_next())
     }
 
     pub fn indicator_polynomial(
@@ -2903,6 +2928,15 @@ impl DualRowConstraints {
         self.current_base_row_variables[RAMP.master_base_table_index()].clone()
     }
 
+    pub fn previous_instruction(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[PreviousInstruction.master_base_table_index()].clone()
+    }
+
     pub fn ramv(
         &self,
     ) -> ConstraintCircuitMonad<
@@ -3335,6 +3369,15 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_base_row_variables[RAMP.master_base_table_index()].clone()
+    }
+
+    pub fn previous_instruction_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[PreviousInstruction.master_base_table_index()].clone()
     }
 
     pub fn ramv_next(
@@ -3870,9 +3913,13 @@ impl DualRowConstraints {
         let clk_weight = self.circuit_builder.challenge(RamTableClkWeight);
         let ramp_weight = self.circuit_builder.challenge(RamTableRampWeight);
         let ramv_weight = self.circuit_builder.challenge(RamTableRamvWeight);
+        let previous_instruction_weight = self
+            .circuit_builder
+            .challenge(RamTablePreviousInstructionWeight);
         let compressed_row = clk_weight * self.clk_next()
             + ramp_weight * self.ramp_next()
-            + ramv_weight * self.ramv_next();
+            + ramv_weight * self.ramv_next()
+            + previous_instruction_weight * self.previous_instruction_next();
 
         self.running_product_ram_table_next()
             - self.running_product_ram_table() * (indeterminate - compressed_row)

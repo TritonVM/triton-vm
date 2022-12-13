@@ -22,6 +22,7 @@ use RamTableChallengeId::*;
 
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::PermArg;
+use crate::instruction::Instruction;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -67,16 +68,18 @@ impl RamTable {
         ram_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) -> Vec<BFieldElement> {
-        // Store the registers relevant for the Ram Table, i.e., CLK, RAMP, and RAMV, with RAMP
-        // as the key. Preserves, thus allows reusing, the order of the processor's rows, which
-        // are sorted by CLK. Note that the Ram Table must not be sorted by RAMP, but must form
-        // contiguous regions of RAMP values.
+        // Store the registers relevant for the Ram Table, i.e., CLK, RAMP, RAMV, and
+        // PreviousInstruction, with RAMP as the key. Preserves, thus allows reusing, the order
+        // of the processor's rows, which are sorted by CLK. Note that the Ram Table must not be
+        // sorted by RAMP, but must form contiguous regions of RAMP values.
         let mut pre_processed_ram_table: HashMap<_, Vec<_>> = HashMap::new();
         for processor_row in aet.processor_matrix.iter() {
             let clk = processor_row[ProcessorBaseTableColumn::CLK.table_index()];
             let ramp = processor_row[ProcessorBaseTableColumn::RAMP.table_index()];
             let ramv = processor_row[ProcessorBaseTableColumn::RAMV.table_index()];
-            let ram_row = (clk, ramv);
+            let previous_instruction =
+                processor_row[ProcessorBaseTableColumn::PreviousInstruction.table_index()];
+            let ram_row = (clk, previous_instruction, ramv);
             pre_processed_ram_table
                 .entry(ramp)
                 .and_modify(|v| v.push(ram_row))
@@ -87,7 +90,7 @@ impl RamTable {
         let num_of_ramps = pre_processed_ram_table.keys().len();
         let polynomial_with_ramps_as_roots = pre_processed_ram_table.keys().fold(
             Polynomial::from_constant(BFieldElement::one()),
-            |acc, &ramp| acc * Polynomial::new(vec![-ramp, BFieldElement::one()]), // … · (x - ramp)
+            |acc, &ramp| acc * Polynomial::new(vec![-ramp, BFieldElement::one()]), // acc·(x - ramp)
         );
         let formal_derivative = polynomial_with_ramps_as_roots.formal_derivative();
         let (gcd, bezout_0, bezout_1) =
@@ -111,17 +114,20 @@ impl RamTable {
         ram_table[[0, BezoutCoefficientPolynomialCoefficient0.table_index()]] = current_bcpc_0;
         ram_table[[0, BezoutCoefficientPolynomialCoefficient1.table_index()]] = current_bcpc_1;
 
-        // Move the rows into the Ram Table, as contiguous regions of RAMP values, sorted by CLK.
-        let mut ram_table_row = 0;
+        // Move the rows into the Ram Table as contiguous regions of RAMP values. Each such
+        // contiguous region is sorted by CLK by virtue of the order of the processor's rows.
+        let mut ram_table_row_idx = 0;
         for (ramp, ram_table_rows) in pre_processed_ram_table {
-            for (clk, ramv) in ram_table_rows {
-                ram_table[[ram_table_row, CLK.table_index()]] = clk;
-                ram_table[[ram_table_row, RAMP.table_index()]] = ramp;
-                ram_table[[ram_table_row, RAMV.table_index()]] = ramv;
-                ram_table_row += 1;
+            for (clk, previous_instruction, ramv) in ram_table_rows {
+                let mut ram_table_row = ram_table.row_mut(ram_table_row_idx);
+                ram_table_row[CLK.table_index()] = clk;
+                ram_table_row[RAMP.table_index()] = ramp;
+                ram_table_row[RAMV.table_index()] = ramv;
+                ram_table_row[PreviousInstruction.table_index()] = previous_instruction;
+                ram_table_row_idx += 1;
             }
         }
-        assert_eq!(ram_table_row, aet.processor_matrix.len());
+        assert_eq!(ram_table_row_idx, aet.processor_matrix.len());
 
         // - Set inverse of clock difference - 1.
         // - Set inverse of RAMP difference.
@@ -270,6 +276,7 @@ impl RamTable {
             let clk = current_row[CLK.table_index()];
             let ramp = current_row[RAMP.table_index()];
             let ramv = current_row[RAMV.table_index()];
+            let previous_instruction = current_row[PreviousInstruction.table_index()];
 
             if let Some(prev_row) = previous_row {
                 if prev_row[RAMP.table_index()] != current_row[RAMP.table_index()] {
@@ -298,7 +305,8 @@ impl RamTable {
             // permutation argument to Processor Table
             let compressed_row_for_permutation_argument = clk * challenges.clk_weight
                 + ramp * challenges.ramp_weight
-                + ramv * challenges.ramv_weight;
+                + ramv * challenges.ramv_weight
+                + previous_instruction * challenges.previous_instruction_weight;
             running_product_for_perm_arg *=
                 challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
 
@@ -333,6 +341,8 @@ impl ExtRamTable {
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
         let ramp = circuit_builder.input(BaseRow(RAMP.master_base_table_index()));
         let ramv = circuit_builder.input(BaseRow(RAMV.master_base_table_index()));
+        let previous_instruction =
+            circuit_builder.input(BaseRow(PreviousInstruction.master_base_table_index()));
         let bcpc0 = circuit_builder.input(BaseRow(
             BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
         ));
@@ -345,7 +355,8 @@ impl ExtRamTable {
         let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
         let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
 
-        let ramv_is_0 = ramv;
+        let write_mem_opcode = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
+        let ramv_is_0_or_was_written_to = ramv * (write_mem_opcode - previous_instruction.clone());
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
@@ -355,14 +366,17 @@ impl ExtRamTable {
 
         let clk_weight = circuit_builder.challenge(ClkWeight);
         let ramp_weight = circuit_builder.challenge(RampWeight);
+        let previous_instruction_weight = circuit_builder.challenge(PreviousInstructionWeight);
         // Note that the compressed row also includes `ramv`, which is already constrained to be 0
         // and can therefor be omitted here.
-        let compressed_row_for_permutation_argument = clk * clk_weight + ramp * ramp_weight;
+        let compressed_row_for_permutation_argument = clk * clk_weight
+            + ramp * ramp_weight
+            + previous_instruction * previous_instruction_weight;
         let running_product_permutation_argument_is_initialized_correctly =
             rppa - (rppa_challenge - compressed_row_for_permutation_argument);
 
         [
-            ramv_is_0,
+            ramv_is_0_or_was_written_to,
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
@@ -397,10 +411,14 @@ impl ExtRamTable {
         let clk_weight = circuit_builder.challenge(ClkWeight);
         let ramp_weight = circuit_builder.challenge(RampWeight);
         let ramv_weight = circuit_builder.challenge(RamvWeight);
+        let previous_instruction_weight = circuit_builder.challenge(PreviousInstructionWeight);
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
         let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_base_table_index()));
         let ramv = circuit_builder.input(CurrentBaseRow(RAMV.master_base_table_index()));
+        let previous_instruction = circuit_builder.input(CurrentBaseRow(
+            PreviousInstruction.master_base_table_index(),
+        ));
         let iord = circuit_builder.input(CurrentBaseRow(
             InverseOfRampDifference.master_base_table_index(),
         ));
@@ -457,15 +475,18 @@ impl ExtRamTable {
         let ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff =
             ramp_diff.clone() * (ramp_changes.clone() - one.clone());
 
-        // The ramp does not change or the new ramv is 0
-        let ramp_does_not_change_or_ramv_becomes_0 = ramp_diff.clone() * ramv_next.clone();
+        // (ramp doesn't change) and (previous instruction is not write_mem)
+        //      implies the ramv doesn't change
+        let op_code_write_mem = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
+        let ramp_changes_or_write_mem_or_ramv_stays = (one.clone() - ramp_changes.clone())
+            * (op_code_write_mem.clone() - previous_instruction.clone())
+            * (ramv_next.clone() - ramv);
 
-        // The ramp does change or the ramv does not change or the clk increases by 1
-        let clk_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
-        let ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1 =
-            (ramp_changes.clone() - one.clone())
-                * (ramv_next.clone() - ramv)
-                * clk_diff_minus_one.clone();
+        // (ramp changes) and (previous instruction is not write_mem)
+        //      implies the next ramv is 0
+        let ramp_stays_or_write_mem_or_ramv_next_is_0 = ramp_diff.clone()
+            * (op_code_write_mem - previous_instruction.clone())
+            * ramv_next.clone();
 
         let bcbp0_only_changes_if_ramp_changes =
             (one.clone() - ramp_changes.clone()) * (bcpc0_next.clone() - bcpc0);
@@ -489,6 +510,7 @@ impl ExtRamTable {
             * (bc1_next.clone() - bezout_challenge * bc1.clone() - bcpc1_next)
             + (one.clone() - ramp_changes.clone()) * (bc1_next - bc1);
 
+        let clk_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
         let clk_di_is_inverse_of_clk_diff =
             clk_diff_minus_one_inv.clone() * clk_diff_minus_one.clone();
         let clk_di_is_zero_or_inverse_of_clkd =
@@ -509,16 +531,18 @@ impl ExtRamTable {
                 + ramp_diff * rpcjd_remains.clone()
                 + clk_diff_gt_one * rpcjd_remains;
 
-        let compressed_row_for_permutation_argument =
-            clk_next * clk_weight + ramp_next * ramp_weight + ramv_next * ramv_weight;
+        let compressed_row_for_permutation_argument = clk_next * clk_weight
+            + ramp_next * ramp_weight
+            + ramv_next * ramv_weight
+            + previous_instruction * previous_instruction_weight;
         let rppa_updates_correctly =
             rppa_next - rppa * (rppa_challenge - compressed_row_for_permutation_argument);
 
         [
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
-            ramp_does_not_change_or_ramv_becomes_0,
-            ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1,
+            ramp_changes_or_write_mem_or_ramv_stays,
+            ramp_stays_or_write_mem_or_ramv_next_is_0,
             bcbp0_only_changes_if_ramp_changes,
             bcbp1_only_changes_if_ramp_changes,
             running_product_ramp_updates_correctly,
@@ -561,6 +585,7 @@ pub enum RamTableChallengeId {
     ClkWeight,
     RamvWeight,
     RampWeight,
+    PreviousInstructionWeight,
     AllClockJumpDifferencesMultiPermIndeterminate,
 }
 
@@ -580,8 +605,9 @@ pub struct RamTableChallenges {
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub clk_weight: XFieldElement,
-    pub ramv_weight: XFieldElement,
     pub ramp_weight: XFieldElement,
+    pub ramv_weight: XFieldElement,
+    pub previous_instruction_weight: XFieldElement,
 
     /// Point of evaluation for accumulating all clock jump differences into a running product
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
@@ -598,6 +624,7 @@ impl TableChallenges for RamTableChallenges {
             ClkWeight => self.clk_weight,
             RamvWeight => self.ramv_weight,
             RampWeight => self.ramp_weight,
+            PreviousInstructionWeight => self.previous_instruction_weight,
             AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
