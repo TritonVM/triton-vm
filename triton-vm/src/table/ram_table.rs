@@ -345,6 +345,7 @@ impl ExtRamTable {
         let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
         let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
 
+        let ramv_is_0 = ramv;
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
@@ -354,13 +355,14 @@ impl ExtRamTable {
 
         let clk_weight = circuit_builder.challenge(ClkWeight);
         let ramp_weight = circuit_builder.challenge(RampWeight);
-        let ramv_weight = circuit_builder.challenge(RamvWeight);
-        let compressed_row_for_permutation_argument =
-            clk * clk_weight + ramp * ramp_weight + ramv * ramv_weight;
+        // Note that the compressed row also includes `ramv`, which is already constrained to be 0
+        // and can therefor be omitted here.
+        let compressed_row_for_permutation_argument = clk * clk_weight + ramp * ramp_weight;
         let running_product_permutation_argument_is_initialized_correctly =
             rppa - (rppa_challenge - compressed_row_for_permutation_argument);
 
         [
+            ramv_is_0,
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
@@ -455,6 +457,9 @@ impl ExtRamTable {
         let ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff =
             ramp_diff.clone() * (ramp_changes.clone() - one.clone());
 
+        // The ramp does not change or the new ramv is 0
+        let ramp_does_not_change_or_ramv_becomes_0 = ramp_diff.clone() * ramv_next.clone();
+
         // The ramp does change or the ramv does not change or the clk increases by 1
         let clk_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
         let ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1 =
@@ -487,21 +492,22 @@ impl ExtRamTable {
         let clk_di_is_inverse_of_clk_diff =
             clk_diff_minus_one_inv.clone() * clk_diff_minus_one.clone();
         let clk_di_is_zero_or_inverse_of_clkd =
-            clk_diff_minus_one_inv.clone() * clk_di_is_inverse_of_clk_diff.clone();
+            clk_diff_minus_one_inv.clone() * (clk_di_is_inverse_of_clk_diff.clone() - one.clone());
         let clkd_is_zero_or_inverse_of_clk_di =
-            clk_diff_minus_one.clone() * clk_di_is_inverse_of_clk_diff;
+            clk_diff_minus_one.clone() * (clk_di_is_inverse_of_clk_diff - one.clone());
 
         // Running product of clock jump differences (“rpcjd”) updates iff
         //  - the RAMP remains the same, and
         //  - the clock difference is greater than 1.
         let clk_diff = clk_next.clone() - clk;
         let clk_diff_eq_one = one.clone() - clk_diff.clone();
-        let clk_diff_gt_one = one - clk_diff_minus_one * clk_diff_minus_one_inv;
+        let clk_diff_gt_one = one.clone() - clk_diff_minus_one * clk_diff_minus_one_inv;
         let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
         let rpcjd_absorbs_clk_diff = rpcjd_next - rpcjd * (cjd_challenge - clk_diff);
-        let rpcjd_updates_correctly = ramp_changes * clk_diff_eq_one * rpcjd_absorbs_clk_diff
-            + ramp_diff * rpcjd_remains.clone()
-            + clk_diff_gt_one * rpcjd_remains;
+        let rpcjd_updates_correctly =
+            (one - ramp_changes) * clk_diff_eq_one * rpcjd_absorbs_clk_diff
+                + ramp_diff * rpcjd_remains.clone()
+                + clk_diff_gt_one * rpcjd_remains;
 
         let compressed_row_for_permutation_argument =
             clk_next * clk_weight + ramp_next * ramp_weight + ramv_next * ramv_weight;
@@ -511,6 +517,7 @@ impl ExtRamTable {
         [
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
+            ramp_does_not_change_or_ramv_becomes_0,
             ramp_does_not_change_or_ramv_does_not_change_or_clk_increases_by_1,
             bcbp0_only_changes_if_ramp_changes,
             bcbp1_only_changes_if_ramp_changes,
