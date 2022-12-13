@@ -222,22 +222,13 @@ pub mod triton_vm_tests {
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
+    use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
 
-    use triton_profiler::triton_profiler::TritonProfiler;
-    use twenty_first::shared_math::other::random_elements;
-
     use crate::instruction::sample_programs;
-    use crate::instruction::AnInstruction;
     use crate::shared_tests::SourceCodeAndInput;
-    use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
-    use crate::table::extension_table::Evaluable;
-    use crate::table::processor_table::ExtProcessorTable;
     use crate::table::processor_table::ProcessorMatrixRow;
-    use crate::table::table_collection::MasterTable;
-    use crate::table::table_column::MasterBaseTableColumn;
-    use crate::table::table_column::ProcessorBaseTableColumn;
 
     use super::*;
 
@@ -828,94 +819,6 @@ pub mod triton_vm_tests {
             test_program_for_div(),
             test_program_for_split_assert(),
         ]
-    }
-
-    #[test]
-    fn processor_table_constraints_evaluate_to_zero_for_small_tasm_programs_test() {
-        processor_table_constraints_evaluate_to_zero(&small_tasm_test_programs())
-    }
-
-    #[test]
-    fn processor_table_constraints_evaluate_to_zero_for_property_based_tasm_programs_test() {
-        processor_table_constraints_evaluate_to_zero(&property_based_test_programs())
-    }
-
-    #[test]
-    fn processor_table_constraints_evaluate_to_zero_for_bigger_tasm_programs_test() {
-        processor_table_constraints_evaluate_to_zero(&bigger_tasm_test_programs())
-    }
-
-    fn processor_table_constraints_evaluate_to_zero(all_programs: &[SourceCodeAndInput]) {
-        let mut profiler = TritonProfiler::new("Table Constraints Evaluate to Zero Test");
-        for (code_idx, program) in all_programs.iter().enumerate() {
-            let (stark, _, master_base_table, master_ext_table, challenges) =
-                parse_simulate_pad_extend(
-                    &program.source_code,
-                    program.input.clone(),
-                    program.secret_input.clone(),
-                );
-            assert_eq!(
-                master_base_table.master_base_matrix.nrows(),
-                master_ext_table.master_ext_matrix.nrows()
-            );
-            let master_base_trace_table = master_base_table.trace_table();
-            let master_ext_trace_table = master_ext_table.trace_table();
-            assert_eq!(
-                master_base_trace_table.nrows(),
-                master_ext_trace_table.nrows()
-            );
-
-            println!("\nChecking transition constraints for program number {code_idx}");
-            let stdout = Array1::from(stark.claim.output);
-            println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
-            let num_cycles = master_base_table.main_execution_len;
-            println!("Number of cycles: {num_cycles}");
-
-            let program_idx_string = format!("Program number {code_idx:>2}");
-            profiler.start(&program_idx_string);
-            for row_idx in 0..master_base_trace_table.nrows() - 1 {
-                let current_base_row = master_base_trace_table.row(row_idx);
-                let current_ext_row = master_ext_trace_table.row(row_idx);
-                let next_base_row = master_base_trace_table.row(row_idx + 1);
-                let next_ext_row = master_ext_trace_table.row(row_idx + 1);
-                for (tc_idx, tc_evaluation_result) in
-                    ExtProcessorTable::evaluate_transition_constraints(
-                        current_base_row,
-                        current_ext_row,
-                        next_base_row,
-                        next_ext_row,
-                        &challenges,
-                    )
-                    .iter()
-                    .enumerate()
-                {
-                    if !tc_evaluation_result.is_zero() {
-                        let ci_idx = ProcessorBaseTableColumn::CI.master_base_table_index();
-                        let ci = current_base_row[ci_idx].value();
-                        panic!(
-                            "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
-                            {tc_evaluation_result} but must be 0.\n\
-                            Instruction: {:?} – opcode: {ci}\n\
-                            Evaluation Point, current base row: [{:?}]\n\
-                            Evaluation Point, current ext row:  [{:?}]\n\
-                            Evaluation Point, next base row:    [{:?}]\n
-                            Evaluation Point, next ext row:     [{:?}]",
-                            AnInstruction::<BFieldElement>::try_from(ci).unwrap(),
-                            pretty_print_array_view(current_base_row),
-                            pretty_print_array_view(current_ext_row),
-                            pretty_print_array_view(next_base_row),
-                            pretty_print_array_view(next_ext_row),
-                        );
-                    }
-                }
-            }
-            let num_cycles_string = format!("took {num_cycles:>4} VM cycles");
-            profiler.start(&num_cycles_string);
-            profiler.stop(&num_cycles_string);
-            profiler.stop(&program_idx_string);
-        }
-        profiler.finish();
-        println!("{}", profiler.report());
     }
 
     #[test]
