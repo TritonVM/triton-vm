@@ -307,7 +307,7 @@ impl InstructionTable {
         let mut processor_trace_row_counts = vec![0; program_len];
         for row in aet.processor_matrix.iter() {
             let ip = row[ProcessorBaseTableColumn::IP.table_index()].value() as usize;
-            assert!(ip < program_len, "IP out of bounds – cheating?");
+            assert!(ip < program_len, "IP out of bounds – forgot to \"halt\"?");
             processor_trace_row_counts[ip] += 1;
         }
 
