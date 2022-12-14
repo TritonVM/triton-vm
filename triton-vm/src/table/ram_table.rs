@@ -356,7 +356,8 @@ impl ExtRamTable {
         let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
 
         let write_mem_opcode = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
-        let ramv_is_0_or_was_written_to = ramv * (write_mem_opcode - previous_instruction.clone());
+        let ramv_is_0_or_was_written_to =
+            ramv.clone() * (write_mem_opcode - previous_instruction.clone());
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
@@ -366,11 +367,11 @@ impl ExtRamTable {
 
         let clk_weight = circuit_builder.challenge(ClkWeight);
         let ramp_weight = circuit_builder.challenge(RampWeight);
+        let ramv_weight = circuit_builder.challenge(RamvWeight);
         let previous_instruction_weight = circuit_builder.challenge(PreviousInstructionWeight);
-        // Note that the compressed row also includes `ramv`, which is already constrained to be 0
-        // and can therefor be omitted here.
         let compressed_row_for_permutation_argument = clk * clk_weight
             + ramp * ramp_weight
+            + ramv * ramv_weight
             + previous_instruction * previous_instruction_weight;
         let running_product_permutation_argument_is_initialized_correctly =
             rppa - (rppa_challenge - compressed_row_for_permutation_argument);
