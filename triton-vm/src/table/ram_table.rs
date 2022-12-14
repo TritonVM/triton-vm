@@ -417,9 +417,6 @@ impl ExtRamTable {
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
         let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_base_table_index()));
         let ramv = circuit_builder.input(CurrentBaseRow(RAMV.master_base_table_index()));
-        let previous_instruction_current = circuit_builder.input(CurrentBaseRow(
-            PreviousInstruction.master_base_table_index(),
-        ));
         let iord = circuit_builder.input(CurrentBaseRow(
             InverseOfRampDifference.master_base_table_index(),
         ));
@@ -482,13 +479,13 @@ impl ExtRamTable {
         //      implies the ramv doesn't change
         let op_code_write_mem = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
         let ramp_changes_or_write_mem_or_ramv_stays = (one.clone() - ramp_changes.clone())
-            * (op_code_write_mem.clone() - previous_instruction_current.clone())
+            * (op_code_write_mem.clone() - previous_instruction_next.clone())
             * (ramv_next.clone() - ramv);
 
         // (ramp changes) and (previous instruction is not write_mem)
         //      implies the next ramv is 0
         let ramp_stays_or_write_mem_or_ramv_next_is_0 = ramp_diff.clone()
-            * (op_code_write_mem - previous_instruction_current)
+            * (op_code_write_mem - previous_instruction_next.clone())
             * ramv_next.clone();
 
         let bcbp0_only_changes_if_ramp_changes =
