@@ -416,7 +416,7 @@ impl ExtRamTable {
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
         let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_base_table_index()));
         let ramv = circuit_builder.input(CurrentBaseRow(RAMV.master_base_table_index()));
-        let previous_instruction = circuit_builder.input(CurrentBaseRow(
+        let previous_instruction_current = circuit_builder.input(CurrentBaseRow(
             PreviousInstruction.master_base_table_index(),
         ));
         let iord = circuit_builder.input(CurrentBaseRow(
@@ -446,6 +446,8 @@ impl ExtRamTable {
         let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
         let ramp_next = circuit_builder.input(NextBaseRow(RAMP.master_base_table_index()));
         let ramv_next = circuit_builder.input(NextBaseRow(RAMV.master_base_table_index()));
+        let previous_instruction_next =
+            circuit_builder.input(NextBaseRow(PreviousInstruction.master_base_table_index()));
         let bcpc0_next = circuit_builder.input(NextBaseRow(
             BezoutCoefficientPolynomialCoefficient0.master_base_table_index(),
         ));
@@ -479,13 +481,13 @@ impl ExtRamTable {
         //      implies the ramv doesn't change
         let op_code_write_mem = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
         let ramp_changes_or_write_mem_or_ramv_stays = (one.clone() - ramp_changes.clone())
-            * (op_code_write_mem.clone() - previous_instruction.clone())
+            * (op_code_write_mem.clone() - previous_instruction_current.clone())
             * (ramv_next.clone() - ramv);
 
         // (ramp changes) and (previous instruction is not write_mem)
         //      implies the next ramv is 0
         let ramp_stays_or_write_mem_or_ramv_next_is_0 = ramp_diff.clone()
-            * (op_code_write_mem - previous_instruction.clone())
+            * (op_code_write_mem - previous_instruction_current)
             * ramv_next.clone();
 
         let bcbp0_only_changes_if_ramp_changes =
@@ -534,7 +536,7 @@ impl ExtRamTable {
         let compressed_row_for_permutation_argument = clk_next * clk_weight
             + ramp_next * ramp_weight
             + ramv_next * ramv_weight
-            + previous_instruction * previous_instruction_weight;
+            + previous_instruction_next * previous_instruction_weight;
         let rppa_updates_correctly =
             rppa_next - rppa * (rppa_challenge - compressed_row_for_permutation_argument);
 
