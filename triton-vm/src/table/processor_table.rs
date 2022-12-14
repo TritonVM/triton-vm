@@ -296,22 +296,25 @@ impl ProcessorTable {
                     - current_clock_jump_difference;
             }
 
-            if let Some(prev_row) = previous_row {
-                let previous_clock_jump_difference = prev_row[ClockJumpDifference.table_index()];
-                if previous_clock_jump_difference != current_clock_jump_difference
-                    && !current_clock_jump_difference.is_zero()
-                {
-                    unique_clock_jump_differences.push(current_clock_jump_difference);
-                    unique_clock_jump_differences_running_evaluation =
-                        unique_clock_jump_differences_running_evaluation
-                            * challenges.unique_clock_jump_differences_eval_indeterminate
-                            + current_clock_jump_difference;
-                }
-            } else if !current_clock_jump_difference.is_zero() {
+            // Update the running evaluation of unique clock jump differences if and only if
+            // 1. the current clock jump difference is not 0, and either
+            // 2a. there is no previous row, or
+            // 2b. the previous clock jump difference is different from the current one.
+            // We can merge (2a) and (2b) by setting the “previous” clock jump difference to
+            // anything unequal to the current clock jump difference if no previous row exists.
+            let previous_clock_jump_difference = if let Some(prev_row) = previous_row {
+                prev_row[ClockJumpDifference.table_index()]
+            } else {
+                current_clock_jump_difference - BFieldElement::one()
+            };
+            if !current_clock_jump_difference.is_zero()
+                && previous_clock_jump_difference != current_clock_jump_difference
+            {
                 unique_clock_jump_differences.push(current_clock_jump_difference);
-                unique_clock_jump_differences_running_evaluation = challenges
-                    .unique_clock_jump_differences_eval_indeterminate
-                    + current_clock_jump_difference;
+                unique_clock_jump_differences_running_evaluation =
+                    unique_clock_jump_differences_running_evaluation
+                        * challenges.unique_clock_jump_differences_eval_indeterminate
+                        + current_clock_jump_difference;
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
@@ -331,9 +334,11 @@ impl ProcessorTable {
             previous_row = Some(current_row);
         }
 
+        // pre-process the unique clock jump differences for faster accesses later
+        unique_clock_jump_differences.sort_by_key(|&bfe| bfe.value());
+        unique_clock_jump_differences.reverse();
         if std::env::var("DEBUG").is_ok() {
             let mut unique_clock_jump_differences_copy = unique_clock_jump_differences.clone();
-            unique_clock_jump_differences_copy.sort_by_key(|&bfe| bfe.value());
             unique_clock_jump_differences_copy.dedup();
             assert_eq!(
                 unique_clock_jump_differences_copy,
@@ -346,7 +351,8 @@ impl ProcessorTable {
         for row_idx in 0..base_table.nrows() {
             let current_clk = base_table[[row_idx, CLK.table_index()]];
             let mut extension_row = ext_table.row_mut(row_idx);
-            if unique_clock_jump_differences.contains(&current_clk) {
+            if unique_clock_jump_differences.last() == Some(&current_clk) {
+                unique_clock_jump_differences.pop();
                 selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
                     * challenges.unique_clock_jump_differences_eval_indeterminate
                     + current_clk;
@@ -354,6 +360,18 @@ impl ProcessorTable {
             extension_row[SelectedClockCyclesEvalArg.table_index()] =
                 selected_clock_cycles_running_evaluation;
         }
+
+        assert!(
+            unique_clock_jump_differences.is_empty(),
+            "Unhandled unique clock jump differences: {unique_clock_jump_differences:?}"
+        );
+        assert_eq!(
+            unique_clock_jump_differences_running_evaluation,
+            selected_clock_cycles_running_evaluation,
+            "Even though all unique clock jump differences were handled, the running evaluation of \
+             unique clock jump differences is not equal to the running evaluation of selected \
+             clock cycles."
+        );
     }
 }
 

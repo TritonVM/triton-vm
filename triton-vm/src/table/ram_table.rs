@@ -148,14 +148,14 @@ impl RamTable {
             let ramp_diff_inverse = ramp_diff.inverse_or_zero();
             curr_row[InverseOfRampDifference.table_index()] = ramp_diff_inverse;
 
-            if ramp_diff != BFieldElement::zero() {
+            if !ramp_diff.is_zero() {
                 current_bcpc_0 = bezout_coefficient_polynomial_coefficients_0.pop().unwrap();
                 current_bcpc_1 = bezout_coefficient_polynomial_coefficients_1.pop().unwrap();
             }
             next_row[BezoutCoefficientPolynomialCoefficient0.table_index()] = current_bcpc_0;
             next_row[BezoutCoefficientPolynomialCoefficient1.table_index()] = current_bcpc_1;
 
-            if ramp_diff != BFieldElement::zero() && clk_diff.value() > 1 {
+            if ramp_diff.is_zero() && !clk_diff.is_zero() && !clk_diff.is_one() {
                 clock_jump_differences_greater_than_1.push(clk_diff);
             }
         }
