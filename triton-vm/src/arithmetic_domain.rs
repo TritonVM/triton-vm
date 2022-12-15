@@ -54,7 +54,10 @@ impl ArithmeticDomain {
             domain_values.push(accumulator * self.offset);
             accumulator *= self.generator;
         }
-        // todo insert assert on the accumulator being equal to one?
+        assert!(
+            accumulator.is_one(),
+            "length must be the order of the generator"
+        );
         domain_values
     }
 }

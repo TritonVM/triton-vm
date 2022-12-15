@@ -47,13 +47,12 @@ pub trait CrossTableArg {
     fn terminal_quotient(
         &self,
         master_ext_table: ArrayView2<XFieldElement>,
+        trace_domain: ArithmeticDomain,
         quotient_domain: ArithmeticDomain,
-        trace_domain_generator: BFieldElement,
     ) -> Array1<XFieldElement> {
         let from_codeword = self.combined_from_codeword(master_ext_table);
         let to_codeword = self.combined_to_codeword(master_ext_table);
-        let zerofier_inverse =
-            terminal_quotient_zerofier_inverse(quotient_domain, trace_domain_generator);
+        let zerofier_inverse = terminal_quotient_zerofier_inverse(trace_domain, quotient_domain);
 
         (from_codeword - to_codeword) * zerofier_inverse
     }
@@ -395,8 +394,8 @@ impl GrandCrossTableArg {
     pub fn terminal_quotient_codeword(
         &self,
         master_ext_table: ArrayView2<XFieldElement>,
+        trace_domain: ArithmeticDomain,
         quotient_domain: ArithmeticDomain,
-        trace_domain_generator: BFieldElement,
     ) -> Array1<XFieldElement> {
         let mut non_linear_sum_codeword = Array1::zeros(quotient_domain.length);
 
@@ -424,8 +423,7 @@ impl GrandCrossTableArg {
                 *accumulator += self.processor_to_output_weight * (from - self.output_terminal)
             });
 
-        let zerofier_inverse =
-            terminal_quotient_zerofier_inverse(quotient_domain, trace_domain_generator);
+        let zerofier_inverse = terminal_quotient_zerofier_inverse(trace_domain, quotient_domain);
         non_linear_sum_codeword * zerofier_inverse
     }
 

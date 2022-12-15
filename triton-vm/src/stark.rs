@@ -221,6 +221,13 @@ impl Stark {
         prof_stop!(maybe_profiler, "quotient degree bounds");
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
+        let trace_domain_generator =
+            derive_trace_domain_generator(master_base_table.padded_height as u64);
+        let trace_domain = ArithmeticDomain::new(
+            BFieldElement::one(),
+            trace_domain_generator,
+            master_base_table.padded_height,
+        );
         let quotient_domain = self.quotient_domain();
         let unit_distance = self.fri.domain.length / quotient_domain.length;
         let base_quotient_domain_codewords = fri_domain_master_base_table
@@ -237,7 +244,7 @@ impl Stark {
         let mut quotient_codewords = all_quotients(
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
-            master_base_table.padded_height,
+            trace_domain,
             quotient_domain,
             num_quotients,
             &extension_challenges,
@@ -282,8 +289,8 @@ impl Stark {
         let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
             .terminal_quotient_codeword(
                 extension_quotient_domain_codewords,
+                trace_domain,
                 quotient_domain,
-                derive_trace_domain_generator(master_base_table.padded_height as u64),
             );
         // Add the grand cross-table argument's quotient to the quotient codewords. The memory for
         // this was allocated in the call to `all_quotients`.

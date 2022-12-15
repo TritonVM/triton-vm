@@ -203,15 +203,15 @@ pub trait Quotientable: ExtensionTable + Evaluable {
         quot_table: &mut ArrayViewMut2<XFieldElement>,
         zerofier_inverse: ArrayView1<BFieldElement>,
         challenges: &AllChallenges,
+        trace_domain: ArithmeticDomain,
         quotient_domain: ArithmeticDomain,
-        padded_height: usize,
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), quot_table.nrows());
 
         // the relation between the quotient domain and the trace domain
-        let unit_distance = quotient_domain.length / padded_height;
+        let unit_distance = quotient_domain.length / trace_domain.length;
         let domain_length_bit_mask = quotient_domain.length - 1;
 
         quot_table

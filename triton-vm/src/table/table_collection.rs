@@ -698,8 +698,10 @@ pub fn all_quotient_degree_bounds(
     .concat()
 }
 
-pub fn initial_quotient_zerofier_inverse(domain: ArithmeticDomain) -> Array1<BFieldElement> {
-    let zerofier_codeword = domain
+pub fn initial_quotient_zerofier_inverse(
+    quotient_domain: ArithmeticDomain,
+) -> Array1<BFieldElement> {
+    let zerofier_codeword = quotient_domain
         .domain_values()
         .into_iter()
         .map(|x| x - BFieldElement::one())
@@ -708,32 +710,31 @@ pub fn initial_quotient_zerofier_inverse(domain: ArithmeticDomain) -> Array1<BFi
 }
 
 pub fn consistency_quotient_zerofier_inverse(
-    domain: ArithmeticDomain,
-    padded_height: usize,
+    trace_domain: ArithmeticDomain,
+    quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
-    let zerofier_codeword = domain
+    let zerofier_codeword = quotient_domain
         .domain_values()
         .iter()
-        .map(|x| x.mod_pow_u32(padded_height as u32) - BFieldElement::one())
+        .map(|x| x.mod_pow_u32(trace_domain.length as u32) - BFieldElement::one())
         .collect();
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
 
 pub fn transition_quotient_zerofier_inverse(
-    domain: ArithmeticDomain,
-    trace_domain_generator: BFieldElement,
-    padded_height: usize,
+    trace_domain: ArithmeticDomain,
+    quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
     let one = BFieldElement::one();
-    let trace_domain_generator_inverse = trace_domain_generator.inverse();
-    let domain_values = domain.domain_values();
+    let trace_domain_generator_inverse = trace_domain.generator.inverse();
+    let quotient_domain_values = quotient_domain.domain_values();
 
-    let subgroup_zerofier: Vec<_> = domain_values
+    let subgroup_zerofier: Vec<_> = quotient_domain_values
         .par_iter()
-        .map(|domain_value| domain_value.mod_pow_u32(padded_height as u32) - one)
+        .map(|domain_value| domain_value.mod_pow_u32(trace_domain.length as u32) - one)
         .collect();
     let subgroup_zerofier_inverse = BFieldElement::batch_inversion(subgroup_zerofier);
-    let zerofier_inverse: Vec<_> = domain_values
+    let zerofier_inverse: Vec<_> = quotient_domain_values
         .into_par_iter()
         .zip_eq(subgroup_zerofier_inverse.into_par_iter())
         .map(|(domain_value, sub_z_inv)| {
@@ -744,15 +745,16 @@ pub fn transition_quotient_zerofier_inverse(
 }
 
 pub fn terminal_quotient_zerofier_inverse(
-    domain: ArithmeticDomain,
-    trace_domain_generator: BFieldElement,
+    trace_domain: ArithmeticDomain,
+    quotient_domain: ArithmeticDomain,
 ) -> Array1<BFieldElement> {
     // The zerofier for the terminal quotient has a root in the last
     // value in the cyclical group generated from the trace domain's generator.
-    let zerofier_codeword = domain
+    let trace_domain_generator_inverse = trace_domain.generator.inverse();
+    let zerofier_codeword = quotient_domain
         .domain_values()
         .into_iter()
-        .map(|x| x - trace_domain_generator.inverse())
+        .map(|x| x - trace_domain_generator_inverse)
         .collect_vec();
     BFieldElement::batch_inversion(zerofier_codeword).into()
 }
@@ -944,8 +946,8 @@ pub fn fill_all_transition_quotients(
     quot_table: &mut ArrayViewMut2<XFieldElement>,
     zerofier_inverse: ArrayView1<BFieldElement>,
     challenges: &AllChallenges,
+    trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
-    padded_height: usize,
 ) {
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
@@ -975,8 +977,8 @@ pub fn fill_all_transition_quotients(
         &mut program_quot_table,
         zerofier_inverse,
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
     let mut instruction_quot_table =
         quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
@@ -986,8 +988,8 @@ pub fn fill_all_transition_quotients(
         &mut instruction_quot_table,
         zerofier_inverse,
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
     let mut processor_quot_table =
         quot_table.slice_mut(s![.., processor_section_start..processor_section_end]);
@@ -997,8 +999,8 @@ pub fn fill_all_transition_quotients(
         &mut processor_quot_table,
         zerofier_inverse,
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
     let mut op_stack_quot_table =
         quot_table.slice_mut(s![.., op_stack_section_start..op_stack_section_end]);
@@ -1008,8 +1010,8 @@ pub fn fill_all_transition_quotients(
         &mut op_stack_quot_table,
         zerofier_inverse,
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
     let mut ram_quot_table = quot_table.slice_mut(s![.., ram_section_start..ram_section_end]);
     ExtRamTable::fill_transition_quotients(
@@ -1018,8 +1020,8 @@ pub fn fill_all_transition_quotients(
         &mut ram_quot_table,
         zerofier_inverse,
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
     let mut jump_stack_quot_table =
         quot_table.slice_mut(s![.., jump_stack_section_start..jump_stack_section_end]);
@@ -1029,8 +1031,8 @@ pub fn fill_all_transition_quotients(
         &mut jump_stack_quot_table,
         zerofier_inverse,
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
     let mut hash_quot_table = quot_table.slice_mut(s![.., hash_section_start..hash_section_end]);
     ExtHashTable::fill_transition_quotients(
@@ -1039,8 +1041,8 @@ pub fn fill_all_transition_quotients(
         &mut hash_quot_table,
         zerofier_inverse,
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
 }
 
@@ -1145,7 +1147,7 @@ pub fn fill_all_terminal_quotients(
 pub fn all_quotients(
     quotient_domain_master_base_table: ArrayView2<BFieldElement>,
     quotient_domain_master_ext_table: ArrayView2<XFieldElement>,
-    padded_height: usize,
+    trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
     num_quotients: usize,
     challenges: &AllChallenges,
@@ -1160,7 +1162,6 @@ pub fn all_quotients(
         quotient_domain_master_ext_table.nrows()
     );
 
-    let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
     let mut all_quotients = Array2::zeros([quotient_domain.length, num_quotients]);
 
     let initial_quotient_section_start = 0;
@@ -1196,7 +1197,7 @@ pub fn all_quotients(
         consistency_quotient_section_start..consistency_quotient_section_end
     ]);
     let consistency_quotient_zerofier_inverse =
-        consistency_quotient_zerofier_inverse(quotient_domain, padded_height);
+        consistency_quotient_zerofier_inverse(trace_domain, quotient_domain);
     fill_all_consistency_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
@@ -1211,19 +1212,16 @@ pub fn all_quotients(
         ..,
         transition_quotient_section_start..transition_quotient_section_end
     ]);
-    let transition_quotient_zerofier_inverse = transition_quotient_zerofier_inverse(
-        quotient_domain,
-        trace_domain_generator,
-        padded_height,
-    );
+    let transition_quotient_zerofier_inverse =
+        transition_quotient_zerofier_inverse(trace_domain, quotient_domain);
     fill_all_transition_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
         &mut transition_quotients,
         transition_quotient_zerofier_inverse.view(),
         challenges,
+        trace_domain,
         quotient_domain,
-        padded_height,
     );
     prof_stop!(maybe_profiler, "transition");
 
@@ -1233,7 +1231,7 @@ pub fn all_quotients(
         terminal_quotient_section_start..terminal_quotient_section_end
     ]);
     let initial_quotient_zerofier_inverse =
-        terminal_quotient_zerofier_inverse(quotient_domain, trace_domain_generator);
+        terminal_quotient_zerofier_inverse(trace_domain, quotient_domain);
     fill_all_terminal_quotients(
         quotient_domain_master_base_table,
         quotient_domain_master_ext_table,
@@ -1358,8 +1356,14 @@ pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
 
 #[cfg(test)]
 mod table_collection_tests {
+    use crate::arithmetic_domain::ArithmeticDomain;
     use ndarray::s;
+    use num_traits::One;
+    use num_traits::Zero;
     use strum::IntoEnumIterator;
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::traits::FiniteField;
+    use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
@@ -1370,6 +1374,10 @@ mod table_collection_tests {
     use crate::table::processor_table;
     use crate::table::program_table;
     use crate::table::ram_table;
+    use crate::table::table_collection::consistency_quotient_zerofier_inverse;
+    use crate::table::table_collection::initial_quotient_zerofier_inverse;
+    use crate::table::table_collection::terminal_quotient_zerofier_inverse;
+    use crate::table::table_collection::transition_quotient_zerofier_inverse;
     use crate::table::table_collection::TableId::*;
     use crate::table::table_collection::EXT_HASH_TABLE_END;
     use crate::table::table_collection::NUM_BASE_COLUMNS;
@@ -1466,6 +1474,63 @@ mod table_collection_tests {
                 .slice(s![.., EXT_HASH_TABLE_END..])
                 .ncols()
         );
+    }
+
+    #[test]
+    fn zerofiers_are_correct_test() {
+        let big_order = 16;
+        let big_generator = BFieldElement::primitive_root_of_unity(big_order).unwrap();
+        let big_offset = BFieldElement::new(7);
+        let big_domain = ArithmeticDomain::new(big_offset, big_generator, big_order as usize);
+
+        let small_order = 8;
+        let small_generator = BFieldElement::primitive_root_of_unity(small_order).unwrap();
+        let small_offset = BFieldElement::one();
+        let small_domain =
+            ArithmeticDomain::new(small_offset, small_generator, small_order as usize);
+
+        let initial_zerofier_inv = initial_quotient_zerofier_inverse(big_domain);
+        let initial_zerofier = BFieldElement::batch_inversion(initial_zerofier_inv.to_vec());
+        let initial_zerofier_poly = big_domain.interpolate(&initial_zerofier);
+        assert_eq!(big_order as usize, initial_zerofier_inv.len());
+        assert_eq!(1, initial_zerofier_poly.degree());
+        assert!(initial_zerofier_poly
+            .evaluate(&small_domain.domain_value(0))
+            .is_zero());
+
+        let consistency_zerofier_inv =
+            consistency_quotient_zerofier_inverse(small_domain, big_domain);
+        let consistency_zerofier =
+            BFieldElement::batch_inversion(consistency_zerofier_inv.to_vec());
+        let consistency_zerofier_poly = big_domain.interpolate(&consistency_zerofier);
+        assert_eq!(big_order as usize, consistency_zerofier_inv.len());
+        assert_eq!(small_order as isize, consistency_zerofier_poly.degree());
+        for val in small_domain.domain_values() {
+            assert!(consistency_zerofier_poly.evaluate(&val).is_zero());
+        }
+
+        let transition_zerofier_inv =
+            transition_quotient_zerofier_inverse(small_domain, big_domain);
+        let transition_zerofier = BFieldElement::batch_inversion(transition_zerofier_inv.to_vec());
+        let transition_zerofier_poly = big_domain.interpolate(&transition_zerofier);
+        assert_eq!(big_order as usize, transition_zerofier_inv.len());
+        assert_eq!(small_order as isize - 1, transition_zerofier_poly.degree());
+        for val in small_domain
+            .domain_values()
+            .iter()
+            .take(small_order as usize - 1)
+        {
+            assert!(transition_zerofier_poly.evaluate(val).is_zero());
+        }
+
+        let terminal_zerofier_inv = terminal_quotient_zerofier_inverse(small_domain, big_domain);
+        let terminal_zerofier = BFieldElement::batch_inversion(terminal_zerofier_inv.to_vec());
+        let terminal_zerofier_poly = big_domain.interpolate(&terminal_zerofier);
+        assert_eq!(big_order as usize, terminal_zerofier_inv.len());
+        assert_eq!(1, terminal_zerofier_poly.degree());
+        assert!(terminal_zerofier_poly
+            .evaluate(&small_domain.domain_value(small_order as u32 - 1))
+            .is_zero());
     }
 
     /// intended use: `cargo t print_all_table_widths -- --nocapture`
