@@ -971,6 +971,7 @@ pub(crate) mod triton_stark_tests {
 
     use crate::cross_table_arguments::EvalArg;
     use crate::instruction::sample_programs;
+    use crate::instruction::AnInstruction;
     use crate::shared_tests::*;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
@@ -985,6 +986,8 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_collection::MasterExtTable;
     use crate::table::table_collection::TableId::ProcessorTable;
     use crate::table::table_column::ExtTableColumn;
+    use crate::table::table_column::MasterBaseTableColumn;
+    use crate::table::table_column::ProcessorBaseTableColumn;
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
@@ -1640,13 +1643,31 @@ pub(crate) mod triton_stark_tests {
             );
             let num_transition_constraints = evaluated_transition_constraints.len();
             for (constraint_idx, etc) in evaluated_transition_constraints.into_iter().enumerate() {
-                assert_eq!(
-                    zero, etc,
-                    "Failed transition constraint with global index {constraint_idx}. \
-                    Total number of transition constraints: {num_transition_constraints}. \
-                    Row index: {row_idx}. \
-                    Total rows: {num_rows}",
-                );
+                if zero != etc {
+                    let pi_idx =
+                        ProcessorBaseTableColumn::PreviousInstruction.master_base_table_index();
+                    let ci_idx = ProcessorBaseTableColumn::CI.master_base_table_index();
+                    let nia_idx = ProcessorBaseTableColumn::NIA.master_base_table_index();
+                    let pi = base_row[pi_idx].value();
+                    let ci = base_row[ci_idx].value();
+                    let nia = base_row[nia_idx].value();
+                    let previous_instruction =
+                        AnInstruction::<BFieldElement>::try_from(pi).unwrap();
+                    let current_instruction = AnInstruction::<BFieldElement>::try_from(ci).unwrap();
+                    let next_instruction_str = match AnInstruction::<BFieldElement>::try_from(nia) {
+                        Ok(instr) => format!("{instr:?}"),
+                        Err(_) => "not an instruction".to_string(),
+                    };
+                    panic!(
+                        "Failed transition constraint with global index {constraint_idx}. \
+                        Total number of transition constraints: {num_transition_constraints}. \
+                        Row index: {row_idx}. \
+                        Total rows: {num_rows}\n\
+                        Previous Instruction: {previous_instruction:?} – opcode: {pi}\n\
+                        Current Instruction:  {current_instruction:?} – opcode: {ci}\n\
+                        Next Instruction:     {next_instruction_str} – opcode: {nia}\n"
+                    );
+                }
             }
         }
 
