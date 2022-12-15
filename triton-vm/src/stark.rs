@@ -601,16 +601,15 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1");
         let padded_height = proof_stream.dequeue()?.as_padded_heights()?.value() as usize;
+        if self.claim.padded_height != padded_height {
+            return Err(anyhow!(StarkValidationError::PaddedHeightInequality));
+        }
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
 
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
-
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
         let challenges = AllChallenges::create_challenges(extension_challenge_weights);
-        if self.claim.padded_height != padded_height && self.claim.padded_height != 0 {
-            return Err(anyhow!(StarkValidationError::PaddedHeightInequality));
-        }
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue");
@@ -1042,11 +1041,13 @@ pub(crate) mod triton_stark_tests {
     ) -> (Stark, MasterBaseTable, MasterBaseTable) {
         let (aet, stdout, program) = parse_setup_simulate(code, stdin.clone(), secret_in);
 
+        let instructions = program.to_bwords();
+        let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
         let claim = Claim {
             input: stdin,
-            program: program.to_bwords(),
+            program: instructions,
             output: stdout,
-            padded_height: 0,
+            padded_height,
         };
         let log_expansion_factor = 2;
         let security_level = 32;
@@ -1055,7 +1056,7 @@ pub(crate) mod triton_stark_tests {
 
         let mut master_base_table = MasterBaseTable::new(
             aet,
-            &program.to_bwords(),
+            &stark.claim.program,
             stark.parameters.num_trace_randomizers,
             stark.fri.domain,
         );

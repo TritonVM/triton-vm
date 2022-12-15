@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use triton_profiler::triton_profiler::{Report, TritonProfiler};
+use triton_vm::table::table_collection::MasterBaseTable;
 use triton_vm::{
     proof::Claim,
     shared_tests::save_proof,
@@ -17,20 +18,23 @@ fn prove_halt(_criterion: &mut Criterion) {
         Err(e) => panic!("Cannot compile source code into program: {}", e),
         Ok(p) => p,
     };
-    let claim = Claim {
-        input: vec![],
-        program: program.to_bwords(),
-        output: vec![],
-        padded_height: 0,
-    };
-    let parameters = StarkParameters::default();
-    let stark = Stark::new(claim, parameters);
 
     // witness
-    let (aet, _, err) = program.simulate_no_input();
+    let (aet, output, err) = program.simulate_no_input();
     if let Some(error) = err {
         panic!("The VM encountered the following problem: {}", error);
     }
+
+    let code = program.to_bwords();
+    let padded_height = MasterBaseTable::padded_height(&aet, &code);
+    let claim = Claim {
+        input: vec![],
+        program: code,
+        output,
+        padded_height,
+    };
+    let parameters = StarkParameters::default();
+    let stark = Stark::new(claim, parameters);
 
     let proof = stark.prove(aet, &mut maybe_profiler);
 

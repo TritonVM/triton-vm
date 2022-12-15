@@ -15,6 +15,7 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::stark::Stark;
 use crate::stark::StarkParameters;
+use crate::table::table_collection::MasterBaseTable;
 use crate::vm::AlgebraicExecutionTrace;
 use crate::vm::Program;
 
@@ -52,11 +53,12 @@ pub fn parse_simulate_prove(
         maybe_profiler,
     );
 
+    let padded_height = MasterBaseTable::padded_height(&aet, &program.to_bwords());
     let claim = Claim {
         input: input_symbols,
         program: program.to_bwords(),
         output: output_symbols,
-        padded_height: 0,
+        padded_height,
     };
     let log_expansion_factor = 2;
     let security_level = 32;

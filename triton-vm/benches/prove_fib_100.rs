@@ -6,6 +6,7 @@ use triton_profiler::triton_profiler::{Report, TritonProfiler};
 use triton_vm::instruction::sample_programs;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
+use triton_vm::table::table_collection::MasterBaseTable;
 use triton_vm::vm::Program;
 
 /// cargo criterion --bench prove_fib_100
@@ -29,11 +30,13 @@ fn prove_fib_100(criterion: &mut Criterion) {
         panic!("The VM encountered the following problem: {}", error);
     }
 
+    let instructions = program.to_bwords();
+    let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
     let claim = Claim {
         input,
-        program: program.to_bwords(),
+        program: instructions,
         output,
-        padded_height: 0,
+        padded_height,
     };
     let stark = Stark::new(claim, Default::default());
 
