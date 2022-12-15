@@ -640,9 +640,19 @@ pub mod triton_vm_tests {
         let num_memory_accesses = rng.gen_range(10..50);
         let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
         let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
+        let mut source_code = String::new();
+
+        // Read some memory before first write to ensure that the memory is initialized with 0s.
+        // Not all addresses are read to have different access patterns:
+        // - Some addresses are read before written to.
+        // - Other addresses are written to before read.
+        for memory_address in memory_addresses.iter().take(num_memory_accesses / 4) {
+            source_code.push_str(&format!(
+                "push {memory_address} push 0 read_mem push 0 eq assert pop "
+            ));
+        }
 
         // Write everything to RAM.
-        let mut source_code = String::new();
         for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
             source_code.push_str(&format!(
                 "push {memory_address} push {memory_value} write_mem pop pop "

@@ -298,7 +298,7 @@ impl<'pgm> VMState<'pgm> {
 
             ReadMem => {
                 let ramp = self.op_stack.safe_peek(ST1);
-                let ramv = self.memory_get(&ramp)?;
+                let ramv = self.memory_get(&ramp);
                 self.op_stack.pop()?;
                 self.op_stack.push(ramv);
                 self.ramp = ramp.value();
@@ -493,7 +493,7 @@ impl<'pgm> VMState<'pgm> {
         row[HV2.table_index()] = hvs[2];
         row[HV3.table_index()] = hvs[3];
         row[RAMP.table_index()] = ramp;
-        row[RAMV.table_index()] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
+        row[RAMV.table_index()] = self.memory_get(&ramp);
 
         row
     }
@@ -584,11 +584,11 @@ impl<'pgm> VMState<'pgm> {
             .ok_or_else(|| vm_fail(JumpStackTooShallow))
     }
 
-    fn memory_get(&self, mem_addr: &BFieldElement) -> Result<BFieldElement> {
+    fn memory_get(&self, mem_addr: &BFieldElement) -> BFieldElement {
         self.ram
             .get(mem_addr)
             .copied()
-            .ok_or_else(|| vm_fail(MemoryAddressNotFound))
+            .unwrap_or_else(BFieldElement::zero)
     }
 
     fn assert_vector(&self) -> bool {
