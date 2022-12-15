@@ -1,11 +1,12 @@
 use std::fmt::Display;
 
 use itertools::Itertools;
-use ndarray::s;
+use ndarray::parallel::prelude::*;
 use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -153,18 +154,20 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
-
-        zerofier_inverse
-            .into_iter() // todo: into_par_iter – but how?
+        debug_assert_eq!(zerofier_inverse.len(), quot_table.nrows());
+        quot_table
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
             .enumerate()
-            .for_each(|(domain_index, &z_inv)| {
+            .for_each(|(row_index, quot_row)| {
                 let mut quotient_table_row = Array1::from(Self::evaluate_initial_constraints(
-                    master_base_table.slice(s![domain_index, ..]),
-                    master_ext_table.slice(s![domain_index, ..]),
+                    master_base_table.row(row_index),
+                    master_ext_table.row(row_index),
                     challenges,
                 ));
+                let z_inv = zerofier_inverse[row_index];
                 quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_table.row_mut(domain_index));
+                quotient_table_row.move_into(quot_row);
             });
     }
 
@@ -177,18 +180,20 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
-
-        zerofier_inverse
-            .into_iter() // todo: into_par_iter – but how?
+        debug_assert_eq!(zerofier_inverse.len(), quot_table.nrows());
+        quot_table
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
             .enumerate()
-            .for_each(|(domain_index, &z_inv)| {
+            .for_each(|(row_index, quot_row)| {
                 let mut quotient_table_row = Array1::from(Self::evaluate_consistency_constraints(
-                    master_base_table.slice(s![domain_index, ..]),
-                    master_ext_table.slice(s![domain_index, ..]),
+                    master_base_table.row(row_index),
+                    master_ext_table.row(row_index),
                     challenges,
                 ));
+                let z_inv = zerofier_inverse[row_index];
                 quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_table.row_mut(domain_index));
+                quotient_table_row.move_into(quot_row);
             });
     }
 
@@ -203,32 +208,31 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
+        debug_assert_eq!(zerofier_inverse.len(), quot_table.nrows());
 
         // the relation between the quotient domain and the trace domain
         let unit_distance = quotient_domain.length / padded_height;
-
         let domain_length_bit_mask = quotient_domain.length - 1;
-        zerofier_inverse
-            .into_iter() // todo: into_par_iter – but how?
+
+        quot_table
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
             .enumerate()
-            .for_each(|(current_row_index, &z_inv)| {
-                // `&domain_length_bit_mask` performs the modulo operation cheaply:
+            .for_each(|(current_row_index, quot_row)| {
+                // bitwise logical and `domain_length_bit_mask` performs the modulo operation:
                 // `domain.length - 1` is a bit-mask with all 1s because `domain.length` is 2^k
                 // for some k.
                 let next_row_index = (current_row_index + unit_distance) & domain_length_bit_mask;
-                let current_base_row = master_base_table.slice(s![current_row_index, ..]);
-                let current_ext_row = master_ext_table.slice(s![current_row_index, ..]);
-                let next_base_row = master_base_table.slice(s![next_row_index, ..]);
-                let next_ext_row = master_ext_table.slice(s![next_row_index, ..]);
                 let mut quotient_table_row = Array1::from(Self::evaluate_transition_constraints(
-                    current_base_row,
-                    current_ext_row,
-                    next_base_row,
-                    next_ext_row,
+                    master_base_table.row(current_row_index),
+                    master_ext_table.row(current_row_index),
+                    master_base_table.row(next_row_index),
+                    master_ext_table.row(next_row_index),
                     challenges,
                 ));
+                let z_inv = zerofier_inverse[current_row_index];
                 quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_table.row_mut(current_row_index));
+                quotient_table_row.move_into(quot_row);
             });
     }
 
@@ -241,18 +245,20 @@ pub trait Quotientable: ExtensionTable + Evaluable {
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
-
-        zerofier_inverse
-            .into_iter() // todo: into_par_iter – but how?
+        debug_assert_eq!(zerofier_inverse.len(), quot_table.nrows());
+        quot_table
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
             .enumerate()
-            .for_each(|(domain_index, &z_inv)| {
+            .for_each(|(row_index, quot_row)| {
                 let mut quotient_table_row = Array1::from(Self::evaluate_terminal_constraints(
-                    master_base_table.slice(s![domain_index, ..]),
-                    master_ext_table.slice(s![domain_index, ..]),
+                    master_base_table.row(row_index),
+                    master_ext_table.row(row_index),
                     challenges,
                 ));
+                let z_inv = zerofier_inverse[row_index];
                 quotient_table_row.mapv_inplace(|a| a * z_inv);
-                quotient_table_row.move_into(quot_table.row_mut(domain_index));
+                quotient_table_row.move_into(quot_row);
             });
     }
 
