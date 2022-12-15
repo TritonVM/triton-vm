@@ -2088,7 +2088,7 @@ impl DualRowConstraints {
         let update_ramp = self.ramp_next() - self.st1();
 
         // The top of the stack is overwritten with the RAM value.
-        let st0_becomes_ramv = self.st0_next() - self.ramv();
+        let st0_becomes_ramv = self.st0_next() - self.ramv_next();
 
         let specific_constraints = vec![update_ramp, st0_becomes_ramv];
         [specific_constraints, self.step_1(), self.unop()].concat()
