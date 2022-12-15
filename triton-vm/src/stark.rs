@@ -39,8 +39,7 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::cross_table_arguments::CrossTableArg;
 use crate::cross_table_arguments::EvalArg;
 use crate::cross_table_arguments::GrandCrossTableArg;
-use crate::cross_table_arguments::NUM_CROSS_TABLE_ARGS;
-use crate::cross_table_arguments::NUM_PUBLIC_EVAL_ARGS;
+use crate::cross_table_arguments::NUM_CROSS_TABLE_WEIGHTS;
 use crate::fri::Fri;
 use crate::fri::FriValidationError;
 use crate::proof::Claim;
@@ -199,6 +198,7 @@ impl Stark {
             self.parameters.num_randomizer_polynomials,
         );
         prof_stop!(maybe_profiler, "extend");
+        prof_stop!(maybe_profiler, "base tables");
 
         prof_start!(maybe_profiler, "ext tables");
         prof_start!(maybe_profiler, "LDE");
@@ -254,17 +254,14 @@ impl Stark {
 
         prof_start!(maybe_profiler, "grand cross table");
         let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_quotients);
-        let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
-
         let grand_cross_table_arg_and_non_lin_combi_weights_seed =
             proof_stream.prover_fiat_shamir();
         let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
             grand_cross_table_arg_and_non_lin_combi_weights_seed,
-            num_grand_cross_table_arg_weights + num_non_lin_combi_weights,
+            NUM_CROSS_TABLE_WEIGHTS + num_non_lin_combi_weights,
         );
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
-            grand_cross_table_arg_and_non_lin_combi_weights
-                .split_at(num_grand_cross_table_arg_weights);
+            grand_cross_table_arg_and_non_lin_combi_weights.split_at(NUM_CROSS_TABLE_WEIGHTS);
 
         // prove equal terminal values for the column tuples pertaining to cross table arguments
         let input_terminal = EvalArg::compute_terminal(
@@ -346,7 +343,7 @@ impl Stark {
         // Get indices of slices that go across codewords to prove nonlinear combination
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let indices_seed = proof_stream.prover_fiat_shamir();
-        let cross_codeword_slice_indices = StarkHasher::sample_indices(
+        let revealed_current_row_indices = StarkHasher::sample_indices(
             self.parameters.security_level,
             &indices_seed,
             self.fri.domain.length,
@@ -367,14 +364,15 @@ impl Stark {
         // the relation between the FRI domain and the trace domain
         let unit_distance = self.fri.domain.length / master_base_table.padded_height;
         // Open leafs of zipped codewords at indicated positions
-        let revealed_indices =
-            self.get_revealed_indices(unit_distance, &cross_codeword_slice_indices);
+        let revealed_current_and_next_row_indices = self
+            .revealed_current_and_next_row_indices(unit_distance, &revealed_current_row_indices);
 
         let revealed_base_elems = Self::get_revealed_elements(
             fri_domain_master_base_table.master_base_matrix.view(),
-            &revealed_indices,
+            &revealed_current_and_next_row_indices,
         );
-        let auth_paths_base = base_merkle_tree.get_authentication_structure(&revealed_indices);
+        let auth_paths_base =
+            base_merkle_tree.get_authentication_structure(&revealed_current_and_next_row_indices);
         proof_stream.enqueue(&ProofItem::TransposedBaseElementVectors(
             revealed_base_elems,
         ));
@@ -382,30 +380,30 @@ impl Stark {
 
         let revealed_ext_elems = Self::get_revealed_elements(
             fri_domain_ext_master_table.master_ext_matrix.view(),
-            &revealed_indices,
+            &revealed_current_and_next_row_indices,
         );
-        let auth_paths_ext = ext_merkle_tree.get_authentication_structure(&revealed_indices);
+        let auth_paths_ext =
+            ext_merkle_tree.get_authentication_structure(&revealed_current_and_next_row_indices);
         proof_stream.enqueue(&ProofItem::TransposedExtensionElementVectors(
             revealed_ext_elems,
         ));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_ext));
 
-        // open combination codeword at the same positions
-        // Notice that we need to loop over `indices` here, not `revealed_indices`
-        // as the latter includes adjacent table rows relative to the values in `indices`
-        let revealed_combination_elements: Vec<XFieldElement> = cross_codeword_slice_indices
+        // Open combination codeword at the same positions as base & ext codewords.
+        // Use `revealed_current_row_indices`, not `revealed_current_and_next_row_indices`, as
+        // the latter is only needed to check transition constraints.
+        let revealed_combination_elements = revealed_current_row_indices
             .iter()
-            .map(|i| fri_combination_codeword[*i])
-            .collect();
+            .map(|&i| fri_combination_codeword[i])
+            .collect_vec();
         let revealed_combination_auth_paths =
-            combination_tree.get_authentication_structure(&cross_codeword_slice_indices);
+            combination_tree.get_authentication_structure(&revealed_current_row_indices);
         proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
             revealed_combination_elements,
         ));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
             revealed_combination_auth_paths,
         ));
-
         prof_stop!(maybe_profiler, "open trace leafs");
 
         if std::env::var("DEBUG").is_ok() {
@@ -437,19 +435,19 @@ impl Stark {
         }
     }
 
-    fn get_revealed_indices(
+    fn revealed_current_and_next_row_indices(
         &self,
         unit_distance: usize,
-        cross_codeword_slice_indices: &[usize],
+        revealed_current_rows_indices: &[usize],
     ) -> Vec<usize> {
-        let mut revealed_indices: Vec<usize> = vec![];
-        for &index in cross_codeword_slice_indices.iter() {
-            revealed_indices.push(index);
-            revealed_indices.push((index + unit_distance) % self.fri.domain.length);
+        let mut indices = vec![];
+        for &index in revealed_current_rows_indices.iter() {
+            indices.push(index);
+            indices.push((index + unit_distance) % self.fri.domain.length);
         }
-        revealed_indices.sort_unstable();
-        revealed_indices.dedup();
-        revealed_indices
+        indices.sort_unstable();
+        indices.dedup();
+        indices
     }
 
     // todo: can we get rid of the cloning? I.e., the call of to_vec(). Irrelevant number of times?
@@ -613,29 +611,27 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue");
-
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "dequeue");
 
-        // Get weights for nonlinear combination. Concretely, sample 2 weights for each base, and
-        // extension polynomial and each quotients, because transition constraints check 2 rows.
+        // Get weights for nonlinear combination. Concretely, sample 2 weights for each base
+        // polynomial, each extension polynomial, and each quotient. The factor is 2 because
+        // transition constraints check 2 rows.
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
         let num_grand_cross_table_args = 1;
         let num_non_lin_combi_weights = 2 * NUM_BASE_COLUMNS
             + 2 * NUM_EXT_COLUMNS
             + 2 * num_all_table_quotients()
             + 2 * num_grand_cross_table_args;
-        let num_grand_cross_table_arg_weights = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
         let grand_cross_table_arg_and_non_lin_combi_weights_seed =
             proof_stream.verifier_fiat_shamir();
         let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
             grand_cross_table_arg_and_non_lin_combi_weights_seed,
-            num_grand_cross_table_arg_weights + num_non_lin_combi_weights,
+            NUM_CROSS_TABLE_WEIGHTS + num_non_lin_combi_weights,
         );
         let (grand_cross_table_argument_weights, non_lin_combi_weights) =
-            grand_cross_table_arg_and_non_lin_combi_weights
-                .split_at(num_grand_cross_table_arg_weights);
+            grand_cross_table_arg_and_non_lin_combi_weights.split_at(NUM_CROSS_TABLE_WEIGHTS);
 
         let input_terminal = EvalArg::compute_terminal(
             &self.claim.input,
@@ -660,10 +656,9 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
-
         let indices_seed = proof_stream.verifier_fiat_shamir();
-        let combination_check_indices = StarkHasher::sample_indices(
-            self.parameters.security_level,
+        let revealed_current_row_indices = StarkHasher::sample_indices(
+            self.parameters.security_level, // todo: not intuitive. Either rename or introduce field
             &indices_seed,
             self.fri.domain.length,
         );
@@ -679,8 +674,8 @@ impl Stark {
         prof_start!(maybe_profiler, "get indices");
         // the relation between the FRI domain and the trace domain
         let unit_distance = self.fri.domain.length / padded_height;
-        // Open leafs of zipped codewords at indicated positions
-        let revealed_indices = self.get_revealed_indices(unit_distance, &combination_check_indices);
+        let revealed_current_and_next_row_indices = self
+            .revealed_current_and_next_row_indices(unit_distance, &revealed_current_row_indices);
         prof_stop!(maybe_profiler, "get indices");
 
         // todo rename the operation of the proof stream
@@ -700,7 +695,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Merkle verify (base tree)");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
-            &revealed_indices,
+            &revealed_current_and_next_row_indices,
             &leaf_digests_base,
             &base_auth_paths,
         ) {
@@ -716,22 +711,22 @@ impl Stark {
         let auth_paths_ext = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
-        let leaf_digests_ext: Vec<_> = ext_table_rows
+        let leaf_digests_ext = ext_table_rows
             .par_iter()
             .map(|xvalues| {
-                let bvalues: Vec<BFieldElement> = xvalues
+                let bvalues = xvalues
                     .iter()
                     .flat_map(|xfe| xfe.coefficients.to_vec())
-                    .collect();
+                    .collect_vec();
                 StarkHasher::hash_slice(&bvalues)
             })
-            .collect();
+            .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "dequeue extension elements");
 
         prof_start!(maybe_profiler, "Merkle verify (extension tree)");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
-            &revealed_indices,
+            &revealed_current_and_next_row_indices,
             &leaf_digests_ext,
             &auth_paths_ext,
         ) {
@@ -743,16 +738,16 @@ impl Stark {
         prof_start!(maybe_profiler, "Merkle verify (combination tree)");
         let revealed_combination_leafs =
             proof_stream.dequeue()?.as_revealed_combination_elements()?;
-        let revealed_combination_digests: Vec<_> = revealed_combination_leafs
+        let revealed_combination_digests = revealed_combination_leafs
             .par_iter()
             .map(StarkHasher::hash)
-            .collect();
+            .collect::<Vec<_>>();
         let revealed_combination_auth_paths = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             combination_root,
-            &combination_check_indices,
+            &revealed_current_row_indices,
             &revealed_combination_digests,
             &revealed_combination_auth_paths,
         ) {
@@ -764,12 +759,14 @@ impl Stark {
         prof_start!(maybe_profiler, "nonlinear combination");
         prof_start!(maybe_profiler, "index");
         let (indexed_base_table_rows, indexed_ext_table_rows, indexed_randomizer_rows) =
-            Self::index_revealed_rows(revealed_indices, base_table_rows, ext_table_rows);
+            Self::index_revealed_rows(
+                revealed_current_and_next_row_indices,
+                base_table_rows,
+                ext_table_rows,
+            );
         prof_stop!(maybe_profiler, "index");
 
-        // =======================================
-        // ==== verify non-linear combination ====
-        // =======================================
+        // verify non-linear combination
         let base_degree_bounds =
             base_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
         let ext_degree_bounds =
@@ -778,39 +775,33 @@ impl Stark {
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
         let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        for (current_row_idx, revealed_combination_leaf) in combination_check_indices
+        for (current_row_idx, revealed_combination_leaf) in revealed_current_row_indices
             .into_iter()
             .zip_eq(revealed_combination_leafs)
         {
             prof_itr0!(maybe_profiler, "main loop");
-            let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
-            let base_row = indexed_base_table_rows[&current_row_idx].view();
-            let ext_row = indexed_ext_table_rows[&current_row_idx].view();
-
             let next_row_idx = (current_row_idx + unit_distance) % self.fri.domain.length;
+            let current_base_row = indexed_base_table_rows[&current_row_idx].view();
+            let current_ext_row = indexed_ext_table_rows[&current_row_idx].view();
             let next_base_row = indexed_base_table_rows[&next_row_idx].view();
             let next_ext_row = indexed_ext_table_rows[&next_row_idx].view();
 
             // todo pre-compute for all revealed fri domain values, use batch invert?
             let one = BFieldElement::one();
-            let initial_zerofier_inverse = (current_fri_domain_value - one).lift();
+            let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
+            let initial_zerofier_inverse = current_fri_domain_value - one;
             let consistency_zerofier_inverse =
-                (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one)
-                    .inverse()
-                    .lift();
+                (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
             let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
             let transition_zerofier_inverse = except_last_row
-                * (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one)
-                    .inverse()
-                    .lift();
-            let terminal_zerofier_inverse = except_last_row.lift();
+                * (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
+            let terminal_zerofier_inverse = except_last_row;
 
-            let mut summands = vec![];
-
-            // populate summands with a cross-slice of (base,ext) codewords and their shifts
             prof_start!(maybe_profiler, "populate");
+            // populate summands with a cross-slice of (base,ext) codewords and their shifts
+            let mut summands = vec![];
             for (&base_row_element, degree_bound) in
-                base_row.iter().zip_eq(base_degree_bounds.iter())
+                current_base_row.iter().zip_eq(base_degree_bounds.iter())
             {
                 // todo for base & ext tables, this shift is always max_degree - interpolant_degree.
                 //  Pre-compute the corresponding shifted current_fri_domain_value.
@@ -822,7 +813,8 @@ impl Stark {
                 summands.push(base_row_element_shifted.lift());
             }
 
-            for (&ext_row_element, degree_bound) in ext_row.iter().zip_eq(ext_degree_bounds.iter())
+            for (&ext_row_element, degree_bound) in
+                current_ext_row.iter().zip_eq(ext_degree_bounds.iter())
             {
                 let shift = self.max_degree - degree_bound;
                 let base_row_element_shifted =
@@ -853,18 +845,21 @@ impl Stark {
 
             prof_start!(maybe_profiler, "evaluate AIR");
             let evaluated_initial_constraints =
-                evaluate_all_initial_constraints(base_row, ext_row, &challenges);
-            let evaluated_consistency_constraints =
-                evaluate_all_consistency_constraints(base_row, ext_row, &challenges);
+                evaluate_all_initial_constraints(current_base_row, current_ext_row, &challenges);
+            let evaluated_consistency_constraints = evaluate_all_consistency_constraints(
+                current_base_row,
+                current_ext_row,
+                &challenges,
+            );
             let evaluated_transition_constraints = evaluate_all_transition_constraints(
-                base_row,
-                ext_row,
+                current_base_row,
+                current_ext_row,
                 next_base_row,
                 next_ext_row,
                 &challenges,
             );
             let evaluated_terminal_constraints =
-                evaluate_all_terminal_constraints(base_row, ext_row, &challenges);
+                evaluate_all_terminal_constraints(current_base_row, current_ext_row, &challenges);
             prof_stop!(maybe_profiler, "evaluate AIR");
 
             prof_start!(maybe_profiler, "shift");
@@ -905,12 +900,11 @@ impl Stark {
             prof_stop!(maybe_profiler, "shift");
 
             prof_start!(maybe_profiler, "grand cross-table argument");
-
             let grand_cross_table_arg_degree_bound = grand_cross_table_arg
                 .quotient_degree_bound(padded_height, self.parameters.num_trace_randomizers);
             let shift = self.max_degree - grand_cross_table_arg_degree_bound;
             let grand_cross_table_arg_evaluated =
-                grand_cross_table_arg.evaluate_non_linear_sum_of_differences(ext_row);
+                grand_cross_table_arg.evaluate_non_linear_sum_of_differences(current_ext_row);
             let grand_cross_table_arg_quotient = grand_cross_table_arg_evaluated
                 / (current_fri_domain_value - trace_domain_generator_inverse).lift();
             let grand_cross_table_arg_quotient_shifted =
@@ -1162,7 +1156,7 @@ pub(crate) mod triton_stark_tests {
             );
 
             let grand_cross_table_arg = GrandCrossTableArg::new(
-                &[XFieldElement::one(); NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS],
+                &[XFieldElement::one(); NUM_CROSS_TABLE_WEIGHTS],
                 input_terminal,
                 output_terminal,
             );

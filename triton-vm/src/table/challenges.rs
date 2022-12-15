@@ -52,7 +52,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 131;
+    pub const TOTAL_CHALLENGES: usize = 46;
 
     pub fn create_challenges(mut weights: Vec<XFieldElement>) -> Self {
         let processor_table_challenges = ProcessorTableChallenges {
@@ -192,6 +192,8 @@ impl AllChallenges {
             digest_output_weight4: processor_table_challenges.hash_table_digest_output_weight4,
         };
 
+        assert!(weights.is_empty(), "{} weights left unused.", weights.len());
+
         AllChallenges {
             program_table_challenges,
             instruction_table_challenges,
@@ -205,11 +207,9 @@ impl AllChallenges {
         }
     }
 
-    /// Stand-in challenges. Can be used for deriving degree bounds and in tests. For non-
-    /// interactive STARKs, use Fiat-Shamir to derive the actual challenges.
+    /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use Fiat-Shamir to
+    /// derive the actual challenges.
     pub fn placeholder() -> Self {
-        let random_challenges = random_elements(Self::TOTAL_CHALLENGES);
-
-        Self::create_challenges(random_challenges)
+        Self::create_challenges(random_elements(Self::TOTAL_CHALLENGES))
     }
 }

@@ -27,6 +27,7 @@ pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMEN
 pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
 pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS;
 pub const NUM_PUBLIC_EVAL_ARGS: usize = 2;
+pub const NUM_CROSS_TABLE_WEIGHTS: usize = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
 pub trait CrossTableArg {
     fn from(&self) -> Vec<usize>;
@@ -355,7 +356,7 @@ impl<'a> IntoIterator for &'a GrandCrossTableArg {
 
 impl GrandCrossTableArg {
     pub fn new(
-        weights: &[XFieldElement; NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS],
+        weights: &[XFieldElement; NUM_CROSS_TABLE_WEIGHTS],
         input_terminal: XFieldElement,
         output_terminal: XFieldElement,
     ) -> Self {
