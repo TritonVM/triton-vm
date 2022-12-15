@@ -412,10 +412,22 @@ impl Stark {
     }
 
     fn quotient_domain(&self) -> ArithmeticDomain {
-        let offset = self.fri.domain.offset;
-        let length = roundup_npo2(self.max_degree as u64);
-        let generator = BFieldElement::primitive_root_of_unity(length).unwrap();
-        ArithmeticDomain::new(offset, generator, length as usize)
+        // When debugging, it is useful to check the degree of some intermediate polynomials.
+        // The quotient domain is chosen to be _just_ large enough to perform all the necessary
+        // computations on polynomials. Concretely, the maximal degree of a polynomial over the
+        // quotient domain is at most only slightly larger than the maximal degree allowed in the
+        // STARK proof, and could be equal. This makes computation for the prover much faster.
+        // However, it can also make it impossible to check if some operation (e.g., dividing out
+        // the zerofier) has (erroneously) increased the polynomial's degree beyond the allowed
+        // maximum.
+        if std::env::var("DEBUG").is_ok() {
+            self.fri.domain
+        } else {
+            let offset = self.fri.domain.offset;
+            let length = roundup_npo2(self.max_degree as u64);
+            let generator = BFieldElement::primitive_root_of_unity(length).unwrap();
+            ArithmeticDomain::new(offset, generator, length as usize)
+        }
     }
 
     fn get_revealed_indices(
