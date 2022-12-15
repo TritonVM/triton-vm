@@ -192,10 +192,10 @@ impl<'pgm> VMState<'pgm> {
         // All instructions increase the cycle count
         self.cycle_count += 1;
         let mut vm_output = None;
-        let fallback_previous_instruction = self.previous_instruction;
         self.previous_instruction = match self.current_instruction() {
             Ok(instruction) => instruction.opcode_b(),
-            Err(_) => fallback_previous_instruction,
+            // trying to read past the end of the program doesn't change the previous instruction
+            Err(_) => self.previous_instruction,
         };
 
         match self.current_instruction()? {
