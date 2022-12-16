@@ -1,7 +1,10 @@
-use anyhow::Result;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
+use std::fmt::Formatter;
+
+use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+
 use InstructionError::*;
 
 #[derive(Debug, Clone)]

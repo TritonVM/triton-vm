@@ -15,7 +15,7 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::stark::Stark;
 use crate::stark::StarkParameters;
-use crate::table::table_collection::MasterBaseTable;
+use crate::table::master_table::MasterBaseTable;
 use crate::vm::AlgebraicExecutionTrace;
 use crate::vm::Program;
 

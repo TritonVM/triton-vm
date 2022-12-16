@@ -38,8 +38,8 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::PermArg;
-use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
 use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::MasterBaseTableColumn;
@@ -4406,8 +4406,8 @@ mod constraint_polynomial_tests {
     use crate::ord_n::Ord16;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
+    use crate::table::master_table::MasterTable;
     use crate::table::processor_table::ProcessorMatrixRow;
-    use crate::table::table_collection::MasterTable;
     use crate::vm::Program;
 
     use super::*;

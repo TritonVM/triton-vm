@@ -28,8 +28,8 @@ use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::hash_table::HashTableChallengeId::*;
-use crate::table::table_collection::NUM_BASE_COLUMNS;
-use crate::table::table_collection::NUM_EXT_COLUMNS;
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
 use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::HashBaseTableColumn;
@@ -637,7 +637,7 @@ mod constraint_tests {
 
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::extension_table::Evaluable;
-    use crate::table::table_collection::MasterTable;
+    use crate::table::master_table::MasterTable;
 
     use super::*;
 

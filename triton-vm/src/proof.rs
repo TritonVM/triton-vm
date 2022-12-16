@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

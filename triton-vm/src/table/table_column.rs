@@ -8,20 +8,20 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 
-use crate::table::table_collection::EXT_HASH_TABLE_START;
-use crate::table::table_collection::EXT_INSTRUCTION_TABLE_START;
-use crate::table::table_collection::EXT_JUMP_STACK_TABLE_START;
-use crate::table::table_collection::EXT_OP_STACK_TABLE_START;
-use crate::table::table_collection::EXT_PROCESSOR_TABLE_START;
-use crate::table::table_collection::EXT_PROGRAM_TABLE_START;
-use crate::table::table_collection::EXT_RAM_TABLE_START;
-use crate::table::table_collection::HASH_TABLE_START;
-use crate::table::table_collection::INSTRUCTION_TABLE_START;
-use crate::table::table_collection::JUMP_STACK_TABLE_START;
-use crate::table::table_collection::OP_STACK_TABLE_START;
-use crate::table::table_collection::PROCESSOR_TABLE_START;
-use crate::table::table_collection::PROGRAM_TABLE_START;
-use crate::table::table_collection::RAM_TABLE_START;
+use crate::table::master_table::EXT_HASH_TABLE_START;
+use crate::table::master_table::EXT_INSTRUCTION_TABLE_START;
+use crate::table::master_table::EXT_JUMP_STACK_TABLE_START;
+use crate::table::master_table::EXT_OP_STACK_TABLE_START;
+use crate::table::master_table::EXT_PROCESSOR_TABLE_START;
+use crate::table::master_table::EXT_PROGRAM_TABLE_START;
+use crate::table::master_table::EXT_RAM_TABLE_START;
+use crate::table::master_table::HASH_TABLE_START;
+use crate::table::master_table::INSTRUCTION_TABLE_START;
+use crate::table::master_table::JUMP_STACK_TABLE_START;
+use crate::table::master_table::OP_STACK_TABLE_START;
+use crate::table::master_table::PROCESSOR_TABLE_START;
+use crate::table::master_table::PROGRAM_TABLE_START;
+use crate::table::master_table::RAM_TABLE_START;
 
 // -------- Program Table --------
 

@@ -1,23 +1,29 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
 use std::ops::Neg;
 use std::str::SplitWhitespace;
 use std::vec;
 
-use anyhow::{bail, Result};
+use anyhow::bail;
+use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
-use strum::{EnumCount, IntoEnumIterator};
-use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
+use strum::EnumCount;
+use strum::IntoEnumIterator;
+use strum_macros::Display as DisplayMacro;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use AnInstruction::*;
 use TokenError::*;
 
 use crate::instruction::DivinationHint::Quotient;
-
-use super::ord_n::{Ord16, Ord16::*, Ord7};
+use crate::ord_n::Ord16;
+use crate::ord_n::Ord16::*;
+use crate::ord_n::Ord7;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;

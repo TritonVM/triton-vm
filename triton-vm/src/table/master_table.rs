@@ -1350,7 +1350,7 @@ pub fn derive_domain_generator(domain_length: u64) -> BFieldElement {
 }
 
 #[cfg(test)]
-mod table_collection_tests {
+mod master_table_tests {
     use crate::arithmetic_domain::ArithmeticDomain;
     use ndarray::s;
     use num_traits::Zero;
@@ -1363,19 +1363,19 @@ mod table_collection_tests {
     use crate::table::hash_table;
     use crate::table::instruction_table;
     use crate::table::jump_stack_table;
+    use crate::table::master_table::consistency_quotient_zerofier_inverse;
+    use crate::table::master_table::initial_quotient_zerofier_inverse;
+    use crate::table::master_table::terminal_quotient_zerofier_inverse;
+    use crate::table::master_table::transition_quotient_zerofier_inverse;
+    use crate::table::master_table::TableId::*;
+    use crate::table::master_table::EXT_HASH_TABLE_END;
+    use crate::table::master_table::NUM_BASE_COLUMNS;
+    use crate::table::master_table::NUM_COLUMNS;
+    use crate::table::master_table::NUM_EXT_COLUMNS;
     use crate::table::op_stack_table;
     use crate::table::processor_table;
     use crate::table::program_table;
     use crate::table::ram_table;
-    use crate::table::table_collection::consistency_quotient_zerofier_inverse;
-    use crate::table::table_collection::initial_quotient_zerofier_inverse;
-    use crate::table::table_collection::terminal_quotient_zerofier_inverse;
-    use crate::table::table_collection::transition_quotient_zerofier_inverse;
-    use crate::table::table_collection::TableId::*;
-    use crate::table::table_collection::EXT_HASH_TABLE_END;
-    use crate::table::table_collection::NUM_BASE_COLUMNS;
-    use crate::table::table_collection::NUM_COLUMNS;
-    use crate::table::table_collection::NUM_EXT_COLUMNS;
     use crate::table::table_column::HashBaseTableColumn;
     use crate::table::table_column::HashExtTableColumn;
     use crate::table::table_column::InstructionBaseTableColumn;

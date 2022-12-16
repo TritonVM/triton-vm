@@ -1,12 +1,15 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use triton_profiler::triton_profiler::{Report, TritonProfiler};
-use triton_vm::table::table_collection::MasterBaseTable;
-use triton_vm::{
-    proof::Claim,
-    shared_tests::save_proof,
-    stark::{Stark, StarkParameters},
-    vm::Program,
-};
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::Criterion;
+use triton_profiler::triton_profiler::Report;
+use triton_profiler::triton_profiler::TritonProfiler;
+
+use triton_vm::proof::Claim;
+use triton_vm::shared_tests::save_proof;
+use triton_vm::stark::Stark;
+use triton_vm::stark::StarkParameters;
+use triton_vm::table::master_table::MasterBaseTable;
+use triton_vm::vm::Program;
 
 /// cargo criterion --bench prove_halt
 fn prove_halt(_criterion: &mut Criterion) {

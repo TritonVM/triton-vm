@@ -42,7 +42,7 @@ use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::table::challenges::AllChallenges;
-use crate::table::table_collection::*;
+use crate::table::master_table::*;
 use crate::vm::AlgebraicExecutionTrace;
 
 pub type StarkHasher = RescuePrimeRegular;
@@ -881,13 +881,13 @@ pub(crate) mod triton_stark_tests {
     use crate::table::hash_table::ExtHashTable;
     use crate::table::instruction_table::ExtInstructionTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
+    use crate::table::master_table::all_degrees_with_origin;
+    use crate::table::master_table::MasterExtTable;
+    use crate::table::master_table::TableId::ProcessorTable;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
-    use crate::table::table_collection::all_degrees_with_origin;
-    use crate::table::table_collection::MasterExtTable;
-    use crate::table::table_collection::TableId::ProcessorTable;
     use crate::table::table_column::BaseTableColumn;
     use crate::table::table_column::ExtTableColumn;
     use crate::table::table_column::MasterBaseTableColumn;

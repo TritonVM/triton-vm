@@ -1,6 +1,6 @@
 use std::ops::MulAssign;
 
-use crate::table::table_collection::derive_domain_generator;
+use crate::table::master_table::derive_domain_generator;
 use num_traits::One;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;

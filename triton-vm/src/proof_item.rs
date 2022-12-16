@@ -2,7 +2,8 @@ use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::x_field_element::{XFieldElement, EXTENSION_DEGREE};
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
@@ -352,16 +353,16 @@ impl BFieldCodec for ProofItem {
 mod proof_item_typed_tests {
     use itertools::Itertools;
     use rand::{thread_rng, RngCore};
-
-    use crate::proof_stream::ProofStream;
-
-    use super::*;
     use twenty_first::shared_math::{
         b_field_element::BFieldElement,
         other::random_elements,
         rescue_prime_regular::RescuePrimeRegular,
         x_field_element::{XFieldElement, EXTENSION_DEGREE},
     };
+
+    use crate::proof_stream::ProofStream;
+
+    use super::*;
 
     fn random_bool() -> bool {
         let mut rng = thread_rng();
