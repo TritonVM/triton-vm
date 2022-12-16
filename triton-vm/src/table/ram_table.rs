@@ -357,6 +357,9 @@ impl ExtRamTable {
         let fd = circuit_builder.input(ExtRow(FormalDerivative.master_ext_table_index()));
         let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_ext_table_index()));
         let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
+        let rpcjd = circuit_builder.input(ExtRow(
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        ));
         let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
 
         let write_mem_opcode = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
@@ -365,9 +368,11 @@ impl ExtRamTable {
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
-        let formal_derivative_is_1 = fd - one;
+        let formal_derivative_is_1 = fd - one.clone();
         let running_product_polynomial_is_initialized_correctly =
             rp - (bezout_challenge - ramp.clone());
+
+        let running_product_for_clock_jump_differences_is_initialized_to_1 = rpcjd - one;
 
         let clk_weight = circuit_builder.challenge(ClkWeight);
         let ramp_weight = circuit_builder.challenge(RampWeight);
@@ -385,8 +390,9 @@ impl ExtRamTable {
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
-            formal_derivative_is_1,
             running_product_polynomial_is_initialized_correctly,
+            formal_derivative_is_1,
+            running_product_for_clock_jump_differences_is_initialized_to_1,
             running_product_permutation_argument_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
