@@ -892,18 +892,14 @@ impl Stark {
 
 #[cfg(test)]
 pub(crate) mod triton_stark_tests {
-    use std::ops::Mul;
-
     use itertools::izip;
     use ndarray::Array1;
-    use num_traits::One;
     use num_traits::Zero;
     use twenty_first::shared_math::other::log_2_floor;
 
     use crate::cross_table_arguments::CrossTableArg;
     use crate::cross_table_arguments::EvalArg;
     use crate::cross_table_arguments::GrandCrossTableArg;
-    use crate::cross_table_arguments::NUM_CROSS_TABLE_WEIGHTS;
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
     use crate::shared_tests::*;
@@ -1049,7 +1045,7 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    pub fn check_all_cross_table_terminals() {
+    pub fn check_grand_cross_table_argument() {
         let mut code_collection = small_tasm_test_programs();
         code_collection.append(&mut bigger_tasm_test_programs());
         code_collection.append(&mut property_based_test_programs());
@@ -1058,65 +1054,39 @@ pub(crate) mod triton_stark_tests {
             let code = code_with_input.source_code;
             let input = code_with_input.input;
             let secret_input = code_with_input.secret_input.clone();
-            let (stark, _, master_base_table, master_ext_table, all_challenges) =
+            let (_, _, master_base_table, master_ext_table, all_challenges) =
                 parse_simulate_pad_extend(&code, input, secret_input);
-
-            let input_terminal = EvalArg::compute_terminal(
-                &stark.claim.input,
-                EvalArg::default_initial(),
-                all_challenges
-                    .processor_table_challenges
-                    .standard_input_eval_indeterminate,
-            );
-
-            let output_terminal = EvalArg::compute_terminal(
-                &stark.claim.output,
-                EvalArg::default_initial(),
-                all_challenges
-                    .processor_table_challenges
-                    .standard_output_eval_indeterminate,
-            );
-
-            let grand_cross_table_arg = GrandCrossTableArg::new(
-                &[XFieldElement::one(); NUM_CROSS_TABLE_WEIGHTS],
-                input_terminal,
-                output_terminal,
-            );
-
-            let padded_height = master_base_table.padded_height;
-            for (idx, (arg, _)) in grand_cross_table_arg.into_iter().enumerate() {
-                let from = arg
-                    .from()
-                    .iter()
-                    .map(|&from_column| {
-                        master_ext_table.master_ext_matrix[(padded_height - 1, from_column)]
-                    })
-                    .fold(XFieldElement::one(), XFieldElement::mul);
-                let to = arg
-                    .to()
-                    .iter()
-                    .map(|&to_column| {
-                        master_ext_table.master_ext_matrix[(padded_height - 1, to_column)]
-                    })
-                    .fold(XFieldElement::one(), XFieldElement::mul);
-                assert_eq!(
-                    from, to,
-                    "Cross-table argument #{idx} must match for TASM snipped #{code_idx}."
-                );
-            }
 
             let processor_table = master_ext_table.table(ProcessorTable);
             let processor_table_last_row = processor_table.slice(s![-1, ..]);
-            let ptie = processor_table_last_row[InputTableEvalArg.table_index()];
             assert_eq!(
-                ptie, input_terminal,
-                "The input terminal must match for TASM snipped #{code_idx}."
+                all_challenges.cross_table_challenges.input_terminal,
+                processor_table_last_row[InputTableEvalArg.table_index()],
+                "The input terminal must match for TASM snippet #{code_idx}."
+            );
+            assert_eq!(
+                all_challenges.cross_table_challenges.output_terminal,
+                processor_table_last_row[OutputTableEvalArg.table_index()],
+                "The output terminal must match for TASM snippet #{code_idx}."
             );
 
-            let ptoe = processor_table_last_row[OutputTableEvalArg.table_index()];
+            let master_base_trace_table = master_base_table.trace_table();
+            let master_ext_trace_table = master_ext_table.trace_table();
+            let last_master_base_row = master_base_trace_table.slice(s![-1, ..]);
+            let last_master_ext_row = master_ext_trace_table.slice(s![-1, ..]);
+            let evaluated_terminal_constraints = GrandCrossTableArg::evaluate_terminal_constraints(
+                last_master_base_row,
+                last_master_ext_row,
+                &all_challenges,
+            );
             assert_eq!(
-                ptoe, output_terminal,
-                "The output terminal must match for TASM snipped #{code_idx}."
+                1,
+                evaluated_terminal_constraints.len(),
+                "The number of terminal constraints must be 1 – has the design changed?"
+            );
+            assert!(
+                evaluated_terminal_constraints[0].is_zero(),
+                "The terminal constraint must evaluate to 0 for TASM snippet #{code_idx}."
             );
         }
     }
