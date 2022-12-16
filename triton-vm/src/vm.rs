@@ -6,6 +6,9 @@ use itertools::Itertools;
 use ndarray::Array2;
 use ndarray::Axis;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
+use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 
 use crate::instruction;
 use crate::instruction::parse;
@@ -14,7 +17,12 @@ use crate::instruction::LabelledInstruction;
 use crate::state::VMOutput;
 use crate::state::VMState;
 use crate::table::hash_table;
+use crate::table::hash_table::NUM_ROUND_CONSTANTS;
 use crate::table::processor_table;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::HashBaseTableColumn::CONSTANT0A;
+use crate::table::table_column::HashBaseTableColumn::ROUNDNUMBER;
+use crate::table::table_column::HashBaseTableColumn::STATE0;
 
 #[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
@@ -28,6 +36,45 @@ impl Default for AlgebraicExecutionTrace {
             processor_matrix: Array2::default([0, processor_table::BASE_WIDTH]),
             hash_matrix: Array2::default([0, hash_table::BASE_WIDTH]),
         }
+    }
+}
+
+impl AlgebraicExecutionTrace {
+    pub fn append_hash_trace(&mut self, hash_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
+        let mut hash_matrix_addendum = Array2::default([NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
+        for (row_idx, mut row) in hash_matrix_addendum.rows_mut().into_iter().enumerate() {
+            let round_number = row_idx + 1;
+            let trace_row = hash_trace[row_idx];
+            let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
+            row[ROUNDNUMBER.base_table_index()] = BFieldElement::from(row_idx as u64 + 1);
+            for st_idx in 0..STATE_SIZE {
+                row[STATE0.base_table_index() + st_idx] = trace_row[st_idx];
+            }
+            for rc_idx in 0..NUM_ROUND_CONSTANTS {
+                row[CONSTANT0A.base_table_index() + rc_idx] = round_constants[rc_idx];
+            }
+        }
+        self.hash_matrix
+            .append(Axis(0), hash_matrix_addendum.view())
+            .expect("shapes must be identical");
+    }
+
+    /// The 2·STATE_SIZE (= NUM_ROUND_CONSTANTS) round constants for round `round_number`.
+    /// Of note:
+    /// - Round index 0 indicates a padding row – all constants are zero.
+    /// - Round index 9 indicates an output row – all constants are zero.
+    pub fn rescue_xlix_round_constants_by_round_number(
+        round_number: usize,
+    ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
+        match round_number {
+            i if i == 0 || i == NUM_ROUNDS + 1 => [0_u64; NUM_ROUND_CONSTANTS],
+            i if i <= NUM_ROUNDS => ROUND_CONSTANTS
+                [NUM_ROUND_CONSTANTS * (i - 1)..NUM_ROUND_CONSTANTS * i]
+                .try_into()
+                .unwrap(),
+            _ => panic!("Round with number {round_number} does not have round constants."),
+        }
+        .map(BFieldElement::new)
     }
 }
 
@@ -157,10 +204,7 @@ impl Program {
             };
 
             match vm_output {
-                Some(VMOutput::XlixTrace(hash_trace)) => aet
-                    .hash_matrix
-                    .append(Axis(0), hash_trace.view())
-                    .expect("shapes must be identical"),
+                Some(VMOutput::XlixTrace(hash_trace)) => aet.append_hash_trace(*hash_trace),
                 Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
                 None => (),
             }

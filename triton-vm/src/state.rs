@@ -3,17 +3,13 @@ use std::convert::TryInto;
 use std::fmt::Display;
 
 use anyhow::Result;
-use itertools::Itertools;
-use ndarray::s;
 use ndarray::Array1;
-use ndarray::Array2;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
-use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -28,13 +24,9 @@ use crate::op_stack::OpStack;
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
 use crate::ord_n::Ord7;
-use crate::table::hash_table;
-use crate::table::hash_table::NUM_ROUND_CONSTANTS;
-use crate::table::hash_table::TOTAL_NUM_CONSTANTS;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorMatrixRow;
 use crate::table::table_column::BaseTableColumn;
-use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::Program;
 
@@ -88,7 +80,7 @@ pub enum VMOutput {
     /// Trace of state registers for hash coprocessor table
     ///
     /// One row per round in the XLIX permutation
-    XlixTrace(Array2<BFieldElement>),
+    XlixTrace(Box<[[BFieldElement; STATE_SIZE]; 1 + NUM_ROUNDS]>),
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -321,8 +313,7 @@ impl<'pgm> VMState<'pgm> {
                 let hash_input: [BFieldElement; 2 * DIGEST_LENGTH] = self.op_stack.pop_n()?;
                 let hash_trace = RescuePrimeRegular::trace(&hash_input);
                 let hash_output = &hash_trace[hash_trace.len() - 1][0..DIGEST_LENGTH];
-                let hash_trace_with_round_constants = Self::inprocess_hash_trace(&hash_trace);
-                vm_output = Some(VMOutput::XlixTrace(hash_trace_with_round_constants));
+                vm_output = Some(VMOutput::XlixTrace(Box::new(hash_trace)));
 
                 for i in (0..DIGEST_LENGTH).rev() {
                     self.op_stack.push(hash_output[i]);
@@ -685,55 +676,6 @@ impl<'pgm> VMState<'pgm> {
 
         Ok(())
     }
-
-    fn inprocess_hash_trace(
-        hash_trace: &[[BFieldElement; hash_table::BASE_WIDTH - NUM_ROUND_CONSTANTS - 1]],
-    ) -> Array2<BFieldElement> {
-        let mut hash_trace_with_constants = Array2::zeros([NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
-        for (index, mut new_trace_row) in
-            hash_trace_with_constants.rows_mut().into_iter().enumerate()
-        {
-            let trace_row = hash_trace[index];
-            let round_number = index + 1;
-            let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
-            new_trace_row[HashBaseTableColumn::ROUNDNUMBER.base_table_index()] =
-                BFieldElement::new(round_number as u64);
-            let mut offset = 1;
-            let original_trace_row_slice = new_trace_row.slice_mut(s![offset..offset + STATE_SIZE]);
-            Array1::from_vec(trace_row.to_vec()).move_into(original_trace_row_slice);
-            offset += STATE_SIZE;
-            let round_constants_slice =
-                new_trace_row.slice_mut(s![offset..offset + NUM_ROUND_CONSTANTS]);
-            Array1::from_vec(round_constants.to_vec()).move_into(round_constants_slice);
-        }
-        hash_trace_with_constants
-    }
-
-    /// rescue_xlix_round_constants_by_round_number
-    /// returns the 2m round constant for round `round_number`.
-    /// This counter starts at 1; round number 0 indicates padding;
-    /// and round number 9 indicates a transition to a new hash so
-    /// the round constants will be all zeros.
-    fn rescue_xlix_round_constants_by_round_number(
-        round_number: usize,
-    ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
-        let round_constants: [BFieldElement; TOTAL_NUM_CONSTANTS] = ROUND_CONSTANTS
-            .iter()
-            .map(|&x| BFieldElement::new(x))
-            .collect_vec()
-            .try_into()
-            .unwrap();
-
-        match round_number {
-            0 => [BFieldElement::zero(); hash_table::NUM_ROUND_CONSTANTS],
-            i if i <= NUM_ROUNDS => round_constants
-                [NUM_ROUND_CONSTANTS * (i - 1)..NUM_ROUND_CONSTANTS * i]
-                .try_into()
-                .unwrap(),
-            i if i == NUM_ROUNDS + 1 => [BFieldElement::zero(); hash_table::NUM_ROUND_CONSTANTS],
-            _ => panic!("Round with number {round_number} does not have round constants."),
-        }
-    }
 }
 
 impl<'pgm> Display for VMState<'pgm> {
@@ -750,6 +692,7 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 mod vm_state_tests {
+    use itertools::Itertools;
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::rescue_prime_digest::Digest;
     use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
