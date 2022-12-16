@@ -1,7 +1,9 @@
+use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
@@ -336,22 +338,18 @@ impl InstructionTable {
         instruction_table: &mut ArrayViewMut2<BFieldElement>,
         instruction_table_len: usize,
     ) {
-        // todo: change the spec to allow this simpler approach? Instead of increasing address:
-        //  - set `padding_address` to the highest address in the instruction table + 1
-        //  - fill all padding rows' `address` field with `padding_address`
-        let highest_encountered_address = instruction_table
-            .slice(s![..instruction_table_len, Address.base_table_index()])
-            .iter()
-            .map(|&x| x.value())
-            .max()
-            .unwrap_or(0);
-        instruction_table
-            .slice_mut(s![instruction_table_len.., Address.base_table_index()])
-            .fill(BFieldElement::new(highest_encountered_address + 1));
+        let mut last_row = instruction_table
+            .slice(s![instruction_table_len - 1, ..])
+            .to_owned();
+        last_row[Address.base_table_index()] =
+            last_row[Address.base_table_index()] + BFieldElement::one();
+        last_row[IsPadding.base_table_index()] = BFieldElement::one();
 
-        instruction_table
-            .slice_mut(s![instruction_table_len.., IsPadding.base_table_index()])
-            .fill(BFieldElement::one());
+        let mut padding_section = instruction_table.slice_mut(s![instruction_table_len.., ..]);
+        padding_section
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .for_each(|padding_row| last_row.clone().move_into(padding_row));
     }
 
     pub fn extend(
