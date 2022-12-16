@@ -321,9 +321,7 @@ impl Stark {
         );
         let auth_paths_base =
             base_merkle_tree.get_authentication_structure(&revealed_current_and_next_row_indices);
-        proof_stream.enqueue(&ProofItem::TransposedBaseElementVectors(
-            revealed_base_elems,
-        ));
+        proof_stream.enqueue(&ProofItem::MasterBaseTableRows(revealed_base_elems));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
 
         let revealed_ext_elems = Self::get_revealed_elements(
@@ -332,9 +330,7 @@ impl Stark {
         );
         let auth_paths_ext =
             ext_merkle_tree.get_authentication_structure(&revealed_current_and_next_row_indices);
-        proof_stream.enqueue(&ProofItem::TransposedExtensionElementVectors(
-            revealed_ext_elems,
-        ));
+        proof_stream.enqueue(&ProofItem::MasterExtTableRows(revealed_ext_elems));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_ext));
 
         // Open combination codeword at the same positions as base & ext codewords.
@@ -594,11 +590,8 @@ impl Stark {
             .revealed_current_and_next_row_indices(unit_distance, &revealed_current_row_indices);
         prof_stop!(maybe_profiler, "get indices");
 
-        // todo rename the operation of the proof stream
         prof_start!(maybe_profiler, "dequeue base elements");
-        let base_table_rows = proof_stream
-            .dequeue()?
-            .as_transposed_base_element_vectors()?;
+        let base_table_rows = proof_stream.dequeue()?.as_master_base_table_rows()?;
         let base_auth_paths = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;
@@ -619,11 +612,8 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "Merkle verify (base tree)");
 
-        // todo rename the operation of the proof stream
         prof_start!(maybe_profiler, "dequeue extension elements");
-        let ext_table_rows = proof_stream
-            .dequeue()?
-            .as_transposed_extension_element_vectors()?;
+        let ext_table_rows = proof_stream.dequeue()?.as_master_ext_table_rows()?;
         let auth_paths_ext = proof_stream
             .dequeue()?
             .as_compressed_authentication_paths()?;

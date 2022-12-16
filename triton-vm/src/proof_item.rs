@@ -104,11 +104,9 @@ pub trait MayBeUncast {
 #[allow(clippy::large_enum_variant)]
 pub enum ProofItem {
     CompressedAuthenticationPaths(AuthenticationStructure<Digest>),
-    TransposedBaseElementVectors(Vec<Vec<BFieldElement>>),
-    TransposedExtensionElementVectors(Vec<Vec<XFieldElement>>),
+    MasterBaseTableRows(Vec<Vec<BFieldElement>>),
+    MasterExtTableRows(Vec<Vec<XFieldElement>>),
     MerkleRoot(Digest),
-    TransposedBaseElements(Vec<BFieldElement>),
-    TransposedExtensionElements(Vec<XFieldElement>),
     AuthenticationPath(Vec<Digest>),
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
@@ -159,9 +157,9 @@ where
         }
     }
 
-    pub fn as_transposed_base_element_vectors(&self) -> Result<Vec<Vec<BFieldElement>>> {
+    pub fn as_master_base_table_rows(&self) -> Result<Vec<Vec<BFieldElement>>> {
         match self {
-            Self::TransposedBaseElementVectors(bss) => Ok(bss.to_owned()),
+            Self::MasterBaseTableRows(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<BFieldElement>>::decode(str) {
                 Ok(base_element_vectors) => Ok(*base_element_vectors),
                 Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
@@ -169,14 +167,14 @@ where
                 ))),
             },
             _ => Err(anyhow::Error::new(ProofStreamError::new(
-                "expected transposed base element vectors, but got something else",
+                "expected master base table rows, but got something else",
             ))),
         }
     }
 
-    pub fn as_transposed_extension_element_vectors(&self) -> Result<Vec<Vec<XFieldElement>>> {
+    pub fn as_master_ext_table_rows(&self) -> Result<Vec<Vec<XFieldElement>>> {
         match self {
-            Self::TransposedExtensionElementVectors(xss) => Ok(xss.to_owned()),
+            Self::MasterExtTableRows(xss) => Ok(xss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<XFieldElement>>::decode(str) {
                 Ok(ext_element_vectors) => Ok(*ext_element_vectors),
                 Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
@@ -184,7 +182,7 @@ where
                 ))),
             },
             _ => Err(anyhow::Error::new(ProofStreamError::new(
-                "expected transposed extension element vectors, but got something else",
+                "expected master extension table rows, but got something else",
             ))),
         }
     }
@@ -200,36 +198,6 @@ where
             },
             _ => Err(anyhow::Error::new(ProofStreamError::new(
                 "expected merkle root, but got something else",
-            ))),
-        }
-    }
-
-    pub fn as_transposed_base_elements(&self) -> Result<Vec<BFieldElement>> {
-        match self {
-            Self::TransposedBaseElements(bs) => Ok(bs.to_owned()),
-            Self::Uncast(str) => match Vec::<BFieldElement>::decode(str) {
-                Ok(transposed_base_elements) => Ok(*transposed_base_elements),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to transposed base field elements failed",
-                ))),
-            },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
-                "expected tranposed base elements, but got something else",
-            ))),
-        }
-    }
-
-    pub fn as_transposed_extension_elements(&self) -> Result<Vec<XFieldElement>> {
-        match self {
-            Self::TransposedExtensionElements(xs) => Ok(xs.to_owned()),
-            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
-                Ok(transposed_ext_elements) => Ok(*transposed_ext_elements),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to transposed extension field elements failed",
-                ))),
-            },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
-                "expected tranposed extension elements, but got something else",
             ))),
         }
     }
@@ -331,11 +299,9 @@ impl BFieldCodec for ProofItem {
     fn encode(&self) -> Vec<BFieldElement> {
         let mut tail = match self {
             ProofItem::CompressedAuthenticationPaths(something) => something.encode(),
-            ProofItem::TransposedBaseElementVectors(something) => something.encode(),
-            ProofItem::TransposedExtensionElementVectors(something) => something.encode(),
+            ProofItem::MasterBaseTableRows(something) => something.encode(),
+            ProofItem::MasterExtTableRows(something) => something.encode(),
             ProofItem::MerkleRoot(something) => something.encode(),
-            ProofItem::TransposedBaseElements(something) => something.encode(),
-            ProofItem::TransposedExtensionElements(something) => something.encode(),
             ProofItem::AuthenticationPath(something) => something.encode(),
             ProofItem::RevealedCombinationElements(something) => something.encode(),
             ProofItem::FriCodeword(something) => something.encode(),
@@ -416,9 +382,6 @@ mod proof_item_typed_tests {
     fn test_serialize_stark_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
         let mut proof_stream = ProofStream::<ProofItem, H>::new();
-        let manyb1: Vec<BFieldElement> = random_elements(10);
-        let manyx: Vec<XFieldElement> = random_elements(13);
-        let manyb2: Vec<BFieldElement> = random_elements(11);
         let map = (0..7).into_iter().map(|_| random_digest()).collect_vec();
         let auth_struct = (0..8)
             .into_iter()
@@ -442,12 +405,6 @@ mod proof_item_typed_tests {
 
         let mut fs = vec![];
         fs.push(proof_stream.prover_fiat_shamir());
-        proof_stream.enqueue(&ProofItem::TransposedBaseElements(manyb1.clone()));
-        fs.push(proof_stream.prover_fiat_shamir());
-        proof_stream.enqueue(&ProofItem::TransposedExtensionElements(manyx.clone()));
-        fs.push(proof_stream.prover_fiat_shamir());
-        proof_stream.enqueue(&ProofItem::TransposedBaseElements(manyb2.clone()));
-        fs.push(proof_stream.prover_fiat_shamir());
         proof_stream.enqueue(&ProofItem::AuthenticationPath(map.clone()));
         fs.push(proof_stream.prover_fiat_shamir());
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
@@ -465,29 +422,6 @@ mod proof_item_typed_tests {
             ProofStream::<ProofItem, H>::from_proof(&proof).expect("invalid parsing of proof");
 
         let mut fs_ = vec![];
-        fs_.push(proof_stream_.verifier_fiat_shamir());
-        let manyb1_ = proof_stream_
-            .dequeue()
-            .expect("can't dequeue item")
-            .as_transposed_base_elements()
-            .expect("cannot parse dequeued item");
-        assert_eq!(manyb1, manyb1_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
-
-        let manyx_ = proof_stream_
-            .dequeue()
-            .expect("can't dequeue item")
-            .as_transposed_extension_elements()
-            .expect("cannot parse dequeued item");
-        assert_eq!(manyx, manyx_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
-
-        let manyb2_ = proof_stream_
-            .dequeue()
-            .expect("can't dequeue item")
-            .as_transposed_base_elements()
-            .expect("cannot parse dequeued item");
-        assert_eq!(manyb2, manyb2_);
         fs_.push(proof_stream_.verifier_fiat_shamir());
 
         let map_ = proof_stream_
