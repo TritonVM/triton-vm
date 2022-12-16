@@ -130,7 +130,8 @@ impl OpStack {
 mod op_stack_test {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
-    use crate::{op_stack::OpStack, ord_n::Ord16};
+    use crate::op_stack::OpStack;
+    use crate::ord_n::Ord16;
 
     #[test]
     fn test_sanity() {

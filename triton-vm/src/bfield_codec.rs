@@ -380,7 +380,8 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
 #[cfg(test)]
 mod bfield_codec_tests {
     use itertools::Itertools;
-    use rand::{thread_rng, RngCore};
+    use rand::thread_rng;
+    use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use super::*;

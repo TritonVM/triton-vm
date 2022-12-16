@@ -55,6 +55,7 @@ pub struct StarkParameters {
     pub num_trace_randomizers: usize,
     pub num_randomizer_polynomials: usize,
     pub num_colinearity_checks: usize,
+    pub num_non_linear_codeword_checks: usize,
 }
 
 impl StarkParameters {
@@ -80,6 +81,7 @@ impl StarkParameters {
 
         let num_colinearity_checks = security_level / log2_of_fri_expansion_factor;
         let num_trace_randomizers = num_colinearity_checks * 2;
+        let num_non_linear_codeword_checks = security_level;
 
         StarkParameters {
             security_level,
@@ -87,6 +89,7 @@ impl StarkParameters {
             num_trace_randomizers,
             num_randomizer_polynomials,
             num_colinearity_checks,
+            num_non_linear_codeword_checks,
         }
     }
 }
@@ -292,7 +295,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let indices_seed = proof_stream.prover_fiat_shamir();
         let revealed_current_row_indices = StarkHasher::sample_indices(
-            self.parameters.security_level,
+            self.parameters.num_non_linear_codeword_checks,
             &indices_seed,
             self.fri.domain.length,
         );
@@ -568,7 +571,7 @@ impl Stark {
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
         let indices_seed = proof_stream.verifier_fiat_shamir();
         let revealed_current_row_indices = StarkHasher::sample_indices(
-            self.parameters.security_level, // todo: not intuitive. Either rename or introduce field
+            self.parameters.num_non_linear_codeword_checks,
             &indices_seed,
             self.fri.domain.length,
         );

@@ -318,13 +318,12 @@ impl BFieldCodec for ProofItem {
 #[cfg(test)]
 mod proof_item_typed_tests {
     use itertools::Itertools;
-    use rand::{thread_rng, RngCore};
-    use twenty_first::shared_math::{
-        b_field_element::BFieldElement,
-        other::random_elements,
-        rescue_prime_regular::RescuePrimeRegular,
-        x_field_element::{XFieldElement, EXTENSION_DEGREE},
-    };
+    use rand::thread_rng;
+    use rand::RngCore;
+    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::x_field_element::XFieldElement;
+    use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
     use crate::proof_stream::ProofStream;
 
