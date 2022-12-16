@@ -298,7 +298,7 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root));
         prof_stop!(maybe_profiler, "Merkle tree 3");
 
-        // Get indices of slices that go across codewords to prove nonlinear combination
+        // Get indices of master table rows to prove nonlinear combination
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let indices_seed = proof_stream.prover_fiat_shamir();
         let revealed_current_row_indices = StarkHasher::sample_indices(
@@ -722,16 +722,16 @@ impl Stark {
             // todo pre-compute for all revealed fri domain values, use batch invert?
             let one = BFieldElement::one();
             let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
-            let initial_zerofier_inverse = current_fri_domain_value - one;
+            let initial_zerofier_inverse = (current_fri_domain_value - one).inverse();
             let consistency_zerofier_inverse =
                 (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
             let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
             let transition_zerofier_inverse = except_last_row
                 * (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
-            let terminal_zerofier_inverse = except_last_row;
+            let terminal_zerofier_inverse = except_last_row.inverse();
 
             prof_start!(maybe_profiler, "populate");
-            // populate summands with a cross-slice of (base,ext) codewords and their shifts
+            // populate summands with a the revealed FRI domain master table rows and their shifts
             let mut summands = vec![];
             for (&base_row_element, degree_bound) in
                 current_base_row.iter().zip_eq(base_degree_bounds.iter())
