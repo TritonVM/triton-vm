@@ -6,11 +6,18 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Zip;
 use num_traits::One;
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::cross_table_arguments::CrossTableChallengeId::*;
+use crate::table::challenges::AllChallenges;
+use crate::table::challenges::TableChallenges;
+use crate::table::extension_table::{Evaluable, Quotientable};
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_collection::interpolant_degree;
 use crate::table::table_collection::terminal_quotient_zerofier_inverse;
@@ -458,6 +465,203 @@ impl GrandCrossTableArg {
         non_linear_sum += self.processor_to_output_weight * (processor_out - self.output_terminal);
 
         non_linear_sum
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CrossTableChallenges {
+    pub input_terminal: XFieldElement,
+    pub output_terminal: XFieldElement,
+
+    pub program_to_instruction_weight: XFieldElement,
+    pub processor_to_instruction_weight: XFieldElement,
+    pub processor_to_op_stack_weight: XFieldElement,
+    pub processor_to_ram_weight: XFieldElement,
+    pub processor_to_jump_stack_weight: XFieldElement,
+    pub processor_to_hash_weight: XFieldElement,
+    pub hash_to_processor_weight: XFieldElement,
+    pub all_clock_jump_differences_weight: XFieldElement,
+    pub input_to_processor_weight: XFieldElement,
+    pub processor_to_output_weight: XFieldElement,
+}
+
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
+pub enum CrossTableChallengeId {
+    InputTerminal,
+    OutputTerminal,
+
+    ProgramToInstructionWeight,
+    ProcessorToInstructionWeight,
+    ProcessorToOpStackWeight,
+    ProcessorToRamWeight,
+    ProcessorToJumpStackWeight,
+    ProcessorToHashWeight,
+    HashToProcessorWeight,
+    AllClockJumpDifferencesWeight,
+    InputToProcessorWeight,
+    ProcessorToOutputWeight,
+}
+
+impl From<CrossTableChallengeId> for usize {
+    fn from(val: CrossTableChallengeId) -> Self {
+        val as usize
+    }
+}
+
+impl TableChallenges for CrossTableChallenges {
+    type Id = CrossTableChallengeId;
+
+    #[inline]
+    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
+        match id {
+            InputTerminal => self.input_terminal,
+            OutputTerminal => self.output_terminal,
+            ProgramToInstructionWeight => self.program_to_instruction_weight,
+            ProcessorToInstructionWeight => self.processor_to_instruction_weight,
+            ProcessorToOpStackWeight => self.processor_to_op_stack_weight,
+            ProcessorToRamWeight => self.processor_to_ram_weight,
+            ProcessorToJumpStackWeight => self.processor_to_jump_stack_weight,
+            ProcessorToHashWeight => self.processor_to_hash_weight,
+            HashToProcessorWeight => self.hash_to_processor_weight,
+            AllClockJumpDifferencesWeight => self.all_clock_jump_differences_weight,
+            InputToProcessorWeight => self.input_to_processor_weight,
+            ProcessorToOutputWeight => self.processor_to_output_weight,
+        }
+    }
+}
+
+impl Evaluable for GrandCrossTableArg {
+    fn evaluate_initial_constraints(
+        _base_row: ArrayView1<BFieldElement>,
+        _ext_row: ArrayView1<XFieldElement>,
+        _challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {
+        vec![]
+    }
+
+    fn evaluate_consistency_constraints(
+        _base_row: ArrayView1<BFieldElement>,
+        _ext_row: ArrayView1<XFieldElement>,
+        _challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {
+        vec![]
+    }
+
+    fn evaluate_transition_constraints(
+        _current_base_row: ArrayView1<BFieldElement>,
+        _current_ext_row: ArrayView1<XFieldElement>,
+        _next_base_row: ArrayView1<BFieldElement>,
+        _next_ext_row: ArrayView1<XFieldElement>,
+        _challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {
+        vec![]
+    }
+
+    fn evaluate_terminal_constraints(
+        _base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
+        challenges: &AllChallenges,
+    ) -> Vec<XFieldElement> {
+        let challenges = &challenges.cross_table_challenges;
+
+        let input_to_processor = challenges.get_challenge(InputTerminal)
+            - ext_row[ProcessorExtTableColumn::InputTableEvalArg.master_ext_table_index()];
+        let processor_to_output = ext_row
+            [ProcessorExtTableColumn::OutputTableEvalArg.master_ext_table_index()]
+            - challenges.get_challenge(OutputTerminal);
+
+        let program_to_instruction = ext_row
+            [ProgramExtTableColumn::RunningEvaluation.master_ext_table_index()]
+            - ext_row[InstructionExtTableColumn::RunningEvaluation.master_ext_table_index()];
+        let processor_to_instruction = ext_row
+            [ProcessorExtTableColumn::InstructionTablePermArg.master_ext_table_index()]
+            - ext_row[InstructionExtTableColumn::RunningProductPermArg.master_ext_table_index()];
+        let processor_to_op_stack = ext_row
+            [ProcessorExtTableColumn::OpStackTablePermArg.master_ext_table_index()]
+            - ext_row[OpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()];
+        let processor_to_ram = ext_row
+            [ProcessorExtTableColumn::RamTablePermArg.master_ext_table_index()]
+            - ext_row[RamExtTableColumn::RunningProductPermArg.master_ext_table_index()];
+        let processor_to_jump_stack = ext_row
+            [ProcessorExtTableColumn::JumpStackTablePermArg.master_ext_table_index()]
+            - ext_row[JumpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()];
+        let processor_to_hash = ext_row
+            [ProcessorExtTableColumn::ToHashTableEvalArg.master_ext_table_index()]
+            - ext_row[HashExtTableColumn::FromProcessorRunningEvaluation.master_ext_table_index()];
+        let hash_to_processor = ext_row
+            [HashExtTableColumn::ToProcessorRunningEvaluation.master_ext_table_index()]
+            - ext_row[ProcessorExtTableColumn::FromHashTableEvalArg.master_ext_table_index()];
+        let all_clock_jump_differences = ext_row
+            [ProcessorExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()]
+            - ext_row
+                [OpStackExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()]
+                * ext_row
+                    [RamExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()]
+                * ext_row[JumpStackExtTableColumn::AllClockJumpDifferencesPermArg
+                    .master_ext_table_index()];
+
+        let non_linear_sum = challenges.get_challenge(InputToProcessorWeight) * input_to_processor
+            + challenges.get_challenge(ProcessorToOutputWeight) * processor_to_output
+            + challenges.get_challenge(ProgramToInstructionWeight) * program_to_instruction
+            + challenges.get_challenge(ProcessorToInstructionWeight) * processor_to_instruction
+            + challenges.get_challenge(ProcessorToOpStackWeight) * processor_to_op_stack
+            + challenges.get_challenge(ProcessorToRamWeight) * processor_to_ram
+            + challenges.get_challenge(ProcessorToJumpStackWeight) * processor_to_jump_stack
+            + challenges.get_challenge(ProcessorToHashWeight) * processor_to_hash
+            + challenges.get_challenge(HashToProcessorWeight) * hash_to_processor
+            + challenges.get_challenge(AllClockJumpDifferencesWeight) * all_clock_jump_differences;
+        vec![non_linear_sum]
+    }
+}
+
+impl Quotientable for GrandCrossTableArg {
+    fn num_initial_quotients() -> usize {
+        0
+    }
+
+    fn num_consistency_quotients() -> usize {
+        0
+    }
+
+    fn num_transition_quotients() -> usize {
+        0
+    }
+
+    fn num_terminal_quotients() -> usize {
+        1
+    }
+
+    fn initial_quotient_degree_bounds(
+        _padded_height: usize,
+        _num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        vec![]
+    }
+
+    fn consistency_quotient_degree_bounds(
+        _padded_height: usize,
+        _num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        vec![]
+    }
+
+    fn transition_quotient_degree_bounds(
+        _padded_height: usize,
+        _num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        vec![]
+    }
+
+    fn terminal_quotient_degree_bounds(
+        padded_height: usize,
+        num_trace_randomizers: usize,
+    ) -> Vec<Degree> {
+        let zerofier_degree = 1 as Degree;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        let max_columns_involved_in_one_cross_table_argument = 3;
+        vec![
+            interpolant_degree * max_columns_involved_in_one_cross_table_argument - zerofier_degree,
+        ]
     }
 }
 

@@ -4485,7 +4485,7 @@ mod constraint_polynomial_tests {
         debug_cols_curr_row: &[ProcessorBaseTableColumn],
         debug_cols_next_row: &[ProcessorBaseTableColumn],
     ) {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let fake_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
         for (case_idx, test_rows) in master_base_tables.iter().enumerate() {
             let curr_row = test_rows.slice(s![0, ..]);
@@ -4740,7 +4740,7 @@ mod constraint_polynomial_tests {
         let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
 
         // We need dummy challenges to evaluate.
-        let dummy_challenges = AllChallenges::placeholder();
+        let dummy_challenges = AllChallenges::placeholder(&[], &[]);
         for instruction in all_instructions_without_args() {
             use ProcessorBaseTableColumn::*;
             let deselector = deselectors.get(instruction);

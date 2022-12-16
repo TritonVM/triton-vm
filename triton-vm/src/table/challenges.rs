@@ -1,19 +1,25 @@
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
+
 use strum::EnumCount;
 use strum::IntoEnumIterator;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::random_elements;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use super::hash_table::HashTableChallenges;
-use super::instruction_table::InstructionTableChallenges;
-use super::jump_stack_table::JumpStackTableChallenges;
-use super::op_stack_table::OpStackTableChallenges;
-use super::processor_table::IOChallenges;
-use super::processor_table::ProcessorTableChallenges;
-use super::program_table::ProgramTableChallenges;
-use super::ram_table::RamTableChallenges;
+use crate::cross_table_arguments::CrossTableArg;
+use crate::cross_table_arguments::CrossTableChallenges;
+use crate::cross_table_arguments::EvalArg;
+use crate::cross_table_arguments::NUM_CROSS_TABLE_WEIGHTS;
+use crate::table::hash_table::HashTableChallenges;
+use crate::table::instruction_table::InstructionTableChallenges;
+use crate::table::jump_stack_table::JumpStackTableChallenges;
+use crate::table::op_stack_table::OpStackTableChallenges;
+use crate::table::processor_table::IOChallenges;
+use crate::table::processor_table::ProcessorTableChallenges;
+use crate::table::program_table::ProgramTableChallenges;
+use crate::table::ram_table::RamTableChallenges;
 
 pub trait TableChallenges: Clone + Debug {
     type Id: Display
@@ -49,12 +55,17 @@ pub struct AllChallenges {
     pub ram_table_challenges: RamTableChallenges,
     pub jump_stack_table_challenges: JumpStackTableChallenges,
     pub hash_table_challenges: HashTableChallenges,
+    pub cross_table_challenges: CrossTableChallenges,
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 46;
+    pub const TOTAL_CHALLENGES: usize = 46 + NUM_CROSS_TABLE_WEIGHTS;
 
-    pub fn create_challenges(mut weights: Vec<XFieldElement>) -> Self {
+    pub fn create_challenges(
+        mut weights: Vec<XFieldElement>,
+        claimed_input: &[BFieldElement],
+        claimed_output: &[BFieldElement],
+    ) -> Self {
         let processor_table_challenges = ProcessorTableChallenges {
             standard_input_eval_indeterminate: weights.pop().unwrap(),
             standard_output_eval_indeterminate: weights.pop().unwrap(),
@@ -192,6 +203,32 @@ impl AllChallenges {
             digest_output_weight4: processor_table_challenges.hash_table_digest_output_weight4,
         };
 
+        let input_terminal = EvalArg::compute_terminal(
+            claimed_input,
+            EvalArg::default_initial(),
+            processor_table_challenges.standard_input_eval_indeterminate,
+        );
+        let output_terminal = EvalArg::compute_terminal(
+            claimed_output,
+            EvalArg::default_initial(),
+            processor_table_challenges.standard_output_eval_indeterminate,
+        );
+
+        let cross_table_challenges = CrossTableChallenges {
+            input_terminal,
+            output_terminal,
+            program_to_instruction_weight: weights.pop().unwrap(),
+            processor_to_instruction_weight: weights.pop().unwrap(),
+            processor_to_op_stack_weight: weights.pop().unwrap(),
+            processor_to_ram_weight: weights.pop().unwrap(),
+            processor_to_jump_stack_weight: weights.pop().unwrap(),
+            processor_to_hash_weight: weights.pop().unwrap(),
+            hash_to_processor_weight: weights.pop().unwrap(),
+            all_clock_jump_differences_weight: weights.pop().unwrap(),
+            input_to_processor_weight: weights.pop().unwrap(),
+            processor_to_output_weight: weights.pop().unwrap(),
+        };
+
         assert!(weights.is_empty(), "{} weights left unused.", weights.len());
 
         AllChallenges {
@@ -204,12 +241,17 @@ impl AllChallenges {
             ram_table_challenges,
             jump_stack_table_challenges,
             hash_table_challenges,
+            cross_table_challenges,
         }
     }
 
     /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use Fiat-Shamir to
     /// derive the actual challenges.
-    pub fn placeholder() -> Self {
-        Self::create_challenges(random_elements(Self::TOTAL_CHALLENGES))
+    pub fn placeholder(claimed_input: &[BFieldElement], claimed_output: &[BFieldElement]) -> Self {
+        Self::create_challenges(
+            random_elements(Self::TOTAL_CHALLENGES),
+            claimed_input,
+            claimed_output,
+        )
     }
 }

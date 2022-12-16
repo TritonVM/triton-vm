@@ -189,7 +189,11 @@ impl Stark {
             proof_stream.prover_fiat_shamir(),
             AllChallenges::TOTAL_CHALLENGES,
         );
-        let extension_challenges = AllChallenges::create_challenges(extension_weights);
+        let extension_challenges = AllChallenges::create_challenges(
+            extension_weights,
+            &self.claim.input,
+            &self.claim.output,
+        );
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
@@ -607,7 +611,11 @@ impl Stark {
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
         let extension_challenge_weights =
             Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
-        let challenges = AllChallenges::create_challenges(extension_challenge_weights);
+        let challenges = AllChallenges::create_challenges(
+            extension_challenge_weights,
+            &self.claim.input,
+            &self.claim.output,
+        );
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue");
@@ -1075,7 +1083,7 @@ pub(crate) mod triton_stark_tests {
         let (stark, unpadded_master_base_table, master_base_table) =
             parse_simulate_pad(code, stdin, secret_in);
 
-        let dummy_challenges = AllChallenges::placeholder();
+        let dummy_challenges = AllChallenges::placeholder(&stark.claim.input, &stark.claim.output);
         let master_ext_table = master_base_table.extend(
             &dummy_challenges,
             stark.parameters.num_randomizer_polynomials,
@@ -1201,7 +1209,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let base_row = Array1::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
 
@@ -1319,7 +1327,7 @@ pub(crate) mod triton_stark_tests {
     fn number_of_quotient_degree_bounds_match_number_of_constraints_test() {
         let base_row = Array1::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
 
         let br = base_row.view();
         let er = ext_row.view();

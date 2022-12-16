@@ -1356,7 +1356,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_instruction_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1367,7 +1367,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_processor_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1378,7 +1378,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_program_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1389,7 +1389,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_jump_stack_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1400,7 +1400,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_op_stack_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1411,7 +1411,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_ram_stack_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
