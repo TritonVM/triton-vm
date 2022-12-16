@@ -31,8 +31,6 @@ use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::extension_table::ExtensionTable;
-use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
@@ -59,8 +57,6 @@ pub struct JumpStackTable {}
 
 #[derive(Debug, Clone)]
 pub struct ExtJumpStackTable {}
-
-impl QuotientableExtensionTable for ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -496,8 +492,6 @@ impl TableChallenges for JumpStackTableChallenges {
         }
     }
 }
-
-impl ExtensionTable for ExtJumpStackTable {}
 
 pub struct JumpStackMatrixRow {
     pub row: [BFieldElement; BASE_WIDTH],

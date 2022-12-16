@@ -40,8 +40,6 @@ use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::InputIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::extension_table::ExtensionTable;
-use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
@@ -683,8 +681,6 @@ pub struct IOChallenges {
 
 #[derive(Debug, Clone)]
 pub struct ExtProcessorTable {}
-
-impl QuotientableExtensionTable for ExtProcessorTable {}
 
 impl ExtProcessorTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -4213,8 +4209,6 @@ impl InstructionDeselectors {
             .collect()
     }
 }
-
-impl ExtensionTable for ExtProcessorTable {}
 
 pub struct ProcessorMatrixRow {
     pub row: [BFieldElement; BASE_WIDTH],

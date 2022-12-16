@@ -29,8 +29,6 @@ use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::extension_table::ExtensionTable;
-use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
@@ -57,8 +55,6 @@ pub struct OpStackTable {}
 
 #[derive(Debug, Clone)]
 pub struct ExtOpStackTable {}
-
-impl QuotientableExtensionTable for ExtOpStackTable {}
 
 impl ExtOpStackTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -466,5 +462,3 @@ pub struct OpStackTableChallenges {
     /// Weight for accumulating all clock jump differences
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 }
-
-impl ExtensionTable for ExtOpStackTable {}

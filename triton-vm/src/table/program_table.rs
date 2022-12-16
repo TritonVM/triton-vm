@@ -22,8 +22,6 @@ use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::extension_table::ExtensionTable;
-use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
@@ -48,8 +46,6 @@ pub struct ProgramTable {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtProgramTable {}
-
-impl QuotientableExtensionTable for ExtProgramTable {}
 
 impl ExtProgramTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<
@@ -255,5 +251,3 @@ pub struct ProgramTableChallenges {
     pub instruction_weight: XFieldElement,
     pub next_instruction_weight: XFieldElement,
 }
-
-impl ExtensionTable for ExtProgramTable {}

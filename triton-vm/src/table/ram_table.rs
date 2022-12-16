@@ -30,8 +30,6 @@ use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
-use crate::table::extension_table::ExtensionTable;
-use crate::table::extension_table::QuotientableExtensionTable;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
@@ -58,8 +56,6 @@ pub struct RamTable {}
 
 #[derive(Debug, Clone)]
 pub struct ExtRamTable {}
-
-impl QuotientableExtensionTable for ExtRamTable {}
 
 impl RamTable {
     /// Fills the trace table in-place and returns all clock jump differences greater than 1.
@@ -631,5 +627,3 @@ impl TableChallenges for RamTableChallenges {
         }
     }
 }
-
-impl ExtensionTable for ExtRamTable {}
