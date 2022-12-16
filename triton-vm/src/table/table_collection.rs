@@ -286,7 +286,7 @@ impl MasterBaseTable {
     ) -> Self {
         let padded_height = Self::padded_height(&aet, program);
         let randomized_padded_trace_len =
-            roundup_npo2((padded_height + num_trace_randomizers) as u64) as usize;
+            randomized_padded_trace_len(num_trace_randomizers, padded_height);
         let unit_distance = randomized_padded_trace_len as usize / padded_height;
         let program_len = program.len();
         let main_execution_len = aet.processor_matrix.len();
@@ -532,42 +532,37 @@ impl MasterExtTable {
     }
 }
 
-pub fn base_degree_bounds(
-    padded_height: usize,
-    num_trace_randomizers: usize,
-) -> [Degree; NUM_BASE_COLUMNS] {
-    [interpolant_degree(padded_height, num_trace_randomizers); NUM_BASE_COLUMNS]
+pub fn base_degree_bounds(interpolant_degree: Degree) -> [Degree; NUM_BASE_COLUMNS] {
+    [interpolant_degree; NUM_BASE_COLUMNS]
 }
 
-pub fn extension_degree_bounds(
-    padded_height: usize,
-    num_trace_randomizers: usize,
-) -> [Degree; NUM_EXT_COLUMNS] {
-    [interpolant_degree(padded_height, num_trace_randomizers); NUM_EXT_COLUMNS]
+pub fn extension_degree_bounds(interpolant_degree: Degree) -> [Degree; NUM_EXT_COLUMNS] {
+    [interpolant_degree; NUM_EXT_COLUMNS]
 }
 
 pub fn all_degrees_with_origin(
+    interpolant_degree: Degree,
     padded_height: usize,
-    num_trace_randomizers: usize,
 ) -> Vec<DegreeWithOrigin> {
-    let num_rand = num_trace_randomizers;
+    let id = interpolant_degree;
+    let ph = padded_height;
     [
-        ExtProgramTable::all_degrees_with_origin("program table", padded_height, num_rand),
-        ExtInstructionTable::all_degrees_with_origin("instruction table", padded_height, num_rand),
-        ExtProcessorTable::all_degrees_with_origin("processor table", padded_height, num_rand),
-        ExtOpStackTable::all_degrees_with_origin("op stack table", padded_height, num_rand),
-        ExtRamTable::all_degrees_with_origin("ram table", padded_height, num_rand),
-        ExtJumpStackTable::all_degrees_with_origin("jump stack table", padded_height, num_rand),
-        ExtHashTable::all_degrees_with_origin("hash table", padded_height, num_rand),
+        ExtProgramTable::all_degrees_with_origin("program table", id, ph),
+        ExtInstructionTable::all_degrees_with_origin("instruction table", id, ph),
+        ExtProcessorTable::all_degrees_with_origin("processor table", id, ph),
+        ExtOpStackTable::all_degrees_with_origin("op stack table", id, ph),
+        ExtRamTable::all_degrees_with_origin("ram table", id, ph),
+        ExtJumpStackTable::all_degrees_with_origin("jump stack table", id, ph),
+        ExtHashTable::all_degrees_with_origin("hash table", id, ph),
     ]
     .concat()
 }
 
 pub fn max_degree_with_origin(
+    interpolant_degree: Degree,
     padded_height: usize,
-    num_trace_randomizers: usize,
 ) -> DegreeWithOrigin {
-    all_degrees_with_origin(padded_height, num_trace_randomizers)
+    all_degrees_with_origin(interpolant_degree, padded_height)
         .into_iter()
         .max()
         .unwrap_or_default()
@@ -621,82 +616,71 @@ pub fn num_all_terminal_quotients() -> usize {
         + GrandCrossTableArg::num_terminal_quotients()
 }
 
-pub fn all_initial_quotient_degree_bounds(
-    padded_height: usize,
-    num_trace_randomizers: usize,
-) -> Vec<Degree> {
+pub fn all_initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
     [
-        ExtProgramTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtInstructionTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtProcessorTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtOpStackTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtRamTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtJumpStackTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtHashTable::initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtProgramTable::initial_quotient_degree_bounds(interpolant_degree),
+        ExtInstructionTable::initial_quotient_degree_bounds(interpolant_degree),
+        ExtProcessorTable::initial_quotient_degree_bounds(interpolant_degree),
+        ExtOpStackTable::initial_quotient_degree_bounds(interpolant_degree),
+        ExtRamTable::initial_quotient_degree_bounds(interpolant_degree),
+        ExtJumpStackTable::initial_quotient_degree_bounds(interpolant_degree),
+        ExtHashTable::initial_quotient_degree_bounds(interpolant_degree),
     ]
     .concat()
 }
 
 pub fn all_consistency_quotient_degree_bounds(
+    interpolant_degree: Degree,
     padded_height: usize,
-    num_trace_randomizers: usize,
 ) -> Vec<Degree> {
-    let ntr = num_trace_randomizers;
     [
-        ExtProgramTable::consistency_quotient_degree_bounds(padded_height, ntr),
-        ExtInstructionTable::consistency_quotient_degree_bounds(padded_height, ntr),
-        ExtProcessorTable::consistency_quotient_degree_bounds(padded_height, ntr),
-        ExtOpStackTable::consistency_quotient_degree_bounds(padded_height, ntr),
-        ExtRamTable::consistency_quotient_degree_bounds(padded_height, ntr),
-        ExtJumpStackTable::consistency_quotient_degree_bounds(padded_height, ntr),
-        ExtHashTable::consistency_quotient_degree_bounds(padded_height, ntr),
+        ExtProgramTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtInstructionTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtProcessorTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtOpStackTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtRamTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtJumpStackTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtHashTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
     ]
     .concat()
 }
 
 pub fn all_transition_quotient_degree_bounds(
+    interpolant_degree: Degree,
     padded_height: usize,
-    num_trace_randomizers: usize,
 ) -> Vec<Degree> {
-    let ntr = num_trace_randomizers;
     [
-        ExtProgramTable::transition_quotient_degree_bounds(padded_height, ntr),
-        ExtInstructionTable::transition_quotient_degree_bounds(padded_height, ntr),
-        ExtProcessorTable::transition_quotient_degree_bounds(padded_height, ntr),
-        ExtOpStackTable::transition_quotient_degree_bounds(padded_height, ntr),
-        ExtRamTable::transition_quotient_degree_bounds(padded_height, ntr),
-        ExtJumpStackTable::transition_quotient_degree_bounds(padded_height, ntr),
-        ExtHashTable::transition_quotient_degree_bounds(padded_height, ntr),
+        ExtProgramTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtInstructionTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtProcessorTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtOpStackTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtRamTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtJumpStackTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtHashTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
     ]
     .concat()
 }
 
-pub fn all_terminal_quotient_degree_bounds(
-    padded_height: usize,
-    num_trace_randomizers: usize,
-) -> Vec<Degree> {
+pub fn all_terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
     [
-        ExtProgramTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtInstructionTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtProcessorTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtOpStackTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtRamTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtJumpStackTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        ExtHashTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        GrandCrossTableArg::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        ExtProgramTable::terminal_quotient_degree_bounds(interpolant_degree),
+        ExtInstructionTable::terminal_quotient_degree_bounds(interpolant_degree),
+        ExtProcessorTable::terminal_quotient_degree_bounds(interpolant_degree),
+        ExtOpStackTable::terminal_quotient_degree_bounds(interpolant_degree),
+        ExtRamTable::terminal_quotient_degree_bounds(interpolant_degree),
+        ExtJumpStackTable::terminal_quotient_degree_bounds(interpolant_degree),
+        ExtHashTable::terminal_quotient_degree_bounds(interpolant_degree),
+        GrandCrossTableArg::terminal_quotient_degree_bounds(interpolant_degree),
     ]
     .concat()
 }
 
-pub fn all_quotient_degree_bounds(
-    padded_height: usize,
-    num_trace_randomizers: usize,
-) -> Vec<Degree> {
+pub fn all_quotient_degree_bounds(interpolant_degree: Degree, padded_height: usize) -> Vec<Degree> {
     [
-        all_initial_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        all_consistency_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        all_transition_quotient_degree_bounds(padded_height, num_trace_randomizers),
-        all_terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        all_initial_quotient_degree_bounds(interpolant_degree),
+        all_consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        all_transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        all_terminal_quotient_degree_bounds(interpolant_degree),
     ]
     .concat()
 }
@@ -1356,9 +1340,12 @@ pub fn evaluate_all_constraints(
     .concat()
 }
 
+pub fn randomized_padded_trace_len(num_trace_randomizers: usize, padded_height: usize) -> usize {
+    roundup_npo2((padded_height + num_trace_randomizers) as u64) as usize
+}
+
 pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
-    let randomized_trace_length = roundup_npo2((padded_height + num_trace_randomizers) as u64);
-    (randomized_trace_length - 1) as Degree
+    (randomized_padded_trace_len(padded_height, num_trace_randomizers) - 1) as Degree
 }
 
 pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {

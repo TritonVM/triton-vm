@@ -167,7 +167,6 @@ use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
 use crate::table::{table_name_snake}::{table_mod_name};
 use crate::table::{table_name_snake}::{challenge_enum_name}::*;
-use crate::table::table_collection::interpolant_degree;
 
 // This file has been auto-generated. Any modifications _will_ be lost.
 // To re-generate, execute:
@@ -239,42 +238,35 @@ impl Quotientable for {table_mod_name} {{
 
     #[allow(unused_variables)]
     fn initial_quotient_degree_bounds(
-        padded_height: usize,
-        num_trace_randomizers: usize,
+        interpolant_degree: Degree,
     ) -> Vec<Degree> {{
         let zerofier_degree = 1 as Degree;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         [{initial_constraints_degrees}].to_vec()
     }}
 
     #[allow(unused_variables)]
     fn consistency_quotient_degree_bounds(
+        interpolant_degree: Degree,
         padded_height: usize,
-        num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
         let zerofier_degree = padded_height as Degree;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         [{consistency_constraints_degrees}].to_vec()
     }}
 
     #[allow(unused_variables)]
     fn transition_quotient_degree_bounds(
+        interpolant_degree: Degree,
         padded_height: usize,
-        num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
         let zerofier_degree = padded_height as Degree - 1;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         [{transition_constraints_degrees}].to_vec()
     }}
 
     #[allow(unused_variables)]
     fn terminal_quotient_degree_bounds(
-        padded_height: usize,
-        num_trace_randomizers: usize,
+        interpolant_degree: Degree,
     ) -> Vec<Degree> {{
         let zerofier_degree = 1 as Degree;
-        let interpolant_degree =
-            interpolant_degree(padded_height, num_trace_randomizers);
         [{terminal_constraints_degrees}].to_vec()
     }}
 }}

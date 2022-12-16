@@ -16,7 +16,6 @@ use crate::table::challenges::TableChallenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
-use crate::table::table_collection::interpolant_degree;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::InstructionExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn;
@@ -259,33 +258,26 @@ impl Quotientable for GrandCrossTableArg {
         1
     }
 
-    fn initial_quotient_degree_bounds(
-        _padded_height: usize,
-        _num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
+    fn initial_quotient_degree_bounds(_interpolant_degree: Degree) -> Vec<Degree> {
         vec![]
     }
 
     fn consistency_quotient_degree_bounds(
+        _interpolant_degree: Degree,
         _padded_height: usize,
-        _num_trace_randomizers: usize,
     ) -> Vec<Degree> {
         vec![]
     }
 
     fn transition_quotient_degree_bounds(
+        _interpolant_degree: Degree,
         _padded_height: usize,
-        _num_trace_randomizers: usize,
     ) -> Vec<Degree> {
         vec![]
     }
 
-    fn terminal_quotient_degree_bounds(
-        padded_height: usize,
-        num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
+    fn terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
         let zerofier_degree = 1 as Degree;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         let max_columns_involved_in_one_cross_table_argument = 3;
         vec![
             interpolant_degree * max_columns_involved_in_one_cross_table_argument - zerofier_degree,

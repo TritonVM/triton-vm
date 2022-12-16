@@ -12,9 +12,7 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::table::table_collection::interpolant_degree;
-
-use super::challenges::AllChallenges;
+use crate::table::challenges::AllChallenges;
 
 const ERROR_MESSAGE_GENERATE_CONSTRAINTS: &str =
     "Constraints must be in place. Run: `cargo run --bin constraint-evaluation-generator`";
@@ -69,65 +67,64 @@ pub trait Quotientable: Evaluable {
     /// Compute the degrees of the quotients from all AIR constraints that apply to the table.
     fn all_degrees_with_origin(
         table_name: &str,
+        interpolant_degree: Degree,
         padded_height: usize,
-        num_trace_randomizers: usize,
     ) -> Vec<DegreeWithOrigin> {
-        let initial_degrees_with_origin =
-            Self::initial_quotient_degree_bounds(padded_height, num_trace_randomizers)
-                .into_iter()
-                .enumerate()
-                .map(|(i, d)| DegreeWithOrigin {
-                    degree: d,
-                    zerofier_degree: 1,
-                    origin_table_name: table_name.to_owned(),
-                    origin_index: i,
-                    origin_table_height: padded_height,
-                    origin_num_trace_randomizers: num_trace_randomizers,
-                    origin_constraint_type: "initial constraint".to_string(),
-                })
-                .collect_vec();
+        let initial_degrees_with_origin = Self::initial_quotient_degree_bounds(interpolant_degree)
+            .into_iter()
+            .enumerate()
+            .map(|(i, d)| DegreeWithOrigin {
+                degree: d,
+                interpolant_degree,
+                zerofier_degree: 1,
+                origin_table_name: table_name.to_owned(),
+                origin_index: i,
+                origin_table_height: padded_height,
+                origin_constraint_type: "initial constraint".to_string(),
+            })
+            .collect_vec();
 
         let consistency_degrees_with_origin =
-            Self::consistency_quotient_degree_bounds(padded_height, num_trace_randomizers)
+            Self::consistency_quotient_degree_bounds(interpolant_degree, padded_height)
                 .into_iter()
                 .enumerate()
                 .map(|(i, d)| DegreeWithOrigin {
                     degree: d,
+                    interpolant_degree,
                     zerofier_degree: padded_height as Degree,
                     origin_table_name: table_name.to_owned(),
                     origin_index: i,
                     origin_table_height: padded_height,
-                    origin_num_trace_randomizers: num_trace_randomizers,
                     origin_constraint_type: "consistency constraint".to_string(),
                 })
                 .collect();
 
         let transition_degrees_with_origin =
-            Self::transition_quotient_degree_bounds(padded_height, num_trace_randomizers)
+            Self::transition_quotient_degree_bounds(interpolant_degree, padded_height)
                 .into_iter()
                 .enumerate()
                 .map(|(i, d)| DegreeWithOrigin {
                     degree: d,
+                    interpolant_degree,
                     zerofier_degree: padded_height as Degree - 1,
                     origin_table_name: table_name.to_owned(),
                     origin_index: i,
                     origin_table_height: padded_height,
-                    origin_num_trace_randomizers: num_trace_randomizers,
                     origin_constraint_type: "transition constraint".to_string(),
                 })
                 .collect();
 
         let terminal_degrees_with_origin =
-            Self::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers)
+            Self::terminal_quotient_degree_bounds(interpolant_degree)
                 .into_iter()
                 .enumerate()
                 .map(|(i, d)| DegreeWithOrigin {
                     degree: d,
+                    interpolant_degree,
                     zerofier_degree: 1,
                     origin_table_name: table_name.to_owned(),
                     origin_index: i,
                     origin_table_height: padded_height,
-                    origin_num_trace_randomizers: num_trace_randomizers,
                     origin_constraint_type: "terminal constraint".to_string(),
                 })
                 .collect();
@@ -274,31 +271,25 @@ pub trait Quotientable: Evaluable {
         panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
     }
 
-    fn initial_quotient_degree_bounds(
-        _padded_height: usize,
-        _num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
+    fn initial_quotient_degree_bounds(_interpolant_degree: Degree) -> Vec<Degree> {
         panic!("{ERROR_MESSAGE_GENERATE_DEGREE_BOUNDS}")
     }
 
     fn consistency_quotient_degree_bounds(
+        _interpolant_degree: Degree,
         _padded_height: usize,
-        _num_trace_randomizers: usize,
     ) -> Vec<Degree> {
         panic!("{ERROR_MESSAGE_GENERATE_DEGREE_BOUNDS}")
     }
 
     fn transition_quotient_degree_bounds(
+        _interpolant_degree: Degree,
         _padded_height: usize,
-        _num_trace_randomizers: usize,
     ) -> Vec<Degree> {
         panic!("{ERROR_MESSAGE_GENERATE_DEGREE_BOUNDS}")
     }
 
-    fn terminal_quotient_degree_bounds(
-        _padded_height: usize,
-        _num_trace_randomizers: usize,
-    ) -> Vec<Degree> {
+    fn terminal_quotient_degree_bounds(_interpolant_degree: Degree) -> Vec<Degree> {
         panic!("{ERROR_MESSAGE_GENERATE_DEGREE_BOUNDS}")
     }
 }
@@ -308,11 +299,11 @@ pub trait Quotientable: Evaluable {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct DegreeWithOrigin {
     pub degree: Degree,
+    pub interpolant_degree: Degree,
     pub zerofier_degree: Degree,
     pub origin_table_name: String,
     pub origin_index: usize,
     pub origin_table_height: usize,
-    pub origin_num_trace_randomizers: usize,
     pub origin_constraint_type: String,
 }
 
@@ -320,11 +311,11 @@ impl Default for DegreeWithOrigin {
     fn default() -> Self {
         DegreeWithOrigin {
             degree: -1,
+            interpolant_degree: 0,
             zerofier_degree: -1,
             origin_table_name: "NoTable".to_string(),
             origin_index: usize::MAX,
             origin_table_height: 0,
-            origin_num_trace_randomizers: 0,
             origin_constraint_type: "NoType".to_string(),
         }
     }
@@ -332,11 +323,12 @@ impl Default for DegreeWithOrigin {
 
 impl Display for DegreeWithOrigin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let interpolant_degree =
-            interpolant_degree(self.origin_table_height, self.origin_num_trace_randomizers);
         let zerofier_corrected_degree = self.degree + self.zerofier_degree;
-        assert_eq!(0, zerofier_corrected_degree % interpolant_degree); // todo: wtf – in Display?!
-        let degree = zerofier_corrected_degree / interpolant_degree as Degree;
+        let degree = if self.interpolant_degree != 0 {
+            zerofier_corrected_degree / self.interpolant_degree
+        } else {
+            zerofier_corrected_degree
+        };
         write!(
             f,
             "Degree of poly for table {} (index {:02}) of type {} is {}.",

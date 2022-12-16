@@ -120,13 +120,16 @@ pub struct Stark {
     pub parameters: StarkParameters,
     pub claim: Claim,
     pub max_degree: Degree,
+    pub interpolant_degree: Degree,
     pub fri: Fri<StarkHasher>,
 }
 
 impl Stark {
     pub fn new(claim: Claim, parameters: StarkParameters) -> Self {
+        let interpolant_degree =
+            interpolant_degree(claim.padded_height, parameters.num_trace_randomizers);
         let max_degree_with_origin =
-            max_degree_with_origin(claim.padded_height, parameters.num_trace_randomizers);
+            max_degree_with_origin(interpolant_degree, claim.padded_height);
         let max_degree = (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as Degree;
         let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
         let fri_domain_generator =
@@ -143,6 +146,7 @@ impl Stark {
             parameters,
             claim,
             max_degree,
+            interpolant_degree,
             fri,
         }
     }
@@ -214,10 +218,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "ext tables");
 
         prof_start!(maybe_profiler, "quotient degree bounds");
-        let quotient_degree_bounds = all_quotient_degree_bounds(
-            master_base_table.padded_height,
-            self.parameters.num_trace_randomizers,
-        );
+        let quotient_degree_bounds =
+            all_quotient_degree_bounds(self.interpolant_degree, master_base_table.padded_height);
         prof_stop!(maybe_profiler, "quotient degree bounds");
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
@@ -269,8 +271,6 @@ impl Stark {
             quotient_codewords.view(),
             &non_lin_combi_weights,
             quotient_degree_bounds,
-            master_base_table.padded_height,
-            master_base_table.num_trace_randomizers,
         );
         prof_stop!(maybe_profiler, "create combination codeword");
 
@@ -429,8 +429,6 @@ impl Stark {
         quotient_codewords: ArrayView2<XFieldElement>,
         weights: &[XFieldElement],
         quotient_degree_bounds: Vec<Degree>,
-        padded_height: usize,
-        num_trace_randomizers: usize,
     ) -> Vec<XFieldElement> {
         let (base_weights, remaining_weights) = weights.split_at(2 * NUM_BASE_COLUMNS);
         let (ext_weights, quot_weights) = remaining_weights.split_at(2 * NUM_EXT_COLUMNS);
@@ -441,8 +439,7 @@ impl Stark {
 
         // todo Propagate this domain-specific knowledge to the rest of the code base:
         //  `base_degree_bounds` and `ext_degree_bounds` is always just `interpolant_degree`
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
-        let base_and_ext_col_shift = self.max_degree - interpolant_degree;
+        let base_and_ext_col_shift = self.max_degree - self.interpolant_degree;
         let quotient_domain_values = quotient_domain.domain_values();
         let shifted_domain_values =
             Self::degree_shift_domain(&quotient_domain_values, base_and_ext_col_shift);
@@ -700,10 +697,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "index");
 
         // verify non-linear combination
-        let base_degree_bounds =
-            base_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
-        let ext_degree_bounds =
-            extension_degree_bounds(padded_height, self.parameters.num_trace_randomizers);
+        let base_degree_bounds = base_degree_bounds(self.interpolant_degree);
+        let ext_degree_bounds = extension_degree_bounds(self.interpolant_degree);
 
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
@@ -758,22 +753,14 @@ impl Stark {
             prof_stop!(maybe_profiler, "populate");
 
             prof_start!(maybe_profiler, "degree bounds");
-            let initial_quotient_degree_bounds = all_initial_quotient_degree_bounds(
-                padded_height,
-                self.parameters.num_trace_randomizers,
-            );
-            let consistency_quotient_degree_bounds = all_consistency_quotient_degree_bounds(
-                padded_height,
-                self.parameters.num_trace_randomizers,
-            );
-            let transition_quotient_degree_bounds = all_transition_quotient_degree_bounds(
-                padded_height,
-                self.parameters.num_trace_randomizers,
-            );
-            let terminal_quotient_degree_bounds = all_terminal_quotient_degree_bounds(
-                padded_height,
-                self.parameters.num_trace_randomizers,
-            );
+            let initial_quotient_degree_bounds =
+                all_initial_quotient_degree_bounds(self.interpolant_degree);
+            let consistency_quotient_degree_bounds =
+                all_consistency_quotient_degree_bounds(self.interpolant_degree, padded_height);
+            let transition_quotient_degree_bounds =
+                all_transition_quotient_degree_bounds(self.interpolant_degree, padded_height);
+            let terminal_quotient_degree_bounds =
+                all_terminal_quotient_degree_bounds(self.interpolant_degree);
             prof_stop!(maybe_profiler, "degree bounds");
 
             prof_start!(maybe_profiler, "evaluate AIR");
@@ -1011,7 +998,10 @@ pub(crate) mod triton_stark_tests {
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
     #[test]
     pub fn print_all_constraint_degrees() {
-        for deg in all_degrees_with_origin(2, 2) {
+        let padded_height = 2;
+        let num_trace_randomizers = 2;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        for deg in all_degrees_with_origin(interpolant_degree, padded_height) {
             println!("{}", deg);
         }
     }
@@ -1212,7 +1202,13 @@ pub(crate) mod triton_stark_tests {
         let base_row = Array1::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
         let challenges = AllChallenges::placeholder(&[], &[]);
+        let padded_height = 2;
+        let num_trace_randomizers = 2;
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
 
+        // Shorten some names for better formatting. This is just a test.
+        let ph = padded_height;
+        let id = interpolant_degree;
         let br = base_row.view();
         let er = ext_row.view();
 
@@ -1222,7 +1218,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProgramTable::num_initial_quotients(),
-            ExtProgramTable::initial_quotient_degree_bounds(2, 2).len()
+            ExtProgramTable::initial_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtInstructionTable::num_initial_quotients(),
@@ -1230,7 +1226,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtInstructionTable::num_initial_quotients(),
-            ExtInstructionTable::initial_quotient_degree_bounds(2, 2).len()
+            ExtInstructionTable::initial_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtProcessorTable::num_initial_quotients(),
@@ -1238,7 +1234,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProcessorTable::num_initial_quotients(),
-            ExtProcessorTable::initial_quotient_degree_bounds(2, 2).len()
+            ExtProcessorTable::initial_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtOpStackTable::num_initial_quotients(),
@@ -1246,7 +1242,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtOpStackTable::num_initial_quotients(),
-            ExtOpStackTable::initial_quotient_degree_bounds(2, 2).len()
+            ExtOpStackTable::initial_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtRamTable::num_initial_quotients(),
@@ -1254,7 +1250,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtRamTable::num_initial_quotients(),
-            ExtRamTable::initial_quotient_degree_bounds(2, 2).len()
+            ExtRamTable::initial_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtJumpStackTable::num_initial_quotients(),
@@ -1262,7 +1258,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtJumpStackTable::num_initial_quotients(),
-            ExtJumpStackTable::initial_quotient_degree_bounds(2, 2).len()
+            ExtJumpStackTable::initial_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtHashTable::num_initial_quotients(),
@@ -1270,7 +1266,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtHashTable::num_initial_quotients(),
-            ExtHashTable::initial_quotient_degree_bounds(2, 2).len()
+            ExtHashTable::initial_quotient_degree_bounds(id).len()
         );
 
         assert_eq!(
@@ -1279,7 +1275,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProgramTable::num_consistency_quotients(),
-            ExtProgramTable::consistency_quotient_degree_bounds(2, 2).len()
+            ExtProgramTable::consistency_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtInstructionTable::num_consistency_quotients(),
@@ -1287,7 +1283,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtInstructionTable::num_consistency_quotients(),
-            ExtInstructionTable::consistency_quotient_degree_bounds(2, 2).len()
+            ExtInstructionTable::consistency_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtProcessorTable::num_consistency_quotients(),
@@ -1295,7 +1291,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProcessorTable::num_consistency_quotients(),
-            ExtProcessorTable::consistency_quotient_degree_bounds(2, 2).len()
+            ExtProcessorTable::consistency_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtOpStackTable::num_consistency_quotients(),
@@ -1303,7 +1299,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtOpStackTable::num_consistency_quotients(),
-            ExtOpStackTable::consistency_quotient_degree_bounds(2, 2).len()
+            ExtOpStackTable::consistency_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtRamTable::num_consistency_quotients(),
@@ -1311,7 +1307,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtRamTable::num_consistency_quotients(),
-            ExtRamTable::consistency_quotient_degree_bounds(2, 2).len()
+            ExtRamTable::consistency_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtJumpStackTable::num_consistency_quotients(),
@@ -1319,7 +1315,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtJumpStackTable::num_consistency_quotients(),
-            ExtJumpStackTable::consistency_quotient_degree_bounds(2, 2).len()
+            ExtJumpStackTable::consistency_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtHashTable::num_consistency_quotients(),
@@ -1327,7 +1323,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtHashTable::num_consistency_quotients(),
-            ExtHashTable::consistency_quotient_degree_bounds(2, 2).len()
+            ExtHashTable::consistency_quotient_degree_bounds(id, ph).len()
         );
 
         assert_eq!(
@@ -1336,7 +1332,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProgramTable::num_transition_quotients(),
-            ExtProgramTable::transition_quotient_degree_bounds(2, 2).len()
+            ExtProgramTable::transition_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtInstructionTable::num_transition_quotients(),
@@ -1344,7 +1340,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtInstructionTable::num_transition_quotients(),
-            ExtInstructionTable::transition_quotient_degree_bounds(2, 2).len()
+            ExtInstructionTable::transition_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtProcessorTable::num_transition_quotients(),
@@ -1352,7 +1348,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProcessorTable::num_transition_quotients(),
-            ExtProcessorTable::transition_quotient_degree_bounds(2, 2).len()
+            ExtProcessorTable::transition_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtOpStackTable::num_transition_quotients(),
@@ -1360,7 +1356,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtOpStackTable::num_transition_quotients(),
-            ExtOpStackTable::transition_quotient_degree_bounds(2, 2).len()
+            ExtOpStackTable::transition_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtRamTable::num_transition_quotients(),
@@ -1368,7 +1364,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtRamTable::num_transition_quotients(),
-            ExtRamTable::transition_quotient_degree_bounds(2, 2).len()
+            ExtRamTable::transition_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtJumpStackTable::num_transition_quotients(),
@@ -1376,7 +1372,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtJumpStackTable::num_transition_quotients(),
-            ExtJumpStackTable::transition_quotient_degree_bounds(2, 2).len()
+            ExtJumpStackTable::transition_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
             ExtHashTable::num_transition_quotients(),
@@ -1384,7 +1380,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtHashTable::num_transition_quotients(),
-            ExtHashTable::transition_quotient_degree_bounds(2, 2).len()
+            ExtHashTable::transition_quotient_degree_bounds(id, ph).len()
         );
 
         assert_eq!(
@@ -1393,7 +1389,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProgramTable::num_terminal_quotients(),
-            ExtProgramTable::terminal_quotient_degree_bounds(2, 2).len()
+            ExtProgramTable::terminal_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtInstructionTable::num_terminal_quotients(),
@@ -1401,7 +1397,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtInstructionTable::num_terminal_quotients(),
-            ExtInstructionTable::terminal_quotient_degree_bounds(2, 2).len()
+            ExtInstructionTable::terminal_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtProcessorTable::num_terminal_quotients(),
@@ -1409,7 +1405,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtProcessorTable::num_terminal_quotients(),
-            ExtProcessorTable::terminal_quotient_degree_bounds(2, 2).len()
+            ExtProcessorTable::terminal_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtOpStackTable::num_terminal_quotients(),
@@ -1417,7 +1413,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtOpStackTable::num_terminal_quotients(),
-            ExtOpStackTable::terminal_quotient_degree_bounds(2, 2).len()
+            ExtOpStackTable::terminal_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtRamTable::num_terminal_quotients(),
@@ -1425,7 +1421,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtRamTable::num_terminal_quotients(),
-            ExtRamTable::terminal_quotient_degree_bounds(2, 2).len()
+            ExtRamTable::terminal_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtJumpStackTable::num_terminal_quotients(),
@@ -1433,7 +1429,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtJumpStackTable::num_terminal_quotients(),
-            ExtJumpStackTable::terminal_quotient_degree_bounds(2, 2).len()
+            ExtJumpStackTable::terminal_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtHashTable::num_terminal_quotients(),
@@ -1441,7 +1437,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(
             ExtHashTable::num_terminal_quotients(),
-            ExtHashTable::terminal_quotient_degree_bounds(2, 2).len()
+            ExtHashTable::terminal_quotient_degree_bounds(id).len()
         );
     }
 
