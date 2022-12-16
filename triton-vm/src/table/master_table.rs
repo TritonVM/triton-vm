@@ -1130,12 +1130,13 @@ pub fn fill_all_terminal_quotients(
 
 /// Computes an array containing all quotients. Each column corresponds to a different quotient.
 /// The quotients are ordered by category – initial, consistency, transition, and then terminal.
-/// Within each category, the quotients follow the canonical order of the tables. The order of the
-/// quotients is not actually important. However, it must be consistent between prover and verifier.
+/// Within each category, the quotients follow the canonical order of the tables. The last column
+/// holds the terminal quotient of the cross-table argument, which is strictly speaking not a
+/// table.
+/// The order of the quotients is not actually important. However, it must be consistent between
+/// prover and verifier.
 ///
-/// The right-most column is not filled in, leaving room for the grand cross-table argument.
 /// The returned array is in row-major order.
-// todo should the array be in column-major order instead?
 pub fn all_quotients(
     quotient_domain_master_base_table: ArrayView2<BFieldElement>,
     quotient_domain_master_ext_table: ArrayView2<XFieldElement>,
