@@ -41,7 +41,12 @@ The RAM Table has 2 extension columns, `rppa` and `rpcjd`.
 ## Sorting Rows
 
 Up to order, the rows of the Hash Table in columns `clk`, `ramp`, `ramv` are identical to the rows in the [Processor Table](processor-table.md) in columns `clk`, `ramp`, and `ramv`.
-In the Hash Table, the rows are sorted by memory address first, then by cycle counter.
+In the Hash Table, the rows are arranged such that they
+
+1. form contiguous regions of `ramp`, and
+1. are sorted by cycle counter `clk` within each such region.
+
+One way to achieve this is to sort by `ramp` first, `clk` second.
 
 Coming back to `iord`:
 if the difference between `ramp` in row $i$ and row $i+1$ is 0, then `iord` in row $i$ is 0.

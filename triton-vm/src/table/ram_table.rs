@@ -59,7 +59,6 @@ pub struct ExtRamTable {}
 
 impl RamTable {
     /// Fills the trace table in-place and returns all clock jump differences greater than 1.
-    // todo change spec to allow arbitrary order of RAMP, as long as they form contiguous regions
     pub fn fill_trace(
         ram_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
