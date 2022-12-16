@@ -242,7 +242,6 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
 
         // Send the last codeword
-        // todo! use coefficient form for last codeword?
         let last_codeword: Vec<XFieldElement> = codeword_local;
         proof_stream.enqueue(&ProofItem::FriCodeword(last_codeword));
 
