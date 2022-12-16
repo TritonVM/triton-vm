@@ -28,7 +28,6 @@ use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::traits::ModPowU32;
-use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
@@ -132,12 +131,9 @@ impl Stark {
             max_degree_with_origin(interpolant_degree, claim.padded_height);
         let max_degree = (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as Degree;
         let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
-        let fri_domain_generator =
-            BFieldElement::primitive_root_of_unity(fri_domain_length.try_into().unwrap()).unwrap();
         let coset_offset = BFieldElement::generator();
         let fri = Fri::new(
             coset_offset,
-            fri_domain_generator,
             fri_domain_length,
             parameters.fri_expansion_factor,
             parameters.num_colinearity_checks,
@@ -223,13 +219,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "quotient degree bounds");
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
-        let trace_domain_generator =
-            derive_trace_domain_generator(master_base_table.padded_height as u64);
-        let trace_domain = ArithmeticDomain::new(
-            BFieldElement::one(),
-            trace_domain_generator,
-            master_base_table.padded_height,
-        );
+        let trace_domain = ArithmeticDomain::new_no_offset(master_base_table.padded_height);
         let quotient_domain = self.quotient_domain();
         let unit_distance = self.fri.domain.length / quotient_domain.length;
         let base_quotient_domain_codewords = fri_domain_master_base_table
@@ -388,8 +378,7 @@ impl Stark {
         } else {
             let offset = self.fri.domain.offset;
             let length = roundup_npo2(self.max_degree as u64);
-            let generator = BFieldElement::primitive_root_of_unity(length).unwrap();
-            ArithmeticDomain::new(offset, generator, length as usize)
+            ArithmeticDomain::new(offset, length as usize)
         }
     }
 
@@ -698,7 +687,7 @@ impl Stark {
         let ext_degree_bounds = extension_degree_bounds(self.interpolant_degree);
 
         prof_start!(maybe_profiler, "main loop");
-        let trace_domain_generator = derive_trace_domain_generator(padded_height as u64);
+        let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let trace_domain_generator_inverse = trace_domain_generator.inverse();
         for (current_row_idx, revealed_combination_leaf) in revealed_current_row_indices
             .into_iter()

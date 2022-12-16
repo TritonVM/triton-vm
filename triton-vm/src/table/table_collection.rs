@@ -156,14 +156,7 @@ where
         // This is a weak assertion: a non-contiguous row-major layout is also not standard.
         assert!(!self.master_matrix().is_standard_layout());
         let randomized_trace_domain_len = self.randomized_padded_trace_len();
-        let randomized_trace_domain_gen =
-            BFieldElement::primitive_root_of_unity(randomized_trace_domain_len as u64)
-                .expect("Length of randomized trace domain must be a power of 2.");
-        let randomized_trace_domain = ArithmeticDomain::new(
-            BFieldElement::one(),
-            randomized_trace_domain_gen,
-            randomized_trace_domain_len,
-        );
+        let randomized_trace_domain = ArithmeticDomain::new_no_offset(randomized_trace_domain_len);
 
         let num_rows = self.fri_domain().length;
         let num_columns = self.master_matrix().ncols();
@@ -1348,25 +1341,22 @@ pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) ->
     (randomized_padded_trace_len(padded_height, num_trace_randomizers) - 1) as Degree
 }
 
-pub fn derive_trace_domain_generator(padded_height: u64) -> BFieldElement {
+pub fn derive_domain_generator(domain_length: u64) -> BFieldElement {
     debug_assert!(
-        0 == padded_height || is_power_of_two(padded_height),
-        "The padded height was: {}",
-        padded_height
+        0 == domain_length || is_power_of_two(domain_length),
+        "The domain length must be a power of 2 but was {domain_length}.",
     );
-    BFieldElement::primitive_root_of_unity(padded_height).unwrap()
+    BFieldElement::primitive_root_of_unity(domain_length).unwrap()
 }
 
 #[cfg(test)]
 mod table_collection_tests {
     use crate::arithmetic_domain::ArithmeticDomain;
     use ndarray::s;
-    use num_traits::One;
     use num_traits::Zero;
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::FiniteField;
-    use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
@@ -1482,15 +1472,11 @@ mod table_collection_tests {
     #[test]
     fn zerofiers_are_correct_test() {
         let big_order = 16;
-        let big_generator = BFieldElement::primitive_root_of_unity(big_order).unwrap();
-        let big_offset = BFieldElement::new(7);
-        let big_domain = ArithmeticDomain::new(big_offset, big_generator, big_order as usize);
+        let big_offset = BFieldElement::generator();
+        let big_domain = ArithmeticDomain::new(big_offset, big_order as usize);
 
         let small_order = 8;
-        let small_generator = BFieldElement::primitive_root_of_unity(small_order).unwrap();
-        let small_offset = BFieldElement::one();
-        let small_domain =
-            ArithmeticDomain::new(small_offset, small_generator, small_order as usize);
+        let small_domain = ArithmeticDomain::new_no_offset(small_order as usize);
 
         let initial_zerofier_inv = initial_quotient_zerofier_inverse(big_domain);
         let initial_zerofier = BFieldElement::batch_inversion(initial_zerofier_inv.to_vec());
