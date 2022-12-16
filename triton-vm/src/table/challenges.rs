@@ -8,10 +8,10 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::random_elements;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::cross_table_arguments::CrossTableArg;
-use crate::cross_table_arguments::CrossTableChallenges;
-use crate::cross_table_arguments::EvalArg;
-use crate::cross_table_arguments::NUM_CROSS_TABLE_WEIGHTS;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::CrossTableChallenges;
+use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::NUM_CROSS_TABLE_WEIGHTS;
 use crate::table::hash_table::HashTableChallenges;
 use crate::table::instruction_table::InstructionTableChallenges;
 use crate::table::jump_stack_table::JumpStackTableChallenges;

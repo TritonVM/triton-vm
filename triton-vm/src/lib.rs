@@ -1,6 +1,5 @@
 pub mod arithmetic_domain;
 pub mod bfield_codec;
-pub mod cross_table_arguments;
 pub mod error;
 pub mod fri;
 pub mod instruction;

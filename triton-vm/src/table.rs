@@ -1,6 +1,7 @@
 pub mod challenges;
 pub mod constraint_circuit;
 pub mod constraints;
+pub mod cross_table_argument;
 pub mod extension_table;
 pub mod hash_table;
 pub mod instruction_table;

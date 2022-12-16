@@ -32,9 +32,9 @@ use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::cross_table_arguments::GrandCrossTableArg;
 use crate::stark::StarkHasher;
 use crate::table::challenges::AllChallenges;
+use crate::table::cross_table_argument::GrandCrossTableArg;
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;

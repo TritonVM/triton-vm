@@ -9,7 +9,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::cross_table_arguments::CrossTableChallengeId::*;
+use CrossTableChallengeId::*;
+
 use crate::table::challenges::AllChallenges;
 use crate::table::challenges::TableChallenges;
 use crate::table::extension_table::Evaluable;

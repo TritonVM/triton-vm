@@ -17,8 +17,6 @@ use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::cross_table_arguments::CrossTableArg;
-use crate::cross_table_arguments::EvalArg;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -27,6 +25,8 @@ use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::EvalArg;
 use crate::table::hash_table::HashTableChallengeId::*;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;

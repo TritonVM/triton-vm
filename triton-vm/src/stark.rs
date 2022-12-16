@@ -897,12 +897,12 @@ pub(crate) mod triton_stark_tests {
     use num_traits::Zero;
     use twenty_first::shared_math::other::log_2_floor;
 
-    use crate::cross_table_arguments::CrossTableArg;
-    use crate::cross_table_arguments::EvalArg;
-    use crate::cross_table_arguments::GrandCrossTableArg;
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
     use crate::shared_tests::*;
+    use crate::table::cross_table_argument::CrossTableArg;
+    use crate::table::cross_table_argument::EvalArg;
+    use crate::table::cross_table_argument::GrandCrossTableArg;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
     use crate::table::hash_table::ExtHashTable;

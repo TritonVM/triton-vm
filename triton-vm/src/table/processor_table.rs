@@ -26,9 +26,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProcessorTableChallengeId::*;
 
-use crate::cross_table_arguments::CrossTableArg;
-use crate::cross_table_arguments::EvalArg;
-use crate::cross_table_arguments::PermArg;
 use crate::instruction::all_instructions_without_args;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::Instruction;
@@ -40,6 +37,9 @@ use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::InputIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::PermArg;
 use crate::table::table_collection::NUM_BASE_COLUMNS;
 use crate::table::table_collection::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
