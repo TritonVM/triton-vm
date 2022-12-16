@@ -280,7 +280,7 @@ impl MasterBaseTable {
         let padded_height = Self::padded_height(&aet, program);
         let randomized_padded_trace_len =
             randomized_padded_trace_len(num_trace_randomizers, padded_height);
-        let unit_distance = randomized_padded_trace_len as usize / padded_height;
+        let unit_distance = randomized_padded_trace_len / padded_height;
         let program_len = program.len();
         let main_execution_len = aet.processor_matrix.nrows();
         let hash_coprocessor_execution_len = aet.hash_matrix.nrows();

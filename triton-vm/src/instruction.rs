@@ -1417,7 +1417,7 @@ mod instruction_tests {
     #[test]
     fn print_all_instructions_and_opcodes() {
         for instr in all_instructions_without_args() {
-            println!("{:>3} {: <10}", instr.opcode(), format_args!("{instr}"));
+            println!("{:>3} {: <10}", instr.opcode(), format!("{instr}"));
         }
     }
 }
