@@ -419,8 +419,6 @@ impl Stark {
         assert_eq!(ext_weights.len(), 2 * extension_codewords.ncols());
         assert_eq!(quot_weights.len(), 2 * quotient_codewords.ncols());
 
-        // todo Propagate this domain-specific knowledge to the rest of the code base:
-        //  `base_degree_bounds` and `ext_degree_bounds` is always just `interpolant_degree`
         let base_and_ext_col_shift = self.max_degree - self.interpolant_degree;
         let quotient_domain_values = quotient_domain.domain_values();
         let shifted_domain_values =
@@ -673,8 +671,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "index");
 
         // verify non-linear combination
-        let base_degree_bounds = base_degree_bounds(self.interpolant_degree);
-        let ext_degree_bounds = extension_degree_bounds(self.interpolant_degree);
+        let base_and_ext_col_shift = self.max_degree - self.interpolant_degree;
 
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
@@ -690,7 +687,7 @@ impl Stark {
             let next_base_row = indexed_base_table_rows[&next_row_idx].view();
             let next_ext_row = indexed_ext_table_rows[&next_row_idx].view();
 
-            // todo pre-compute for all revealed fri domain values, use batch invert?
+            prof_start!(maybe_profiler, "zerofiers");
             let one = BFieldElement::one();
             let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
             let initial_zerofier_inverse = (current_fri_domain_value - one).inverse();
@@ -700,31 +697,23 @@ impl Stark {
             let transition_zerofier_inverse = except_last_row
                 * (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
             let terminal_zerofier_inverse = except_last_row.inverse();
+            prof_stop!(maybe_profiler, "zerofiers");
 
             prof_start!(maybe_profiler, "populate");
             // populate summands with a the revealed FRI domain master table rows and their shifts
+            let current_fri_domain_value_shifted =
+                current_fri_domain_value.mod_pow_u32(base_and_ext_col_shift as u32);
             let mut summands = vec![];
-            for (&base_row_element, degree_bound) in
-                current_base_row.iter().zip_eq(base_degree_bounds.iter())
-            {
-                // todo for base & ext tables, this shift is always max_degree - interpolant_degree.
-                //  Pre-compute the corresponding shifted current_fri_domain_value.
-                let shift = self.max_degree - degree_bound;
-                let base_row_element_shifted =
-                    base_row_element * current_fri_domain_value.mod_pow_u32(shift as u32);
-                // todo non-lin combine as far as possible staying in the BField, lift at very end
+            for &base_row_element in current_base_row.iter() {
+                let base_row_element_shifted = base_row_element * current_fri_domain_value_shifted;
                 summands.push(base_row_element.lift());
                 summands.push(base_row_element_shifted.lift());
             }
 
-            for (&ext_row_element, degree_bound) in
-                current_ext_row.iter().zip_eq(ext_degree_bounds.iter())
-            {
-                let shift = self.max_degree - degree_bound;
-                let base_row_element_shifted =
-                    ext_row_element * current_fri_domain_value.mod_pow_u32(shift as u32);
+            for &ext_row_element in current_ext_row.iter() {
+                let ext_row_element_shifted = ext_row_element * current_fri_domain_value_shifted;
                 summands.push(ext_row_element);
-                summands.push(base_row_element_shifted);
+                summands.push(ext_row_element_shifted);
             }
             prof_stop!(maybe_profiler, "populate");
 

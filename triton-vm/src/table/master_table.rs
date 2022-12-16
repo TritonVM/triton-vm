@@ -525,14 +525,6 @@ impl MasterExtTable {
     }
 }
 
-pub fn base_degree_bounds(interpolant_degree: Degree) -> [Degree; NUM_BASE_COLUMNS] {
-    [interpolant_degree; NUM_BASE_COLUMNS]
-}
-
-pub fn extension_degree_bounds(interpolant_degree: Degree) -> [Degree; NUM_EXT_COLUMNS] {
-    [interpolant_degree; NUM_EXT_COLUMNS]
-}
-
 pub fn all_degrees_with_origin(
     interpolant_degree: Degree,
     padded_height: usize,
