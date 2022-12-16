@@ -804,12 +804,9 @@ impl Stark {
         Ok(true)
     }
 
-    // todo these hash-maps allow doing
-    //      indexed_revealed_base_rows[i]
-    //  instead of
-    //      revealed_base_rows[revealed_indices[i]]
-    //  but is that really worth all this compute & malloc?
-    //  Also, the proof stream should probably just return Array1<FF> or even Array2<FF> instead.
+    /// Hash-maps for base, extension, and randomizer rows that allow doing
+    /// `indexed_revealed_base_rows[revealed_index]` instead of
+    /// `revealed_base_rows[revealed_indices.iter().position(|&i| i == revealed_index).unwrap()]`.
     #[allow(clippy::type_complexity)]
     fn index_revealed_rows(
         revealed_indices: Vec<usize>,
