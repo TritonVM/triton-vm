@@ -900,11 +900,13 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_collection::all_degrees_with_origin;
     use crate::table::table_collection::MasterExtTable;
     use crate::table::table_collection::TableId::ProcessorTable;
+    use crate::table::table_column::BaseTableColumn;
     use crate::table::table_column::ExtTableColumn;
     use crate::table::table_column::MasterBaseTableColumn;
     use crate::table::table_column::ProcessorBaseTableColumn;
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
+    use crate::table::table_column::RamBaseTableColumn;
     use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
@@ -991,6 +993,97 @@ pub(crate) mod triton_stark_tests {
             master_ext_table,
             dummy_challenges,
         )
+    }
+
+    #[test]
+    pub fn print_ram_table_example_for_specification() {
+        let program = "push 5 push 6 write_mem pop pop push 15 push 16 write_mem pop pop push 5
+        push 0 read_mem pop pop push 15 push 0 read_mem pop pop push 5 push 7 write_mem pop pop
+        push 15 push 0 read_mem push 5 push 0 read_mem halt";
+        let (_, master_base_table, _) = parse_simulate_pad(program, vec![], vec![]);
+
+        println!("Processor Table:");
+        println!(
+            "| clk        | pi         | ci         | nia        | st0        \
+             | st1        | st2        | st3        | ramp       | ramv       |"
+        );
+        println!(
+            "|-----------:|:-----------|:-----------|:-----------|-----------:\
+             |-----------:|-----------:|-----------:|-----------:|-----------:|"
+        );
+        for row in master_base_table.table(ProcessorTable).rows() {
+            let clk = row[ProcessorBaseTableColumn::CLK.base_table_index()].to_string();
+            let st0 = row[ProcessorBaseTableColumn::ST0.base_table_index()].to_string();
+            let st1 = row[ProcessorBaseTableColumn::ST1.base_table_index()].to_string();
+            let st2 = row[ProcessorBaseTableColumn::ST2.base_table_index()].to_string();
+            let st3 = row[ProcessorBaseTableColumn::ST3.base_table_index()].to_string();
+            let ramp = row[ProcessorBaseTableColumn::RAMP.base_table_index()].to_string();
+            let ramv = row[ProcessorBaseTableColumn::RAMV.base_table_index()].to_string();
+
+            let prev_instruction =
+                row[ProcessorBaseTableColumn::PreviousInstruction.base_table_index()].value();
+            let curr_instruction = row[ProcessorBaseTableColumn::CI.base_table_index()].value();
+            let next_instruction_or_arg =
+                row[ProcessorBaseTableColumn::NIA.base_table_index()].value();
+
+            // sorry about this mess – this is just a test.
+            let pi = match AnInstruction::<BFieldElement>::try_from(prev_instruction) {
+                Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
+                Ok(instr) => instr.to_string().split("0").collect_vec()[0].to_owned(),
+            };
+            let ci = AnInstruction::<BFieldElement>::try_from(curr_instruction).unwrap();
+            let nia = if ci.size() == 2 {
+                next_instruction_or_arg.to_string()
+            } else {
+                AnInstruction::<BFieldElement>::try_from(next_instruction_or_arg)
+                    .unwrap()
+                    .to_string()
+                    .split("0")
+                    .collect_vec()[0]
+                    .to_owned()
+            };
+            let ci_string = if ci.size() == 1 {
+                ci.to_string()
+            } else {
+                ci.to_string().split("0").collect_vec()[0].to_owned()
+            };
+            let interesting_cols = [clk, pi, ci_string, nia, st0, st1, st2, st3, ramp, ramv];
+            println!(
+                "{}",
+                interesting_cols
+                    .iter()
+                    .map(|ff| format!("{:>10}", format!("{ff}")))
+                    .collect_vec()
+                    .join(" | ")
+            );
+        }
+        println!();
+        println!("RAM Table:");
+        println!("| clk        | pi         | ramp       | ramv       | iord |");
+        println!("|-----------:|:-----------|-----------:|-----------:|-----:|");
+        for row in master_base_table.table(TableId::RamTable).rows() {
+            let clk = row[RamBaseTableColumn::CLK.base_table_index()].to_string();
+            let ramp = row[RamBaseTableColumn::RAMP.base_table_index()].to_string();
+            let ramv = row[RamBaseTableColumn::RAMV.base_table_index()].to_string();
+            let iord =
+                row[RamBaseTableColumn::InverseOfRampDifference.base_table_index()].to_string();
+
+            let prev_instruction =
+                row[RamBaseTableColumn::PreviousInstruction.base_table_index()].value();
+            let pi = match AnInstruction::<BFieldElement>::try_from(prev_instruction) {
+                Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
+                Ok(instr) => instr.to_string().split("0").collect_vec()[0].to_owned(),
+            };
+            let interersting_cols = [clk, pi, ramp, ramv, iord];
+            println!(
+                "{}",
+                interersting_cols
+                    .iter()
+                    .map(|ff| format!("{:>10}", format!("{ff}")))
+                    .collect_vec()
+                    .join(" | ")
+            );
+        }
     }
 
     /// To be used with `-- --nocapture`. Has mainly informative purpose.
