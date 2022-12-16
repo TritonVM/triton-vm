@@ -419,8 +419,6 @@ impl Stark {
             .collect_vec()
     }
 
-    // TODO try to reduce the number of arguments
-    #[allow(clippy::too_many_arguments)]
     fn create_combination_codeword(
         &self,
         quotient_domain: ArithmeticDomain,
