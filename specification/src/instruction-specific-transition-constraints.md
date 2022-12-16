@@ -390,14 +390,6 @@ Additionally, it defines the following transition constraints.
 1. If `hv0` is 1, then `st2` is copied to `st7`.
 1. If `hv0` is 1, then `st3` is copied to `st8`.
 1. If `hv0` is 1, then `st4` is copied to `st9`.
-1. The stack element in `st11` does not change.
-1. The stack element in `st12` does not change.
-1. The stack element in `st13` does not change.
-1. The stack element in `st14` does not change.
-1. The stack element in `st15` does not change.
-1. The top of the OpStack underflow, i.e., `osv`, does not change.
-1. The OpStack pointer does not change.
-1. If `hv0` is 0, then the RAM value `ramv` does not change.
 
 ### Polynomials
 
@@ -408,14 +400,6 @@ Additionally, it defines the following transition constraints.
 1. `(1 - hv0)·(st2' - st2) + hv0·(st7' - st2)`
 1. `(1 - hv0)·(st3' - st3) + hv0·(st8' - st3)`
 1. `(1 - hv0)·(st4' - st4) + hv0·(st9' - st4)`
-1. `st11' - st11`
-1. `st12' - st12`
-1. `st13' - st13`
-1. `st14' - st14`
-1. `st15' - st15`
-1. `osv' - osv`
-1. `osp' - osp`
-1. `(1 - hv0)·(ramv' - ramv)`
 
 ### Helper variable definitions for `divine_sibling`
 
