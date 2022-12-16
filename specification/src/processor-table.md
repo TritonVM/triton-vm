@@ -65,6 +65,7 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 ## Initial Constraints
 
 1. The cycle counter `clk` is 0.
+1. The previous instruction `previous_instruction` is 0.
 1. The instruction pointer `ip` is 0.
 1. The jump address stack pointer `jsp` is 0.
 1. The jump address origin `jso` is 0.
@@ -93,7 +94,7 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `RunningEvaluationStandardOutput` is 1.
 1. `RunningProductInstructionTable` has absorbed the first row with respect to challenges 🍓, 🍒, and 🥭 and indeterminate 🛁.
 1. `RunningProductOpStackTable` has absorbed the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
-1. `RunningProductRamTable` has absorbed the first row with respect to challenges 🍍, 🍈, and 🍎 and indeterminate 🛋.
+1. `RunningProductRamTable` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. `RunningProductJumpStackTable` has absorbed the first row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. `RunningEvaluationToHashTable` has absorbed the first row with respect to challenges 🧄0 through 🧄9 and indeterminate 🪣 if the current instruction is `hash`. Otherwise, it is 1.
 1. `RunningEvaluationFromHashTable` is 1.
@@ -106,6 +107,7 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 ### Initial Constraints as Polynomials
 
 1. `clk`
+1. `previous_instruction`
 1. `ip`
 1. `jsp`
 1. `jso`
@@ -134,7 +136,7 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `RunningEvaluationStandardOutput - 1`
 1. `RunningProductInstructionTable - (🛁 - 🍓·ip - 🍒·ci - 🥭·nia)`
 1. `RunningProductOpStackTable - (🪤 - 🍋·clk - 🍊·ib1 - 🍉·osp - 🫒·osv)`
-1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv)`
+1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction)`
 1. `RunningProductJumpStackTable - (🧴 - 🍇·clk - 🍅·ci - 🍌·jsp - 🍏·jso - 🍐·jsd)`
 1. `(ci - opcode(hash))·(RunningEvaluationToHashTable - 1) + hash_deselector·(RunningEvaluationToHashTable - 🪣 - 🧄0·st0 - 🧄1·st1 - 🧄2·st2 - 🧄3·st3 - 🧄4·st4 - 🧄5·st5 - 🧄6·st6 - 🧄7·st7 - 🧄8·st8 - 🧄9·st9)`
 1. `RunningEvaluationFromHashTable - 1`
@@ -163,11 +165,12 @@ The following constraints apply to every pair of rows.
 
 1. The cycle counter `clk` increases by 1.
 1. The padding indicator `IsPadding` is 0 or remains unchanged.
+1. The current instruction `ci` in the current row is copied into `previous_instruction` in the next row or the next row is a padding row.
 1. The running evaluation for standard input absorbs `st0` of the next row with respect to 🛏 if the current instruction is `read_io`, and remains unchanged otherwise.
 1. The running evaluation for standard output absorbs `st0` of the next row with respect to 🧯 if the current instruction in the next row is `write_io`, and remains unchanged otherwise.
 1. If the next row is not a padding row, the running product for the Instruction Table absorbs the next row with respect to challenges 🍓, 🍒, and 🥭 and indeterminate 🛁. Otherwise, it remains unchanged.
 1. The running product for the OpStack Table absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
-1. The running product for the RAM Table absorbs the next row with respect to challenges 🍍, 🍈, and 🍎 and indeterminate 🛋.
+1. The running product for the RAM Table absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. The running product for the JumpStack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. If the current instruction in the next row is `hash`, the running evaluation “to Hash Table” absorbs the next row with respect to challenges 🧄0 through 🧄9 and indeterminate 🪣. Otherwise, it remains unchanged.
 1. If the current instruction is `hash`, the running evaluation “from Hash Table” absorbs the next row with respect to challenges 🫑0 through 🫑4 and indeterminate 🪟. Otherwise, it remains unchanged.
@@ -181,11 +184,12 @@ The following constraints apply to every pair of rows.
 
 1. `clk' - (clk + 1)`
 1. `IsPadding·(IsPadding' - IsPadding)`
+1. `(1 - IsPadding')·(previous_instruction' - ci)`
 1. `(ci - opcode(read_io))·(RunningEvaluationStandardInput' - RunningEvaluationStandardInput) + read_io_deselector·(RunningEvaluationStandardInput' - 🛏·RunningEvaluationStandardInput - st0')`
 1. `(ci' - opcode(write_io))·(RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput) + write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
 1. `(1 - IsPadding')·(RunningProductInstructionTable' - RunningProductInstructionTable(🛁 - 🍓·ip' - 🍒·ci' - 🥭·nia')) + IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒·osv')`
-1. `RunningProductRamTable' - RunningProductRamTable·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv')`
+1. `RunningProductRamTable' - RunningProductRamTable·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
 1. `RunningProductJumpStackTable' - RunningProductJumpStackTable·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
 1. `(ci' - opcode(hash))·(RunningEvaluationToHashTable' - RunningEvaluationToHashTable) + hash_deselector'·(RunningEvaluationToHashTable' - 🪣·RunningEvaluationToHashTable - 🧄0·st0' - 🧄1·st1' - 🧄2·st2' - 🧄3·st3' - 🧄4·st4' - 🧄5·st5' - 🧄6·st6' - 🧄7·st7' - 🧄8·st8' - 🧄9·st9')`
 1. `(ci - opcode(hash))·(RunningEvaluationFromHashTable' - RunningEvaluationFromHashTable) + hash_deselector·(RunningEvaluationFromHashTable' - 🪟·RunningEvaluationFromHashTable - 🫑0·st5' - 🫑1·st6' - 🫑2·st7' - 🫑3·st8' - 🫑4·st9')`
