@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use ndarray::Array1;
+use ndarray::s;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::One;
@@ -449,19 +449,16 @@ impl ExtHashTable {
 }
 
 impl HashTable {
-    // todo: make the AET use ndarray, then this becomes a simple memcopy
     pub fn fill_trace(
         hash_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        for (row_idx, hash_table_row) in aet.hash_matrix.iter().enumerate() {
-            let row = Array1::from(hash_table_row.to_vec());
-            row.move_into(hash_table.row_mut(row_idx));
-        }
+        let hash_table_to_fill = hash_table.slice_mut(s![0..aet.hash_matrix.nrows(), ..]);
+        aet.hash_matrix.clone().move_into(hash_table_to_fill);
     }
 
     pub fn pad_trace(_hash_table: &mut ArrayViewMut2<BFieldElement>) {
-        // Hash Table is “padded” with all-zero rows. It is also initialized with all-zero rows.
+        // Hash Table is padded with all-zero rows. It is also initialized with all-zero rows.
         // Hence, no need to do anything.
     }
 

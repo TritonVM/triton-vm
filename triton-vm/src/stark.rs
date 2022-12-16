@@ -408,7 +408,6 @@ impl Stark {
         indices
     }
 
-    // todo: can we get rid of the cloning? I.e., the call of to_vec(). Irrelevant number of times?
     fn get_revealed_elements<FF: FiniteField>(
         master_matrix: ArrayView2<FF>,
         revealed_indices: &[usize],
@@ -1029,7 +1028,7 @@ pub(crate) mod triton_stark_tests {
             // sorry about this mess – this is just a test.
             let pi = match AnInstruction::<BFieldElement>::try_from(prev_instruction) {
                 Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
-                Ok(instr) => instr.to_string().split("0").collect_vec()[0].to_owned(),
+                Ok(instr) => instr.to_string().split('0').collect_vec()[0].to_owned(),
             };
             let ci = AnInstruction::<BFieldElement>::try_from(curr_instruction).unwrap();
             let nia = if ci.size() == 2 {
@@ -1038,14 +1037,14 @@ pub(crate) mod triton_stark_tests {
                 AnInstruction::<BFieldElement>::try_from(next_instruction_or_arg)
                     .unwrap()
                     .to_string()
-                    .split("0")
+                    .split('0')
                     .collect_vec()[0]
                     .to_owned()
             };
             let ci_string = if ci.size() == 1 {
                 ci.to_string()
             } else {
-                ci.to_string().split("0").collect_vec()[0].to_owned()
+                ci.to_string().split('0').collect_vec()[0].to_owned()
             };
             let interesting_cols = [clk, pi, ci_string, nia, st0, st1, st2, st3, ramp, ramv];
             println!(
@@ -1072,7 +1071,7 @@ pub(crate) mod triton_stark_tests {
                 row[RamBaseTableColumn::PreviousInstruction.base_table_index()].value();
             let pi = match AnInstruction::<BFieldElement>::try_from(prev_instruction) {
                 Ok(AnInstruction::Halt) | Err(_) => "-".to_string(),
-                Ok(instr) => instr.to_string().split("0").collect_vec()[0].to_owned(),
+                Ok(instr) => instr.to_string().split('0').collect_vec()[0].to_owned(),
             };
             let interersting_cols = [clk, pi, ramp, ramv, iord];
             println!(

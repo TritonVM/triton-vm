@@ -4,6 +4,9 @@ use std::fmt::Display;
 
 use anyhow::Result;
 use itertools::Itertools;
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::Array2;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -31,6 +34,7 @@ use crate::table::hash_table::TOTAL_NUM_CONSTANTS;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorMatrixRow;
 use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::Program;
 
@@ -84,7 +88,7 @@ pub enum VMOutput {
     /// Trace of state registers for hash coprocessor table
     ///
     /// One row per round in the XLIX permutation
-    XlixTrace(Vec<[BFieldElement; hash_table::BASE_WIDTH]>),
+    XlixTrace(Array2<BFieldElement>),
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -447,9 +451,9 @@ impl<'pgm> VMState<'pgm> {
         Ok(vm_output)
     }
 
-    pub fn to_processor_row(&self) -> [BFieldElement; processor_table::BASE_WIDTH] {
+    pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use ProcessorBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); processor_table::BASE_WIDTH];
+        let mut row = Array1::zeros(processor_table::BASE_WIDTH);
 
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let hvs = self.derive_helper_variables();
@@ -683,21 +687,24 @@ impl<'pgm> VMState<'pgm> {
     }
 
     fn inprocess_hash_trace(
-        hash_trace: &[[BFieldElement;
-              hash_table::BASE_WIDTH - hash_table::NUM_ROUND_CONSTANTS - 1]],
-    ) -> Vec<[BFieldElement; hash_table::BASE_WIDTH]> {
-        let mut hash_trace_with_constants = vec![];
-        for (index, trace_row) in hash_trace.iter().enumerate() {
+        hash_trace: &[[BFieldElement; hash_table::BASE_WIDTH - NUM_ROUND_CONSTANTS - 1]],
+    ) -> Array2<BFieldElement> {
+        let mut hash_trace_with_constants = Array2::zeros([NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
+        for (index, mut new_trace_row) in
+            hash_trace_with_constants.rows_mut().into_iter().enumerate()
+        {
+            let trace_row = hash_trace[index];
             let round_number = index + 1;
             let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
-            let mut new_trace_row = [BFieldElement::zero(); hash_table::BASE_WIDTH];
-            let mut offset = 0;
-            new_trace_row[offset] = BFieldElement::new(round_number as u64);
-            offset += 1;
-            new_trace_row[offset..offset + STATE_SIZE].copy_from_slice(trace_row);
+            new_trace_row[HashBaseTableColumn::ROUNDNUMBER.base_table_index()] =
+                BFieldElement::new(round_number as u64);
+            let mut offset = 1;
+            let original_trace_row_slice = new_trace_row.slice_mut(s![offset..offset + STATE_SIZE]);
+            Array1::from_vec(trace_row.to_vec()).move_into(original_trace_row_slice);
             offset += STATE_SIZE;
-            new_trace_row[offset..].copy_from_slice(&round_constants);
-            hash_trace_with_constants.push(new_trace_row)
+            let round_constants_slice =
+                new_trace_row.slice_mut(s![offset..offset + NUM_ROUND_CONSTANTS]);
+            Array1::from_vec(round_constants.to_vec()).move_into(round_constants_slice);
         }
         hash_trace_with_constants
     }
@@ -734,7 +741,7 @@ impl<'pgm> Display for VMState<'pgm> {
         match self.current_instruction() {
             Ok(_) => {
                 let row = self.to_processor_row();
-                write!(f, "{}", ProcessorMatrixRow { row })
+                write!(f, "{}", ProcessorMatrixRow { row: row.view() })
             }
             Err(_) => write!(f, "END-OF-FILE"),
         }

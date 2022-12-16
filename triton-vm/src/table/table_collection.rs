@@ -272,8 +272,8 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 
 impl MasterBaseTable {
     pub fn padded_height(aet: &AlgebraicExecutionTrace, program: &[BFieldElement]) -> usize {
-        let instruction_table_len = program.len() + aet.processor_matrix.len();
-        let hash_table_len = aet.hash_matrix.len();
+        let instruction_table_len = program.len() + aet.processor_matrix.nrows();
+        let hash_table_len = aet.hash_matrix.nrows();
         let max_height = max(instruction_table_len, hash_table_len);
         roundup_npo2(max_height as u64) as usize
     }
@@ -289,8 +289,8 @@ impl MasterBaseTable {
             randomized_padded_trace_len(num_trace_randomizers, padded_height);
         let unit_distance = randomized_padded_trace_len as usize / padded_height;
         let program_len = program.len();
-        let main_execution_len = aet.processor_matrix.len();
-        let hash_coprocessor_execution_len = aet.hash_matrix.len();
+        let main_execution_len = aet.processor_matrix.nrows();
+        let hash_coprocessor_execution_len = aet.hash_matrix.nrows();
 
         let num_rows = randomized_padded_trace_len;
         let num_columns = NUM_BASE_COLUMNS;

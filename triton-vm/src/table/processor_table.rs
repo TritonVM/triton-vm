@@ -8,12 +8,10 @@ use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
-use ndarray::ArrayBase;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
-use ndarray::Ix1;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
@@ -69,22 +67,25 @@ impl ProcessorTable {
         aet: &AlgebraicExecutionTrace,
         mut all_clk_jump_diffs: Vec<BFieldElement>,
     ) {
+        // fill the processor table from the AET
+        let mut processor_table_to_fill =
+            processor_table.slice_mut(s![0..aet.processor_matrix.nrows(), ..]);
+        aet.processor_matrix
+            .clone()
+            .move_into(&mut processor_table_to_fill);
+
+        let zero = BFieldElement::zero();
         all_clk_jump_diffs.sort_by_key(|bfe| std::cmp::Reverse(bfe.value()));
 
-        // todo: make AET use Array2 instead of Vec<Vec<_>>, then this is a simple memcopy
-        // - fill the processor table from the AET
-        // - add all clock jump differences and their inverses
-        // - add inverses of unique clock jump difference differences
-        let zero = BFieldElement::zero();
-        let mut previous_row: Option<ArrayBase<_, Ix1>> = None;
-        for (row_idx, &processor_row) in aet.processor_matrix.iter().enumerate() {
-            let mut row = Array1::from(processor_row.to_vec());
-
+        let mut previous_row: Option<Array1<_>> = None;
+        for mut row in processor_table_to_fill.rows_mut() {
+            // add all clock jump differences and their inverses
             let clk_jump_difference = all_clk_jump_diffs.pop().unwrap_or(zero);
             let clk_jump_difference_inv = clk_jump_difference.inverse_or_zero();
             row[ClockJumpDifference.base_table_index()] = clk_jump_difference;
             row[ClockJumpDifferenceInverse.base_table_index()] = clk_jump_difference_inv;
 
+            // add inverses of unique clock jump difference differences
             if let Some(prow) = previous_row {
                 let previous_clk_jump_difference = prow[ClockJumpDifference.base_table_index()];
                 if previous_clk_jump_difference != clk_jump_difference {
@@ -95,8 +96,7 @@ impl ProcessorTable {
                 }
             }
 
-            previous_row = Some(row.clone());
-            row.move_into(processor_table.slice_mut(s![row_idx, ..]));
+            previous_row = Some(row.to_owned());
         }
 
         assert!(
@@ -4213,11 +4213,11 @@ impl InstructionDeselectors {
     }
 }
 
-pub struct ProcessorMatrixRow {
-    pub row: [BFieldElement; BASE_WIDTH],
+pub struct ProcessorMatrixRow<'a> {
+    pub row: ArrayView1<'a, BFieldElement>,
 }
 
-impl Display for ProcessorMatrixRow {
+impl<'a> Display for ProcessorMatrixRow<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn row(f: &mut std::fmt::Formatter<'_>, s: String) -> std::fmt::Result {
             writeln!(f, "│ {: <103} │", s)
@@ -4364,20 +4364,12 @@ impl Display for ProcessorMatrixRow {
     }
 }
 
-pub struct ExtProcessorMatrixRow {
-    pub row: [XFieldElement; FULL_WIDTH],
+pub struct ExtProcessorMatrixRow<'a> {
+    pub row: ArrayView1<'a, XFieldElement>,
 }
 
-impl Display for ExtProcessorMatrixRow {
+impl<'a> Display for ExtProcessorMatrixRow<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let base_row = self.row[0..BASE_WIDTH]
-            .iter()
-            .map(|xfe| xfe.unlift().unwrap())
-            .collect_vec()
-            .try_into()
-            .unwrap();
-        let base_row = ProcessorMatrixRow { row: base_row };
-
         let row = |form: &mut std::fmt::Formatter<'_>,
                    desc: &str,
                    col: ProcessorExtTableColumn|
@@ -4386,8 +4378,6 @@ impl Display for ExtProcessorMatrixRow {
             let formatted_col_elem = format!("{}", self.row[col.ext_table_index()]);
             writeln!(form, "     │ {: <18}  {:>73} │", desc, formatted_col_elem,)
         };
-
-        writeln!(f, "{}", base_row)?;
         writeln!(
             f,
             "     ╭───────────────────────────────────────────────────────\
@@ -4426,8 +4416,8 @@ mod constraint_polynomial_tests {
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row_test() {
         let program = Program::from_code("push 2 push -1 add assert halt").unwrap();
-        let (base_matrices, _, _) = program.simulate_no_input();
-        for row in base_matrices.processor_matrix {
+        let (aet, _, _) = program.simulate_no_input();
+        for row in aet.processor_matrix.rows() {
             println!("{}", ProcessorMatrixRow { row });
         }
     }

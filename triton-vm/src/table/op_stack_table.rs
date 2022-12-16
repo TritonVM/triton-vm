@@ -235,7 +235,7 @@ impl OpStackTable {
         // with OSP as the key. Preserves, thus allows reusing, the order of the processor's
         // rows, which are sorted by CLK.
         let mut pre_processed_op_stack_table: Vec<Vec<_>> = vec![];
-        for processor_row in aet.processor_matrix.iter() {
+        for processor_row in aet.processor_matrix.rows() {
             let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
             let ib1 = processor_row[ProcessorBaseTableColumn::IB1.base_table_index()];
             let osp = processor_row[ProcessorBaseTableColumn::OSP.base_table_index()];
@@ -258,20 +258,20 @@ impl OpStackTable {
         {
             let osp = BFieldElement::new((osp_minus_16 + OP_STACK_REG_COUNT) as u64);
             for (clk, ib1, osv) in rows_with_this_osp {
-                op_stack_table[(op_stack_table_row, CLK.base_table_index())] = clk;
-                op_stack_table[(op_stack_table_row, IB1ShrinkStack.base_table_index())] = ib1;
-                op_stack_table[(op_stack_table_row, OSP.base_table_index())] = osp;
-                op_stack_table[(op_stack_table_row, OSV.base_table_index())] = osv;
+                op_stack_table[[op_stack_table_row, CLK.base_table_index()]] = clk;
+                op_stack_table[[op_stack_table_row, IB1ShrinkStack.base_table_index()]] = ib1;
+                op_stack_table[[op_stack_table_row, OSP.base_table_index()]] = osp;
+                op_stack_table[[op_stack_table_row, OSV.base_table_index()]] = osv;
                 op_stack_table_row += 1;
             }
         }
-        assert_eq!(aet.processor_matrix.len(), op_stack_table_row);
+        assert_eq!(aet.processor_matrix.nrows(), op_stack_table_row);
 
         // Set inverse of (clock difference - 1). Also, collect all clock jump differences
         // greater than 1.
         // The Op Stack Table and the Processor Table have the same length.
         let mut clock_jump_differences_greater_than_1 = vec![];
-        for row_idx in 0..aet.processor_matrix.len() - 1 {
+        for row_idx in 0..aet.processor_matrix.nrows() - 1 {
             let (mut curr_row, next_row) =
                 op_stack_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
             let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];

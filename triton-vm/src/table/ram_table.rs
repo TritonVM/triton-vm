@@ -68,7 +68,7 @@ impl RamTable {
         // of the processor's rows, which are sorted by CLK. Note that the Ram Table must not be
         // sorted by RAMP, but must form contiguous regions of RAMP values.
         let mut pre_processed_ram_table: HashMap<_, Vec<_>> = HashMap::new();
-        for processor_row in aet.processor_matrix.iter() {
+        for processor_row in aet.processor_matrix.rows() {
             let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
             let ramp = processor_row[ProcessorBaseTableColumn::RAMP.base_table_index()];
             let ramv = processor_row[ProcessorBaseTableColumn::RAMV.base_table_index()];
@@ -128,7 +128,7 @@ impl RamTable {
                 ram_table_row_idx += 1;
             }
         }
-        assert_eq!(ram_table_row_idx, aet.processor_matrix.len());
+        assert_eq!(aet.processor_matrix.nrows(), ram_table_row_idx);
 
         // - Set inverse of clock difference - 1.
         // - Set inverse of RAMP difference.
@@ -136,7 +136,7 @@ impl RamTable {
         // - Collect all clock jump differences greater than 1.
         // The Ram Table and the Processor Table have the same length.
         let mut clock_jump_differences_greater_than_1 = vec![];
-        for row_idx in 0..aet.processor_matrix.len() - 1 {
+        for row_idx in 0..aet.processor_matrix.nrows() - 1 {
             let (mut curr_row, mut next_row) =
                 ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
 

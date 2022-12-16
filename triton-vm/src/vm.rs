@@ -3,6 +3,8 @@ use std::io::Cursor;
 
 use anyhow::Result;
 use itertools::Itertools;
+use ndarray::Array2;
+use ndarray::Axis;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction;
@@ -14,10 +16,19 @@ use crate::state::VMState;
 use crate::table::hash_table;
 use crate::table::processor_table;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
-    pub processor_matrix: Vec<[BFieldElement; processor_table::BASE_WIDTH]>,
-    pub hash_matrix: Vec<[BFieldElement; hash_table::BASE_WIDTH]>,
+    pub processor_matrix: Array2<BFieldElement>,
+    pub hash_matrix: Array2<BFieldElement>,
+}
+
+impl Default for AlgebraicExecutionTrace {
+    fn default() -> Self {
+        Self {
+            processor_matrix: Array2::default([0, processor_table::BASE_WIDTH]),
+            hash_matrix: Array2::default([0, hash_table::BASE_WIDTH]),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -134,7 +145,9 @@ impl Program {
         let mut aet = AlgebraicExecutionTrace::default();
         let mut state = VMState::new(self);
         // record initial state
-        aet.processor_matrix.push(state.to_processor_row());
+        aet.processor_matrix
+            .push_row(state.to_processor_row().view())
+            .expect("shapes must be identical");
 
         let mut stdout = vec![];
         while !state.is_complete() {
@@ -144,14 +157,17 @@ impl Program {
             };
 
             match vm_output {
-                Some(VMOutput::XlixTrace(mut hash_trace)) => {
-                    aet.hash_matrix.append(&mut hash_trace)
-                }
+                Some(VMOutput::XlixTrace(hash_trace)) => aet
+                    .hash_matrix
+                    .append(Axis(0), hash_trace.view())
+                    .expect("shapes must be identical"),
                 Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
                 None => (),
             }
-            // Record next, to be executed state. If `Halt`,
-            aet.processor_matrix.push(state.to_processor_row());
+            // Record next, to be executed state.
+            aet.processor_matrix
+                .push_row(state.to_processor_row().view())
+                .expect("shapes must be identical");
         }
 
         (aet, stdout, None)
@@ -247,7 +263,7 @@ pub mod triton_vm_tests {
 
         let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
 
-        let (base_matrices, stdout, err) = program.simulate(stdin, vec![]);
+        let (aet, stdout, err) = program.simulate(stdin, vec![]);
 
         println!(
             "VM output: [{}]",
@@ -257,7 +273,7 @@ pub mod triton_vm_tests {
         if let Some(e) = err {
             panic!("Execution failed: {e}");
         }
-        for row in base_matrices.processor_matrix {
+        for row in aet.processor_matrix.rows() {
             println!("{}", ProcessorMatrixRow { row });
         }
     }
@@ -275,10 +291,10 @@ pub mod triton_vm_tests {
 
         println!("{}", program);
 
-        let (base_matrices, _, err) = program.simulate_no_input();
+        let (aet, _, err) = program.simulate_no_input();
 
         println!("{:?}", err);
-        for row in base_matrices.processor_matrix {
+        for row in aet.processor_matrix.rows() {
             println!("{}", ProcessorMatrixRow { row });
         }
     }
