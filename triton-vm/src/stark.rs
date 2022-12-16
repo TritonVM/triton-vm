@@ -36,10 +36,6 @@ use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::cross_table_arguments::CrossTableArg;
-use crate::cross_table_arguments::EvalArg;
-use crate::cross_table_arguments::GrandCrossTableArg;
-use crate::cross_table_arguments::NUM_CROSS_TABLE_WEIGHTS;
 use crate::fri::Fri;
 use crate::fri::FriValidationError;
 use crate::proof::Claim;
@@ -218,7 +214,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "ext tables");
 
         prof_start!(maybe_profiler, "quotient degree bounds");
-        let mut quotient_degree_bounds = all_quotient_degree_bounds(
+        let quotient_degree_bounds = all_quotient_degree_bounds(
             master_base_table.padded_height,
             self.parameters.num_trace_randomizers,
         );
@@ -243,68 +239,26 @@ impl Stark {
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
         prof_start!(maybe_profiler, "quotient codewords");
-        let num_grand_cross_table_args = 1;
-        let num_quotients = num_all_table_quotients() + num_grand_cross_table_args;
-        let mut quotient_codewords = all_quotients(
+        let quotient_codewords = all_quotients(
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
             trace_domain,
             quotient_domain,
-            num_quotients,
             &extension_challenges,
             maybe_profiler,
         );
         prof_stop!(maybe_profiler, "quotient codewords");
 
-        prof_start!(maybe_profiler, "grand cross table");
-        let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_quotients);
-        let grand_cross_table_arg_and_non_lin_combi_weights_seed =
-            proof_stream.prover_fiat_shamir();
-        let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
-            grand_cross_table_arg_and_non_lin_combi_weights_seed,
-            NUM_CROSS_TABLE_WEIGHTS + num_non_lin_combi_weights,
-        );
-        let (grand_cross_table_argument_weights, non_lin_combi_weights) =
-            grand_cross_table_arg_and_non_lin_combi_weights.split_at(NUM_CROSS_TABLE_WEIGHTS);
-
-        // prove equal terminal values for the column tuples pertaining to cross table arguments
-        let input_terminal = EvalArg::compute_terminal(
-            &self.claim.input,
-            EvalArg::default_initial(),
-            extension_challenges
-                .processor_table_challenges
-                .standard_input_eval_indeterminate,
-        );
-        let output_terminal = EvalArg::compute_terminal(
-            &self.claim.output,
-            EvalArg::default_initial(),
-            extension_challenges
-                .processor_table_challenges
-                .standard_output_eval_indeterminate,
-        );
-        let grand_cross_table_arg = GrandCrossTableArg::new(
-            grand_cross_table_argument_weights.try_into().unwrap(),
-            input_terminal,
-            output_terminal,
-        );
-        let grand_cross_table_arg_quotient_codeword = grand_cross_table_arg
-            .terminal_quotient_codeword(
-                extension_quotient_domain_codewords,
-                trace_domain,
-                quotient_domain,
-            );
-        // Add the grand cross-table argument's quotient to the quotient codewords. The memory for
-        // this was allocated in the call to `all_quotients`.
-        grand_cross_table_arg_quotient_codeword
-            .move_into(&mut quotient_codewords.slice_mut(s![.., -1]));
-
-        let grand_cross_table_arg_quotient_degree_bound = grand_cross_table_arg
-            .quotient_degree_bound(
-                master_base_table.padded_height,
-                self.parameters.num_trace_randomizers,
-            );
-        quotient_degree_bounds.push(grand_cross_table_arg_quotient_degree_bound);
-        prof_stop!(maybe_profiler, "grand cross table");
+        // Get weights for nonlinear combination. Concretely, sample 2 weights for each base
+        // polynomial, each extension polynomial, and each quotient. The factor is 2 because
+        // transition constraints check 2 rows.
+        prof_start!(maybe_profiler, "Fiat-Shamir");
+        let non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
+        let num_non_lin_combi_weights =
+            2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
+        let non_lin_combi_weights =
+            Self::sample_weights(non_lin_combi_weights_seed, num_non_lin_combi_weights);
+        prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "nonlinear combination");
         prof_start!(maybe_profiler, "create combination codeword");
@@ -313,7 +267,7 @@ impl Stark {
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
             quotient_codewords.view(),
-            non_lin_combi_weights,
+            &non_lin_combi_weights,
             quotient_degree_bounds,
             master_base_table.padded_height,
             master_base_table.num_trace_randomizers,
@@ -626,40 +580,11 @@ impl Stark {
         // polynomial, each extension polynomial, and each quotient. The factor is 2 because
         // transition constraints check 2 rows.
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
-        let num_grand_cross_table_args = 1;
-        let num_non_lin_combi_weights = 2 * NUM_BASE_COLUMNS
-            + 2 * NUM_EXT_COLUMNS
-            + 2 * num_all_table_quotients()
-            + 2 * num_grand_cross_table_args;
-
-        let grand_cross_table_arg_and_non_lin_combi_weights_seed =
-            proof_stream.verifier_fiat_shamir();
-        let grand_cross_table_arg_and_non_lin_combi_weights = Self::sample_weights(
-            grand_cross_table_arg_and_non_lin_combi_weights_seed,
-            NUM_CROSS_TABLE_WEIGHTS + num_non_lin_combi_weights,
-        );
-        let (grand_cross_table_argument_weights, non_lin_combi_weights) =
-            grand_cross_table_arg_and_non_lin_combi_weights.split_at(NUM_CROSS_TABLE_WEIGHTS);
-
-        let input_terminal = EvalArg::compute_terminal(
-            &self.claim.input,
-            EvalArg::default_initial(),
-            challenges
-                .processor_table_challenges
-                .standard_input_eval_indeterminate,
-        );
-        let output_terminal = EvalArg::compute_terminal(
-            &self.claim.output,
-            EvalArg::default_initial(),
-            challenges
-                .processor_table_challenges
-                .standard_output_eval_indeterminate,
-        );
-        let grand_cross_table_arg = GrandCrossTableArg::new(
-            grand_cross_table_argument_weights.try_into().unwrap(),
-            input_terminal,
-            output_terminal,
-        );
+        let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
+        let num_non_lin_combi_weights =
+            2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
+        let non_lin_combi_weights =
+            Self::sample_weights(non_lin_combi_weights_seed, num_non_lin_combi_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
@@ -907,20 +832,6 @@ impl Stark {
             }
             prof_stop!(maybe_profiler, "shift");
 
-            prof_start!(maybe_profiler, "grand cross-table argument");
-            let grand_cross_table_arg_degree_bound = grand_cross_table_arg
-                .quotient_degree_bound(padded_height, self.parameters.num_trace_randomizers);
-            let shift = self.max_degree - grand_cross_table_arg_degree_bound;
-            let grand_cross_table_arg_evaluated =
-                grand_cross_table_arg.evaluate_non_linear_sum_of_differences(current_ext_row);
-            let grand_cross_table_arg_quotient = grand_cross_table_arg_evaluated
-                / (current_fri_domain_value - trace_domain_generator_inverse).lift();
-            let grand_cross_table_arg_quotient_shifted =
-                grand_cross_table_arg_quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
-            summands.push(grand_cross_table_arg_quotient);
-            summands.push(grand_cross_table_arg_quotient_shifted);
-            prof_stop!(maybe_profiler, "grand cross-table argument");
-
             prof_start!(maybe_profiler, "compute inner product");
             let inner_product: XFieldElement = non_lin_combi_weights
                 .par_iter()
@@ -989,7 +900,10 @@ pub(crate) mod triton_stark_tests {
     use num_traits::Zero;
     use twenty_first::shared_math::other::log_2_floor;
 
+    use crate::cross_table_arguments::CrossTableArg;
     use crate::cross_table_arguments::EvalArg;
+    use crate::cross_table_arguments::GrandCrossTableArg;
+    use crate::cross_table_arguments::NUM_CROSS_TABLE_WEIGHTS;
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
     use crate::shared_tests::*;

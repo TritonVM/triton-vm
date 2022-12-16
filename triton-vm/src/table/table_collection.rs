@@ -32,6 +32,7 @@ use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::cross_table_arguments::GrandCrossTableArg;
 use crate::stark::StarkHasher;
 use crate::table::challenges::AllChallenges;
 use crate::table::extension_table::DegreeWithOrigin;
@@ -617,6 +618,7 @@ pub fn num_all_terminal_quotients() -> usize {
         + ExtRamTable::num_terminal_quotients()
         + ExtJumpStackTable::num_terminal_quotients()
         + ExtHashTable::num_terminal_quotients()
+        + GrandCrossTableArg::num_terminal_quotients()
 }
 
 pub fn all_initial_quotient_degree_bounds(
@@ -681,6 +683,7 @@ pub fn all_terminal_quotient_degree_bounds(
         ExtRamTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
         ExtJumpStackTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
         ExtHashTable::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
+        GrandCrossTableArg::terminal_quotient_degree_bounds(padded_height, num_trace_randomizers),
     ]
     .concat()
 }
@@ -1072,6 +1075,9 @@ pub fn fill_all_terminal_quotients(
         jump_stack_section_start + ExtJumpStackTable::num_terminal_quotients();
     let hash_section_start = jump_stack_section_end;
     let hash_section_end = hash_section_start + ExtHashTable::num_terminal_quotients();
+    let cross_table_section_start = hash_section_end;
+    let cross_table_section_end =
+        cross_table_section_start + GrandCrossTableArg::num_terminal_quotients();
 
     let mut program_quot_table =
         quot_table.slice_mut(s![.., program_section_start..program_section_end]);
@@ -1134,6 +1140,15 @@ pub fn fill_all_terminal_quotients(
         zerofier_inverse,
         challenges,
     );
+    let mut cross_table_argument_quot_table =
+        quot_table.slice_mut(s![.., cross_table_section_start..cross_table_section_end]);
+    GrandCrossTableArg::fill_terminal_quotients(
+        master_base_table,
+        master_ext_table,
+        &mut cross_table_argument_quot_table,
+        zerofier_inverse,
+        challenges,
+    );
 }
 
 /// Computes an array containing all quotients. Each column corresponds to a different quotient.
@@ -1149,7 +1164,6 @@ pub fn all_quotients(
     quotient_domain_master_ext_table: ArrayView2<XFieldElement>,
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
-    num_quotients: usize,
     challenges: &AllChallenges,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> Array2<XFieldElement> {
@@ -1162,7 +1176,8 @@ pub fn all_quotients(
         quotient_domain_master_ext_table.nrows()
     );
 
-    let mut all_quotients = Array2::zeros([quotient_domain.length, num_quotients]);
+    let num_columns = num_all_table_quotients();
+    let mut all_quotients = Array2::zeros([quotient_domain.length, num_columns]);
 
     let initial_quotient_section_start = 0;
     let initial_quotient_section_end = initial_quotient_section_start + num_all_initial_quotients();
@@ -1314,6 +1329,7 @@ pub fn evaluate_all_terminal_constraints(
         ExtRamTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtJumpStackTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtHashTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        GrandCrossTableArg::evaluate_terminal_constraints(base_row, ext_row, challenges),
     ]
     .concat()
 }
