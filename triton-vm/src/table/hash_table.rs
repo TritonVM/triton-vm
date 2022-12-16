@@ -480,18 +480,18 @@ impl HashTable {
             let current_row = base_table.row(row_idx);
 
             // Add compressed input to running evaluation if round index marks beginning of hashing
-            if current_row[ROUNDNUMBER.table_index()].is_one() {
+            if current_row[ROUNDNUMBER.base_table_index()].is_one() {
                 let state_for_input = [
-                    current_row[STATE0.table_index()],
-                    current_row[STATE1.table_index()],
-                    current_row[STATE2.table_index()],
-                    current_row[STATE3.table_index()],
-                    current_row[STATE4.table_index()],
-                    current_row[STATE5.table_index()],
-                    current_row[STATE6.table_index()],
-                    current_row[STATE7.table_index()],
-                    current_row[STATE8.table_index()],
-                    current_row[STATE9.table_index()],
+                    current_row[STATE0.base_table_index()],
+                    current_row[STATE1.base_table_index()],
+                    current_row[STATE2.base_table_index()],
+                    current_row[STATE3.base_table_index()],
+                    current_row[STATE4.base_table_index()],
+                    current_row[STATE5.base_table_index()],
+                    current_row[STATE6.base_table_index()],
+                    current_row[STATE7.base_table_index()],
+                    current_row[STATE8.base_table_index()],
+                    current_row[STATE9.base_table_index()],
                 ];
                 let stack_input_weights = [
                     challenges.stack_input_weight0,
@@ -516,13 +516,13 @@ impl HashTable {
             }
 
             // Add compressed digest to running evaluation if round index marks end of hashing
-            if current_row[ROUNDNUMBER.table_index()].value() == NUM_ROUNDS as u64 + 1 {
+            if current_row[ROUNDNUMBER.base_table_index()].value() == NUM_ROUNDS as u64 + 1 {
                 let state_for_output = [
-                    current_row[STATE0.table_index()],
-                    current_row[STATE1.table_index()],
-                    current_row[STATE2.table_index()],
-                    current_row[STATE3.table_index()],
-                    current_row[STATE4.table_index()],
+                    current_row[STATE0.base_table_index()],
+                    current_row[STATE1.base_table_index()],
+                    current_row[STATE2.base_table_index()],
+                    current_row[STATE3.base_table_index()],
+                    current_row[STATE4.base_table_index()],
                 ];
                 let digest_output_weights = [
                     challenges.digest_output_weight0,
@@ -542,9 +542,9 @@ impl HashTable {
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[FromProcessorRunningEvaluation.table_index()] =
+            extension_row[FromProcessorRunningEvaluation.ext_table_index()] =
                 from_processor_running_evaluation;
-            extension_row[ToProcessorRunningEvaluation.table_index()] =
+            extension_row[ToProcessorRunningEvaluation.ext_table_index()] =
                 to_processor_running_evaluation;
         }
     }

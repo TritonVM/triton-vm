@@ -236,10 +236,10 @@ impl OpStackTable {
         // rows, which are sorted by CLK.
         let mut pre_processed_op_stack_table: Vec<Vec<_>> = vec![];
         for processor_row in aet.processor_matrix.iter() {
-            let clk = processor_row[ProcessorBaseTableColumn::CLK.table_index()];
-            let ib1 = processor_row[ProcessorBaseTableColumn::IB1.table_index()];
-            let osp = processor_row[ProcessorBaseTableColumn::OSP.table_index()];
-            let osv = processor_row[ProcessorBaseTableColumn::OSV.table_index()];
+            let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
+            let ib1 = processor_row[ProcessorBaseTableColumn::IB1.base_table_index()];
+            let osp = processor_row[ProcessorBaseTableColumn::OSP.base_table_index()];
+            let osv = processor_row[ProcessorBaseTableColumn::OSV.base_table_index()];
             // The (honest) prover can only grow the Op Stack's size by at most 1 per execution
             // step. Hence, the following (a) works, and (b) sorts.
             let osp_minus_16 = osp.value() as usize - OP_STACK_REG_COUNT;
@@ -258,10 +258,10 @@ impl OpStackTable {
         {
             let osp = BFieldElement::new((osp_minus_16 + OP_STACK_REG_COUNT) as u64);
             for (clk, ib1, osv) in rows_with_this_osp {
-                op_stack_table[(op_stack_table_row, CLK.table_index())] = clk;
-                op_stack_table[(op_stack_table_row, IB1ShrinkStack.table_index())] = ib1;
-                op_stack_table[(op_stack_table_row, OSP.table_index())] = osp;
-                op_stack_table[(op_stack_table_row, OSV.table_index())] = osv;
+                op_stack_table[(op_stack_table_row, CLK.base_table_index())] = clk;
+                op_stack_table[(op_stack_table_row, IB1ShrinkStack.base_table_index())] = ib1;
+                op_stack_table[(op_stack_table_row, OSP.base_table_index())] = osp;
+                op_stack_table[(op_stack_table_row, OSV.base_table_index())] = osv;
                 op_stack_table_row += 1;
             }
         }
@@ -274,12 +274,14 @@ impl OpStackTable {
         for row_idx in 0..aet.processor_matrix.len() - 1 {
             let (mut curr_row, next_row) =
                 op_stack_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
-            let clk_diff = next_row[CLK.table_index()] - curr_row[CLK.table_index()];
+            let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
             let clk_diff_minus_1 = clk_diff - BFieldElement::one();
             let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
-            curr_row[InverseOfClkDiffMinusOne.table_index()] = clk_diff_minus_1_inverse;
+            curr_row[InverseOfClkDiffMinusOne.base_table_index()] = clk_diff_minus_1_inverse;
 
-            if curr_row[OSP.table_index()] == next_row[OSP.table_index()] && clk_diff.value() > 1 {
+            if curr_row[OSP.base_table_index()] == next_row[OSP.base_table_index()]
+                && clk_diff.value() > 1
+            {
                 clock_jump_differences_greater_than_1.push(clk_diff);
             }
         }
@@ -303,7 +305,7 @@ impl OpStackTable {
             .rows()
             .into_iter()
             .enumerate()
-            .find(|(_, row)| row[CLK.table_index()].value() as usize == max_clk_before_padding)
+            .find(|(_, row)| row[CLK.base_table_index()].value() as usize == max_clk_before_padding)
             .map(|(idx, _)| idx)
             .expect("Op Stack Table must contain row with clock cycle equal to max cycle.");
         let rows_to_move_source_section_start = max_clk_before_padding_row_idx + 1;
@@ -332,7 +334,7 @@ impl OpStackTable {
         let mut padding_row_template = op_stack_table
             .row(max_clk_before_padding_row_idx)
             .to_owned();
-        padding_row_template[InverseOfClkDiffMinusOne.table_index()] = BFieldElement::zero();
+        padding_row_template[InverseOfClkDiffMinusOne.base_table_index()] = BFieldElement::zero();
         let mut padding_section =
             op_stack_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
         padding_section
@@ -344,23 +346,23 @@ impl OpStackTable {
         let new_clk_values = Array1::from_iter(
             (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
         );
-        new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.table_index()]));
+        new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.base_table_index()]));
 
         // InverseOfClkDiffMinusOne must be consistent at the padding section's boundaries.
         op_stack_table[[
             max_clk_before_padding_row_idx,
-            InverseOfClkDiffMinusOne.table_index(),
+            InverseOfClkDiffMinusOne.base_table_index(),
         ]] = BFieldElement::zero();
         if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
             let max_clk_after_padding = padded_height - 1;
             let clk_diff_minus_one_at_padding_section_lower_boundary = op_stack_table
-                [[rows_to_move_dest_section_start, CLK.table_index()]]
+                [[rows_to_move_dest_section_start, CLK.base_table_index()]]
                 - BFieldElement::new(max_clk_after_padding as u64)
                 - BFieldElement::one();
             let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
             op_stack_table[[
                 last_row_in_padding_section_idx,
-                InverseOfClkDiffMinusOne.table_index(),
+                InverseOfClkDiffMinusOne.base_table_index(),
             ]] = clk_diff_minus_one_at_padding_section_lower_boundary.inverse_or_zero();
         }
     }
@@ -379,10 +381,10 @@ impl OpStackTable {
 
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
-            let clk = current_row[CLK.table_index()];
-            let ib1 = current_row[IB1ShrinkStack.table_index()];
-            let osp = current_row[OSP.table_index()];
-            let osv = current_row[OSV.table_index()];
+            let clk = current_row[CLK.base_table_index()];
+            let ib1 = current_row[IB1ShrinkStack.base_table_index()];
+            let osp = current_row[OSP.base_table_index()];
+            let osv = current_row[OSV.base_table_index()];
 
             let compressed_row_for_permutation_argument = clk * challenges.clk_weight
                 + ib1 * challenges.ib1_weight
@@ -393,9 +395,9 @@ impl OpStackTable {
 
             // clock jump difference
             if let Some(prev_row) = previous_row {
-                if prev_row[OSP.table_index()] == current_row[OSP.table_index()] {
+                if prev_row[OSP.base_table_index()] == current_row[OSP.base_table_index()] {
                     let clock_jump_difference =
-                        current_row[CLK.table_index()] - prev_row[CLK.table_index()];
+                        current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
                     if !clock_jump_difference.is_one() {
                         all_clock_jump_differences_running_product *= challenges
                             .all_clock_jump_differences_multi_perm_indeterminate
@@ -405,8 +407,8 @@ impl OpStackTable {
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[RunningProductPermArg.table_index()] = running_product;
-            extension_row[AllClockJumpDifferencesPermArg.table_index()] =
+            extension_row[RunningProductPermArg.ext_table_index()] = running_product;
+            extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
             previous_row = Some(current_row);
         }

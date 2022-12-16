@@ -148,13 +148,13 @@ impl ExtProgramTable {
 impl ProgramTable {
     pub fn fill_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program: &[BFieldElement]) {
         let program_len = program.len();
-        let address_column = program_table.slice_mut(s![..program_len, Address.table_index()]);
+        let address_column = program_table.slice_mut(s![..program_len, Address.base_table_index()]);
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);
 
         let instructions = Array1::from(program.to_owned());
         let instruction_column =
-            program_table.slice_mut(s![..program_len, Instruction.table_index()]);
+            program_table.slice_mut(s![..program_len, Instruction.base_table_index()]);
         instructions.move_into(instruction_column);
     }
 
@@ -162,10 +162,10 @@ impl ProgramTable {
         let addresses = Array1::from_iter(
             (program_len..program_table.nrows()).map(|a| BFieldElement::new(a as u64)),
         );
-        addresses.move_into(program_table.slice_mut(s![program_len.., Address.table_index()]));
+        addresses.move_into(program_table.slice_mut(s![program_len.., Address.base_table_index()]));
 
         program_table
-            .slice_mut(s![program_len.., IsPadding.table_index()])
+            .slice_mut(s![program_len.., IsPadding.base_table_index()])
             .fill(BFieldElement::one());
     }
 
@@ -188,12 +188,13 @@ impl ProgramTable {
             // initial in the first row, contrary to most other running evaluations and products.
             // The running product's final value, allowing for a meaningful cross-table argument,
             // is recorded in the first padding row. This row is guaranteed to exist.
-            extension_row[RunningEvaluation.table_index()] = instruction_table_running_evaluation;
+            extension_row[RunningEvaluation.ext_table_index()] =
+                instruction_table_running_evaluation;
             // update the running evaluation if not a padding row
-            if row[IsPadding.table_index()].is_zero() {
-                let address = row[Address.table_index()];
-                let instruction = row[Instruction.table_index()];
-                let next_instruction = next_row[Instruction.table_index()];
+            if row[IsPadding.base_table_index()].is_zero() {
+                let address = row[Address.base_table_index()];
+                let instruction = row[Instruction.base_table_index()];
+                let next_instruction = next_row[Instruction.base_table_index()];
                 let compressed_row_for_evaluation_argument = address * challenges.address_weight
                     + instruction * challenges.instruction_weight
                     + next_instruction * challenges.next_instruction_weight;
@@ -208,7 +209,7 @@ impl ProgramTable {
             .into_iter()
             .last()
             .expect("Program Table must not be empty.");
-        last_row[RunningEvaluation.table_index()] = instruction_table_running_evaluation;
+        last_row[RunningEvaluation.ext_table_index()] = instruction_table_running_evaluation;
     }
 }
 

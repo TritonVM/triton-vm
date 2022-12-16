@@ -302,7 +302,7 @@ impl InstructionTable {
         let program_len = program.len();
         let mut processor_trace_row_counts = vec![0; program_len];
         for row in aet.processor_matrix.iter() {
-            let ip = row[ProcessorBaseTableColumn::IP.table_index()].value() as usize;
+            let ip = row[ProcessorBaseTableColumn::IP.base_table_index()].value() as usize;
             assert!(ip < program_len, "IP out of bounds – forgot to \"halt\"?");
             processor_trace_row_counts[ip] += 1;
         }
@@ -320,13 +320,13 @@ impl InstructionTable {
                 ..
             ]);
             instruction_sub_table
-                .slice_mut(s![.., Address.table_index()])
+                .slice_mut(s![.., Address.base_table_index()])
                 .fill(BFieldElement::new(address as u64));
             instruction_sub_table
-                .slice_mut(s![.., CI.table_index()])
+                .slice_mut(s![.., CI.base_table_index()])
                 .fill(instruction);
             instruction_sub_table
-                .slice_mut(s![.., NIA.table_index()])
+                .slice_mut(s![.., NIA.base_table_index()])
                 .fill(nia);
             next_row_in_instruction_table = last_row_for_this_instruction;
         }
@@ -340,17 +340,17 @@ impl InstructionTable {
         //  - set `padding_address` to the highest address in the instruction table + 1
         //  - fill all padding rows' `address` field with `padding_address`
         let highest_encountered_address = instruction_table
-            .slice(s![..instruction_table_len, Address.table_index()])
+            .slice(s![..instruction_table_len, Address.base_table_index()])
             .iter()
             .map(|&x| x.value())
             .max()
             .unwrap_or(0);
         instruction_table
-            .slice_mut(s![instruction_table_len.., Address.table_index()])
+            .slice_mut(s![instruction_table_len.., Address.base_table_index()])
             .fill(BFieldElement::new(highest_encountered_address + 1));
 
         instruction_table
-            .slice_mut(s![instruction_table_len.., IsPadding.table_index()])
+            .slice_mut(s![instruction_table_len.., IsPadding.base_table_index()])
             .fill(BFieldElement::one());
     }
 
@@ -368,9 +368,9 @@ impl InstructionTable {
 
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
-            let ip = current_row[Address.table_index()];
-            let ci = current_row[CI.table_index()];
-            let nia = current_row[NIA.table_index()];
+            let ip = current_row[Address.base_table_index()];
+            let ci = current_row[CI.base_table_index()];
+            let nia = current_row[NIA.base_table_index()];
 
             // Is the current row a padding row?
             // Padding Row: don't updated anything.
@@ -378,11 +378,11 @@ impl InstructionTable {
             //   Different: update running evaluation of Evaluation Argument with Program Table.
             //   Not different: update running product of Permutation Argument with Processor Table.
             let is_duplicate_row = if let Some(prev_row) = previous_row {
-                prev_row[Address.table_index()] == current_row[Address.table_index()]
+                prev_row[Address.base_table_index()] == current_row[Address.base_table_index()]
             } else {
                 false
             };
-            if !is_duplicate_row && current_row[IsPadding.table_index()].is_zero() {
+            if !is_duplicate_row && current_row[IsPadding.base_table_index()].is_zero() {
                 let compressed_row_for_evaluation_argument = ip * challenges.address_weight
                     + ci * challenges.instruction_weight
                     + nia * challenges.next_instruction_weight;
@@ -390,7 +390,7 @@ impl InstructionTable {
                     * challenges.program_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
-            if is_duplicate_row && current_row[IsPadding.table_index()].is_zero() {
+            if is_duplicate_row && current_row[IsPadding.base_table_index()].is_zero() {
                 let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
                     + ci * challenges.ci_processor_weight
                     + nia * challenges.nia_processor_weight;
@@ -399,8 +399,9 @@ impl InstructionTable {
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[RunningEvaluation.table_index()] = program_table_running_evaluation;
-            extension_row[RunningProductPermArg.table_index()] = processor_table_running_product;
+            extension_row[RunningEvaluation.ext_table_index()] = program_table_running_evaluation;
+            extension_row[RunningProductPermArg.ext_table_index()] =
+                processor_table_running_product;
             previous_row = Some(current_row);
         }
     }

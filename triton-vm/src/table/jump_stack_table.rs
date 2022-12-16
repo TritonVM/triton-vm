@@ -259,11 +259,11 @@ impl JumpStackTable {
         // rows, which are sorted by CLK.
         let mut pre_processed_jump_stack_table: Vec<Vec<_>> = vec![];
         for processor_row in aet.processor_matrix.iter() {
-            let clk = processor_row[ProcessorBaseTableColumn::CLK.table_index()];
-            let ci = processor_row[ProcessorBaseTableColumn::CI.table_index()];
-            let jsp = processor_row[ProcessorBaseTableColumn::JSP.table_index()];
-            let jso = processor_row[ProcessorBaseTableColumn::JSO.table_index()];
-            let jsd = processor_row[ProcessorBaseTableColumn::JSD.table_index()];
+            let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
+            let ci = processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
+            let jsp = processor_row[ProcessorBaseTableColumn::JSP.base_table_index()];
+            let jso = processor_row[ProcessorBaseTableColumn::JSO.base_table_index()];
+            let jsd = processor_row[ProcessorBaseTableColumn::JSD.base_table_index()];
             // The (honest) prover can only grow the Jump Stack's size by at most 1 per execution
             // step. Hence, the following (a) works, and (b) sorts.
             let jsp_val = jsp.value() as usize;
@@ -281,11 +281,11 @@ impl JumpStackTable {
         {
             let jsp = BFieldElement::new(jsp_val as u64);
             for (clk, ci, jso, jsd) in rows_with_this_jsp {
-                jump_stack_table[(jump_stack_table_row, CLK.table_index())] = clk;
-                jump_stack_table[(jump_stack_table_row, CI.table_index())] = ci;
-                jump_stack_table[(jump_stack_table_row, JSP.table_index())] = jsp;
-                jump_stack_table[(jump_stack_table_row, JSO.table_index())] = jso;
-                jump_stack_table[(jump_stack_table_row, JSD.table_index())] = jsd;
+                jump_stack_table[(jump_stack_table_row, CLK.base_table_index())] = clk;
+                jump_stack_table[(jump_stack_table_row, CI.base_table_index())] = ci;
+                jump_stack_table[(jump_stack_table_row, JSP.base_table_index())] = jsp;
+                jump_stack_table[(jump_stack_table_row, JSO.base_table_index())] = jso;
+                jump_stack_table[(jump_stack_table_row, JSD.base_table_index())] = jsd;
                 jump_stack_table_row += 1;
             }
         }
@@ -298,12 +298,14 @@ impl JumpStackTable {
         for row_idx in 0..aet.processor_matrix.len() - 1 {
             let (mut curr_row, next_row) =
                 jump_stack_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
-            let clk_diff = next_row[CLK.table_index()] - curr_row[CLK.table_index()];
+            let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
             let clk_diff_minus_1 = clk_diff - BFieldElement::one();
             let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
-            curr_row[InverseOfClkDiffMinusOne.table_index()] = clk_diff_minus_1_inverse;
+            curr_row[InverseOfClkDiffMinusOne.base_table_index()] = clk_diff_minus_1_inverse;
 
-            if curr_row[JSP.table_index()] == next_row[JSP.table_index()] && clk_diff.value() > 1 {
+            if curr_row[JSP.base_table_index()] == next_row[JSP.base_table_index()]
+                && clk_diff.value() > 1
+            {
                 clock_jump_differences_greater_than_1.push(clk_diff);
             }
         }
@@ -327,7 +329,7 @@ impl JumpStackTable {
             .rows()
             .into_iter()
             .enumerate()
-            .find(|(_, row)| row[CLK.table_index()].value() as usize == max_clk_before_padding)
+            .find(|(_, row)| row[CLK.base_table_index()].value() as usize == max_clk_before_padding)
             .map(|(idx, _)| idx)
             .expect("Jump Stack Table must contain row with clock cycle equal to max cycle.");
         let rows_to_move_source_section_start = max_clk_before_padding_row_idx + 1;
@@ -357,7 +359,7 @@ impl JumpStackTable {
         let mut padding_row_template = jump_stack_table
             .row(max_clk_before_padding_row_idx)
             .to_owned();
-        padding_row_template[InverseOfClkDiffMinusOne.table_index()] = BFieldElement::zero();
+        padding_row_template[InverseOfClkDiffMinusOne.base_table_index()] = BFieldElement::zero();
         let mut padding_section =
             jump_stack_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
         padding_section
@@ -369,23 +371,23 @@ impl JumpStackTable {
         let new_clk_values = Array1::from_iter(
             (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
         );
-        new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.table_index()]));
+        new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.base_table_index()]));
 
         // InverseOfClkDiffMinusOne must be consistent at the padding section's boundaries.
         jump_stack_table[[
             max_clk_before_padding_row_idx,
-            InverseOfClkDiffMinusOne.table_index(),
+            InverseOfClkDiffMinusOne.base_table_index(),
         ]] = BFieldElement::zero();
         if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
             let max_clk_after_padding = padded_height - 1;
             let clk_diff_minus_one_at_padding_section_lower_boundary = jump_stack_table
-                [[rows_to_move_dest_section_start, CLK.table_index()]]
+                [[rows_to_move_dest_section_start, CLK.base_table_index()]]
                 - BFieldElement::new(max_clk_after_padding as u64)
                 - BFieldElement::one();
             let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
             jump_stack_table[[
                 last_row_in_padding_section_idx,
-                InverseOfClkDiffMinusOne.table_index(),
+                InverseOfClkDiffMinusOne.base_table_index(),
             ]] = clk_diff_minus_one_at_padding_section_lower_boundary.inverse_or_zero();
         }
     }
@@ -404,11 +406,11 @@ impl JumpStackTable {
 
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
-            let clk = current_row[CLK.table_index()];
-            let ci = current_row[CI.table_index()];
-            let jsp = current_row[JSP.table_index()];
-            let jso = current_row[JSO.table_index()];
-            let jsd = current_row[JSD.table_index()];
+            let clk = current_row[CLK.base_table_index()];
+            let ci = current_row[CI.base_table_index()];
+            let jsp = current_row[JSP.base_table_index()];
+            let jso = current_row[JSO.base_table_index()];
+            let jsd = current_row[JSD.base_table_index()];
 
             let compressed_row_for_permutation_argument = clk * challenges.clk_weight
                 + ci * challenges.ci_weight
@@ -420,9 +422,9 @@ impl JumpStackTable {
 
             // clock jump difference
             if let Some(prev_row) = previous_row {
-                if prev_row[JSP.table_index()] == current_row[JSP.table_index()] {
+                if prev_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
                     let clock_jump_difference =
-                        current_row[CLK.table_index()] - prev_row[CLK.table_index()];
+                        current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
                     if !clock_jump_difference.is_one() {
                         all_clock_jump_differences_running_product *= challenges
                             .all_clock_jump_differences_multi_perm_indeterminate
@@ -432,8 +434,8 @@ impl JumpStackTable {
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[RunningProductPermArg.table_index()] = running_product;
-            extension_row[AllClockJumpDifferencesPermArg.table_index()] =
+            extension_row[RunningProductPermArg.ext_table_index()] = running_product;
+            extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
             previous_row = Some(current_row);
         }
@@ -504,11 +506,11 @@ impl Display for JumpStackMatrixRow {
             f,
             "│ CLK: {:>width$} │ CI:  {:>width$} │ \
             JSP: {:>width$} │ JSO: {:>width$} │ JSD: {:>width$} │",
-            self.row[CLK.table_index()].value(),
-            self.row[CI.table_index()].value(),
-            self.row[JSP.table_index()].value(),
-            self.row[JSO.table_index()].value(),
-            self.row[JSD.table_index()].value(),
+            self.row[CLK.base_table_index()].value(),
+            self.row[CI.base_table_index()].value(),
+            self.row[JSP.base_table_index()].value(),
+            self.row[JSO.base_table_index()].value(),
+            self.row[JSD.base_table_index()].value(),
         )
     }
 }

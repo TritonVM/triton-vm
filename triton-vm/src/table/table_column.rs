@@ -256,54 +256,54 @@ pub enum HashExtTableColumn {
 // --------------------------------------------------------------------
 
 pub trait BaseTableColumn {
-    fn table_index(&self) -> usize;
+    fn base_table_index(&self) -> usize;
 }
 
 impl BaseTableColumn for ProgramBaseTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn base_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl BaseTableColumn for InstructionBaseTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn base_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl BaseTableColumn for ProcessorBaseTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn base_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl BaseTableColumn for OpStackBaseTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn base_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl BaseTableColumn for RamBaseTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn base_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl BaseTableColumn for JumpStackBaseTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn base_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl BaseTableColumn for HashBaseTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn base_table_index(&self) -> usize {
         (*self) as usize
     }
 }
@@ -311,54 +311,54 @@ impl BaseTableColumn for HashBaseTableColumn {
 // --------------------------------------------------------------------
 
 pub trait ExtTableColumn {
-    fn table_index(&self) -> usize;
+    fn ext_table_index(&self) -> usize;
 }
 
 impl ExtTableColumn for ProgramExtTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn ext_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl ExtTableColumn for InstructionExtTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn ext_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl ExtTableColumn for ProcessorExtTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn ext_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl ExtTableColumn for OpStackExtTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn ext_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl ExtTableColumn for RamExtTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn ext_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl ExtTableColumn for JumpStackExtTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn ext_table_index(&self) -> usize {
         (*self) as usize
     }
 }
 
 impl ExtTableColumn for HashExtTableColumn {
     #[inline]
-    fn table_index(&self) -> usize {
+    fn ext_table_index(&self) -> usize {
         (*self) as usize
     }
 }
@@ -372,49 +372,49 @@ pub trait MasterBaseTableColumn: BaseTableColumn {
 impl MasterBaseTableColumn for ProgramBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
-        PROGRAM_TABLE_START + self.table_index()
+        PROGRAM_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for InstructionBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
-        INSTRUCTION_TABLE_START + self.table_index()
+        INSTRUCTION_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for ProcessorBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
-        PROCESSOR_TABLE_START + self.table_index()
+        PROCESSOR_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for OpStackBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
-        OP_STACK_TABLE_START + self.table_index()
+        OP_STACK_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for RamBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
-        RAM_TABLE_START + self.table_index()
+        RAM_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for JumpStackBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
-        JUMP_STACK_TABLE_START + self.table_index()
+        JUMP_STACK_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for HashBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
-        HASH_TABLE_START + self.table_index()
+        HASH_TABLE_START + self.base_table_index()
     }
 }
 
@@ -427,49 +427,49 @@ pub trait MasterExtTableColumn: ExtTableColumn {
 impl MasterExtTableColumn for ProgramExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
-        EXT_PROGRAM_TABLE_START + self.table_index()
+        EXT_PROGRAM_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for InstructionExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
-        EXT_INSTRUCTION_TABLE_START + self.table_index()
+        EXT_INSTRUCTION_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for ProcessorExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
-        EXT_PROCESSOR_TABLE_START + self.table_index()
+        EXT_PROCESSOR_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for OpStackExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
-        EXT_OP_STACK_TABLE_START + self.table_index()
+        EXT_OP_STACK_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for RamExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
-        EXT_RAM_TABLE_START + self.table_index()
+        EXT_RAM_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for JumpStackExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
-        EXT_JUMP_STACK_TABLE_START + self.table_index()
+        EXT_JUMP_STACK_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for HashExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
-        EXT_HASH_TABLE_START + self.table_index()
+        EXT_HASH_TABLE_START + self.ext_table_index()
     }
 }
 
@@ -493,7 +493,11 @@ mod table_column_tests {
     fn column_max_bound_matches_table_width() {
         assert_eq!(
             program_table::BASE_WIDTH,
-            ProgramBaseTableColumn::iter().last().unwrap().table_index() + 1,
+            ProgramBaseTableColumn::iter()
+                .last()
+                .unwrap()
+                .base_table_index()
+                + 1,
             "ProgramTable's BASE_WIDTH is 1 + its max column index",
         );
         assert_eq!(
@@ -501,7 +505,7 @@ mod table_column_tests {
             InstructionBaseTableColumn::iter()
                 .last()
                 .unwrap()
-                .table_index()
+                .base_table_index()
                 + 1,
             "InstructionTable's BASE_WIDTH is 1 + its max column index",
         );
@@ -510,18 +514,26 @@ mod table_column_tests {
             ProcessorBaseTableColumn::iter()
                 .last()
                 .unwrap()
-                .table_index()
+                .base_table_index()
                 + 1,
             "ProcessorTable's BASE_WIDTH is 1 + its max column index",
         );
         assert_eq!(
             op_stack_table::BASE_WIDTH,
-            OpStackBaseTableColumn::iter().last().unwrap().table_index() + 1,
+            OpStackBaseTableColumn::iter()
+                .last()
+                .unwrap()
+                .base_table_index()
+                + 1,
             "OpStackTable's BASE_WIDTH is 1 + its max column index",
         );
         assert_eq!(
             ram_table::BASE_WIDTH,
-            RamBaseTableColumn::iter().last().unwrap().table_index() + 1,
+            RamBaseTableColumn::iter()
+                .last()
+                .unwrap()
+                .base_table_index()
+                + 1,
             "RamTable's BASE_WIDTH is 1 + its max column index",
         );
         assert_eq!(
@@ -529,19 +541,27 @@ mod table_column_tests {
             JumpStackBaseTableColumn::iter()
                 .last()
                 .unwrap()
-                .table_index()
+                .base_table_index()
                 + 1,
             "JumpStackTable's BASE_WIDTH is 1 + its max column index",
         );
         assert_eq!(
             hash_table::BASE_WIDTH,
-            HashBaseTableColumn::iter().last().unwrap().table_index() + 1,
+            HashBaseTableColumn::iter()
+                .last()
+                .unwrap()
+                .base_table_index()
+                + 1,
             "HashTable's BASE_WIDTH is 1 + its max column index",
         );
 
         assert_eq!(
             program_table::EXT_WIDTH,
-            ProgramExtTableColumn::iter().last().unwrap().table_index() + 1,
+            ProgramExtTableColumn::iter()
+                .last()
+                .unwrap()
+                .ext_table_index()
+                + 1,
             "ProgramTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
@@ -549,7 +569,7 @@ mod table_column_tests {
             InstructionExtTableColumn::iter()
                 .last()
                 .unwrap()
-                .table_index()
+                .ext_table_index()
                 + 1,
             "InstructionTable's EXT_WIDTH is 1 + its max column index",
         );
@@ -558,18 +578,22 @@ mod table_column_tests {
             ProcessorExtTableColumn::iter()
                 .last()
                 .unwrap()
-                .table_index()
+                .ext_table_index()
                 + 1,
             "ProcessorTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
             op_stack_table::EXT_WIDTH,
-            OpStackExtTableColumn::iter().last().unwrap().table_index() + 1,
+            OpStackExtTableColumn::iter()
+                .last()
+                .unwrap()
+                .ext_table_index()
+                + 1,
             "OpStack:Table's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
             ram_table::EXT_WIDTH,
-            RamExtTableColumn::iter().last().unwrap().table_index() + 1,
+            RamExtTableColumn::iter().last().unwrap().ext_table_index() + 1,
             "RamTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
@@ -577,13 +601,13 @@ mod table_column_tests {
             JumpStackExtTableColumn::iter()
                 .last()
                 .unwrap()
-                .table_index()
+                .ext_table_index()
                 + 1,
             "JumpStack:Table's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
             hash_table::EXT_WIDTH,
-            HashExtTableColumn::iter().last().unwrap().table_index() + 1,
+            HashExtTableColumn::iter().last().unwrap().ext_table_index() + 1,
             "HashTable's EXT_WIDTH is 1 + its max column index",
         );
     }

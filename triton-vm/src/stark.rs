@@ -1025,7 +1025,7 @@ pub(crate) mod triton_stark_tests {
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
-        let ptie = processor_table_last_row[InputTableEvalArg.table_index()];
+        let ptie = processor_table_last_row[InputTableEvalArg.ext_table_index()];
         let ine = EvalArg::compute_terminal(
             &stark.claim.input,
             EvalArg::default_initial(),
@@ -1033,7 +1033,7 @@ pub(crate) mod triton_stark_tests {
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
-        let ptoe = processor_table_last_row[OutputTableEvalArg.table_index()];
+        let ptoe = processor_table_last_row[OutputTableEvalArg.ext_table_index()];
         let oute = EvalArg::compute_terminal(
             &stark.claim.output,
             EvalArg::default_initial(),
@@ -1061,12 +1061,12 @@ pub(crate) mod triton_stark_tests {
             let processor_table_last_row = processor_table.slice(s![-1, ..]);
             assert_eq!(
                 all_challenges.cross_table_challenges.input_terminal,
-                processor_table_last_row[InputTableEvalArg.table_index()],
+                processor_table_last_row[InputTableEvalArg.ext_table_index()],
                 "The input terminal must match for TASM snippet #{code_idx}."
             );
             assert_eq!(
                 all_challenges.cross_table_challenges.output_terminal,
-                processor_table_last_row[OutputTableEvalArg.table_index()],
+                processor_table_last_row[OutputTableEvalArg.ext_table_index()],
                 "The output terminal must match for TASM snippet #{code_idx}."
             );
 
