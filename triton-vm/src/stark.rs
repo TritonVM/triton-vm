@@ -234,7 +234,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
         prof_start!(maybe_profiler, "quotient codewords");
-        let quotient_codewords = all_quotients(
+        let master_quotient_table = all_quotients(
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
             trace_domain,
@@ -261,7 +261,7 @@ impl Stark {
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
-            quotient_codewords.view(),
+            master_quotient_table.view(),
             &non_lin_combi_weights,
             quotient_degree_bounds,
         );

@@ -13,6 +13,13 @@ use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
+use strum::EnumCount;
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
@@ -26,10 +33,6 @@ use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
-
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
@@ -55,7 +58,7 @@ use crate::table::ram_table::RamTable;
 use crate::table::*;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const NUM_TABLES: usize = 7;
+pub const NUM_TABLES: usize = TableId::COUNT;
 
 pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + instruction_table::BASE_WIDTH
@@ -106,7 +109,7 @@ pub const EXT_HASH_TABLE_START: usize = EXT_JUMP_STACK_TABLE_END;
 pub const EXT_HASH_TABLE_END: usize = EXT_HASH_TABLE_START + hash_table::EXT_WIDTH;
 
 /// A `TableId` uniquely determines one of Triton VM's tables.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum TableId {
     ProgramTable,
     InstructionTable,
@@ -117,6 +120,48 @@ pub enum TableId {
     HashTable,
 }
 
+/// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
+/// but little logic beyond bookkeeping and presenting the data in a useful way. Conversely, the
+/// individual tables contain no data but all of the respective logic. Master Tables are
+/// responsible for managing the individual tables and for presenting the right data to the right
+/// tables, serving as a clean interface between the VM and the individual tables.
+///
+/// As a mental model, it is perfectly fine to think of the data for the individual tables as
+/// completely separate from each other. Only the cross-table argument links all tables together.
+///
+/// Conceptually, there are three Master Tables: the base Master Table, the Master Extension
+/// Table, and the Master Quotient Table. The lifecycle of the Master Tables is as follows:
+/// 1. The Master Base Table is instantiated and filled using the Algebraic Execution Trace.
+///     This is the first time a Master Base Table is instantiated. It is in column-major form.
+/// 2. The Master Base Table is padded using logic from the individual tables.
+/// 3. The still-empty entries in the Master Base Table are filled with random elements. This
+///     step is also known as “trace randomization.”
+/// 4. Each column of the Master Base Table is low-degree extended. The result is the Master Base
+///     Table over the FRI domain. This is the second and last time a Master Base Table is
+///     instantiated. It is in row-major form.
+/// 5. The Master Base Table and the Master Base Table over the FRI domain are used to derive the
+///     Master Extension Table using logic from the individual tables. This is the first time a
+///     Master Extension Table is instantiated. It is in column-major form.
+/// 6. The Master Extension Table is trace-randomized.
+/// 7. Each column of the Master Extension Table is low-degree extended. The result is the Master
+///     Extension Table over the FRI domain. This is the second and last time a Master Extension
+///     Table is instantiated. It is in row-major form.
+/// 8. Using the Master Base Table over the FRI domain and the Master Extension Table over the
+///     FRI domain, the Quotient Master Table is derived using the AIR. Each individual table
+///     defines that part of the AIR that is relevant to it.
+///
+/// The following points are of note:
+/// - The Master Extension Table's rightmost columns are the randomizer codewords. These are
+///     necessary for zero-knowledge.
+/// - The terminal quotient of the cross-table argument, which links the individual tables together,
+///     is also stored in the Master Quotient Table. Even though the cross-table argument is not
+///     a table, it does define part of the AIR. Hence, the cross-table argument does not contribute
+///     to padding or extending the Master Tables, but is incorporated when deriving the Master
+///     Qoutient Table.
+/// - For better performance, it is possible to derive the Master Quotient Table (step 8) from the
+///     Master Base Table and Master Extension Table over a smaller domain than the FRI domain –
+///     the “quotient domain.” The quotient domain is a subset of the FRI domain. This
+///     performance improvement changes nothing conceptually.
 pub trait MasterTable<FF>
 where
     FF: FiniteField + MulAssign<BFieldElement>,
@@ -1120,11 +1165,11 @@ pub fn fill_all_terminal_quotients(
     );
 }
 
-/// Computes an array containing all quotients. Each column corresponds to a different quotient.
-/// The quotients are ordered by category – initial, consistency, transition, and then terminal.
-/// Within each category, the quotients follow the canonical order of the tables. The last column
-/// holds the terminal quotient of the cross-table argument, which is strictly speaking not a
-/// table.
+/// Computes an array containing all quotients – the Master Quotient Table. Each column corresponds
+/// to a different quotient. The quotients are ordered by category – initial, consistency,
+/// transition, and then terminal. Within each category, the quotients follow the canonical order
+/// of the tables. The last column holds the terminal quotient of the cross-table argument, which
+/// is strictly speaking not a table.
 /// The order of the quotients is not actually important. However, it must be consistent between
 /// prover and verifier.
 ///
@@ -1344,13 +1389,13 @@ pub fn derive_domain_generator(domain_length: u64) -> BFieldElement {
 
 #[cfg(test)]
 mod master_table_tests {
-    use crate::arithmetic_domain::ArithmeticDomain;
     use ndarray::s;
     use num_traits::Zero;
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::traits::FiniteField;
 
+    use crate::arithmetic_domain::ArithmeticDomain;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::hash_table;
