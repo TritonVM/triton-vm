@@ -728,9 +728,22 @@ impl Stark {
             prof_stop!(maybe_profiler, "zerofiers");
 
             prof_start!(maybe_profiler, "shifted FRI domain values");
-            for &shift in all_shifts.iter() {
-                all_shifted_fri_domain_values
-                    .insert(shift, current_fri_domain_value.mod_pow_u32(shift as u32));
+            // Minimize the respective exponents and thus work spent exponentiating by using the
+            // fact that `all_shifts` is sorted. Concretely, use
+            // 1. `x^curr_shift = x^(prev_shift + shift_diff) = x^prev_shift * x^shift_diff`,
+            // 2. memoization of `x^prev_shift`, and
+            // 3. the fact that exponentiation by a smaller exponent is computationally cheaper.
+            let mut previous_shift = all_shifts[0];
+            let mut previously_shifted_fri_domain_value =
+                current_fri_domain_value.mod_pow_u32(previous_shift as u32);
+            all_shifted_fri_domain_values
+                .insert(previous_shift, previously_shifted_fri_domain_value);
+            for &shift in all_shifts.iter().skip(1) {
+                let current_shifted_fri_domain_value = previously_shifted_fri_domain_value
+                    * current_fri_domain_value.mod_pow_u32((shift - previous_shift) as u32);
+                all_shifted_fri_domain_values.insert(shift, current_shifted_fri_domain_value);
+                previous_shift = shift;
+                previously_shifted_fri_domain_value = current_shifted_fri_domain_value;
             }
             prof_stop!(maybe_profiler, "shifted FRI domain values");
 
