@@ -734,24 +734,6 @@ impl Stark {
             }
             prof_stop!(maybe_profiler, "shifted FRI domain values");
 
-            prof_start!(maybe_profiler, "populate");
-            // populate summands with a the revealed FRI domain master table rows and their shifts
-            let base_ext_fri_domain_value_shifted =
-                all_shifted_fri_domain_values[&base_and_ext_col_shift];
-            let mut summands = Vec::with_capacity(non_lin_combi_weights.len());
-            for &base_row_element in current_base_row.iter() {
-                let base_row_element_shifted = base_row_element * base_ext_fri_domain_value_shifted;
-                summands.push(base_row_element.lift());
-                summands.push(base_row_element_shifted.lift());
-            }
-
-            for &ext_row_element in current_ext_row.iter() {
-                let ext_row_element_shifted = ext_row_element * base_ext_fri_domain_value_shifted;
-                summands.push(ext_row_element);
-                summands.push(ext_row_element_shifted);
-            }
-            prof_stop!(maybe_profiler, "populate");
-
             prof_start!(maybe_profiler, "evaluate AIR");
             let evaluated_initial_constraints =
                 evaluate_all_initial_constraints(current_base_row, current_ext_row, &challenges);
@@ -771,7 +753,25 @@ impl Stark {
                 evaluate_all_terminal_constraints(current_base_row, current_ext_row, &challenges);
             prof_stop!(maybe_profiler, "evaluate AIR");
 
-            prof_start!(maybe_profiler, "shift");
+            prof_start!(maybe_profiler, "populate base & ext elements");
+            // populate summands with a the revealed FRI domain master table rows and their shifts
+            let base_ext_fri_domain_value_shifted =
+                all_shifted_fri_domain_values[&base_and_ext_col_shift];
+            let mut summands = Vec::with_capacity(non_lin_combi_weights.len());
+            for &base_row_element in current_base_row.iter() {
+                let base_row_element_shifted = base_row_element * base_ext_fri_domain_value_shifted;
+                summands.push(base_row_element.lift());
+                summands.push(base_row_element_shifted.lift());
+            }
+
+            for &ext_row_element in current_ext_row.iter() {
+                let ext_row_element_shifted = ext_row_element * base_ext_fri_domain_value_shifted;
+                summands.push(ext_row_element);
+                summands.push(ext_row_element_shifted);
+            }
+            prof_stop!(maybe_profiler, "populate base & ext elements");
+
+            prof_start!(maybe_profiler, "populate quotient elements");
             for (degree_bound_category, evaluated_constraints_category, zerofier_inverse) in [
                 (
                     &initial_quotient_degree_bounds,
@@ -805,7 +805,7 @@ impl Stark {
                     summands.push(quotient_shifted);
                 }
             }
-            prof_stop!(maybe_profiler, "shift");
+            prof_stop!(maybe_profiler, "populate quotient elements");
 
             prof_start!(maybe_profiler, "compute inner product");
             let inner_product = (&non_lin_combi_weights * &Array1::from(summands)).sum();
