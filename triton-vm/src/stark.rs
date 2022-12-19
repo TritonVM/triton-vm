@@ -688,6 +688,20 @@ impl Stark {
             all_terminal_quotient_degree_bounds(self.interpolant_degree);
         prof_stop!(maybe_profiler, "degree bounds");
 
+        prof_start!(maybe_profiler, "pre-compute all shifts");
+        let mut all_shifts = vec![self.interpolant_degree]
+            .iter()
+            .chain(initial_quotient_degree_bounds.iter())
+            .chain(consistency_quotient_degree_bounds.iter())
+            .chain(transition_quotient_degree_bounds.iter())
+            .chain(terminal_quotient_degree_bounds.iter())
+            .map(|degree_bound| self.max_degree - degree_bound)
+            .collect_vec();
+        all_shifts.sort();
+        all_shifts.dedup();
+        let mut all_shifted_fri_domain_values = HashMap::new();
+        prof_stop!(maybe_profiler, "pre-compute all shifts");
+
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let trace_domain_generator_inverse = trace_domain_generator.inverse();
@@ -709,24 +723,30 @@ impl Stark {
             let consistency_zerofier_inverse =
                 (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
             let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
-            let transition_zerofier_inverse = except_last_row
-                * (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
+            let transition_zerofier_inverse = except_last_row * consistency_zerofier_inverse;
             let terminal_zerofier_inverse = except_last_row.inverse(); // i.e., only last row
             prof_stop!(maybe_profiler, "zerofiers");
 
+            prof_start!(maybe_profiler, "shifted FRI domain values");
+            for &shift in all_shifts.iter() {
+                all_shifted_fri_domain_values
+                    .insert(shift, current_fri_domain_value.mod_pow_u32(shift as u32));
+            }
+            prof_stop!(maybe_profiler, "shifted FRI domain values");
+
             prof_start!(maybe_profiler, "populate");
             // populate summands with a the revealed FRI domain master table rows and their shifts
-            let current_fri_domain_value_shifted =
-                current_fri_domain_value.mod_pow_u32(base_and_ext_col_shift as u32);
-            let mut summands = vec![];
+            let base_ext_fri_domain_value_shifted =
+                all_shifted_fri_domain_values[&base_and_ext_col_shift];
+            let mut summands = Vec::with_capacity(non_lin_combi_weights.len());
             for &base_row_element in current_base_row.iter() {
-                let base_row_element_shifted = base_row_element * current_fri_domain_value_shifted;
+                let base_row_element_shifted = base_row_element * base_ext_fri_domain_value_shifted;
                 summands.push(base_row_element.lift());
                 summands.push(base_row_element_shifted.lift());
             }
 
             for &ext_row_element in current_ext_row.iter() {
-                let ext_row_element_shifted = ext_row_element * current_fri_domain_value_shifted;
+                let ext_row_element_shifted = ext_row_element * base_ext_fri_domain_value_shifted;
                 summands.push(ext_row_element);
                 summands.push(ext_row_element_shifted);
             }
@@ -780,8 +800,7 @@ impl Stark {
                 {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_constraint * zerofier_inverse;
-                    let quotient_shifted =
-                        quotient * current_fri_domain_value.mod_pow_u32(shift as u32);
+                    let quotient_shifted = quotient * all_shifted_fri_domain_values[&shift];
                     summands.push(quotient);
                     summands.push(quotient_shifted);
                 }
