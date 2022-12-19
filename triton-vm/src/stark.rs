@@ -674,7 +674,17 @@ impl Stark {
         prof_stop!(maybe_profiler, "index");
 
         // verify non-linear combination
+        prof_start!(maybe_profiler, "degree bounds");
         let base_and_ext_col_shift = self.max_degree - self.interpolant_degree;
+        let initial_quotient_degree_bounds =
+            all_initial_quotient_degree_bounds(self.interpolant_degree);
+        let consistency_quotient_degree_bounds =
+            all_consistency_quotient_degree_bounds(self.interpolant_degree, padded_height);
+        let transition_quotient_degree_bounds =
+            all_transition_quotient_degree_bounds(self.interpolant_degree, padded_height);
+        let terminal_quotient_degree_bounds =
+            all_terminal_quotient_degree_bounds(self.interpolant_degree);
+        prof_stop!(maybe_profiler, "degree bounds");
 
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
@@ -720,17 +730,6 @@ impl Stark {
             }
             prof_stop!(maybe_profiler, "populate");
 
-            prof_start!(maybe_profiler, "degree bounds");
-            let initial_quotient_degree_bounds =
-                all_initial_quotient_degree_bounds(self.interpolant_degree);
-            let consistency_quotient_degree_bounds =
-                all_consistency_quotient_degree_bounds(self.interpolant_degree, padded_height);
-            let transition_quotient_degree_bounds =
-                all_transition_quotient_degree_bounds(self.interpolant_degree, padded_height);
-            let terminal_quotient_degree_bounds =
-                all_terminal_quotient_degree_bounds(self.interpolant_degree);
-            prof_stop!(maybe_profiler, "degree bounds");
-
             prof_start!(maybe_profiler, "evaluate AIR");
             let evaluated_initial_constraints =
                 evaluate_all_initial_constraints(current_base_row, current_ext_row, &challenges);
@@ -753,28 +752,28 @@ impl Stark {
             prof_start!(maybe_profiler, "shift");
             for (degree_bound_category, evaluated_constraints_category, zerofier_inverse) in [
                 (
-                    initial_quotient_degree_bounds,
+                    &initial_quotient_degree_bounds,
                     evaluated_initial_constraints,
                     initial_zerofier_inverse,
                 ),
                 (
-                    consistency_quotient_degree_bounds,
+                    &consistency_quotient_degree_bounds,
                     evaluated_consistency_constraints,
                     consistency_zerofier_inverse,
                 ),
                 (
-                    transition_quotient_degree_bounds,
+                    &transition_quotient_degree_bounds,
                     evaluated_transition_constraints,
                     transition_zerofier_inverse,
                 ),
                 (
-                    terminal_quotient_degree_bounds,
+                    &terminal_quotient_degree_bounds,
                     evaluated_terminal_constraints,
                     terminal_zerofier_inverse,
                 ),
             ] {
                 for (degree_bound, evaluated_constraint) in degree_bound_category
-                    .into_iter()
+                    .iter()
                     .zip_eq(evaluated_constraints_category.into_iter())
                 {
                     let shift = self.max_degree - degree_bound;
