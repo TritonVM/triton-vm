@@ -563,8 +563,10 @@ impl Stark {
         let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
         let num_non_lin_combi_weights =
             2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
-        let non_lin_combi_weights =
-            Self::sample_weights(non_lin_combi_weights_seed, num_non_lin_combi_weights);
+        let non_lin_combi_weights = Array1::from(Self::sample_weights(
+            non_lin_combi_weights_seed,
+            num_non_lin_combi_weights,
+        ));
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
@@ -787,11 +789,7 @@ impl Stark {
             prof_stop!(maybe_profiler, "shift");
 
             prof_start!(maybe_profiler, "compute inner product");
-            let inner_product: XFieldElement = non_lin_combi_weights
-                .par_iter()
-                .zip_eq(summands.par_iter())
-                .map(|(&weight, &summand)| weight * summand)
-                .sum();
+            let inner_product = (&non_lin_combi_weights * &Array1::from(summands)).sum();
             let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
             if revealed_combination_leaf != inner_product + randomizer_codewords_contribution {
                 return Err(anyhow!(StarkValidationError::CombinationLeafInequality));
