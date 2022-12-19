@@ -192,14 +192,11 @@ where
         });
     }
 
-    /// requires underlying Array2 to be stored in column-major order
-    /// resulting Array2 is stored row-major order
+    /// Result is in row-major order.
     fn low_degree_extend_all_columns(&self) -> Array2<FF>
     where
         Self: Sync,
     {
-        // This is a weak assertion: a non-contiguous row-major layout is also not standard.
-        assert!(!self.master_matrix().is_standard_layout());
         let randomized_trace_domain_len = self.randomized_padded_trace_len();
         let randomized_trace_domain = ArithmeticDomain::new_no_offset(randomized_trace_domain_len);
 
@@ -209,11 +206,8 @@ where
         Zip::from(extended_columns.axis_iter_mut(Axis(1)))
             .and(self.master_matrix().axis_iter(Axis(1)))
             .par_for_each(|lde_column, trace_column| {
-                let randomized_trace = trace_column
-                    .as_slice()
-                    .expect("Column must be contiguous & non-empty.");
                 let fri_codeword = randomized_trace_domain
-                    .low_degree_extension(randomized_trace, self.fri_domain());
+                    .low_degree_extension(&trace_column.to_vec(), self.fri_domain());
                 Array1::from(fri_codeword).move_into(lde_column);
             });
         extended_columns
@@ -400,17 +394,13 @@ impl MasterBaseTable {
         }
     }
 
-    /// requires underlying Array2 to be stored row-major order
     pub fn merkle_tree(&self) -> MerkleTree<StarkHasher, CpuParallel> {
-        let mut hashed_rows = Vec::with_capacity(self.fri_domain.length);
-        self.master_base_matrix
-            .axis_iter(Axis(0)) // Axis(0) corresponds to getting all rows.
+        let hashed_rows = self
+            .master_base_matrix
+            .axis_iter(Axis(0))
             .into_par_iter()
-            .map(|row| {
-                let contiguous_row = row.as_slice().expect("Row must be contiguous & non-empty.");
-                StarkHasher::hash_slice(contiguous_row)
-            })
-            .collect_into_vec(&mut hashed_rows);
+            .map(|row| StarkHasher::hash_slice(&row.to_vec()))
+            .collect::<Vec<_>>();
         CpuParallel::from_digests(&hashed_rows)
     }
 
@@ -524,21 +514,20 @@ impl MasterExtTable {
         randomizer_polynomials
     }
 
-    /// requires underlying Array2 to be stored row-major order
     pub fn merkle_tree(&self) -> MerkleTree<StarkHasher, CpuParallel> {
-        let mut hashed_rows = Vec::with_capacity(self.fri_domain.length);
-        self.master_ext_matrix
-            .axis_iter(Axis(0)) // Axis(0) corresponds to getting all rows.
+        let hashed_rows = self
+            .master_ext_matrix
+            .axis_iter(Axis(0))
             .into_par_iter()
             .map(|row| {
-                let contiguous_row = row.as_slice().expect("Row must be contiguous & non-empty.");
-                let contiguous_row_bfe = contiguous_row
+                let contiguous_row_bfe = row
+                    .to_vec()
                     .iter()
-                    .map(|elem| elem.coefficients.to_vec())
+                    .map(|xfe| xfe.coefficients.to_vec())
                     .concat();
                 StarkHasher::hash_slice(&contiguous_row_bfe)
             })
-            .collect_into_vec(&mut hashed_rows);
+            .collect::<Vec<_>>();
         CpuParallel::from_digests(&hashed_rows)
     }
 
