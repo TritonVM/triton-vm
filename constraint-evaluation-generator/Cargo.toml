@@ -23,6 +23,6 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = { version = "0.7.2", git = "https://github.com/Neptune-Crypto/twenty-first.git", branch = "sample_weights" }
+twenty-first = { version = "0.8.0" }
 triton-vm = { path = "../triton-vm" }
 itertools = "0.10"
