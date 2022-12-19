@@ -1180,8 +1180,10 @@ pub fn all_quotients(
         quotient_domain_master_ext_table.nrows()
     );
 
+    prof_start!(maybe_profiler, "malloc");
     let num_columns = num_all_table_quotients();
     let mut all_quotients = Array2::zeros([quotient_domain.length, num_columns]);
+    prof_stop!(maybe_profiler, "malloc");
 
     let initial_quotient_section_start = 0;
     let initial_quotient_section_end = initial_quotient_section_start + num_all_initial_quotients();

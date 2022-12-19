@@ -1194,6 +1194,7 @@ pub(crate) mod triton_stark_tests {
             "ram table",
             "jump stack table",
             "hash table",
+            "cross-table arg",
         ];
         let all_init = [
             ExtProgramTable::num_initial_quotients(),
@@ -1203,6 +1204,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_initial_quotients(),
             ExtJumpStackTable::num_initial_quotients(),
             ExtHashTable::num_initial_quotients(),
+            GrandCrossTableArg::num_initial_quotients(),
         ];
         let all_cons = [
             ExtProgramTable::num_consistency_quotients(),
@@ -1212,6 +1214,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_consistency_quotients(),
             ExtJumpStackTable::num_consistency_quotients(),
             ExtHashTable::num_consistency_quotients(),
+            GrandCrossTableArg::num_consistency_quotients(),
         ];
         let all_trans = [
             ExtProgramTable::num_transition_quotients(),
@@ -1221,6 +1224,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_transition_quotients(),
             ExtJumpStackTable::num_transition_quotients(),
             ExtHashTable::num_transition_quotients(),
+            GrandCrossTableArg::num_transition_quotients(),
         ];
         let all_term = [
             ExtProgramTable::num_terminal_quotients(),
@@ -1230,6 +1234,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_terminal_quotients(),
             ExtJumpStackTable::num_terminal_quotients(),
             ExtHashTable::num_terminal_quotients(),
+            GrandCrossTableArg::num_terminal_quotients(),
         ];
 
         let num_total_init: usize = all_init.iter().sum();
