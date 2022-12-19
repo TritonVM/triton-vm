@@ -26,8 +26,8 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = { version = "0.7.2" }
-triton-profiler = { version = "0.7.2" }
+twenty-first = { version = "0.8.0" }
+triton-profiler = { version = "0.8.0" }
 anyhow = "1.0"
 bincode = "1.3"
 blake3 = "1.2"

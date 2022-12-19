@@ -280,7 +280,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
             indices = indices
                 .into_par_iter()
-                .zip((counter..counter + self.colinearity_checks_count as usize).into_par_iter())
+                .zip((counter..counter + self.colinearity_checks_count).into_par_iter())
                 .map(|(index, _count)| {
                     let mut seed_local = seed.to_sequence();
                     seed_local.append(&mut counter.to_sequence());
