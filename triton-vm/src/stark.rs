@@ -699,7 +699,7 @@ impl Stark {
             let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
             let transition_zerofier_inverse = except_last_row
                 * (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
-            let terminal_zerofier_inverse = except_last_row.inverse();
+            let terminal_zerofier_inverse = except_last_row.inverse(); // i.e., only last row
             prof_stop!(maybe_profiler, "zerofiers");
 
             prof_start!(maybe_profiler, "populate");

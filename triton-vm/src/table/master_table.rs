@@ -129,7 +129,7 @@ pub enum TableId {
 /// As a mental model, it is perfectly fine to think of the data for the individual tables as
 /// completely separate from each other. Only the cross-table argument links all tables together.
 ///
-/// Conceptually, there are three Master Tables: the base Master Table, the Master Extension
+/// Conceptually, there are three Master Tables: the Master Base Table, the Master Extension
 /// Table, and the Master Quotient Table. The lifecycle of the Master Tables is as follows:
 /// 1. The Master Base Table is instantiated and filled using the Algebraic Execution Trace.
 ///     This is the first time a Master Base Table is instantiated. It is in column-major form.

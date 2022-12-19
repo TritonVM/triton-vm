@@ -37,7 +37,7 @@ fn verify_halt(criterion: &mut Criterion) {
             Ok(p) => p,
             Err(e) => panic!("Could not load proof from disk: {:?}", e),
         };
-        let padded_height = proof.0[1].value() as usize; // todo: Allow creating claim from proof?
+        let padded_height = proof.0[1].value() as usize; // todo: `.padded_height()` once available
         let claim = Claim {
             input: vec![],
             program: instructions,
