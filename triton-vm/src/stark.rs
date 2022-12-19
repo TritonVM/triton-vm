@@ -1667,12 +1667,13 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_prove_verify_halt_test() {
+        let mut profiler = Some(TritonProfiler::new("Prove Halt"));
         let code_with_input = test_halt();
         let (stark, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
-            &mut None,
+            &mut profiler,
         );
 
         let result = stark.verify(proof, &mut None);
@@ -1680,6 +1681,15 @@ pub(crate) mod triton_stark_tests {
             panic!("The Verifier is unhappy! {}", e);
         }
         assert!(result.unwrap());
+
+        let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
+        let fri_dom_len_str = format!("log_2 of FRI domain length: {log_fri_dom_len}");
+        prof_start!(profiler, &fri_dom_len_str);
+        prof_stop!(profiler, &fri_dom_len_str);
+        if let Some(mut p) = profiler {
+            p.finish();
+            println!("{}", p.report());
+        }
     }
 
     #[test]
@@ -1736,13 +1746,12 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn prove_verify_fibonacci_100_test() {
+        let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
         let source_code = sample_programs::FIBONACCI_VIT;
         let stdin = vec![100_u64.into()];
         let secret_in = vec![];
 
-        let profiler = TritonProfiler::new("prove_verify_fibonacci_100_test");
-        let (stark, proof) =
-            parse_simulate_prove(source_code, stdin, secret_in, &mut Some(profiler));
+        let (stark, proof) = parse_simulate_prove(source_code, stdin, secret_in, &mut profiler);
 
         println!("between prove and verify");
 
@@ -1751,6 +1760,15 @@ pub(crate) mod triton_stark_tests {
             panic!("The Verifier is unhappy! {}", e);
         }
         assert!(result.unwrap());
+
+        let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
+        let fri_dom_len_str = format!("log_2 of FRI domain length: {log_fri_dom_len}");
+        prof_start!(profiler, &fri_dom_len_str);
+        prof_stop!(profiler, &fri_dom_len_str);
+        if let Some(mut p) = profiler {
+            p.finish();
+            println!("{}", p.report());
+        }
     }
 
     #[test]
@@ -1765,7 +1783,7 @@ pub(crate) mod triton_stark_tests {
             let stdin = vec![BFieldElement::new(fibonacci_number)];
             let (stark, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
             let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
-            let fri_dom_len_str = format!("log_2 of FRI domain length: {}", log_fri_dom_len);
+            let fri_dom_len_str = format!("log_2 of FRI domain length: {log_fri_dom_len}");
             prof_start!(profiler, &fri_dom_len_str);
             prof_stop!(profiler, &fri_dom_len_str);
             if let Some(mut p) = profiler {
