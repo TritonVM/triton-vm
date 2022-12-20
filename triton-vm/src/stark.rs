@@ -97,7 +97,8 @@ impl StarkParameters {
 impl Default for StarkParameters {
     fn default() -> Self {
         let fri_expansion_factor = 4;
-        let security_level = 160;
+        // todo: this seems to propagate to a place where it needs to be a power of two. Why?
+        let security_level = 256;
 
         Self::new(security_level, fri_expansion_factor)
     }
