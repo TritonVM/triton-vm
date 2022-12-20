@@ -1,24 +1,30 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
 use std::ops::Neg;
 use std::str::SplitWhitespace;
 use std::vec;
 
-use anyhow::{bail, Result};
+use anyhow::bail;
+use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
 use regex::Regex;
-use strum::{EnumCount, IntoEnumIterator};
-use strum_macros::{Display as DisplayMacro, EnumCount as EnumCountMacro, EnumIter};
+use strum::EnumCount;
+use strum::IntoEnumIterator;
+use strum_macros::Display as DisplayMacro;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use AnInstruction::*;
 use TokenError::*;
 
 use crate::instruction::DivinationHint::Quotient;
-
-use super::ord_n::{Ord16, Ord16::*, Ord7};
+use crate::ord_n::Ord16;
+use crate::ord_n::Ord16::*;
+use crate::ord_n::Ord7;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -831,7 +837,8 @@ pub mod sample_programs {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use super::super::vm::Program;
-    use super::{AnInstruction::*, LabelledInstruction};
+    use super::AnInstruction::*;
+    use super::LabelledInstruction;
 
     pub const PUSH_PUSH_ADD_POP_S: &str = "
         push 1
@@ -1274,15 +1281,20 @@ pub mod sample_programs {
 #[cfg(test)]
 mod instruction_tests {
     use itertools::Itertools;
-    use num_traits::{One, Zero};
-    use strum::{EnumCount, IntoEnumIterator};
+    use num_traits::One;
+    use num_traits::Zero;
+    use strum::EnumCount;
+    use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::instruction::all_labelled_instructions_with_args;
     use crate::ord_n::Ord7;
     use crate::vm::Program;
 
-    use super::{all_instructions_without_args, parse, sample_programs, AnInstruction};
+    use super::all_instructions_without_args;
+    use super::parse;
+    use super::sample_programs;
+    use super::AnInstruction;
 
     #[test]
     fn opcode_test() {
@@ -1305,8 +1317,9 @@ mod instruction_tests {
         }
 
         // assert size of list corresponds to number of opcodes
-        assert!(
-            opcodes.len() == AnInstruction::<BFieldElement>::COUNT,
+        assert_eq!(
+            AnInstruction::<BFieldElement>::COUNT,
+            opcodes.len(),
             "Mismatch in number of instructions!"
         );
 
@@ -1417,7 +1430,7 @@ mod instruction_tests {
     #[test]
     fn print_all_instructions_and_opcodes() {
         for instr in all_instructions_without_args() {
-            println!("{:>3} {instr: <10}", instr.opcode());
+            println!("{:>3} {: <10}", instr.opcode(), format!("{instr}"));
         }
     }
 }

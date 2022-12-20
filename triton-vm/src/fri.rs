@@ -1,29 +1,33 @@
-use anyhow::Result;
-use itertools::Itertools;
-use num_traits::One;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
+use anyhow::Result;
+use itertools::Itertools;
+use num_traits::One;
+use rayon::iter::*;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
-use triton_profiler::{prof_start, prof_stop};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::ntt::intt;
-use twenty_first::shared_math::other::{log_2_ceil, log_2_floor};
+use twenty_first::shared_math::other::log_2_ceil;
+use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
+use twenty_first::shared_math::traits::CyclicGroupGenerator;
 use twenty_first::shared_math::traits::FiniteField;
-use twenty_first::shared_math::traits::{CyclicGroupGenerator, ModPowU32};
+use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, Hashable};
-use twenty_first::util_types::merkle_tree::{MerkleTree, PartialAuthenticationPath};
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+use twenty_first::util_types::algebraic_hasher::Hashable;
+use twenty_first::util_types::merkle_tree::MerkleTree;
+use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::proof_item::{FriResponse, ProofItem};
+use crate::proof_item::FriResponse;
+use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
 use crate::stark::Maker;
 
@@ -60,12 +64,11 @@ pub struct Fri<H> {
 impl<H: AlgebraicHasher> Fri<H> {
     pub fn new(
         offset: BFieldElement,
-        fri_domain_generator: BFieldElement,
         domain_length: usize,
         expansion_factor: usize,
         colinearity_checks_count: usize,
     ) -> Self {
-        let domain = ArithmeticDomain::new(offset, fri_domain_generator, domain_length);
+        let domain = ArithmeticDomain::new(offset, domain_length);
         let _hasher = PhantomData;
         Self {
             domain,
@@ -239,7 +242,6 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
 
         // Send the last codeword
-        // todo! use coefficient form for last codeword?
         let last_codeword: Vec<XFieldElement> = codeword_local;
         proof_stream.enqueue(&ProofItem::FriCodeword(last_codeword));
 
@@ -490,18 +492,19 @@ impl<H: AlgebraicHasher> Fri<H> {
 
 #[cfg(test)]
 mod triton_xfri_tests {
-    use super::*;
     use itertools::Itertools;
     use num_traits::Zero;
-    use rand::{thread_rng, RngCore};
+    use rand::thread_rng;
+    use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
-    use twenty_first::shared_math::traits::{
-        CyclicGroupGenerator, ModPowU32, PrimitiveRootOfUnity,
-    };
+    use twenty_first::shared_math::traits::CyclicGroupGenerator;
+    use twenty_first::shared_math::traits::ModPowU32;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::test_shared::corrupt_digest;
     use twenty_first::utils::has_unique_elements;
+
+    use super::*;
 
     #[test]
     fn sample_indices_test() {
@@ -683,16 +686,9 @@ mod triton_xfri_tests {
         expansion_factor: usize,
         colinearity_checks: usize,
     ) -> Fri<H> {
-        let fri_domain_generator = BFieldElement::primitive_root_of_unity(subgroup_order).unwrap();
-
-        // The following offset was picked arbitrarily by copying the one found in
-        // `get_b_field_fri_test_object`. It does not generate the full Z_p\{0}, but
-        // we're not sure it needs to, Alan?
-        let offset = BFieldElement::new(7);
-
+        let offset = BFieldElement::generator();
         let fri: Fri<H> = Fri::new(
             offset,
-            fri_domain_generator,
             subgroup_order as usize,
             expansion_factor,
             colinearity_checks,

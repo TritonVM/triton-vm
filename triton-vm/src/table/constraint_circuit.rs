@@ -1,17 +1,22 @@
+use ndarray::ArrayView2;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
-use std::cmp::{self};
+use std::cmp;
 use std::collections::HashSet;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
+use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::Sum;
 use std::marker::PhantomData;
-use std::ops::{Add, Mul, Sub};
+use std::ops::Add;
+use std::ops::Mul;
+use std::ops::Sub;
 use std::rc::Rc;
 
-use num_traits::{One, Zero};
+use num_traits::One;
+use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use CircuitExpression::*;
@@ -37,18 +42,6 @@ impl Display for BinOp {
     }
 }
 
-/// Data structure for uniquely identifying each node
-#[derive(Debug, Clone, Hash, PartialEq)]
-pub struct CircuitId(usize);
-
-impl Eq for CircuitId {}
-
-impl Display for CircuitId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 /// An `InputIndicator` is a type that describes the position of a variable in
 /// a constraint polynomial in the row layout applicable for a certain kind of
 /// constraint polynomial.
@@ -62,86 +55,143 @@ impl Display for CircuitId {
 /// `From<usize>` and `Into<usize>` occur for the purpose of this conversion.
 ///
 /// Having `Clone + Copy + Hash + PartialEq + Eq` help put these in containers.
-pub trait InputIndicator:
-    Debug + Clone + Copy + Hash + PartialEq + Eq + Display + From<usize> + Into<usize>
-{
+pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display {
+    /// `true` iff `self` refers to a column in the base table.
+    fn is_base_table_row(&self) -> bool;
+
+    fn base_row_index(&self) -> usize;
+    fn ext_row_index(&self) -> usize;
+
+    fn evaluate(
+        &self,
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
+    ) -> XFieldElement;
 }
 
-/// A `SingleRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// A `SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>` describes the position of a variable in
 /// a constraint polynomial that operates on a single execution trace table at a
 /// time.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum SingleRowIndicator<const COLUMN_COUNT: usize> {
-    Row(usize),
+pub enum SingleRowIndicator<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> {
+    BaseRow(usize),
+    ExtRow(usize),
 }
 
-impl<const COLUMN_COUNT: usize> Display for SingleRowIndicator<COLUMN_COUNT> {
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
+    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let input_indicator: String = match self {
-            SingleRowIndicator::Row(i) => format!("row[{i}]"),
+            SingleRowIndicator::BaseRow(i) => format!("base_row[{i}]"),
+            SingleRowIndicator::ExtRow(i) => format!("ext_row[{i}]"),
         };
 
         writeln!(f, "{input_indicator}")
     }
 }
 
-impl<const COLUMN_COUNT: usize> From<usize> for SingleRowIndicator<COLUMN_COUNT> {
-    fn from(val: usize) -> Self {
-        assert!(val < COLUMN_COUNT, "Cannot index out of width of table");
-        SingleRowIndicator::Row(val)
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
+    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
+    fn is_base_table_row(&self) -> bool {
+        match self {
+            SingleRowIndicator::BaseRow(_) => true,
+            SingleRowIndicator::ExtRow(_) => false,
+        }
     }
-}
 
-impl<const COLUMN_COUNT: usize> From<SingleRowIndicator<COLUMN_COUNT>> for usize {
-    fn from(val: SingleRowIndicator<COLUMN_COUNT>) -> usize {
-        match val {
-            SingleRowIndicator::Row(i) => i,
+    fn base_row_index(&self) -> usize {
+        match self {
+            SingleRowIndicator::BaseRow(i) => *i,
+            SingleRowIndicator::ExtRow(_) => panic!("not a base row"),
+        }
+    }
+
+    fn ext_row_index(&self) -> usize {
+        match self {
+            SingleRowIndicator::BaseRow(_) => panic!("not an ext row"),
+            SingleRowIndicator::ExtRow(i) => *i,
+        }
+    }
+
+    fn evaluate(
+        &self,
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
+    ) -> XFieldElement {
+        match self {
+            SingleRowIndicator::BaseRow(i) => base_table[[0, *i]].lift(),
+            SingleRowIndicator::ExtRow(i) => ext_table[[0, *i]],
         }
     }
 }
 
-impl<const COLUMN_COUNT: usize> InputIndicator for SingleRowIndicator<COLUMN_COUNT> {}
-
-/// A `DualRowIndicator<COLUMN_COUNT>` describes the position of a variable in
+/// A `DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>` describes the position of a variable in
 /// a constraint polynomial that operates on pairs of rows (current and next).
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum DualRowIndicator<const COLUMN_COUNT: usize> {
-    CurrentRow(usize),
-    NextRow(usize),
+pub enum DualRowIndicator<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> {
+    CurrentBaseRow(usize),
+    CurrentExtRow(usize),
+    NextBaseRow(usize),
+    NextExtRow(usize),
 }
 
-impl<const COLUMN_COUNT: usize> Display for DualRowIndicator<COLUMN_COUNT> {
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
+    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let input_indicator: String = match self {
-            DualRowIndicator::CurrentRow(i) => format!("current_row[{i}]"),
-            DualRowIndicator::NextRow(i) => format!("next_row[{i}]"),
+            DualRowIndicator::CurrentBaseRow(i) => format!("current_base_row[{i}]"),
+            DualRowIndicator::CurrentExtRow(i) => format!("current_ext_row[{i}]"),
+            DualRowIndicator::NextBaseRow(i) => format!("next_base_row[{i}]"),
+            DualRowIndicator::NextExtRow(i) => format!("next_ext_row[{i}]"),
         };
 
         writeln!(f, "{input_indicator}")
     }
 }
 
-impl<const COLUMN_COUNT: usize> InputIndicator for DualRowIndicator<COLUMN_COUNT> {}
-
-impl<const COLUMN_COUNT: usize> From<usize> for DualRowIndicator<COLUMN_COUNT> {
-    fn from(val: usize) -> Self {
-        assert!(
-            val < 2 * COLUMN_COUNT,
-            "Cannot index out of two times the width of the table"
-        );
-        if val < COLUMN_COUNT {
-            DualRowIndicator::CurrentRow(val)
-        } else {
-            DualRowIndicator::NextRow(val - COLUMN_COUNT)
+impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
+    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
+{
+    fn is_base_table_row(&self) -> bool {
+        match self {
+            DualRowIndicator::CurrentBaseRow(_) => true,
+            DualRowIndicator::CurrentExtRow(_) => false,
+            DualRowIndicator::NextBaseRow(_) => true,
+            DualRowIndicator::NextExtRow(_) => false,
         }
     }
-}
 
-impl<const COLUMN_COUNT: usize> From<DualRowIndicator<COLUMN_COUNT>> for usize {
-    fn from(val: DualRowIndicator<COLUMN_COUNT>) -> Self {
-        match val {
-            DualRowIndicator::CurrentRow(i) => i,
-            DualRowIndicator::NextRow(i) => COLUMN_COUNT + i,
+    fn base_row_index(&self) -> usize {
+        match self {
+            DualRowIndicator::CurrentBaseRow(i) => *i,
+            DualRowIndicator::CurrentExtRow(_) => panic!("not a base row"),
+            DualRowIndicator::NextBaseRow(i) => *i,
+            DualRowIndicator::NextExtRow(_) => panic!("not a base row"),
+        }
+    }
+
+    fn ext_row_index(&self) -> usize {
+        match self {
+            DualRowIndicator::CurrentBaseRow(_) => panic!("not an ext row"),
+            DualRowIndicator::CurrentExtRow(i) => *i,
+            DualRowIndicator::NextBaseRow(_) => panic!("not an ext row"),
+            DualRowIndicator::NextExtRow(i) => *i,
+        }
+    }
+
+    fn evaluate(
+        &self,
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
+    ) -> XFieldElement {
+        match self {
+            DualRowIndicator::CurrentBaseRow(i) => base_table[[0, *i]].lift(),
+            DualRowIndicator::CurrentExtRow(i) => ext_table[[0, *i]],
+            DualRowIndicator::NextBaseRow(i) => base_table[[1, *i]].lift(),
+            DualRowIndicator::NextExtRow(i) => ext_table[[1, *i]],
         }
     }
 }
@@ -191,10 +241,9 @@ impl<T: TableChallenges, II: InputIndicator> Hash for ConstraintCircuitMonad<T, 
 
 #[derive(Clone, Debug)]
 pub struct ConstraintCircuit<T: TableChallenges, II: InputIndicator> {
-    pub id: CircuitId,
+    pub id: usize,
     pub visited_counter: usize,
     pub expression: CircuitExpression<T, II>,
-    pub var_count: usize,
 }
 
 impl<T: TableChallenges, II: InputIndicator> Eq for ConstraintCircuit<T, II> {}
@@ -278,13 +327,13 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Count how many times each reachable node is reached when traversing from
     /// the starting points that are given as input. The result is stored in the
     /// `visited_counter` field in each node.
-    pub fn traverse_multiple(mpols: &mut [ConstraintCircuit<T, II>]) {
-        for mpol in mpols.iter_mut() {
+    pub fn traverse_multiple(ccs: &mut [ConstraintCircuit<T, II>]) {
+        for cc in ccs.iter_mut() {
             assert!(
-                mpol.visited_counter.is_zero(),
+                cc.visited_counter.is_zero(),
                 "visited counter must be zero before starting count"
             );
-            mpol.traverse_single();
+            cc.traverse_single();
         }
     }
 
@@ -300,7 +349,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
 
     /// Verify that all IDs in the subtree are unique. Panics otherwise.
     fn inner_has_unique_ids(&mut self, ids: &mut HashSet<usize>) {
-        let new_value = ids.insert(self.id.0);
+        let new_value = ids.insert(self.id);
         assert!(
             !self.visited_counter.is_zero() || new_value,
             "ID = {} was repeated",
@@ -313,16 +362,16 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    // Verify that a multitree has unique IDs. Otherwise panic.
+    /// Verify that a multitree has unique IDs. Panics otherwise.
     pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<T, II>]) {
         let mut ids: HashSet<usize> = HashSet::new();
 
-        for mpol in constraints.iter_mut() {
-            mpol.inner_has_unique_ids(&mut ids);
+        for circuit in constraints.iter_mut() {
+            circuit.inner_has_unique_ids(&mut ids);
         }
 
-        for mpol in constraints.iter_mut() {
-            mpol.reset_visited_counters();
+        for circuit in constraints.iter_mut() {
+            circuit.reset_visited_counters();
         }
     }
 
@@ -425,7 +474,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
+    /// Reduce size of multitree by simplifying constant expressions such as `1·X` to `X`.
     pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<T, II>]) {
         for circuit in circuits.iter_mut() {
             let mut mutated = circuit.constant_fold_inner();
@@ -436,18 +485,19 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Return max degree after evaluating the circuit with an input of specified degree
-    pub fn symbolic_degree_bound(&self, max_degrees: &[i64]) -> i64 {
-        assert_eq!(
-            self.var_count,
-            max_degrees.len(),
-            "max_degrees length and var_count must match. Got: {}, {}.",
-            max_degrees.len(),
-            self.var_count
-        );
+    pub fn symbolic_degree_bound(
+        &self,
+        max_base_degrees: &[Degree],
+        max_ext_degrees: &[Degree],
+    ) -> Degree {
         match &self.expression {
             BinaryOperation(binop, lhs, rhs) => {
-                let lhs_degree = lhs.borrow().symbolic_degree_bound(max_degrees);
-                let rhs_degree = rhs.borrow().symbolic_degree_bound(max_degrees);
+                let lhs_degree = lhs
+                    .borrow()
+                    .symbolic_degree_bound(max_base_degrees, max_ext_degrees);
+                let rhs_degree = rhs
+                    .borrow()
+                    .symbolic_degree_bound(max_base_degrees, max_ext_degrees);
                 match binop {
                     BinOp::Add | BinOp::Sub => cmp::max(lhs_degree, rhs_degree),
                     BinOp::Mul => {
@@ -460,10 +510,10 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
                     }
                 }
             }
-            Input(input) => {
-                let index: usize = (*input).into();
-                max_degrees[index]
-            }
+            Input(input) => match input.is_base_table_row() {
+                true => max_base_degrees[input.base_row_index()],
+                false => max_ext_degrees[input.ext_row_index()],
+            },
             XConstant(xfe) => {
                 if xfe.is_zero() {
                     -1
@@ -483,7 +533,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Return degree of the multivariate polynomial represented by this circuit
-    pub fn degree(&self) -> i64 {
+    pub fn degree(&self) -> Degree {
         match &self.expression {
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs_degree = lhs.borrow().degree();
@@ -539,8 +589,8 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    /// Return true if the contained multivariate polynomial consists of only a single term. This means that it can be
-    /// pretty-printed without parentheses.
+    /// Return true if the contained multivariate polynomial consists of only a single term. This
+    /// means that it can be pretty-printed without parentheses.
     pub fn print_without_parentheses(&self) -> bool {
         !matches!(&self.expression, BinaryOperation(_, _, _))
     }
@@ -565,18 +615,6 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         }
     }
 
-    /// Return Some(index) iff the circuit node represents a linear function with one
-    /// term and a coefficient of one. Returns the index in which the multivariate
-    /// polynomial is linear. Returns None otherwise.
-    pub fn get_linear_one_index(&self) -> Option<usize> {
-        if let Input(input) = self.expression {
-            let index: usize = input.into();
-            Some(index)
-        } else {
-            None
-        }
-    }
-
     /// Return true iff the evaluation value of this node depends on a challenge
     pub fn is_randomized(&self) -> bool {
         match &self.expression {
@@ -585,49 +623,6 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
                 lhs.as_ref().borrow().is_randomized() || rhs.as_ref().borrow().is_randomized()
             }
             _ => false,
-        }
-    }
-
-    /// Return the flattened multivariate polynomial that this node
-    /// represents, given the challenges.
-    pub fn partial_evaluate(&self, challenges: &T) -> MPolynomial<XFieldElement> {
-        let mut polynomial = self.flatten(challenges);
-        polynomial.normalize();
-        polynomial
-    }
-
-    /// Return the flat multivariate polynomial that computes the
-    /// same value as this circuit. Do this by recursively applying
-    /// the multivariate polynomial binary operations, and by
-    /// replacing the inputs by variables.
-    fn flatten(&self, challenges: &T) -> MPolynomial<XFieldElement> {
-        match &self.expression {
-            XConstant(xfe) => MPolynomial::<XFieldElement>::from_constant(*xfe, self.var_count),
-            BConstant(bfe) => {
-                MPolynomial::<XFieldElement>::from_constant(bfe.lift(), self.var_count)
-            }
-            Input(input) => {
-                let mpol_index: usize = (*input).into();
-                MPolynomial::<XFieldElement>::variables(self.var_count)[mpol_index].clone()
-            }
-            Challenge(challenge_id) => MPolynomial::<XFieldElement>::from_constant(
-                challenges.get_challenge(*challenge_id),
-                self.var_count,
-            ),
-            BinaryOperation(binop, lhs, rhs) => match binop {
-                BinOp::Add => {
-                    lhs.as_ref().borrow().flatten(challenges)
-                        + rhs.as_ref().borrow().flatten(challenges)
-                }
-                BinOp::Sub => {
-                    lhs.as_ref().borrow().flatten(challenges)
-                        - rhs.as_ref().borrow().flatten(challenges)
-                }
-                BinOp::Mul => {
-                    lhs.as_ref().borrow().flatten(challenges)
-                        * rhs.as_ref().borrow().flatten(challenges)
-                }
-            },
         }
     }
 
@@ -654,6 +649,39 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         for circuit in constraints.iter_mut() {
             circuit.apply_challenges_to_one_root(challenges);
         }
+    }
+
+    fn evaluate_inner(
+        &self,
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
+    ) -> XFieldElement {
+        match self.clone().expression {
+            XConstant(xfe) => xfe,
+            BConstant(bfe) => bfe.lift(),
+            Input(input) => input.evaluate(base_table, ext_table),
+            Challenge(challenge_id) => panic!("Challenge {} not evaluated", challenge_id),
+            BinaryOperation(binop, lhs, rhs) => {
+                let lhs_value = lhs.as_ref().borrow().evaluate_inner(base_table, ext_table);
+                let rhs_value = rhs.as_ref().borrow().evaluate_inner(base_table, ext_table);
+                match binop {
+                    BinOp::Add => lhs_value + rhs_value,
+                    BinOp::Sub => lhs_value - rhs_value,
+                    BinOp::Mul => lhs_value * rhs_value,
+                }
+            }
+        }
+    }
+
+    pub fn evaluate(
+        &self,
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
+        challenges: &T,
+    ) -> XFieldElement {
+        let mut self_to_evaluate = self.clone();
+        self_to_evaluate.apply_challenges_to_one_root(challenges);
+        self_to_evaluate.evaluate_inner(base_table, ext_table)
     }
 }
 
@@ -713,8 +741,7 @@ fn binop<T: TableChallenges, II: InputIndicator>(
         circuit: Rc::new(RefCell::new(ConstraintCircuit {
             visited_counter: 0,
             expression: BinaryOperation(binop, Rc::clone(&lhs.circuit), Rc::clone(&rhs.circuit)),
-            id: CircuitId(new_index),
-            var_count: lhs.circuit.as_ref().borrow().var_count,
+            id: new_index,
         })),
         id_counter_ref: Rc::clone(&lhs.id_counter_ref),
         all_nodes: Rc::clone(&lhs.all_nodes),
@@ -736,12 +763,11 @@ fn binop<T: TableChallenges, II: InputIndicator>(
                 visited_counter: 0,
                 expression: BinaryOperation(
                     binop,
-                    // Switch rhs and lhs for symmetric operators to check for membership in hash set
+                    // Switch rhs and lhs for symmetric operators to check membership in hash set
                     Rc::clone(&rhs.circuit),
                     Rc::clone(&lhs.circuit),
                 ),
-                id: CircuitId(new_index),
-                var_count: lhs.circuit.as_ref().borrow().var_count,
+                id: new_index,
             })),
             id_counter_ref: Rc::clone(&lhs.id_counter_ref),
             all_nodes: Rc::clone(&lhs.all_nodes),
@@ -804,11 +830,6 @@ impl<T: TableChallenges, II: InputIndicator> Sum for ConstraintCircuitMonad<T, I
 }
 
 impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitMonad<T, II> {
-    /// Flatten a circuit to reveal its equivalent multivariate polynomial
-    pub fn partial_evaluate(&self, challenges: &T) -> MPolynomial<XFieldElement> {
-        self.circuit.as_ref().borrow().partial_evaluate(challenges)
-    }
-
     /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
     pub fn consume(self) -> ConstraintCircuit<T, II> {
         self.circuit.try_borrow().unwrap().to_owned()
@@ -822,16 +843,20 @@ pub struct ConstraintCircuitBuilder<T: TableChallenges, II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
     all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<T, II>>>>,
     _table_type: PhantomData<T>,
-    var_count: usize,
+}
+
+impl<T: TableChallenges, II: InputIndicator> Default for ConstraintCircuitBuilder<T, II> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitBuilder<T, II> {
-    pub fn new(var_count: usize) -> Self {
+    pub fn new() -> Self {
         Self {
             id_counter: Rc::new(RefCell::new(0)),
             all_nodes: Rc::new(RefCell::new(HashSet::default())),
             _table_type: PhantomData,
-            var_count,
         }
     }
 
@@ -865,8 +890,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitBuilder<T, II> {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
                 visited_counter: 0usize,
                 expression,
-                id: CircuitId(new_id),
-                var_count: self.var_count,
+                id: new_id,
             })),
             id_counter_ref: Rc::clone(&self.id_counter),
             all_nodes: Rc::clone(&self.all_nodes),
@@ -897,14 +921,14 @@ mod constraint_circuit_tests {
     use std::hash::Hasher;
 
     use itertools::Itertools;
-    use rand::{thread_rng, RngCore};
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
+    use rand::thread_rng;
+    use rand::RngCore;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::table::challenges::AllChallenges;
-    use crate::table::instruction_table::{
-        ExtInstructionTable, InstructionTableChallengeId, InstructionTableChallenges,
-    };
+    use crate::table::instruction_table::ExtInstructionTable;
+    use crate::table::instruction_table::InstructionTableChallengeId;
+    use crate::table::instruction_table::InstructionTableChallenges;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
@@ -945,97 +969,66 @@ mod constraint_circuit_tests {
         counter
     }
 
-    fn circuit_mpol_builder(
-        challenges: &InstructionTableChallenges,
-    ) -> (
-        ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50>>,
-        MPolynomial<XFieldElement>,
-        ConstraintCircuitBuilder<InstructionTableChallenges, DualRowIndicator<50>>,
+    fn random_circuit_builder() -> (
+        ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50, 40>>,
+        ConstraintCircuitBuilder<InstructionTableChallenges, DualRowIndicator<50, 40>>,
     ) {
-        let var_count = 100;
-        let circuit_builder: ConstraintCircuitBuilder<
-            InstructionTableChallenges,
-            DualRowIndicator<50>,
-        > = ConstraintCircuitBuilder::new(var_count);
-        let mpol_variables = MPolynomial::<XFieldElement>::variables(var_count);
+        let mut rng = thread_rng();
+        let num_base_columns = 50;
+        let num_ext_columns = 40;
+        let var_count = 2 * (num_base_columns + num_ext_columns);
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let b_constants: Vec<BFieldElement> = random_elements(var_count);
         let x_constants: Vec<XFieldElement> = random_elements(var_count);
-        let zero = MPolynomial::from_constant(XFieldElement::zero(), var_count);
-        let mut rng = thread_rng();
-        let rand: usize = rng.next_u64() as usize;
-        let mut ret_mpol = mpol_variables[rand % var_count].clone();
-        let circuit_input: DualRowIndicator<50> = (rand % var_count).into();
+        let circuit_input =
+            DualRowIndicator::NextBaseRow(rng.next_u64() as usize % num_base_columns);
         let mut ret_circuit = circuit_builder.input(circuit_input);
         for _ in 0..100 {
-            let rand: usize = rng.next_u64() as usize;
-            let choices = 6;
-            let (mpol, circuit): (
-                MPolynomial<XFieldElement>,
-                ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50>>,
-            ) = if rand % choices == 0 {
-                // p(x, y, z) = x
-                let mp = mpol_variables[rand % var_count].clone();
-                let input_value: DualRowIndicator<50> = (rand % var_count).into();
-                (mp.clone(), circuit_builder.input(input_value))
-            } else if rand % choices == 1 {
-                // p(x, y, z) = c
-                (
-                    MPolynomial::from_constant(x_constants[rand % var_count], var_count),
-                    circuit_builder.x_constant(x_constants[rand % var_count]),
-                )
-            } else if rand % choices == 2 {
-                // p(x, y, z) = rand_i
-                (
-                    MPolynomial::from_constant(challenges.processor_perm_indeterminate, var_count),
-                    circuit_builder
-                        .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
-                )
-            } else if rand % choices == 3 {
-                // p(x, y, z) = 0
-                (
-                    zero.clone(),
-                    circuit_builder.x_constant(XFieldElement::zero()),
-                )
-            } else if rand % choices == 4 {
-                // p(x, y, z) = bfe
-                (
-                    MPolynomial::from_constant(b_constants[rand % var_count].lift(), var_count),
-                    circuit_builder.b_constant(b_constants[rand % var_count]),
-                )
-            } else {
-                // p(x, y, z) = rand_i * x
-                let input_value: DualRowIndicator<50> = (rand % var_count).into();
-                (
-                    mpol_variables[rand % var_count]
-                        .clone()
-                        .scalar_mul(challenges.processor_perm_indeterminate),
-                    circuit_builder.input(input_value)
-                        * circuit_builder
-                            .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate),
-                )
-            };
-            let operation_indicator = rand % 3;
-            match operation_indicator {
+            let circuit = match rng.next_u64() % 6 {
                 0 => {
-                    ret_mpol = ret_mpol.clone() * mpol;
-                    ret_circuit = ret_circuit * circuit;
+                    // p(x, y, z) = x
+                    circuit_builder.input(DualRowIndicator::CurrentBaseRow(
+                        rng.next_u64() as usize % num_base_columns,
+                    ))
                 }
                 1 => {
-                    ret_mpol = ret_mpol.clone() + mpol;
-                    ret_circuit = ret_circuit + circuit;
+                    // p(x, y, z) = xfe
+                    circuit_builder.x_constant(x_constants[rng.next_u64() as usize % var_count])
                 }
                 2 => {
-                    ret_mpol = ret_mpol.clone() - mpol;
-                    ret_circuit = ret_circuit - circuit;
+                    // p(x, y, z) = rand_i
+                    circuit_builder
+                        .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate)
                 }
-                _ => panic!(),
+                3 => {
+                    // p(x, y, z) = 0
+                    circuit_builder.x_constant(XFieldElement::zero())
+                }
+                4 => {
+                    // p(x, y, z) = bfe
+                    circuit_builder.b_constant(b_constants[rng.next_u64() as usize % var_count])
+                }
+                5 => {
+                    // p(x, y, z) = rand_i * x
+                    let input_value =
+                        DualRowIndicator::CurrentExtRow(rng.next_u64() as usize % num_ext_columns);
+                    let challenge = InstructionTableChallengeId::ProcessorPermIndeterminate;
+                    circuit_builder.input(input_value) * circuit_builder.challenge(challenge)
+                }
+                _ => unreachable!(),
+            };
+            match rng.next_u32() % 3 {
+                0 => ret_circuit = ret_circuit * circuit,
+                1 => ret_circuit = ret_circuit + circuit,
+                2 => ret_circuit = ret_circuit - circuit,
+                _ => unreachable!(),
             }
         }
 
-        (ret_circuit, ret_mpol, circuit_builder)
+        (ret_circuit, circuit_builder)
     }
 
-    // Make a deep copy of a MPolCircuit and return it as a MPolCircuitRef
+    // Make a deep copy of a Multicircuit and return it as a ConstraintCircuitMonad
     fn deep_copy_inner<T: TableChallenges, II: InputIndicator>(
         val: &ConstraintCircuit<T, II>,
         builder: &mut ConstraintCircuitBuilder<T, II>,
@@ -1056,25 +1049,21 @@ mod constraint_circuit_tests {
     fn deep_copy<T: TableChallenges, II: InputIndicator>(
         val: &ConstraintCircuit<T, II>,
     ) -> ConstraintCircuitMonad<T, II> {
-        let mut builder = ConstraintCircuitBuilder::new(val.var_count);
+        let mut builder = ConstraintCircuitBuilder::new();
         deep_copy_inner(val, &mut builder)
     }
 
     #[test]
     fn equality_and_hash_agree_test() {
-        // Since the MPolCircuits are put into a hash set, I think it's important
-        // that `Eq` and `Hash` agree whether two nodes are equal or not. So if
-        // k1 == k2 => h(k1) == h(k2)
+        // The Multicircuits are put into a hash set. Hence, it is important that `Eq` and `Hash`
+        // agree whether two nodes are equal: k1 == k2 => h(k1) == h(k2)
         for _ in 0..100 {
-            let challenges = AllChallenges::placeholder();
-            let (circuit, _mpol, circuit_builder) =
-                circuit_mpol_builder(&challenges.instruction_table_challenges);
+            let (circuit, circuit_builder) = random_circuit_builder();
             let mut hasher0 = DefaultHasher::new();
             circuit.hash(&mut hasher0);
             let hash0 = hasher0.finish();
             assert_eq!(circuit, circuit);
 
-            // let zero = circuit_builder.deterministic_input(MPolynomial::zero(100));
             let zero = circuit_builder.x_constant(0.into());
             let same_circuit = circuit.clone() + zero;
             let mut hasher1 = DefaultHasher::new();
@@ -1088,20 +1077,19 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn mpol_circuit_hash_is_unchanged_by_meta_data_test() {
+    fn multi_circuit_hash_is_unchanged_by_meta_data_test() {
         // From https://doc.rust-lang.org/std/collections/struct.HashSet.html
-        // "It is a logic error for a key to be modified in such a way that the key’s hash, as determined by the Hash
-        // trait, or its equality, as determined by the Eq trait, changes while it is in the map. This is normally only
-        // possible through Cell, RefCell, global state, I/O, or unsafe code. The behavior resulting from such a logic
-        // error is not specified, but will be encapsulated to the HashSet that observed the logic error and not result
-        // in undefined behavior. This could include panics, incorrect results, aborts, memory leaks, and
-        // non-termination."
+        // "It is a logic error for a key to be modified in such a way that the key’s hash, as
+        // determined by the Hash trait, or its equality, as determined by the Eq trait, changes
+        // while it is in the map. This is normally only possible through Cell, RefCell, global
+        // state, I/O, or unsafe code. The behavior resulting from such a logic error is not
+        // specified, but will be encapsulated to the HashSet that observed the logic error and not
+        // result in undefined behavior. This could include panics, incorrect results, aborts,
+        // memory leaks, and non-termination."
         // This means that the hash of a node may not depend on: `visited_counter`, `counter`,
-        // `id_counter_ref`, or `all_nodes`. The reason for this constraint is that `all_nodes` contains
-        // the digest of all nodes in the multi tree.
-        let challenges = AllChallenges::placeholder();
-        let (circuit, _mpol, _circuit_builder) =
-            circuit_mpol_builder(&challenges.instruction_table_challenges);
+        // `id_counter_ref`, or `all_nodes`. The reason for this constraint is that `all_nodes`
+        // contains the digest of all nodes in the multi tree.
+        let (circuit, _circuit_builder) = random_circuit_builder();
         let mut hasher0 = DefaultHasher::new();
         circuit.hash(&mut hasher0);
         let digest_prior = hasher0.finish();
@@ -1128,73 +1116,13 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn circuit_and_mpol_equivalence_check() {
-        for i in 0..1000 {
-            let challenges = AllChallenges::placeholder();
-            let (circuit, mpol, circuit_builder) =
-                circuit_mpol_builder(&challenges.instruction_table_challenges);
-            assert_eq!(
-                mpol,
-                circuit.partial_evaluate(&challenges.instruction_table_challenges),
-                "Partial evaluate and constructed mpol must agree"
-            );
-
-            assert_eq!(
-                circuit.circuit.as_ref().borrow().degree(),
-                mpol.degree(),
-                "circuit degree and equivalent mpol degree must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuit.circuit.as_ref().borrow()
-            );
-
-            // Also compare with symbolic evaluation
-            let rand_degree = (thread_rng().next_u32() % 200) as i64;
-            let interpolated_degrees = vec![rand_degree; circuit_builder.var_count];
-            assert_eq!(
-                circuit.circuit.as_ref().borrow().symbolic_degree_bound(&interpolated_degrees),
-                mpol.symbolic_degree_bound(&interpolated_degrees),
-                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n interpolated degree: {rand_degree}\niteration {i}",
-                circuit.circuit.as_ref().borrow()
-            );
-
-            // Also verify equality after constant folding of the circuit
-            let copied_circuit = deep_copy(&circuit.circuit.as_ref().borrow());
-            let mut circuits = vec![circuit.consume()];
-            ConstraintCircuit::constant_folding(&mut circuits.iter_mut().collect_vec());
-            let partial_evaluated =
-                circuits[0].partial_evaluate(&challenges.instruction_table_challenges);
-            assert_eq!(
-                mpol,
-                partial_evaluated, "Circuit before and after constant folding must agree after parital evaluate.\n before: {copied_circuit}\nafter: {}", circuits[0]
-            );
-            assert_eq!(
-                circuits[0].degree(),
-                mpol.degree(),
-                "circuit degree and equivalent mpol degree must match after constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
-            );
-            assert_eq!(
-                circuits[0].degree(),
-                partial_evaluated.degree(),
-                "circuit degree and the degree of its partial evaluation must agree. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
-            );
-
-            // Also compare with symbolic evaluation
-            let interpolated_degrees = vec![rand_degree; circuit_builder.var_count];
-            assert_eq!(
-                circuits[0].symbolic_degree_bound(&interpolated_degrees),
-                partial_evaluated.symbolic_degree_bound(&interpolated_degrees),
-                "symbolic degree bounds must match before constant folding. circuit: {}\n\n mpol: {mpol}.\n iteration {i}", circuits[0]
-            );
-        }
-    }
-
-    #[test]
     fn circuit_equality_check_and_constant_folding_test() {
-        let var_count = 10;
         let circuit_builder: ConstraintCircuitBuilder<
             InstructionTableChallenges,
-            DualRowIndicator<5>,
-        > = ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.input(DualRowIndicator::CurrentRow(0));
-        let var_4 = circuit_builder.input(DualRowIndicator::NextRow(4));
+            DualRowIndicator<5, 3>,
+        > = ConstraintCircuitBuilder::new();
+        let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
+        let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
         let four = circuit_builder.x_constant(4.into());
         let one = circuit_builder.x_constant(1.into());
         let zero = circuit_builder.x_constant(0.into());
@@ -1272,9 +1200,7 @@ mod constraint_circuit_tests {
     #[test]
     fn constant_folding_pbt() {
         for _ in 0..1000 {
-            let challenges = AllChallenges::placeholder();
-            let (circuit, _mpol, circuit_builder) =
-                circuit_mpol_builder(&challenges.instruction_table_challenges);
+            let (circuit, circuit_builder) = random_circuit_builder();
             let one = circuit_builder.x_constant(1.into());
             let zero = circuit_builder.x_constant(0.into());
 
@@ -1382,86 +1308,23 @@ mod constraint_circuit_tests {
         }
     }
 
-    #[test]
-    fn mpol_algebra_and_circuit_building_is_equivalent_simple_test() {
-        let var_count = 10;
-        let variables = MPolynomial::<XFieldElement>::variables(10);
-        let four_mpol = MPolynomial::<XFieldElement>::from_constant(
-            XFieldElement::new_const(4u64.into()),
-            var_count,
-        );
-
-        let expr_mpol = (variables[0].clone() + variables[4].clone())
-            * (variables[8].clone() - variables[9].clone())
-            * four_mpol.clone()
-            * four_mpol;
-
-        let circuit_builder: ConstraintCircuitBuilder<
-            InstructionTableChallenges,
-            DualRowIndicator<5>,
-        > = ConstraintCircuitBuilder::new(var_count);
-        let var_0 = circuit_builder.input(DualRowIndicator::CurrentRow(0));
-        let var_4 = circuit_builder.input(DualRowIndicator::CurrentRow(4));
-        let var_8 = circuit_builder.input(DualRowIndicator::NextRow(3));
-        let var_9 = circuit_builder.input(DualRowIndicator::NextRow(4));
-
-        let four = circuit_builder.x_constant(4.into());
-
-        let expr_circuit = (var_0 + var_4) * (var_8 - var_9) * four.clone() * four;
-
-        // Verify that IDs are unique
-        ConstraintCircuit::<InstructionTableChallenges, DualRowIndicator<5>>::assert_has_unique_ids(
-            &mut [expr_circuit.clone().consume()],
-        );
-
-        // Verify that partial evaluation agrees with the flat polynomial representation
-        let expr_circuit_partial_evaluated = expr_circuit
-            .partial_evaluate(&AllChallenges::placeholder().instruction_table_challenges);
-        assert_eq!(expr_mpol, expr_circuit_partial_evaluated);
-    }
-
     fn constant_folding_of_table_constraints_test<T: TableChallenges, II: InputIndicator>(
         mut constraints: Vec<ConstraintCircuit<T, II>>,
         challenges: T,
         table_name: &str,
     ) {
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
         println!(
             "nodes in {table_name} table constraint multitree prior to constant folding: {}",
             node_counter(&mut constraints)
         );
-
-        let mut before_fold: Vec<MPolynomial<XFieldElement>> = vec![];
-
-        for circuit in constraints.iter() {
-            let partial_evaluated = circuit.partial_evaluate(&challenges);
-            assert_eq!(
-                partial_evaluated.degree(),
-                circuit.degree(),
-                "Degree of partial evaluated and circuit must agree before constant folding"
-            );
-            before_fold.push(partial_evaluated);
-        }
 
         ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
         println!(
             "nodes in {table_name} constraint multitree after constant folding: {}",
             node_counter(&mut constraints)
         );
-
-        let mut after_fold: Vec<MPolynomial<XFieldElement>> = vec![];
-        for circuit in constraints.iter() {
-            let partial_evaluated = circuit.partial_evaluate(&challenges);
-            assert_eq!(
-                partial_evaluated.degree(),
-                circuit.degree(),
-                "Degree of partial evaluated and circuit must agree after constant folding"
-            );
-            after_fold.push(partial_evaluated);
-        }
-
-        for (i, (before, after)) in before_fold.iter().zip_eq(after_fold.iter()).enumerate() {
-            assert_eq!(before, after, "Constant folding must leave partially evaluated constraints unchanged for {table_name} table constraint {i}");
-        }
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
 
         assert!(
             constraints
@@ -1481,9 +1344,11 @@ mod constraint_circuit_tests {
 
         ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
         println!(
-            "nodes in {table_name} constraint multitree after applying challenges and constant folding again: {}",
+            "nodes in {table_name} constraint multitree after applying challenges and constant \
+            folding again: {}",
             node_counter(&mut constraints)
         );
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap();
 
         println!("Max degree constraint for {table_name} table: {circuit_degree}");
@@ -1491,7 +1356,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_instruction_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1502,7 +1367,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_processor_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1513,7 +1378,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_program_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1524,7 +1389,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_jump_stack_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1535,7 +1400,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_op_stack_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,
@@ -1546,7 +1411,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_ram_stack_table_test() {
-        let challenges = AllChallenges::placeholder();
+        let challenges = AllChallenges::placeholder(&[], &[]);
         let constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
         constant_folding_of_table_constraints_test(
             constraint_circuits,

@@ -1,11 +1,15 @@
-use anyhow::Result;
 use std::error::Error;
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
+use std::fmt::Formatter;
+
+use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+
 use InstructionError::*;
 
 #[derive(Debug, Clone)]
 pub enum InstructionError {
+    InstructionPointerUnderflow,
     InstructionPointerOverflow(usize),
     OpStackTooShallow,
     JumpStackTooShallow,
@@ -19,6 +23,10 @@ pub enum InstructionError {
 impl Display for InstructionError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            InstructionPointerUnderflow => {
+                write!(f, "Instruction pointer points to before start of program",)
+            }
+
             InstructionPointerOverflow(ip) => {
                 write!(f, "Instruction pointer {} points outside of program", ip)
             }

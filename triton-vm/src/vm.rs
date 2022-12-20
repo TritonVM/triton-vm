@@ -3,12 +3,80 @@ use std::io::Cursor;
 
 use anyhow::Result;
 use itertools::Itertools;
+use ndarray::Array2;
+use ndarray::Axis;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
+use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 
 use crate::instruction;
-use crate::instruction::{parse, Instruction, LabelledInstruction};
-use crate::state::{VMOutput, VMState};
-use crate::table::base_matrix::AlgebraicExecutionTrace;
+use crate::instruction::parse;
+use crate::instruction::Instruction;
+use crate::instruction::LabelledInstruction;
+use crate::state::VMOutput;
+use crate::state::VMState;
+use crate::table::hash_table;
+use crate::table::hash_table::NUM_ROUND_CONSTANTS;
+use crate::table::processor_table;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::HashBaseTableColumn::CONSTANT0A;
+use crate::table::table_column::HashBaseTableColumn::ROUNDNUMBER;
+use crate::table::table_column::HashBaseTableColumn::STATE0;
+
+#[derive(Debug, Clone)]
+pub struct AlgebraicExecutionTrace {
+    pub processor_matrix: Array2<BFieldElement>,
+    pub hash_matrix: Array2<BFieldElement>,
+}
+
+impl Default for AlgebraicExecutionTrace {
+    fn default() -> Self {
+        Self {
+            processor_matrix: Array2::default([0, processor_table::BASE_WIDTH]),
+            hash_matrix: Array2::default([0, hash_table::BASE_WIDTH]),
+        }
+    }
+}
+
+impl AlgebraicExecutionTrace {
+    pub fn append_hash_trace(&mut self, hash_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
+        let mut hash_matrix_addendum = Array2::default([NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
+        for (row_idx, mut row) in hash_matrix_addendum.rows_mut().into_iter().enumerate() {
+            let round_number = row_idx + 1;
+            let trace_row = hash_trace[row_idx];
+            let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
+            row[ROUNDNUMBER.base_table_index()] = BFieldElement::from(row_idx as u64 + 1);
+            for st_idx in 0..STATE_SIZE {
+                row[STATE0.base_table_index() + st_idx] = trace_row[st_idx];
+            }
+            for rc_idx in 0..NUM_ROUND_CONSTANTS {
+                row[CONSTANT0A.base_table_index() + rc_idx] = round_constants[rc_idx];
+            }
+        }
+        self.hash_matrix
+            .append(Axis(0), hash_matrix_addendum.view())
+            .expect("shapes must be identical");
+    }
+
+    /// The 2·STATE_SIZE (= NUM_ROUND_CONSTANTS) round constants for round `round_number`.
+    /// Of note:
+    /// - Round index 0 indicates a padding row – all constants are zero.
+    /// - Round index 9 indicates an output row – all constants are zero.
+    pub fn rescue_xlix_round_constants_by_round_number(
+        round_number: usize,
+    ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
+        match round_number {
+            i if i == 0 || i == NUM_ROUNDS + 1 => [0_u64; NUM_ROUND_CONSTANTS],
+            i if i <= NUM_ROUNDS => ROUND_CONSTANTS
+                [NUM_ROUND_CONSTANTS * (i - 1)..NUM_ROUND_CONSTANTS * i]
+                .try_into()
+                .unwrap(),
+            _ => panic!("Round with number {round_number} does not have round constants."),
+        }
+        .map(BFieldElement::new)
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
@@ -124,7 +192,9 @@ impl Program {
         let mut aet = AlgebraicExecutionTrace::default();
         let mut state = VMState::new(self);
         // record initial state
-        aet.processor_matrix.push(state.to_processor_row());
+        aet.processor_matrix
+            .push_row(state.to_processor_row().view())
+            .expect("shapes must be identical");
 
         let mut stdout = vec![];
         while !state.is_complete() {
@@ -134,14 +204,14 @@ impl Program {
             };
 
             match vm_output {
-                Some(VMOutput::XlixTrace(mut hash_trace)) => {
-                    aet.hash_matrix.append(&mut hash_trace)
-                }
+                Some(VMOutput::XlixTrace(hash_trace)) => aet.append_hash_trace(*hash_trace),
                 Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
                 None => (),
             }
-            // Record next, to be executed state. If `Halt`,
-            aet.processor_matrix.push(state.to_processor_row());
+            // Record next, to be executed state.
+            aet.processor_matrix
+                .push_row(state.to_processor_row().view())
+                .expect("shapes must be identical");
         }
 
         (aet, stdout, None)
@@ -202,27 +272,33 @@ impl Program {
 
 #[cfg(test)]
 pub mod triton_vm_tests {
-    use std::ops::{BitAnd, BitXor};
+    use std::ops::BitAnd;
+    use std::ops::BitXor;
 
-    use num_traits::{One, Zero};
+    use ndarray::Array1;
+    use ndarray::ArrayView1;
+    use num_traits::One;
+    use num_traits::Zero;
     use rand::rngs::ThreadRng;
-    use rand::{Rng, RngCore};
-    use triton_profiler::triton_profiler::TritonProfiler;
-    use twenty_first::shared_math::mpolynomial::MPolynomial;
-    use twenty_first::shared_math::other;
-    use twenty_first::shared_math::other::roundup_npo2;
-    use twenty_first::shared_math::rescue_prime_regular::{RescuePrimeRegular, NUM_ROUNDS};
+    use rand::Rng;
+    use rand::RngCore;
+    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::traits::FiniteField;
 
-    use crate::instruction::{sample_programs, AnInstruction};
+    use crate::instruction::sample_programs;
     use crate::shared_tests::SourceCodeAndInput;
-    use crate::table::base_matrix::{BaseMatrices, ProcessorMatrixRow};
-    use crate::table::base_table::{Extendable, InheritsFromTable};
-    use crate::table::challenges::AllChallenges;
-    use crate::table::extension_table::Evaluable;
-    use crate::table::processor_table::ProcessorTable;
-    use crate::table::table_column::ProcessorBaseTableColumn;
+    use crate::table::processor_table::ProcessorMatrixRow;
 
     use super::*;
+
+    fn pretty_print_array_view<FF: FiniteField>(array: ArrayView1<FF>) -> String {
+        array
+            .iter()
+            .map(|ff| format!("{ff}"))
+            .collect_vec()
+            .join(", ")
+    }
 
     #[test]
     fn initialise_table_test() {
@@ -231,21 +307,17 @@ pub mod triton_vm_tests {
 
         let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
 
-        let (base_matrices, stdout, err) = program.simulate(stdin, vec![]);
+        let (aet, stdout, err) = program.simulate(stdin, vec![]);
 
         println!(
             "VM output: [{}]",
-            stdout
-                .iter()
-                .map(|s| format!("{s}"))
-                .collect_vec()
-                .join(", ")
+            pretty_print_array_view(Array1::from(stdout).view())
         );
 
         if let Some(e) = err {
             panic!("Execution failed: {e}");
         }
-        for row in base_matrices.processor_matrix {
+        for row in aet.processor_matrix.rows() {
             println!("{}", ProcessorMatrixRow { row });
         }
     }
@@ -263,10 +335,10 @@ pub mod triton_vm_tests {
 
         println!("{}", program);
 
-        let (base_matrices, _, err) = program.simulate_no_input();
+        let (aet, _, err) = program.simulate_no_input();
 
         println!("{:?}", err);
-        for row in base_matrices.processor_matrix {
+        for row in aet.processor_matrix.rows() {
             println!("{}", ProcessorMatrixRow { row });
         }
     }
@@ -279,14 +351,8 @@ pub mod triton_vm_tests {
         let stdin = vec![42_u64.into(), 56_u64.into()];
         let (_, stdout, err) = program.simulate(stdin, vec![]);
 
-        println!(
-            "VM output: [{}]",
-            stdout
-                .iter()
-                .map(|s| format!("{s}"))
-                .collect_vec()
-                .join(", ")
-        );
+        let stdout = Array1::from(stdout);
+        println!("VM output: [{}]", pretty_print_array_view(stdout.view()));
 
         if let Some(e) = err {
             panic!("Execution failed: {e}");
@@ -298,70 +364,12 @@ pub mod triton_vm_tests {
         assert_eq!(expected_symbol, computed_symbol);
     }
 
-    #[test]
-    fn hello_world() {
-        let code = sample_programs::HELLO_WORLD_1;
-        let program = Program::from_code(code).unwrap();
-
-        println!("{}", program);
-
-        let (aet, stdout, err) = program.simulate_no_input();
-        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
-
-        println!("{:?}", err);
-        for row in base_matrices.processor_matrix.clone() {
-            println!("{}", ProcessorMatrixRow { row });
-        }
-
-        // check `output_matrix`
-        let expected_output = vec![
-            10, 33, 100, 108, 114, 111, 87, 32, 44, 111, 108, 108, 101, 72,
-        ]
-        .into_iter()
-        .rev()
-        .map(BFieldElement::new)
-        .collect_vec();
-
-        assert_eq!(expected_output, stdout);
-
-        // each `hash` operation result in 8 rows
-        let hash_instruction_count = 0;
-        let prc_rows_count = base_matrices.processor_matrix.len();
-        assert!(hash_instruction_count <= 8 * prc_rows_count);
-
-        // noRows(jump_stack_table) == noRows(processor_table)
-        let jmp_rows_count = base_matrices.jump_stack_matrix.len();
-        let prc_rows_count = base_matrices.processor_matrix.len();
-        assert_eq!(jmp_rows_count, prc_rows_count);
-    }
-
-    #[test]
-    fn hash_hash_hash_test() {
-        let code = sample_programs::HASH_HASH_HASH_HALT;
-        let program = Program::from_code(code).unwrap();
-
-        println!("{}", program);
-
-        let (aet, _, err) = program.simulate_no_input();
-        let base_matrices = BaseMatrices::new(aet, &program.to_bwords());
-
-        // noRows(jump_stack_table) == noRows(processor_table)
-        assert_eq!(
-            base_matrices.jump_stack_matrix.len(),
-            base_matrices.processor_matrix.len()
-        );
-
-        for row in base_matrices.processor_matrix {
-            println!("{}", ProcessorMatrixRow { row });
-        }
-        println!("Errors: {:?}", err);
-
-        // each of three `hash` instructions result in NUM_ROUNDS+1 rows.
-        assert_eq!(3 * (NUM_ROUNDS + 1), base_matrices.hash_matrix.len());
-    }
-
     pub fn test_hash_nop_nop_lt() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("hash nop hash nop nop hash push 3 push 2 lt assert halt")
+    }
+
+    pub fn test_program_for_halt() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("halt")
     }
 
     pub fn test_program_for_push_pop_dup_swap_nop() -> SourceCodeAndInput {
@@ -691,6 +699,87 @@ pub mod triton_vm_tests {
         SourceCodeAndInput::without_input(&source_code)
     }
 
+    pub fn property_based_test_program_for_random_ram_access() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let num_memory_accesses = rng.gen_range(10..50);
+        let memory_addresses: Vec<BFieldElement> = random_elements(num_memory_accesses);
+        let mut memory_values: Vec<BFieldElement> = random_elements(num_memory_accesses);
+        let mut source_code = String::new();
+
+        // Read some memory before first write to ensure that the memory is initialized with 0s.
+        // Not all addresses are read to have different access patterns:
+        // - Some addresses are read before written to.
+        // - Other addresses are written to before read.
+        for memory_address in memory_addresses.iter().take(num_memory_accesses / 4) {
+            source_code.push_str(&format!(
+                "push {memory_address} push 0 read_mem push 0 eq assert pop "
+            ));
+        }
+
+        // Write everything to RAM.
+        for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
+            source_code.push_str(&format!(
+                "push {memory_address} push {memory_value} write_mem pop pop "
+            ));
+        }
+
+        // Read back in random order and check that the values did not change.
+        // For repeated sampling from the same range, better performance can be achieved by using
+        // `Uniform`. However, this is a test, and not very many samples – it's fine.
+        let mut reading_permutation = (0..num_memory_accesses).collect_vec();
+        for i in 0..num_memory_accesses {
+            let j = rng.gen_range(0..num_memory_accesses);
+            reading_permutation.swap(i, j);
+        }
+        for idx in reading_permutation {
+            let memory_address = memory_addresses[idx];
+            let memory_value = memory_values[idx];
+            source_code.push_str(&format!(
+                "push {memory_address} push 0 read_mem push {memory_value} eq assert pop "
+            ));
+        }
+
+        // Overwrite half the values with new ones.
+        let mut writing_permutation = (0..num_memory_accesses).collect_vec();
+        for i in 0..num_memory_accesses {
+            let j = rng.gen_range(0..num_memory_accesses);
+            writing_permutation.swap(i, j);
+        }
+        for idx in 0..num_memory_accesses / 2 {
+            let memory_address = memory_addresses[writing_permutation[idx]];
+            let new_memory_value = rng.gen();
+            memory_values[writing_permutation[idx]] = new_memory_value;
+            source_code.push_str(&format!(
+                "push {memory_address} push {new_memory_value} write_mem pop pop "
+            ));
+        }
+
+        // Read back all, i.e., unchanged and overwritten values in (different from before) random
+        // order and check that the values did not change.
+        let mut reading_permutation = (0..num_memory_accesses).collect_vec();
+        for i in 0..num_memory_accesses {
+            let j = rng.gen_range(0..num_memory_accesses);
+            reading_permutation.swap(i, j);
+        }
+        for idx in reading_permutation {
+            let memory_address = memory_addresses[idx];
+            let memory_value = memory_values[idx];
+            source_code.push_str(&format!(
+                "push {memory_address} push 0 read_mem push {memory_value} eq assert pop "
+            ));
+        }
+
+        source_code.push_str("halt");
+        SourceCodeAndInput::without_input(&source_code)
+    }
+
+    #[test]
+    // Sanity check for the relatively complex property-based test for random RAM access.
+    fn run_dont_prove_property_based_test_for_random_ram_access() {
+        let source_code_and_input = property_based_test_program_for_random_ram_access();
+        source_code_and_input.run();
+    }
+
     #[test]
     #[should_panic(expected = "st0 must be 1.")]
     pub fn negative_property_is_u32_test() {
@@ -753,6 +842,7 @@ pub mod triton_vm_tests {
 
     pub fn small_tasm_test_programs() -> Vec<SourceCodeAndInput> {
         vec![
+            test_program_for_halt(),
             test_program_for_push_pop_dup_swap_nop(),
             test_program_for_divine(),
             test_program_for_skiz(),
@@ -787,6 +877,7 @@ pub mod triton_vm_tests {
             property_based_test_program_for_lte(),
             property_based_test_program_for_div(),
             property_based_test_program_for_is_u32(),
+            property_based_test_program_for_random_ram_access(),
         ]
     }
 
@@ -803,121 +894,6 @@ pub mod triton_vm_tests {
             test_program_for_div(),
             test_program_for_split_assert(),
         ]
-    }
-
-    #[test]
-    fn processor_table_constraints_evaluate_to_zero_for_small_tasm_programs_test() {
-        processor_table_constraints_evaluate_to_zero(&small_tasm_test_programs())
-    }
-
-    #[test]
-    fn processor_table_constraints_evaluate_to_zero_for_property_based_tasm_programs_test() {
-        processor_table_constraints_evaluate_to_zero(&property_based_test_programs())
-    }
-
-    #[test]
-    fn processor_table_constraints_evaluate_to_zero_for_bigger_tasm_programs_test() {
-        processor_table_constraints_evaluate_to_zero(&bigger_tasm_test_programs())
-    }
-
-    fn processor_table_constraints_evaluate_to_zero(all_programs: &[SourceCodeAndInput]) {
-        let mut profiler = TritonProfiler::new("Table Constraints Evaluate to Zero Test");
-        for (code_idx, program) in all_programs.iter().enumerate() {
-            let (aet, output, err) = program.simulate();
-
-            println!("\nChecking transition constraints for program number {code_idx}");
-            println!(
-                "VM output: [{}]",
-                output
-                    .iter()
-                    .map(|s| format!("{s}"))
-                    .collect_vec()
-                    .join(", ")
-            );
-            if let Some(e) = err {
-                panic!("The VM is not happy: {}", e);
-            }
-
-            let processor_matrix = aet
-                .processor_matrix
-                .iter()
-                .map(|row| row.to_vec())
-                .collect_vec();
-            let num_cycles = processor_matrix.len();
-
-            let mut processor_table = ProcessorTable::new_prover(processor_matrix);
-            let padded_height = roundup_npo2(processor_table.data().len() as u64) as usize;
-            processor_table.pad(padded_height);
-
-            assert!(
-                other::is_power_of_two(processor_table.data().len()),
-                "Matrix length must be power of 2 after padding"
-            );
-
-            let challenges = AllChallenges::placeholder();
-            let ext_processor_table =
-                processor_table.extend(&challenges.processor_table_challenges);
-
-            let program_idx_string = format!("Program number {code_idx:>2}");
-            profiler.start(&program_idx_string);
-            for (row_idx, (current_row, next_row)) in ext_processor_table
-                .data()
-                .iter()
-                .tuple_windows()
-                .enumerate()
-            {
-                for (tc_idx, tc_evaluation_result) in ext_processor_table
-                    .evaluate_transition_constraints(current_row, next_row, &challenges)
-                    .iter()
-                    .enumerate()
-                {
-                    if !tc_evaluation_result.is_zero() {
-                        let ci = current_row[ProcessorBaseTableColumn::CI as usize].coefficients[0]
-                            .value();
-                        panic!(
-                            "In row {row_idx}, the constraint with index {tc_idx} evaluates to \
-                            {tc_evaluation_result} but must be 0.\n\
-                            Instruction: {:?} – opcode: {:?}\n\
-                            Evaluation Point, current row: [{:?}]\n\
-                            Evaluation Point, next row:    [{:?}]",
-                            AnInstruction::<BFieldElement>::try_from(ci,).unwrap(),
-                            ci,
-                            current_row
-                                .iter()
-                                .map(|xfe| format!("{xfe}"))
-                                .collect_vec()
-                                .join(", "),
-                            next_row
-                                .iter()
-                                .map(|xfe| format!("{xfe}"))
-                                .collect_vec()
-                                .join(", ")
-                        );
-                    }
-                }
-            }
-            let num_cycles_string = format!("took {num_cycles:>4} VM cycles");
-            profiler.start(&num_cycles_string);
-            profiler.stop(&num_cycles_string);
-            profiler.stop(&program_idx_string);
-        }
-        profiler.finish();
-        println!("{}", profiler.report());
-    }
-
-    fn _assert_air_constraints_on_matrix(
-        table_data: &[Vec<BFieldElement>],
-        air_constraints: &[MPolynomial<BFieldElement>],
-    ) {
-        for step in 0..table_data.len() - 1 {
-            let register: Vec<BFieldElement> = table_data[step].clone();
-            let next_register: Vec<BFieldElement> = table_data[step + 1].clone();
-            let point: Vec<BFieldElement> = vec![register, next_register].concat();
-
-            for air_constraint in air_constraints.iter() {
-                assert!(air_constraint.evaluate(&point).is_zero());
-            }
-        }
     }
 
     #[test]

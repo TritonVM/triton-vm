@@ -1,14 +1,20 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use triton_profiler::{
-    prof_start, prof_stop,
-    triton_profiler::{Report, TritonProfiler},
-};
-use triton_vm::{
-    proof::Claim,
-    shared_tests::{load_proof, proof_file_exists, save_proof},
-    stark::{Stark, StarkParameters},
-    vm::Program,
-};
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::BenchmarkId;
+use criterion::Criterion;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::Report;
+use triton_profiler::triton_profiler::TritonProfiler;
+
+use triton_vm::proof::Claim;
+use triton_vm::shared_tests::load_proof;
+use triton_vm::shared_tests::proof_file_exists;
+use triton_vm::shared_tests::save_proof;
+use triton_vm::stark::Stark;
+use triton_vm::stark::StarkParameters;
+use triton_vm::table::master_table::MasterBaseTable;
+use triton_vm::vm::Program;
 
 /// cargo criterion --bench verify_halt
 fn verify_halt(criterion: &mut Criterion) {
@@ -22,32 +28,43 @@ fn verify_halt(criterion: &mut Criterion) {
         Err(e) => panic!("Cannot compile source code into program: {}", e),
         Ok(p) => p,
     };
-    let claim = Claim {
-        input: vec![],
-        program: program.to_bwords(),
-        output: vec![],
-        padded_height: 0,
-    };
-    let parameters = StarkParameters::default();
-    let stark = Stark::new(claim, parameters);
 
+    let instructions = program.to_bwords();
+    let stark_parameters = StarkParameters::default();
     let filename = "halt.tsp";
-    let proof = if proof_file_exists(filename) {
-        match load_proof(filename) {
+    let (proof, stark) = if proof_file_exists(filename) {
+        let proof = match load_proof(filename) {
             Ok(p) => p,
             Err(e) => panic!("Could not load proof from disk: {:?}", e),
-        }
+        };
+        let padded_height = proof.0[1].value() as usize; // todo: `.padded_height()` once available
+        let claim = Claim {
+            input: vec![],
+            program: instructions,
+            output: vec![],
+            padded_height,
+        };
+        let stark = Stark::new(claim, stark_parameters);
+        (proof, stark)
     } else {
-        let (aet, _, err) = program.simulate_no_input();
+        let (aet, output, err) = program.simulate_no_input();
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
+        let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
+        let claim = Claim {
+            input: vec![],
+            program: instructions,
+            output,
+            padded_height,
+        };
+        let stark = Stark::new(claim, stark_parameters);
         let proof = stark.prove(aet, &mut None);
 
         if let Err(e) = save_proof(filename, proof.clone()) {
             panic!("Problem! could not save proof to disk: {:?}", e);
         }
-        proof
+        (proof, stark)
     };
 
     let result = stark.verify(proof.clone(), &mut None);

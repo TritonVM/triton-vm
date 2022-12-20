@@ -1,37 +1,54 @@
-use itertools::Itertools;
-use num_traits::{One, Zero};
+use ndarray::parallel::prelude::*;
+use ndarray::s;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
+use ndarray::Axis;
+use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use InstructionTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
-use crate::table::base_table::Extendable;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
-
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::TableChallenges;
-use super::constraint_circuit::DualRowIndicator::{self, *};
-use super::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad,
-};
-use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
-use super::table_column::InstructionBaseTableColumn::{self, *};
-use super::table_column::InstructionExtTableColumn::{self, *};
+use crate::table::constraint_circuit::SingleRowIndicator::*;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::PermArg;
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
+use crate::table::table_column::InstructionBaseTableColumn;
+use crate::table::table_column::InstructionBaseTableColumn::*;
+use crate::table::table_column::InstructionExtTableColumn;
+use crate::table::table_column::InstructionExtTableColumn::*;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const INSTRUCTION_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const INSTRUCTION_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
+pub const INSTRUCTION_TABLE_NUM_EXTENSION_CHALLENGES: usize = InstructionTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = InstructionBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + InstructionExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = InstructionExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
-pub struct InstructionTable {
-    inherited_table: Table<BFieldElement>,
-}
+pub struct InstructionTable {}
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Hash, Eq)]
 pub enum InstructionTableChallengeId {
@@ -90,81 +107,28 @@ impl TableChallenges for InstructionTableChallenges {
     }
 }
 
-impl InheritsFromTable<BFieldElement> for InstructionTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
 #[derive(Debug, Clone)]
-pub struct ExtInstructionTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
-
-impl Default for ExtInstructionTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtInstructionTable".to_string(),
-            ),
-        }
-    }
-}
-
-impl QuotientableExtensionTable for ExtInstructionTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtInstructionTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for InstructionTable {}
-
-impl Extendable for InstructionTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        let zero = BFieldElement::zero();
-        let one = BFieldElement::one();
-        if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            // address keeps increasing
-            padding_row[usize::from(Address)] += one;
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row])
-        } else {
-            let mut padding_row = [zero; BASE_WIDTH];
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row.to_vec()])
-        }
-    }
-}
-
-impl TableLike<XFieldElement> for ExtInstructionTable {}
+pub struct ExtInstructionTable {}
 
 impl ExtInstructionTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            InstructionTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new();
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
         let running_product_initial = circuit_builder.x_constant(PermArg::default_initial());
 
-        let ip = circuit_builder.input(Row(Address.into()));
-        let ci = circuit_builder.input(Row(CI.into()));
-        let nia = circuit_builder.input(Row(NIA.into()));
-        let running_evaluation = circuit_builder.input(Row(RunningEvaluation.into()));
-        let running_product = circuit_builder.input(Row(RunningProductPermArg.into()));
+        let ip = circuit_builder.input(BaseRow(Address.master_base_table_index()));
+        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
+        let nia = circuit_builder.input(BaseRow(NIA.master_base_table_index()));
+        let running_evaluation =
+            circuit_builder.input(ExtRow(RunningEvaluation.master_ext_table_index()));
+        let running_product =
+            circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
 
         // Note that “ip = 0” is enforced by a separate constraint. This means we can drop summand
         // `ip_weight * ip` from the compressed row.
@@ -188,34 +152,48 @@ impl ExtInstructionTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            InstructionTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
 
-        let is_padding = circuit_builder.input(Row(IsPadding.into()));
+        let is_padding = circuit_builder.input(BaseRow(IsPadding.master_base_table_index()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
         vec![is_padding_is_bit.consume()]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            InstructionTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let circuit_builder: ConstraintCircuitBuilder<
             InstructionTableChallenges,
-            DualRowIndicator<FULL_WIDTH>,
-        > = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
-        let one: ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<FULL_WIDTH>> =
-            circuit_builder.b_constant(1u32.into());
-        let addr = circuit_builder.input(CurrentRow(Address.into()));
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        > = ConstraintCircuitBuilder::new();
+        let one: ConstraintCircuitMonad<
+            InstructionTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        > = circuit_builder.b_constant(1u32.into());
+        let addr = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
 
-        let addr_next = circuit_builder.input(NextRow(Address.into()));
-        let current_instruction = circuit_builder.input(CurrentRow(CI.into()));
-        let current_instruction_next = circuit_builder.input(NextRow(CI.into()));
-        let next_instruction = circuit_builder.input(CurrentRow(NIA.into()));
-        let next_instruction_next = circuit_builder.input(NextRow(NIA.into()));
-        let is_padding = circuit_builder.input(CurrentRow(IsPadding.into()));
-        let is_padding_next = circuit_builder.input(NextRow(IsPadding.into()));
+        let addr_next = circuit_builder.input(NextBaseRow(Address.master_base_table_index()));
+        let current_instruction =
+            circuit_builder.input(CurrentBaseRow(CI.master_base_table_index()));
+        let current_instruction_next =
+            circuit_builder.input(NextBaseRow(CI.master_base_table_index()));
+        let next_instruction = circuit_builder.input(CurrentBaseRow(NIA.master_base_table_index()));
+        let next_instruction_next =
+            circuit_builder.input(NextBaseRow(NIA.master_base_table_index()));
+        let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_base_table_index()));
+        let is_padding_next =
+            circuit_builder.input(NextBaseRow(IsPadding.master_base_table_index()));
 
         // Base table constraints
         let address_increases_by_one = addr_next.clone() - (addr.clone() + one.clone());
@@ -228,11 +206,16 @@ impl ExtInstructionTable {
 
         // Extension table constraints
         let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermIndeterminate);
-        let running_evaluation = circuit_builder.input(CurrentRow(RunningEvaluation.into()));
-        let running_evaluation_next = circuit_builder.input(NextRow(RunningEvaluation.into()));
+        let running_evaluation =
+            circuit_builder.input(CurrentExtRow(RunningEvaluation.master_ext_table_index()));
+        let running_evaluation_next =
+            circuit_builder.input(NextExtRow(RunningEvaluation.master_ext_table_index()));
 
-        let running_product = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
-        let running_product_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
+        let running_product = circuit_builder.input(CurrentExtRow(
+            RunningProductPermArg.master_ext_table_index(),
+        ));
+        let running_product_next =
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
 
         // The running evaluation is updated if and only if
         // 1. the address changes, and
@@ -298,113 +281,126 @@ impl ExtInstructionTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<InstructionTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            InstructionTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         vec![]
     }
 }
 
 impl InstructionTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
+    pub fn fill_trace(
+        instruction_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+        program: &[BFieldElement],
+    ) {
+        // Pre-process the AET's processor trace to find the number of occurrences of each unique
+        // row when only looking at the IP, CI, and NIA columns. Unless the prover is cheating,
+        // this is equivalent to looking at only the instruction pointer (IP) column, because the
+        // program is static.
+        let program_len = program.len();
+        let mut processor_trace_row_counts = vec![0; program_len];
+        for row in aet.processor_matrix.rows() {
+            let ip = row[ProcessorBaseTableColumn::IP.base_table_index()].value() as usize;
+            assert!(ip < program_len, "IP out of bounds – forgot to \"halt\"?");
+            processor_trace_row_counts[ip] += 1;
+        }
+
+        let mut next_row_in_instruction_table: usize = 0;
+        for (address, &instruction) in program.iter().enumerate() {
+            // Use zero in the last row.
+            let &nia = program.get(address + 1).unwrap_or(&BFieldElement::zero());
+            // Gets a “+1” to account for the row from the program table.
+            let number_of_rows_for_this_instruction = processor_trace_row_counts[address] + 1;
+            let last_row_for_this_instruction =
+                next_row_in_instruction_table + number_of_rows_for_this_instruction;
+            let mut instruction_sub_table = instruction_table.slice_mut(s![
+                next_row_in_instruction_table..last_row_for_this_instruction,
+                ..
+            ]);
+            instruction_sub_table
+                .slice_mut(s![.., Address.base_table_index()])
+                .fill(BFieldElement::new(address as u64));
+            instruction_sub_table
+                .slice_mut(s![.., CI.base_table_index()])
+                .fill(instruction);
+            instruction_sub_table
+                .slice_mut(s![.., NIA.base_table_index()])
+                .fill(nia);
+            next_row_in_instruction_table = last_row_for_this_instruction;
+        }
     }
 
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            matrix,
-            "InstructionTable".to_string(),
-        );
-        Self { inherited_table }
+    pub fn pad_trace(
+        instruction_table: &mut ArrayViewMut2<BFieldElement>,
+        instruction_table_len: usize,
+    ) {
+        let mut last_row = instruction_table
+            .slice(s![instruction_table_len - 1, ..])
+            .to_owned();
+        last_row[Address.base_table_index()] =
+            last_row[Address.base_table_index()] + BFieldElement::one();
+        last_row[IsPadding.base_table_index()] = BFieldElement::one();
+
+        let mut padding_section = instruction_table.slice_mut(s![instruction_table_len.., ..]);
+        padding_section
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .for_each(|padding_row| last_row.clone().move_into(padding_row));
     }
 
-    pub fn extend(&self, challenges: &InstructionTableChallenges) -> ExtInstructionTable {
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
-        let mut processor_table_running_product = PermArg::default_initial();
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &InstructionTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut program_table_running_evaluation = EvalArg::default_initial();
-        let mut previous_row: Option<Vec<_>> = None;
+        let mut processor_table_running_product = PermArg::default_initial();
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
 
-        for row in self.data().iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            let ip = current_row[Address.base_table_index()];
+            let ci = current_row[CI.base_table_index()];
+            let nia = current_row[NIA.base_table_index()];
 
-            // Is the current row's address different from the previous row's address?
-            // Different: update running evaluation of Evaluation Argument with Program Table.
-            // Not different: update running product of Permutation Argument with Processor Table.
-            let mut is_duplicate_row = false;
-            if let Some(prow) = previous_row {
-                if prow[usize::from(Address)] == row[usize::from(Address)] {
-                    is_duplicate_row = true;
-                    debug_assert_eq!(prow[usize::from(CI)], row[usize::from(CI)]);
-                    debug_assert_eq!(prow[usize::from(NIA)], row[usize::from(NIA)]);
-                } else {
-                    debug_assert_eq!(
-                        prow[usize::from(Address)] + BFieldElement::one(),
-                        row[usize::from(Address)]
-                    );
-                }
-            }
-
-            // Compress values of current row for Permutation Argument with Processor Table
-            let ip = row[usize::from(Address)].lift();
-            let ci = row[usize::from(CI)].lift();
-            let nia = row[usize::from(NIA)].lift();
-            let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
-                + ci * challenges.ci_processor_weight
-                + nia * challenges.nia_processor_weight;
-
-            // Update running product if same row has been seen before and not padding row
-            if is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
-                processor_table_running_product *= challenges.processor_perm_indeterminate
-                    - compressed_row_for_permutation_argument;
-            }
-            extension_row[usize::from(RunningProductPermArg)] = processor_table_running_product;
-
-            // Compress values of current row for Evaluation Argument with Program Table
-            let compressed_row_for_evaluation_argument = ip * challenges.address_weight
-                + ci * challenges.instruction_weight
-                + nia * challenges.next_instruction_weight;
-
-            // Update running evaluation if same row has _not_ been seen before and not padding row
-            if !is_duplicate_row && row[usize::from(IsPadding)].is_zero() {
+            // Is the current row a padding row?
+            // Padding Row: don't updated anything.
+            // Not padding row: Is previous row's address different from current row's address?
+            //   Different: update running evaluation of Evaluation Argument with Program Table.
+            //   Not different: update running product of Permutation Argument with Processor Table.
+            let is_duplicate_row = if let Some(prev_row) = previous_row {
+                prev_row[Address.base_table_index()] == current_row[Address.base_table_index()]
+            } else {
+                false
+            };
+            if !is_duplicate_row && current_row[IsPadding.base_table_index()].is_zero() {
+                let compressed_row_for_evaluation_argument = ip * challenges.address_weight
+                    + ci * challenges.instruction_weight
+                    + nia * challenges.next_instruction_weight;
                 program_table_running_evaluation = program_table_running_evaluation
                     * challenges.program_eval_indeterminate
                     + compressed_row_for_evaluation_argument;
             }
-            extension_row[usize::from(RunningEvaluation)] = program_table_running_evaluation;
+            if is_duplicate_row && current_row[IsPadding.base_table_index()].is_zero() {
+                let compressed_row_for_permutation_argument = ip * challenges.ip_processor_weight
+                    + ci * challenges.ci_processor_weight
+                    + nia * challenges.nia_processor_weight;
+                processor_table_running_product *= challenges.processor_perm_indeterminate
+                    - compressed_row_for_permutation_argument;
+            }
 
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
-        }
-
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
-        ExtInstructionTable { inherited_table }
-    }
-
-    pub fn for_verifier() -> ExtInstructionTable {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            vec![],
-            "ExtInstructionTable".to_string(),
-        );
-        let base_table = Self { inherited_table };
-        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
-
-        ExtInstructionTable {
-            inherited_table: extension_table,
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[RunningEvaluation.ext_table_index()] = program_table_running_evaluation;
+            extension_row[RunningProductPermArg.ext_table_index()] =
+                processor_table_running_product;
+            previous_row = Some(current_row);
         }
     }
 }
-
-impl ExtInstructionTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-}
-
-impl ExtensionTable for ExtInstructionTable {}

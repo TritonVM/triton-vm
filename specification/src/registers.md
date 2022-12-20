@@ -2,25 +2,26 @@
 
 This section covers all columns in the Protocol Table.
 Only a subset of these registers relate to the instruction set;
-the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk.
+the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk (\*).
 
-| Register             | Name                         | Purpose                                                                                                            |
-|:---------------------|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------|
-| *`clk`               | cycle counter                | counts the number of cycles the program has been running for                                                       |
-| *`IsPadding`         | padding indicator            | indicates whether current state is only recorded to improve on STARK's computational runtime                       |
-| `ip`                 | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
-| `ci`                 | current instruction register | contains the current instruction                                                                                   |
-| `nia`                | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |
-| *`ib0` through `ib?` | instruction bucket           | decomposition of the instruction's opcode used to keep the AIR degree low                                          |
-| `jsp`                | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
-| `jso`                | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
-| `jsd`                | jump stack destination       | contains the argument of the last `call`                                                                           |
-| `st0` through `st15` | operational stack registers  | contain explicit operational stack values                                                                          |
-| *`osp`               | operational stack pointer    | contains the OpStack address of the top of the operational stack                                                   |
-| *`osv`               | operational stack value      | contains the (stack) memory value at the given address                                                             |
-| *`hv0` through `hv3` | helper variable registers    | helper variables for some arithmetic operations                                                                    |
-| *`ramp`              | RAM pointer                  | contains an address pointing into the RAM                                                                          |
-| *`ramv`              | RAM value                    | contains the value of the RAM element at the address currently held in `ramp`                                      |
+| Register               | Name                         | Purpose                                                                                                            |
+|:-----------------------|:-----------------------------|:-------------------------------------------------------------------------------------------------------------------|
+| *`clk`                 | cycle counter                | counts the number of cycles the program has been running for                                                       |
+| *`IsPadding`           | padding indicator            | indicates whether current state is only recorded to improve on STARK's computational runtime                       |
+| *`PreviousInstruction` | previous instruction         | holds the opcode of the instruction executed in the previous clock cycle (or 0 if such cycle exists)               |
+| `ip`                   | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
+| `ci`                   | current instruction register | contains the current instruction                                                                                   |
+| `nia`                  | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |
+| *`ib0` through `ib?`   | instruction bucket           | decomposition of the instruction's opcode used to keep the AIR degree low                                          |
+| `jsp`                  | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
+| `jso`                  | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
+| `jsd`                  | jump stack destination       | contains the argument of the last `call`                                                                           |
+| `st0` through `st15`   | operational stack registers  | contain explicit operational stack values                                                                          |
+| *`osp`                 | operational stack pointer    | contains the OpStack address of the top of the operational stack                                                   |
+| *`osv`                 | operational stack value      | contains the (stack) memory value at the given address                                                             |
+| *`hv0` through `hv3`   | helper variable registers    | helper variables for some arithmetic operations                                                                    |
+| *`ramp`                | RAM pointer                  | contains an address pointing into the RAM                                                                          |
+| *`ramv`                | RAM value                    | contains the value of the RAM element at the address currently held in `ramp`                                      |
 
 ## Instruction
 

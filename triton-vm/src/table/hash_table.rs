@@ -1,115 +1,86 @@
 use itertools::Itertools;
-use num_traits::Zero;
+use ndarray::s;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
+use num_traits::One;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_regular::ALPHA;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::rescue_prime_regular::{
-    ALPHA, MDS, MDS_INV, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
-};
+use twenty_first::shared_math::rescue_prime_regular::MDS;
+use twenty_first::shared_math::rescue_prime_regular::MDS_INV;
+use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
+use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg};
-use crate::table::base_table::Extendable;
 use crate::table::challenges::TableChallenges;
-use crate::table::constraint_circuit::DualRowIndicator::{CurrentRow, NextRow};
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
-use crate::table::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad, DualRowIndicator,
-    SingleRowIndicator,
-};
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::EvalArg;
 use crate::table::hash_table::HashTableChallengeId::*;
-use crate::table::table_column::HashBaseTableColumn::{self, *};
-use crate::table::table_column::HashExtTableColumn::{self, *};
-
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
+use crate::table::table_column::HashBaseTableColumn;
+use crate::table::table_column::HashBaseTableColumn::*;
+use crate::table::table_column::HashExtTableColumn;
+use crate::table::table_column::HashExtTableColumn::*;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
-
-/// This is 15 because it combines: 10 stack_input_weights and 5 digest_output_weights.
-pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = 15;
+pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = HashTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + HashExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE * 2;
 pub const TOTAL_NUM_CONSTANTS: usize = NUM_ROUND_CONSTANTS * NUM_ROUNDS;
 
 #[derive(Debug, Clone)]
-pub struct HashTable {
-    inherited_table: Table<BFieldElement>,
-}
-
-impl InheritsFromTable<BFieldElement> for HashTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
+pub struct HashTable {}
 
 #[derive(Debug, Clone)]
-pub struct ExtHashTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
-
-impl Default for ExtHashTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtHashTable".to_string(),
-            ),
-        }
-    }
-}
-
-impl QuotientableExtensionTable for ExtHashTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtHashTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for HashTable {}
-
-impl Extendable for HashTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        (None, vec![vec![BFieldElement::zero(); BASE_WIDTH]])
-    }
-}
-
-impl TableLike<XFieldElement> for ExtHashTable {}
+pub struct ExtHashTable {}
 
 impl ExtHashTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            HashTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let one = circuit_builder.b_constant(1_u32.into());
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
 
-        let round_number = circuit_builder.input(Row(ROUNDNUMBER.into()));
-        let running_evaluation_from_processor =
-            circuit_builder.input(Row(FromProcessorRunningEvaluation.into()));
-        let running_evaluation_to_processor =
-            circuit_builder.input(Row(ToProcessorRunningEvaluation.into()));
+        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_base_table_index()));
+        let running_evaluation_from_processor = circuit_builder.input(ExtRow(
+            FromProcessorRunningEvaluation.master_ext_table_index(),
+        ));
+        let running_evaluation_to_processor = circuit_builder.input(ExtRow(
+            ToProcessorRunningEvaluation.master_ext_table_index(),
+        ));
         let state = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
         ]
-        .map(|st| circuit_builder.input(Row(st.into())));
+        .map(|st| circuit_builder.input(BaseRow(st.master_base_table_index())));
 
         let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
 
@@ -155,18 +126,22 @@ impl ExtHashTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            HashTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
-        let round_number = circuit_builder.input(Row(ROUNDNUMBER.into()));
-        let state10 = circuit_builder.input(Row(STATE10.into()));
-        let state11 = circuit_builder.input(Row(STATE11.into()));
-        let state12 = circuit_builder.input(Row(STATE12.into()));
-        let state13 = circuit_builder.input(Row(STATE13.into()));
-        let state14 = circuit_builder.input(Row(STATE14.into()));
-        let state15 = circuit_builder.input(Row(STATE15.into()));
+        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_base_table_index()));
+        let state10 = circuit_builder.input(BaseRow(STATE10.master_base_table_index()));
+        let state11 = circuit_builder.input(BaseRow(STATE11.master_base_table_index()));
+        let state12 = circuit_builder.input(BaseRow(STATE12.master_base_table_index()));
+        let state13 = circuit_builder.input(BaseRow(STATE13.master_base_table_index()));
+        let state14 = circuit_builder.input(BaseRow(STATE14.master_base_table_index()));
+        let state15 = circuit_builder.input(BaseRow(STATE15.master_base_table_index()));
 
         let round_number_deselector = |round_number_to_deselect| {
             (0..=NUM_ROUNDS + 1)
@@ -185,10 +160,10 @@ impl ExtHashTable {
             round_number_is_not_1_or * state15,
         ];
 
-        let round_constant_offset: usize = CONSTANT0A.into();
+        let round_constant_offset = CONSTANT0A.master_base_table_index();
         for round_constant_col_index in 0..NUM_ROUND_CONSTANTS {
             let round_constant_input =
-                circuit_builder.input(Row(round_constant_col_index + round_constant_offset));
+                circuit_builder.input(BaseRow(round_constant_col_index + round_constant_offset));
             let round_constant_constraint_circuit = (1..=NUM_ROUNDS)
                 .map(|i| {
                     let round_constant_idx =
@@ -207,9 +182,10 @@ impl ExtHashTable {
             .collect()
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<HashTableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         let from_processor_eval_indeterminate =
@@ -217,17 +193,23 @@ impl ExtHashTable {
         let to_processor_eval_indeterminate =
             circuit_builder.challenge(ToProcessorEvalIndeterminate);
 
-        let round_number = circuit_builder.input(CurrentRow(ROUNDNUMBER.into()));
-        let running_evaluation_from_processor =
-            circuit_builder.input(CurrentRow(FromProcessorRunningEvaluation.into()));
-        let running_evaluation_to_processor =
-            circuit_builder.input(CurrentRow(ToProcessorRunningEvaluation.into()));
+        let round_number =
+            circuit_builder.input(CurrentBaseRow(ROUNDNUMBER.master_base_table_index()));
+        let running_evaluation_from_processor = circuit_builder.input(CurrentExtRow(
+            FromProcessorRunningEvaluation.master_ext_table_index(),
+        ));
+        let running_evaluation_to_processor = circuit_builder.input(CurrentExtRow(
+            ToProcessorRunningEvaluation.master_ext_table_index(),
+        ));
 
-        let round_number_next = circuit_builder.input(NextRow(ROUNDNUMBER.into()));
-        let running_evaluation_from_processor_next =
-            circuit_builder.input(NextRow(FromProcessorRunningEvaluation.into()));
-        let running_evaluation_to_processor_next =
-            circuit_builder.input(NextRow(ToProcessorRunningEvaluation.into()));
+        let round_number_next =
+            circuit_builder.input(NextBaseRow(ROUNDNUMBER.master_base_table_index()));
+        let running_evaluation_from_processor_next = circuit_builder.input(NextExtRow(
+            FromProcessorRunningEvaluation.master_ext_table_index(),
+        ));
+        let running_evaluation_to_processor_next = circuit_builder.input(NextExtRow(
+            ToProcessorRunningEvaluation.master_ext_table_index(),
+        ));
 
         // round number
         // round numbers evolve as
@@ -276,7 +258,7 @@ impl ExtHashTable {
             CONSTANT14A,
             CONSTANT15A,
         ]
-        .map(|c| circuit_builder.input(CurrentRow(c.into())));
+        .map(|c| circuit_builder.input(CurrentBaseRow(c.master_base_table_index())));
         let round_constants_b: [_; STATE_SIZE] = [
             CONSTANT0B,
             CONSTANT1B,
@@ -295,14 +277,16 @@ impl ExtHashTable {
             CONSTANT14B,
             CONSTANT15B,
         ]
-        .map(|c| circuit_builder.input(CurrentRow(c.into())));
+        .map(|c| circuit_builder.input(CurrentBaseRow(c.master_base_table_index())));
 
         let state: [_; STATE_SIZE] = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
             STATE10, STATE11, STATE12, STATE13, STATE14, STATE15,
         ];
-        let current_state = state.map(|s| circuit_builder.input(CurrentRow(s.into())));
-        let next_state = state.map(|s| circuit_builder.input(NextRow(s.into())));
+        let current_state =
+            state.map(|s| circuit_builder.input(CurrentBaseRow(s.master_base_table_index())));
+        let next_state =
+            state.map(|s| circuit_builder.input(NextBaseRow(s.master_base_table_index())));
 
         // left-hand-side, starting at current round and going forward
 
@@ -453,132 +437,113 @@ impl ExtHashTable {
         .collect()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<HashTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            HashTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no more constraints
         vec![]
     }
 }
 
 impl HashTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
+    pub fn fill_trace(
+        hash_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) {
+        let hash_table_to_fill = hash_table.slice_mut(s![0..aet.hash_matrix.nrows(), ..]);
+        aet.hash_matrix.clone().move_into(hash_table_to_fill);
     }
 
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table = Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "HashTable".to_string());
-        Self { inherited_table }
+    pub fn pad_trace(_hash_table: &mut ArrayViewMut2<BFieldElement>) {
+        // Hash Table is padded with all-zero rows. It is also initialized with all-zero rows.
+        // Hence, no need to do anything.
     }
 
-    pub fn extend(&self, challenges: &HashTableChallenges) -> ExtHashTable {
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &HashTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut from_processor_running_evaluation = EvalArg::default_initial();
         let mut to_processor_running_evaluation = EvalArg::default_initial();
 
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
-        for row in self.data().iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
 
             // Add compressed input to running evaluation if round index marks beginning of hashing
-            if row[usize::from(ROUNDNUMBER)].value() == 1 {
+            if current_row[ROUNDNUMBER.base_table_index()].is_one() {
                 let state_for_input = [
-                    extension_row[usize::from(STATE0)],
-                    extension_row[usize::from(STATE1)],
-                    extension_row[usize::from(STATE2)],
-                    extension_row[usize::from(STATE3)],
-                    extension_row[usize::from(STATE4)],
-                    extension_row[usize::from(STATE5)],
-                    extension_row[usize::from(STATE6)],
-                    extension_row[usize::from(STATE7)],
-                    extension_row[usize::from(STATE8)],
-                    extension_row[usize::from(STATE9)],
+                    current_row[STATE0.base_table_index()],
+                    current_row[STATE1.base_table_index()],
+                    current_row[STATE2.base_table_index()],
+                    current_row[STATE3.base_table_index()],
+                    current_row[STATE4.base_table_index()],
+                    current_row[STATE5.base_table_index()],
+                    current_row[STATE6.base_table_index()],
+                    current_row[STATE7.base_table_index()],
+                    current_row[STATE8.base_table_index()],
+                    current_row[STATE9.base_table_index()],
+                ];
+                let stack_input_weights = [
+                    challenges.stack_input_weight0,
+                    challenges.stack_input_weight1,
+                    challenges.stack_input_weight2,
+                    challenges.stack_input_weight3,
+                    challenges.stack_input_weight4,
+                    challenges.stack_input_weight5,
+                    challenges.stack_input_weight6,
+                    challenges.stack_input_weight7,
+                    challenges.stack_input_weight8,
+                    challenges.stack_input_weight9,
                 ];
                 let compressed_state_for_input: XFieldElement = state_for_input
                     .iter()
-                    .zip_eq(
-                        [
-                            challenges.stack_input_weight0,
-                            challenges.stack_input_weight1,
-                            challenges.stack_input_weight2,
-                            challenges.stack_input_weight3,
-                            challenges.stack_input_weight4,
-                            challenges.stack_input_weight5,
-                            challenges.stack_input_weight6,
-                            challenges.stack_input_weight7,
-                            challenges.stack_input_weight8,
-                            challenges.stack_input_weight9,
-                        ]
-                        .iter(),
-                    )
+                    .zip_eq(stack_input_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
-
                 from_processor_running_evaluation = from_processor_running_evaluation
                     * challenges.from_processor_eval_indeterminate
                     + compressed_state_for_input;
             }
-            extension_row[usize::from(FromProcessorRunningEvaluation)] =
-                from_processor_running_evaluation;
 
             // Add compressed digest to running evaluation if round index marks end of hashing
-            if row[usize::from(ROUNDNUMBER)].value() == NUM_ROUNDS as u64 + 1 {
+            if current_row[ROUNDNUMBER.base_table_index()].value() == NUM_ROUNDS as u64 + 1 {
                 let state_for_output = [
-                    extension_row[usize::from(STATE0)],
-                    extension_row[usize::from(STATE1)],
-                    extension_row[usize::from(STATE2)],
-                    extension_row[usize::from(STATE3)],
-                    extension_row[usize::from(STATE4)],
+                    current_row[STATE0.base_table_index()],
+                    current_row[STATE1.base_table_index()],
+                    current_row[STATE2.base_table_index()],
+                    current_row[STATE3.base_table_index()],
+                    current_row[STATE4.base_table_index()],
+                ];
+                let digest_output_weights = [
+                    challenges.digest_output_weight0,
+                    challenges.digest_output_weight1,
+                    challenges.digest_output_weight2,
+                    challenges.digest_output_weight3,
+                    challenges.digest_output_weight4,
                 ];
                 let compressed_state_for_output: XFieldElement = state_for_output
                     .iter()
-                    .zip_eq(
-                        [
-                            challenges.digest_output_weight0,
-                            challenges.digest_output_weight1,
-                            challenges.digest_output_weight2,
-                            challenges.digest_output_weight3,
-                            challenges.digest_output_weight4,
-                        ]
-                        .iter(),
-                    )
+                    .zip_eq(digest_output_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
-
                 to_processor_running_evaluation = to_processor_running_evaluation
                     * challenges.to_processor_eval_indeterminate
                     + compressed_state_for_output;
             }
-            extension_row[usize::from(ToProcessorRunningEvaluation)] =
+
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[FromProcessorRunningEvaluation.ext_table_index()] =
+                from_processor_running_evaluation;
+            extension_row[ToProcessorRunningEvaluation.ext_table_index()] =
                 to_processor_running_evaluation;
-
-            extension_matrix.push(extension_row.to_vec());
         }
-
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let extension_table = self.new_from_lifted_matrix(extension_matrix);
-
-        ExtHashTable {
-            inherited_table: extension_table,
-        }
-    }
-
-    pub fn for_verifier() -> ExtHashTable {
-        let inherited_table =
-            Table::new(BASE_WIDTH, FULL_WIDTH, vec![], "ExtHashTable".to_string());
-        let base_table = Self { inherited_table };
-        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
-
-        ExtHashTable {
-            inherited_table: extension_table,
-        }
-    }
-}
-
-impl ExtHashTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
     }
 }
 
@@ -666,62 +631,88 @@ impl TableChallenges for HashTableChallenges {
     }
 }
 
-impl ExtensionTable for ExtHashTable {}
-
 #[cfg(test)]
 mod constraint_tests {
-    use crate::table::challenges::AllChallenges;
+    use num_traits::Zero;
+
+    use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::extension_table::Evaluable;
-    use crate::vm::Program;
+    use crate::table::master_table::MasterTable;
 
     use super::*;
 
     #[test]
-    fn table_satisfies_constraints_test() {
-        let program = Program::from_code("hash hash hash halt").unwrap();
+    fn hash_table_satisfies_constraints_test() {
+        let source_code = "hash hash hash halt";
+        let (_, _, master_base_table, master_ext_table, challenges) =
+            parse_simulate_pad_extend(source_code, vec![], vec![]);
+        assert_eq!(
+            master_base_table.master_base_matrix.nrows(),
+            master_ext_table.master_ext_matrix.nrows()
+        );
+        let master_base_trace_table = master_base_table.trace_table();
+        let master_ext_trace_table = master_ext_table.trace_table();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
 
-        let (aet, _, maybe_err) = program.simulate_no_input();
-
-        if let Some(e) = maybe_err {
-            panic!("Program execution failed: {e}");
-        }
-
-        let challenges = AllChallenges::placeholder();
-        let ext_hash_table =
-            HashTable::new_prover(aet.hash_matrix.iter().map(|r| r.to_vec()).collect())
-                .extend(&challenges.hash_table_challenges);
-
-        for v in ext_hash_table.evaluate_initial_constraints(&ext_hash_table.data()[0], &challenges)
-        {
-            assert!(v.is_zero());
-        }
-
-        for (i, row) in ext_hash_table.data().iter().enumerate() {
-            for (j, v) in ext_hash_table
-                .evaluate_consistency_constraints(row, &challenges)
+        let num_rows = master_base_trace_table.nrows();
+        let first_base_row = master_base_trace_table.row(0);
+        let first_ext_row = master_ext_trace_table.row(0);
+        for (idx, v) in
+            ExtHashTable::evaluate_initial_constraints(first_base_row, first_ext_row, &challenges)
                 .iter()
                 .enumerate()
+        {
+            assert!(v.is_zero(), "Initial constraint {idx} failed.");
+        }
+
+        for row_idx in 0..num_rows {
+            let base_row = master_base_trace_table.row(row_idx);
+            let ext_row = master_ext_trace_table.row(row_idx);
+            for (constraint_idx, v) in
+                ExtHashTable::evaluate_consistency_constraints(base_row, ext_row, &challenges)
+                    .iter()
+                    .enumerate()
             {
-                assert!(v.is_zero(), "consistency constraint {j} failed in row {i}");
+                assert!(
+                    v.is_zero(),
+                    "consistency constraint {constraint_idx} failed in row {row_idx}"
+                );
             }
         }
 
-        for (i, (current_row, next_row)) in ext_hash_table.data().iter().tuple_windows().enumerate()
-        {
-            for (j, v) in ext_hash_table
-                .evaluate_transition_constraints(current_row, next_row, &challenges)
-                .iter()
-                .enumerate()
+        for row_idx in 0..num_rows - 1 {
+            let base_row = master_base_trace_table.row(row_idx);
+            let ext_row = master_ext_trace_table.row(row_idx);
+            let next_base_row = master_base_trace_table.row(row_idx + 1);
+            let next_ext_row = master_ext_trace_table.row(row_idx + 1);
+            for (constraint_idx, v) in ExtHashTable::evaluate_transition_constraints(
+                base_row,
+                ext_row,
+                next_base_row,
+                next_ext_row,
+                &challenges,
+            )
+            .iter()
+            .enumerate()
             {
-                assert!(v.is_zero(), "transition constraint {j} failed in row {i}",);
+                assert!(
+                    v.is_zero(),
+                    "transition constraint {constraint_idx} failed in row {row_idx}",
+                );
             }
         }
 
-        for v in ext_hash_table.evaluate_terminal_constraints(
-            &ext_hash_table.data()[ext_hash_table.data().len() - 1],
-            &challenges,
-        ) {
-            assert!(v.is_zero());
+        let last_base_row = master_base_trace_table.row(num_rows - 1);
+        let last_ext_row = master_ext_trace_table.row(num_rows - 1);
+        for (idx, v) in
+            ExtHashTable::evaluate_terminal_constraints(last_base_row, last_ext_row, &challenges)
+                .iter()
+                .enumerate()
+        {
+            assert!(v.is_zero(), "Terminal constraint {idx} failed.");
         }
     }
 }

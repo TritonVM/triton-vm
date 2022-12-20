@@ -1,11 +1,13 @@
 use std::ops::MulAssign;
 
+use crate::table::master_table::derive_domain_generator;
 use num_traits::One;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::traits::{FiniteField, ModPowU32};
+use twenty_first::shared_math::traits::FiniteField;
+use twenty_first::shared_math::traits::ModPowU32;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArithmeticDomain {
     pub offset: BFieldElement,
     pub generator: BFieldElement,
@@ -13,12 +15,17 @@ pub struct ArithmeticDomain {
 }
 
 impl ArithmeticDomain {
-    pub fn new(offset: BFieldElement, generator: BFieldElement, length: usize) -> Self {
+    pub fn new(offset: BFieldElement, length: usize) -> Self {
+        let generator = derive_domain_generator(length as u64);
         Self {
             offset,
             generator,
             length,
         }
+    }
+
+    pub fn new_no_offset(length: usize) -> Self {
+        Self::new(BFieldElement::one(), length)
     }
 
     pub fn evaluate<FF>(&self, polynomial: &Polynomial<FF>) -> Vec<FF>
@@ -35,7 +42,7 @@ impl ArithmeticDomain {
         Polynomial::fast_coset_interpolate(&self.offset, self.generator, values)
     }
 
-    pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: &Self) -> Vec<FF>
+    pub fn low_degree_extension<FF>(&self, codeword: &[FF], target_domain: Self) -> Vec<FF>
     where
         FF: FiniteField + MulAssign<BFieldElement>,
     {
@@ -54,7 +61,10 @@ impl ArithmeticDomain {
             domain_values.push(accumulator * self.offset);
             accumulator *= self.generator;
         }
-
+        assert!(
+            accumulator.is_one(),
+            "length must be the order of the generator"
+        );
         domain_values
     }
 }
@@ -76,7 +86,7 @@ mod domain_tests {
         for order in [4, 8, 32] {
             let generator = BFieldElement::primitive_root_of_unity(order).unwrap();
             let offset = BFieldElement::generator();
-            let b_domain = ArithmeticDomain::new(offset, generator, order as usize);
+            let b_domain = ArithmeticDomain::new(offset, order as usize);
 
             let expected_b_values: Vec<BFieldElement> =
                 (0..order).map(|i| offset * generator.mod_pow(i)).collect();

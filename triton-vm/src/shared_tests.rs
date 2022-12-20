@@ -1,18 +1,22 @@
-use std::fs::{create_dir_all, File};
-use std::io::{Read, Write};
+use std::fs::create_dir_all;
+use std::fs::File;
+use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 
-use anyhow::{Error, Result};
+use anyhow::Error;
+use anyhow::Result;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use triton_profiler::triton_profiler::TritonProfiler;
-use triton_profiler::{prof_start, prof_stop};
-
-use crate::proof::{Claim, Proof};
-use crate::stark::{Stark, StarkParameters};
-use crate::table::base_matrix::AlgebraicExecutionTrace;
-use crate::table::base_matrix::BaseMatrices;
-use crate::table::table_collection::BaseTableCollection;
+use crate::proof::Claim;
+use crate::proof::Proof;
+use crate::stark::Stark;
+use crate::stark::StarkParameters;
+use crate::table::master_table::MasterBaseTable;
+use crate::vm::AlgebraicExecutionTrace;
 use crate::vm::Program;
 
 pub fn parse_setup_simulate(
@@ -48,32 +52,20 @@ pub fn parse_simulate_prove(
         secret_input_symbols,
         maybe_profiler,
     );
-    let base_matrices = BaseMatrices::new(aet.clone(), &program.to_bwords());
 
-    prof_start!(maybe_profiler, "padding");
-    let log_expansion_factor = 2;
-    let security_level = 32;
-    let padded_height = BaseTableCollection::padded_height(&base_matrices);
-    prof_stop!(maybe_profiler, "padding");
-
-    prof_start!(maybe_profiler, "prove");
-    let parameters = StarkParameters::new(security_level, 1 << log_expansion_factor);
-    let program = Program::from_code(code);
-    let program = match program {
-        Ok(p) => p.to_bwords(),
-        Err(e) => panic!(
-            "Could not convert program from code to vector of BFieldElements: {}",
-            e
-        ),
-    };
+    let padded_height = MasterBaseTable::padded_height(&aet, &program.to_bwords());
     let claim = Claim {
         input: input_symbols,
-        program,
+        program: program.to_bwords(),
         output: output_symbols,
         padded_height,
     };
+    let log_expansion_factor = 2;
+    let security_level = 32;
+    let parameters = StarkParameters::new(security_level, 1 << log_expansion_factor);
     let stark = Stark::new(claim, parameters);
 
+    prof_start!(maybe_profiler, "prove");
     let proof = stark.prove(aet, maybe_profiler);
     prof_stop!(maybe_profiler, "prove");
 

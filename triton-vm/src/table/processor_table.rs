@@ -1,159 +1,222 @@
 use std::cmp::max;
 use std::cmp::Eq;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::ops::Mul;
 
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use ndarray::parallel::prelude::*;
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
+use ndarray::Axis;
+use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::MPolynomial;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProcessorTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, EvalArg, PermArg};
-use crate::instruction::{all_instructions_without_args, AnInstruction::*, Instruction};
+use crate::instruction::all_instructions_without_args;
+use crate::instruction::AnInstruction::*;
+use crate::instruction::Instruction;
 use crate::ord_n::Ord7;
-use crate::table::base_table::{Extendable, InheritsFromTable, Table, TableLike};
-use crate::table::constraint_circuit::{InputIndicator, SingleRowIndicator};
-use crate::table::extension_table::ExtensionTable;
-use crate::table::table_column::ProcessorBaseTableColumn::{self, *};
-use crate::table::table_column::ProcessorExtTableColumn::{self, *};
-
-use super::challenges::TableChallenges;
-use super::constraint_circuit::{
-    ConstraintCircuit, ConstraintCircuitBuilder, ConstraintCircuitMonad, DualRowIndicator,
-};
-use super::extension_table::QuotientableExtensionTable;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::InputIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::PermArg;
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn::*;
+use crate::table::table_column::ProcessorExtTableColumn;
+use crate::table::table_column::ProcessorExtTableColumn::*;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
 pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
-
-/// This is 43 because it combines all other tables (except program).
-pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = 43;
+pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = ProcessorTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = ProcessorBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + ProcessorExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = ProcessorExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
-pub struct ProcessorTable {
-    inherited_table: Table<BFieldElement>,
-}
-
-impl InheritsFromTable<BFieldElement> for ProcessorTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
+pub struct ProcessorTable {}
 
 impl ProcessorTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
+    pub fn fill_trace(
+        processor_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+        mut all_clk_jump_diffs: Vec<BFieldElement>,
+    ) {
+        // fill the processor table from the AET
+        let mut processor_table_to_fill =
+            processor_table.slice_mut(s![0..aet.processor_matrix.nrows(), ..]);
+        aet.processor_matrix
+            .clone()
+            .move_into(&mut processor_table_to_fill);
+
+        let zero = BFieldElement::zero();
+        all_clk_jump_diffs.sort_by_key(|bfe| std::cmp::Reverse(bfe.value()));
+
+        let mut previous_row: Option<Array1<_>> = None;
+        for mut row in processor_table_to_fill.rows_mut() {
+            // add all clock jump differences and their inverses
+            let clk_jump_difference = all_clk_jump_diffs.pop().unwrap_or(zero);
+            let clk_jump_difference_inv = clk_jump_difference.inverse_or_zero();
+            row[ClockJumpDifference.base_table_index()] = clk_jump_difference;
+            row[ClockJumpDifferenceInverse.base_table_index()] = clk_jump_difference_inv;
+
+            // add inverses of unique clock jump difference differences
+            if let Some(prow) = previous_row {
+                let previous_clk_jump_difference = prow[ClockJumpDifference.base_table_index()];
+                if previous_clk_jump_difference != clk_jump_difference {
+                    let clk_diff_diff: BFieldElement =
+                        clk_jump_difference - previous_clk_jump_difference;
+                    let clk_diff_diff_inv = clk_diff_diff.inverse();
+                    row[UniqueClockJumpDiffDiffInverse.base_table_index()] = clk_diff_diff_inv;
+                }
+            }
+
+            previous_row = Some(row.to_owned());
+        }
+
+        assert!(
+            all_clk_jump_diffs.is_empty(),
+            "Processor Table must record all clock jump differences, but didn't have enough space \
+            for the remaining {}.",
+            all_clk_jump_diffs.len()
+        );
     }
 
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table =
-            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "ProcessorTable".to_string());
-        Self { inherited_table }
+    pub fn pad_trace(
+        processor_table: &mut ArrayViewMut2<BFieldElement>,
+        processor_table_len: usize,
+    ) {
+        assert!(
+            processor_table_len > 0,
+            "Processor Table must have at least one row."
+        );
+        let mut padding_template = processor_table.row(processor_table_len - 1).to_owned();
+        padding_template[IsPadding.base_table_index()] = BFieldElement::one();
+        processor_table
+            .slice_mut(s![processor_table_len.., ..])
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .for_each(|mut row| row.assign(&padding_template));
+
+        let clk_range = processor_table_len..processor_table.nrows();
+        let clk_col = Array1::from_iter(clk_range.map(|a| BFieldElement::new(a as u64)));
+        clk_col.move_into(
+            processor_table.slice_mut(s![processor_table_len.., CLK.base_table_index()]),
+        );
     }
 
-    pub fn extend(&self, challenges: &ProcessorTableChallenges) -> ExtProcessorTable {
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &ProcessorTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut unique_clock_jump_differences = vec![];
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
 
         let mut input_table_running_evaluation = EvalArg::default_initial();
         let mut output_table_running_evaluation = EvalArg::default_initial();
         let mut instruction_table_running_product = PermArg::default_initial();
-        let mut opstack_table_running_product = PermArg::default_initial();
+        let mut op_stack_table_running_product = PermArg::default_initial();
         let mut ram_table_running_product = PermArg::default_initial();
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut to_hash_table_running_evaluation = EvalArg::default_initial();
         let mut from_hash_table_running_evaluation = EvalArg::default_initial();
-        let mut selected_clock_cycles_running_evaluation = EvalArg::default_initial();
         let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
         let mut all_clock_jump_differences_running_product =
             PermArg::default_initial() * PermArg::default_initial() * PermArg::default_initial();
 
-        let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in self.data().iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
 
             // Input table
-            if let Some(prow) = previous_row.clone() {
-                if prow[usize::from(CI)] == Instruction::ReadIo.opcode_b() {
-                    let input_symbol = extension_row[usize::from(ST0)];
+            if let Some(prev_row) = previous_row {
+                if prev_row[CI.base_table_index()] == Instruction::ReadIo.opcode_b() {
+                    let input_symbol = current_row[ST0.base_table_index()];
                     input_table_running_evaluation = input_table_running_evaluation
                         * challenges.standard_input_eval_indeterminate
                         + input_symbol;
                 }
             }
-            extension_row[usize::from(InputTableEvalArg)] = input_table_running_evaluation;
 
             // Output table
-            if row[usize::from(CI)] == Instruction::WriteIo.opcode_b() {
-                let output_symbol = extension_row[usize::from(ST0)];
+            if current_row[CI.base_table_index()] == Instruction::WriteIo.opcode_b() {
+                let output_symbol = current_row[ST0.base_table_index()];
                 output_table_running_evaluation = output_table_running_evaluation
                     * challenges.standard_output_eval_indeterminate
                     + output_symbol;
             }
-            extension_row[usize::from(OutputTableEvalArg)] = output_table_running_evaluation;
 
             // Instruction table
-            let ip = extension_row[usize::from(IP)];
-            let ci = extension_row[usize::from(CI)];
-            let nia = extension_row[usize::from(NIA)];
-
-            let ip_w = challenges.instruction_table_ip_weight;
-            let ci_w = challenges.instruction_table_ci_processor_weight;
-            let nia_w = challenges.instruction_table_nia_weight;
-
-            if row[usize::from(IsPadding)].is_zero() {
-                let compressed_row_for_instruction_table_permutation_argument =
-                    ip * ip_w + ci * ci_w + nia * nia_w;
+            if current_row[IsPadding.base_table_index()].is_zero() {
+                let ip = current_row[IP.base_table_index()];
+                let ci = current_row[CI.base_table_index()];
+                let nia = current_row[NIA.base_table_index()];
+                let compressed_row_for_instruction_table_permutation_argument = ip
+                    * challenges.instruction_table_ip_weight
+                    + ci * challenges.instruction_table_ci_processor_weight
+                    + nia * challenges.instruction_table_nia_weight;
                 instruction_table_running_product *= challenges.instruction_perm_indeterminate
                     - compressed_row_for_instruction_table_permutation_argument;
             }
-            extension_row[usize::from(InstructionTablePermArg)] = instruction_table_running_product;
 
             // OpStack table
-            let clk = extension_row[usize::from(CLK)];
-            let ib1 = extension_row[usize::from(IB1)];
-            let osp = extension_row[usize::from(OSP)];
-            let osv = extension_row[usize::from(OSV)];
-
+            let clk = current_row[CLK.base_table_index()];
+            let ib1 = current_row[IB1.base_table_index()];
+            let osp = current_row[OSP.base_table_index()];
+            let osv = current_row[OSV.base_table_index()];
             let compressed_row_for_op_stack_table_permutation_argument = clk
                 * challenges.op_stack_table_clk_weight
                 + ib1 * challenges.op_stack_table_ib1_weight
                 + osp * challenges.op_stack_table_osp_weight
                 + osv * challenges.op_stack_table_osv_weight;
-            opstack_table_running_product *= challenges.op_stack_perm_indeterminate
+            op_stack_table_running_product *= challenges.op_stack_perm_indeterminate
                 - compressed_row_for_op_stack_table_permutation_argument;
-            extension_row[usize::from(OpStackTablePermArg)] = opstack_table_running_product;
 
             // RAM Table
-            let ramv = extension_row[usize::from(RAMV)];
-            let ramp = extension_row[usize::from(RAMP)];
-
+            let ramv = current_row[RAMV.base_table_index()];
+            let ramp = current_row[RAMP.base_table_index()];
+            let previous_instruction = current_row[PreviousInstruction.base_table_index()];
             let compressed_row_for_ram_table_permutation_argument = clk
                 * challenges.ram_table_clk_weight
                 + ramv * challenges.ram_table_ramv_weight
-                + ramp * challenges.ram_table_ramp_weight;
+                + ramp * challenges.ram_table_ramp_weight
+                + previous_instruction * challenges.ram_table_previous_instruction_weight;
             ram_table_running_product *= challenges.ram_perm_indeterminate
                 - compressed_row_for_ram_table_permutation_argument;
-            extension_row[usize::from(RamTablePermArg)] = ram_table_running_product;
 
             // JumpStack Table
-            let jsp = extension_row[usize::from(JSP)];
-            let jso = extension_row[usize::from(JSO)];
-            let jsd = extension_row[usize::from(JSD)];
+            let ci = current_row[CI.base_table_index()];
+            let jsp = current_row[JSP.base_table_index()];
+            let jso = current_row[JSO.base_table_index()];
+            let jsd = current_row[JSD.base_table_index()];
             let compressed_row_for_jump_stack_table = clk * challenges.jump_stack_table_clk_weight
                 + ci * challenges.jump_stack_table_ci_weight
                 + jsp * challenges.jump_stack_table_jsp_weight
@@ -161,69 +224,62 @@ impl ProcessorTable {
                 + jsd * challenges.jump_stack_table_jsd_weight;
             jump_stack_running_product *=
                 challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
-            extension_row[usize::from(JumpStackTablePermArg)] = jump_stack_running_product;
 
-            // Hash Table – Hash's input from Processor to Hash Coprocessor
-            if row[usize::from(CI)] == Instruction::Hash.opcode_b() {
+            if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
                 let st_0_through_9 = [
-                    extension_row[usize::from(ST0)],
-                    extension_row[usize::from(ST1)],
-                    extension_row[usize::from(ST2)],
-                    extension_row[usize::from(ST3)],
-                    extension_row[usize::from(ST4)],
-                    extension_row[usize::from(ST5)],
-                    extension_row[usize::from(ST6)],
-                    extension_row[usize::from(ST7)],
-                    extension_row[usize::from(ST8)],
-                    extension_row[usize::from(ST9)],
+                    current_row[ST0.base_table_index()],
+                    current_row[ST1.base_table_index()],
+                    current_row[ST2.base_table_index()],
+                    current_row[ST3.base_table_index()],
+                    current_row[ST4.base_table_index()],
+                    current_row[ST5.base_table_index()],
+                    current_row[ST6.base_table_index()],
+                    current_row[ST7.base_table_index()],
+                    current_row[ST8.base_table_index()],
+                    current_row[ST9.base_table_index()],
+                ];
+                let hash_table_stack_input_challenges = [
+                    challenges.hash_table_stack_input_weight0,
+                    challenges.hash_table_stack_input_weight1,
+                    challenges.hash_table_stack_input_weight2,
+                    challenges.hash_table_stack_input_weight3,
+                    challenges.hash_table_stack_input_weight4,
+                    challenges.hash_table_stack_input_weight5,
+                    challenges.hash_table_stack_input_weight6,
+                    challenges.hash_table_stack_input_weight7,
+                    challenges.hash_table_stack_input_weight8,
+                    challenges.hash_table_stack_input_weight9,
                 ];
                 let compressed_row_for_hash_input: XFieldElement = st_0_through_9
                     .into_iter()
-                    .zip_eq(
-                        [
-                            challenges.hash_table_stack_input_weight0,
-                            challenges.hash_table_stack_input_weight1,
-                            challenges.hash_table_stack_input_weight2,
-                            challenges.hash_table_stack_input_weight3,
-                            challenges.hash_table_stack_input_weight4,
-                            challenges.hash_table_stack_input_weight5,
-                            challenges.hash_table_stack_input_weight6,
-                            challenges.hash_table_stack_input_weight7,
-                            challenges.hash_table_stack_input_weight8,
-                            challenges.hash_table_stack_input_weight9,
-                        ]
-                        .into_iter(),
-                    )
+                    .zip_eq(hash_table_stack_input_challenges.into_iter())
                     .map(|(st, weight)| weight * st)
                     .sum();
                 to_hash_table_running_evaluation = to_hash_table_running_evaluation
                     * challenges.to_hash_table_eval_indeterminate
                     + compressed_row_for_hash_input;
             }
-            extension_row[usize::from(ToHashTableEvalArg)] = to_hash_table_running_evaluation;
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
-            if let Some(prow) = previous_row.clone() {
-                if prow[usize::from(CI)] == Instruction::Hash.opcode_b() {
+            if let Some(prev_row) = previous_row {
+                if prev_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
                     let st_5_through_9 = [
-                        extension_row[usize::from(ST5)],
-                        extension_row[usize::from(ST6)],
-                        extension_row[usize::from(ST7)],
-                        extension_row[usize::from(ST8)],
-                        extension_row[usize::from(ST9)],
+                        current_row[ST5.base_table_index()],
+                        current_row[ST6.base_table_index()],
+                        current_row[ST7.base_table_index()],
+                        current_row[ST8.base_table_index()],
+                        current_row[ST9.base_table_index()],
+                    ];
+                    let hash_table_digest_output_challenges = [
+                        challenges.hash_table_digest_output_weight0,
+                        challenges.hash_table_digest_output_weight1,
+                        challenges.hash_table_digest_output_weight2,
+                        challenges.hash_table_digest_output_weight3,
+                        challenges.hash_table_digest_output_weight4,
                     ];
                     let compressed_row_for_hash_digest: XFieldElement = st_5_through_9
                         .into_iter()
-                        .zip_eq(
-                            [
-                                challenges.hash_table_digest_output_weight0,
-                                challenges.hash_table_digest_output_weight1,
-                                challenges.hash_table_digest_output_weight2,
-                                challenges.hash_table_digest_output_weight3,
-                                challenges.hash_table_digest_output_weight4,
-                            ]
-                            .into_iter(),
-                        )
+                        .zip_eq(hash_table_digest_output_challenges.into_iter())
                         .map(|(st, weight)| weight * st)
                         .sum();
                     from_hash_table_running_evaluation = from_hash_table_running_evaluation
@@ -231,45 +287,59 @@ impl ProcessorTable {
                         + compressed_row_for_hash_digest;
                 }
             }
-            extension_row[usize::from(FromHashTableEvalArg)] = from_hash_table_running_evaluation;
 
             // Clock Jump Difference
-            let current_clock_jump_difference = row[usize::from(ClockJumpDifference)].lift();
+            let current_clock_jump_difference = current_row[ClockJumpDifference.base_table_index()];
             if !current_clock_jump_difference.is_zero() {
                 all_clock_jump_differences_running_product *= challenges
                     .all_clock_jump_differences_multi_perm_indeterminate
                     - current_clock_jump_difference;
             }
-            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
-                all_clock_jump_differences_running_product;
 
-            if let Some(prow) = previous_row {
-                let previous_clock_jump_difference = prow[usize::from(ClockJumpDifference)].lift();
-                if previous_clock_jump_difference != current_clock_jump_difference
-                    && !current_clock_jump_difference.is_zero()
-                {
-                    unique_clock_jump_differences.push(current_clock_jump_difference);
-                    unique_clock_jump_differences_running_evaluation =
-                        unique_clock_jump_differences_running_evaluation
-                            * challenges.unique_clock_jump_differences_eval_indeterminate
-                            + current_clock_jump_difference;
-                }
-            } else if !current_clock_jump_difference.is_zero() {
+            // Update the running evaluation of unique clock jump differences if and only if
+            // 1. the current clock jump difference is not 0, and either
+            // 2a. there is no previous row, or
+            // 2b. the previous clock jump difference is different from the current one.
+            // We can merge (2a) and (2b) by setting the “previous” clock jump difference to
+            // anything unequal to the current clock jump difference if no previous row exists.
+            let previous_clock_jump_difference = if let Some(prev_row) = previous_row {
+                prev_row[ClockJumpDifference.base_table_index()]
+            } else {
+                current_clock_jump_difference - BFieldElement::one()
+            };
+            if !current_clock_jump_difference.is_zero()
+                && previous_clock_jump_difference != current_clock_jump_difference
+            {
                 unique_clock_jump_differences.push(current_clock_jump_difference);
-                unique_clock_jump_differences_running_evaluation = challenges
-                    .unique_clock_jump_differences_eval_indeterminate
-                    + current_clock_jump_difference;
+                unique_clock_jump_differences_running_evaluation =
+                    unique_clock_jump_differences_running_evaluation
+                        * challenges.unique_clock_jump_differences_eval_indeterminate
+                        + current_clock_jump_difference;
             }
-            extension_row[usize::from(UniqueClockJumpDifferencesEvalArg)] =
-                unique_clock_jump_differences_running_evaluation;
 
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
+            extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
+            extension_row[InstructionTablePermArg.ext_table_index()] =
+                instruction_table_running_product;
+            extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
+            extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
+            extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
+            extension_row[ToHashTableEvalArg.ext_table_index()] = to_hash_table_running_evaluation;
+            extension_row[FromHashTableEvalArg.ext_table_index()] =
+                from_hash_table_running_evaluation;
+            extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
+                all_clock_jump_differences_running_product;
+            extension_row[UniqueClockJumpDifferencesEvalArg.ext_table_index()] =
+                unique_clock_jump_differences_running_evaluation;
+            previous_row = Some(current_row);
         }
 
+        // pre-process the unique clock jump differences for faster accesses later
+        unique_clock_jump_differences.sort_by_key(|&bfe| bfe.value());
+        unique_clock_jump_differences.reverse();
         if std::env::var("DEBUG").is_ok() {
             let mut unique_clock_jump_differences_copy = unique_clock_jump_differences.clone();
-            unique_clock_jump_differences_copy.sort_by_key(|xfe| xfe.unlift().unwrap().value());
             unique_clock_jump_differences_copy.dedup();
             assert_eq!(
                 unique_clock_jump_differences_copy,
@@ -277,46 +347,36 @@ impl ProcessorTable {
             );
         }
 
-        // second pass over Processor Table to compute evaluation over
-        // all relevant clock cycles
-        for extension_row in extension_matrix.iter_mut() {
-            let current_clk = extension_row[usize::from(CLK)];
-            if unique_clock_jump_differences.contains(&current_clk) {
+        // second pass over Processor Table to compute evaluation over all relevant clock cycles
+        let mut selected_clock_cycles_running_evaluation = EvalArg::default_initial();
+        for row_idx in 0..base_table.nrows() {
+            let current_clk = base_table[[row_idx, CLK.base_table_index()]];
+            let mut extension_row = ext_table.row_mut(row_idx);
+            if unique_clock_jump_differences.last() == Some(&current_clk) {
+                unique_clock_jump_differences.pop();
                 selected_clock_cycles_running_evaluation = selected_clock_cycles_running_evaluation
                     * challenges.unique_clock_jump_differences_eval_indeterminate
                     + current_clk;
             }
-            extension_row[usize::from(SelectedClockCyclesEvalArg)] =
+            extension_row[SelectedClockCyclesEvalArg.ext_table_index()] =
                 selected_clock_cycles_running_evaluation;
         }
 
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
-        ExtProcessorTable { inherited_table }
-    }
-
-    pub fn for_verifier() -> ExtProcessorTable {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            vec![],
-            "ExtProcessorTable".to_string(),
+        assert!(
+            unique_clock_jump_differences.is_empty(),
+            "Unhandled unique clock jump differences: {unique_clock_jump_differences:?}"
         );
-        let base_table = Self { inherited_table };
-        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
-
-        ExtProcessorTable {
-            inherited_table: extension_table,
-        }
+        assert_eq!(
+            unique_clock_jump_differences_running_evaluation,
+            selected_clock_cycles_running_evaluation,
+            "Even though all unique clock jump differences were handled, the running evaluation of \
+             unique clock jump differences is not equal to the running evaluation of selected \
+             clock cycles."
+        );
     }
 }
 
 impl ExtProcessorTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
-    }
-
     /// Instruction-specific transition constraints are combined with deselectors in such a way
     /// that arbitrary sets of mutually exclusive combinations are summed, i.e.,
     ///
@@ -336,9 +396,19 @@ impl ExtProcessorTable {
         factory: &mut DualRowConstraints,
         instr_tc_polys_tuples: [(
             Instruction,
-            Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>>,
+            Vec<
+                ConstraintCircuitMonad<
+                    ProcessorTableChallenges,
+                    DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+                >,
+            >,
         ); Instruction::COUNT],
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let (all_instructions, all_tc_polys_for_all_instructions): (Vec<_>, Vec<Vec<_>>) =
             instr_tc_polys_tuples.into_iter().unzip();
 
@@ -381,9 +451,17 @@ impl ExtProcessorTable {
     fn combine_transition_constraints_with_padding_constraints(
         factory: &DualRowConstraints,
         instruction_transition_constraints: Vec<
-            ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
+            ConstraintCircuitMonad<
+                ProcessorTableChallenges,
+                DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+            >,
         >,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let ip_remains = factory.ip_next() - factory.ip();
         let ci_remains = factory.ci_next() - factory.ci();
         let nia_remains = factory.nia_next() - factory.nia();
@@ -448,6 +526,7 @@ pub enum ProcessorTableChallengeId {
     RamTableClkWeight,
     RamTableRamvWeight,
     RamTableRampWeight,
+    RamTablePreviousInstructionWeight,
 
     JumpStackTableClkWeight,
     JumpStackTableCiWeight,
@@ -511,6 +590,7 @@ pub struct ProcessorTableChallenges {
     pub ram_table_clk_weight: XFieldElement,
     pub ram_table_ramp_weight: XFieldElement,
     pub ram_table_ramv_weight: XFieldElement,
+    pub ram_table_previous_instruction_weight: XFieldElement,
 
     pub jump_stack_table_clk_weight: XFieldElement,
     pub jump_stack_table_ci_weight: XFieldElement,
@@ -565,6 +645,7 @@ impl TableChallenges for ProcessorTableChallenges {
             RamTableClkWeight => self.ram_table_clk_weight,
             RamTableRamvWeight => self.ram_table_ramv_weight,
             RamTableRampWeight => self.ram_table_ramp_weight,
+            RamTablePreviousInstructionWeight => self.ram_table_previous_instruction_weight,
             JumpStackTableClkWeight => self.jump_stack_table_clk_weight,
             JumpStackTableCiWeight => self.jump_stack_table_ci_weight,
             JumpStackTableJspWeight => self.jump_stack_table_jsp_weight,
@@ -602,59 +683,15 @@ pub struct IOChallenges {
 }
 
 #[derive(Debug, Clone)]
-pub struct ExtProcessorTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
-
-impl QuotientableExtensionTable for ExtProcessorTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtProcessorTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl Default for ExtProcessorTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtProcessorTable".to_string(),
-            ),
-        }
-    }
-}
-
-impl TableLike<BFieldElement> for ProcessorTable {}
-
-impl Extendable for ProcessorTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        let zero = BFieldElement::zero();
-        let one = BFieldElement::one();
-        if let Some(row) = self.data().last() {
-            let mut padding_row = row.clone();
-            padding_row[usize::from(CLK)] += one;
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row])
-        } else {
-            let mut padding_row = vec![zero; BASE_WIDTH];
-            padding_row[usize::from(IsPadding)] = one;
-            (None, vec![padding_row])
-        }
-    }
-}
-
-impl TableLike<XFieldElement> for ExtProcessorTable {}
+pub struct ExtProcessorTable {}
 
 impl ExtProcessorTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProcessorTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         use ProcessorTableChallengeId::*;
 
         let factory = SingleRowConstraints::default();
@@ -687,6 +724,7 @@ impl ExtProcessorTable {
         let osv_is_0 = factory.osv();
         let ramv_is_0 = factory.ramv();
         let ramp_is_0 = factory.ramp();
+        let previous_instruction = factory.previous_instruction();
 
         // The running evaluation of relevant clock cycles `rer` starts with the initial.
         let rer_starts_correctly = factory.rer() - constant_x(EvalArg::default_initial());
@@ -812,6 +850,7 @@ impl ExtProcessorTable {
             osv_is_0,
             ramv_is_0,
             ramp_is_0,
+            previous_instruction,
             rer_starts_correctly,
             reu_starts_correctly,
             rpm_starts_correctly,
@@ -828,8 +867,12 @@ impl ExtProcessorTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProcessorTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let factory = SingleRowConstraints::default();
         let one = factory.one();
         let constant = |c| factory.constant_from_i32(c);
@@ -876,8 +919,12 @@ impl ExtProcessorTable {
         .to_vec()
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let mut factory = DualRowConstraints::default();
 
         // instruction-specific constraints
@@ -927,6 +974,7 @@ impl ExtProcessorTable {
         // constraints common to all instructions
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
         transition_constraints.insert(1, factory.is_padding_is_zero_or_does_not_change());
+        transition_constraints.insert(2, factory.previous_instruction_is_copied_correctly());
 
         // constraints related to clock jump difference argument
 
@@ -1010,8 +1058,12 @@ impl ExtProcessorTable {
         built_transition_constraints
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            ProcessorTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let factory = SingleRowConstraints::default();
 
         // In the last row, current instruction register ci is 0, corresponding to instruction halt.
@@ -1028,33 +1080,48 @@ impl ExtProcessorTable {
 
 #[derive(Debug, Clone)]
 pub struct SingleRowConstraints {
-    variables: [ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>;
-        FULL_WIDTH],
-    circuit_builder:
-        ConstraintCircuitBuilder<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>,
-    one: ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>,
-    two: ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>>,
+    base_row_variables: [ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >; NUM_BASE_COLUMNS],
+    ext_row_variables: [ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >; NUM_EXT_COLUMNS],
+    circuit_builder: ConstraintCircuitBuilder<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >,
+    one: ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >,
+    two: ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >,
 }
 
 impl Default for SingleRowConstraints {
     fn default() -> Self {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
-        let variables_as_circuits = (0..FULL_WIDTH)
-            .map(|i| {
-                let input: SingleRowIndicator<FULL_WIDTH> = i.into();
-                circuit_builder.input(input)
-            })
-            .collect_vec();
-
-        let variables = variables_as_circuits
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let base_row_variables = (0..NUM_BASE_COLUMNS)
+            .map(|i| circuit_builder.input(SingleRowIndicator::BaseRow(i)))
+            .collect_vec()
             .try_into()
-            .expect("Create variables for single row constraints");
+            .expect("Create variables for single base row constraints");
+        let ext_row_variables = (0..NUM_EXT_COLUMNS)
+            .map(|i| circuit_builder.input(SingleRowIndicator::ExtRow(i)))
+            .collect_vec()
+            .try_into()
+            .expect("Create variables for single ext row constraints");
 
         let one = circuit_builder.b_constant(1u32.into());
         let two = circuit_builder.b_constant(2u32.into());
 
         Self {
-            variables,
+            base_row_variables,
+            ext_row_variables,
             circuit_builder,
             one,
             two,
@@ -1066,13 +1133,19 @@ impl SingleRowConstraints {
     pub fn constant_from_xfe(
         &self,
         constant: XFieldElement,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.circuit_builder.x_constant(constant)
     }
     pub fn constant_from_i32(
         &self,
         constant: i32,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let bfe = if constant < 0 {
             BFieldElement::new(BFieldElement::QUOTIENT - ((-constant) as u64))
         } else {
@@ -1083,319 +1156,530 @@ impl SingleRowConstraints {
 
     pub fn one(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.one.clone()
     }
     pub fn two(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.two.clone()
     }
     pub fn clk(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(CLK)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[CLK.master_base_table_index()].clone()
     }
     pub fn is_padding(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IsPadding)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IsPadding.master_base_table_index()].clone()
     }
     pub fn ip(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IP.master_base_table_index()].clone()
     }
     pub fn ci(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(CI)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[CI.master_base_table_index()].clone()
     }
     pub fn nia(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(NIA)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[NIA.master_base_table_index()].clone()
     }
     pub fn ib0(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB0.master_base_table_index()].clone()
     }
     pub fn ib1(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB1.master_base_table_index()].clone()
     }
     pub fn ib2(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB2.master_base_table_index()].clone()
     }
     pub fn ib3(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB3.master_base_table_index()].clone()
     }
     pub fn ib4(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB4)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB4.master_base_table_index()].clone()
     }
     pub fn ib5(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB5)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB5.master_base_table_index()].clone()
     }
     pub fn ib6(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB6)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB6.master_base_table_index()].clone()
     }
     pub fn jsp(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JSP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[JSP.master_base_table_index()].clone()
     }
     pub fn jsd(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JSD)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[JSD.master_base_table_index()].clone()
     }
     pub fn jso(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JSO)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[JSO.master_base_table_index()].clone()
     }
     pub fn st0(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST0.master_base_table_index()].clone()
     }
     pub fn st1(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST1.master_base_table_index()].clone()
     }
     pub fn st2(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST2.master_base_table_index()].clone()
     }
     pub fn st3(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST3.master_base_table_index()].clone()
     }
     pub fn st4(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST4)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST4.master_base_table_index()].clone()
     }
     pub fn st5(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST5)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST5.master_base_table_index()].clone()
     }
     pub fn st6(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST6)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST6.master_base_table_index()].clone()
     }
     pub fn st7(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST7)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST7.master_base_table_index()].clone()
     }
     pub fn st8(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST8)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST8.master_base_table_index()].clone()
     }
     pub fn st9(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST9)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST9.master_base_table_index()].clone()
     }
     pub fn st10(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST10)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST10.master_base_table_index()].clone()
     }
     pub fn st11(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST11)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST11.master_base_table_index()].clone()
     }
     pub fn st12(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST12)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST12.master_base_table_index()].clone()
     }
     pub fn st13(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST13)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST13.master_base_table_index()].clone()
     }
     pub fn st14(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST14)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST14.master_base_table_index()].clone()
     }
     pub fn st15(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST15)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ST15.master_base_table_index()].clone()
     }
     pub fn osp(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OSP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[OSP.master_base_table_index()].clone()
     }
     pub fn osv(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OSV)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[OSV.master_base_table_index()].clone()
     }
     pub fn hv0(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[HV0.master_base_table_index()].clone()
     }
     pub fn hv1(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[HV1.master_base_table_index()].clone()
     }
     pub fn hv2(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[HV2.master_base_table_index()].clone()
     }
     pub fn hv3(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[HV3.master_base_table_index()].clone()
     }
     pub fn ramv(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(RAMV)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[RAMV.master_base_table_index()].clone()
     }
     pub fn ramp(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(RAMP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[RAMP.master_base_table_index()].clone()
+    }
+    pub fn previous_instruction(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[PreviousInstruction.master_base_table_index()].clone()
     }
 
     pub fn cjd(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ClockJumpDifference)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ClockJumpDifference.master_base_table_index()].clone()
     }
 
     pub fn invm(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ClockJumpDifferenceInverse)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[ClockJumpDifferenceInverse.master_base_table_index()].clone()
     }
 
     pub fn invu(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[UniqueClockJumpDiffDiffInverse.master_base_table_index()].clone()
     }
 
     pub fn rer(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(SelectedClockCyclesEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[SelectedClockCyclesEvalArg.master_ext_table_index()].clone()
     }
 
     pub fn reu(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[UniqueClockJumpDifferencesEvalArg.master_ext_table_index()].clone()
     }
 
     pub fn rpm(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[AllClockJumpDifferencesPermArg.master_ext_table_index()].clone()
     }
 
     pub fn running_evaluation_standard_input(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(InputTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[InputTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_standard_output(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OutputTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_instruction_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(InstructionTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[InstructionTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_op_stack_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OpStackTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_ram_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(RamTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_jump_stack_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JumpStackTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_to_hash_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ToHashTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_from_hash_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(FromHashTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct DualRowConstraints {
-    variables: [ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>;
-        2 * FULL_WIDTH],
-    circuit_builder:
-        ConstraintCircuitBuilder<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
-    zero: ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
-    one: ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
-    two: ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
+    current_base_row_variables: [ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >; NUM_BASE_COLUMNS],
+    current_ext_row_variables: [ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >; NUM_EXT_COLUMNS],
+    next_base_row_variables: [ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >; NUM_BASE_COLUMNS],
+    next_ext_row_variables: [ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >; NUM_EXT_COLUMNS],
+    circuit_builder: ConstraintCircuitBuilder<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >,
+    zero: ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >,
+    one: ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >,
+    two: ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    >,
 }
 
 impl Default for DualRowConstraints {
     fn default() -> Self {
-        let circuit_builder = ConstraintCircuitBuilder::new(2 * FULL_WIDTH);
-        let variables_as_circuits = (0..2 * FULL_WIDTH)
-            .map(|i| {
-                let input: DualRowIndicator<FULL_WIDTH> = i.into();
-                circuit_builder.input(input)
-            })
-            .collect_vec();
-
-        let variables = variables_as_circuits
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let current_base_row_variables = (0..NUM_BASE_COLUMNS)
+            .map(|i| circuit_builder.input(DualRowIndicator::CurrentBaseRow(i)))
+            .collect_vec()
             .try_into()
-            .expect("Create variables for transition constraints");
+            .expect("Create variables for dual rows – current base row");
+        let current_ext_row_variables = (0..NUM_EXT_COLUMNS)
+            .map(|i| circuit_builder.input(DualRowIndicator::CurrentExtRow(i)))
+            .collect_vec()
+            .try_into()
+            .expect("Create variables for dual rows – current ext row");
+        let next_base_row_variables = (0..NUM_BASE_COLUMNS)
+            .map(|i| circuit_builder.input(DualRowIndicator::NextBaseRow(i)))
+            .collect_vec()
+            .try_into()
+            .expect("Create variables for dual rows – next base row");
+        let next_ext_row_variables = (0..NUM_EXT_COLUMNS)
+            .map(|i| circuit_builder.input(DualRowIndicator::NextExtRow(i)))
+            .collect_vec()
+            .try_into()
+            .expect("Create variables for dual rows – next ext row");
 
         let zero = circuit_builder.b_constant(0u32.into());
         let one = circuit_builder.b_constant(1u32.into());
         let two = circuit_builder.b_constant(2u32.into());
 
         Self {
-            variables,
+            current_base_row_variables,
+            current_ext_row_variables,
+            next_base_row_variables,
+            next_ext_row_variables,
             circuit_builder,
             zero,
             one,
@@ -1421,7 +1705,10 @@ impl DualRowConstraints {
     /// when every `clk` register $a$ is one less than `clk` register $a + 1$.
     pub fn clk_always_increases_by_one(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let one = self.one();
         let clk = self.clk();
         let clk_next = self.clk_next();
@@ -1431,14 +1718,29 @@ impl DualRowConstraints {
 
     pub fn is_padding_is_zero_or_does_not_change(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.is_padding() * (self.is_padding_next() - self.is_padding())
+    }
+
+    pub fn previous_instruction_is_copied_correctly(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        (self.previous_instruction_next() - self.ci()) * (self.one() - self.is_padding_next())
     }
 
     pub fn indicator_polynomial(
         &self,
         i: usize,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let hv0 = self.hv0();
         let hv1 = self.hv1();
         let hv2 = self.hv2();
@@ -1461,16 +1763,18 @@ impl DualRowConstraints {
             13 => hv3 * hv2 * (self.one() - hv1) * hv0,
             14 => hv3 * hv2 * hv1 * (self.one() - hv0),
             15 => hv3 * hv2 * hv1 * hv0,
-            _ => panic!(
-                "No indicator polynomial with index {} exists: there are only 16.",
-                i
-            ),
+            _ => panic!("No indicator polynomial with index {i} exists: there are only 16."),
         }
     }
 
     pub fn instruction_pop(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
     }
 
@@ -1478,7 +1782,12 @@ impl DualRowConstraints {
     /// $st0_next == nia  =>  st0_next - nia == 0$
     pub fn instruction_push(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![self.st0_next() - self.nia()];
         [
             specific_constraints,
@@ -1491,13 +1800,23 @@ impl DualRowConstraints {
 
     pub fn instruction_divine(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         [self.step_1(), self.grow_stack(), self.keep_ram()].concat()
     }
 
     pub fn instruction_dup(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![
             self.indicator_polynomial(0) * (self.st0_next() - self.st0()),
             self.indicator_polynomial(1) * (self.st0_next() - self.st1()),
@@ -1528,7 +1847,12 @@ impl DualRowConstraints {
 
     pub fn instruction_swap(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![
             self.indicator_polynomial(0),
             self.indicator_polynomial(1) * (self.st1_next() - self.st0()),
@@ -1590,13 +1914,23 @@ impl DualRowConstraints {
 
     pub fn instruction_nop(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         [self.step_1(), self.keep_stack(), self.keep_ram()].concat()
     }
 
     pub fn instruction_skiz(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The next instruction nia is decomposed into helper variables hv.
         let nia_decomposes_to_hvs = self.nia() - (self.hv0() + self.two() * self.hv1());
 
@@ -1634,7 +1968,12 @@ impl DualRowConstraints {
 
     pub fn instruction_call(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The jump stack pointer jsp is incremented by 1.
         let jsp_incr_1 = self.jsp_next() - (self.jsp() + self.one());
 
@@ -1658,7 +1997,12 @@ impl DualRowConstraints {
 
     pub fn instruction_return(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The jump stack pointer jsp is decremented by 1.
         let jsp_incr_1 = self.jsp_next() - (self.jsp() - self.one());
 
@@ -1671,7 +2015,12 @@ impl DualRowConstraints {
 
     pub fn instruction_recurse(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The instruction pointer ip is set to the last jump's destination jsd.
         let ip_becomes_jsd = self.ip_next() - self.jsd();
         let specific_constraints = vec![ip_becomes_jsd];
@@ -1686,7 +2035,12 @@ impl DualRowConstraints {
 
     pub fn instruction_assert(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The current top of the stack st0 is 1.
         let st_0_is_1 = self.st0() - self.one();
 
@@ -1702,7 +2056,12 @@ impl DualRowConstraints {
 
     pub fn instruction_halt(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The instruction executed in the following step is instruction halt.
         let halt_is_followed_by_halt = self.ci_next() - self.ci();
 
@@ -1718,12 +2077,17 @@ impl DualRowConstraints {
 
     pub fn instruction_read_mem(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // the RAM pointer is overwritten with st1
         let update_ramp = self.ramp_next() - self.st1();
 
         // The top of the stack is overwritten with the RAM value.
-        let st0_becomes_ramv = self.st0_next() - self.ramv();
+        let st0_becomes_ramv = self.st0_next() - self.ramv_next();
 
         let specific_constraints = vec![update_ramp, st0_becomes_ramv];
         [specific_constraints, self.step_1(), self.unop()].concat()
@@ -1731,7 +2095,12 @@ impl DualRowConstraints {
 
     pub fn instruction_write_mem(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // the RAM pointer is overwritten with st1
         let update_ramp = self.ramp_next() - self.st1();
 
@@ -1745,7 +2114,12 @@ impl DualRowConstraints {
     /// Two Evaluation Arguments with the Hash Table guarantee correct transition.
     pub fn instruction_hash(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         [
             self.step_1(),
             self.stack_remains_and_top_ten_elements_unconstrained(),
@@ -1760,7 +2134,12 @@ impl DualRowConstraints {
     /// st10 mod 2. The second polynomial sets the new value of st10 to st10 div 2.
     pub fn instruction_divine_sibling(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // Helper variable hv0 is either 0 or 1.
         let hv0_is_0_or_1 = self.hv0() * (self.hv0() - self.one());
 
@@ -1799,7 +2178,12 @@ impl DualRowConstraints {
 
     pub fn instruction_assert_vector(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![
             // Register st0 is equal to st5.
             self.st5() - self.st0(),
@@ -1824,7 +2208,12 @@ impl DualRowConstraints {
     /// $st0' - (st0 + st1) = 0$
     pub fn instruction_add(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![self.st0_next() - (self.st0() + self.st1())];
         [
             specific_constraints,
@@ -1840,7 +2229,12 @@ impl DualRowConstraints {
     /// $st0' - (st0 * st1) = 0$
     pub fn instruction_mul(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![self.st0_next() - (self.st0() * self.st1())];
         [
             specific_constraints,
@@ -1856,7 +2250,12 @@ impl DualRowConstraints {
     /// $st0'·st0 - 1 = 0$
     pub fn instruction_invert(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![self.st0_next() * self.st0() - self.one()];
         [
             specific_constraints,
@@ -1869,7 +2268,12 @@ impl DualRowConstraints {
 
     pub fn instruction_split(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let two_pow_32 = self.constant_b(BFieldElement::new(1_u64 << 32));
 
         // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements.
@@ -1908,7 +2312,12 @@ impl DualRowConstraints {
 
     pub fn instruction_eq(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // Helper variable hv0 is the inverse of the difference of the stack's two top-most elements or 0.
         //
         // $ hv0·(hv0·(st1 - st0) - 1) = 0 $
@@ -1945,10 +2354,15 @@ impl DualRowConstraints {
     /// 2. The operand decomposes into right-shifted operand and the lsb
     pub fn instruction_lsb(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
-        let operand = self.variables[usize::from(ST0)].clone();
-        let shifted_operand = self.variables[FULL_WIDTH + usize::from(ST1)].clone();
-        let lsb = self.variables[FULL_WIDTH + usize::from(ST0)].clone();
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let operand = self.current_base_row_variables[ST0.master_base_table_index()].clone();
+        let shifted_operand = self.next_base_row_variables[ST1.master_base_table_index()].clone();
+        let lsb = self.next_base_row_variables[ST0.master_base_table_index()].clone();
 
         let lsb_is_a_bit = lsb.clone() * (lsb.clone() - self.one());
         let correct_decomposition = self.two() * shifted_operand + lsb - operand;
@@ -1965,7 +2379,12 @@ impl DualRowConstraints {
 
     pub fn instruction_xxadd(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The result of adding st0 to st3 is moved into st0.
         let st0_becomes_st0_plus_st3 = self.st0_next() - (self.st0() + self.st3());
 
@@ -1991,7 +2410,12 @@ impl DualRowConstraints {
 
     pub fn instruction_xxmul(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The coefficient of x^0 of multiplying the two X-Field elements on the stack is moved into st0.
         //
         // $st0' - (st0·st3 - st2·st4 - st1·st5)$
@@ -2031,7 +2455,12 @@ impl DualRowConstraints {
 
     pub fn instruction_xinv(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The coefficient of x^0 of multiplying X-Field element on top of the current stack and on top of the next stack is 1.
         //
         // $st0·st0' - st2·st1' - st1·st2' - 1 = 0$
@@ -2073,7 +2502,12 @@ impl DualRowConstraints {
 
     pub fn instruction_xbmul(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // The result of multiplying the top of the stack with the X-Field element's coefficient for x^0 is moved into st0.
         //
         // st0' - st0·st1
@@ -2108,7 +2542,12 @@ impl DualRowConstraints {
     /// An Evaluation Argument with the list of input symbols guarantees correct transition.
     pub fn instruction_read_io(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         [self.step_1(), self.grow_stack(), self.keep_ram()].concat()
     }
 
@@ -2117,643 +2556,994 @@ impl DualRowConstraints {
     /// An Evaluation Argument with the list of output symbols guarantees correct transition.
     pub fn instruction_write_io(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
     }
 
     pub fn zero(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.zero.to_owned()
     }
 
     pub fn one(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.one.to_owned()
     }
 
     pub fn two(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.two.to_owned()
     }
 
     pub fn constant(
         &self,
         constant: u32,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.circuit_builder.b_constant(constant.into())
     }
 
     pub fn constant_b(
         &self,
         constant: BFieldElement,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.circuit_builder.b_constant(constant)
-    }
-
-    pub fn constant_x(&self, constant: XFieldElement) -> MPolynomial<XFieldElement> {
-        MPolynomial::from_constant(constant, 2 * FULL_WIDTH)
     }
 
     pub fn clk(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(CLK)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[CLK.master_base_table_index()].clone()
     }
 
     pub fn ip(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IP.master_base_table_index()].clone()
     }
 
     pub fn ci(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(CI)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[CI.master_base_table_index()].clone()
     }
 
     pub fn nia(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(NIA)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[NIA.master_base_table_index()].clone()
     }
 
     pub fn ib0(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB0.master_base_table_index()].clone()
     }
 
     pub fn ib1(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB1.master_base_table_index()].clone()
     }
 
     pub fn ib2(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB2.master_base_table_index()].clone()
     }
 
     pub fn ib3(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB3.master_base_table_index()].clone()
     }
 
     pub fn ib4(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB4)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB4.master_base_table_index()].clone()
     }
 
     pub fn ib5(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB5)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB5.master_base_table_index()].clone()
     }
 
     pub fn ib6(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IB6)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB6.master_base_table_index()].clone()
     }
 
     pub fn jsp(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JSP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[JSP.master_base_table_index()].clone()
     }
 
     pub fn jsd(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JSD)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[JSD.master_base_table_index()].clone()
     }
 
     pub fn jso(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JSO)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[JSO.master_base_table_index()].clone()
     }
 
     pub fn st0(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST0.master_base_table_index()].clone()
     }
 
     pub fn st1(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST1.master_base_table_index()].clone()
     }
 
     pub fn st2(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST2.master_base_table_index()].clone()
     }
 
     pub fn st3(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST3.master_base_table_index()].clone()
     }
 
     pub fn st4(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST4)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST4.master_base_table_index()].clone()
     }
 
     pub fn st5(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST5)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST5.master_base_table_index()].clone()
     }
 
     pub fn st6(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST6)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST6.master_base_table_index()].clone()
     }
 
     pub fn st7(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST7)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST7.master_base_table_index()].clone()
     }
 
     pub fn st8(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST8)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST8.master_base_table_index()].clone()
     }
 
     pub fn st9(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST9)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST9.master_base_table_index()].clone()
     }
 
     pub fn st10(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST10)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST10.master_base_table_index()].clone()
     }
 
     pub fn st11(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST11)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST11.master_base_table_index()].clone()
     }
 
     pub fn st12(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST12)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST12.master_base_table_index()].clone()
     }
 
     pub fn st13(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST13)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST13.master_base_table_index()].clone()
     }
 
     pub fn st14(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST14)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST14.master_base_table_index()].clone()
     }
 
     pub fn st15(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ST15)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ST15.master_base_table_index()].clone()
     }
 
     pub fn osp(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OSP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[OSP.master_base_table_index()].clone()
     }
 
     pub fn osv(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OSV)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[OSV.master_base_table_index()].clone()
     }
 
     pub fn hv0(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[HV0.master_base_table_index()].clone()
     }
 
     pub fn hv1(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[HV1.master_base_table_index()].clone()
     }
 
     pub fn hv2(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[HV2.master_base_table_index()].clone()
     }
 
     pub fn hv3(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(HV3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[HV3.master_base_table_index()].clone()
     }
 
     pub fn ramp(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(RAMP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[RAMP.master_base_table_index()].clone()
+    }
+
+    pub fn previous_instruction(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[PreviousInstruction.master_base_table_index()].clone()
     }
 
     pub fn ramv(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(RAMV)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[RAMV.master_base_table_index()].clone()
     }
 
     pub fn is_padding(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(IsPadding)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IsPadding.master_base_table_index()].clone()
     }
 
     pub fn cjd(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ClockJumpDifference)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ClockJumpDifference.master_base_table_index()].clone()
     }
 
     pub fn invm(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ClockJumpDifferenceInverse)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[ClockJumpDifferenceInverse.master_base_table_index()]
+            .clone()
     }
 
     pub fn invu(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[UniqueClockJumpDiffDiffInverse.master_base_table_index()]
+            .clone()
     }
 
     pub fn rer(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(SelectedClockCyclesEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[SelectedClockCyclesEvalArg.master_ext_table_index()].clone()
     }
 
     pub fn reu(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[UniqueClockJumpDifferencesEvalArg.master_ext_table_index()]
+            .clone()
     }
 
     pub fn rpm(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(AllClockJumpDifferencesPermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[AllClockJumpDifferencesPermArg.master_ext_table_index()]
+            .clone()
     }
 
     pub fn running_evaluation_standard_input(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(InputTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[InputTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_standard_output(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OutputTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_instruction_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(InstructionTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[InstructionTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_op_stack_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(OpStackTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_ram_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(RamTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_jump_stack_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(JumpStackTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_to_hash_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(ToHashTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_from_hash_table(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[usize::from(FromHashTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
     }
 
     // Property: All polynomial variables that contain '_next' have the same
-    // variable position / value as the one without '_next', +/- FULL_WIDTH.
+    // variable position / value as the one without '_next', +/- NUM_COLUMNS.
     pub fn clk_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(CLK)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[CLK.master_base_table_index()].clone()
     }
 
     pub fn ip_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IP.master_base_table_index()].clone()
     }
 
     pub fn ci_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(CI)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[CI.master_base_table_index()].clone()
     }
 
     pub fn nia_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(NIA)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[NIA.master_base_table_index()].clone()
     }
 
     pub fn ib0_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IB0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB0.master_base_table_index()].clone()
     }
     pub fn ib1_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IB1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB1.master_base_table_index()].clone()
     }
     pub fn ib2_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IB2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB2.master_base_table_index()].clone()
     }
     pub fn ib3_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IB3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB3.master_base_table_index()].clone()
     }
     pub fn ib4_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IB4)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB4.master_base_table_index()].clone()
     }
     pub fn ib5_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IB5)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB5.master_base_table_index()].clone()
     }
     pub fn ib6_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IB6)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB6.master_base_table_index()].clone()
     }
 
     pub fn jsp_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(JSP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[JSP.master_base_table_index()].clone()
     }
 
     pub fn jsd_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(JSD)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[JSD.master_base_table_index()].clone()
     }
 
     pub fn jso_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(JSO)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[JSO.master_base_table_index()].clone()
     }
 
     pub fn st0_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST0)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST0.master_base_table_index()].clone()
     }
 
     pub fn st1_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST1)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST1.master_base_table_index()].clone()
     }
 
     pub fn st2_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST2)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST2.master_base_table_index()].clone()
     }
 
     pub fn st3_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST3)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST3.master_base_table_index()].clone()
     }
 
     pub fn st4_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST4)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST4.master_base_table_index()].clone()
     }
 
     pub fn st5_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST5)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST5.master_base_table_index()].clone()
     }
 
     pub fn st6_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST6)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST6.master_base_table_index()].clone()
     }
 
     pub fn st7_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST7)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST7.master_base_table_index()].clone()
     }
 
     pub fn st8_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST8)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST8.master_base_table_index()].clone()
     }
 
     pub fn st9_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST9)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST9.master_base_table_index()].clone()
     }
 
     pub fn st10_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST10)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST10.master_base_table_index()].clone()
     }
 
     pub fn st11_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST11)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST11.master_base_table_index()].clone()
     }
 
     pub fn st12_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST12)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST12.master_base_table_index()].clone()
     }
 
     pub fn st13_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST13)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST13.master_base_table_index()].clone()
     }
 
     pub fn st14_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST14)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST14.master_base_table_index()].clone()
     }
 
     pub fn st15_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ST15)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ST15.master_base_table_index()].clone()
     }
 
     pub fn osp_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(OSP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[OSP.master_base_table_index()].clone()
     }
 
     pub fn osv_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(OSV)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[OSV.master_base_table_index()].clone()
     }
 
     pub fn ramp_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(RAMP)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[RAMP.master_base_table_index()].clone()
+    }
+
+    pub fn previous_instruction_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[PreviousInstruction.master_base_table_index()].clone()
     }
 
     pub fn ramv_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(RAMV)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[RAMV.master_base_table_index()].clone()
     }
 
     pub fn is_padding_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(IsPadding)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IsPadding.master_base_table_index()].clone()
     }
 
     pub fn cjd_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ClockJumpDifference)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ClockJumpDifference.master_base_table_index()].clone()
     }
 
     pub fn invm_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ClockJumpDifferenceInverse)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[ClockJumpDifferenceInverse.master_base_table_index()].clone()
     }
 
     pub fn invu_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(UniqueClockJumpDiffDiffInverse)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[UniqueClockJumpDiffDiffInverse.master_base_table_index()]
+            .clone()
     }
 
     pub fn rer_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(SelectedClockCyclesEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[SelectedClockCyclesEvalArg.master_ext_table_index()].clone()
     }
 
     pub fn reu_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(UniqueClockJumpDifferencesEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[UniqueClockJumpDifferencesEvalArg.master_ext_table_index()]
+            .clone()
     }
 
     pub fn rpm_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(AllClockJumpDifferencesPermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[AllClockJumpDifferencesPermArg.master_ext_table_index()].clone()
     }
 
     pub fn running_evaluation_standard_input_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(InputTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[InputTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_standard_output_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(OutputTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_instruction_table_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(InstructionTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[InstructionTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_op_stack_table_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(OpStackTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_ram_table_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(RamTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_product_jump_stack_table_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(JumpStackTablePermArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_to_hash_table_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(ToHashTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_evaluation_from_hash_table_next(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
-        self.variables[FULL_WIDTH + usize::from(FromHashTableEvalArg)].clone()
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
     }
 
     pub fn decompose_arg(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let hv0_is_a_bit = self.hv0() * (self.hv0() - self.one());
         let hv1_is_a_bit = self.hv1() * (self.hv1() - self.one());
         let hv2_is_a_bit = self.hv2() * (self.hv2() - self.one());
@@ -2774,7 +3564,12 @@ impl DualRowConstraints {
 
     pub fn keep_jump_stack(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let jsp_does_not_change = self.jsp_next() - self.jsp();
         let jso_does_not_change = self.jso_next() - self.jso();
         let jsd_does_not_change = self.jsd_next() - self.jsd();
@@ -2787,7 +3582,12 @@ impl DualRowConstraints {
 
     pub fn step_1(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let instruction_pointer_increases_by_one = self.ip_next() - self.ip() - self.one();
         let specific_constraints = vec![instruction_pointer_increases_by_one];
         [specific_constraints, self.keep_jump_stack()].concat()
@@ -2795,7 +3595,12 @@ impl DualRowConstraints {
 
     pub fn step_2(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let instruction_pointer_increases_by_two = self.ip_next() - self.ip() - self.two();
         let specific_constraints = vec![instruction_pointer_increases_by_two];
         [specific_constraints, self.keep_jump_stack()].concat()
@@ -2803,7 +3608,12 @@ impl DualRowConstraints {
 
     pub fn grow_stack_and_top_two_elements_unconstrained(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         vec![
             // The stack element in st1 is moved into st2.
             self.st2_next() - self.st1(),
@@ -2830,7 +3640,12 @@ impl DualRowConstraints {
 
     pub fn grow_stack(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![
             // The stack element in st0 is moved into st1.
             self.st1_next() - self.st0(),
@@ -2844,7 +3659,12 @@ impl DualRowConstraints {
 
     pub fn stack_shrinks_and_top_three_elements_unconstrained(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         vec![
             // The stack element in st4 is moved into st3.
             self.st3_next() - self.st4(),
@@ -2872,7 +3692,12 @@ impl DualRowConstraints {
 
     pub fn binop(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![
             // The stack element in st2 is moved into st1.
             self.st1_next() - self.st2(),
@@ -2888,14 +3713,24 @@ impl DualRowConstraints {
 
     pub fn shrink_stack(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constrants = vec![self.st0_next() - self.st1()];
         [specific_constrants, self.binop()].concat()
     }
 
     pub fn stack_remains_and_top_eleven_elements_unconstrained(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         vec![
             self.st11_next() - self.st11(),
             self.st12_next() - self.st12(),
@@ -2911,7 +3746,12 @@ impl DualRowConstraints {
 
     pub fn stack_remains_and_top_ten_elements_unconstrained(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![self.st10_next() - self.st10()];
         [
             specific_constraints,
@@ -2922,7 +3762,12 @@ impl DualRowConstraints {
 
     pub fn stack_remains_and_top_three_elements_unconstrained(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![
             self.st3_next() - self.st3(),
             self.st4_next() - self.st4(),
@@ -2941,7 +3786,12 @@ impl DualRowConstraints {
 
     pub fn unop(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![
             // The stack element in st1 does not change.
             self.st1_next() - self.st1(),
@@ -2957,14 +3807,24 @@ impl DualRowConstraints {
 
     pub fn keep_stack(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let specific_constraints = vec![self.st0_next() - self.st0()];
         [specific_constraints, self.unop()].concat()
     }
 
     pub fn keep_ram(
         &self,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         vec![
             self.ramv_next() - self.ramv(),
             self.ramp_next() - self.ramp(),
@@ -2973,7 +3833,10 @@ impl DualRowConstraints {
 
     pub fn running_evaluation_for_standard_input_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let indeterminate = self
             .circuit_builder
             .challenge(StandardInputEvalIndeterminate);
@@ -2993,7 +3856,10 @@ impl DualRowConstraints {
 
     pub fn running_product_for_instruction_table_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let indeterminate = self.circuit_builder.challenge(InstructionPermIndeterminate);
         let ip_weight = self.circuit_builder.challenge(InstructionTableIpWeight);
         let ci_weight = self
@@ -3013,7 +3879,10 @@ impl DualRowConstraints {
 
     pub fn running_evaluation_for_standard_output_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let indeterminate = self
             .circuit_builder
             .challenge(StandardOutputEvalIndeterminate);
@@ -3033,7 +3902,10 @@ impl DualRowConstraints {
 
     pub fn running_product_for_op_stack_table_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let indeterminate = self.circuit_builder.challenge(OpStackPermIndeterminate);
         let clk_weight = self.circuit_builder.challenge(OpStackTableClkWeight);
         let ib1_weight = self.circuit_builder.challenge(OpStackTableIb1Weight);
@@ -3050,14 +3922,21 @@ impl DualRowConstraints {
 
     pub fn running_product_for_ram_table_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let indeterminate = self.circuit_builder.challenge(RamPermIndeterminate);
         let clk_weight = self.circuit_builder.challenge(RamTableClkWeight);
         let ramp_weight = self.circuit_builder.challenge(RamTableRampWeight);
         let ramv_weight = self.circuit_builder.challenge(RamTableRamvWeight);
+        let previous_instruction_weight = self
+            .circuit_builder
+            .challenge(RamTablePreviousInstructionWeight);
         let compressed_row = clk_weight * self.clk_next()
             + ramp_weight * self.ramp_next()
-            + ramv_weight * self.ramv_next();
+            + ramv_weight * self.ramv_next()
+            + previous_instruction_weight * self.previous_instruction_next();
 
         self.running_product_ram_table_next()
             - self.running_product_ram_table() * (indeterminate - compressed_row)
@@ -3065,7 +3944,10 @@ impl DualRowConstraints {
 
     pub fn running_product_for_jump_stack_table_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let indeterminate = self.circuit_builder.challenge(JumpStackPermIndeterminate);
         let clk_weight = self.circuit_builder.challenge(JumpStackTableClkWeight);
         let ci_weight = self.circuit_builder.challenge(JumpStackTableCiWeight);
@@ -3084,7 +3966,10 @@ impl DualRowConstraints {
 
     pub fn running_evaluation_to_hash_table_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let hash_deselector =
             InstructionDeselectors::instruction_deselector_next(self, Instruction::Hash);
         let hash_selector = self.ci_next() - self.constant_b(Instruction::Hash.opcode_b());
@@ -3131,7 +4016,10 @@ impl DualRowConstraints {
 
     pub fn running_evaluation_from_hash_table_updates_correctly(
         &self,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let hash_deselector =
             InstructionDeselectors::instruction_deselector(self, Instruction::Hash);
         let hash_selector = self.ci() - self.constant_b(Instruction::Hash.opcode_b());
@@ -3173,7 +4061,10 @@ impl DualRowConstraints {
 pub struct InstructionDeselectors {
     deselectors: HashMap<
         Instruction,
-        ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
     >,
 }
 
@@ -3192,7 +4083,10 @@ impl InstructionDeselectors {
     pub fn get(
         &self,
         instruction: Instruction,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         self.deselectors
             .get(&instruction)
             .unwrap_or_else(|| panic!("The instruction {} does not exist!", instruction))
@@ -3232,7 +4126,10 @@ impl InstructionDeselectors {
     pub fn instruction_deselector(
         factory: &DualRowConstraints,
         instruction: Instruction,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let instruction_bucket_polynomials = [
             factory.ib0(),
             factory.ib1(),
@@ -3254,7 +4151,10 @@ impl InstructionDeselectors {
     pub fn instruction_deselector_single_row(
         factory: &SingleRowConstraints,
         instruction: Instruction,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, SingleRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let instruction_bucket_polynomials = [
             factory.ib0(),
             factory.ib1(),
@@ -3276,7 +4176,10 @@ impl InstructionDeselectors {
     pub fn instruction_deselector_next(
         factory: &DualRowConstraints,
         instruction: Instruction,
-    ) -> ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>> {
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
         let instruction_bucket_polynomials = [
             factory.ib0_next(),
             factory.ib1_next(),
@@ -3298,7 +4201,10 @@ impl InstructionDeselectors {
         factory: &mut DualRowConstraints,
     ) -> HashMap<
         Instruction,
-        ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>,
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
     > {
         all_instructions_without_args()
             .into_iter()
@@ -3307,13 +4213,201 @@ impl InstructionDeselectors {
     }
 }
 
-impl ExtensionTable for ExtProcessorTable {}
+pub struct ProcessorMatrixRow<'a> {
+    pub row: ArrayView1<'a, BFieldElement>,
+}
+
+impl<'a> Display for ProcessorMatrixRow<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn row(f: &mut std::fmt::Formatter<'_>, s: String) -> std::fmt::Result {
+            writeln!(f, "│ {: <103} │", s)
+        }
+
+        fn row_blank(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            row(f, "".into())
+        }
+
+        let instruction = self.row[CI.base_table_index()].value().try_into().unwrap();
+        let instruction_with_arg = match instruction {
+            Push(_) => Push(self.row[NIA.base_table_index()]),
+            Call(_) => Call(self.row[NIA.base_table_index()]),
+            Dup(_) => Dup((self.row[NIA.base_table_index()].value() as u32)
+                .try_into()
+                .unwrap()),
+            Swap(_) => Swap(
+                (self.row[NIA.base_table_index()].value() as u32)
+                    .try_into()
+                    .unwrap(),
+            ),
+            _ => instruction,
+        };
+
+        writeln!(f, " ╭───────────────────────────╮")?;
+        writeln!(f, " │ {: <25} │", format!("{}", instruction_with_arg))?;
+        writeln!(
+            f,
+            "╭┴───────────────────────────┴────────────────────────────────────\
+            ────────────────────┬───────────────────╮"
+        )?;
+
+        let width = 20;
+        row(
+            f,
+            format!(
+                "ip:   {:>width$} ╷ ci:   {:>width$} ╷ nia: {:>width$} │ {:>17}",
+                self.row[IP.base_table_index()].value(),
+                self.row[CI.base_table_index()].value(),
+                self.row[NIA.base_table_index()].value(),
+                self.row[CLK.base_table_index()].value(),
+            ),
+        )?;
+
+        writeln!(
+            f,
+            "│ jsp:  {:>width$} │ jso:  {:>width$} │ jsd: {:>width$} ╰───────────────────┤",
+            self.row[JSP.base_table_index()].value(),
+            self.row[JSO.base_table_index()].value(),
+            self.row[JSD.base_table_index()].value(),
+        )?;
+        row(
+            f,
+            format!(
+                "ramp: {:>width$} │ ramv: {:>width$} │",
+                self.row[RAMP.base_table_index()].value(),
+                self.row[RAMV.base_table_index()].value(),
+            ),
+        )?;
+        row(
+            f,
+            format!(
+                "osp:  {:>width$} │ osv:  {:>width$} ╵",
+                self.row[OSP.base_table_index()].value(),
+                self.row[OSV.base_table_index()].value(),
+            ),
+        )?;
+
+        row_blank(f)?;
+
+        row(
+            f,
+            format!(
+                "st0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                self.row[ST0.base_table_index()].value(),
+                self.row[ST1.base_table_index()].value(),
+                self.row[ST2.base_table_index()].value(),
+                self.row[ST3.base_table_index()].value(),
+            ),
+        )?;
+        row(
+            f,
+            format!(
+                "st4-7:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                self.row[ST4.base_table_index()].value(),
+                self.row[ST5.base_table_index()].value(),
+                self.row[ST6.base_table_index()].value(),
+                self.row[ST7.base_table_index()].value(),
+            ),
+        )?;
+        row(
+            f,
+            format!(
+                "st8-11:   [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                self.row[ST8.base_table_index()].value(),
+                self.row[ST9.base_table_index()].value(),
+                self.row[ST10.base_table_index()].value(),
+                self.row[ST11.base_table_index()].value(),
+            ),
+        )?;
+        row(
+            f,
+            format!(
+                "st12-15:  [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                self.row[ST12.base_table_index()].value(),
+                self.row[ST13.base_table_index()].value(),
+                self.row[ST14.base_table_index()].value(),
+                self.row[ST15.base_table_index()].value(),
+            ),
+        )?;
+
+        row_blank(f)?;
+
+        row(
+            f,
+            format!(
+                "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                self.row[HV0.base_table_index()].value(),
+                self.row[HV1.base_table_index()].value(),
+                self.row[HV2.base_table_index()].value(),
+                self.row[HV3.base_table_index()].value(),
+            ),
+        )?;
+        let w = 2;
+        row(
+            f,
+            format!(
+                "ib0-6:    \
+                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
+                self.row[IB0.base_table_index()].value(),
+                self.row[IB1.base_table_index()].value(),
+                self.row[IB2.base_table_index()].value(),
+                self.row[IB3.base_table_index()].value(),
+                self.row[IB4.base_table_index()].value(),
+                self.row[IB5.base_table_index()].value(),
+                self.row[IB6.base_table_index()].value(),
+            ),
+        )?;
+        write!(
+            f,
+            "╰─────────────────────────────────────────────────────────────────\
+            ────────────────────────────────────────╯"
+        )
+    }
+}
+
+pub struct ExtProcessorMatrixRow<'a> {
+    pub row: ArrayView1<'a, XFieldElement>,
+}
+
+impl<'a> Display for ExtProcessorMatrixRow<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let row = |form: &mut std::fmt::Formatter<'_>,
+                   desc: &str,
+                   col: ProcessorExtTableColumn|
+         -> std::fmt::Result {
+            // without the extra `format!()`, alignment in `writeln!()` fails
+            let formatted_col_elem = format!("{}", self.row[col.ext_table_index()]);
+            writeln!(form, "     │ {: <18}  {:>73} │", desc, formatted_col_elem,)
+        };
+        writeln!(
+            f,
+            "     ╭───────────────────────────────────────────────────────\
+            ────────────────────────────────────────╮"
+        )?;
+        row(f, "input_table_ea", InputTableEvalArg)?;
+        row(f, "output_table_ea", OutputTableEvalArg)?;
+        row(f, "instr_table_pa", InstructionTablePermArg)?;
+        row(f, "opstack_table_pa", OpStackTablePermArg)?;
+        row(f, "ram_table_pa", RamTablePermArg)?;
+        row(f, "jumpstack_table_pa", JumpStackTablePermArg)?;
+        row(f, "to_hash_table_ea", ToHashTableEvalArg)?;
+        row(f, "from_hash_table_ea", FromHashTableEvalArg)?;
+        write!(
+            f,
+            "     ╰───────────────────────────────────────────────────────\
+            ────────────────────────────────────────╯"
+        )
+    }
+}
 
 #[cfg(test)]
 mod constraint_polynomial_tests {
+    use ndarray::Array2;
+
     use crate::ord_n::Ord16;
-    use crate::table::base_matrix::ProcessorMatrixRow;
+    use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
+    use crate::table::master_table::MasterTable;
+    use crate::table::processor_table::ProcessorMatrixRow;
     use crate::vm::Program;
 
     use super::*;
@@ -3322,34 +4416,28 @@ mod constraint_polynomial_tests {
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row_test() {
         let program = Program::from_code("push 2 push -1 add assert halt").unwrap();
-        let (base_matrices, _, _) = program.simulate_no_input();
-        for row in base_matrices.processor_matrix {
+        let (aet, _, _) = program.simulate_no_input();
+        for row in aet.processor_matrix.rows() {
             println!("{}", ProcessorMatrixRow { row });
         }
     }
 
-    fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Vec<XFieldElement> {
-        let fake_extension_columns = [BFieldElement::zero(); FULL_WIDTH - BASE_WIDTH].to_vec();
-
-        let program = Program::from_code(source_code).unwrap();
-        let (base_matrices, _, err) = program.simulate_no_input();
-        if let Some(e) = err {
-            panic!("The VM crashed because: {}", e);
-        }
-
-        let test_row = [
-            base_matrices.processor_matrix[row_num].to_vec(),
-            fake_extension_columns.clone(),
-            base_matrices.processor_matrix[row_num + 1].to_vec(),
-            fake_extension_columns,
-        ]
-        .concat();
-        test_row.into_iter().map(|belem| belem.lift()).collect()
+    fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Array2<BFieldElement> {
+        let (_, unpadded_master_base_table, _) = parse_simulate_pad(source_code, vec![], vec![]);
+        unpadded_master_base_table
+            .trace_table()
+            .slice(s![row_num..=row_num + 1, ..])
+            .to_owned()
     }
 
     fn get_transition_constraints_for_instruction(
         instruction: Instruction,
-    ) -> Vec<ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let tc = DualRowConstraints::default();
         match instruction {
             Pop => tc.instruction_pop(),
@@ -3386,42 +4474,48 @@ mod constraint_polynomial_tests {
 
     fn test_constraints_for_rows_with_debug_info(
         instruction: Instruction,
-        test_rows: &[Vec<XFieldElement>],
+        master_base_tables: &[Array2<BFieldElement>],
         debug_cols_curr_row: &[ProcessorBaseTableColumn],
         debug_cols_next_row: &[ProcessorBaseTableColumn],
     ) {
-        for (case_idx, test_row) in test_rows.iter().enumerate() {
+        let challenges = AllChallenges::placeholder(&[], &[]);
+        let fake_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
+        for (case_idx, test_rows) in master_base_tables.iter().enumerate() {
+            let curr_row = test_rows.slice(s![0, ..]);
+            let next_row = test_rows.slice(s![1, ..]);
+
             // Print debug information
             println!(
-                "Testing all constraint polynomials of {} for test row with index {}…",
-                instruction, case_idx
+                "Testing all constraints of {instruction} for test row with index {case_idx}…"
             );
-            for c in debug_cols_curr_row {
-                print!("{} = {}, ", c, test_row[usize::from(*c)]);
+            for &c in debug_cols_curr_row {
+                print!("{} = {}, ", c, curr_row[c.master_base_table_index()]);
             }
-            for c in debug_cols_next_row {
-                print!("{}' = {}, ", c, test_row[*c as usize + FULL_WIDTH]);
+            for &c in debug_cols_next_row {
+                print!("{}' = {}, ", c, next_row[c.master_base_table_index()]);
             }
             println!();
 
-            // We need dummy challenges to do partial evaluate. Even though we are
-            // not looking at extension constraints, only base constraints
-            let dummy_challenges = AllChallenges::placeholder();
-            for (poly_idx, poly) in get_transition_constraints_for_instruction(instruction)
-                .iter()
-                .enumerate()
+            assert_eq!(
+                instruction.opcode_b(),
+                curr_row[CI.master_base_table_index()],
+                "The test is trying to check the wrong transition constraint polynomials."
+            );
+            for (constraint_idx, constraint_circuit) in
+                get_transition_constraints_for_instruction(instruction)
+                    .into_iter()
+                    .enumerate()
             {
-                assert_eq!(
-                    instruction.opcode_b().lift(),
-                    test_row[usize::from(CI)],
-                    "The test is trying to check the wrong transition constraint polynomials."
+                let evaluation_result = constraint_circuit.consume().evaluate(
+                    test_rows.view(),
+                    fake_ext_table.view(),
+                    &challenges.processor_table_challenges,
                 );
                 assert_eq!(
                     XFieldElement::zero(),
-                    poly.partial_evaluate(&dummy_challenges.processor_table_challenges).evaluate(test_row),
-                    "For case {}, transition constraint polynomial with index {} must evaluate to zero.",
-                    case_idx,
-                    poly_idx,
+                    evaluation_result,
+                    "For case {case_idx}, transition constraint polynomial with \
+                    index {constraint_idx} must evaluate to zero. Got {evaluation_result} instead.",
                 );
             }
         }
@@ -3635,60 +4729,61 @@ mod constraint_polynomial_tests {
         let mut factory = DualRowConstraints::default();
         let deselectors = InstructionDeselectors::new(&mut factory);
 
-        let mut row = vec![0.into(); 2 * FULL_WIDTH];
+        let mut master_base_table = Array2::zeros([2, NUM_BASE_COLUMNS]);
+        let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
 
-        // We need dummy challenges to do partial evaluate. Even though we are
-        // not looking at extension constraints, only base constraints
-        let dummy_challenges = AllChallenges::placeholder();
+        // We need dummy challenges to evaluate.
+        let dummy_challenges = AllChallenges::placeholder(&[], &[]);
         for instruction in all_instructions_without_args() {
             use ProcessorBaseTableColumn::*;
             let deselector = deselectors.get(instruction);
 
-            println!(
-                "\n\nThe Deselector for instruction {} is:\n{}",
-                instruction, deselector
-            );
+            println!("\n\nThe Deselector for instruction {instruction} is:\n{deselector}",);
 
             // Negative tests
             for other_instruction in all_instructions_without_args()
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {
-                row[usize::from(IB0)] = other_instruction.ib(Ord7::IB0).lift();
-                row[usize::from(IB1)] = other_instruction.ib(Ord7::IB1).lift();
-                row[usize::from(IB2)] = other_instruction.ib(Ord7::IB2).lift();
-                row[usize::from(IB3)] = other_instruction.ib(Ord7::IB3).lift();
-                row[usize::from(IB4)] = other_instruction.ib(Ord7::IB4).lift();
-                row[usize::from(IB5)] = other_instruction.ib(Ord7::IB5).lift();
-                row[usize::from(IB6)] = other_instruction.ib(Ord7::IB6).lift();
-                let result = deselector
-                    .partial_evaluate(&dummy_challenges.processor_table_challenges)
-                    .evaluate(&row);
+                let mut curr_row = master_base_table.slice_mut(s![0, ..]);
+                curr_row[IB0.master_base_table_index()] = other_instruction.ib(Ord7::IB0);
+                curr_row[IB1.master_base_table_index()] = other_instruction.ib(Ord7::IB1);
+                curr_row[IB2.master_base_table_index()] = other_instruction.ib(Ord7::IB2);
+                curr_row[IB3.master_base_table_index()] = other_instruction.ib(Ord7::IB3);
+                curr_row[IB4.master_base_table_index()] = other_instruction.ib(Ord7::IB4);
+                curr_row[IB5.master_base_table_index()] = other_instruction.ib(Ord7::IB5);
+                curr_row[IB6.master_base_table_index()] = other_instruction.ib(Ord7::IB6);
+                let result = deselector.clone().consume().evaluate(
+                    master_base_table.view(),
+                    master_ext_table.view(),
+                    &dummy_challenges.processor_table_challenges,
+                );
 
                 assert!(
                     result.is_zero(),
-                    "Deselector for {} should return 0 for all other instructions, including {} whose opcode is {}",
-                    instruction,
-                    other_instruction,
+                    "Deselector for {instruction} should return 0 for all other instructions, \
+                    including {other_instruction} whose opcode is {}",
                     other_instruction.opcode()
                 )
             }
 
             // Positive tests
-            row[usize::from(IB0)] = instruction.ib(Ord7::IB0).lift();
-            row[usize::from(IB1)] = instruction.ib(Ord7::IB1).lift();
-            row[usize::from(IB2)] = instruction.ib(Ord7::IB2).lift();
-            row[usize::from(IB3)] = instruction.ib(Ord7::IB3).lift();
-            row[usize::from(IB4)] = instruction.ib(Ord7::IB4).lift();
-            row[usize::from(IB5)] = instruction.ib(Ord7::IB5).lift();
-            row[usize::from(IB6)] = instruction.ib(Ord7::IB6).lift();
-            let result = deselector
-                .partial_evaluate(&dummy_challenges.processor_table_challenges)
-                .evaluate(&row);
+            let mut curr_row = master_base_table.slice_mut(s![0, ..]);
+            curr_row[IB0.master_base_table_index()] = instruction.ib(Ord7::IB0);
+            curr_row[IB1.master_base_table_index()] = instruction.ib(Ord7::IB1);
+            curr_row[IB2.master_base_table_index()] = instruction.ib(Ord7::IB2);
+            curr_row[IB3.master_base_table_index()] = instruction.ib(Ord7::IB3);
+            curr_row[IB4.master_base_table_index()] = instruction.ib(Ord7::IB4);
+            curr_row[IB5.master_base_table_index()] = instruction.ib(Ord7::IB5);
+            curr_row[IB6.master_base_table_index()] = instruction.ib(Ord7::IB6);
+            let result = deselector.consume().evaluate(
+                master_base_table.view(),
+                master_ext_table.view(),
+                &dummy_challenges.processor_table_challenges,
+            );
             assert!(
                 !result.is_zero(),
-                "Deselector for {} should be non-zero when CI is {}",
-                instruction,
+                "Deselector for {instruction} should be non-zero when CI is {}",
                 instruction.opcode()
             )
         }
@@ -3730,20 +4825,12 @@ mod constraint_polynomial_tests {
             (WriteIo, factory.instruction_write_io()),
         ];
 
-        // We need dummy challenges to do partial evaluate. Even though we are
-        // not looking at extension constraints, only base constraints
-        let dummy_challenges = AllChallenges::placeholder();
-
         println!("| Instruction     | #polys | max deg | Degrees");
         println!("|:----------------|-------:|--------:|:------------");
         for (instruction, constraints) in all_instructions_and_their_transition_constraints {
             let degrees = constraints
                 .iter()
-                .map(|circuit| {
-                    circuit
-                        .partial_evaluate(&dummy_challenges.processor_table_challenges)
-                        .degree()
-                })
+                .map(|circuit| circuit.clone().consume().degree())
                 .collect_vec();
             let max_degree = degrees.iter().max().unwrap_or(&0);
             let degrees_str = degrees.iter().map(|d| format!("{d}")).join(", ");

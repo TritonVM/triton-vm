@@ -1,140 +1,79 @@
-use itertools::Itertools;
+use std::cmp::Ordering;
+
+use ndarray::parallel::prelude::*;
+use ndarray::s;
+use ndarray::Array1;
+use ndarray::ArrayView1;
+use ndarray::ArrayView2;
+use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::{Display, EnumCount as EnumCountMacro, EnumIter};
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use OpStackTableChallengeId::*;
 
-use crate::cross_table_arguments::{CrossTableArg, PermArg};
-use crate::table::base_table::Extendable;
+use crate::op_stack::OP_STACK_REG_COUNT;
+use crate::table::challenges::TableChallenges;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
-use crate::table::constraint_circuit::SingleRowIndicator::Row;
-use crate::table::table_column::OpStackBaseTableColumn::{self, *};
-use crate::table::table_column::OpStackExtTableColumn::{self, *};
-
-use super::base_table::{InheritsFromTable, Table, TableLike};
-use super::challenges::TableChallenges;
-use super::constraint_circuit::DualRowIndicator::*;
-use super::constraint_circuit::{ConstraintCircuit, ConstraintCircuitBuilder, DualRowIndicator};
-use super::extension_table::{ExtensionTable, QuotientableExtensionTable};
+use crate::table::constraint_circuit::SingleRowIndicator::*;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::PermArg;
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
+use crate::table::table_column::OpStackBaseTableColumn;
+use crate::table::table_column::OpStackBaseTableColumn::*;
+use crate::table::table_column::OpStackExtTableColumn;
+use crate::table::table_column::OpStackExtTableColumn::*;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
 pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-
-/// This is 4 because it combines: clk, ci, osv, osp
-pub const OP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = 4;
+pub const OP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = OpStackTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = OpStackBaseTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + OpStackExtTableColumn::COUNT;
+pub const EXT_WIDTH: usize = OpStackExtTableColumn::COUNT;
+pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
 #[derive(Debug, Clone)]
-pub struct OpStackTable {
-    inherited_table: Table<BFieldElement>,
-}
-
-impl InheritsFromTable<BFieldElement> for OpStackTable {
-    fn inherited_table(&self) -> &Table<BFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<BFieldElement> {
-        &mut self.inherited_table
-    }
-}
+pub struct OpStackTable {}
 
 #[derive(Debug, Clone)]
-pub struct ExtOpStackTable {
-    pub(crate) inherited_table: Table<XFieldElement>,
-}
-
-impl Default for ExtOpStackTable {
-    fn default() -> Self {
-        Self {
-            inherited_table: Table::new(
-                BASE_WIDTH,
-                FULL_WIDTH,
-                vec![],
-                "EmptyExtOpStackTable".to_string(),
-            ),
-        }
-    }
-}
-
-impl QuotientableExtensionTable for ExtOpStackTable {}
-
-impl InheritsFromTable<XFieldElement> for ExtOpStackTable {
-    fn inherited_table(&self) -> &Table<XFieldElement> {
-        &self.inherited_table
-    }
-
-    fn mut_inherited_table(&mut self) -> &mut Table<XFieldElement> {
-        &mut self.inherited_table
-    }
-}
-
-impl TableLike<BFieldElement> for OpStackTable {}
-
-impl Extendable for OpStackTable {
-    fn get_padding_rows(&self) -> (Option<usize>, Vec<Vec<BFieldElement>>) {
-        panic!("This function should not be called: the Op Stack Table implements `.pad` directly.")
-    }
-
-    fn pad(&mut self, padded_height: usize) {
-        let max_clock = self.data().len() as u64 - 1;
-        let num_padding_rows = padded_height - self.data().len();
-
-        let template_index = self
-            .data()
-            .iter()
-            .enumerate()
-            .find(|(_, row)| row[usize::from(CLK)].value() == max_clock)
-            .map(|(idx, _)| idx)
-            .expect("Op Stack Table must contain row with clock cycle equal to max cycle.");
-        let insertion_index = template_index + 1;
-
-        let padding_template = &mut self.mut_data()[template_index];
-        padding_template[usize::from(InverseOfClkDiffMinusOne)] = 0_u64.into();
-
-        let mut padding_rows = vec![];
-        while padding_rows.len() < num_padding_rows {
-            let mut padding_row = padding_template.clone();
-            padding_row[usize::from(CLK)] += (padding_rows.len() as u32 + 1).into();
-            padding_rows.push(padding_row)
-        }
-
-        if let Some(row) = padding_rows.last_mut() {
-            if let Some(next_row) = self.data().get(insertion_index) {
-                let clk_diff = next_row[usize::from(CLK)] - row[usize::from(CLK)];
-                row[usize::from(InverseOfClkDiffMinusOne)] =
-                    (clk_diff - BFieldElement::one()).inverse_or_zero();
-            }
-        }
-
-        let old_tail_length = self.data().len() - insertion_index;
-        self.mut_data().append(&mut padding_rows);
-        self.mut_data()[insertion_index..].rotate_left(old_tail_length);
-
-        assert_eq!(padded_height, self.data().len());
-    }
-}
-
-impl TableLike<XFieldElement> for ExtOpStackTable {}
+pub struct ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
-        let circuit_builder = ConstraintCircuitBuilder::new(FULL_WIDTH);
+    pub fn ext_initial_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let clk = circuit_builder.input(Row(CLK.into()));
-        let ib1 = circuit_builder.input(Row(IB1ShrinkStack.into()));
-        let osp = circuit_builder.input(Row(OSP.into()));
-        let osv = circuit_builder.input(Row(OSV.into()));
-        let rppa = circuit_builder.input(Row(RunningProductPermArg.into()));
-        let rpcjd = circuit_builder.input(Row(AllClockJumpDifferencesPermArg.into()));
+        let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
+        let ib1 = circuit_builder.input(BaseRow(IB1ShrinkStack.master_base_table_index()));
+        let osp = circuit_builder.input(BaseRow(OSP.master_base_table_index()));
+        let osv = circuit_builder.input(BaseRow(OSV.master_base_table_index()));
+        let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
+        let rpcjd = circuit_builder.input(ExtRow(
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        ));
 
         let clk_is_0 = clk;
         let osv_is_0 = osv;
@@ -163,34 +102,53 @@ impl ExtOpStackTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, DualRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         let circuit_builder = ConstraintCircuitBuilder::<
             OpStackTableChallenges,
-            DualRowIndicator<FULL_WIDTH>,
-        >::new(2 * FULL_WIDTH);
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >::new();
         let one = circuit_builder.b_constant(1u32.into());
 
-        let clk = circuit_builder.input(CurrentRow(CLK.into()));
-        let ib1_shrink_stack = circuit_builder.input(CurrentRow(IB1ShrinkStack.into()));
-        let osp = circuit_builder.input(CurrentRow(OSP.into()));
-        let osv = circuit_builder.input(CurrentRow(OSV.into()));
-        let clk_di = circuit_builder.input(CurrentRow(InverseOfClkDiffMinusOne.into()));
-        let rpcjd = circuit_builder.input(CurrentRow(AllClockJumpDifferencesPermArg.into()));
-        let rppa = circuit_builder.input(CurrentRow(RunningProductPermArg.into()));
+        let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
+        let ib1_shrink_stack =
+            circuit_builder.input(CurrentBaseRow(IB1ShrinkStack.master_base_table_index()));
+        let osp = circuit_builder.input(CurrentBaseRow(OSP.master_base_table_index()));
+        let osv = circuit_builder.input(CurrentBaseRow(OSV.master_base_table_index()));
+        let clk_di = circuit_builder.input(CurrentBaseRow(
+            InverseOfClkDiffMinusOne.master_base_table_index(),
+        ));
+        let rpcjd = circuit_builder.input(CurrentExtRow(
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        ));
+        let rppa = circuit_builder.input(CurrentExtRow(
+            RunningProductPermArg.master_ext_table_index(),
+        ));
 
-        let clk_next = circuit_builder.input(NextRow(CLK.into()));
-        let ib1_shrink_stack_next = circuit_builder.input(NextRow(IB1ShrinkStack.into()));
-        let osp_next = circuit_builder.input(NextRow(OSP.into()));
-        let osv_next = circuit_builder.input(NextRow(OSV.into()));
-        let rpcjd_next = circuit_builder.input(NextRow(AllClockJumpDifferencesPermArg.into()));
-        let rppa_next = circuit_builder.input(NextRow(RunningProductPermArg.into()));
+        let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
+        let ib1_shrink_stack_next =
+            circuit_builder.input(NextBaseRow(IB1ShrinkStack.master_base_table_index()));
+        let osp_next = circuit_builder.input(NextBaseRow(OSP.master_base_table_index()));
+        let osv_next = circuit_builder.input(NextBaseRow(OSV.master_base_table_index()));
+        let rpcjd_next = circuit_builder.input(NextExtRow(
+            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        ));
+        let rppa_next =
+            circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
 
         // the osp increases by 1 or the osp does not change
         //
@@ -256,98 +214,204 @@ impl ExtOpStackTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<OpStackTableChallenges, SingleRowIndicator<FULL_WIDTH>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<
+        ConstraintCircuit<
+            OpStackTableChallenges,
+            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
         // no further constraints
         vec![]
     }
 }
 
 impl OpStackTable {
-    pub fn new(inherited_table: Table<BFieldElement>) -> Self {
-        Self { inherited_table }
+    /// Fills the trace table in-place and returns all clock jump differences greater than 1.
+    pub fn fill_trace(
+        op_stack_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) -> Vec<BFieldElement> {
+        // Store the registers relevant for the Op Stack Table, i.e., CLK, IB1, OSP, and OSV,
+        // with OSP as the key. Preserves, thus allows reusing, the order of the processor's
+        // rows, which are sorted by CLK.
+        let mut pre_processed_op_stack_table: Vec<Vec<_>> = vec![];
+        for processor_row in aet.processor_matrix.rows() {
+            let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
+            let ib1 = processor_row[ProcessorBaseTableColumn::IB1.base_table_index()];
+            let osp = processor_row[ProcessorBaseTableColumn::OSP.base_table_index()];
+            let osv = processor_row[ProcessorBaseTableColumn::OSV.base_table_index()];
+            // The (honest) prover can only grow the Op Stack's size by at most 1 per execution
+            // step. Hence, the following (a) works, and (b) sorts.
+            let osp_minus_16 = osp.value() as usize - OP_STACK_REG_COUNT;
+            let op_stack_row = (clk, ib1, osv);
+            match osp_minus_16.cmp(&pre_processed_op_stack_table.len()) {
+                Ordering::Less => pre_processed_op_stack_table[osp_minus_16].push(op_stack_row),
+                Ordering::Equal => pre_processed_op_stack_table.push(vec![op_stack_row]),
+                Ordering::Greater => panic!("OSP must increase by at most 1 per execution step."),
+            }
+        }
+
+        // Move the rows into the Op Stack Table, sorted by OSP first, CLK second.
+        let mut op_stack_table_row = 0;
+        for (osp_minus_16, rows_with_this_osp) in
+            pre_processed_op_stack_table.into_iter().enumerate()
+        {
+            let osp = BFieldElement::new((osp_minus_16 + OP_STACK_REG_COUNT) as u64);
+            for (clk, ib1, osv) in rows_with_this_osp {
+                op_stack_table[[op_stack_table_row, CLK.base_table_index()]] = clk;
+                op_stack_table[[op_stack_table_row, IB1ShrinkStack.base_table_index()]] = ib1;
+                op_stack_table[[op_stack_table_row, OSP.base_table_index()]] = osp;
+                op_stack_table[[op_stack_table_row, OSV.base_table_index()]] = osv;
+                op_stack_table_row += 1;
+            }
+        }
+        assert_eq!(aet.processor_matrix.nrows(), op_stack_table_row);
+
+        // Set inverse of (clock difference - 1). Also, collect all clock jump differences
+        // greater than 1.
+        // The Op Stack Table and the Processor Table have the same length.
+        let mut clock_jump_differences_greater_than_1 = vec![];
+        for row_idx in 0..aet.processor_matrix.nrows() - 1 {
+            let (mut curr_row, next_row) =
+                op_stack_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
+            let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
+            let clk_diff_minus_1 = clk_diff - BFieldElement::one();
+            let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
+            curr_row[InverseOfClkDiffMinusOne.base_table_index()] = clk_diff_minus_1_inverse;
+
+            if curr_row[OSP.base_table_index()] == next_row[OSP.base_table_index()]
+                && clk_diff.value() > 1
+            {
+                clock_jump_differences_greater_than_1.push(clk_diff);
+            }
+        }
+        clock_jump_differences_greater_than_1
     }
 
-    pub fn new_prover(matrix: Vec<Vec<BFieldElement>>) -> Self {
-        let inherited_table =
-            Table::new(BASE_WIDTH, FULL_WIDTH, matrix, "OpStackTable".to_string());
-        Self { inherited_table }
+    pub fn pad_trace(
+        op_stack_table: &mut ArrayViewMut2<BFieldElement>,
+        processor_table_len: usize,
+    ) {
+        assert!(
+            processor_table_len > 0,
+            "Processor Table must have at least 1 row."
+        );
+
+        // Set up indices for relevant sections of the table.
+        let padded_height = op_stack_table.nrows();
+        let num_padding_rows = padded_height - processor_table_len;
+        let max_clk_before_padding = processor_table_len - 1;
+        let max_clk_before_padding_row_idx = op_stack_table
+            .rows()
+            .into_iter()
+            .enumerate()
+            .find(|(_, row)| row[CLK.base_table_index()].value() as usize == max_clk_before_padding)
+            .map(|(idx, _)| idx)
+            .expect("Op Stack Table must contain row with clock cycle equal to max cycle.");
+        let rows_to_move_source_section_start = max_clk_before_padding_row_idx + 1;
+        let rows_to_move_source_section_end = processor_table_len;
+        let num_rows_to_move = rows_to_move_source_section_end - rows_to_move_source_section_start;
+        let rows_to_move_dest_section_start = rows_to_move_source_section_start + num_padding_rows;
+        let rows_to_move_dest_section_end = rows_to_move_dest_section_start + num_rows_to_move;
+        let padding_section_start = rows_to_move_source_section_start;
+        let padding_section_end = padding_section_start + num_padding_rows;
+        assert_eq!(padded_height, rows_to_move_dest_section_end);
+
+        // Move all rows below the row with highest CLK to the end of the table – if they exist.
+        if num_rows_to_move > 0 {
+            let rows_to_move_source_range =
+                rows_to_move_source_section_start..rows_to_move_source_section_end;
+            let rows_to_move_dest_range =
+                rows_to_move_dest_section_start..rows_to_move_dest_section_end;
+            let rows_to_move = op_stack_table
+                .slice(s![rows_to_move_source_range, ..])
+                .to_owned();
+            rows_to_move.move_into(&mut op_stack_table.slice_mut(s![rows_to_move_dest_range, ..]));
+        }
+
+        // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row
+        // before the gap. This is the padding section.
+        let mut padding_row_template = op_stack_table
+            .row(max_clk_before_padding_row_idx)
+            .to_owned();
+        padding_row_template[InverseOfClkDiffMinusOne.base_table_index()] = BFieldElement::zero();
+        let mut padding_section =
+            op_stack_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
+        padding_section
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .for_each(|padding_row| padding_row_template.clone().move_into(padding_row));
+
+        // CLK keeps increasing by 1 also in the padding section.
+        let new_clk_values = Array1::from_iter(
+            (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
+        );
+        new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.base_table_index()]));
+
+        // InverseOfClkDiffMinusOne must be consistent at the padding section's boundaries.
+        op_stack_table[[
+            max_clk_before_padding_row_idx,
+            InverseOfClkDiffMinusOne.base_table_index(),
+        ]] = BFieldElement::zero();
+        if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
+            let max_clk_after_padding = padded_height - 1;
+            let clk_diff_minus_one_at_padding_section_lower_boundary = op_stack_table
+                [[rows_to_move_dest_section_start, CLK.base_table_index()]]
+                - BFieldElement::new(max_clk_after_padding as u64)
+                - BFieldElement::one();
+            let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
+            op_stack_table[[
+                last_row_in_padding_section_idx,
+                InverseOfClkDiffMinusOne.base_table_index(),
+            ]] = clk_diff_minus_one_at_padding_section_lower_boundary.inverse_or_zero();
+        }
     }
 
-    pub fn extend(&self, challenges: &OpStackTableChallenges) -> ExtOpStackTable {
-        let mut extension_matrix: Vec<Vec<XFieldElement>> = Vec::with_capacity(self.data().len());
+    pub fn extend(
+        base_table: ArrayView2<BFieldElement>,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &OpStackTableChallenges,
+    ) {
+        assert_eq!(BASE_WIDTH, base_table.ncols());
+        assert_eq!(EXT_WIDTH, ext_table.ncols());
+        assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut running_product = PermArg::default_initial();
         let mut all_clock_jump_differences_running_product = PermArg::default_initial();
+        let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
 
-        let mut previous_row: Option<Vec<BFieldElement>> = None;
-        for row in self.data().iter() {
-            let mut extension_row = [0.into(); FULL_WIDTH];
-            extension_row[..BASE_WIDTH]
-                .copy_from_slice(&row.iter().map(|elem| elem.lift()).collect_vec());
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            let clk = current_row[CLK.base_table_index()];
+            let ib1 = current_row[IB1ShrinkStack.base_table_index()];
+            let osp = current_row[OSP.base_table_index()];
+            let osv = current_row[OSV.base_table_index()];
 
-            let clk = extension_row[usize::from(CLK)];
-            let ib1 = extension_row[usize::from(IB1ShrinkStack)];
-            let osp = extension_row[usize::from(OSP)];
-            let osv = extension_row[usize::from(OSV)];
-
-            let clk_w = challenges.clk_weight;
-            let ib1_w = challenges.ib1_weight;
-            let osp_w = challenges.osp_weight;
-            let osv_w = challenges.osv_weight;
-
-            // compress multiple values within one row so they become one value
-            let compressed_row_for_permutation_argument =
-                clk * clk_w + ib1 * ib1_w + osp * osp_w + osv * osv_w;
-
-            // compute the running *product* of the compressed column (for permutation argument)
+            let compressed_row_for_permutation_argument = clk * challenges.clk_weight
+                + ib1 * challenges.ib1_weight
+                + osp * challenges.osp_weight
+                + osv * challenges.osv_weight;
             running_product *=
                 challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
-            extension_row[usize::from(RunningProductPermArg)] = running_product;
 
             // clock jump difference
-            if let Some(prow) = previous_row {
-                if prow[usize::from(OSP)] == row[usize::from(OSP)] {
+            if let Some(prev_row) = previous_row {
+                if prev_row[OSP.base_table_index()] == current_row[OSP.base_table_index()] {
                     let clock_jump_difference =
-                        (row[usize::from(CLK)] - prow[usize::from(CLK)]).lift();
-                    if clock_jump_difference != XFieldElement::one() {
+                        current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
+                    if !clock_jump_difference.is_one() {
                         all_clock_jump_differences_running_product *= challenges
                             .all_clock_jump_differences_multi_perm_indeterminate
                             - clock_jump_difference;
                     }
                 }
             }
-            extension_row[usize::from(AllClockJumpDifferencesPermArg)] =
+
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[RunningProductPermArg.ext_table_index()] = running_product;
+            extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
-
-            previous_row = Some(row.clone());
-            extension_matrix.push(extension_row.to_vec());
+            previous_row = Some(current_row);
         }
-
-        assert_eq!(self.data().len(), extension_matrix.len());
-        let inherited_table = self.new_from_lifted_matrix(extension_matrix);
-        ExtOpStackTable { inherited_table }
-    }
-
-    pub fn for_verifier() -> ExtOpStackTable {
-        let inherited_table = Table::new(
-            BASE_WIDTH,
-            FULL_WIDTH,
-            vec![],
-            "ExtOpStackTable".to_string(),
-        );
-        let base_table = Self { inherited_table };
-        let empty_matrix: Vec<Vec<XFieldElement>> = vec![];
-        let extension_table = base_table.new_from_lifted_matrix(empty_matrix);
-
-        ExtOpStackTable {
-            inherited_table: extension_table,
-        }
-    }
-}
-
-impl ExtOpStackTable {
-    pub fn new(inherited_table: Table<XFieldElement>) -> Self {
-        Self { inherited_table }
     }
 }
 
@@ -400,5 +464,3 @@ pub struct OpStackTableChallenges {
     /// Weight for accumulating all clock jump differences
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 }
-
-impl ExtensionTable for ExtOpStackTable {}

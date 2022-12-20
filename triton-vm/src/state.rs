@@ -1,34 +1,34 @@
-use anyhow::Result;
-use itertools::Itertools;
-use num_traits::{One, Zero};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::Display;
 
+use anyhow::Result;
+use ndarray::Array1;
+use num_traits::One;
+use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::rescue_prime_regular::{
-    RescuePrimeRegular, DIGEST_LENGTH, NUM_ROUNDS, ROUND_CONSTANTS, STATE_SIZE,
-};
+use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
+use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::vm_err;
+use crate::error::vm_fail;
+use crate::error::InstructionError::*;
+use crate::instruction::AnInstruction::*;
 use crate::instruction::DivinationHint;
-use crate::ord_n::{Ord16, Ord7};
-use crate::table::base_matrix::ProcessorMatrixRow;
-use crate::table::hash_table::{NUM_ROUND_CONSTANTS, TOTAL_NUM_CONSTANTS};
-use crate::table::table_column::{
-    InstructionBaseTableColumn, JumpStackBaseTableColumn, OpStackBaseTableColumn,
-    ProcessorBaseTableColumn, RamBaseTableColumn,
-};
-
-use super::error::{vm_fail, InstructionError::*};
-use super::instruction::{AnInstruction::*, Instruction};
-use super::op_stack::OpStack;
-use super::ord_n::{Ord16::*, Ord7::*};
-use super::table::{hash_table, instruction_table, jump_stack_table, op_stack_table};
-use super::table::{processor_table, ram_table};
-use super::vm::Program;
+use crate::instruction::Instruction;
+use crate::op_stack::OpStack;
+use crate::ord_n::Ord16;
+use crate::ord_n::Ord16::*;
+use crate::ord_n::Ord7;
+use crate::table::processor_table;
+use crate::table::processor_table::ProcessorMatrixRow;
+use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::vm::Program;
 
 /// The number of state registers for hashing-specific instructions.
 pub const STATE_REGISTER_COUNT: usize = 16;
@@ -65,6 +65,9 @@ pub struct VMState<'pgm> {
     /// Current instruction's address in program memory
     pub instruction_pointer: usize,
 
+    /// The instruction that was executed last
+    pub previous_instruction: BFieldElement,
+
     /// RAM pointer
     pub ramp: u64,
 }
@@ -77,7 +80,7 @@ pub enum VMOutput {
     /// Trace of state registers for hash coprocessor table
     ///
     /// One row per round in the XLIX permutation
-    XlixTrace(Vec<[BFieldElement; hash_table::BASE_WIDTH]>),
+    XlixTrace(Box<[[BFieldElement; STATE_SIZE]; 1 + NUM_ROUNDS]>),
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -185,6 +188,11 @@ impl<'pgm> VMState<'pgm> {
         // All instructions increase the cycle count
         self.cycle_count += 1;
         let mut vm_output = None;
+        self.previous_instruction = match self.current_instruction() {
+            Ok(instruction) => instruction.opcode_b(),
+            // trying to read past the end of the program doesn't change the previous instruction
+            Err(_) => self.previous_instruction,
+        };
 
         match self.current_instruction()? {
             Pop => {
@@ -305,8 +313,7 @@ impl<'pgm> VMState<'pgm> {
                 let hash_input: [BFieldElement; 2 * DIGEST_LENGTH] = self.op_stack.pop_n()?;
                 let hash_trace = RescuePrimeRegular::trace(&hash_input);
                 let hash_output = &hash_trace[hash_trace.len() - 1][0..DIGEST_LENGTH];
-                let hash_trace_with_round_constants = Self::inprocess_hash_trace(&hash_trace);
-                vm_output = Some(VMOutput::XlixTrace(hash_trace_with_round_constants));
+                vm_output = Some(VMOutput::XlixTrace(Box::new(hash_trace)));
 
                 for i in (0..DIGEST_LENGTH).rev() {
                     self.op_stack.push(hash_output[i]);
@@ -435,111 +442,53 @@ impl<'pgm> VMState<'pgm> {
         Ok(vm_output)
     }
 
-    pub fn to_instruction_row(
-        &self,
-        current_instruction: Instruction,
-    ) -> [BFieldElement; instruction_table::BASE_WIDTH] {
-        use InstructionBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); instruction_table::BASE_WIDTH];
-
-        row[usize::from(Address)] = (self.instruction_pointer as u32).into();
-        row[usize::from(CI)] = current_instruction.opcode_b();
-        row[usize::from(NIA)] = self.nia();
-
-        row
-    }
-
-    pub fn to_processor_row(&self) -> [BFieldElement; processor_table::BASE_WIDTH] {
+    pub fn to_processor_row(&self) -> Array1<BFieldElement> {
         use ProcessorBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); processor_table::BASE_WIDTH];
+        let mut row = Array1::zeros(processor_table::BASE_WIDTH);
 
         let current_instruction = self.current_instruction().unwrap_or(Nop);
         let hvs = self.derive_helper_variables();
         let ramp = self.ramp.into();
 
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(IP)] = (self.instruction_pointer as u32).into();
-        row[usize::from(CI)] = current_instruction.opcode_b();
-        row[usize::from(NIA)] = self.nia();
-        row[usize::from(IB0)] = current_instruction.ib(Ord7::IB0);
-        row[usize::from(IB1)] = current_instruction.ib(Ord7::IB1);
-        row[usize::from(IB2)] = current_instruction.ib(Ord7::IB2);
-        row[usize::from(IB3)] = current_instruction.ib(Ord7::IB3);
-        row[usize::from(IB4)] = current_instruction.ib(Ord7::IB4);
-        row[usize::from(IB5)] = current_instruction.ib(Ord7::IB5);
-        row[usize::from(IB6)] = current_instruction.ib(Ord7::IB6);
-        row[usize::from(JSP)] = self.jsp();
-        row[usize::from(JSO)] = self.jso();
-        row[usize::from(JSD)] = self.jsd();
-        row[usize::from(ST0)] = self.op_stack.st(Ord16::ST0);
-        row[usize::from(ST1)] = self.op_stack.st(Ord16::ST1);
-        row[usize::from(ST2)] = self.op_stack.st(Ord16::ST2);
-        row[usize::from(ST3)] = self.op_stack.st(Ord16::ST3);
-        row[usize::from(ST4)] = self.op_stack.st(Ord16::ST4);
-        row[usize::from(ST5)] = self.op_stack.st(Ord16::ST5);
-        row[usize::from(ST6)] = self.op_stack.st(Ord16::ST6);
-        row[usize::from(ST7)] = self.op_stack.st(Ord16::ST7);
-        row[usize::from(ST8)] = self.op_stack.st(Ord16::ST8);
-        row[usize::from(ST9)] = self.op_stack.st(Ord16::ST9);
-        row[usize::from(ST10)] = self.op_stack.st(Ord16::ST10);
-        row[usize::from(ST11)] = self.op_stack.st(Ord16::ST11);
-        row[usize::from(ST12)] = self.op_stack.st(Ord16::ST12);
-        row[usize::from(ST13)] = self.op_stack.st(Ord16::ST13);
-        row[usize::from(ST14)] = self.op_stack.st(Ord16::ST14);
-        row[usize::from(ST15)] = self.op_stack.st(Ord16::ST15);
-        row[usize::from(OSP)] = self.op_stack.osp();
-        row[usize::from(OSV)] = self.op_stack.osv();
-        row[usize::from(HV0)] = hvs[0];
-        row[usize::from(HV1)] = hvs[1];
-        row[usize::from(HV2)] = hvs[2];
-        row[usize::from(HV3)] = hvs[3];
-        row[usize::from(RAMP)] = ramp;
-        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
-
-        row
-    }
-
-    pub fn to_op_stack_row(
-        &self,
-        current_instruction: Instruction,
-    ) -> [BFieldElement; op_stack_table::BASE_WIDTH] {
-        use OpStackBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); op_stack_table::BASE_WIDTH];
-
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(IB1ShrinkStack)] = current_instruction.ib(IB1);
-        row[usize::from(OSP)] = self.op_stack.osp();
-        row[usize::from(OSV)] = self.op_stack.osv();
-
-        row
-    }
-
-    pub fn to_ram_row(&self) -> [BFieldElement; ram_table::BASE_WIDTH] {
-        use RamBaseTableColumn::*;
-        let ramp = self.op_stack.st(ST1);
-
-        let mut row = [BFieldElement::zero(); ram_table::BASE_WIDTH];
-
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(RAMP)] = ramp;
-        row[usize::from(RAMV)] = *self.ram.get(&ramp).unwrap_or(&BFieldElement::zero());
-        // value of InverseOfRampDifference is only known after sorting the RAM Table, thus not set
-
-        row
-    }
-
-    pub fn to_jump_stack_row(
-        &self,
-        current_instruction: Instruction,
-    ) -> [BFieldElement; jump_stack_table::BASE_WIDTH] {
-        use JumpStackBaseTableColumn::*;
-        let mut row = [BFieldElement::zero(); jump_stack_table::BASE_WIDTH];
-
-        row[usize::from(CLK)] = BFieldElement::new(self.cycle_count as u64);
-        row[usize::from(CI)] = current_instruction.opcode_b();
-        row[usize::from(JSP)] = self.jsp();
-        row[usize::from(JSO)] = self.jso();
-        row[usize::from(JSD)] = self.jsd();
+        row[CLK.base_table_index()] = BFieldElement::new(self.cycle_count as u64);
+        row[PreviousInstruction.base_table_index()] = self.previous_instruction;
+        row[IP.base_table_index()] = (self.instruction_pointer as u32).into();
+        row[CI.base_table_index()] = current_instruction.opcode_b();
+        row[NIA.base_table_index()] = self.nia();
+        row[IB0.base_table_index()] = current_instruction.ib(Ord7::IB0);
+        row[IB1.base_table_index()] = current_instruction.ib(Ord7::IB1);
+        row[IB2.base_table_index()] = current_instruction.ib(Ord7::IB2);
+        row[IB3.base_table_index()] = current_instruction.ib(Ord7::IB3);
+        row[IB4.base_table_index()] = current_instruction.ib(Ord7::IB4);
+        row[IB5.base_table_index()] = current_instruction.ib(Ord7::IB5);
+        row[IB6.base_table_index()] = current_instruction.ib(Ord7::IB6);
+        row[JSP.base_table_index()] = self.jsp();
+        row[JSO.base_table_index()] = self.jso();
+        row[JSD.base_table_index()] = self.jsd();
+        row[ST0.base_table_index()] = self.op_stack.st(Ord16::ST0);
+        row[ST1.base_table_index()] = self.op_stack.st(Ord16::ST1);
+        row[ST2.base_table_index()] = self.op_stack.st(Ord16::ST2);
+        row[ST3.base_table_index()] = self.op_stack.st(Ord16::ST3);
+        row[ST4.base_table_index()] = self.op_stack.st(Ord16::ST4);
+        row[ST5.base_table_index()] = self.op_stack.st(Ord16::ST5);
+        row[ST6.base_table_index()] = self.op_stack.st(Ord16::ST6);
+        row[ST7.base_table_index()] = self.op_stack.st(Ord16::ST7);
+        row[ST8.base_table_index()] = self.op_stack.st(Ord16::ST8);
+        row[ST9.base_table_index()] = self.op_stack.st(Ord16::ST9);
+        row[ST10.base_table_index()] = self.op_stack.st(Ord16::ST10);
+        row[ST11.base_table_index()] = self.op_stack.st(Ord16::ST11);
+        row[ST12.base_table_index()] = self.op_stack.st(Ord16::ST12);
+        row[ST13.base_table_index()] = self.op_stack.st(Ord16::ST13);
+        row[ST14.base_table_index()] = self.op_stack.st(Ord16::ST14);
+        row[ST15.base_table_index()] = self.op_stack.st(Ord16::ST15);
+        row[OSP.base_table_index()] = self.op_stack.osp();
+        row[OSV.base_table_index()] = self.op_stack.osv();
+        row[HV0.base_table_index()] = hvs[0];
+        row[HV1.base_table_index()] = hvs[1];
+        row[HV2.base_table_index()] = hvs[2];
+        row[HV3.base_table_index()] = hvs[3];
+        row[RAMP.base_table_index()] = ramp;
+        row[RAMV.base_table_index()] = self.memory_get(&ramp);
 
         row
     }
@@ -727,52 +676,6 @@ impl<'pgm> VMState<'pgm> {
 
         Ok(())
     }
-
-    fn inprocess_hash_trace(
-        hash_trace: &[[BFieldElement;
-              hash_table::BASE_WIDTH - hash_table::NUM_ROUND_CONSTANTS - 1]],
-    ) -> Vec<[BFieldElement; hash_table::BASE_WIDTH]> {
-        let mut hash_trace_with_constants = vec![];
-        for (index, trace_row) in hash_trace.iter().enumerate() {
-            let round_number = index + 1;
-            let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
-            let mut new_trace_row = [BFieldElement::zero(); hash_table::BASE_WIDTH];
-            let mut offset = 0;
-            new_trace_row[offset] = BFieldElement::new(round_number as u64);
-            offset += 1;
-            new_trace_row[offset..offset + STATE_SIZE].copy_from_slice(trace_row);
-            offset += STATE_SIZE;
-            new_trace_row[offset..].copy_from_slice(&round_constants);
-            hash_trace_with_constants.push(new_trace_row)
-        }
-        hash_trace_with_constants
-    }
-
-    /// rescue_xlix_round_constants_by_round_number
-    /// returns the 2m round constant for round `round_number`.
-    /// This counter starts at 1; round number 0 indicates padding;
-    /// and round number 9 indicates a transition to a new hash so
-    /// the round constants will be all zeros.
-    fn rescue_xlix_round_constants_by_round_number(
-        round_number: usize,
-    ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
-        let round_constants: [BFieldElement; TOTAL_NUM_CONSTANTS] = ROUND_CONSTANTS
-            .iter()
-            .map(|&x| BFieldElement::new(x))
-            .collect_vec()
-            .try_into()
-            .unwrap();
-
-        match round_number {
-            0 => [BFieldElement::zero(); hash_table::NUM_ROUND_CONSTANTS],
-            i if i <= NUM_ROUNDS => round_constants
-                [NUM_ROUND_CONSTANTS * (i - 1)..NUM_ROUND_CONSTANTS * i]
-                .try_into()
-                .unwrap(),
-            i if i == NUM_ROUNDS + 1 => [BFieldElement::zero(); hash_table::NUM_ROUND_CONSTANTS],
-            _ => panic!("Round with number {round_number} does not have round constants."),
-        }
-    }
 }
 
 impl<'pgm> Display for VMState<'pgm> {
@@ -780,7 +683,7 @@ impl<'pgm> Display for VMState<'pgm> {
         match self.current_instruction() {
             Ok(_) => {
                 let row = self.to_processor_row();
-                write!(f, "{}", ProcessorMatrixRow { row })
+                write!(f, "{}", ProcessorMatrixRow { row: row.view() })
             }
             Err(_) => write!(f, "END-OF-FILE"),
         }
@@ -789,7 +692,7 @@ impl<'pgm> Display for VMState<'pgm> {
 
 #[cfg(test)]
 mod vm_state_tests {
-
+    use itertools::Itertools;
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::rescue_prime_digest::Digest;
     use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;

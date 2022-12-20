@@ -1,11 +1,14 @@
-use anyhow::{bail, Result};
+use anyhow::bail;
+use anyhow::Result;
 use itertools::Itertools;
-use num_traits::{One, Zero};
+use num_traits::One;
+use num_traits::Zero;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::x_field_element::{XFieldElement, EXTENSION_DEGREE};
+use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::algebraic_hasher::Hashable;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 
@@ -377,7 +380,8 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
 #[cfg(test)]
 mod bfield_codec_tests {
     use itertools::Itertools;
-    use rand::{thread_rng, RngCore};
+    use rand::thread_rng;
+    use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use super::*;

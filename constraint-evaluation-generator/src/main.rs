@@ -6,9 +6,9 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use triton_vm::table::challenges::TableChallenges;
-use triton_vm::table::constraint_circuit::{
-    CircuitExpression, CircuitId, ConstraintCircuit, InputIndicator,
-};
+use triton_vm::table::constraint_circuit::CircuitExpression;
+use triton_vm::table::constraint_circuit::ConstraintCircuit;
+use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::hash_table::ExtHashTable;
 use triton_vm::table::instruction_table::ExtInstructionTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
@@ -135,6 +135,11 @@ fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let table_mod_name = format!("Ext{table_id_name}");
 
+    let num_initial_constraints = initial_constraint_circuits.len();
+    let num_consistency_constraints = consistency_constraint_circuits.len();
+    let num_transition_constraints = transition_constraint_circuits.len();
+    let num_terminal_constraints = terminal_constraint_circuits.len();
+
     let initial_constraints_degrees =
         turn_circuits_into_degree_bounds_string(initial_constraint_circuits);
     let consistency_constraints_degrees =
@@ -149,44 +154,17 @@ fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
     let transition_constraint_strings = turn_circuits_into_string(transition_constraint_circuits);
     let terminal_constraint_strings = turn_circuits_into_string(terminal_constraint_circuits);
 
-    // maybe-prefixes to supress clippy's warnings for unused variables
-    let initial_challenges_used = if initial_constraint_strings.contains("challenges") {
-        ""
-    } else {
-        "_"
-    };
-    let consistency_challenges_used = if consistency_constraint_strings.contains("challenges") {
-        ""
-    } else {
-        "_"
-    };
-    let terminal_challenges_used = if terminal_constraint_strings.contains("challenges") {
-        ""
-    } else {
-        "_"
-    };
-    let consistency_constraints_exist = if consistency_constraints_degrees.is_empty() {
-        "_"
-    } else {
-        ""
-    };
-    let terminal_constraints_exist = if terminal_constraints_degrees.is_empty() {
-        "_"
-    } else {
-        ""
-    };
-
     format!(
         "
+use ndarray::ArrayView1;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::table::challenges::AllChallenges;
 use crate::table::challenges::TableChallenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
-use crate::table::table_collection::interpolant_degree;
 use crate::table::{table_name_snake}::{table_mod_name};
 use crate::table::{table_name_snake}::{challenge_enum_name}::*;
 
@@ -195,30 +173,34 @@ use crate::table::{table_name_snake}::{challenge_enum_name}::*;
 // `cargo run --bin constraint-evaluation-generator`
 impl Evaluable for {table_mod_name} {{
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_initial_constraints(
-        &self,
-        row: &[XFieldElement],
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
-        let {initial_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        let challenges = &challenges.{table_name_snake}_challenges;
         {initial_constraint_strings}
     }}
 
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_consistency_constraints(
-        &self,
-        {consistency_constraints_exist}row: &[XFieldElement],
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
-        let {consistency_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        let challenges = &challenges.{table_name_snake}_challenges;
         {consistency_constraint_strings}
     }}
 
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_transition_constraints(
-        &self,
-        current_row: &[XFieldElement],
-        next_row: &[XFieldElement],
+        current_base_row: ArrayView1<BFieldElement>,
+        current_ext_row: ArrayView1<XFieldElement>,
+        next_base_row: ArrayView1<BFieldElement>,
+        next_ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
         let challenges = &challenges.{table_name_snake}_challenges;
@@ -226,56 +208,65 @@ impl Evaluable for {table_mod_name} {{
     }}
 
     #[inline]
+    #[allow(unused_variables)]
     fn evaluate_terminal_constraints(
-        &self,
-        {terminal_constraints_exist}row: &[XFieldElement],
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
         challenges: &AllChallenges,
     ) -> Vec<XFieldElement> {{
-        let {terminal_challenges_used}challenges = &challenges.{table_name_snake}_challenges;
+        let challenges = &challenges.{table_name_snake}_challenges;
         {terminal_constraint_strings}
     }}
 }}
 
 impl Quotientable for {table_mod_name} {{
-    fn get_initial_quotient_degree_bounds(
-        &self,
-        padded_height: usize,
-        num_trace_randomizers: usize,
+    fn num_initial_quotients() -> usize {{
+        {num_initial_constraints}
+    }}
+
+    fn num_consistency_quotients() -> usize {{
+        {num_consistency_constraints}
+    }}
+
+    fn num_transition_quotients() -> usize {{
+        {num_transition_constraints}
+    }}
+
+    fn num_terminal_quotients() -> usize {{
+        {num_terminal_constraints}
+    }}
+
+    #[allow(unused_variables)]
+    fn initial_quotient_degree_bounds(
+        interpolant_degree: Degree,
     ) -> Vec<Degree> {{
         let zerofier_degree = 1 as Degree;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         [{initial_constraints_degrees}].to_vec()
     }}
 
-    fn get_consistency_quotient_degree_bounds(
-        &self,
+    #[allow(unused_variables)]
+    fn consistency_quotient_degree_bounds(
+        interpolant_degree: Degree,
         padded_height: usize,
-        num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
-        let {consistency_constraints_exist}zerofier_degree = padded_height as Degree;
-        let {consistency_constraints_exist}interpolant_degree =
-            interpolant_degree(padded_height, num_trace_randomizers);
+        let zerofier_degree = padded_height as Degree;
         [{consistency_constraints_degrees}].to_vec()
     }}
 
-    fn get_transition_quotient_degree_bounds(
-        &self,
+    #[allow(unused_variables)]
+    fn transition_quotient_degree_bounds(
+        interpolant_degree: Degree,
         padded_height: usize,
-        num_trace_randomizers: usize,
     ) -> Vec<Degree> {{
         let zerofier_degree = padded_height as Degree - 1;
-        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         [{transition_constraints_degrees}].to_vec()
     }}
 
-    fn get_terminal_quotient_degree_bounds(
-        &self,
-        padded_height: usize,
-        num_trace_randomizers: usize,
+    #[allow(unused_variables)]
+    fn terminal_quotient_degree_bounds(
+        interpolant_degree: Degree,
     ) -> Vec<Degree> {{
-        let {terminal_constraints_exist}zerofier_degree = 1 as Degree;
-        let {terminal_constraints_exist}interpolant_degree =
-            interpolant_degree(padded_height, num_trace_randomizers);
+        let zerofier_degree = 1 as Degree;
         [{terminal_constraints_degrees}].to_vec()
     }}
 }}
@@ -284,9 +275,9 @@ impl Quotientable for {table_mod_name} {{
 }
 
 fn turn_circuits_into_degree_bounds_string<T: TableChallenges, II: InputIndicator>(
-    transition_constraint_circuits: &[ConstraintCircuit<T, II>],
+    constraint_circuits: &[ConstraintCircuit<T, II>],
 ) -> String {
-    transition_constraint_circuits
+    constraint_circuits
         .iter()
         .map(|circuit| circuit.degree())
         .map(|degree| format!("interpolant_degree * {degree} as Degree - zerofier_degree"))
@@ -332,23 +323,34 @@ fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
 
     let shared_declarations = shared_evaluations.join("");
 
-    let mut constraint_evaluation_expressions: Vec<String> = vec![];
+    let mut base_constraint_evaluation_expressions: Vec<String> = vec![];
+    let mut ext_constraint_evaluation_expressions: Vec<String> = vec![];
     for constraint in constraint_circuits.iter() {
         // Build code for expressions that evaluate to the constraints
-        let mut constraint_evaluation = String::default();
-        let _dependent_symbols = evaluate_single_node(
-            1,
-            constraint,
-            &HashSet::default(),
-            &mut constraint_evaluation,
-        );
-
-        constraint_evaluation_expressions.push(constraint_evaluation);
+        let (constraint_evaluation, _dependent_symbols) =
+            evaluate_single_node(1, constraint, &HashSet::default());
+        match is_bfield_element(constraint) {
+            true => base_constraint_evaluation_expressions.push(constraint_evaluation),
+            false => ext_constraint_evaluation_expressions.push(constraint_evaluation),
+        }
     }
 
-    let constraint_evaluations_joined = constraint_evaluation_expressions.join(",\n");
+    let base_constraint_evaluations_joined = base_constraint_evaluation_expressions.join(",\n");
+    let ext_constraint_evaluations_joined = ext_constraint_evaluation_expressions.join(",\n");
 
-    format!("{shared_declarations}\n\nvec![{constraint_evaluations_joined}]")
+    format!(
+        "{shared_declarations}
+
+        let base_constraints = [{base_constraint_evaluations_joined}];
+        let ext_constraints = [{ext_constraint_evaluations_joined}];
+
+        base_constraints
+            .map(|v| BFieldElement::lift(&v))
+            .iter()
+            .chain(ext_constraints.iter())
+            .cloned()
+            .collect()"
+    )
 }
 
 /// Produce the code to evaluate code for all nodes that share a value number of
@@ -358,7 +360,7 @@ fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
     circuits: &[ConstraintCircuit<T, II>],
 ) -> String {
-    let mut in_scope: HashSet<CircuitId> = HashSet::new();
+    let mut in_scope: HashSet<usize> = HashSet::new();
     let mut output = String::default();
 
     for circuit in circuits.iter() {
@@ -376,7 +378,7 @@ fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
 fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<T, II>,
-    in_scope: &mut HashSet<CircuitId>,
+    in_scope: &mut HashSet<usize>,
     output: &mut String,
 ) {
     if circuit.visited_counter < requested_visited_count {
@@ -405,10 +407,10 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     // through the `points` input argument, and we do not declare constants.
     if circuit.visited_counter > requested_visited_count
         || in_scope.contains(&circuit.id)
-        || matches!(circuit.expression, CircuitExpression::BConstant(_))
-        || matches!(circuit.expression, CircuitExpression::XConstant(_))
-        || matches!(circuit.expression, CircuitExpression::Challenge(_))
-        || circuit.get_linear_one_index().is_some()
+        || !matches!(
+            circuit.expression,
+            CircuitExpression::BinaryOperation(_, _, _)
+        )
     {
         return;
     }
@@ -419,10 +421,11 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
     if circuit.visited_counter == requested_visited_count && !in_scope.contains(&circuit.id) {
         let binding_name = get_binding_name(circuit);
         output.push_str(&format!("let {binding_name} =\n"));
-        evaluate_single_node(requested_visited_count, circuit, in_scope, output);
+        let (to_output, _) = evaluate_single_node(requested_visited_count, circuit, in_scope);
+        output.push_str(&to_output);
         output.push_str(";\n");
 
-        let new_insertion = in_scope.insert(circuit.id.clone());
+        let new_insertion = in_scope.insert(circuit.id);
         // sanity check: don't declare same node multiple times
         assert!(new_insertion);
     }
@@ -444,56 +447,66 @@ fn get_binding_name<T: TableChallenges, II: InputIndicator>(
     }
 }
 
-/// Add to `output` the code for evaluating a single node.
-/// Return a list of symbols that this evaluation depends on.
+/// Recursively check whether a node is composed of only BFieldElements, i.e., only uses
+/// (1) inputs from base rows, (2) constants from the B-field, and (3) binary operations on
+/// BFieldElements.
+fn is_bfield_element<T: TableChallenges, II: InputIndicator>(
+    circuit: &ConstraintCircuit<T, II>,
+) -> bool {
+    match &circuit.expression {
+        CircuitExpression::XConstant(_) => false,
+        CircuitExpression::BConstant(_) => true,
+        CircuitExpression::Input(indicator) => indicator.is_base_table_row(),
+        CircuitExpression::Challenge(_) => false,
+        CircuitExpression::BinaryOperation(_, lhs, rhs) => {
+            is_bfield_element(&lhs.as_ref().borrow()) && is_bfield_element(&rhs.as_ref().borrow())
+        }
+    }
+}
+
+/// Return (1) the code for evaluating a single node and (2) a list of symbols that this evaluation
+/// depends on.
 fn evaluate_single_node<T: TableChallenges, II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<T, II>,
-    in_scope: &HashSet<CircuitId>,
-    output: &mut String,
-) -> Vec<String> {
+    in_scope: &HashSet<usize>,
+) -> (String, Vec<String>) {
+    let mut output = String::default();
     // If this node has already been declared, or visit counter is higher than requested,
     // than the node value *must* be in scope, meaning that we can just reference it.
     if circuit.visited_counter > requested_visited_count || in_scope.contains(&circuit.id) {
         let binding_name = get_binding_name(circuit);
         output.push_str(&binding_name);
         return match &circuit.expression {
-            CircuitExpression::BinaryOperation(_, _, _) => vec![binding_name],
-            _ => vec![],
+            CircuitExpression::BinaryOperation(_, _, _) => (output, vec![binding_name]),
+            _ => (output, vec![]),
         };
     }
 
-    // If variable is not already in scope, then we must generate the expression to
-    // evaluate it.
-    let mut ret = vec![];
+    // If variable is not already in scope, then we must generate the expression to evaluate it.
+    let mut dependent_symbols = vec![];
     match &circuit.expression {
         CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
             output.push('(');
-            let lhs_symbols = evaluate_single_node(
-                requested_visited_count,
-                &lhs.as_ref().borrow(),
-                in_scope,
-                output,
-            );
+            let (to_output, lhs_symbols) =
+                evaluate_single_node(requested_visited_count, &lhs.as_ref().borrow(), in_scope);
+            output.push_str(&to_output);
             output.push(')');
             output.push_str(&binop.to_string());
             output.push('(');
-            let rhs_symbols = evaluate_single_node(
-                requested_visited_count,
-                &rhs.as_ref().borrow(),
-                in_scope,
-                output,
-            );
+            let (to_output, rhs_symbols) =
+                evaluate_single_node(requested_visited_count, &rhs.as_ref().borrow(), in_scope);
+            output.push_str(&to_output);
             output.push(')');
 
             let ret_as_vec = vec![lhs_symbols, rhs_symbols].concat();
             let ret_as_hash_set: HashSet<String> = ret_as_vec.into_iter().collect();
-            ret = ret_as_hash_set.into_iter().collect_vec()
+            dependent_symbols = ret_as_hash_set.into_iter().collect_vec()
         }
         _ => output.push_str(&get_binding_name(circuit)),
     }
 
-    ret
+    (output, dependent_symbols)
 }
 
 fn print_bfe(bfe: &BFieldElement) -> String {
