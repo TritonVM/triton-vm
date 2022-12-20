@@ -877,7 +877,6 @@ pub(crate) mod triton_stark_tests {
     use itertools::izip;
     use ndarray::Array1;
     use num_traits::Zero;
-    use twenty_first::shared_math::other::log_2_floor;
 
     use crate::instruction::sample_programs;
     use crate::instruction::AnInstruction;
@@ -1720,13 +1719,16 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
-        let fri_dom_len_str = format!("log_2 of FRI domain length: {log_fri_dom_len}");
-        prof_start!(profiler, &fri_dom_len_str);
-        prof_stop!(profiler, &fri_dom_len_str);
         if let Some(mut p) = profiler {
             p.finish();
-            println!("{}", p.report());
+            println!(
+                "{}",
+                p.report(
+                    None,
+                    Some(stark.claim.padded_height),
+                    Some(stark.fri.domain.length)
+                )
+            );
         }
     }
 
@@ -1799,13 +1801,16 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
-        let fri_dom_len_str = format!("log_2 of FRI domain length: {log_fri_dom_len}");
-        prof_start!(profiler, &fri_dom_len_str);
-        prof_stop!(profiler, &fri_dom_len_str);
         if let Some(mut p) = profiler {
             p.finish();
-            println!("{}", p.report());
+            println!(
+                "{}",
+                p.report(
+                    None,
+                    Some(stark.claim.padded_height),
+                    Some(stark.fri.domain.length),
+                )
+            );
         }
     }
 
@@ -1841,14 +1846,14 @@ pub(crate) mod triton_stark_tests {
                 "element #{fibonacci_number:>4} from Fibonacci sequence"
             )));
             let stdin = vec![BFieldElement::new(fibonacci_number)];
-            let (_, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
+            let (stark, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
             if let Some(mut p) = profiler {
-                // todo: report on
-                //    Some(stark.claim.padded_height),
-                //    Some(stark.fri.domain.length),
-                //  once next profiler version is available
                 p.finish();
-                let report = p.report();
+                let report = p.report(
+                    None,
+                    Some(stark.claim.padded_height),
+                    Some(stark.fri.domain.length),
+                );
                 println!("{}", report);
             }
         }

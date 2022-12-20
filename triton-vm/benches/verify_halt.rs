@@ -32,6 +32,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let instructions = program.to_bwords();
     let stark_parameters = StarkParameters::default();
     let filename = "halt.tsp";
+    let mut maybe_cycle_count = None;
     let (proof, stark) = if proof_file_exists(filename) {
         let proof = match load_proof(filename) {
             Ok(p) => p,
@@ -51,6 +52,7 @@ fn verify_halt(criterion: &mut Criterion) {
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
+        maybe_cycle_count = Some(aet.processor_matrix.nrows());
         let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
         let claim = Claim {
             input: vec![],
@@ -82,7 +84,11 @@ fn verify_halt(criterion: &mut Criterion) {
 
             if let Some(profiler) = maybe_profiler.as_mut() {
                 profiler.finish();
-                report = profiler.report();
+                report = profiler.report(
+                    maybe_cycle_count,
+                    Some(stark.claim.padded_height),
+                    Some(stark.fri.domain.length),
+                );
             }
             maybe_profiler = None;
         });

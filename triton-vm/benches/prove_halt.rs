@@ -29,6 +29,7 @@ fn prove_halt(_criterion: &mut Criterion) {
     }
 
     let code = program.to_bwords();
+    let cycle_count = aet.processor_matrix.nrows();
     let padded_height = MasterBaseTable::padded_height(&aet, &code);
     let claim = Claim {
         input: vec![],
@@ -42,7 +43,11 @@ fn prove_halt(_criterion: &mut Criterion) {
 
     if let Some(profiler) = &mut maybe_profiler {
         profiler.finish();
-        report = profiler.report();
+        report = profiler.report(
+            Some(cycle_count),
+            Some(stark.claim.padded_height),
+            Some(stark.fri.domain.length),
+        );
     };
 
     // save proof
