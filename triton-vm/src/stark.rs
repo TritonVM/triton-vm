@@ -110,10 +110,10 @@ impl fmt::Display for StarkValidationError {
 }
 
 pub struct Stark {
-    parameters: StarkParameters,
-    claim: Claim,
-    max_degree: Degree,
-    fri: Fri<StarkHasher>,
+    pub parameters: StarkParameters,
+    pub claim: Claim,
+    pub max_degree: Degree,
+    pub fri: Fri<StarkHasher>,
 }
 
 impl Stark {
@@ -1795,12 +1795,13 @@ pub(crate) mod triton_stark_tests {
             )));
             let stdin = vec![BFieldElement::new(fibonacci_number)];
             let (stark, proof) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
-            let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
-            let fri_dom_len_str = format!("log_2 of FRI domain length: {}", log_fri_dom_len);
-            prof_start!(profiler, &fri_dom_len_str);
-            prof_stop!(profiler, &fri_dom_len_str);
             if let Some(mut p) = profiler {
-                let report = p.finish_and_report(None, Some(proof.padded_height()));
+                p.finish();
+                let report = p.report(
+                    None,
+                    Some(proof.padded_height()),
+                    Some(stark.fri.domain.length),
+                );
                 println!("{}", report);
             }
         }

@@ -902,8 +902,9 @@ pub mod triton_vm_tests {
             profiler.stop(&program_idx_string);
         }
 
-        // There is not a distinct cycle count; this profiler accumulates over many program executions.
-        let report = profiler.finish_and_report(None, None);
+        // There is no distinct cycle count: this profiler iterates over different programs.
+        profiler.finish();
+        let report = profiler.report(None, None, None);
         println!("{}", report);
     }
 

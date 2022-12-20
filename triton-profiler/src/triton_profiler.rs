@@ -1,12 +1,14 @@
-use std::{
-    cmp::max,
-    fmt::Display,
-    time::{Duration, Instant},
-    vec,
-};
+use std::cmp::max;
+use std::fmt::Display;
+use std::time::Duration;
+use std::time::Instant;
+use std::vec;
 
-use colored::{Color, ColoredString, Colorize};
+use colored::Color;
+use colored::ColoredString;
+use colored::Colorize;
 use criterion::profiler::Profiler;
+use twenty_first::shared_math::other::log_2_floor;
 use unicode_width::UnicodeWidthStr;
 
 const GET_PROFILE_OUTPUT_AS_YOU_GO_ENV_VAR_NAME: &str = "PROFILE_AS_YOU_GO";
@@ -68,23 +70,30 @@ impl TritonProfiler {
         }
         false
     }
+    pub fn finish(&mut self) {
+        assert!(!self.profile.is_empty(), "Nothing to finish.");
+        assert!(
+            self.stack.is_empty(),
+            "Cannot finish before stack is empty."
+        );
+        self.total_time = self.timer.elapsed();
+    }
 
-    pub fn finish_and_report(
+    pub fn report(
         &mut self,
         cycle_count: Option<usize>,
         padded_height: Option<usize>,
+        fri_domain_len: Option<usize>,
     ) -> Report {
         assert!(!self.profile.is_empty(), "Nothing to report on.");
         assert!(
             self.stack.is_empty(),
             "Cannot generate report before stack is empty."
         );
-
-        self.total_time = self.timer.elapsed();
         assert_ne!(
-            self.total_time,
             Duration::ZERO,
-            "Cannot generate report before profiler has finished. Call `finish()` first."
+            self.total_time,
+            "Cannot generate report before profiler has finished. Call `.finish()` first."
         );
 
         let mut report: Vec<TaskReport> = vec![];
@@ -160,6 +169,7 @@ impl TritonProfiler {
             total_time: self.total_time,
             cycle_count,
             padded_height,
+            fri_domain_len,
         }
     }
 
@@ -349,6 +359,7 @@ pub struct Report {
     total_time: Duration,
     cycle_count: Option<usize>,
     padded_height: Option<usize>,
+    fri_domain_len: Option<usize>,
 }
 
 impl Report {
@@ -359,6 +370,7 @@ impl Report {
             total_time: Duration::ZERO,
             cycle_count: None,
             padded_height: None,
+            fri_domain_len: None,
         }
     }
 
@@ -447,15 +459,19 @@ impl Display for Report {
             ))?;
         }
 
+        if self.cycle_count.is_some()
+            || self.padded_height.is_some()
+            || self.fri_domain_len.is_some()
+        {
+            writeln!(f)?;
+        }
         if let Some(cycle_count) = self.cycle_count {
             let total_time = self.total_time.as_millis() as usize;
             if total_time != 0 {
                 let freq = 1_000 * cycle_count / total_time;
-                writeln!(f)?;
                 writeln!(
                     f,
-                    "Clock frequency is {} Hz ({} clock cycles / {} ms)",
-                    freq, cycle_count, total_time
+                    "Clock frequency is {freq} Hz ({cycle_count} clock cycles / {total_time} ms)",
                 )?;
             }
         }
@@ -464,12 +480,18 @@ impl Display for Report {
             let total_time = self.total_time.as_millis() as usize;
             if total_time != 0 {
                 let optimal_freq = 1_000 * padded_height / total_time;
-                writeln!(f)?;
                 writeln!(
                     f,
-                    "Optimal clock frequency is {} Hz ({} padded height / {} ms)",
-                    optimal_freq, padded_height, total_time
+                    "Optimal clock frequency is {optimal_freq} Hz \
+                    ({padded_height} padded height / {total_time} ms)",
                 )?;
+            }
+        }
+
+        if let Some(fri_domain_length) = self.fri_domain_len {
+            if fri_domain_length != 0 {
+                let log_2_fri_domain_length = log_2_floor(fri_domain_length as u128);
+                writeln!(f, "FRI domain length is 2^{log_2_fri_domain_length}")?;
             }
         }
 
@@ -506,10 +528,13 @@ macro_rules! prof_itr0 {
 
 #[cfg(test)]
 pub mod triton_profiler_tests {
-    use super::*;
-    use std::{thread::sleep, time::Duration};
+    use std::thread::sleep;
+    use std::time::Duration;
 
-    use rand::{rngs::ThreadRng, RngCore};
+    use rand::rngs::ThreadRng;
+    use rand::RngCore;
+
+    use super::*;
 
     fn random_task_name(rng: &mut ThreadRng) -> String {
         let alphabet = "abcdefghijklmnopqrstuvwxyz_";
@@ -560,7 +585,9 @@ pub mod triton_profiler_tests {
             }
         }
 
-        let report = profiler.finish_and_report(None, None);
-        println!("{}", report);
+        profiler.finish();
+        println!("{}", profiler.report(None, None, None));
+        println!("{}", profiler.report(Some(0), Some(0), Some(0)));
+        println!("{}", profiler.report(Some(5), Some(8), Some(13)));
     }
 }

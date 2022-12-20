@@ -1,11 +1,13 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use triton_profiler::triton_profiler::{Report, TritonProfiler};
-use triton_vm::{
-    proof::Claim,
-    shared_tests::save_proof,
-    stark::{Stark, StarkParameters},
-    vm::Program,
-};
+use criterion::criterion_group;
+use criterion::criterion_main;
+use criterion::Criterion;
+use triton_profiler::triton_profiler::Report;
+use triton_profiler::triton_profiler::TritonProfiler;
+use triton_vm::proof::Claim;
+use triton_vm::shared_tests::save_proof;
+use triton_vm::stark::Stark;
+use triton_vm::stark::StarkParameters;
+use triton_vm::vm::Program;
 
 /// cargo criterion --bench prove_halt
 fn prove_halt(_criterion: &mut Criterion) {
@@ -32,13 +34,16 @@ fn prove_halt(_criterion: &mut Criterion) {
         panic!("The VM encountered the following problem: {}", error);
     }
 
-    let clock_cycle = aet.processor_matrix.len();
-
+    let cycle_count = aet.processor_matrix.len();
     let proof = stark.prove(aet, &mut maybe_profiler);
 
     if let Some(profiler) = &mut maybe_profiler {
-        // FIXME: Insert cycle count and padded height separately.
-        report = profiler.finish_and_report(Some(clock_cycle), Some(proof.padded_height()));
+        profiler.finish();
+        report = profiler.report(
+            Some(cycle_count),
+            Some(stark.claim.padded_height),
+            Some(stark.fri.domain.length),
+        );
     };
 
     // save proof

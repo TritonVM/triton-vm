@@ -153,7 +153,7 @@ impl<'pgm> VMState<'pgm> {
             DivineSibling => {
                 let node_index = self.op_stack.safe_peek(ST10).value();
                 // set hv0 register to least significant bit of st10
-                hvs[0] = BFieldElement::new(node_index as u64 % 2);
+                hvs[0] = BFieldElement::new(node_index % 2);
             }
             Split => {
                 let elem = self.op_stack.safe_peek(ST0);
