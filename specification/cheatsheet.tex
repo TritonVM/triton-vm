@@ -69,7 +69,6 @@
 
 \begin{document}
 \pagestyle{empty}
-\begin{minipage}{0.3\textwidth}
 \begin{tabular}{rlll}
     \texttt{02} & $\ssominus$   & \texttt{pop}                                       &                \\
     \texttt{01} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{push + a}}       &                \\
@@ -101,28 +100,6 @@
     \texttt{64} & $\oplus$      & \texttt{read\_io}                                  &                \\
     \texttt{30} & $\ssominus$   & \texttt{write\_io}                                 &
 \end{tabular}
-\end{minipage}\hfill%
-\begin{minipage}[][0.84\textheight][s]{0.6\textwidth}
-    \rowcolors{3}{row1}{row2}
-    \hfill
-    \includegraphics[keepaspectratio,width=0.9\textwidth]{src/img/aet-relations.pdf}
-    \vfill
-
-    \hfill
-    \rowcolors{2}{row2}{row1}
-    \begin{tabular}{lrrr}
-        \toprule
-                    & base & ext & $\sum$ \\ \midrule
-        Program     &    3 &   1 &      4 \\
-        Instruction &    4 &   2 &      6 \\
-        Processor   &   43 &  11 &     54 \\
-        OpStack     &    5 &   2 &      7 \\
-        RAM         &    8 &   6 &     14 \\
-        JumpStack   &    6 &   2 &      8 \\
-        Hash        &   49 &   2 &     51 \\ \bottomrule\bottomrule
-        $\sum$      &  118 &  26 &    144
-    \end{tabular}
-\end{minipage}
 
 \newpage
 \hspace*{-4em}%
@@ -140,6 +117,9 @@
     Hash        & \multicolumn{4}{l}{RoundNumber}                             &             &                   &              &                     &              &              &              &              & \texttt{ST0} & \dots & \texttt{ST15} & \multicolumn{3}{r}{\texttt{CONSTANT0A}}    & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          \\ \bottomrule
 \end{tabular}
 } %end scalebox
+\begin{tikzpicture}[remember picture, overlay]
+    \node[anchor=south west,inner sep=0] at (5,-11.9) {\includegraphics[keepaspectratio,width=0.4\textwidth]{src/img/aet-relations.pdf}};
+\end{tikzpicture}
 \vfill%
 \begin{minipage}[t][0.6\textheight][s]{0.3\textwidth}
     \vfill
@@ -158,10 +138,26 @@
           195 & \texttt{reverse}       \\
           164 & \texttt{div}           \\ \bottomrule
     \end{tabular}
+
+    \vfill
+    \rowcolors{2}{row2}{row1}
+    \begin{tabular}{lrrr}
+        \toprule
+                    & base & ext & $\sum$ \\ \midrule
+        Program     &    3 &   1 &      4 \\
+        Instruction &    4 &   2 &      6 \\
+        Processor   &   43 &  11 &     54 \\
+        OpStack     &    5 &   2 &      7 \\
+        RAM         &    8 &   6 &     14 \\
+        JumpStack   &    6 &   2 &      8 \\
+        Hash        &   49 &   2 &     51 \\ \bottomrule\bottomrule
+        $\sum$      &  118 &  26 &    144
+    \end{tabular}
 \end{minipage}%
 \hfill%
 \begin{minipage}[t][0.613\textheight][b]{0.5\textwidth}
     \vfill
+    \vspace*{9em}
     \hfill
     \rowcolors{3}{row1}{row2}
     \begin{tabular}{lrr}
