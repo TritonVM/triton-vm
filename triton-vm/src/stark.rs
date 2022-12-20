@@ -1840,14 +1840,15 @@ pub(crate) mod triton_stark_tests {
                 "element #{fibonacci_number:>4} from Fibonacci sequence"
             )));
             let stdin = vec![BFieldElement::new(fibonacci_number)];
-            let (stark, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
-            let log_fri_dom_len = log_2_floor(stark.fri.domain.length as u128);
-            let fri_dom_len_str = format!("log_2 of FRI domain length: {log_fri_dom_len}");
-            prof_start!(profiler, &fri_dom_len_str);
-            prof_stop!(profiler, &fri_dom_len_str);
+            let (_, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
             if let Some(mut p) = profiler {
+                // todo: report on
+                //    Some(stark.claim.padded_height),
+                //    Some(stark.fri.domain.length),
+                //  once next profiler version is available
                 p.finish();
-                println!("{}", p.report())
+                let report = p.report();
+                println!("{}", report);
             }
         }
     }

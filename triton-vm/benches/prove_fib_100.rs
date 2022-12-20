@@ -2,11 +2,11 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
-
 use triton_vm::instruction::sample_programs;
 use triton_vm::proof::Claim;
 use triton_vm::stark::Stark;
@@ -43,18 +43,23 @@ fn prove_fib_100(criterion: &mut Criterion) {
         padded_height,
     };
     let stark = Stark::new(claim, Default::default());
+    //start the profiler
+    prof_start!(maybe_profiler, "prove");
+    let proof = stark.prove(aet.clone(), &mut maybe_profiler);
+    prof_stop!(maybe_profiler, "prove");
 
+    if let Some(profiler) = maybe_profiler.as_mut() {
+        profiler.finish();
+        report = profiler.report(
+            Some(aet.processor_matrix.len()),
+            Some(proof.padded_height()),
+            Some(stark.fri.domain.length),
+        );
+    }
+    //start the benchmarking
     group.bench_function(fib_100, |bencher| {
         bencher.iter(|| {
-            prof_start!(maybe_profiler, "prove");
-            let _proof = stark.prove(aet.clone(), &mut maybe_profiler);
-            prof_stop!(maybe_profiler, "prove");
-
-            if let Some(profiler) = maybe_profiler.as_mut() {
-                profiler.finish();
-                report = profiler.report();
-            }
-            maybe_profiler = None;
+            let _proof = stark.prove(aet.clone(), &mut None);
         });
     });
 

@@ -37,7 +37,7 @@ fn verify_halt(criterion: &mut Criterion) {
             Ok(p) => p,
             Err(e) => panic!("Could not load proof from disk: {:?}", e),
         };
-        let padded_height = proof.0[1].value() as usize; // todo: `.padded_height()` once available
+        let padded_height = proof.padded_height();
         let claim = Claim {
             input: vec![],
             program: instructions,
@@ -59,8 +59,8 @@ fn verify_halt(criterion: &mut Criterion) {
             padded_height,
         };
         let stark = Stark::new(claim, stark_parameters);
+        maybe_cycle_count = Some(aet.processor_matrix.len());
         let proof = stark.prove(aet, &mut None);
-
         if let Err(e) = save_proof(filename, proof.clone()) {
             panic!("Problem! could not save proof to disk: {:?}", e);
         }
@@ -83,7 +83,11 @@ fn verify_halt(criterion: &mut Criterion) {
 
             if let Some(profiler) = maybe_profiler.as_mut() {
                 profiler.finish();
-                report = profiler.report();
+                report = profiler.report(
+                    maybe_cycle_count,
+                    Some(stark.claim.padded_height),
+                    Some(stark.fri.domain.length),
+                );
             }
             maybe_profiler = None;
         });

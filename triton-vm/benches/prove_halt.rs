@@ -1,9 +1,9 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
+
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
-
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
@@ -38,12 +38,16 @@ fn prove_halt(_criterion: &mut Criterion) {
     };
     let parameters = StarkParameters::default();
     let stark = Stark::new(claim, parameters);
-
+    let cycle_count = aet.processor_matrix.len();
     let proof = stark.prove(aet, &mut maybe_profiler);
 
     if let Some(profiler) = &mut maybe_profiler {
         profiler.finish();
-        report = profiler.report();
+        report = profiler.report(
+            Some(cycle_count),
+            Some(stark.claim.padded_height),
+            Some(stark.fri.domain.length),
+        );
     };
 
     // save proof

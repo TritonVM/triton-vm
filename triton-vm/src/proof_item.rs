@@ -118,8 +118,7 @@ pub enum ProofItem {
 impl MayBeUncast for ProofItem {
     fn uncast(&self) -> Vec<BFieldElement> {
         if let Self::Uncast(vector) = self {
-            let mut str = vec![];
-            str.push(BFieldElement::new(vector.len().try_into().unwrap()));
+            let mut str = vec![BFieldElement::new(vector.len().try_into().unwrap())];
             str.append(&mut vector.clone());
             str
         } else {
