@@ -9,6 +9,7 @@
 \usepackage{tabularx}
 \usepackage{nicefrac}
 \usepackage{pdflscape}
+\usepackage{fontawesome}
 
 \usetikzlibrary{tikzmark}
 
@@ -42,26 +43,8 @@
 \colorlet{instr-jsp}{blue!90!green!20}
 \colorlet{instr-mem}{red!90!blue!20}
 \colorlet{instr-shrink-stack}{yellow!50}
-\colorlet{hint}{gray}
 \colorlet{row1}{white}
 \colorlet{row2}{gray!8}
-
-% declared as commands purely for reasons of latex source code formatting
-\newcommand{\hintdivinesib}{
-    \textcolor{hint}{\texttt{st12 \% 2 = 0 $\Rightarrow$ left node}}
-}
-\newcommand{\hintsplit}{
-    \textcolor{hint}{\texttt{hi $\rightarrow$ st0'}}
-}
-\newcommand{\hintlt}{
-    \textcolor{hint}{\texttt{st0} $\stackrel{\texttt{?}}{\texttt{<}}$ \texttt{st1}}
-}
-\newcommand{\hintdiv}{
-    \textcolor{hint}{\nicefrac{\texttt{st0}}{\texttt{st1}}}
-}
-\newcommand{\hintxbmul}{
-    \textcolor{hint}{\texttt{st0 $\cdot$ (st1, st2, st3)}}
-}
 
 \newcommand{\ssominus}{
     \shrinkstack{\ensuremath{\ominus}}
@@ -69,36 +52,36 @@
 
 \begin{document}
 \pagestyle{empty}
-\begin{tabular}{rlll}
-    \texttt{02} & $\ssominus$   & \texttt{pop}                                       &                \\
-    \texttt{01} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{push + a}}       &                \\
-    \texttt{04} & $\oplus$      & \texttt{divine}                                    &                \\
-    \texttt{05} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{dup + i}}        &                \\
-    \texttt{09} & $\ovoid^{16}$ & \tcbox[colback=instr-arg]{\texttt{swap + i}}       &                \\
-    \texttt{08} & $\ovoid$      & \texttt{nop}                                       &                \\
-    \texttt{06} & $\ssominus$   & \tcbox[colback=instr-jsp]{\texttt{skiz}}           &                \\
-    \texttt{13} & $\ovoid$      & \splitbox{instr-jsp}{instr-arg}{\texttt{call + d}} &                \\
-    \texttt{12} & $\ovoid$      & \tcbox[colback=instr-jsp]{\texttt{return}}         &                \\
-    \texttt{16} & $\ovoid$      & \tcbox[colback=instr-jsp]{\texttt{recurse}}        &                \\
-    \texttt{10} & $\ssominus$   & \texttt{assert}                                    &                \\
-    \texttt{00} & $\ovoid$      & \texttt{halt}                                      &                \\
-    \texttt{20} & $\ovoid^1$    & \tcbox[colback=instr-mem]{\texttt{read\_mem}}      &                \\
-    \texttt{24} & $\ovoid$      & \tcbox[colback=instr-mem]{\texttt{write\_mem}}     &                \\
-    \texttt{28} & $\ovoid^{10}$ & \texttt{hash}                                      &                \\
-    \texttt{32} & $\ovoid^{11}$ & \texttt{divine\_sibling}                           & \hintdivinesib \\
-    \texttt{36} & $\ovoid$      & \texttt{assert\_vector}                            &                \\
-    \texttt{14} & $\ssominus^1$ & \texttt{add}                                       &                \\
-    \texttt{18} & $\ssominus^1$ & \texttt{mul}                                       &                \\
-    \texttt{40} & $\ovoid^1$    & \texttt{invert}                                    &                \\
-    \texttt{44} & $\oplus^2$    & \texttt{split}                                     & \hintsplit     \\
-    \texttt{22} & $\ssominus^1$ & \texttt{eq}                                        &                \\
-    \texttt{48} & $\oplus^2$    & \texttt{lsb}                                       &                \\
-    \texttt{52} & $\ovoid^3$    & \texttt{xxadd}                                     &                \\
-    \texttt{56} & $\ovoid^3$    & \texttt{xxmul}                                     &                \\
-    \texttt{60} & $\ovoid^3$    & \texttt{xinvert}                                   &                \\
-    \texttt{26} & $\ssominus^3$ & \texttt{xbmul}                                     & \hintxbmul     \\
-    \texttt{64} & $\oplus$      & \texttt{read\_io}                                  &                \\
-    \texttt{30} & $\ssominus$   & \texttt{write\_io}                                 &
+\begin{tabular}{rllll}
+    \texttt{02} & $\ssominus$   & \texttt{pop}                                       & \texttt{\_ st$_0$}                                                        & \texttt{\_}                                                                \\
+    \texttt{01} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{push + a}}       & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
+    \texttt{04} & $\oplus$      & \texttt{divine}                                    & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
+    \texttt{05} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{dup + i}}        & \texttt{\_ st$_{15}$ $\dots$ st$_0$}                                      & \texttt{\_ st$_{15}$ $\dots$ st$_0$ st$_i$}                                \\
+    \texttt{09} & $\ovoid^{16}$ & \tcbox[colback=instr-arg]{\texttt{swap + i}}       & \texttt{\_ $\dots$ st$_i$ $\dots$ st$_0$}                                 & \texttt{\_ $\dots$ st$_0$ $\dots$ st$_i$}                                  \\
+    \texttt{08} & $\ovoid$      & \texttt{nop}                                       & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{06} & $\ssominus$   & \tcbox[colback=instr-jsp]{\texttt{skiz}}           & \texttt{\_ st$_0$}                                                        & \texttt{\_}                                                                \\
+    \texttt{13} & $\ovoid$      & \splitbox{instr-jsp}{instr-arg}{\texttt{call + d}} & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{12} & $\ovoid$      & \tcbox[colback=instr-jsp]{\texttt{return}}         & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{16} & $\ovoid$      & \tcbox[colback=instr-jsp]{\texttt{recurse}}        & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{10} & $\ssominus$   & \texttt{assert}                                    & \texttt{\_ st$_0$}                                                        & \texttt{\_}                                                                \\
+    \texttt{00} & $\ovoid$      & \texttt{halt}                                      & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{20} & $\ovoid^1$    & \tcbox[colback=instr-mem]{\texttt{read\_mem}}      & \texttt{\_ addr st$_0$}                                                   & \texttt{\_ addr val}                                                       \\
+    \texttt{24} & $\ovoid$      & \tcbox[colback=instr-mem]{\texttt{write\_mem}}     & \texttt{\_ addr val}                                                      & \texttt{\_ addr val}                                                       \\
+    \texttt{28} & $\ovoid^{10}$ & \texttt{hash}                                      & \texttt{\_ st$_9$ $\!\!\dots\!\!$ st$_0$}                                 & \texttt{\_ d$_4$ $\!\!\dots\!\!$ d$_0$ 0 $\!\!\dots\!\!$ 0}                \\
+    \texttt{32} & $\ovoid^{11}$ & \texttt{divine\_sibling}                           & \texttt{\_ idx st$_9$ $\!\!\dots\!\!$ st$_5$ d$_4$ $\!\!\dots\!\!$ d$_0$} & \texttt{\_ idx>>1 r$_4$ $\!\!\dots\!\!$ r$_0$ l$_4$ $\!\!\dots\!\!$ l$_0$} \\
+    \texttt{36} & $\ovoid$      & \texttt{assert\_vector}                            & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{14} & $\ssominus^1$ & \texttt{add}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ sum}                                                            \\
+    \texttt{18} & $\ssominus^1$ & \texttt{mul}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ prod}                                                           \\
+    \texttt{40} & $\ovoid^1$    & \texttt{invert}                                    & \texttt{\_ st$_0$}                                                        & \texttt{\_ st$_0^{-1}$}                                                    \\
+    \texttt{44} & $\oplus^2$    & \texttt{split}                                     & \texttt{\_ st$_0$}                                                        & \texttt{\_ lo hi} \quad\faWarning                                          \\
+    \texttt{22} & $\ssominus^1$ & \texttt{eq}                                        & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ res}                                                            \\
+    \texttt{48} & $\oplus^2$    & \texttt{lsb}                                       & \texttt{\_ st$_0$}                                                        & \texttt{\_ st$_0$>>1 st$_0$\%2} \quad\faWarning                            \\
+    \texttt{52} & $\ovoid^3$    & \texttt{xxadd}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
+    \texttt{56} & $\ovoid^3$    & \texttt{xxmul}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
+    \texttt{60} & $\ovoid^3$    & \texttt{xinvert}                                   & \texttt{\_ x$_2$ x$_1$ x$_0$}                                             & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
+    \texttt{26} & $\ssominus^3$ & \texttt{xbmul}                                     & \texttt{\_ x$_2$ x$_1$ x$_0$ b}                                           & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
+    \texttt{64} & $\oplus$      & \texttt{read\_io}                                  & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
+    \texttt{30} & $\ssominus$   & \texttt{write\_io}                                 & \texttt{\_ st$_0$}                                                        & \texttt{\_}
 \end{tabular}
 
 \newpage
