@@ -38,16 +38,11 @@ fn prove_halt(_criterion: &mut Criterion) {
     };
     let parameters = StarkParameters::default();
     let stark = Stark::new(claim, parameters);
-    let cycle_count = aet.processor_matrix.len();
     let proof = stark.prove(aet, &mut maybe_profiler);
 
     if let Some(profiler) = &mut maybe_profiler {
         profiler.finish();
-        report = profiler.report(
-            Some(cycle_count),
-            Some(stark.claim.padded_height),
-            Some(stark.fri.domain.length),
-        );
+        report = profiler.report();
     };
 
     // save proof

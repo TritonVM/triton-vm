@@ -59,7 +59,6 @@ fn verify_halt(criterion: &mut Criterion) {
             padded_height,
         };
         let stark = Stark::new(claim, stark_parameters);
-        maybe_cycle_count = Some(aet.processor_matrix.len());
         let proof = stark.prove(aet, &mut None);
         if let Err(e) = save_proof(filename, proof.clone()) {
             panic!("Problem! could not save proof to disk: {:?}", e);
@@ -83,11 +82,7 @@ fn verify_halt(criterion: &mut Criterion) {
 
             if let Some(profiler) = maybe_profiler.as_mut() {
                 profiler.finish();
-                report = profiler.report(
-                    maybe_cycle_count,
-                    Some(stark.claim.padded_height),
-                    Some(stark.fri.domain.length),
-                );
+                report = profiler.report();
             }
             maybe_profiler = None;
         });

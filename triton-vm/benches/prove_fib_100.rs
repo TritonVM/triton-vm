@@ -45,16 +45,12 @@ fn prove_fib_100(criterion: &mut Criterion) {
     let stark = Stark::new(claim, Default::default());
     //start the profiler
     prof_start!(maybe_profiler, "prove");
-    let proof = stark.prove(aet.clone(), &mut maybe_profiler);
+    let _proof = stark.prove(aet.clone(), &mut maybe_profiler);
     prof_stop!(maybe_profiler, "prove");
 
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.finish();
-        report = profiler.report(
-            Some(aet.processor_matrix.len()),
-            Some(proof.padded_height()),
-            Some(stark.fri.domain.length),
-        );
+        report = profiler.report();
     }
     //start the benchmarking
     group.bench_function(fib_100, |bencher| {
