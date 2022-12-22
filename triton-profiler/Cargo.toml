@@ -15,7 +15,7 @@ keywords = ["triton-vm", "stark", "profiler"]
 categories = ["cryptography", "mathematics"]
 
 [dependencies]
-twenty-first = { version = "0.9.0" }
+twenty-first = "0.10"
 anyhow = "1.0"
 bincode = "1.3"
 blake3 = "1.2"

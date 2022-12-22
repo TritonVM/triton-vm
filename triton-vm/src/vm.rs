@@ -3,6 +3,7 @@ use ndarray::Axis;
 
 use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
@@ -147,14 +148,13 @@ impl AlgebraicExecutionTrace {
         round_number: usize,
     ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
         match round_number {
-            i if i == 0 || i == NUM_ROUNDS + 1 => [0_u64; NUM_ROUND_CONSTANTS],
+            i if i == 0 || i == NUM_ROUNDS + 1 => [BFIELD_ZERO; NUM_ROUND_CONSTANTS],
             i if i <= NUM_ROUNDS => ROUND_CONSTANTS
                 [NUM_ROUND_CONSTANTS * (i - 1)..NUM_ROUND_CONSTANTS * i]
                 .try_into()
                 .unwrap(),
             _ => panic!("Round with number {round_number} does not have round constants."),
         }
-        .map(BFieldElement::new)
     }
 }
 

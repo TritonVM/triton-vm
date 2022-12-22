@@ -168,9 +168,9 @@ impl ExtHashTable {
                 .map(|i| {
                     let round_constant_idx =
                         NUM_ROUND_CONSTANTS * (i - 1) + round_constant_col_index;
-                    let round_constant_needed = constant(ROUND_CONSTANTS[round_constant_idx]);
                     round_number_deselector(i)
-                        * (round_constant_input.clone() - round_constant_needed)
+                        * (round_constant_input.clone()
+                            - circuit_builder.b_constant(ROUND_CONSTANTS[round_constant_idx]))
                 })
                 .sum();
             consistency_constraint_circuits.push(round_constant_constraint_circuit);
@@ -303,7 +303,9 @@ impl ExtHashTable {
         let after_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
+                    .map(|j| {
+                        circuit_builder.b_constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone()
+                    })
                     .sum::<ConstraintCircuitMonad<_, _>>()
             })
             .collect_vec();
@@ -324,7 +326,10 @@ impl ExtHashTable {
         let before_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
+                    .map(|j| {
+                        circuit_builder.b_constant(MDS_INV[i * STATE_SIZE + j])
+                            * before_constants[j].clone()
+                    })
                     .sum::<ConstraintCircuitMonad<_, _>>()
             })
             .collect_vec();
