@@ -1,19 +1,12 @@
-use std::fmt::Display;
-use std::io::Cursor;
-
-use anyhow::Result;
-use itertools::Itertools;
 use ndarray::Array2;
 use ndarray::Axis;
+
+use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 
-use crate::instruction;
-use crate::instruction::parse;
-use crate::instruction::Instruction;
-use crate::instruction::LabelledInstruction;
 use crate::state::VMOutput;
 use crate::state::VMState;
 use crate::table::hash_table;
@@ -23,6 +16,93 @@ use crate::table::table_column::BaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::CONSTANT0A;
 use crate::table::table_column::HashBaseTableColumn::ROUNDNUMBER;
 use crate::table::table_column::HashBaseTableColumn::STATE0;
+
+/// Simulate (execute) a `Program` and record every state transition. Returns an
+/// `AlgebraicExecutionTrace` recording every intermediate state of the processor and all co-
+/// processors.
+///
+/// On premature termination of the VM, returns the `AlgebraicExecutionTrace` for the execution
+/// up to the point of failure.
+pub fn simulate(
+    program: &Program,
+    mut stdin: Vec<BFieldElement>,
+    mut secret_in: Vec<BFieldElement>,
+) -> (
+    AlgebraicExecutionTrace,
+    Vec<BFieldElement>,
+    Option<anyhow::Error>,
+) {
+    let mut aet = AlgebraicExecutionTrace::default();
+    let mut state = VMState::new(program);
+    // record initial state
+    aet.processor_matrix
+        .push_row(state.to_processor_row().view())
+        .expect("shapes must be identical");
+
+    let mut stdout = vec![];
+    while !state.is_complete() {
+        let vm_output = match state.step_mut(&mut stdin, &mut secret_in) {
+            Err(err) => return (aet, stdout, Some(err)),
+            Ok(vm_output) => vm_output,
+        };
+
+        match vm_output {
+            Some(VMOutput::XlixTrace(hash_trace)) => aet.append_hash_trace(*hash_trace),
+            Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
+            None => (),
+        }
+        // Record next, to be executed state.
+        aet.processor_matrix
+            .push_row(state.to_processor_row().view())
+            .expect("shapes must be identical");
+    }
+
+    (aet, stdout, None)
+}
+
+/// Wrapper around `.simulate_with_input()` and thus also around
+/// `.simulate()` for convenience when neither explicit nor non-
+/// deterministic input is provided. Behavior is the same as that
+/// of `.simulate_with_input()`
+pub fn simulate_no_input(
+    program: &Program,
+) -> (
+    AlgebraicExecutionTrace,
+    Vec<BFieldElement>,
+    Option<anyhow::Error>,
+) {
+    simulate(program, vec![], vec![])
+}
+
+pub fn run(
+    program: &Program,
+    mut stdin: Vec<BFieldElement>,
+    mut secret_in: Vec<BFieldElement>,
+) -> (Vec<VMState>, Vec<BFieldElement>, Option<anyhow::Error>) {
+    let mut states = vec![VMState::new(program)];
+    let mut current_state = states.last().unwrap();
+
+    let mut stdout = vec![];
+    while !current_state.is_complete() {
+        let step = current_state.step(&mut stdin, &mut secret_in);
+        let (next_state, vm_output) = match step {
+            Err(err) => {
+                println!("Encountered an error when running VM.");
+                return (states, stdout, Some(err));
+            }
+            Ok((next_state, vm_output)) => (next_state, vm_output),
+        };
+
+        if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
+            stdout.push(written_word);
+        }
+
+        states.push(next_state);
+        current_state = states.last().unwrap();
+    }
+
+    (states, stdout, None)
+}
 
 #[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
@@ -78,203 +158,12 @@ impl AlgebraicExecutionTrace {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Program {
-    pub instructions: Vec<Instruction>,
-}
-
-impl Display for Program {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut stream = self.instructions.iter();
-        while let Some(instruction) = stream.next() {
-            writeln!(f, "{}", instruction)?;
-
-            // Skip duplicate placeholder used for aligning instructions and instruction_pointer in VM.
-            for _ in 1..instruction.size() {
-                stream.next();
-            }
-        }
-        Ok(())
-    }
-}
-
-pub struct SkippyIter {
-    cursor: Cursor<Vec<Instruction>>,
-}
-
-impl Iterator for SkippyIter {
-    type Item = Instruction;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let pos = self.cursor.position() as usize;
-        let instructions = self.cursor.get_ref();
-        let instruction = *instructions.get(pos)?;
-        self.cursor.set_position((pos + instruction.size()) as u64);
-
-        Some(instruction)
-    }
-}
-
-impl IntoIterator for Program {
-    type Item = Instruction;
-
-    type IntoIter = SkippyIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let cursor = Cursor::new(self.instructions);
-        SkippyIter { cursor }
-    }
-}
-
-/// A `Program` is a `Vec<Instruction>` that contains duplicate elements for
-/// instructions with a size of 2. This means that the index in the vector
-/// corresponds to the VM's `instruction_pointer`. These duplicate values
-/// should most often be skipped/ignored, e.g. when pretty-printing.
-impl Program {
-    /// Create a `Program` from a slice of `Instruction`.
-    ///
-    /// All valid programs terminate with `Halt`.
-    ///
-    /// `new()` will append `Halt` if not present.
-    pub fn new(input: &[LabelledInstruction]) -> Self {
-        let instructions = instruction::convert_labels(input)
-            .iter()
-            .flat_map(|instr| vec![*instr; instr.size()])
-            .collect::<Vec<_>>();
-
-        Program { instructions }
-    }
-
-    /// Create a `Program` by parsing source code.
-    ///
-    /// All valid programs terminate with `Halt`.
-    ///
-    /// `from_code()` will append `Halt` if not present.
-    pub fn from_code(code: &str) -> Result<Self> {
-        let instructions = parse(code)?;
-        Ok(Program::new(&instructions))
-    }
-
-    /// Convert a `Program` to a `Vec<BFieldElement>`.
-    ///
-    /// Every single-word instruction is converted to a single word.
-    ///
-    /// Every double-word instruction is converted to two words.
-    pub fn to_bwords(&self) -> Vec<BFieldElement> {
-        self.clone()
-            .into_iter()
-            .map(|instruction| {
-                let opcode = instruction.opcode_b();
-                if let Some(arg) = instruction.arg() {
-                    vec![opcode, arg]
-                } else {
-                    vec![opcode]
-                }
-            })
-            .concat()
-    }
-
-    /// Simulate (execute) a `Program` and record every state transition. Returns an
-    /// `AlgebraicExecutionTrace` recording every intermediate state of the processor and all co-
-    /// processors.
-    ///
-    /// On premature termination of the VM, returns the `AlgebraicExecutionTrace` for the execution
-    /// up to the point of failure.
-    pub fn simulate(
-        &self,
-        mut stdin: Vec<BFieldElement>,
-        mut secret_in: Vec<BFieldElement>,
-    ) -> (
-        AlgebraicExecutionTrace,
-        Vec<BFieldElement>,
-        Option<anyhow::Error>,
-    ) {
-        let mut aet = AlgebraicExecutionTrace::default();
-        let mut state = VMState::new(self);
-        // record initial state
-        aet.processor_matrix
-            .push_row(state.to_processor_row().view())
-            .expect("shapes must be identical");
-
-        let mut stdout = vec![];
-        while !state.is_complete() {
-            let vm_output = match state.step_mut(&mut stdin, &mut secret_in) {
-                Err(err) => return (aet, stdout, Some(err)),
-                Ok(vm_output) => vm_output,
-            };
-
-            match vm_output {
-                Some(VMOutput::XlixTrace(hash_trace)) => aet.append_hash_trace(*hash_trace),
-                Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
-                None => (),
-            }
-            // Record next, to be executed state.
-            aet.processor_matrix
-                .push_row(state.to_processor_row().view())
-                .expect("shapes must be identical");
-        }
-
-        (aet, stdout, None)
-    }
-
-    /// Wrapper around `.simulate_with_input()` and thus also around
-    /// `.simulate()` for convenience when neither explicit nor non-
-    /// deterministic input is provided. Behavior is the same as that
-    /// of `.simulate_with_input()`
-    pub fn simulate_no_input(
-        &self,
-    ) -> (
-        AlgebraicExecutionTrace,
-        Vec<BFieldElement>,
-        Option<anyhow::Error>,
-    ) {
-        self.simulate(vec![], vec![])
-    }
-
-    pub fn run(
-        &self,
-        mut stdin: Vec<BFieldElement>,
-        mut secret_in: Vec<BFieldElement>,
-    ) -> (Vec<VMState>, Vec<BFieldElement>, Option<anyhow::Error>) {
-        let mut states = vec![VMState::new(self)];
-        let mut current_state = states.last().unwrap();
-
-        let mut stdout = vec![];
-        while !current_state.is_complete() {
-            let step = current_state.step(&mut stdin, &mut secret_in);
-            let (next_state, vm_output) = match step {
-                Err(err) => {
-                    println!("Encountered an error when running VM.");
-                    return (states, stdout, Some(err));
-                }
-                Ok((next_state, vm_output)) => (next_state, vm_output),
-            };
-
-            if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
-                stdout.push(written_word);
-            }
-
-            states.push(next_state);
-            current_state = states.last().unwrap();
-        }
-
-        (states, stdout, None)
-    }
-
-    pub fn len(&self) -> usize {
-        self.instructions.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.instructions.is_empty()
-    }
-}
-
 #[cfg(test)]
 pub mod triton_vm_tests {
     use std::ops::BitAnd;
     use std::ops::BitXor;
 
+    use itertools::Itertools;
     use ndarray::Array1;
     use ndarray::ArrayView1;
     use num_traits::One;
@@ -286,7 +175,6 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
 
-    use crate::instruction::sample_programs;
     use crate::shared_tests::SourceCodeAndInput;
     use crate::table::processor_table::ProcessorMatrixRow;
 
@@ -300,14 +188,46 @@ pub mod triton_vm_tests {
             .join(", ")
     }
 
+    pub const GCD_X_Y: &str = "
+        read_io  // _ a
+        read_io  // _ a b
+        dup1     // _ a b a
+        dup1     // _ a b a b
+        lt       // _ a b b<a
+        skiz     // _ a b
+            swap1  // _ d n where n > d
+
+        // ---
+        loop_cond:
+        dup1
+        push 0 
+        eq 
+        skiz 
+            call terminate  // _ d n where d != 0
+        dup1   // _ d n d
+        dup1   // _ d n d n
+        div    // _ d n q r
+        swap2  // _ d r q n
+        pop    // _ d r q
+        pop    // _ d r
+        swap1  // _ r d
+        call loop_cond
+        // ---
+        
+        terminate:
+            // _ d n where d == 0
+            write_io // _ d
+            halt
+        ";
+
     #[test]
     fn initialise_table_test() {
-        let code = sample_programs::GCD_X_Y;
+        let code = GCD_X_Y;
         let program = Program::from_code(code).unwrap();
 
         let stdin = vec![BFieldElement::new(42), BFieldElement::new(56)];
 
-        let (aet, stdout, err) = program.simulate(stdin, vec![]);
+        let (aet, stdout, err) = simulate(&program, stdin, vec![]);
 
         println!(
             "VM output: [{}]",
@@ -335,7 +255,7 @@ pub mod triton_vm_tests {
 
         println!("{}", program);
 
-        let (aet, _, err) = program.simulate_no_input();
+        let (aet, _, err) = simulate_no_input(&program);
 
         println!("{:?}", err);
         for row in aet.processor_matrix.rows() {
@@ -345,11 +265,11 @@ pub mod triton_vm_tests {
 
     #[test]
     fn simulate_tvm_gcd_test() {
-        let code = sample_programs::GCD_X_Y;
+        let code = GCD_X_Y;
         let program = Program::from_code(code).unwrap();
 
         let stdin = vec![42_u64.into(), 56_u64.into()];
-        let (_, stdout, err) = program.simulate(stdin, vec![]);
+        let (_, stdout, err) = simulate(&program, stdin, vec![]);
 
         let stdout = Array1::from(stdout);
         println!("VM output: [{}]", pretty_print_array_view(stdout.view()));

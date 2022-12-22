@@ -6,6 +6,7 @@ use std::path::Path;
 
 use anyhow::Error;
 use anyhow::Result;
+use triton_opcodes::program::Program;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
@@ -16,8 +17,9 @@ use crate::proof::Proof;
 use crate::stark::Stark;
 use crate::stark::StarkParameters;
 use crate::table::master_table::MasterBaseTable;
+use crate::vm::run;
+use crate::vm::simulate;
 use crate::vm::AlgebraicExecutionTrace;
-use crate::vm::Program;
 
 pub fn parse_setup_simulate(
     code: &str,
@@ -31,7 +33,7 @@ pub fn parse_setup_simulate(
     let program = program.unwrap();
 
     prof_start!(maybe_profiler, "simulate");
-    let (aet, stdout, err) = program.simulate(input_symbols, secret_input_symbols);
+    let (aet, stdout, err) = simulate(&program, input_symbols, secret_input_symbols);
     if let Some(error) = err {
         panic!("The VM encountered the following problem: {}", error);
     }
@@ -90,7 +92,7 @@ impl SourceCodeAndInput {
 
     pub fn run(&self) -> Vec<BFieldElement> {
         let program = Program::from_code(&self.source_code).expect("Could not load source code");
-        let (_, output, err) = program.run(self.input.clone(), self.secret_input.clone());
+        let (_, output, err) = run(&program, self.input.clone(), self.secret_input.clone());
         if let Some(e) = err {
             panic!("Running the program failed: {}", e)
         }
@@ -99,7 +101,7 @@ impl SourceCodeAndInput {
 
     pub fn simulate(&self) -> (AlgebraicExecutionTrace, Vec<BFieldElement>, Option<Error>) {
         let program = Program::from_code(&self.source_code).expect("Could not load source code.");
-        program.simulate(self.input.clone(), self.secret_input.clone())
+        simulate(&program, self.input.clone(), self.secret_input.clone())
     }
 }
 
@@ -165,3 +167,97 @@ pub fn save_proof(filename: &str, proof: Proof) -> Result<()> {
     println!("Wrote {} bytes of proof data to disk.", amount);
     Ok(())
 }
+
+pub const FIBONACCI_VIT: &str = "
+         push 0
+         push 1
+         read_io
+         dup0
+         dup0
+         dup0
+         mul
+         eq
+         skiz
+         call bar
+         call foo
+    foo: call bob
+         swap1
+         push -1
+         add
+         dup0
+         skiz
+         recurse
+         call baz
+    bar: dup0
+         push 0
+         eq
+         skiz
+         pop
+    baz: pop
+         write_io
+         halt
+    bob: dup2
+         dup2
+         add
+         return
+    ";
+
+pub const FIB_SHOOTOUT: &str = "
+    // Initialize stack: _ 0 1 i
+    push 0
+    push 1
+    divine
+
+    call fib-loop
+    write_io  // After loop, this is 0
+    write_io  // After loop, this is fib(i)
+    halt
+
+    fib-loop:
+        dup0 skiz call fib-step
+        dup0 skiz recurse
+        return
+
+    // Before: _ a b i
+    // After: _ b (a+b) (i-1)
+    fib-step:
+        push -1
+        add
+        swap2
+        dup1
+        add
+        swap1
+        swap2
+        return
+    ";
+
+pub const FIB_FIXED_7_LT: &str = "
+    push 0
+    push 1
+    push 7
+    push 2
+    dup1
+    lt
+    skiz
+    call 29
+    call 16
+16: call 38
+    swap1
+    push -1
+    add
+    dup0
+    skiz
+    recurse
+    call 36
+29: dup0
+    push 0
+    eq
+    skiz
+    pop
+36: pop
+    halt
+38: dup2
+    dup2
+    add
+    return
+";

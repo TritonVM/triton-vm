@@ -1,12 +1,12 @@
 use anyhow::Result;
 use num_traits::Zero;
+use triton_opcodes::ord_n::Ord16;
+use triton_opcodes::ord_n::Ord16::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use super::error::vm_fail;
 use super::error::InstructionError::*;
-use super::ord_n::Ord16;
-use super::ord_n::Ord16::*;
 
 #[derive(Debug, Clone)]
 pub struct OpStack {
@@ -131,7 +131,7 @@ mod op_stack_test {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::op_stack::OpStack;
-    use crate::ord_n::Ord16;
+    use triton_opcodes::ord_n::Ord16;
 
     #[test]
     fn test_sanity() {

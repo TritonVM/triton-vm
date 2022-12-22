@@ -16,6 +16,7 @@ use strum::IntoEnumIterator;
 use strum_macros::Display as DisplayMacro;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
+
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use AnInstruction::*;
@@ -834,12 +835,6 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
 }
 
 pub mod sample_programs {
-    use twenty_first::shared_math::b_field_element::BFieldElement;
-
-    use super::super::vm::Program;
-    use super::AnInstruction::*;
-    use super::LabelledInstruction;
-
     pub const PUSH_PUSH_ADD_POP_S: &str = "
         push 1
         push 1
@@ -847,167 +842,7 @@ pub mod sample_programs {
         pop
     ";
 
-    pub fn push_push_add_pop_p() -> Program {
-        let instructions: Vec<LabelledInstruction> = vec![
-            Push(BFieldElement::new(1)),
-            Push(BFieldElement::new(1)),
-            Add,
-            Pop,
-        ]
-        .into_iter()
-        .map(LabelledInstruction::Instruction)
-        .collect();
-
-        Program::new(&instructions)
-    }
-
-    /// TVM assembly to sample weights for the recursive verifier
-    ///
-    /// input: seed, num_weights
-    ///
-    /// output: num_weights-many random weights
-    pub const SAMPLE_WEIGHTS: &str = concat!(
-        "push 17 push 13 push 11 ",     // get seed – should be an argument
-        "read_io ",                     // number of weights – should be argument
-        "sample_weights: ",             // proper program starts here
-        "call sample_weights_loop ",    // setup done, start sampling loop
-        "pop pop ",                     // clean up stack: RAM value & pointer
-        "pop pop pop pop ",             // clean up stack: seed & countdown
-        "halt ",                        // done – should be return
-        "",                             //
-        "sample_weights_loop: ",        // subroutine: loop until all weights are sampled
-        "dup0 push 0 eq skiz return ",  // no weights left
-        "push -1 add ",                 // decrease number of weights to still sample
-        "push 0 push 0 push 0 push 0 ", // prepare for hashing
-        "push 0 push 0 push 0 push 0 ", // prepare for hashing
-        "dup11 dup11 dup11 dup11 ",     // prepare for hashing
-        "hash ",                        // hash seed & countdown
-        "swap13 swap10 pop ",           // re-organize stack
-        "swap13 swap10 pop ",           // re-organize stack
-        "swap13 swap10 swap7 ",         // re-organize stack
-        "pop pop pop pop pop pop pop ", // remove unnecessary remnants of digest
-        "recurse ",                     // repeat
-    );
-
-    /// TVM assembly to verify Merkle authentication paths
-    ///
-    /// input: merkle root, number of leafs, leaf values, APs
-    ///
-    /// output: Result<(), VMFail>
-    pub const MT_AP_VERIFY: &str = concat!(
-        "read_io ",                                 // number of authentication paths to test
-        "",                                         // stack: [num]
-        "mt_ap_verify: ",                           // proper program starts here
-        "push 0 swap1 write_mem pop pop ",          // store number of APs at RAM address 0
-        "",                                         // stack: []
-        "read_io read_io read_io read_io read_io ", // read Merkle root
-        "",                                         // stack: [r4 r3 r2 r1 r0]
-        "call check_aps ",                          //
-        "pop pop pop pop pop ",                     // leave clean stack: Merkle root
-        "",                                         // stack: []
-        "halt ",                                    // done – should be “return”
-        "",
-        "",                               // subroutine: check AP one at a time
-        "",                               // stack before: [* r4 r3 r2 r1 r0]
-        "",                               // stack after: [* r4 r3 r2 r1 r0]
-        "check_aps: ",                    // start function description:
-        "push 0 push 0 read_mem dup0 ",   // get number of APs left to check
-        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
-        "push 0 eq ",                     // see if there are authentication paths left
-        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
-        "skiz return ",                   // return if no authentication paths left
-        "push -1 add write_mem pop pop ", // decrease number of authentication paths left to check
-        "",                               // stack: [* r4 r3 r2 r1 r0]
-        "call get_idx_and_hash_leaf ",    //
-        "",                               // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
-        "call traverse_tree ",            //
-        "",                               // stack: [* r4 r3 r2 r1 r0 idx>>2 - - - - - - - - - -]
-        "call assert_tree_top ",          //
-        // stack: [* r4 r3 r2 r1 r0]
-        "recurse ", // check next AP
-        "",
-        "",                                         // subroutine: read index & hash leaf
-        "",                                         // stack before: [*]
-        "",                        // stack afterwards: [* idx d4 d3 d2 d1 d0 0 0 0 0 0]
-        "get_idx_and_hash_leaf: ", // start function description:
-        "read_io ",                // read node index
-        "read_io read_io read_io read_io read_io ", // read leaf's value
-        "push 0 push 0 push 0 push 0 push 0 ", // pad before fixed-length hash
-        "hash return ",            // compute leaf's digest
-        "",
-        "",                             // subroutine: go up tree
-        "",                             // stack before: [* idx - - - - - - - - - -]
-        "",                             // stack after: [* idx>>2 - - - - - - - - - -]
-        "traverse_tree: ",              // start function description:
-        "dup10 push 1 eq skiz return ", // break loop if node index is 1
-        "divine_sibling hash recurse ", // move up one level in the Merkle tree
-        "",
-        "",                     // subroutine: compare digests
-        "",                     // stack before: [* r4 r3 r2 r1 r0 idx a b c d e - - - - -]
-        "",                     // stack after: [* r4 r3 r2 r1 r0]
-        "assert_tree_top: ",    // start function description:
-        "pop pop pop pop pop ", // remove unnecessary “0”s from hashing
-        "",                     // stack: [* r4 r3 r2 r1 r0 idx a b c d e]
-        "swap1 swap2 swap3 swap4 swap5 ",
-        "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e idx]
-        "assert ",              //
-        "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e]
-        "assert_vector ",       // actually compare to root of tree
-        "pop pop pop pop pop ", // clean up stack, leave only one root
-        "return ",              //
-    );
-
-    // see also: get_colinear_y in src/shared_math/polynomial.rs
-    pub const GET_COLINEAR_Y: &str = concat!(
-        "read_io ",                       // p2_x
-        "read_io read_io ",               // p1_y p1_x
-        "read_io read_io ",               // p0_y p0_x
-        "swap3 push -1 mul dup1 add ",    // dy = p0_y - p1_y
-        "dup3 push -1 mul dup5 add mul ", // dy·(p2_x - p0_x)
-        "dup3 dup3 push -1 mul add ",     // dx = p0_x - p1_x
-        "invert mul add ",                // compute result
-        "swap3 pop pop pop ",             // leave a clean stack
-        "write_io halt ",
-    );
-
-    pub const HELLO_WORLD_1: &str = "
-        push 10
-        push 33
-        push 100
-        push 108
-        push 114
-        push 111
-        push 87
-        push 32
-        push 44
-        push 111
-        push 108
-        push 108
-        push 101
-        push 72
-
-        write_io write_io write_io write_io write_io write_io write_io
-        write_io write_io write_io write_io write_io write_io write_io
-        ";
-
-    pub const BASIC_RAM_READ_WRITE: &str = concat!(
-        "push  5 push  6 write_mem pop pop ",
-        "push 15 push 16 write_mem pop pop ",
-        "push  5 push  0 read_mem  pop pop ",
-        "push 15 push  0 read_mem  pop pop ",
-        "push  5 push  7 write_mem pop pop ",
-        "push 15 push  0 read_mem ",
-        "push  5 push  0 read_mem ",
-        "halt ",
-    );
-
-    pub const EDGY_RAM_WRITES: &str = concat!(
-        "write_mem ",                         // this should write 0 to address 0
-        "push 5 swap2 push 3 swap2 pop pop ", // stack is now of length 16 again
-        "write_mem ",                         // this should write 3 to address 5
-        "swap2 read_mem ",                    // stack's top should now be 3, 5, 3, 0, 0, …
-        "halt ",
-    );
+    pub const EDGY_RAM_WRITES: &str = concat!();
 
     pub const READ_WRITE_X3: &str = "
         read_io
@@ -1029,161 +864,6 @@ pub mod sample_programs {
         write_io write_io write_io write_io
         write_io write_io
     ";
-
-    pub const COUNTDOWN_FROM_10: &str = "
-        push 10
-        call loop
-  loop: dup0
-        write_io
-        push -1
-        add
-        dup0
-        skiz
-        recurse
-        write_io
-        halt
-    ";
-
-    pub const FIBONACCI_VIT: &str = "
-        push 0
-        push 1
-        read_io
-        dup0
-        dup0
-        dup0
-        mul
-        eq
-        skiz
-        call bar
-        call foo
-   foo: call bob
-        swap1
-        push -1
-        add
-        dup0
-        skiz
-        recurse
-        call baz
-   bar: dup0
-        push 0
-        eq
-        skiz
-        pop
-   baz: pop
-        write_io
-        halt
-   bob: dup2
-        dup2
-        add
-        return
-    ";
-
-    pub const FIB_SHOOTOUT: &str = "
-        // Initialize stack: _ 0 1 i
-        push 0
-        push 1
-        divine
-
-        call fib-loop
-        write_io  // After loop, this is 0
-        write_io  // After loop, this is fib(i)
-        halt
-
-        fib-loop:
-            dup0 skiz call fib-step
-            dup0 skiz recurse
-            return
-
-        // Before: _ a b i
-        // After: _ b (a+b) (i-1)
-        fib-step:
-            push -1
-            add
-            swap2
-            dup1
-            add
-            swap1
-            swap2
-            return
-    ";
-
-    pub const FIB_FIXED_7_LT: &str = "
-        push 0
-        push 1
-        push 7
-        push 2
-        dup1
-        lt
-        skiz
-        call 29
-        call 16
-    16: call 38
-        swap1
-        push -1
-        add
-        dup0
-        skiz
-        recurse
-        call 36
-    29: dup0
-        push 0
-        eq
-        skiz
-        pop
-    36: pop
-        halt
-    38: dup2
-        dup2
-        add
-        return
-    ";
-
-    pub const GCD_X_Y: &str = concat!(
-        // ∅
-        "read_io ",
-        // a
-        "read_io ",
-        // a b
-        "dup1 ",
-        // a b a
-        "dup1 ",
-        // a b a b
-        "lt ",
-        // a b b<a
-        "skiz ",
-        // a b
-        "swap1 ",
-        // d n where n > d
-        // ---
-        "loop_cond: ",
-        "dup1 ",
-        "push 0 ",
-        "eq ",
-        "skiz ",
-        "call terminate ",
-        // _ d n where d != 0
-        "dup1 ",
-        // _ d n d
-        "dup1 ",
-        // _ d n d n
-        "div ",
-        // _ d n q r
-        "swap2 ",
-        // _ d r q n
-        "pop ",
-        // _ d r q
-        "pop ",
-        // _ d r
-        "swap1 ",
-        // _ r d
-        "call loop_cond ",
-        // ---
-        "terminate: ",
-        // _ d n where d == 0
-        "write_io ",
-        // _ d
-        "halt ",
-    );
 
     pub const HASH_HASH_HASH_HALT: &str = "
         hash
@@ -1289,12 +969,12 @@ mod instruction_tests {
 
     use crate::instruction::all_labelled_instructions_with_args;
     use crate::ord_n::Ord7;
-    use crate::vm::Program;
+    use crate::program::Program;
 
     use super::all_instructions_without_args;
     use super::parse;
     use super::sample_programs;
-    use super::AnInstruction;
+    use super::AnInstruction::{self, *};
 
     #[test]
     fn opcode_test() {
@@ -1354,19 +1034,23 @@ mod instruction_tests {
     }
 
     #[test]
-    fn parse_display_push_pop_test() {
-        let pgm_expected = sample_programs::push_push_add_pop_p();
-        let pgm_pretty = format!("{}", pgm_expected);
-        let instructions = parse(&pgm_pretty).unwrap();
-        let pgm_actual = Program::new(&instructions);
+    fn parse_push_pop_test() {
+        let code = "
+            push 1
+            push 1
+            add
+            pop
+        ";
+        let program = Program::from_code(code).unwrap();
+        let instructions = program.into_iter().collect_vec();
+        let expected = vec![
+            Push(BFieldElement::one()),
+            Push(BFieldElement::one()),
+            Add,
+            Pop,
+        ];
 
-        assert_eq!(pgm_expected, pgm_actual);
-
-        let pgm_text = sample_programs::PUSH_PUSH_ADD_POP_S;
-        let instructions_2 = parse(pgm_text).unwrap();
-        let pgm_actual_2 = Program::new(&instructions_2);
-
-        assert_eq!(pgm_expected, pgm_actual_2);
+        assert_eq!(expected, instructions);
     }
 
     #[test]

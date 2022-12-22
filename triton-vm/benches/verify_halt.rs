@@ -7,6 +7,7 @@ use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
 
+use triton_opcodes::program::Program;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::load_proof;
 use triton_vm::shared_tests::proof_file_exists;
@@ -14,7 +15,7 @@ use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkParameters;
 use triton_vm::table::master_table::MasterBaseTable;
-use triton_vm::vm::Program;
+use triton_vm::vm::simulate_no_input;
 
 /// cargo criterion --bench verify_halt
 fn verify_halt(criterion: &mut Criterion) {
@@ -48,7 +49,7 @@ fn verify_halt(criterion: &mut Criterion) {
         let stark = Stark::new(claim, stark_parameters);
         (proof, stark)
     } else {
-        let (aet, output, err) = program.simulate_no_input();
+        let (aet, output, err) = simulate_no_input(&program);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }

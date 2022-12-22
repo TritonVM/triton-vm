@@ -878,8 +878,9 @@ pub(crate) mod triton_stark_tests {
     use ndarray::Array1;
     use num_traits::Zero;
 
-    use crate::instruction::sample_programs;
-    use crate::instruction::AnInstruction;
+    use triton_opcodes::instruction::AnInstruction;
+    use triton_opcodes::program::Program;
+
     use crate::shared_tests::*;
     use crate::table::cross_table_argument::CrossTableArg;
     use crate::table::cross_table_argument::EvalArg;
@@ -903,12 +904,12 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
+    use crate::vm::simulate;
     use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
     use crate::vm::AlgebraicExecutionTrace;
-    use crate::vm::Program;
 
     use super::*;
 
@@ -922,7 +923,7 @@ pub(crate) mod triton_stark_tests {
         assert!(program.is_ok(), "program parses correctly");
         let program = program.unwrap();
 
-        let (aet, stdout, err) = program.simulate(input_symbols, secret_input_symbols);
+        let (aet, stdout, err) = simulate(&program, input_symbols, secret_input_symbols);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {}", error);
         }
@@ -1541,7 +1542,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_fibonacci_test() {
         let source_code_and_input = SourceCodeAndInput {
-            source_code: sample_programs::FIBONACCI_VIT.to_string(),
+            source_code: FIBONACCI_VIT.to_string(),
             input: vec![BFieldElement::new(100)],
             secret_input: vec![],
         };
@@ -1787,7 +1788,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn prove_verify_fibonacci_100_test() {
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
-        let source_code = sample_programs::FIBONACCI_VIT;
+        let source_code = FIBONACCI_VIT;
         let stdin = vec![100_u64.into()];
         let secret_in = vec![];
 
@@ -1818,7 +1819,7 @@ pub(crate) mod triton_stark_tests {
     fn prove_verify_fib_shootout_test() {
         let cases = [(7, 21)];
 
-        let code = sample_programs::FIB_SHOOTOUT;
+        let code = FIB_SHOOTOUT;
 
         for (n, expected) in cases {
             let stdin = vec![];
@@ -1839,7 +1840,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     #[ignore = "stress test"]
     fn prove_fib_successively_larger() {
-        let source_code = sample_programs::FIBONACCI_VIT;
+        let source_code = FIBONACCI_VIT;
 
         for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
             let mut profiler = Some(TritonProfiler::new(&format!(

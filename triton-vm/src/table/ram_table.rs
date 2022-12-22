@@ -13,6 +13,7 @@ use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
+use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::Inverse;
@@ -20,7 +21,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use RamTableChallengeId::*;
 
-use crate::instruction::Instruction;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;

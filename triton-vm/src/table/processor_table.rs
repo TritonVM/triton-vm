@@ -18,16 +18,15 @@ use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
+use triton_opcodes::instruction::all_instructions_without_args;
+use triton_opcodes::instruction::{AnInstruction::*, Instruction};
+use triton_opcodes::ord_n::Ord7;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProcessorTableChallengeId::*;
 
-use crate::instruction::all_instructions_without_args;
-use crate::instruction::AnInstruction::*;
-use crate::instruction::Instruction;
-use crate::ord_n::Ord7;
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -4403,20 +4402,22 @@ impl<'a> Display for ExtProcessorMatrixRow<'a> {
 mod constraint_polynomial_tests {
     use ndarray::Array2;
 
-    use crate::ord_n::Ord16;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
     use crate::table::master_table::MasterTable;
     use crate::table::processor_table::ProcessorMatrixRow;
-    use crate::vm::Program;
+    use crate::vm::simulate_no_input;
+    use triton_opcodes::ord_n::Ord16;
+    use triton_opcodes::program::Program;
 
     use super::*;
 
     #[test]
     /// helps identifying whether the printing causes an infinite loop
     fn print_simple_processor_table_row_test() {
-        let program = Program::from_code("push 2 push -1 add assert halt").unwrap();
-        let (aet, _, _) = program.simulate_no_input();
+        let code = "push 2 push -1 add assert halt";
+        let program = Program::from_code(code).unwrap();
+        let (aet, _, _) = simulate_no_input(&program);
         for row in aet.processor_matrix.rows() {
             println!("{}", ProcessorMatrixRow { row });
         }

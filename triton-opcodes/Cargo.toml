@@ -1,0 +1,32 @@
+[package]
+name = "triton-opcodes"
+version = "0.1.0"
+edition = "2021"
+authors = ["Triton Software AG"]
+
+license = "Apache-2.0"
+description = "Triton VM instructions and their translations"
+homepage = "https://triton-vm.org/"
+documentation = "https://github.com/TritonVM/triton-vm/blob/master/triton-opcodes"
+repository = "https://github.com/TritonVM/triton-vm"
+readme = "README.md"
+
+[dev-dependencies]
+proptest = "1.0"
+
+[dev-dependencies.criterion]
+version = "0.4.0"
+features = ["html_reports"]
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+
+[dependencies]
+twenty-first = "0.9"
+anyhow = "1.0"
+itertools = "0.10.5"
+num-traits = "0.2"
+regex = "1.7"
+strum = "0.24"
+strum_macros = "0.24"

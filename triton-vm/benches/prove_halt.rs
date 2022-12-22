@@ -2,6 +2,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 
+use triton_opcodes::program::Program;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
 use triton_vm::proof::Claim;
@@ -9,7 +10,7 @@ use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkParameters;
 use triton_vm::table::master_table::MasterBaseTable;
-use triton_vm::vm::Program;
+use triton_vm::vm::simulate_no_input;
 
 /// cargo criterion --bench prove_halt
 fn prove_halt(_criterion: &mut Criterion) {
@@ -23,7 +24,7 @@ fn prove_halt(_criterion: &mut Criterion) {
     };
 
     // witness
-    let (aet, output, err) = program.simulate_no_input();
+    let (aet, output, err) = simulate_no_input(&program);
     if let Some(error) = err {
         panic!("The VM encountered the following problem: {}", error);
     }
