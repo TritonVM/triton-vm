@@ -77,9 +77,10 @@ The 11th element of the stack `i` is taken as the node index for a Merkle tree t
 The sibling digest of `edcba` is `zyxwv` and is read from the input interface of secret data.
 The least-significant bit of `i` indicates whether `edcba` is the digest of a left leaf or a right leaf of the Merkle tree's base level.
 Depending on this least significant bit of `i`, `divine_sibling` either
-1. does not change registers `st0` through `st4` and moves `zyxwv` into registers `st5` through `st9`, or
-2. moves `edcba` into registers `st5` through `st9` and moves `zyxwv` into registers `st0` through `st4`.
-The 11th element of the operational stack is modified by shifting `i` by 1 bit to the right, i.e., dropping the least-significant bit.
+1. (`i` = 0 mod 2, _i.e._, current node is left sibling) does not change registers `st0` through `st4` and moves `zyxwv` into registers `st5` through `st9`, or
+2. (`i` = 1 mod 2, _i.e._, current node is right sibling) moves `edcba` into registers `st5` through `st9` and moves `zyxwv` into registers `st0` through `st4`.
+
+The 11th element of the operational stack `i` is shifted by 1 bit to the right, _i.e._, the least-significant bit is dropped.
 In conjunction with instruction `hash` and `assert_vector`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
 
 ## Arithmetic on Stack
