@@ -97,8 +97,7 @@ impl StarkParameters {
 impl Default for StarkParameters {
     fn default() -> Self {
         let fri_expansion_factor = 4;
-        // todo: this seems to propagate to a place where it needs to be a power of two. Why?
-        let security_level = 256;
+        let security_level = 160;
 
         Self::new(security_level, fri_expansion_factor)
     }
@@ -297,8 +296,8 @@ impl Stark {
         let indices_seed = proof_stream.prover_fiat_shamir();
         let revealed_current_row_indices = StarkHasher::sample_indices(
             &indices_seed,
-            self.parameters.num_non_linear_codeword_checks,
             self.fri.domain.length,
+            self.parameters.num_non_linear_codeword_checks,
         );
         prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
@@ -575,8 +574,8 @@ impl Stark {
         let indices_seed = proof_stream.verifier_fiat_shamir();
         let revealed_current_row_indices = StarkHasher::sample_indices(
             &indices_seed,
-            self.parameters.num_non_linear_codeword_checks,
             self.fri.domain.length,
+            self.parameters.num_non_linear_codeword_checks,
         );
         prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
