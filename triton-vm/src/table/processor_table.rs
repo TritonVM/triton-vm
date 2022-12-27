@@ -618,6 +618,12 @@ pub struct ProcessorTableChallenges {
     pub hash_table_digest_output_weight2: XFieldElement,
     pub hash_table_digest_output_weight3: XFieldElement,
     pub hash_table_digest_output_weight4: XFieldElement,
+
+    pub u32_table_lhs_weight: XFieldElement,
+    pub u32_table_rhs_weight: XFieldElement,
+    pub u32_table_ci_weight: XFieldElement,
+    pub u32_table_result_weight: XFieldElement,
+    pub u32_table_perm_indeterminate: XFieldElement,
 }
 
 impl TableChallenges for ProcessorTableChallenges {

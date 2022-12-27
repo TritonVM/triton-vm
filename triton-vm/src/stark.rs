@@ -903,6 +903,7 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
+    use crate::table::u32_table::ExtU32Table;
     use crate::vm::simulate;
     use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
     use crate::vm::triton_vm_tests::property_based_test_programs;
@@ -1211,6 +1212,11 @@ pub(crate) mod triton_stark_tests {
         ExtHashTable::evaluate_consistency_constraints(br, er, &challenges);
         ExtHashTable::evaluate_transition_constraints(br, er, br, er, &challenges);
         ExtHashTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtU32Table::evaluate_initial_constraints(br, er, &challenges);
+        ExtU32Table::evaluate_consistency_constraints(br, er, &challenges);
+        ExtU32Table::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtU32Table::evaluate_terminal_constraints(br, er, &challenges);
     }
 
     #[test]
@@ -1233,6 +1239,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_initial_quotients(),
             ExtJumpStackTable::num_initial_quotients(),
             ExtHashTable::num_initial_quotients(),
+            ExtU32Table::num_initial_quotients(),
             GrandCrossTableArg::num_initial_quotients(),
         ];
         let all_cons = [
@@ -1243,6 +1250,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_consistency_quotients(),
             ExtJumpStackTable::num_consistency_quotients(),
             ExtHashTable::num_consistency_quotients(),
+            ExtU32Table::num_consistency_quotients(),
             GrandCrossTableArg::num_consistency_quotients(),
         ];
         let all_trans = [
@@ -1253,6 +1261,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_transition_quotients(),
             ExtJumpStackTable::num_transition_quotients(),
             ExtHashTable::num_transition_quotients(),
+            ExtU32Table::num_transition_quotients(),
             GrandCrossTableArg::num_transition_quotients(),
         ];
         let all_term = [
@@ -1263,6 +1272,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_terminal_quotients(),
             ExtJumpStackTable::num_terminal_quotients(),
             ExtHashTable::num_terminal_quotients(),
+            ExtU32Table::num_terminal_quotients(),
             GrandCrossTableArg::num_terminal_quotients(),
         ];
 
@@ -1360,6 +1370,14 @@ pub(crate) mod triton_stark_tests {
             ExtHashTable::num_initial_quotients(),
             ExtHashTable::initial_quotient_degree_bounds(id).len()
         );
+        assert_eq!(
+            ExtU32Table::num_initial_quotients(),
+            ExtU32Table::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_initial_quotients(),
+            ExtU32Table::initial_quotient_degree_bounds(id).len()
+        );
 
         assert_eq!(
             ExtProgramTable::num_consistency_quotients(),
@@ -1416,6 +1434,14 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(
             ExtHashTable::num_consistency_quotients(),
             ExtHashTable::consistency_quotient_degree_bounds(id, ph).len()
+        );
+        assert_eq!(
+            ExtU32Table::num_consistency_quotients(),
+            ExtU32Table::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_consistency_quotients(),
+            ExtU32Table::consistency_quotient_degree_bounds(id, ph).len()
         );
 
         assert_eq!(
@@ -1474,6 +1500,14 @@ pub(crate) mod triton_stark_tests {
             ExtHashTable::num_transition_quotients(),
             ExtHashTable::transition_quotient_degree_bounds(id, ph).len()
         );
+        assert_eq!(
+            ExtU32Table::num_transition_quotients(),
+            ExtU32Table::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_transition_quotients(),
+            ExtU32Table::transition_quotient_degree_bounds(id, ph).len()
+        );
 
         assert_eq!(
             ExtProgramTable::num_terminal_quotients(),
@@ -1530,6 +1564,14 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(
             ExtHashTable::num_terminal_quotients(),
             ExtHashTable::terminal_quotient_degree_bounds(id).len()
+        );
+        assert_eq!(
+            ExtU32Table::num_terminal_quotients(),
+            ExtU32Table::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_terminal_quotients(),
+            ExtU32Table::terminal_quotient_degree_bounds(id).len()
         );
     }
 

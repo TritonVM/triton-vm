@@ -12,3 +12,4 @@ pub mod processor_table;
 pub mod program_table;
 pub mod ram_table;
 pub mod table_column;
+pub mod u32_table;

@@ -1,7 +1,7 @@
-use itertools::Itertools;
 use std::collections::HashSet;
 use std::process::Command;
 
+use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -16,6 +16,7 @@ use triton_vm::table::op_stack_table::ExtOpStackTable;
 use triton_vm::table::processor_table::ExtProcessorTable;
 use triton_vm::table::program_table::ExtProgramTable;
 use triton_vm::table::ram_table::ExtRamTable;
+use triton_vm::table::u32_table::ExtU32Table;
 
 fn main() {
     println!("Generate those constraint evaluators!");
@@ -95,6 +96,17 @@ fn main() {
         &mut ExtHashTable::ext_consistency_constraints_as_circuits(),
         &mut ExtHashTable::ext_transition_constraints_as_circuits(),
         &mut ExtHashTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
+
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["u32"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtU32Table::ext_initial_constraints_as_circuits(),
+        &mut ExtU32Table::ext_consistency_constraints_as_circuits(),
+        &mut ExtU32Table::ext_transition_constraints_as_circuits(),
+        &mut ExtU32Table::ext_terminal_constraints_as_circuits(),
     );
     write(&table_name_snake, source_code);
 

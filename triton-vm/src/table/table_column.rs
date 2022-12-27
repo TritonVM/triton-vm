@@ -15,6 +15,7 @@ use crate::table::master_table::EXT_OP_STACK_TABLE_START;
 use crate::table::master_table::EXT_PROCESSOR_TABLE_START;
 use crate::table::master_table::EXT_PROGRAM_TABLE_START;
 use crate::table::master_table::EXT_RAM_TABLE_START;
+use crate::table::master_table::EXT_U32_TABLE_START;
 use crate::table::master_table::HASH_TABLE_START;
 use crate::table::master_table::INSTRUCTION_TABLE_START;
 use crate::table::master_table::JUMP_STACK_TABLE_START;
@@ -22,6 +23,7 @@ use crate::table::master_table::OP_STACK_TABLE_START;
 use crate::table::master_table::PROCESSOR_TABLE_START;
 use crate::table::master_table::PROGRAM_TABLE_START;
 use crate::table::master_table::RAM_TABLE_START;
+use crate::table::master_table::U32_TABLE_START;
 
 // -------- Program Table --------
 
@@ -119,6 +121,8 @@ pub enum ProcessorExtTableColumn {
 
     ToHashTableEvalArg,
     FromHashTableEvalArg,
+
+    U32TablePermArg,
 
     SelectedClockCyclesEvalArg,
     UniqueClockJumpDifferencesEvalArg,
@@ -253,6 +257,68 @@ pub enum HashExtTableColumn {
     FromProcessorRunningEvaluation,
 }
 
+// -------- U32 Table --------
+
+#[repr(usize)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum U32BaseTableColumn {
+    /// Marks the beginning of an independent section within the U32 table.
+    CopyFlag,
+
+    /// The number of bits that LHS and RHS have already been shifted by.
+    Bits,
+
+    /// The inverse-or-zero of the difference between
+    /// 1. the first disallowed number of bits to shift LHS and RHS by, _i.e.,_ 33, and
+    /// 2. the number of bits that LHS and RHS have already been shifted by.
+    BitsMinus33Inv,
+
+    /// Current Instruction, the instruction the processor is currently executing.
+    CI,
+
+    /// Left-hand side of the operation.
+    LHS,
+
+    /// Right-hand side of the operation.
+    RHS,
+
+    /// The result (or intermediate result) of LHS < RHS.
+    /// Can take on the values 0, 1, or 2, where
+    /// - 0 means LHS >= RHS,
+    /// - 1 means LHS < RHS, and
+    /// - 2 means the result is unknown in the current row.
+    /// The value 2 can never occur in the first row of a section, _i.e._, when `CopyFlag` is 1.
+    LT,
+
+    /// The result (or intermediate result) of LHS & RHS, _i.e._, bitwise and.
+    AND,
+
+    /// The result (or intermediate result) of LHS ^ RHS, _i.e._, bitwise xor.
+    XOR,
+
+    /// The floor of log₂(LHS), _i.e._, the number of bits in LHS minus 1.
+    Log2Floor,
+
+    /// A copy of LHS in the first row in the current, independent section, _i.e._, when `CopyFlag`
+    /// was last 1. Needed for the computation of `Pow`.
+    LhsCopy,
+
+    /// The result (or intermediate result) of LHS ** RHS, _i.e._, LHS to the power of RHS.
+    Pow,
+
+    /// The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to 0.
+    LhsInv,
+
+    /// The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to 0.
+    RhsInv,
+}
+
+#[repr(usize)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum U32ExtTableColumn {
+    ProcessorPermArg,
+}
+
 // --------------------------------------------------------------------
 
 pub trait BaseTableColumn {
@@ -302,6 +368,13 @@ impl BaseTableColumn for JumpStackBaseTableColumn {
 }
 
 impl BaseTableColumn for HashBaseTableColumn {
+    #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+}
+
+impl BaseTableColumn for U32BaseTableColumn {
     #[inline]
     fn base_table_index(&self) -> usize {
         (*self) as usize
@@ -363,6 +436,13 @@ impl ExtTableColumn for HashExtTableColumn {
     }
 }
 
+impl ExtTableColumn for U32ExtTableColumn {
+    #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+}
+
 // --------------------------------------------------------------------
 
 pub trait MasterBaseTableColumn: BaseTableColumn {
@@ -418,6 +498,13 @@ impl MasterBaseTableColumn for HashBaseTableColumn {
     }
 }
 
+impl MasterBaseTableColumn for U32BaseTableColumn {
+    #[inline]
+    fn master_base_table_index(&self) -> usize {
+        U32_TABLE_START + self.base_table_index()
+    }
+}
+
 // --------------------------------------------------------------------
 
 pub trait MasterExtTableColumn: ExtTableColumn {
@@ -470,6 +557,13 @@ impl MasterExtTableColumn for HashExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_HASH_TABLE_START + self.ext_table_index()
+    }
+}
+
+impl MasterExtTableColumn for U32ExtTableColumn {
+    #[inline]
+    fn master_ext_table_index(&self) -> usize {
+        EXT_U32_TABLE_START + self.ext_table_index()
     }
 }
 
