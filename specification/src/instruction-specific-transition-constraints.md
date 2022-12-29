@@ -467,28 +467,6 @@ Additionally, it defines the following transition constraints.
 
 1. `st0'·st0 - 1`
 
-## Instruction `split`
-
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_grows_and_top_2_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
-
-### Description
-
-1. The top of the stack is decomposed as 32-bit chunks into the stack's top-most two elements.
-1. Helper variable `hv0` holds the inverse of $2^{32} - 1$ subtracted from the high 32 bits or the low 32 bits are 0.
-
-### Polynomials
-
-1. `st0 - (2^32·st0' + st1')`
-1. `st1'·(hv0·(st0' - (2^32 - 1)) - 1)`
-
-### Helper variable definitions for `split`
-
-Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0` as `lo = st0 & 0xffff_ffff`,
-
-1. `hv0 = (hi - (2^32 - 1))` if `lo ≠ 0`.
-1. `hv0 = 0` if `lo = 0`.
-
 ## Instruction `eq`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
@@ -525,6 +503,79 @@ Additionally, it defines the following transition constraints.
 
 1. `st0'·(st0' - 1)`
 1. `st0 - (2·st1' + st0')`
+
+## Instruction `split`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_grows_and_top_2_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+Part of the correct transition, namely the range check on the instruction's result, is guaranteed by the [U32 Table](u32-table.md).
+
+### Description
+
+1. The top of the stack is decomposed as 32-bit chunks into the stack's top-most two elements.
+1. Helper variable `hv0` holds the inverse of $2^{32} - 1$ subtracted from the high 32 bits or the low 32 bits are 0.
+
+### Polynomials
+
+1. `st0 - (2^32·st0' + st1')`
+1. `st1'·(hv0·(st0' - (2^32 - 1)) - 1)`
+
+### Helper variable definitions for `split`
+
+Given the high 32 bits of `st0` as `hi = st0 >> 32` and the low 32 bits of `st0` as `lo = st0 & 0xffff_ffff`,
+
+1. `hv0 = (hi - (2^32 - 1))` if `lo ≠ 0`.
+1. `hv0 = 0` if `lo = 0`.
+
+## Instruction `lt`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
+Beyond that, this instruction has no transition constraints.
+Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+
+## Instruction `and`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
+Beyond that, this instruction has no transition constraints.
+Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+
+## Instruction `xor`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
+Beyond that, this instruction has no transition constraints.
+Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+
+## Instruction `log2floor`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `unary_operation`, and `keep_ram`.
+Beyond that, this instruction has no transition constraints.
+Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+
+## Instruction `pow`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `binary_operation`, and `keep_ram`.
+Beyond that, this instruction has no transition constraints.
+Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+
+## Instruction `div`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
+Recall that instruction `div` takes stack `_ d n` and computes `_ q r` where `n` is the numerator, `d` is the denominator, `r` is the remainder, and `q` is the quotient.
+The following two properties are guaranteed by the [U32 Table](u32-table.md):
+1. The remainder `r` is smaller than the denominator `d`, and
+1. all four of `n`, `d`, `q`, and `r` are u32s.
+
+### Description
+
+1. Numerator is quotient times denominator plus remainder: `n == q·d + r`.
+1. Stack element `st2` does not change.
+
+### Polynomials
+
+1. `st0 - st1·st1' - st0'`
+1. `st2' - st2`
 
 ## Instruction `xxadd`
 
