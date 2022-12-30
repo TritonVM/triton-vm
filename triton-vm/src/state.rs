@@ -365,16 +365,6 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 1;
             }
 
-            Split => {
-                let elem = self.op_stack.pop()?;
-                let n: u64 = elem.value();
-                let lo = BFieldElement::new(n & 0xffff_ffff);
-                let hi = BFieldElement::new(n >> 32);
-                self.op_stack.push(lo);
-                self.op_stack.push(hi);
-                self.instruction_pointer += 1;
-            }
-
             Eq => {
                 let lhs = self.op_stack.pop()?;
                 let rhs = self.op_stack.pop()?;
@@ -388,6 +378,40 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(BFieldElement::new(top.value() >> 1));
                 self.op_stack.push(lsb);
                 self.instruction_pointer += 1;
+            }
+
+            Split => {
+                let elem = self.op_stack.pop()?;
+                let n: u64 = elem.value();
+                let lo = BFieldElement::new(n & 0xffff_ffff);
+                let hi = BFieldElement::new(n >> 32);
+                self.op_stack.push(lo);
+                self.op_stack.push(hi);
+                self.instruction_pointer += 1;
+            }
+
+            Lt => {
+                todo!()
+            }
+
+            And => {
+                todo!()
+            }
+
+            Xor => {
+                todo!()
+            }
+
+            Log2Floor => {
+                todo!()
+            }
+
+            Pow => {
+                todo!()
+            }
+
+            Div => {
+                todo!()
             }
 
             XxAdd => {

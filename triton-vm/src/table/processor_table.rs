@@ -19,7 +19,8 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use triton_opcodes::instruction::all_instructions_without_args;
-use triton_opcodes::instruction::{AnInstruction::*, Instruction};
+use triton_opcodes::instruction::AnInstruction::*;
+use triton_opcodes::instruction::Instruction;
 use triton_opcodes::ord_n::Ord7;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
@@ -954,9 +955,15 @@ impl ExtProcessorTable {
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
-            (Split, factory.instruction_split()),
             (Eq, factory.instruction_eq()),
             (Lsb, factory.instruction_lsb()),
+            (Split, factory.instruction_split()),
+            (Lt, factory.instruction_lt()),
+            (And, factory.instruction_and()),
+            (Xor, factory.instruction_xor()),
+            (Log2Floor, factory.instruction_log_2_floor()),
+            (Pow, factory.instruction_pow()),
+            (Div, factory.instruction_div()),
             (XxAdd, factory.instruction_xxadd()),
             (XxMul, factory.instruction_xxmul()),
             (XInvert, factory.instruction_xinv()),
@@ -2380,6 +2387,72 @@ impl DualRowConstraints {
             self.keep_ram(),
         ]
         .concat()
+    }
+
+    pub fn instruction_lt(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        todo!()
+    }
+
+    pub fn instruction_and(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        todo!()
+    }
+
+    pub fn instruction_xor(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        todo!()
+    }
+
+    pub fn instruction_log_2_floor(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        todo!()
+    }
+
+    pub fn instruction_pow(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        todo!()
+    }
+
+    pub fn instruction_div(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        todo!()
     }
 
     pub fn instruction_xxadd(
@@ -4467,9 +4540,15 @@ mod constraint_polynomial_tests {
             Add => tc.instruction_add(),
             Mul => tc.instruction_mul(),
             Invert => tc.instruction_invert(),
-            Split => tc.instruction_split(),
             Eq => tc.instruction_eq(),
             Lsb => tc.instruction_lsb(),
+            Split => tc.instruction_split(),
+            Lt => tc.instruction_lt(),
+            And => tc.instruction_and(),
+            Xor => tc.instruction_xor(),
+            Log2Floor => tc.instruction_log_2_floor(),
+            Pow => tc.instruction_pow(),
+            Div => tc.instruction_div(),
             XxAdd => tc.instruction_xxadd(),
             XxMul => tc.instruction_xxmul(),
             XInvert => tc.instruction_xinv(),
@@ -4821,9 +4900,15 @@ mod constraint_polynomial_tests {
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
-            (Split, factory.instruction_split()),
             (Eq, factory.instruction_eq()),
             (Lsb, factory.instruction_lsb()),
+            (Split, factory.instruction_split()),
+            (Lt, factory.instruction_lt()),
+            (And, factory.instruction_and()),
+            (Xor, factory.instruction_xor()),
+            (Log2Floor, factory.instruction_log_2_floor()),
+            (Pow, factory.instruction_pow()),
+            (Div, factory.instruction_div()),
             (XxAdd, factory.instruction_xxadd()),
             (XxMul, factory.instruction_xxmul()),
             (XInvert, factory.instruction_xinv()),
