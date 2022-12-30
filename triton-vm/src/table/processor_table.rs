@@ -2278,50 +2278,6 @@ impl DualRowConstraints {
         .concat()
     }
 
-    pub fn instruction_split(
-        &self,
-    ) -> Vec<
-        ConstraintCircuitMonad<
-            ProcessorTableChallenges,
-            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
-        let two_pow_32 = self.constant_b(BFieldElement::new(1_u64 << 32));
-
-        // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements.
-        //
-        // $st0 - (2^32·st0' + st1') = 0$
-        let st0_decomposes_to_two_32_bit_chunks =
-            self.st0() - (two_pow_32.clone() * self.st0_next() + self.st1_next());
-
-        // Helper variable `hv0` = 0 if either
-        // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
-        // 1. the low 32 bits (`st1'`) are 0.
-        //
-        // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
-        //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
-        let hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0 = {
-            let hv0 = self.hv0();
-            let hi = self.st0_next();
-            let lo = self.st1_next();
-            let ffff_ffff = two_pow_32 - self.one();
-
-            lo * (hv0 * (hi - ffff_ffff) - self.one())
-        };
-
-        let specific_constraints = vec![
-            st0_decomposes_to_two_32_bit_chunks,
-            hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0,
-        ];
-        [
-            specific_constraints,
-            self.grow_stack_and_top_two_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
     pub fn instruction_eq(
         &self,
     ) -> Vec<
@@ -2389,6 +2345,50 @@ impl DualRowConstraints {
         .concat()
     }
 
+    pub fn instruction_split(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let two_pow_32 = self.constant_b(BFieldElement::new(1_u64 << 32));
+
+        // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements.
+        //
+        // $st0 - (2^32·st0' + st1') = 0$
+        let st0_decomposes_to_two_32_bit_chunks =
+            self.st0() - (two_pow_32.clone() * self.st0_next() + self.st1_next());
+
+        // Helper variable `hv0` = 0 if either
+        // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
+        // 1. the low 32 bits (`st1'`) are 0.
+        //
+        // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
+        //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
+        let hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0 = {
+            let hv0 = self.hv0();
+            let hi = self.st0_next();
+            let lo = self.st1_next();
+            let ffff_ffff = two_pow_32 - self.one();
+
+            lo * (hv0 * (hi - ffff_ffff) - self.one())
+        };
+
+        let specific_constraints = vec![
+            st0_decomposes_to_two_32_bit_chunks,
+            hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0,
+        ];
+        [
+            specific_constraints,
+            self.grow_stack_and_top_two_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
     pub fn instruction_lt(
         &self,
     ) -> Vec<
@@ -2397,7 +2397,15 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_and(
@@ -2408,7 +2416,15 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_xor(
@@ -2419,7 +2435,15 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_log_2_floor(
@@ -2430,7 +2454,15 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.unop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_pow(
@@ -2441,7 +2473,15 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_div(
@@ -2452,7 +2492,23 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        // `n == d·q + r` means `st0 - st1·st1' - st0'`
+        let numerator_is_quotient_times_denominator_plus_remainder =
+            self.st0() - self.st1() * self.st1_next() - self.st0_next();
+
+        let st2_does_not_change = self.st2_next() - self.st2();
+
+        let specific_constraints = vec![
+            numerator_is_quotient_times_denominator_plus_remainder,
+            st2_does_not_change,
+        ];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.stack_remains_and_top_three_elements_unconstrained(),
+            self.keep_ram(),
+        ]
+        .concat()
     }
 
     pub fn instruction_xxadd(
