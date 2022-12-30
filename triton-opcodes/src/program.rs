@@ -26,11 +26,12 @@ impl Display for Program {
     }
 }
 
-pub struct SkippyIter {
+/// An `InstructionIter` loops the instructions of a `Program` by skipping duplicate placeholders.
+pub struct InstructionIter {
     cursor: Cursor<Vec<Instruction>>,
 }
 
-impl Iterator for SkippyIter {
+impl Iterator for InstructionIter {
     type Item = Instruction;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -46,11 +47,11 @@ impl Iterator for SkippyIter {
 impl IntoIterator for Program {
     type Item = Instruction;
 
-    type IntoIter = SkippyIter;
+    type IntoIter = InstructionIter;
 
     fn into_iter(self) -> Self::IntoIter {
         let cursor = Cursor::new(self.instructions);
-        SkippyIter { cursor }
+        InstructionIter { cursor }
     }
 }
 
