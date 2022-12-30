@@ -1,12 +1,13 @@
 use ndarray::Array2;
 use ndarray::Axis;
-
-use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
+
+use triton_opcodes::instruction::Instruction;
+use triton_opcodes::program::Program;
 
 use crate::state::VMOutput;
 use crate::state::VMState;
@@ -49,6 +50,9 @@ pub fn simulate(
 
         match vm_output {
             Some(VMOutput::XlixTrace(hash_trace)) => aet.append_hash_trace(*hash_trace),
+            Some(VMOutput::U32TableEntry(instr, lhs, rhs)) => {
+                aet.u32_entries.push((instr, lhs, rhs))
+            }
             Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
             None => (),
         }
@@ -109,6 +113,7 @@ pub fn run(
 pub struct AlgebraicExecutionTrace {
     pub processor_matrix: Array2<BFieldElement>,
     pub hash_matrix: Array2<BFieldElement>,
+    pub u32_entries: Vec<(Instruction, BFieldElement, BFieldElement)>,
 }
 
 impl Default for AlgebraicExecutionTrace {
@@ -116,6 +121,7 @@ impl Default for AlgebraicExecutionTrace {
         Self {
             processor_matrix: Array2::default([0, processor_table::BASE_WIDTH]),
             hash_matrix: Array2::default([0, hash_table::BASE_WIDTH]),
+            u32_entries: vec![],
         }
     }
 }
