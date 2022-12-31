@@ -403,7 +403,12 @@ impl ExtU32Table {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        let circuit_builder = ConstraintCircuitBuilder::new();
+
+        let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
+        let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
+
+        [lhs, rhs].map(|circuit| circuit.consume()).to_vec()
     }
 }
 
