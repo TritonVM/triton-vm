@@ -241,6 +241,7 @@ impl AllChallenges {
             processor_to_jump_stack_weight: weights.pop().unwrap(),
             processor_to_hash_weight: weights.pop().unwrap(),
             hash_to_processor_weight: weights.pop().unwrap(),
+            processor_to_u32_weight: weights.pop().unwrap(),
             all_clock_jump_differences_weight: weights.pop().unwrap(),
             input_to_processor_weight: weights.pop().unwrap(),
             processor_to_output_weight: weights.pop().unwrap(),

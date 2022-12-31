@@ -24,6 +24,7 @@ use crate::table::table_column::OpStackExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn;
 use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::RamExtTableColumn;
+use crate::table::table_column::U32ExtTableColumn;
 
 pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
@@ -107,6 +108,7 @@ pub struct CrossTableChallenges {
     pub processor_to_jump_stack_weight: XFieldElement,
     pub processor_to_hash_weight: XFieldElement,
     pub hash_to_processor_weight: XFieldElement,
+    pub processor_to_u32_weight: XFieldElement,
     pub all_clock_jump_differences_weight: XFieldElement,
     pub input_to_processor_weight: XFieldElement,
     pub processor_to_output_weight: XFieldElement,
@@ -124,6 +126,7 @@ pub enum CrossTableChallengeId {
     ProcessorToJumpStackWeight,
     ProcessorToHashWeight,
     HashToProcessorWeight,
+    ProcessorToU32Weight,
     AllClockJumpDifferencesWeight,
     InputToProcessorWeight,
     ProcessorToOutputWeight,
@@ -150,6 +153,7 @@ impl TableChallenges for CrossTableChallenges {
             ProcessorToJumpStackWeight => self.processor_to_jump_stack_weight,
             ProcessorToHashWeight => self.processor_to_hash_weight,
             HashToProcessorWeight => self.hash_to_processor_weight,
+            ProcessorToU32Weight => self.processor_to_u32_weight,
             AllClockJumpDifferencesWeight => self.all_clock_jump_differences_weight,
             InputToProcessorWeight => self.input_to_processor_weight,
             ProcessorToOutputWeight => self.processor_to_output_weight,
@@ -218,6 +222,9 @@ impl Evaluable for GrandCrossTableArg {
         let hash_to_processor = ext_row
             [HashExtTableColumn::ToProcessorRunningEvaluation.master_ext_table_index()]
             - ext_row[ProcessorExtTableColumn::FromHashTableEvalArg.master_ext_table_index()];
+        let processor_to_u32 = ext_row
+            [ProcessorExtTableColumn::U32TablePermArg.master_ext_table_index()]
+            - ext_row[U32ExtTableColumn::ProcessorPermArg.master_ext_table_index()];
         let all_clock_jump_differences = ext_row
             [ProcessorExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()]
             - ext_row
@@ -236,6 +243,7 @@ impl Evaluable for GrandCrossTableArg {
             + challenges.get_challenge(ProcessorToJumpStackWeight) * processor_to_jump_stack
             + challenges.get_challenge(ProcessorToHashWeight) * processor_to_hash
             + challenges.get_challenge(HashToProcessorWeight) * hash_to_processor
+            + challenges.get_challenge(ProcessorToU32Weight) * processor_to_u32
             + challenges.get_challenge(AllClockJumpDifferencesWeight) * all_clock_jump_differences;
         vec![non_linear_sum]
     }

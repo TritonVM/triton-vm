@@ -50,7 +50,7 @@ use crate::table::table_column::ProcessorExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
+pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 6;
 pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
 pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = ProcessorTableChallengeId::COUNT;
 
