@@ -512,6 +512,7 @@ pub enum ProcessorTableChallengeId {
     OpStackPermIndeterminate,
     RamPermIndeterminate,
     JumpStackPermIndeterminate,
+    U32PermIndeterminate,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     InstructionTableIpWeight,
@@ -555,6 +556,11 @@ pub enum ProcessorTableChallengeId {
     HashTableDigestOutputWeight2,
     HashTableDigestOutputWeight3,
     HashTableDigestOutputWeight4,
+
+    U32TableLhsWeight,
+    U32TableRhsWeight,
+    U32TableCiWeight,
+    U32TableResultWeight,
 }
 
 impl From<ProcessorTableChallengeId> for usize {
@@ -576,6 +582,7 @@ pub struct ProcessorTableChallenges {
     pub op_stack_perm_indeterminate: XFieldElement,
     pub ram_perm_indeterminate: XFieldElement,
     pub jump_stack_perm_indeterminate: XFieldElement,
+    pub u32_table_perm_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub instruction_table_ip_weight: XFieldElement,
@@ -624,7 +631,6 @@ pub struct ProcessorTableChallenges {
     pub u32_table_rhs_weight: XFieldElement,
     pub u32_table_ci_weight: XFieldElement,
     pub u32_table_result_weight: XFieldElement,
-    pub u32_table_perm_indeterminate: XFieldElement,
 }
 
 impl TableChallenges for ProcessorTableChallenges {
@@ -641,6 +647,7 @@ impl TableChallenges for ProcessorTableChallenges {
             OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
             RamPermIndeterminate => self.ram_perm_indeterminate,
             JumpStackPermIndeterminate => self.jump_stack_perm_indeterminate,
+            U32PermIndeterminate => self.u32_table_perm_indeterminate,
             InstructionTableIpWeight => self.instruction_table_ip_weight,
             InstructionTableCiProcessorWeight => self.instruction_table_ci_processor_weight,
             InstructionTableNiaWeight => self.instruction_table_nia_weight,
@@ -678,6 +685,10 @@ impl TableChallenges for ProcessorTableChallenges {
             HashTableDigestOutputWeight2 => self.hash_table_digest_output_weight2,
             HashTableDigestOutputWeight3 => self.hash_table_digest_output_weight3,
             HashTableDigestOutputWeight4 => self.hash_table_digest_output_weight4,
+            U32TableLhsWeight => self.u32_table_lhs_weight,
+            U32TableRhsWeight => self.u32_table_rhs_weight,
+            U32TableCiWeight => self.u32_table_ci_weight,
+            U32TableResultWeight => self.u32_table_result_weight,
         }
     }
 }
@@ -1059,6 +1070,7 @@ impl ExtProcessorTable {
             .push(factory.running_product_for_jump_stack_table_updates_correctly());
         transition_constraints.push(factory.running_evaluation_to_hash_table_updates_correctly());
         transition_constraints.push(factory.running_evaluation_from_hash_table_updates_correctly());
+        transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
         let mut built_transition_constraints = transition_constraints
             .into_iter()
@@ -3228,6 +3240,14 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
     }
+    pub fn running_product_u32_table(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
+    }
 
     // Property: All polynomial variables that contain '_next' have the same
     // variable position / value as the one without '_next', +/- NUM_COLUMNS.
@@ -3668,6 +3688,14 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_product_u32_table_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
     }
 
     pub fn decompose_arg(
@@ -4188,6 +4216,72 @@ impl DualRowConstraints {
             - self.running_evaluation_from_hash_table();
 
         hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+    }
+
+    pub fn running_product_to_u32_table_updates_correctly(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        let indeterminate = self.circuit_builder.challenge(U32PermIndeterminate);
+        let lhs_weight = self.circuit_builder.challenge(U32TableLhsWeight);
+        let rhs_weight = self.circuit_builder.challenge(U32TableRhsWeight);
+        let ci_weight = self.circuit_builder.challenge(U32TableCiWeight);
+        let result_weight = self.circuit_builder.challenge(U32TableResultWeight);
+
+        let split_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::Split);
+        let lt_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Lt);
+        let and_delector = InstructionDeselectors::instruction_deselector(self, Instruction::And);
+        let xor_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Xor);
+        let pow_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Pow);
+        let log_2_floor_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::Log2Floor);
+        let div_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Div);
+
+        let rp = self.running_product_u32_table();
+        let rp_next = self.running_product_u32_table_next();
+
+        let split_factor = indeterminate.clone()
+            - lhs_weight.clone() * self.st0_next()
+            - rhs_weight.clone() * self.st1_next();
+        let binop_factor = indeterminate.clone()
+            - lhs_weight.clone() * self.st0()
+            - rhs_weight.clone() * self.st1()
+            - ci_weight.clone() * self.ci()
+            - result_weight.clone() * self.st0_next();
+        let unop_factor = indeterminate.clone()
+            - lhs_weight.clone() * self.st0()
+            - ci_weight.clone() * self.ci()
+            - result_weight.clone() * self.st0_next();
+        let div_factor_for_lt = indeterminate.clone()
+            - lhs_weight.clone() * self.st0_next()
+            - rhs_weight.clone() * self.st1()
+            - ci_weight * self.ci()
+            - result_weight;
+        let div_factor_for_range_check =
+            indeterminate - lhs_weight * self.st0() - rhs_weight * self.st1_next();
+
+        let split_summand = split_deselector * (rp_next.clone() - rp.clone() * split_factor);
+        let lt_summand = lt_deselector * (rp_next.clone() - rp.clone() * binop_factor.clone());
+        let and_summand = and_delector * (rp_next.clone() - rp.clone() * binop_factor.clone());
+        let xor_summand = xor_deselector * (rp_next.clone() - rp.clone() * binop_factor.clone());
+        let pow_summand = pow_deselector * (rp_next.clone() - rp.clone() * binop_factor);
+        let log_2_floor_summand =
+            log_2_floor_deselector * (rp_next.clone() - rp.clone() * unop_factor);
+        let div_summand = div_deselector
+            * (rp_next.clone() - rp.clone() * div_factor_for_lt * div_factor_for_range_check);
+        let no_update_summand = (self.one() - self.ib2()) * (rp_next - rp);
+
+        split_summand
+            + lt_summand
+            + and_summand
+            + xor_summand
+            + pow_summand
+            + log_2_floor_summand
+            + div_summand
+            + no_update_summand
     }
 }
 
