@@ -1,5 +1,6 @@
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use std::ops::Mul;
 use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
@@ -7,16 +8,26 @@ use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use triton_opcodes::instruction::Instruction;
 use U32TableChallengeId::*;
 
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::PermArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::table::table_column::MasterBaseTableColumn;
+use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::U32BaseTableColumn;
+use crate::table::table_column::U32BaseTableColumn::*;
 use crate::table::table_column::U32ExtTableColumn;
+use crate::table::table_column::U32ExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
 pub const U32_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 2;
@@ -38,7 +49,83 @@ impl ExtU32Table {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let challenge = |c| circuit_builder.challenge(c);
+        let one = circuit_builder.b_constant(1_u32.into());
+
+        let copy_flag = circuit_builder.input(BaseRow(CopyFlag.master_base_table_index()));
+        let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
+        let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
+        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
+
+        let rp = circuit_builder.input(ExtRow(ProcessorPermArg.master_ext_table_index()));
+
+        let deselect_instructions = |instructions: &[Instruction]| {
+            instructions
+                .iter()
+                .map(|&instr| ci.clone() - circuit_builder.b_constant(instr.opcode_b()))
+                .fold(one.clone(), ConstraintCircuitMonad::mul)
+                * ci.clone()
+        };
+        let lt_div_deselector = deselect_instructions(&[
+            Instruction::And,
+            Instruction::Xor,
+            Instruction::Log2Floor,
+            Instruction::Pow,
+        ]);
+        let and_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::Xor,
+            Instruction::Log2Floor,
+            Instruction::Pow,
+        ]);
+        let xor_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::And,
+            Instruction::Log2Floor,
+            Instruction::Pow,
+        ]);
+        let log2floor_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::And,
+            Instruction::Xor,
+            Instruction::Pow,
+        ]);
+        let pow_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::And,
+            Instruction::Xor,
+            Instruction::Log2Floor,
+        ]);
+        let result = lt_div_deselector
+            * circuit_builder.input(BaseRow(LT.master_base_table_index()))
+            + and_deselector * circuit_builder.input(BaseRow(AND.master_base_table_index()))
+            + xor_deselector * circuit_builder.input(BaseRow(XOR.master_base_table_index()))
+            + log2floor_deselector
+                * circuit_builder.input(BaseRow(Log2Floor.master_base_table_index()))
+            + pow_deselector * circuit_builder.input(BaseRow(Pow.master_base_table_index()));
+
+        let initial_factor = challenge(ProcessorPermIndeterminate)
+            - challenge(LhsWeight) * lhs
+            - challenge(RhsWeight) * rhs
+            - challenge(CIWeight) * ci
+            - challenge(ResultWeight) * result;
+        let copy_flag_is_0_or_rp_has_accumulated_first_row =
+            copy_flag.clone() * (rp.clone() - initial_factor);
+
+        let default_initial = circuit_builder.x_constant(PermArg::default_initial());
+        let copy_flag_is_1_or_rp_is_default_initial = (one - copy_flag) * (default_initial - rp);
+
+        [
+            copy_flag_is_1_or_rp_is_default_initial,
+            copy_flag_is_0_or_rp_has_accumulated_first_row,
+        ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<
