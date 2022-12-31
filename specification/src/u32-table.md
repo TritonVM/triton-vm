@@ -83,7 +83,6 @@ The instruction `div` uses the U32 Table to ensure that the remainder `r` is sma
 Hence, the result of `LT` is used.
 The instruction `div` _also_ uses the U32 Table to ensure that the numerator `n` and the quotient `q` are u32.
 For this range check, happening in its independent section, no result is required.
-While the processor accumulates two factors into the running product in between two consecutive rows, the U32 Table 
 The instruction `split` also uses the U32 Table for range checking only, _i.e._, to ensure that the instruction's resulting “high bits” and “low bits” each fit in a u32.
 
 To conditionally copy the required result to the processor, instruction de-selectors like in the Processor Table are used.
@@ -119,8 +118,8 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ### Initial Constraints as Polynomials
 
-1. `CopyFlag·(RunningProductProcessor - 1)`
-1. `(CopyFlag - 1)·(RunningProductProcessor - (🧷 - 🥜·LHS - 🌰·RHS - 🥑·CI - 🥕·Result))`
+1. `(CopyFlag - 1)·(RunningProductProcessor - 1)`
+1. `CopyFlag·(RunningProductProcessor - (🧷 - 🥜·LHS - 🌰·RHS - 🥑·CI - 🥕·Result))`
 
 ## Consistency Constraints
 
