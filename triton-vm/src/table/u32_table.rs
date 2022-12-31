@@ -134,7 +134,65 @@ impl ExtU32Table {
             SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        todo!()
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let one = circuit_builder.b_constant(1_u32.into());
+
+        let copy_flag = circuit_builder.input(BaseRow(CopyFlag.master_base_table_index()));
+        let bits = circuit_builder.input(BaseRow(Bits.master_base_table_index()));
+        let bits_minus_33_inv =
+            circuit_builder.input(BaseRow(BitsMinus33Inv.master_base_table_index()));
+        let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
+        let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
+        let lt = circuit_builder.input(BaseRow(LT.master_base_table_index()));
+        let and = circuit_builder.input(BaseRow(AND.master_base_table_index()));
+        let xor = circuit_builder.input(BaseRow(XOR.master_base_table_index()));
+        let log2floor = circuit_builder.input(BaseRow(Log2Floor.master_base_table_index()));
+        let lhs_copy = circuit_builder.input(BaseRow(LhsCopy.master_base_table_index()));
+        let pow = circuit_builder.input(BaseRow(Pow.master_base_table_index()));
+        let lhs_inv = circuit_builder.input(BaseRow(LhsInv.master_base_table_index()));
+        let rhs_inv = circuit_builder.input(BaseRow(RhsInv.master_base_table_index()));
+
+        let copy_flag_is_bit = copy_flag.clone() * (one.clone() - copy_flag.clone());
+        let copy_flag_is_0_or_bits_is_0 = copy_flag.clone() * bits.clone();
+        let bits_minus_33_inv_is_inverse_of_bits_minus_33 = one.clone()
+            - bits_minus_33_inv * (bits - circuit_builder.b_constant(BFieldElement::new(33)));
+        let lhs_inv_is_0_or_the_inverse_of_lhs =
+            lhs_inv.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
+        let lhs_is_0_or_lhs_inverse_is_the_inverse_of_lhs =
+            lhs.clone() * (one.clone() - lhs.clone() * lhs_inv.clone());
+        let rhs_inv_is_0_or_the_inverse_of_rhs =
+            rhs_inv.clone() * (one.clone() - rhs.clone() * rhs_inv.clone());
+        let rhs_is_0_or_rhs_inverse_is_the_inverse_of_rhs =
+            rhs.clone() * (one.clone() - rhs.clone() * rhs_inv.clone());
+        let copy_flag_is_0_or_lhs_copy_is_lhs = copy_flag.clone() * (lhs_copy - lhs.clone());
+        let padding_row = (one.clone() - copy_flag)
+            * (one.clone() - lhs.clone() * lhs_inv.clone())
+            * (one.clone() - rhs * rhs_inv);
+        let padding_row_or_lt_is_2 =
+            padding_row.clone() * (lt - circuit_builder.b_constant(BFieldElement::new(2)));
+        let padding_row_or_and_is_0 = padding_row.clone() * and;
+        let padding_row_or_xor_is_0 = padding_row.clone() * xor;
+        let padding_row_or_pow_is_1 = padding_row * (one.clone() - pow);
+        let lhs_is_not_zero_or_log2floor_is_negative_1 =
+            (one.clone() - lhs * lhs_inv) * (log2floor + one);
+
+        [
+            copy_flag_is_bit,
+            copy_flag_is_0_or_bits_is_0,
+            bits_minus_33_inv_is_inverse_of_bits_minus_33,
+            lhs_inv_is_0_or_the_inverse_of_lhs,
+            lhs_is_0_or_lhs_inverse_is_the_inverse_of_lhs,
+            rhs_inv_is_0_or_the_inverse_of_rhs,
+            rhs_is_0_or_rhs_inverse_is_the_inverse_of_rhs,
+            copy_flag_is_0_or_lhs_copy_is_lhs,
+            padding_row_or_lt_is_2,
+            padding_row_or_and_is_0,
+            padding_row_or_xor_is_0,
+            padding_row_or_pow_is_1,
+            lhs_is_not_zero_or_log2floor_is_negative_1,
+        ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<
