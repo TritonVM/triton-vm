@@ -8,7 +8,6 @@ use num_traits::One;
 use num_traits::Zero;
 
 use triton_opcodes::instruction::AnInstruction::*;
-use triton_opcodes::instruction::DivinationHint;
 use triton_opcodes::instruction::Instruction;
 use triton_opcodes::ord_n::Ord16;
 use triton_opcodes::ord_n::Ord16::*;
@@ -210,30 +209,8 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 2;
             }
 
-            Divine(hint) => {
-                use DivinationHint::*;
-
-                let elem = if let Some(context) = hint {
-                    match context {
-                        Quotient => {
-                            let numerator: u32 = self
-                                .op_stack
-                                .safe_peek(ST0)
-                                .value()
-                                .try_into()
-                                .expect("Numerator uses more than 32 bits.");
-                            let denominator: u32 = self
-                                .op_stack
-                                .safe_peek(ST1)
-                                .value()
-                                .try_into()
-                                .expect("Denominator uses more than 32 bits.");
-                            BFieldElement::new((numerator / denominator) as u64)
-                        }
-                    }
-                } else {
-                    secret_in.remove(0)
-                };
+            Divine(_) => {
+                let elem = secret_in.remove(0);
                 self.op_stack.push(elem);
                 self.instruction_pointer += 1;
             }

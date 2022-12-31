@@ -23,7 +23,6 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use AnInstruction::*;
 use TokenError::*;
 
-use crate::instruction::DivinationHint::Quotient;
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
 use crate::ord_n::Ord7;
@@ -50,9 +49,7 @@ impl Display for LabelledInstruction {
 }
 
 #[derive(Debug, DisplayMacro, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
-pub enum DivinationHint {
-    Quotient,
-}
+pub enum DivinationHint {}
 
 /// A Triton VM instruction
 ///
@@ -483,7 +480,6 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
         "pop" => vec![Pop],
         "push" => vec![Push(parse_elem(tokens)?)],
         "divine" => vec![Divine(None)],
-        "divine_quotient" => vec![Divine(Some(Quotient))],
         "dup0" => vec![Dup(ST0)],
         "dup1" => vec![Dup(ST1)],
         "dup2" => vec![Dup(ST2)],
@@ -657,7 +653,6 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Pop,
         Push(BFieldElement::new(42)),
         Divine(None),
-        Divine(Some(Quotient)),
         Dup(ST0),
         Dup(ST1),
         Dup(ST2),
@@ -760,7 +755,7 @@ pub mod sample_programs {
     pub const ALL_INSTRUCTIONS: &str = "
         pop
         push 42
-        divine divine_quotient
+        divine
 
         dup0 dup1 dup2 dup3 dup4 dup5 dup6 dup7 dup8 dup9 dup10 dup11 dup12 dup13 dup14 dup15
         swap1 swap2 swap3 swap4 swap5 swap6 swap7 swap8 swap9 swap10 swap11 swap12 swap13 swap14 swap15
@@ -780,7 +775,6 @@ pub mod sample_programs {
             "pop",
             "push 42",
             "divine",
-            "divine_quotient",
             "dup0",
             "dup1",
             "dup2",
