@@ -239,8 +239,8 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(CopyFlag' - 1)·(LT' - 0)·(LT' - 1)·LhsLsb·(RhsLsb - 1)·LT`
 1. `(CopyFlag' - 1)·(LT' - 0)·(LT' - 1)·(1 - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)·(CopyFlag - 1)·(LT - 2)`
 1. `(CopyFlag' - 1)·(LT' - 0)·(LT' - 1)·(1 - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)·CopyFlag·LT`
-1. `(CopyFlag' - 1)·(AND - 2·AND' + LhsLsb·RhsLsb)`
-1. `(CopyFlag' - 1)·(XOR - 2·XOR' + LhsLsb + RhsLsb - 2·LhsLsb·RhsLsb)`
+1. `(CopyFlag' - 1)·(AND - 2·AND' - LhsLsb·RhsLsb)`
+1. `(CopyFlag' - 1)·(XOR - 2·XOR' - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)`
 1. `(CopyFlag' - 1)·(1 - LHS'·LhsInv')·LHS·(Log2Floor - Bits)`
 1. `(CopyFlag' - 1)·LHS'·(Log2Floor' - Log2Floor)`
 1. `(CopyFlag' - 1)·(RhsLsb - 1)·(Pow - Pow'·Pow')`

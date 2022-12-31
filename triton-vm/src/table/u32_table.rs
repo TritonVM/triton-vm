@@ -16,6 +16,7 @@ use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
@@ -198,7 +199,202 @@ impl ExtU32Table {
     pub fn ext_transition_constraints_as_circuits() -> Vec<
         ConstraintCircuit<U32TableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
     > {
-        todo!()
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let challenge = |c| circuit_builder.challenge(c);
+        let one = circuit_builder.b_constant(1_u32.into());
+        let two = circuit_builder.b_constant(2_u32.into());
+
+        let copy_flag = circuit_builder.input(CurrentBaseRow(CopyFlag.master_base_table_index()));
+        let bits = circuit_builder.input(CurrentBaseRow(Bits.master_base_table_index()));
+        let ci = circuit_builder.input(CurrentBaseRow(CI.master_base_table_index()));
+        let lhs = circuit_builder.input(CurrentBaseRow(LHS.master_base_table_index()));
+        let rhs = circuit_builder.input(CurrentBaseRow(RHS.master_base_table_index()));
+        let lt = circuit_builder.input(CurrentBaseRow(LT.master_base_table_index()));
+        let and = circuit_builder.input(CurrentBaseRow(AND.master_base_table_index()));
+        let xor = circuit_builder.input(CurrentBaseRow(XOR.master_base_table_index()));
+        let log2floor = circuit_builder.input(CurrentBaseRow(Log2Floor.master_base_table_index()));
+        let lhs_copy = circuit_builder.input(CurrentBaseRow(LhsCopy.master_base_table_index()));
+        let pow = circuit_builder.input(CurrentBaseRow(Pow.master_base_table_index()));
+        let rp = circuit_builder.input(CurrentExtRow(ProcessorPermArg.master_ext_table_index()));
+
+        let copy_flag_next = circuit_builder.input(NextBaseRow(CopyFlag.master_base_table_index()));
+        let bits_next = circuit_builder.input(NextBaseRow(Bits.master_base_table_index()));
+        let ci_next = circuit_builder.input(NextBaseRow(CI.master_base_table_index()));
+        let lhs_next = circuit_builder.input(NextBaseRow(LHS.master_base_table_index()));
+        let rhs_next = circuit_builder.input(NextBaseRow(RHS.master_base_table_index()));
+        let lt_next = circuit_builder.input(NextBaseRow(LT.master_base_table_index()));
+        let and_next = circuit_builder.input(NextBaseRow(AND.master_base_table_index()));
+        let xor_next = circuit_builder.input(NextBaseRow(XOR.master_base_table_index()));
+        let log2floor_next =
+            circuit_builder.input(NextBaseRow(Log2Floor.master_base_table_index()));
+        let lhs_copy_next = circuit_builder.input(NextBaseRow(LhsCopy.master_base_table_index()));
+        let pow_next = circuit_builder.input(NextBaseRow(Pow.master_base_table_index()));
+        let lhs_inv_next = circuit_builder.input(NextBaseRow(LhsInv.master_base_table_index()));
+        let rp_next = circuit_builder.input(NextExtRow(ProcessorPermArg.master_ext_table_index()));
+
+        let deselect_instructions = |instructions: &[Instruction]| {
+            instructions
+                .iter()
+                .map(|&instr| ci.clone() - circuit_builder.b_constant(instr.opcode_b()))
+                .fold(one.clone(), ConstraintCircuitMonad::mul)
+                * ci.clone()
+        };
+        let lt_div_deselector = deselect_instructions(&[
+            Instruction::And,
+            Instruction::Xor,
+            Instruction::Log2Floor,
+            Instruction::Pow,
+        ]);
+        let and_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::Xor,
+            Instruction::Log2Floor,
+            Instruction::Pow,
+        ]);
+        let xor_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::And,
+            Instruction::Log2Floor,
+            Instruction::Pow,
+        ]);
+        let log2floor_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::And,
+            Instruction::Xor,
+            Instruction::Pow,
+        ]);
+        let pow_deselector = deselect_instructions(&[
+            Instruction::Lt,
+            Instruction::Div,
+            Instruction::And,
+            Instruction::Xor,
+            Instruction::Log2Floor,
+        ]);
+        let result = lt_div_deselector
+            * circuit_builder.input(CurrentBaseRow(LT.master_base_table_index()))
+            + and_deselector * circuit_builder.input(CurrentBaseRow(AND.master_base_table_index()))
+            + xor_deselector * circuit_builder.input(CurrentBaseRow(XOR.master_base_table_index()))
+            + log2floor_deselector
+                * circuit_builder.input(CurrentBaseRow(Log2Floor.master_base_table_index()))
+            + pow_deselector * circuit_builder.input(CurrentBaseRow(Pow.master_base_table_index()));
+
+        let if_copy_flag_next_is_1_then_lhs_is_0 = copy_flag_next.clone() * lhs.clone();
+        let if_copy_flag_next_is_1_then_rhs_is_0 = copy_flag_next.clone() * rhs.clone();
+        let if_copy_flag_next_is_0_then_ci_stays =
+            (copy_flag_next.clone() - one.clone()) * (ci_next - ci.clone());
+        let if_copy_flag_next_is_0_then_lhs_copy_stays =
+            (copy_flag_next.clone() - one.clone()) * (lhs_copy_next - lhs_copy.clone());
+        let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_bits_increases_by_1 =
+            (copy_flag_next.clone() - one.clone())
+                * lhs.clone()
+                * (bits_next.clone() - bits.clone() - one.clone());
+        let if_copy_flag_next_is_0_and_rhs_next_is_nonzero_then_bits_increases_by_1 =
+            (copy_flag_next.clone() - one.clone())
+                * rhs.clone()
+                * (bits_next - bits.clone() - one.clone());
+        let lhs_lsb = two.clone() * lhs_next.clone() - lhs.clone();
+        let rhs_lsb = two.clone() * rhs_next - rhs.clone();
+        let lhs_lsb_is_a_bit = lhs_lsb.clone() * (lhs_lsb.clone() - one.clone());
+        let rhs_lsb_is_a_bit = rhs_lsb.clone() * (rhs_lsb.clone() - one.clone());
+        let if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0 = (copy_flag_next.clone()
+            - one.clone())
+            * (lt_next.clone() - one.clone())
+            * (lt_next.clone() - two.clone())
+            * lt.clone();
+        let if_copy_flag_next_is_0_and_lt_next_is_1_then_lt_is_1 = (copy_flag_next.clone()
+            - one.clone())
+            * lt_next.clone()
+            * (lt_next.clone() - two.clone())
+            * (lt.clone() - one.clone());
+        let if_copy_flag_next_is_0_and_lt_next_is_2_and_lt_known_then_lt_is_1 =
+            (copy_flag_next.clone() - one.clone())
+                * lt_next.clone()
+                * (lt_next.clone() - one.clone())
+                * (lhs_lsb.clone() - one.clone())
+                * rhs_lsb.clone()
+                * (lt.clone() - one.clone());
+        let if_copy_flag_next_is_0_and_lt_next_is_2_and_gte_known_then_lt_is_0 =
+            (copy_flag_next.clone() - one.clone())
+                * lt_next.clone()
+                * (lt_next.clone() - one.clone())
+                * lhs_lsb.clone()
+                * (rhs_lsb.clone() - one.clone())
+                * lt.clone();
+        let lt_result_unclear = (copy_flag_next.clone() - one.clone())
+            * lt_next.clone()
+            * (lt_next - one.clone())
+            * (one.clone()
+                - lhs_lsb.clone()
+                - rhs_lsb.clone()
+                - two.clone() * lhs_lsb.clone() * rhs_lsb.clone());
+        let if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_then_lt_is_2 = lt_result_unclear
+            .clone()
+            * (copy_flag.clone() - one.clone())
+            * (lt.clone() - two.clone());
+        let if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_in_top_row_then_lt_is_0 =
+            lt_result_unclear * copy_flag.clone() * lt;
+        let if_copy_flag_next_is_0_then_and_updates_correctly = (copy_flag_next.clone()
+            - one.clone())
+            * (and - two.clone() * and_next - lhs_lsb.clone() * rhs_lsb.clone());
+        let if_copy_flag_next_is_0_then_xor_updates_correctly = (copy_flag_next.clone()
+            - one.clone())
+            * (xor - two.clone() * xor_next - lhs_lsb.clone() - rhs_lsb.clone()
+                + two * lhs_lsb * rhs_lsb.clone());
+        let if_copy_flag_next_is_0_and_lhs_next_is_0_and_lhs_is_nonzero_then_log2floor_is_bits =
+            (copy_flag_next.clone() - one.clone())
+                * (one.clone() - lhs_next.clone() * lhs_inv_next)
+                * lhs.clone()
+                * (log2floor.clone() - bits);
+        let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_log2floor_stays =
+            (copy_flag_next.clone() - one.clone()) * lhs_next * (log2floor_next - log2floor);
+        let if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares = (copy_flag_next.clone()
+            - one.clone())
+            * (rhs_lsb.clone() - one.clone())
+            * (pow.clone() - pow_next.clone() * pow_next.clone());
+        let if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares_times_lhs_copy =
+            (copy_flag_next.clone() - one.clone())
+                * rhs_lsb
+                * (pow - pow_next.clone() * pow_next * lhs_copy);
+
+        let compressed_row = challenge(ProcessorPermIndeterminate)
+            - challenge(LhsWeight) * lhs
+            - challenge(RhsWeight) * rhs
+            - challenge(CIWeight) * ci
+            - challenge(ResultWeight) * result;
+        let if_copy_flag_next_is_0_then_running_product_stays =
+            (copy_flag_next - one.clone()) * (rp_next.clone() - rp.clone());
+        let if_copy_flag_next_is_1_then_running_product_absorbs_row =
+            copy_flag * (rp_next - rp * compressed_row);
+
+        [
+            if_copy_flag_next_is_1_then_lhs_is_0,
+            if_copy_flag_next_is_1_then_rhs_is_0,
+            if_copy_flag_next_is_0_then_ci_stays,
+            if_copy_flag_next_is_0_then_lhs_copy_stays,
+            if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_bits_increases_by_1,
+            if_copy_flag_next_is_0_and_rhs_next_is_nonzero_then_bits_increases_by_1,
+            lhs_lsb_is_a_bit,
+            rhs_lsb_is_a_bit,
+            if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0,
+            if_copy_flag_next_is_0_and_lt_next_is_1_then_lt_is_1,
+            if_copy_flag_next_is_0_and_lt_next_is_2_and_lt_known_then_lt_is_1,
+            if_copy_flag_next_is_0_and_lt_next_is_2_and_gte_known_then_lt_is_0,
+            if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_then_lt_is_2,
+            if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_in_top_row_then_lt_is_0,
+            if_copy_flag_next_is_0_then_and_updates_correctly,
+            if_copy_flag_next_is_0_then_xor_updates_correctly,
+            if_copy_flag_next_is_0_and_lhs_next_is_0_and_lhs_is_nonzero_then_log2floor_is_bits,
+            if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_log2floor_stays,
+            if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares,
+            if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares_times_lhs_copy,
+            if_copy_flag_next_is_0_then_running_product_stays,
+            if_copy_flag_next_is_1_then_running_product_absorbs_row,
+        ]
+        .map(|circuit| circuit.consume())
+        .to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<
