@@ -70,14 +70,16 @@ pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + op_stack_table::BASE_WIDTH
     + ram_table::BASE_WIDTH
     + jump_stack_table::BASE_WIDTH
-    + hash_table::BASE_WIDTH;
+    + hash_table::BASE_WIDTH
+    + u32_table::BASE_WIDTH;
 pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
     + instruction_table::EXT_WIDTH
     + processor_table::EXT_WIDTH
     + op_stack_table::EXT_WIDTH
     + ram_table::EXT_WIDTH
     + jump_stack_table::EXT_WIDTH
-    + hash_table::EXT_WIDTH;
+    + hash_table::EXT_WIDTH
+    + u32_table::EXT_WIDTH;
 pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
 
 pub const PROGRAM_TABLE_START: usize = 0;
