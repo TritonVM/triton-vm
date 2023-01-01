@@ -1,10 +1,14 @@
+use std::ops::Mul;
+
+use ndarray::parallel::prelude::*;
 use ndarray::s;
+use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
-use std::ops::Mul;
 use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
@@ -518,8 +522,18 @@ impl U32Table {
         section
     }
 
-    pub fn pad_trace(_u32_table: &mut ArrayViewMut2<BFieldElement>, _u32_table_len: usize) {
-        todo!()
+    pub fn pad_trace(u32_table: &mut ArrayViewMut2<BFieldElement>, u32_table_len: usize) {
+        let mut padding_row = Array1::zeros([BASE_WIDTH]);
+        padding_row[[BitsMinus33Inv.base_table_index()]] = (-BFieldElement::new(33)).inverse();
+        padding_row[[LT.base_table_index()]] = BFieldElement::new(2);
+        padding_row[[Log2Floor.base_table_index()]] = -BFieldElement::one();
+        padding_row[[Pow.base_table_index()]] = BFieldElement::one();
+
+        u32_table
+            .slice_mut(s![u32_table_len.., ..])
+            .axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .for_each(|mut row| row.assign(&padding_row));
     }
 
     pub fn extend(
