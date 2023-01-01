@@ -1,11 +1,16 @@
+use ndarray::s;
+use ndarray::Array2;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use num_traits::One;
+use num_traits::Zero;
 use std::ops::Mul;
 use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use triton_opcodes::instruction::Instruction;
@@ -23,6 +28,7 @@ use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::PermArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::table::table_column::BaseTableColumn;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::U32BaseTableColumn;
@@ -413,11 +419,103 @@ impl ExtU32Table {
 }
 
 impl U32Table {
-    pub fn fill_trace(
-        _u32_table: &mut ArrayViewMut2<BFieldElement>,
-        _aet: &AlgebraicExecutionTrace,
-    ) {
-        todo!()
+    pub fn fill_trace(u32_table: &mut ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace) {
+        let mut next_section_start = 0;
+        for &(instruction, lhs, rhs) in aet.u32_entries.iter() {
+            let mut first_row = Array2::zeros([1, BASE_WIDTH]);
+            first_row[[0, CopyFlag.base_table_index()]] = BFieldElement::one();
+            first_row[[0, Bits.base_table_index()]] = BFieldElement::zero();
+            first_row[[0, BitsMinus33Inv.base_table_index()]] = (-BFieldElement::new(33)).inverse();
+            first_row[[0, CI.base_table_index()]] = instruction.opcode_b();
+            first_row[[0, LHS.base_table_index()]] = lhs;
+            first_row[[0, RHS.base_table_index()]] = rhs;
+            first_row[[0, LhsCopy.base_table_index()]] = lhs;
+            let u32_section = Self::u32_section_next_row(first_row);
+
+            let next_section_end = next_section_start + u32_section.nrows();
+            u32_table
+                .slice_mut(s![next_section_start..next_section_end, ..])
+                .assign(&u32_section);
+            next_section_start = next_section_end;
+        }
+    }
+
+    fn u32_section_next_row(mut section: Array2<BFieldElement>) -> Array2<BFieldElement> {
+        let zero = BFieldElement::zero();
+        let one = BFieldElement::one();
+        let two = BFieldElement::new(2);
+        let thirty_three = BFieldElement::new(33);
+
+        let row_idx = section.nrows() - 1;
+        if section[[row_idx, LHS.base_table_index()]].is_zero()
+            && section[[row_idx, RHS.base_table_index()]].is_zero()
+        {
+            section[[row_idx, LT.base_table_index()]] = two;
+            section[[row_idx, AND.base_table_index()]] = zero;
+            section[[row_idx, XOR.base_table_index()]] = zero;
+            section[[row_idx, Log2Floor.base_table_index()]] = -one;
+            section[[row_idx, Pow.base_table_index()]] = one;
+            return section;
+        }
+
+        let lhs_lsb = BFieldElement::new(section[[row_idx, LHS.base_table_index()]].value() % 2);
+        let rhs_lsb = BFieldElement::new(section[[row_idx, RHS.base_table_index()]].value() % 2);
+        let mut next_row = section.row(row_idx).to_owned();
+        next_row[CopyFlag.base_table_index()] = zero;
+        next_row[Bits.base_table_index()] += one;
+        next_row[BitsMinus33Inv.base_table_index()] =
+            (next_row[Bits.base_table_index()] - thirty_three).inverse();
+        next_row[LHS.base_table_index()] =
+            (section[[row_idx, LHS.base_table_index()]] - lhs_lsb) / two;
+        next_row[RHS.base_table_index()] =
+            (section[[row_idx, RHS.base_table_index()]] - rhs_lsb) / two;
+
+        section.push_row(next_row.view()).unwrap();
+        section = Self::u32_section_next_row(section);
+        let (mut row, next_row) = section.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
+
+        row[LT.base_table_index()] = if next_row[LT.base_table_index()].is_zero() {
+            zero
+        } else if next_row[LT.base_table_index()].is_one() {
+            one
+        } else {
+            // LT == 2
+            if lhs_lsb.is_zero() && rhs_lsb.is_one() {
+                one
+            } else if lhs_lsb.is_one() && rhs_lsb.is_zero() {
+                zero
+            } else {
+                // lhs_lsb == rhs_lsb
+                if row[CopyFlag.base_table_index()].is_zero() {
+                    two
+                } else {
+                    zero
+                }
+            }
+        };
+
+        row[AND.base_table_index()] = two * next_row[AND.base_table_index()] + lhs_lsb * rhs_lsb;
+        row[XOR.base_table_index()] =
+            two * next_row[XOR.base_table_index()] + lhs_lsb + rhs_lsb - two * lhs_lsb * rhs_lsb;
+
+        row[Log2Floor.base_table_index()] = if row[LHS.base_table_index()].is_zero() {
+            -one
+        } else if !next_row[LHS.base_table_index()].is_zero() {
+            next_row[Log2Floor.base_table_index()]
+        } else {
+            // next_row[LHS.base_table_index()].is_zero() && !row[LHS.base_table_index()].is_zero()
+            row[Bits.base_table_index()]
+        };
+
+        row[Pow.base_table_index()] = if row[RHS.base_table_index()].is_zero() {
+            next_row[Pow.base_table_index()] * next_row[Pow.base_table_index()]
+        } else {
+            next_row[Pow.base_table_index()]
+                * next_row[Pow.base_table_index()]
+                * next_row[LhsCopy.base_table_index()]
+        };
+
+        section
     }
 
     pub fn pad_trace(_u32_table: &mut ArrayViewMut2<BFieldElement>, _u32_table_len: usize) {
