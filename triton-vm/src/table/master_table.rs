@@ -10,6 +10,7 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
 use num_traits::One;
+use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
@@ -23,6 +24,7 @@ use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
+use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
@@ -313,7 +315,19 @@ impl MasterBaseTable {
     pub fn padded_height(aet: &AlgebraicExecutionTrace, program: &[BFieldElement]) -> usize {
         let instruction_table_len = program.len() + aet.processor_matrix.nrows();
         let hash_table_len = aet.hash_matrix.nrows();
-        let max_height = max(instruction_table_len, hash_table_len);
+        let mut u32_table_len = 0;
+        for (_, lhs, rhs) in aet.u32_entries.iter() {
+            let lhs_contribution = match lhs.is_zero() {
+                true => 1,
+                false => log_2_floor(lhs.value() as u128) + 2,
+            };
+            let rhs_contribution = match rhs.is_zero() {
+                true => 1,
+                false => log_2_floor(rhs.value() as u128) + 2,
+            };
+            u32_table_len += max(lhs_contribution, rhs_contribution) as usize;
+        }
+        let max_height = max(max(instruction_table_len, hash_table_len), u32_table_len);
         roundup_npo2(max_height as u64) as usize
     }
 
