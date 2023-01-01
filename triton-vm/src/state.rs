@@ -84,7 +84,7 @@ pub enum VMOutput {
     XlixTrace(Box<[[BFieldElement; STATE_SIZE]; 1 + NUM_ROUNDS]>),
 
     /// Executed u32 instruction as well as its left-hand side and right-hand side
-    U32TableEntry(Instruction, BFieldElement, BFieldElement),
+    U32TableEntries(Vec<(Instruction, BFieldElement, BFieldElement)>),
 }
 
 #[allow(clippy::needless_range_loop)]
@@ -371,7 +371,8 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(lo);
                 self.op_stack.push(hi);
                 self.instruction_pointer += 1;
-                vm_output = Some(VMOutput::U32TableEntry(Instruction::Split, hi, lo));
+                let u32_table_entry = (Instruction::Halt, hi, lo);
+                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Lt => {
@@ -383,7 +384,8 @@ impl<'pgm> VMState<'pgm> {
                 };
                 self.op_stack.push(lt);
                 self.instruction_pointer += 1;
-                vm_output = Some(VMOutput::U32TableEntry(Instruction::Lt, lhs, rhs));
+                let u32_table_entry = (Instruction::Lt, lhs, rhs);
+                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             And => {
@@ -392,7 +394,8 @@ impl<'pgm> VMState<'pgm> {
                 let and = BFieldElement::new(lhs.value() & rhs.value());
                 self.op_stack.push(and);
                 self.instruction_pointer += 1;
-                vm_output = Some(VMOutput::U32TableEntry(Instruction::And, lhs, rhs));
+                let u32_table_entry = (Instruction::And, lhs, rhs);
+                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Xor => {
@@ -401,7 +404,8 @@ impl<'pgm> VMState<'pgm> {
                 let xor = BFieldElement::new(lhs.value() ^ rhs.value());
                 self.op_stack.push(xor);
                 self.instruction_pointer += 1;
-                vm_output = Some(VMOutput::U32TableEntry(Instruction::Xor, lhs, rhs));
+                let u32_table_entry = (Instruction::Xor, lhs, rhs);
+                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Log2Floor => {
@@ -410,7 +414,8 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(l2f);
                 self.instruction_pointer += 1;
                 let rhs = BFieldElement::zero();
-                vm_output = Some(VMOutput::U32TableEntry(Instruction::Log2Floor, lhs, rhs));
+                let u32_table_entry = (Instruction::Log2Floor, lhs, rhs);
+                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Pow => {
@@ -419,7 +424,8 @@ impl<'pgm> VMState<'pgm> {
                 let pow = BFieldElement::new(lhs.value().pow(rhs.value() as u32));
                 self.op_stack.push(pow);
                 self.instruction_pointer += 1;
-                vm_output = Some(VMOutput::U32TableEntry(Instruction::Pow, lhs, rhs));
+                let u32_table_entry = (Instruction::Pow, lhs, rhs);
+                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Div => {
@@ -433,7 +439,12 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(quot);
                 self.op_stack.push(rem);
                 self.instruction_pointer += 1;
-                vm_output = Some(VMOutput::U32TableEntry(Instruction::Div, numer, denom));
+                let u32_table_entry_0 = (Instruction::Div, rem, denom);
+                let u32_table_entry_1 = (Instruction::Halt, numer, quot);
+                vm_output = Some(VMOutput::U32TableEntries(vec![
+                    u32_table_entry_0,
+                    u32_table_entry_1,
+                ]));
             }
 
             XxAdd => {

@@ -50,8 +50,8 @@ pub fn simulate(
 
         match vm_output {
             Some(VMOutput::XlixTrace(hash_trace)) => aet.append_hash_trace(*hash_trace),
-            Some(VMOutput::U32TableEntry(instr, lhs, rhs)) => {
-                aet.u32_entries.push((instr, lhs, rhs))
+            Some(VMOutput::U32TableEntries(mut entries)) => {
+                aet.u32_entries.append(&mut entries);
             }
             Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
             None => (),
