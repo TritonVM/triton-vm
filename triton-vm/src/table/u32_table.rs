@@ -33,6 +33,7 @@ use crate::table::cross_table_argument::PermArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::U32BaseTableColumn;
@@ -538,13 +539,44 @@ impl U32Table {
 
     pub fn extend(
         base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayViewMut2<XFieldElement>,
-        _challenges: &U32TableChallenges,
+        mut ext_table: ArrayViewMut2<XFieldElement>,
+        challenges: &U32TableChallenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
-        todo!()
+
+        let mut running_product = PermArg::default_initial();
+        for row_idx in 0..base_table.nrows() {
+            let current_row = base_table.row(row_idx);
+            if current_row[CopyFlag.base_table_index()].is_one() {
+                let ci_opcode = current_row[CI.base_table_index()].value();
+                let result = if ci_opcode == Instruction::Lt.opcode() as u64 {
+                    current_row[LT.base_table_index()]
+                } else if ci_opcode == Instruction::And.opcode() as u64 {
+                    current_row[AND.base_table_index()]
+                } else if ci_opcode == Instruction::Xor.opcode() as u64 {
+                    current_row[XOR.base_table_index()]
+                } else if ci_opcode == Instruction::Log2Floor.opcode() as u64 {
+                    current_row[Log2Floor.base_table_index()]
+                } else if ci_opcode == Instruction::Pow.opcode() as u64 {
+                    current_row[Pow.base_table_index()]
+                } else if ci_opcode == Instruction::Div.opcode() as u64 {
+                    current_row[LT.base_table_index()]
+                } else {
+                    BFieldElement::zero()
+                };
+
+                let compressed_row = challenges.ci_weight * current_row[CI.base_table_index()]
+                    + challenges.lhs_weight * current_row[LHS.base_table_index()]
+                    + challenges.rhs_weight * current_row[RHS.base_table_index()]
+                    + challenges.result_weight * result;
+                running_product *= challenges.processor_perm_indeterminate - compressed_row;
+            }
+
+            let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[ProcessorPermArg.ext_table_index()] = running_product;
+        }
     }
 }
 
