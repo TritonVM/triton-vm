@@ -1,7 +1,7 @@
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::complete::digit1;
-use nom::combinator::{eof, fail, map, opt};
+use nom::combinator::{eof, fail, opt};
 use nom::error::{context, convert_error, ErrorKind, VerboseError, VerboseErrorKind};
 use nom::multi::many0;
 use nom::{Finish, IResult};
@@ -64,15 +64,16 @@ fn program(s: &str) -> ParseResult<Vec<LabelledInstruction>> {
     Ok((s, instructions))
 }
 
-fn labelled_instruction(s: &str) -> ParseResult<LabelledInstruction> {
-    map(an_instruction, LabelledInstruction::Instruction)(s)
+fn labelled_instruction(s_instr: &str) -> ParseResult<LabelledInstruction> {
+    let (s, instr) = an_instruction(s_instr)?;
+    Ok((s, LabelledInstruction::Instruction(instr, s_instr)))
 }
 
-fn label(s: &str) -> ParseResult<LabelledInstruction> {
-    let (s, addr) = label_addr(s)?;
+fn label(label_s: &str) -> ParseResult<LabelledInstruction> {
+    let (s, addr) = label_addr(label_s)?;
     let (s, _) = token(":")(s)?;
 
-    Ok((s, LabelledInstruction::Label(addr)))
+    Ok((s, LabelledInstruction::Label(addr, label_s)))
 }
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
@@ -534,8 +535,8 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "pop: call pop",
             expected: Program::new(&[
-                Label("pop".to_string()),
-                Instruction(Call("pop".to_string())),
+                Label("pop".to_string(), ""),
+                Instruction(Call("pop".to_string()), ""),
             ]),
             message: "label names may overlap with instruction names",
         });
@@ -544,11 +545,11 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "foo: pop foo: pop call foo",
             expected: Program::new(&[
-                Label("foo".to_string()),
-                Instruction(Pop),
-                Label("foo".to_string()),
-                Instruction(Pop),
-                Instruction(Call("foo".to_string())),
+                Label("foo".to_string(), ""),
+                Instruction(Pop, ""),
+                Label("foo".to_string(), ""),
+                Instruction(Pop, ""),
+                Instruction(Call("foo".to_string()), ""),
             ]),
             message: "labels may occur twice",
         });
@@ -556,8 +557,8 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "pops: call pops",
             expected: Program::new(&[
-                Label("pops".to_string()),
-                Instruction(Call("pops".to_string())),
+                Label("pops".to_string(), ""),
+                Instruction(Call("pops".to_string()), ""),
             ]),
             message: "labels that share a common prefix with instruction are labels",
         });
