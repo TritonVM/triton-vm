@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::complete::digit1;
@@ -10,7 +12,7 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction::AnInstruction::{self, *};
 use crate::instruction::DivinationHint::Quotient;
-use crate::instruction::LabelledInstruction;
+use crate::instruction::{token_str, LabelledInstruction};
 use crate::ord_n::Ord16::{self, *};
 
 #[derive(Debug, PartialEq)]
@@ -46,10 +48,71 @@ pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
 
 /// Parse a program
 pub fn parse(input: &str) -> Result<Vec<LabelledInstruction>, ParseError> {
-    match program(input).finish() {
+    let instructions = match program(input).finish() {
         Ok((_s, instructions)) => Ok(instructions),
         Err(errors) => Err(ParseError { input, errors }),
+    }?;
+
+    scan_missing_duplicate_labels(input, &instructions)?;
+
+    Ok(instructions)
+}
+
+fn scan_missing_duplicate_labels<'a>(
+    input: &'a str,
+    instructions: &[LabelledInstruction<'a>],
+) -> Result<(), ParseError<'a>> {
+    let mut seen: HashMap<&str, LabelledInstruction> = HashMap::default();
+    let mut duplicates: HashSet<LabelledInstruction> = HashSet::default();
+    let mut missings: HashSet<LabelledInstruction> = HashSet::default();
+
+    // Find duplicate labels, including the first occurrence of each duplicate.
+    for instruction in instructions.iter() {
+        if let LabelledInstruction::Label(label, _token_s) = instruction {
+            if let Some(first_label) = seen.get(label.as_str()) {
+                duplicates.insert(first_label.to_owned());
+                duplicates.insert(instruction.to_owned());
+            } else {
+                seen.insert(label.as_str(), instruction.to_owned());
+            }
+        }
     }
+
+    // Find missing labels
+    for instruction in instructions.iter() {
+        if let LabelledInstruction::Instruction(Call(addr), _token_s) = instruction {
+            if !seen.contains_key(addr.as_str()) {
+                missings.insert(instruction.to_owned());
+            }
+        }
+    }
+
+    if duplicates.is_empty() && missings.is_empty() {
+        return Ok(());
+    }
+
+    // Collect duplicate and missing error messages
+    let mut errors: Vec<(&str, VerboseErrorKind)> =
+        Vec::with_capacity(duplicates.len() + missings.len());
+
+    for duplicate in duplicates {
+        let error = (
+            token_str(&duplicate),
+            VerboseErrorKind::Context("duplicate label"),
+        );
+        errors.push(error);
+    }
+
+    for missing in missings {
+        let error = (
+            token_str(&missing),
+            VerboseErrorKind::Context("missing label"),
+        );
+        errors.push(error);
+    }
+
+    let errors = VerboseError { errors };
+    Err(ParseError { input, errors })
 }
 
 /// Auxiliary type alias: `IResult` defaults to `nom::error::Error` as concrete
@@ -59,7 +122,7 @@ type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input s
 fn program(s: &str) -> ParseResult<Vec<LabelledInstruction>> {
     let (s, _) = comment_or_whitespace(s)?;
     let (s, instructions) = many0(alt((label, labelled_instruction)))(s)?;
-    let (s, _) = context("unexpected token", eof)(s)?;
+    let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
 
     Ok((s, instructions))
 }
@@ -532,27 +595,33 @@ mod parser_tests {
         use LabelledInstruction::*;
 
         // FIXME: This should fail.
+        // FIXME: Increase coverage.
         parse_program_prop(TestCase {
             input: "pop: call pop",
             expected: Program::new(&[
                 Label("pop".to_string(), ""),
                 Instruction(Call("pop".to_string()), ""),
             ]),
-            message: "label names may overlap with instruction names",
+            message: "label names may not overlap with instruction names",
         });
 
-        // FIXME: This should fail.
-        parse_program_prop(TestCase {
-            input: "foo: pop foo: pop call foo",
-            expected: Program::new(&[
-                Label("foo".to_string(), ""),
-                Instruction(Pop, ""),
-                Label("foo".to_string(), ""),
-                Instruction(Pop, ""),
-                Instruction(Call("foo".to_string()), ""),
-            ]),
-            message: "labels may occur twice",
-        });
+        // FIXME: Increase coverage of negative test for duplicate labels.
+        {
+            let input = "foo: pop foo: pop call foo";
+            let result = parse(input);
+            assert!(result.is_err(), "duplicate labels");
+
+            let error = result.unwrap_err();
+            let expected_error_count = 2;
+            let actual_error_count = error.errors.errors.len();
+            assert_eq!(expected_error_count, actual_error_count);
+
+            let actual_error_message = format!("{}", error);
+            let duplicate_label_errors = actual_error_message
+                .match_indices("duplicate label")
+                .count();
+            assert_eq!(expected_error_count, duplicate_label_errors)
+        }
 
         parse_program_prop(TestCase {
             input: "pops: call pops",
@@ -561,6 +630,15 @@ mod parser_tests {
                 Instruction(Call("pops".to_string()), ""),
             ]),
             message: "labels that share a common prefix with instruction are labels",
+        });
+
+        parse_program_prop(TestCase {
+            input: "spop: call spop",
+            expected: Program::new(&[
+                Label("spop".to_string(), ""),
+                Instruction(Call("spop".to_string()), ""),
+            ]),
+            message: "labels that share a common suffix with instruction are labels",
         });
     }
 

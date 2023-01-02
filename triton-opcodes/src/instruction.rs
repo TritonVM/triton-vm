@@ -33,10 +33,21 @@ pub type Instruction = AnInstruction<BFieldElement>;
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
 ///
 /// A label name is a `String` that occurs as "`label_name:`" in the assembly.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub enum LabelledInstruction<'a> {
     Instruction(AnInstruction<String>, &'a str),
     Label(String, &'a str),
+}
+
+// FIXME: This can be replaced with `#[derive(PartialEq)]` once old parser is dead.
+impl<'a> PartialEq for LabelledInstruction<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Instruction(instr1, _), Self::Instruction(instr2, _)) => instr1 == instr2,
+            (Self::Label(label1, _), Self::Label(label2, _)) => label1 == label2,
+            _ => false,
+        }
+    }
 }
 
 impl<'a> Display for LabelledInstruction<'a> {
@@ -45,6 +56,13 @@ impl<'a> Display for LabelledInstruction<'a> {
             LabelledInstruction::Instruction(instr, _) => write!(f, "{}", instr),
             LabelledInstruction::Label(label_name, _) => write!(f, "{}:", label_name),
         }
+    }
+}
+
+pub fn token_str<'a>(instruction: &LabelledInstruction<'a>) -> &'a str {
+    match instruction {
+        LabelledInstruction::Instruction(_, token_str) => token_str,
+        LabelledInstruction::Label(_, token_str) => token_str,
     }
 }
 
