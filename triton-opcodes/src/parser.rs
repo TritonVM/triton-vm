@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::complete::digit1;
-use nom::combinator::{eof, fail, opt};
+use nom::combinator::{cut, eof, fail, opt};
 use nom::error::{context, convert_error, ErrorKind, VerboseError, VerboseErrorKind};
 use nom::multi::many0;
 use nom::{Finish, IResult};
@@ -11,8 +11,7 @@ use nom::{Finish, IResult};
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction::AnInstruction::{self, *};
-use crate::instruction::DivinationHint::Quotient;
-use crate::instruction::{token_str, LabelledInstruction};
+use crate::instruction::{is_instruction_name, token_str, LabelledInstruction};
 use crate::ord_n::Ord16::{self, *};
 
 #[derive(Debug, PartialEq)]
@@ -136,6 +135,13 @@ fn label(label_s: &str) -> ParseResult<LabelledInstruction> {
     let (s, addr) = label_addr(label_s)?;
     let (s, _) = token(":")(s)?;
 
+    // Checking if `<label>:` is an instruction must happen after parsing `:`, since otherwise
+    // `cut` will reject the alternative parser of `label`, being `labelled_instruction`, which
+    // *is* allowed to contain valid instruction names.
+    if is_instruction_name(&addr) {
+        return cut(context("label cannot be named after instruction", fail))(label_s);
+    }
+
     Ok((s, LabelledInstruction::Label(addr, label_s)))
 }
 
@@ -144,7 +150,6 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let pop = instruction("pop", Pop);
     let push = push_instruction();
     let divine = instruction("divine", Divine(None));
-    let divine_quotient = instruction("divine_quotient", Divine(Some(Quotient)));
     let dup = dup_instruction();
     let swap = swap_instruction();
 
@@ -180,27 +185,12 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let invert = instruction("invert", Invert);
     let split = instruction("split", Split);
     let eq = instruction("eq", Eq);
-    let lsb = instruction("lsb", Lsb);
     let xxadd = instruction("xxadd", XxAdd);
     let xxmul = instruction("xxmul", XxMul);
     let xinvert = instruction("xinvert", XInvert);
     let xbmul = instruction("xbmul", XbMul);
 
-    let arithmetic_on_stack = alt((
-        add, mul, invert, split, eq, lsb, xxadd, xxmul, xinvert, xbmul,
-    ));
-
-    // Pseudo-instructions
-    // "neg" => vec![Push(BFieldElement::one().neg()), Mul],
-    // "sub" => vec![Swap(ST1), Push(BFieldElement::one().neg()), Mul, Add],
-    // "lte" => pseudo_instruction_lte(),
-    // "lt" => pseudo_instruction_lt(),
-    // "and" => pseudo_instruction_and(),
-    // "xor" => pseudo_instruction_xor(),
-    // "reverse" => pseudo_instruction_reverse(),
-    // "div" => pseudo_instruction_div(),
-    // "is_u32" => pseudo_instruction_is_u32(),
-    // "split_assert" => pseudo_instruction_split_assert(),
+    let arithmetic_on_stack = alt((add, mul, invert, split, eq, xxadd, xxmul, xinvert, xbmul));
 
     // Read/write
     let read_io = instruction("read_io", ReadIo);
@@ -213,7 +203,7 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // Successfully parsing "assert" before trying "assert_vector" can lead to
     // picking the wrong one. By trying them in the order of longest first, less
     // backtracking is necessary.
-    let syntax_ambiguous = alt((assert_vector, assert_, divine_quotient, divine));
+    let syntax_ambiguous = alt((assert_vector, assert_, divine));
 
     alt((
         opstack_manipulation,
@@ -267,34 +257,41 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 
 fn call_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token("call")(s)?;
-        let (s, addr) = label_addr(s)?;
+        let (s_label, _) = token("call")(s)?;
+        let (s, addr) = label_addr(s_label)?;
         let (s, _) = comment_or_whitespace(s)?;
+
+        // This check cannot be moved into `label_addr`, since `label_addr` is shared
+        // between the scenarios `<label>:` and `call <label>`; the former requires
+        // parsing the `:` before rejecting a possible instruction name in the label.
+        if is_instruction_name(&addr) {
+            return cut(context("label cannot be named after instruction", fail))(s_label);
+        }
+
         Ok((s, Call(addr)))
     }
 }
 
-fn field_element(s: &str) -> ParseResult<BFieldElement> {
-    let (s, negative) = opt(tag("-"))(s)?;
+fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
+    let (s, negative) = opt(tag("-"))(s_orig)?;
     let (s, n) = digit1(s)?;
     let (s, _) = comment_or_whitespace(s)?;
 
     let mut n: i128 = match n.parse() {
         Ok(n) => n,
-        Err(err) => {
-            println!("{}", err);
+        Err(_err) => {
             return context("out-of-bounds constant", fail)(s);
         }
     };
+
+    let quotient = BFieldElement::P as i128;
+    if n >= quotient {
+        return context("out-of-bounds constant", fail)(s_orig);
+    }
+
     if negative.is_some() {
         n *= -1;
-    }
-    let quotient = BFieldElement::QUOTIENT as i128;
-    while n < 0 {
         n += quotient;
-    }
-    while n >= quotient {
-        n -= quotient;
     }
 
     Ok((s, BFieldElement::new(n as u64)))
@@ -326,8 +323,9 @@ fn stack_register(s: &str) -> ParseResult<Ord16> {
     Ok((s, stack_register))
 }
 
-fn label_addr(s: &str) -> ParseResult<String> {
-    let (s, addr) = take_while1(is_label_char)(s)?;
+fn label_addr(s_orig: &str) -> ParseResult<String> {
+    let (s, addr) = take_while1(is_label_char)(s_orig)?;
+
     Ok((s, addr.to_string()))
 }
 
@@ -397,8 +395,8 @@ mod parser_tests {
 
     fn whitespace_gen(max_size: usize) -> String {
         let mut rng = rand::thread_rng();
-        let spaces = [" ", "\t", "\r\n", "\n", " // comment\n"];
-        let weights = [5, 1, 1, 2, 1];
+        let spaces = [" ", "\t", "\r", "\r\n", "\n", " // comment\n"];
+        let weights = [5, 1, 1, 1, 2, 1];
         assert_eq!(spaces.len(), weights.len(), "all generators have weights");
         let dist = WeightedIndex::new(&weights).expect("a weighted distribution of generators");
         let size = rng.gen_range(1..=std::cmp::max(1, max_size));
@@ -502,6 +500,7 @@ mod parser_tests {
         }
     }
 
+    // FIXME: Apply shrinking.
     #[allow(unstable_name_collisions)] // reason = "Switch to standard library intersperse_with() when it's ported"
     fn program_gen(size: usize) -> String {
         let mut labels = vec!["main".to_string()];
@@ -591,21 +590,38 @@ mod parser_tests {
     }
 
     #[test]
+    fn parse_program_whitespace_test() {
+        use AnInstruction::*;
+        use LabelledInstruction::*;
+
+        // FIXME: Consider requiring whitespace between instructions.
+        parse_program_prop(TestCase {
+            input: "poppop",
+            expected: Program::new(&[Instruction(Pop, ""), Instruction(Pop, "")]),
+            message: "Instructions don't need space between them",
+        });
+
+        parse_program_prop(TestCase {
+            input: "dup0dup0",
+            expected: Program::new(&[Instruction(Dup(ST0), ""), Instruction(Dup(ST0), "")]),
+            message: "Instructions don't need space between them",
+        });
+    }
+
+    #[test]
     fn parse_program_label_test() {
         use LabelledInstruction::*;
 
-        // FIXME: This should fail.
-        // FIXME: Increase coverage.
         parse_program_prop(TestCase {
-            input: "pop: call pop",
+            input: "foo: call foo",
             expected: Program::new(&[
-                Label("pop".to_string(), ""),
-                Instruction(Call("pop".to_string()), ""),
+                Label("foo".to_string(), ""),
+                Instruction(Call("foo".to_string()), ""),
             ]),
-            message: "label names may not overlap with instruction names",
+            message: "parse labels and calls to labels",
         });
 
-        // FIXME: Increase coverage of negative test for duplicate labels.
+        // FIXME: Increase coverage of negative tests for duplicate labels.
         {
             let input = "foo: pop foo: pop call foo";
             let result = parse(input);
@@ -613,12 +629,40 @@ mod parser_tests {
 
             let error = result.unwrap_err();
             let expected_error_count = 2;
-            let actual_error_count = error.errors.errors.len();
-            assert_eq!(expected_error_count, actual_error_count);
-
             let actual_error_message = format!("{}", error);
             let duplicate_label_errors = actual_error_message
                 .match_indices("duplicate label")
+                .count();
+            assert_eq!(expected_error_count, duplicate_label_errors)
+        }
+
+        // FIXME: Increase coverage of negative tests for missing labels.
+        {
+            let input = "foo: pop call herp call derp call flerp";
+            let result = parse(input);
+            assert!(result.is_err(), "missing label");
+
+            let error = result.unwrap_err();
+            let expected_error_count = 3;
+            let actual_error_message = format!("{}", error);
+            let missing_label_errors = actual_error_message.match_indices("missing label").count();
+            assert_eq!(expected_error_count, missing_label_errors)
+        }
+
+        // FIXME: Increase coverage of negative tests for label/keyword overlap.
+        {
+            let input = "pop: call pop";
+            let result = parse(input);
+            assert!(
+                result.is_err(),
+                "label names may not overlap with instruction names"
+            );
+
+            let error = result.unwrap_err();
+            let expected_error_count = 1;
+            let actual_error_message = format!("{}", error);
+            let duplicate_label_errors = actual_error_message
+                .match_indices("label cannot be named after instruction")
                 .count();
             assert_eq!(expected_error_count, duplicate_label_errors)
         }
@@ -633,10 +677,10 @@ mod parser_tests {
         });
 
         parse_program_prop(TestCase {
-            input: "spop: call spop",
+            input: "_call: call _call",
             expected: Program::new(&[
-                Label("spop".to_string(), ""),
-                Instruction(Call("spop".to_string()), ""),
+                Label("_call".to_string(), ""),
+                Instruction(Call("_call".to_string()), ""),
             ]),
             message: "labels that share a common suffix with instruction are labels",
         });
@@ -646,15 +690,11 @@ mod parser_tests {
     fn parse_program_equivalence_test() {
         for size in 0..100 {
             let code = program_gen(size * 10);
-            // println!(
-            //     "Parsing the following program (size {}):\n---\n{}\n---\n\n",
-            //     size, code
-            // );
-
             let old_actual = instruction::parse(&code).map_err(|err| err.to_string());
             let new_actual = super::parse(&code).map_err(|err| err.to_string());
 
             if let Err(err) = new_actual.clone() {
+                println!("The code:\n{}\n\n", code);
                 panic!("{}", err);
             }
 

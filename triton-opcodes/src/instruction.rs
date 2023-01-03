@@ -588,6 +588,80 @@ fn parse_token(
     Ok(labelled_instruction)
 }
 
+pub fn is_instruction_name(s: &str) -> bool {
+    match s {
+        "pop" => true,
+        "push" => true,
+        "divine" => true,
+        "dup0" => true,
+        "dup1" => true,
+        "dup2" => true,
+        "dup3" => true,
+        "dup4" => true,
+        "dup5" => true,
+        "dup6" => true,
+        "dup7" => true,
+        "dup8" => true,
+        "dup9" => true,
+        "dup10" => true,
+        "dup11" => true,
+        "dup12" => true,
+        "dup13" => true,
+        "dup14" => true,
+        "dup15" => true,
+        "swap1" => true,
+        "swap2" => true,
+        "swap3" => true,
+        "swap4" => true,
+        "swap5" => true,
+        "swap6" => true,
+        "swap7" => true,
+        "swap8" => true,
+        "swap9" => true,
+        "swap10" => true,
+        "swap11" => true,
+        "swap12" => true,
+        "swap13" => true,
+        "swap14" => true,
+        "swap15" => true,
+
+        // Control flow
+        "nop" => true,
+        "skiz" => true,
+        "call" => true,
+        "return" => true,
+        "recurse" => true,
+        "assert" => true,
+        "halt" => true,
+
+        // Memory access
+        "read_mem" => true,
+        "write_mem" => true,
+
+        // Hashing-related instructions
+        "hash" => true,
+        "divine_sibling" => true,
+        "assert_vector" => true,
+
+        // Arithmetic on stack instructions
+        "add" => true,
+        "mul" => true,
+        "invert" => true,
+        "split" => true,
+        "eq" => true,
+        "xxadd" => true,
+        "xxmul" => true,
+        "xinvert" => true,
+        "xbmul" => true,
+
+        // Read/write
+        "read_io" => true,
+        "write_io" => true,
+
+        _ => false,
+    }
+}
+
 fn pseudo_instruction_lsb() -> Vec<AnInstruction<String>> {
     // input stack: _ a
     vec![
