@@ -5,7 +5,7 @@ use nom::bytes::complete::{tag, take_while, take_while1};
 use nom::character::complete::digit1;
 use nom::combinator::{cut, eof, fail, opt};
 use nom::error::{context, convert_error, ErrorKind, VerboseError, VerboseErrorKind};
-use nom::multi::many0;
+use nom::multi::{many0, many1};
 use nom::{Finish, IResult};
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -119,7 +119,7 @@ fn scan_missing_duplicate_labels<'a>(
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
 fn program(s: &str) -> ParseResult<Vec<LabelledInstruction>> {
-    let (s, _) = comment_or_whitespace(s)?;
+    let (s, _) = comment_or_whitespace0(s)?;
     let (s, instructions) = many0(alt((label, labelled_instruction)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
 
@@ -133,7 +133,7 @@ fn labelled_instruction(s_instr: &str) -> ParseResult<LabelledInstruction> {
 
 fn label(label_s: &str) -> ParseResult<LabelledInstruction> {
     let (s, addr) = label_addr(label_s)?;
-    let (s, _) = token(":")(s)?;
+    let (s, _) = token0(":")(s)?; // don't require space after ':'
 
     // Checking if `<label>:` is an instruction must happen after parsing `:`, since otherwise
     // `cut` will reject the alternative parser of `label`, being `labelled_instruction`, which
@@ -221,15 +221,17 @@ fn instruction<'a>(
     instruction: AnInstruction<String>,
 ) -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
     move |s: &'a str| {
-        let (s, _) = token(name)(s)?;
+        let (s, _) = token1(name)(s)?; // require space after instruction name
         Ok((s, instruction.clone()))
     }
 }
 
 fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = token("push")(s)?;
+        let (s, _) = token1("push")(s)?; // require space after instruction name
         let (s, elem) = field_element(s)?;
+        let (s, _) = comment_or_whitespace1(s)?; // require space after field element
+
         Ok((s, Push(elem)))
     }
 }
@@ -238,6 +240,8 @@ fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = tag("dup")(s)?;
         let (s, stack_register) = stack_register(s)?;
+        let (s, _) = comment_or_whitespace1(s)?; // require space after instruction name
+
         Ok((s, Dup(stack_register)))
     }
 }
@@ -246,9 +250,10 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
         let (s, _) = tag("swap")(s)?;
         let (s, stack_register) = stack_register(s)?;
+        let (s, _) = comment_or_whitespace1(s)?; // require space after instruction name
 
         if stack_register == ST0 {
-            return context("using swap0, which is not a meaningful instruction", fail)(s);
+            return cut(context("there is no swap0 instruction", fail))(s);
         }
 
         Ok((s, Swap(stack_register)))
@@ -257,9 +262,9 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 
 fn call_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s_label, _) = token("call")(s)?;
+        let (s_label, _) = token1("call")(s)?; // require space before called label
         let (s, addr) = label_addr(s_label)?;
-        let (s, _) = comment_or_whitespace(s)?;
+        let (s, _) = comment_or_whitespace1(s)?; // require space after called label
 
         // This check cannot be moved into `label_addr`, since `label_addr` is shared
         // between the scenarios `<label>:` and `call <label>`; the former requires
@@ -275,7 +280,6 @@ fn call_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
     let (s, negative) = opt(tag("-"))(s_orig)?;
     let (s, n) = digit1(s)?;
-    let (s, _) = comment_or_whitespace(s)?;
 
     let mut n: i128 = match n.parse() {
         Ok(n) => n,
@@ -299,7 +303,6 @@ fn field_element(s_orig: &str) -> ParseResult<BFieldElement> {
 
 fn stack_register(s: &str) -> ParseResult<Ord16> {
     let (s, n) = digit1(s)?;
-    let (s, _) = comment_or_whitespace(s)?;
     let stack_register = match n {
         "0" => ST0,
         "1" => ST1,
@@ -323,24 +326,43 @@ fn stack_register(s: &str) -> ParseResult<Ord16> {
     Ok((s, stack_register))
 }
 
+/// Parse a label address
+///
+/// This is used in "`<label>:`" and in "`call <label>`".
 fn label_addr(s_orig: &str) -> ParseResult<String> {
     let (s, addr) = take_while1(is_label_char)(s_orig)?;
 
     Ok((s, addr.to_string()))
 }
 
-fn comment_or_whitespace(s: &str) -> ParseResult<()> {
-    let (s, _) = many0(alt((comment, whitespace)))(s)?;
-    Ok((s, ()))
+/// Parse 0 or more comments and/or whitespace.
+///
+/// This is used after places where whitespace is optional (e.g. after ':').
+fn comment_or_whitespace0(s: &str) -> ParseResult<&str> {
+    let (s, _) = many0(alt((comment1, whitespace1)))(s)?;
+    Ok((s, ""))
 }
 
-fn comment(s: &str) -> ParseResult<()> {
+/// Parse at least one comment and/or whitespace, or eof.
+///
+/// This is used after places where whitespace is mandatory (e.g. after tokens).
+fn comment_or_whitespace1<'a>(s: &'a str) -> ParseResult<&'a str> {
+    let cws1 = |s: &'a str| -> ParseResult<&str> {
+        let (s, _) = many1(alt((comment1, whitespace1)))(s)?;
+        Ok((s, ""))
+    };
+    alt((eof, cws1))(s)
+}
+
+/// Parse one comment (not including the linebreak)
+fn comment1(s: &str) -> ParseResult<()> {
     let (s, _) = tag("//")(s)?;
     let (s, _) = take_while(|c| !is_linebreak(c))(s)?;
     Ok((s, ()))
 }
 
-fn whitespace(s: &str) -> ParseResult<()> {
+/// Parse at least one whitespace character
+fn whitespace1(s: &str) -> ParseResult<()> {
     let (s, _) = take_while1(|c: char| c.is_whitespace())(s)?;
     Ok((s, ()))
 }
@@ -353,10 +375,18 @@ fn is_label_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-'
 }
 
-fn token<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
+fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;
-        let (s, _) = comment_or_whitespace(s)?;
+        let (s, _) = comment_or_whitespace0(s)?;
+        Ok((s, ()))
+    }
+}
+
+fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
+    move |s: &'a str| {
+        let (s, _) = tag(token)(s)?;
+        let (s, _) = comment_or_whitespace1(s)?;
         Ok((s, ()))
     }
 }
@@ -381,6 +411,13 @@ mod parser_tests {
         message: &'static str,
     }
 
+    struct NegativeTestCase<'a> {
+        input: &'a str,
+        expected_error: &'static str,
+        expected_error_count: usize,
+        message: &'static str,
+    }
+
     fn parse_program_prop(test_case: TestCase) {
         match parse(test_case.input) {
             Ok(actual) => assert_eq!(
@@ -390,6 +427,29 @@ mod parser_tests {
                 test_case.message
             ),
             Err(parse_err) => panic!("{}:\n{}", test_case.message, parse_err),
+        }
+    }
+
+    fn parse_program_neg_prop(test_case: NegativeTestCase) {
+        let result = parse(test_case.input);
+        if result.is_ok() {
+            println!("parser input: {}", test_case.input);
+            println!("parser output: {:?}", result.unwrap());
+            panic!("parser should fail, but didn't: {}", test_case.message);
+        }
+
+        let error = result.unwrap_err();
+        let actual_error_message = format!("{}", error);
+        let actual_error_count = actual_error_message
+            .match_indices(test_case.expected_error)
+            .count();
+        if test_case.expected_error_count != actual_error_count {
+            println!("{}", actual_error_message);
+            assert_eq!(
+                test_case.expected_error_count, actual_error_count,
+                "parser should report '{}' {} times: {}",
+                test_case.expected_error, test_case.expected_error_count, test_case.message
+            )
         }
     }
 
@@ -503,18 +563,16 @@ mod parser_tests {
     // FIXME: Apply shrinking.
     #[allow(unstable_name_collisions)] // reason = "Switch to standard library intersperse_with() when it's ported"
     fn program_gen(size: usize) -> String {
+        // Generate random program
         let mut labels = vec!["main".to_string()];
-
         let mut program: Vec<Vec<String>> =
             (0..size).map(|_| instruction_gen(&mut labels)).collect();
 
-        let label_markers = HashSet::<String>::from_iter(labels.into_iter());
-        for label in label_markers {
+        // Embed all used labels randomly
+        for label in labels.into_iter().sorted().dedup() {
             program.push(vec![format!("{}:", label)]);
         }
-
-        let mut rng = rand::thread_rng();
-        program.shuffle(&mut rng);
+        program.shuffle(&mut rand::thread_rng());
 
         program
             .into_iter()
@@ -591,20 +649,53 @@ mod parser_tests {
 
     #[test]
     fn parse_program_whitespace_test() {
-        use AnInstruction::*;
-        use LabelledInstruction::*;
-
-        // FIXME: Consider requiring whitespace between instructions.
-        parse_program_prop(TestCase {
+        parse_program_neg_prop(NegativeTestCase {
             input: "poppop",
-            expected: Program::new(&[Instruction(Pop, ""), Instruction(Pop, "")]),
-            message: "Instructions don't need space between them",
+            expected_error: "n/a",
+            expected_error_count: 0,
+            message: "whitespace required between instructions (pop)",
         });
 
-        parse_program_prop(TestCase {
+        parse_program_neg_prop(NegativeTestCase {
             input: "dup0dup0",
-            expected: Program::new(&[Instruction(Dup(ST0), ""), Instruction(Dup(ST0), "")]),
-            message: "Instructions don't need space between them",
+            expected_error: "n/a",
+            expected_error_count: 0,
+            message: "whitespace required between instructions (dup0)",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "swap10swap10",
+            expected_error: "n/a",
+            expected_error_count: 0,
+            message: "whitespace required between instructions (swap10)",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "push10",
+            expected_error: "n/a",
+            expected_error_count: 0,
+            message: "push requires whitespace before its constant",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "push 10pop",
+            expected_error: "n/a",
+            expected_error_count: 0,
+            message: "push requires whitespace after its constant",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hello: callhello",
+            expected_error: "n/a",
+            expected_error_count: 0,
+            message: "call requires whitespace before its label",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "hello: popcall hello",
+            expected_error: "n/a",
+            expected_error_count: 0,
+            message: "required space between pop and call",
         });
     }
 
@@ -621,51 +712,38 @@ mod parser_tests {
             message: "parse labels and calls to labels",
         });
 
-        // FIXME: Increase coverage of negative tests for duplicate labels.
-        {
-            let input = "foo: pop foo: pop call foo";
-            let result = parse(input);
-            assert!(result.is_err(), "duplicate labels");
+        parse_program_prop(TestCase {
+            input: "foo:call foo",
+            expected: Program::new(&[
+                Label("foo".to_string(), ""),
+                Instruction(Call("foo".to_string()), ""),
+            ]),
+            message: "whitespace is not required after 'label:'",
+        });
 
-            let error = result.unwrap_err();
-            let expected_error_count = 2;
-            let actual_error_message = format!("{}", error);
-            let duplicate_label_errors = actual_error_message
-                .match_indices("duplicate label")
-                .count();
-            assert_eq!(expected_error_count, duplicate_label_errors)
-        }
+        // FIXME: Increase coverage of negative tests for duplicate labels.
+        parse_program_neg_prop(NegativeTestCase {
+            input: "foo: pop foo: pop call foo",
+            expected_error: "duplicate label",
+            expected_error_count: 2,
+            message: "labels cannot occur twice",
+        });
 
         // FIXME: Increase coverage of negative tests for missing labels.
-        {
-            let input = "foo: pop call herp call derp call flerp";
-            let result = parse(input);
-            assert!(result.is_err(), "missing label");
-
-            let error = result.unwrap_err();
-            let expected_error_count = 3;
-            let actual_error_message = format!("{}", error);
-            let missing_label_errors = actual_error_message.match_indices("missing label").count();
-            assert_eq!(expected_error_count, missing_label_errors)
-        }
+        parse_program_neg_prop(NegativeTestCase {
+            input: "foo: pop call herp call derp",
+            expected_error: "missing label",
+            expected_error_count: 2,
+            message: "non-existent labels cannot be called",
+        });
 
         // FIXME: Increase coverage of negative tests for label/keyword overlap.
-        {
-            let input = "pop: call pop";
-            let result = parse(input);
-            assert!(
-                result.is_err(),
-                "label names may not overlap with instruction names"
-            );
-
-            let error = result.unwrap_err();
-            let expected_error_count = 1;
-            let actual_error_message = format!("{}", error);
-            let duplicate_label_errors = actual_error_message
-                .match_indices("label cannot be named after instruction")
-                .count();
-            assert_eq!(expected_error_count, duplicate_label_errors)
-        }
+        parse_program_neg_prop(NegativeTestCase {
+            input: "pop: call pop",
+            expected_error: "label cannot be named after instruction",
+            expected_error_count: 1,
+            message: "label names may not overlap with instruction names",
+        });
 
         parse_program_prop(TestCase {
             input: "pops: call pops",
@@ -683,6 +761,30 @@ mod parser_tests {
                 Instruction(Call("_call".to_string()), ""),
             ]),
             message: "labels that share a common suffix with instruction are labels",
+        });
+    }
+
+    #[test]
+    fn parse_program_nonexistent_instructions_test() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "swap0",
+            expected_error: "there is no swap0 instruction",
+            expected_error_count: 1,
+            message: "there is no swap0 instruction",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "swap16",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "there is no swap16 instruction",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "dup16",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "there is no dup16 instruction",
         });
     }
 
