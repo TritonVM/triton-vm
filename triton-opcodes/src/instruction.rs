@@ -29,11 +29,14 @@ use crate::ord_n::Ord7;
 pub type Instruction = AnInstruction<BFieldElement>;
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
-///
-/// A label name is a `String` that occurs as "`label_name:`" in the assembly.
 #[derive(Debug, Clone, Eq, Hash)]
 pub enum LabelledInstruction<'a> {
+    /// Instructions belong to the ISA:
+    ///
+    /// https://triton-vm.org/spec/isa.html
     Instruction(AnInstruction<String>, &'a str),
+
+    /// Labels look like "`<name>:`" and are translated into absolute addresses.
     Label(String, &'a str),
 }
 

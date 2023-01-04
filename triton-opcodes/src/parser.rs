@@ -260,17 +260,31 @@ fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     }
 }
 
-fn call_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
-    move |s: &str| {
+fn call_instruction<'a>() -> impl Fn(&'a str) -> ParseResult<AnInstruction<String>> {
+    let call_syntax = move |s: &'a str| {
         let (s_label, _) = token1("call")(s)?; // require space before called label
         let (s, addr) = label_addr(s_label)?;
         let (s, _) = comment_or_whitespace1(s)?; // require space after called label
+
+        Ok((s, addr))
+    };
+
+    let bracket_syntax = move |s: &'a str| {
+        let (s, _) = tag("[")(s)?;
+        let (s, addr) = label_addr(s)?;
+        let (s, _) = token0("]")(s)?;
+
+        Ok((s, addr))
+    };
+
+    move |s: &'a str| {
+        let (s, addr) = alt((call_syntax, bracket_syntax))(s)?;
 
         // This check cannot be moved into `label_addr`, since `label_addr` is shared
         // between the scenarios `<label>:` and `call <label>`; the former requires
         // parsing the `:` before rejecting a possible instruction name in the label.
         if is_instruction_name(&addr) {
-            return cut(context("label cannot be named after instruction", fail))(s_label);
+            return cut(context("label cannot be named after instruction", fail))(s);
         }
 
         Ok((s, Call(addr)))
@@ -375,6 +389,7 @@ fn is_label_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-'
 }
 
+/// `token0(tok)` will parse the string `tok` and munch 0 or more comment or whitespace.
 fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;
@@ -383,6 +398,7 @@ fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     }
 }
 
+/// `token1(tok)` will parse the string `tok` and munch at least one comment and/or whitespace, or eof.
 fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;
@@ -402,6 +418,7 @@ mod parser_tests {
     use crate::program::Program;
 
     use super::*;
+    use LabelledInstruction::*;
 
     struct TestCase<'a> {
         input: &'a str,
@@ -699,8 +716,6 @@ mod parser_tests {
 
     #[test]
     fn parse_program_label_test() {
-        use LabelledInstruction::*;
-
         parse_program_prop(TestCase {
             input: "foo: call foo",
             expected: Program::new(&[
@@ -784,6 +799,25 @@ mod parser_tests {
             expected_error_count: 1,
             message: "there is no dup16 instruction",
         });
+    }
+
+    #[test]
+    fn parse_program_bracket_syntax_test() {
+        parse_program_prop(TestCase {
+            input: "foo: [foo]",
+            expected: Program::new(&[
+                Label("foo".to_string(), ""),
+                Instruction(Call("foo".to_string()), ""),
+            ]),
+            message: "Handle brackets as call syntax sugar",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "foo: [bar]",
+            expected_error: "missing label",
+            expected_error_count: 1,
+            message: "Handle missing labels with bracket syntax",
+        })
     }
 
     #[test]
