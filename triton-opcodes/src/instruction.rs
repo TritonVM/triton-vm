@@ -2,14 +2,12 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
-use std::ops::Neg;
 use std::str::SplitWhitespace;
 use std::vec;
 
 use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
-use num_traits::One;
 use regex::Regex;
 use strum::EnumCount;
 use strum::IntoEnumIterator;

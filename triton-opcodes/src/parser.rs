@@ -393,8 +393,6 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 
 #[cfg(test)]
 mod parser_tests {
-    use std::collections::HashSet;
-
     use itertools::Itertools;
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
@@ -564,7 +562,7 @@ mod parser_tests {
     #[allow(unstable_name_collisions)] // reason = "Switch to standard library intersperse_with() when it's ported"
     fn program_gen(size: usize) -> String {
         // Generate random program
-        let mut labels = vec!["main".to_string()];
+        let mut labels = vec![];
         let mut program: Vec<Vec<String>> =
             (0..size).map(|_| instruction_gen(&mut labels)).collect();
 
@@ -792,15 +790,37 @@ mod parser_tests {
     fn parse_program_equivalence_test() {
         for size in 0..100 {
             let code = program_gen(size * 10);
+
             let old_actual = instruction::parse(&code).map_err(|err| err.to_string());
             let new_actual = super::parse(&code).map_err(|err| err.to_string());
 
-            if let Err(err) = new_actual.clone() {
+            // property: the new parser succeeds on all generated input programs.
+            if new_actual.is_err() {
                 println!("The code:\n{}\n\n", code);
-                panic!("{}", err);
+                panic!("{}", new_actual.unwrap_err());
             }
 
+            // property: the old and the new parser are (mostly) equivalent.
+            //
+            // (there are small differences wrt. handling comments/whitespace.)
             assert_eq!(old_actual, new_actual);
+
+            // property: parsing the pretty-printed program gives the same result.
+            //
+            // FIXME: The pretty-printer does not retain enough information to print
+            // the original labels, and it does not insert numeric labels either, so
+            // the ASTs will not match completely.
+            //
+            // let actual = new_actual.unwrap();
+            // let pgm = Program::new(&actual);
+            // let pp_code = format!("{}", pgm);
+            // let pp_actual = super::parse(&pp_code).map_err(|err| err.to_string());
+            //
+            // assert_eq!(
+            //     Ok(actual),
+            //     pp_actual,
+            //     "parsing the code and the pretty-printed code gives the same program"
+            // )
         }
     }
 }
