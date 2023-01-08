@@ -1486,7 +1486,7 @@ mod master_table_tests {
     use crate::table::master_table::terminal_quotient_zerofier_inverse;
     use crate::table::master_table::transition_quotient_zerofier_inverse;
     use crate::table::master_table::TableId::*;
-    use crate::table::master_table::EXT_HASH_TABLE_END;
+    use crate::table::master_table::EXT_U32_TABLE_END;
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -1591,7 +1591,7 @@ mod master_table_tests {
             stark.parameters.num_randomizer_polynomials,
             master_ext_table
                 .master_ext_matrix
-                .slice(s![.., EXT_HASH_TABLE_END..])
+                .slice(s![.., EXT_U32_TABLE_END..])
                 .ncols()
         );
     }
