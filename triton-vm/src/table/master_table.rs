@@ -10,7 +10,6 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Zip;
 use num_traits::One;
-use num_traits::Zero;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
@@ -233,6 +232,7 @@ pub struct MasterBaseTable {
     pub program_len: usize,
     pub main_execution_len: usize,
     pub hash_coprocessor_execution_len: usize,
+    pub u32_coprocesor_execution_len: usize,
 
     pub randomized_padded_trace_len: usize,
 
@@ -317,20 +317,20 @@ impl MasterBaseTable {
     pub fn padded_height(aet: &AlgebraicExecutionTrace, program: &[BFieldElement]) -> usize {
         let instruction_table_len = program.len() + aet.processor_matrix.nrows();
         let hash_table_len = aet.hash_matrix.nrows();
-        let mut u32_table_len = 0;
-        for (_, lhs, rhs) in aet.u32_entries.iter() {
-            let lhs_contribution = match lhs.is_zero() {
-                true => 1,
-                false => log_2_floor(lhs.value() as u128) + 2,
-            };
-            let rhs_contribution = match rhs.is_zero() {
-                true => 1,
-                false => log_2_floor(rhs.value() as u128) + 2,
-            };
-            u32_table_len += max(lhs_contribution, rhs_contribution) as usize;
-        }
+        let u32_table_len = Self::u32_table_length(aet);
         let max_height = max(max(instruction_table_len, hash_table_len), u32_table_len);
         roundup_npo2(max_height as u64) as usize
+    }
+
+    fn u32_table_length(aet: &AlgebraicExecutionTrace) -> usize {
+        aet.u32_entries
+            .iter()
+            .map(|(_, lhs, rhs)| max(lhs.value(), rhs.value()))
+            .map(|bigger_value| match bigger_value == 0 {
+                true => 1,
+                false => 2 + log_2_floor(bigger_value as u128) as usize,
+            })
+            .sum()
     }
 
     pub fn new(
@@ -346,6 +346,7 @@ impl MasterBaseTable {
         let program_len = program.len();
         let main_execution_len = aet.processor_matrix.nrows();
         let hash_coprocessor_execution_len = aet.hash_matrix.nrows();
+        let u32_coprocesor_execution_len = Self::u32_table_length(&aet);
 
         let num_rows = randomized_padded_trace_len;
         let num_columns = NUM_BASE_COLUMNS;
@@ -357,6 +358,7 @@ impl MasterBaseTable {
             program_len,
             main_execution_len,
             hash_coprocessor_execution_len,
+            u32_coprocesor_execution_len,
             randomized_padded_trace_len,
             rand_trace_to_padded_trace_unit_distance: unit_distance,
             fri_domain,
@@ -395,6 +397,7 @@ impl MasterBaseTable {
     pub fn pad(&mut self) {
         let program_len = self.program_len;
         let main_execution_len = self.main_execution_len;
+        let u32_table_len = self.u32_coprocesor_execution_len;
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
         ProgramTable::pad_trace(program_table, program_len);
@@ -411,7 +414,7 @@ impl MasterBaseTable {
         let hash_table = &mut self.table_mut(TableId::HashTable);
         HashTable::pad_trace(hash_table);
         let u32_table = &mut self.table_mut(TableId::U32Table);
-        U32Table::pad_trace(u32_table, main_execution_len);
+        U32Table::pad_trace(u32_table, u32_table_len);
     }
 
     pub fn to_fri_domain_table(&self) -> Self {
