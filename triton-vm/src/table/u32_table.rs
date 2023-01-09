@@ -308,8 +308,12 @@ impl ExtU32Table {
                 * (bits_next - bits.clone() - one.clone());
         let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
         let rhs_lsb = rhs - two.clone() * rhs_next.clone();
-        let lhs_lsb_is_a_bit = lhs_lsb.clone() * (lhs_lsb.clone() - one.clone());
-        let rhs_lsb_is_a_bit = rhs_lsb.clone() * (rhs_lsb.clone() - one.clone());
+        let if_copy_flag_next_is_0_then_lhs_lsb_is_a_bit = (copy_flag_next.clone() - one.clone())
+            * lhs_lsb.clone()
+            * (lhs_lsb.clone() - one.clone());
+        let if_copy_flag_next_is_0_then_rhs_lsb_is_a_bit = (copy_flag_next.clone() - one.clone())
+            * rhs_lsb.clone()
+            * (rhs_lsb.clone() - one.clone());
         let if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0 = (copy_flag_next.clone()
             - one.clone())
             * (lt_next.clone() - one.clone())
@@ -389,8 +393,8 @@ impl ExtU32Table {
             if_copy_flag_next_is_0_then_lhs_copy_stays,
             if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_bits_increases_by_1,
             if_copy_flag_next_is_0_and_rhs_next_is_nonzero_then_bits_increases_by_1,
-            lhs_lsb_is_a_bit,
-            rhs_lsb_is_a_bit,
+            if_copy_flag_next_is_0_then_lhs_lsb_is_a_bit,
+            if_copy_flag_next_is_0_then_rhs_lsb_is_a_bit,
             if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0,
             if_copy_flag_next_is_0_and_lt_next_is_1_then_lt_is_1,
             if_copy_flag_next_is_0_and_lt_next_is_2_and_lt_known_then_lt_is_1,
