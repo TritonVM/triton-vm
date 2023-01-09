@@ -479,6 +479,9 @@ impl U32Table {
         section = Self::u32_section_next_row(section);
         let (mut row, next_row) = section.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
 
+        row[LhsInv.base_table_index()] = row[LHS.base_table_index()].inverse_or_zero();
+        row[RhsInv.base_table_index()] = row[RHS.base_table_index()].inverse_or_zero();
+
         row[LT.base_table_index()] = if next_row[LT.base_table_index()].is_zero() {
             zero
         } else if next_row[LT.base_table_index()].is_one() {
