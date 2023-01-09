@@ -1596,7 +1596,6 @@ pub(crate) mod triton_stark_tests {
         for (program_idx, program) in small_tasm_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
-            println!();
         }
     }
 
@@ -1605,7 +1604,6 @@ pub(crate) mod triton_stark_tests {
         for (program_idx, program) in property_based_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
-            println!();
         }
     }
 
@@ -1614,7 +1612,6 @@ pub(crate) mod triton_stark_tests {
         for (program_idx, program) in bigger_tasm_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
-            println!();
         }
     }
 

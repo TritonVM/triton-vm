@@ -1513,6 +1513,8 @@ mod master_table_tests {
     use crate::table::table_column::ProgramExtTableColumn;
     use crate::table::table_column::RamBaseTableColumn;
     use crate::table::table_column::RamExtTableColumn;
+    use crate::table::table_column::U32BaseTableColumn;
+    use crate::table::table_column::U32ExtTableColumn;
     use crate::table::u32_table;
 
     #[test]
@@ -1760,6 +1762,12 @@ mod master_table_tests {
                 column.master_base_table_index()
             );
         }
+        for column in U32BaseTableColumn::iter() {
+            println!(
+                "{:>3} | u32         | {column}",
+                column.master_base_table_index()
+            );
+        }
         println!();
         println!("idx | table       | extension column");
         println!("---:|:------------|:----------------");
@@ -1802,6 +1810,12 @@ mod master_table_tests {
         for column in HashExtTableColumn::iter() {
             println!(
                 "{:>3} | hash        | {column}",
+                column.master_ext_table_index()
+            );
+        }
+        for column in U32ExtTableColumn::iter() {
+            println!(
+                "{:>3} | u32         | {column}",
                 column.master_ext_table_index()
             );
         }
