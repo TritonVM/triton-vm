@@ -578,10 +578,10 @@ fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
         Dup(ST0),                    // _ a a
         Split,                       // _ a lo hi
         Push(BFieldElement::zero()), // _ a lo hi 0
-        Eq,                          // _ a lo {0,1}
-        Swap(ST2),                   // _ {0,1} lo a
-        Eq,                          // _ {0,1} {0,1}
-        Mul,                         // _ {0,1}
+        Eq,                          // _ a lo (hi==0)
+        Swap(ST2),                   // _ (hi==0) lo a
+        Eq,                          // _ (hi==0) (lo==a)
+        Mul,                         // _ (hi==0 & lo==a)
     ]
 }
 

@@ -579,7 +579,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
 
-        let source_code = format!("push {} is_u32 halt", st0);
+        let source_code = format!("push {} is_u32 assert halt", st0);
 
         SourceCodeAndInput::without_input(&source_code)
     }
@@ -671,7 +671,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let source_code = format!("push {} is_u32 halt", st0);
+        let source_code = format!("push {} is_u32 assert halt", st0);
         let program = SourceCodeAndInput::without_input(&source_code);
         let _ = program.run();
     }
