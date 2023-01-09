@@ -148,6 +148,7 @@ impl ProcessorTable {
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut to_hash_table_running_evaluation = EvalArg::default_initial();
         let mut from_hash_table_running_evaluation = EvalArg::default_initial();
+        let mut u32_table_running_product = PermArg::default_initial();
         let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
         let mut all_clock_jump_differences_running_product =
             PermArg::default_initial() * PermArg::default_initial() * PermArg::default_initial();
@@ -225,6 +226,7 @@ impl ProcessorTable {
             jump_stack_running_product *=
                 challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
 
+            // Hash Table – Hash's input from Processor to Hash Coprocessor
             if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
                 let st_0_through_9 = [
                     current_row[ST0.base_table_index()],
@@ -288,6 +290,43 @@ impl ProcessorTable {
                 }
             }
 
+            // U32 Table
+            if let Some(prev_row) = previous_row {
+                let previously_current_instruction = prev_row[CI.base_table_index()];
+                if previously_current_instruction == Instruction::Split.opcode_b() {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight;
+                }
+                if previously_current_instruction == Instruction::Lt.opcode_b()
+                    || previously_current_instruction == Instruction::And.opcode_b()
+                    || previously_current_instruction == Instruction::Xor.opcode_b()
+                    || previously_current_instruction == Instruction::Pow.opcode_b()
+                {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - prev_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - prev_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_result_weight;
+                }
+                if previously_current_instruction == Instruction::Log2Floor.opcode_b() {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - prev_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_result_weight;
+                }
+                if previously_current_instruction == Instruction::Div.opcode_b() {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - prev_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight
+                        - BFieldElement::one() * challenges.u32_table_result_weight;
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - prev_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight;
+                }
+            }
+
             // Clock Jump Difference
             let current_clock_jump_difference = current_row[ClockJumpDifference.base_table_index()];
             if !current_clock_jump_difference.is_zero() {
@@ -328,6 +367,7 @@ impl ProcessorTable {
             extension_row[ToHashTableEvalArg.ext_table_index()] = to_hash_table_running_evaluation;
             extension_row[FromHashTableEvalArg.ext_table_index()] =
                 from_hash_table_running_evaluation;
+            extension_row[U32TablePermArg.ext_table_index()] = u32_table_running_product;
             extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
             extension_row[UniqueClockJumpDifferencesEvalArg.ext_table_index()] =
@@ -741,7 +781,7 @@ impl ExtProcessorTable {
         let osv_is_0 = factory.osv();
         let ramv_is_0 = factory.ramv();
         let ramp_is_0 = factory.ramp();
-        let previous_instruction = factory.previous_instruction();
+        let previous_instruction_is_0 = factory.previous_instruction();
 
         // The running evaluation of relevant clock cycles `rer` starts with the initial.
         let rer_starts_correctly = factory.rer() - constant_x(EvalArg::default_initial());
@@ -841,6 +881,10 @@ impl ExtProcessorTable {
         let running_evaluation_from_hash_table_is_initialized_correctly =
             factory.running_evaluation_from_hash_table() - constant_x(EvalArg::default_initial());
 
+        // u32 table
+        let running_product_for_u32_table_is_initialized_correctly =
+            factory.running_product_u32_table() - constant_x(PermArg::default_initial());
+
         [
             clk_is_0,
             ip_is_0,
@@ -867,7 +911,7 @@ impl ExtProcessorTable {
             osv_is_0,
             ramv_is_0,
             ramp_is_0,
-            previous_instruction,
+            previous_instruction_is_0,
             rer_starts_correctly,
             reu_starts_correctly,
             rpm_starts_correctly,
@@ -879,6 +923,7 @@ impl ExtProcessorTable {
             running_product_for_jump_stack_table_is_initialized_correctly,
             running_evaluation_to_hash_table_is_initialized_correctly,
             running_evaluation_from_hash_table_is_initialized_correctly,
+            running_product_for_u32_table_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -1632,6 +1677,14 @@ impl SingleRowConstraints {
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_product_u32_table(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
     }
 }
 
