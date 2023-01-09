@@ -173,7 +173,7 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 
 Even though they are never explicitly represented, it is useful to alias the `LHS`'s and `RHS`'s _least-significant bit_, or “lsb.”
 Given two consecutive rows for `LHS`, the (current) least significant bit can be computed by subtracting twice the next row's `LHS` from the current row's `LHS`.
-These aliases, _i.e._, `LhsLsb` = 2·`LHS`' - `LHS` and `RhsLsb` = 2·`RHS`' - `RHS`, are used throughout the following.
+These aliases, _i.e._, `LhsLsb` = `LHS` - 2·`LHS`' and `RhsLsb` = `RHS` - 2·`RHS`', are used throughout the following.
 
 1. If the `CopyFlag` in the next row is 1, then `LHS` in the current row is 0.
 1. If the `CopyFlag` in the next row is 1, then `RHS` in the current row is 0.

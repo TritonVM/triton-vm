@@ -306,8 +306,8 @@ impl ExtU32Table {
             (copy_flag_next.clone() - one.clone())
                 * rhs.clone()
                 * (bits_next - bits.clone() - one.clone());
-        let lhs_lsb = two.clone() * lhs_next.clone() - lhs.clone();
-        let rhs_lsb = two.clone() * rhs_next - rhs.clone();
+        let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
+        let rhs_lsb = rhs.clone() - two.clone() * rhs_next;
         let lhs_lsb_is_a_bit = lhs_lsb.clone() * (lhs_lsb.clone() - one.clone());
         let rhs_lsb_is_a_bit = rhs_lsb.clone() * (rhs_lsb.clone() - one.clone());
         let if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0 = (copy_flag_next.clone()
