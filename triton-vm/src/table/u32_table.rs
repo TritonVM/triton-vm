@@ -246,9 +246,9 @@ impl ExtU32Table {
         let deselect_instructions = |instructions: &[Instruction]| {
             instructions
                 .iter()
-                .map(|&instr| ci.clone() - circuit_builder.b_constant(instr.opcode_b()))
+                .map(|&instr| ci_next.clone() - circuit_builder.b_constant(instr.opcode_b()))
                 .fold(one.clone(), ConstraintCircuitMonad::mul)
-                * ci.clone()
+                * ci_next.clone()
         };
         let lt_div_deselector = deselect_instructions(&[
             Instruction::And,
@@ -284,18 +284,18 @@ impl ExtU32Table {
             Instruction::Xor,
             Instruction::Log2Floor,
         ]);
-        let result = lt_div_deselector
-            * circuit_builder.input(CurrentBaseRow(LT.master_base_table_index()))
-            + and_deselector * circuit_builder.input(CurrentBaseRow(AND.master_base_table_index()))
-            + xor_deselector * circuit_builder.input(CurrentBaseRow(XOR.master_base_table_index()))
+        let result_next = lt_div_deselector
+            * circuit_builder.input(NextBaseRow(LT.master_base_table_index()))
+            + and_deselector * circuit_builder.input(NextBaseRow(AND.master_base_table_index()))
+            + xor_deselector * circuit_builder.input(NextBaseRow(XOR.master_base_table_index()))
             + log2floor_deselector
-                * circuit_builder.input(CurrentBaseRow(Log2Floor.master_base_table_index()))
-            + pow_deselector * circuit_builder.input(CurrentBaseRow(Pow.master_base_table_index()));
+                * circuit_builder.input(NextBaseRow(Log2Floor.master_base_table_index()))
+            + pow_deselector * circuit_builder.input(NextBaseRow(Pow.master_base_table_index()));
 
         let if_copy_flag_next_is_1_then_lhs_is_0 = copy_flag_next.clone() * lhs.clone();
         let if_copy_flag_next_is_1_then_rhs_is_0 = copy_flag_next.clone() * rhs.clone();
         let if_copy_flag_next_is_0_then_ci_stays =
-            (copy_flag_next.clone() - one.clone()) * (ci_next - ci.clone());
+            (copy_flag_next.clone() - one.clone()) * (ci_next.clone() - ci);
         let if_copy_flag_next_is_0_then_lhs_copy_stays =
             (copy_flag_next.clone() - one.clone()) * (lhs_copy_next - lhs_copy.clone());
         let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_bits_increases_by_1 =
@@ -307,7 +307,7 @@ impl ExtU32Table {
                 * rhs.clone()
                 * (bits_next - bits.clone() - one.clone());
         let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
-        let rhs_lsb = rhs.clone() - two.clone() * rhs_next;
+        let rhs_lsb = rhs - two.clone() * rhs_next.clone();
         let lhs_lsb_is_a_bit = lhs_lsb.clone() * (lhs_lsb.clone() - one.clone());
         let rhs_lsb_is_a_bit = rhs_lsb.clone() * (rhs_lsb.clone() - one.clone());
         let if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0 = (copy_flag_next.clone()
@@ -346,7 +346,7 @@ impl ExtU32Table {
             * (copy_flag.clone() - one.clone())
             * (lt.clone() - two.clone());
         let if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_in_top_row_then_lt_is_0 =
-            lt_result_unclear * copy_flag.clone() * lt;
+            lt_result_unclear * copy_flag * lt;
         let if_copy_flag_next_is_0_then_and_updates_correctly = (copy_flag_next.clone()
             - one.clone())
             * (and - two.clone() * and_next - lhs_lsb.clone() * rhs_lsb.clone());
@@ -357,10 +357,12 @@ impl ExtU32Table {
         let if_copy_flag_next_is_0_and_lhs_next_is_0_and_lhs_is_nonzero_then_log2floor_is_bits =
             (copy_flag_next.clone() - one.clone())
                 * (one.clone() - lhs_next.clone() * lhs_inv_next)
-                * lhs.clone()
+                * lhs
                 * (log2floor.clone() - bits);
         let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_log2floor_stays =
-            (copy_flag_next.clone() - one.clone()) * lhs_next * (log2floor_next - log2floor);
+            (copy_flag_next.clone() - one.clone())
+                * lhs_next.clone()
+                * (log2floor_next - log2floor);
         let if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares = (copy_flag_next.clone()
             - one.clone())
             * (rhs_lsb.clone() - one.clone())
@@ -370,15 +372,15 @@ impl ExtU32Table {
                 * rhs_lsb
                 * (pow - pow_next.clone() * pow_next * lhs_copy);
 
-        let compressed_row = challenge(ProcessorPermIndeterminate)
-            - challenge(LhsWeight) * lhs
-            - challenge(RhsWeight) * rhs
-            - challenge(CIWeight) * ci
-            - challenge(ResultWeight) * result;
         let if_copy_flag_next_is_0_then_running_product_stays =
-            (copy_flag_next - one.clone()) * (rp_next.clone() - rp.clone());
-        let if_copy_flag_next_is_1_then_running_product_absorbs_row =
-            copy_flag * (rp_next - rp * compressed_row);
+            (copy_flag_next.clone() - one.clone()) * (rp_next.clone() - rp.clone());
+
+        let compressed_row_next = challenge(CIWeight) * ci_next
+            + challenge(LhsWeight) * lhs_next
+            + challenge(RhsWeight) * rhs_next
+            + challenge(ResultWeight) * result_next;
+        let if_copy_flag_next_is_1_then_running_product_absorbs_next_row = copy_flag_next
+            * (rp_next - rp * (challenge(ProcessorPermIndeterminate) - compressed_row_next));
 
         [
             if_copy_flag_next_is_1_then_lhs_is_0,
@@ -402,7 +404,7 @@ impl ExtU32Table {
             if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares,
             if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares_times_lhs_copy,
             if_copy_flag_next_is_0_then_running_product_stays,
-            if_copy_flag_next_is_1_then_running_product_absorbs_row,
+            if_copy_flag_next_is_1_then_running_product_absorbs_next_row,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
