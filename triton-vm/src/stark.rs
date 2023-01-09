@@ -1129,6 +1129,7 @@ pub(crate) mod triton_stark_tests {
         code_collection.append(&mut property_based_test_programs());
 
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
+            println!("Checking Grand Cross-Table Argument for TASM snippet {code_idx}.");
             let code = code_with_input.source_code;
             let input = code_with_input.input;
             let secret_input = code_with_input.secret_input.clone();

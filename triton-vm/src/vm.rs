@@ -552,47 +552,6 @@ pub mod triton_vm_tests {
         }
     }
 
-    pub fn test_program_for_reverse() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 2147483648 reverse assert halt")
-    }
-
-    pub fn property_based_test_program_for_reverse() -> SourceCodeAndInput {
-        let mut rng = ThreadRng::default();
-        let st0 = rng.next_u32();
-        let st0_rev = st0.reverse_bits().into();
-
-        let source_code = format!("push {} reverse read_io eq assert halt", st0);
-
-        SourceCodeAndInput {
-            source_code,
-            input: vec![st0_rev],
-            secret_input: vec![],
-        }
-    }
-
-    pub fn test_program_for_lte() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 5 push 2 lte assert halt")
-    }
-
-    pub fn property_based_test_program_for_lte() -> SourceCodeAndInput {
-        let mut rng = ThreadRng::default();
-        let st1 = rng.next_u32();
-        let st0 = rng.next_u32();
-        let result = if st0 <= st1 {
-            1_u64.into()
-        } else {
-            0_u64.into()
-        };
-
-        let source_code = format!("push {} push {} lte read_io eq assert halt", st1, st0);
-
-        SourceCodeAndInput {
-            source_code,
-            input: vec![result],
-            secret_input: vec![],
-        }
-    }
-
     pub fn test_program_for_div() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 2 push 3 div assert assert halt")
     }
@@ -729,18 +688,6 @@ pub mod triton_vm_tests {
         )
     }
 
-    pub fn test_program_for_split_assert() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input(
-            "push -2 split_assert push 4294967294 eq assert push 4294967295 eq assert \
-             push -1 split_assert push 4294967295 eq assert push 0 eq assert \
-             push  0 split_assert push 0 eq assert push 0 eq assert \
-             push  1 split_assert push 0 eq assert push 1 eq assert \
-             push  2 split_assert push 0 eq assert push 2 eq assert \
-             push 4294967297 split_assert assert assert \
-             halt",
-        )
-    }
-
     pub fn test_program_for_xxadd() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input("push 5 push 6 push 7 push 8 push 9 push 10 xxadd halt")
     }
@@ -799,8 +746,6 @@ pub mod triton_vm_tests {
             property_based_test_program_for_lt(),
             property_based_test_program_for_and(),
             property_based_test_program_for_xor(),
-            property_based_test_program_for_reverse(),
-            property_based_test_program_for_lte(),
             property_based_test_program_for_div(),
             property_based_test_program_for_is_u32(),
             property_based_test_program_for_random_ram_access(),
@@ -815,10 +760,7 @@ pub mod triton_vm_tests {
             test_program_for_lt(),
             test_program_for_and(),
             test_program_for_xor(),
-            test_program_for_reverse(),
-            test_program_for_lte(),
             test_program_for_div(),
-            test_program_for_split_assert(),
         ]
     }
 
