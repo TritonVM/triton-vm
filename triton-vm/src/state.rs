@@ -134,7 +134,7 @@ impl<'pgm> VMState<'pgm> {
         // if current instruction shrinks the stack
         if matches!(
             current_instruction,
-            Pop | Skiz | Assert | WriteIo | Add | Mul | Eq | XbMul
+            Pop | Skiz | Assert | WriteIo | Add | Mul | Eq | XbMul | Lt | And | Xor | Pow
         ) {
             hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse_or_zero();
         }
@@ -410,7 +410,10 @@ impl<'pgm> VMState<'pgm> {
 
             Log2Floor => {
                 let lhs = self.op_stack.pop()?;
-                let l2f = BFieldElement::new(log_2_floor(lhs.value() as u128));
+                let l2f = match lhs.is_zero() {
+                    true => -BFieldElement::one(),
+                    false => BFieldElement::new(log_2_floor(lhs.value() as u128)),
+                };
                 self.op_stack.push(l2f);
                 self.instruction_pointer += 1;
                 let rhs = BFieldElement::zero();

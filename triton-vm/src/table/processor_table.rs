@@ -4684,6 +4684,7 @@ impl<'a> Display for ExtProcessorMatrixRow<'a> {
 mod constraint_polynomial_tests {
     use ndarray::Array2;
 
+    use crate::shared_tests::SourceCodeAndInput;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
     use crate::table::master_table::MasterTable;
@@ -4943,6 +4944,112 @@ mod constraint_polynomial_tests {
             1,
         )];
         test_constraints_for_rows_with_debug_info(Lsb, &test_rows, &[ST0], &[ST0, ST1]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_lt_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push 3 push 3 lt push 0 eq assert halt", 2),
+            get_test_row_from_source_code("push 3 push 2 lt push 1 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push 3 lt push 0 eq assert halt", 2),
+            get_test_row_from_source_code("push 512 push 513 lt push 0 eq assert halt", 2),
+        ];
+        test_constraints_for_rows_with_debug_info(Lt, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_and_test() {
+        let test_rows = [get_test_row_from_source_code(
+            "push 5 push 12 and push 4 eq assert halt",
+            2,
+        )];
+        test_constraints_for_rows_with_debug_info(And, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_xor_test() {
+        let test_rows = [get_test_row_from_source_code(
+            "push 5 push 12 xor push 9 eq assert halt",
+            2,
+        )];
+        test_constraints_for_rows_with_debug_info(Xor, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_log2floor_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push  0 log_2_floor push -1 eq assert halt", 1),
+            get_test_row_from_source_code("push  1 log_2_floor push  0 eq assert halt", 1),
+            get_test_row_from_source_code("push  2 log_2_floor push  1 eq assert halt", 1),
+            get_test_row_from_source_code("push  3 log_2_floor push  1 eq assert halt", 1),
+            get_test_row_from_source_code("push  4 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  5 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  6 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  7 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  8 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push  9 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 10 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 11 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 12 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 13 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 14 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 15 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 16 log_2_floor push  4 eq assert halt", 1),
+            get_test_row_from_source_code("push 17 log_2_floor push  4 eq assert halt", 1),
+        ];
+        test_constraints_for_rows_with_debug_info(Log2Floor, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_pow_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push 0 push  0 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  0 pow push   0 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  0 pow push   0 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push  1 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  1 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  1 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push  2 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  2 pow push   2 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  2 pow push   4 eq assert halt", 2),
+            get_test_row_from_source_code("push 3 push  2 pow push   8 eq assert halt", 2),
+            get_test_row_from_source_code("push 4 push  2 pow push  16 eq assert halt", 2),
+            get_test_row_from_source_code("push 5 push  2 pow push  32 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push  3 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  3 pow push   3 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  3 pow push   9 eq assert halt", 2),
+            get_test_row_from_source_code("push 3 push  3 pow push  27 eq assert halt", 2),
+            get_test_row_from_source_code("push 4 push  3 pow push  81 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push 17 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push 17 pow push  17 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push 17 pow push 289 eq assert halt", 2),
+        ];
+        test_constraints_for_rows_with_debug_info(Pow, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_div_test() {
+        let test_rows = [
+            get_test_row_from_source_code(
+                "push 2 push 3 div push 1 eq assert push 1 eq assert halt",
+                2,
+            ),
+            get_test_row_from_source_code(
+                "push 3 push 7 div push 1 eq assert push 2 eq assert halt",
+                2,
+            ),
+            get_test_row_from_source_code(
+                "push 4 push 7 div push 3 eq assert push 1 eq assert halt",
+                2,
+            ),
+        ];
+        test_constraints_for_rows_with_debug_info(Div, &test_rows, &[ST0, ST1], &[ST0, ST1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "0 does not have a multiplicative inverse")]
+    fn division_by_zero_is_impossible_test() {
+        SourceCodeAndInput::without_input("div").run();
     }
 
     #[test]
