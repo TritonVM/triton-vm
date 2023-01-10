@@ -363,7 +363,7 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(lo);
                 self.op_stack.push(hi);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::Halt, hi, lo);
+                let u32_table_entry = (Instruction::Split, hi, lo);
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
@@ -434,8 +434,8 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(quot);
                 self.op_stack.push(rem);
                 self.instruction_pointer += 1;
-                let u32_table_entry_0 = (Instruction::Div, rem, denom);
-                let u32_table_entry_1 = (Instruction::Halt, numer, quot);
+                let u32_table_entry_0 = (Instruction::Lt, rem, denom);
+                let u32_table_entry_1 = (Instruction::Split, numer, quot);
                 vm_output = Some(VMOutput::U32TableEntries(vec![
                     u32_table_entry_0,
                     u32_table_entry_1,

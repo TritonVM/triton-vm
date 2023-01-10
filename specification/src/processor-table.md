@@ -177,12 +177,12 @@ The following constraints apply to every pair of rows.
 1. The running product for the JumpStack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
 1. If the current instruction in the next row is `hash`, the running evaluation “to Hash Table” absorbs the next row with respect to challenges 🧄0 through 🧄9 and indeterminate 🪣. Otherwise, it remains unchanged.
 1. If the current instruction is `hash`, the running evaluation “from Hash Table” absorbs the next row with respect to challenges 🫑0 through 🫑4 and indeterminate 🪟. Otherwise, it remains unchanged.
-1.  1. If the current instruction is `split`, then the running product with the U32 Table absorbs `st0` and `st1` in the next row with respect to challenges 🥜 and 🌰 and indeterminate 🧷.
+1.  1. If the current instruction is `split`, then the running product with the U32 Table absorbs `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the running product with the U32 Table absorbs `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
     1. If the current instruction is `log2floor`, then the running product with the U32 Table absorbs `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
     1. If the current instruction is `div`, then the running product with the U32 Table absorbs both
-        1. `st0` in the next row and `st1` and `ci` in the current row as well as the constant `1` with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
-        1. `st0` in the current row and `st1` in the next row with respect to challenges 🥜 and 🌰, and indeterminate 🧷.
+        1. `st0` in the next row and `st1` in the current row as well as the constants `opcode(lt)` and `1` with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
+        1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. Else, _i.e._, if the current instruction is not a u32 instruction, the running product with the U32 Table remains unchanged.
 1. The unique inverse column `invu'` holds the inverse-or-zero of the difference of consecutive `cjd`'s, if `cjd'` is nonzero.
     (Results in 2 constraint polynomials.)
@@ -203,13 +203,13 @@ The following constraints apply to every pair of rows.
 1. `RunningProductJumpStackTable' - RunningProductJumpStackTable·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
 1. `(ci' - opcode(hash))·(RunningEvaluationToHashTable' - RunningEvaluationToHashTable) + hash_deselector'·(RunningEvaluationToHashTable' - 🪣·RunningEvaluationToHashTable - 🧄0·st0' - 🧄1·st1' - 🧄2·st2' - 🧄3·st3' - 🧄4·st4' - 🧄5·st5' - 🧄6·st6' - 🧄7·st7' - 🧄8·st8' - 🧄9·st9')`
 1. `(ci - opcode(hash))·(RunningEvaluationFromHashTable' - RunningEvaluationFromHashTable) + hash_deselector·(RunningEvaluationFromHashTable' - 🪟·RunningEvaluationFromHashTable - 🫑0·st5' - 🫑1·st6' - 🫑2·st7' - 🫑3·st8' - 🫑4·st9')`
-1.  1. `split_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1'))`
+1.  1. `split_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1' - 🥑·ci))`
     1. `+ lt_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
     1. `+ and_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
     1. `+ xor_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
     1. `+ pow_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
     1. `+ log2floor_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0'))`
-    1. `+ div_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1 - 🥑·ci - 🥕)·(🧷 - 🥜·st0 - 🌰·st1'))`
+    1. `+ div_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕)·(🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split)))`
     1. `+ (1 - ib2)·(RunningProductU32Table' - RunningProductU32Table)`
 1. `invu'·(invu'·(cjd' - cjd) - 1)·cjd'`
 1. `(cjd' - cjd)·(invu'·(cjd' - cjd) - 1)·cjd'`

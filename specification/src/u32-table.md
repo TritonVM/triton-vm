@@ -64,37 +64,40 @@ inserting a row with `Bits` equal to 33 makes it impossible to generate a proof 
 The U32 Table has 1 extension column, `RunningProductProcessor`.
 It corresponds to the Permutation Argument with the [Processor Table](processor-table.md), establishing that whenever the processor executes a u32 instruction, the following holds:
 
-- the processor's stack register `st0` is copied into `LHS`,
-- the processor's stack register `st1` is copied into `RHS`,
-- the processor's `CI` register is copied into `CI`, and
+- the processor's requested left-hand side is copied into `LHS`,
+- the processor's requested right-hand side is copied into `RHS`,
+- the processor's requested u32 instruction is copied into `CI`, and
 - the result, condition to `CI`, is copied to the processor.
 
 More concretely, the result to be copied to the processor is
 
-- `LT` if `CI` is opcode(`lt`),
-- `AND` if `CI` is opcode(`and`),
-- `XOR` if `CI` is opcode(`xor`),
-- `Log2Floor` if `CI` is opcode(`log_2_floor`),
-- `Pow` if `CI` is opcode(`pow`),
-- `LT` if `CI` is opcode(`div`), and
-- 0 if `CI` is 0.
-
-The instruction `div` uses the U32 Table to ensure that the remainder `r` is smaller than the divisor `d`.
-Hence, the result of `LT` is used.
-The instruction `div` _also_ uses the U32 Table to ensure that the numerator `n` and the quotient `q` are u32.
-For this range check, happening in its independent section, no result is required.
-The instruction `split` also uses the U32 Table for range checking only, _i.e._, to ensure that the instruction's resulting “high bits” and “low bits” each fit in a u32.
+- 0 if `CI` is the opcode of `split`, and
+- the corresponding, equally-named column if `CI` is the opcode of `lt`, `and`, `xor`, `log_2_floor`, or `pow`.
 
 To conditionally copy the required result to the processor, instruction de-selectors (comparable to the ones in the Processor Table) are used.
-Concretely, with `u32_instructions = {lt, and, xor, log_2_floor, pow, div}`, the following (normalized) deselector for instruction `lt` is defined as:
+Concretely, with `u32_instructions = {split, lt, and, xor, log_2_floor, pow}`, the following (normalized) deselector for instruction `lt` is defined as:
 
 $$
-\frac{\texttt{CI}}{\texttt{opcode}(\texttt{lt})}\cdot\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \neq \texttt{lt}}} \frac{\texttt{CI} - \texttt{opcode}(\texttt{i})}{\texttt{opcode}(\texttt{lt}) - \texttt{opcode}(\texttt{i})}
+\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \neq \texttt{lt}}} \frac{\texttt{CI} - \texttt{opcode}(\texttt{i})}{\texttt{opcode}(\texttt{lt}) - \texttt{opcode}(\texttt{i})}
 $$
 
-The deselectors `and_deselector`, `xor_deselector`, `log_2_floor_deselector`, `pow_deselector`, and `div_deselector` are defined accordingly.
+The deselectors `and_deselector`, `xor_deselector`, `log_2_floor_deselector`, and `pow_deselector` are defined accordingly.
 Throughout the next sections, the alias `Result` corresponds to the polynomial
-`LT·lt_deselector + AND·and_deselector + XOR·xor_deselector + Log2Floor·log_2_floor_deselector + Pow·pow_deselector + LT·div_deselector`.
+`LT·lt_deselector + AND·and_deselector + XOR·xor_deselector + Log2Floor·log_2_floor_deselector + Pow·pow_deselector`.
+
+Note that no `split_deselector` is used.
+The instruction `split` uses the U32 Table for range checking only.
+Concretely, the U32 Table ensures that the instruction `split`'s resulting “high bits” and “low bits” each fit in a u32.
+
+Instruction `div` also uses the U32 Table, even though the U32 Table is not “aware” of instruction `div`.
+Instead, executing `div` creates 2 independent sections in the U32 Table:
+
+- One section to ensure that the remainder `r` is smaller than the divisor `d`.
+The processor requests the result of `lt` by setting the U32 Table's `CI` register to the opcode of `lt`.
+This also guarantees that `r` and `d` each fit in a u32.
+- One section to ensure that the quotient `q` and the numerator `n` each fit in a u32.
+The processor needs no result, only the range checking capabilities, like for instruction `split`.
+Consequently, the processor sets the U32 Table's `CI` register to the opcode of `split`.
 
 ## Padding
 

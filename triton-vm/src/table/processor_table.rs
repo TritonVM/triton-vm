@@ -296,7 +296,8 @@ impl ProcessorTable {
                 if previously_current_instruction == Instruction::Split.opcode_b() {
                     u32_table_running_product *= challenges.u32_table_perm_indeterminate
                         - current_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
-                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight;
+                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight;
                 }
                 if previously_current_instruction == Instruction::Lt.opcode_b()
                     || previously_current_instruction == Instruction::And.opcode_b()
@@ -319,11 +320,12 @@ impl ProcessorTable {
                     u32_table_running_product *= challenges.u32_table_perm_indeterminate
                         - current_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
                         - prev_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
-                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight
+                        - Instruction::Lt.opcode_b() * challenges.u32_table_ci_weight
                         - BFieldElement::one() * challenges.u32_table_result_weight;
                     u32_table_running_product *= challenges.u32_table_perm_indeterminate
                         - prev_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
-                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight;
+                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - Instruction::Split.opcode_b() * challenges.u32_table_ci_weight;
                 }
             }
 
@@ -4270,7 +4272,8 @@ impl DualRowConstraints {
 
         let split_factor = indeterminate.clone()
             - lhs_weight.clone() * self.st0_next()
-            - rhs_weight.clone() * self.st1_next();
+            - rhs_weight.clone() * self.st1_next()
+            - ci_weight.clone() * self.ci();
         let binop_factor = indeterminate.clone()
             - lhs_weight.clone() * self.st0()
             - rhs_weight.clone() * self.st1()
@@ -4283,10 +4286,12 @@ impl DualRowConstraints {
         let div_factor_for_lt = indeterminate.clone()
             - lhs_weight.clone() * self.st0_next()
             - rhs_weight.clone() * self.st1()
-            - ci_weight * self.ci()
+            - ci_weight.clone() * self.constant_b(Instruction::Lt.opcode_b())
             - result_weight;
-        let div_factor_for_range_check =
-            indeterminate - lhs_weight * self.st0() - rhs_weight * self.st1_next();
+        let div_factor_for_range_check = indeterminate
+            - lhs_weight * self.st0()
+            - rhs_weight * self.st1_next()
+            - ci_weight * self.constant_b(Instruction::Split.opcode_b());
 
         let split_summand = split_deselector * (rp_next.clone() - rp.clone() * split_factor);
         let lt_summand = lt_deselector * (rp_next.clone() - rp.clone() * binop_factor.clone());
