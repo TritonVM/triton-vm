@@ -23,7 +23,6 @@ class Instruction(IntEnum):
     Mul = auto()
     Invert = auto()
     Eq = auto()
-    Lsb = auto()
     Split = auto()
     Lt = auto()
     And = auto()

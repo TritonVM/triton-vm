@@ -97,16 +97,15 @@ In conjunction with instruction `hash` and `assert_vector`, the instruction `div
 
 ## Bitwise Arithmetic on Stack
 
-| Instruction | Opcode | old OpStack | new OpStack          | Description                                                                                                                                                                     |
-|:------------|-------:|:------------|:---------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `lsb`       |     88 | `_ a`       | `_ (a >> 1) (a % 2)` | Bit-shifts `a` to the right by 1 bit and pushes the least significant bit of `a` to the stack. Use with care, preferably through [pseudo instructions](pseudo-instructions.md). |
-| `split`     |      4 | `_ a`       | `_ lo hi`            | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                                   |
-| `lt`        |     12 | `_ b a`     | `_ a<b`              | “Less than” of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                      |
-| `and`       |     20 | `_ b a`     | `_ a&b`              | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                      |
-| `xor`       |     28 | `_ b a`     | `_ a^b`              | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                             |
-| `log2floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋`        | The number of bits in `a` minus 1. This is usually the same as $\lfloor\log_2\texttt{a}\rfloor$, except for 0. Crashes the VM if `a` is not u32.                                |
-| `pow`       |     44 | `_ e b`     | `_ b**e`             | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                                 |
-| `div`       |     52 | `_ d n`     | `_ q r`              | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0.      |
+| Instruction | Opcode | old OpStack | new OpStack   | Description                                                                                                                                                                |
+|:------------|-------:|:------------|:--------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `split`     |      4 | `_ a`       | `_ lo hi`     | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                              |
+| `lt`        |     12 | `_ b a`     | `_ a<b`       | “Less than” of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
+| `and`       |     20 | `_ b a`     | `_ a&b`       | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
+| `xor`       |     28 | `_ b a`     | `_ a^b`       | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                        |
+| `log2floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1. This is usually the same as $\lfloor\log_2\texttt{a}\rfloor$, except for 0. Crashes the VM if `a` is not u32.                           |
+| `pow`       |     44 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                            |
+| `div`       |     52 | `_ d n`     | `_ q r`       | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0. |
 
 ## Extension Field Arithmetic on Stack
 

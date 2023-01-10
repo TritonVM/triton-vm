@@ -4,11 +4,12 @@ Keeping the instruction set small results in a faster overall proving time due t
 Some convenient-to-have instructions are not implemented natively, but are instead simulated using existing instructions.
 The following list is a comprehensive overview, including their expansion.
 
-| Instruction | old OpStack | new OpStack | Description                                                                                           |
-|:------------|:------------|:------------|:------------------------------------------------------------------------------------------------------|
-| `neg`       | `_ a`       | `_ -a`      | Replaces the top of the stack with the field element corresponding to its additively inverse element. |
-| `sub`       | `_ b a`     | `_ a-b`     | Subtracts the stack's one-from top element from the stack's topmost element.                          |
-| `is_u32`    | `_ a`       | `_ {0,1}`   | Tests if the top of the stack is a u32, replacing it with the result.                                 |
+| Instruction | old OpStack | new OpStack  | Description                                                                                                                                |
+|:------------|:------------|:-------------|:-------------------------------------------------------------------------------------------------------------------------------------------|
+| `neg`       | `_ a`       | `_ -a`       | Replaces the top of the stack with the field element corresponding to its additively inverse element.                                      |
+| `sub`       | `_ b a`     | `_ a-b`      | Subtracts the stack's one-from top element from the stack's topmost element.                                                               |
+| `is_u32`    | `_ a`       | `_ {0,1}`    | Tests if the top of the stack is a u32, replacing it with the result.                                                                      |
+| `lsb`       | `_ a`       | `_ a>>1 a%2` | Bit-shifts `a` to the right by 1 bit and pushes the least significant bit (_lsb_) of `a` to the stack. Crashes the VM if `a` is not a u32. |
 
 ## Pseudo instruction `neg`
 
@@ -17,8 +18,9 @@ Program length: 3.
 Execution cycle count: 2.
 
 ```
-push -1
-mul
+         // _ a
+push -1  // _ a -1
+mul      // _ -a
 ```
 
 ## Pseudo instruction `sub`
@@ -28,12 +30,12 @@ Program length: 6.
 Execution cycle count: 4.
 
 ```
-swap 1
-push -1
-mul
-add
+         // _ b a
+swap 1   // _ a b
+push -1  // _ a b -1
+mul      // _ a -b
+add      // _ a-b
 ```
-
 ## Pseudo instruction `is_u32`
 
 Program length: 10.
@@ -41,11 +43,26 @@ Program length: 10.
 Execution cycle count: 7.
 
 ```
+        // _ a
 dup 0   // _ a a
 split   // _ a lo hi
 push 0  // _ a lo hi 0
-eq      // _ a lo {0,1}
-swap 2  // _ {0,1} lo a
-eq      // _ {0,1} {0,1}
-mul     // _ {0,1}
+eq      // _ a lo (hi==0)
+swap 2  // _ (hi==0) lo a
+eq      // _ (hi==0) (lo==a)
+mul     // _ (hi==0 & lo==a)
 ```
+
+## Pseudo instruction `lsb`
+
+Program length: 5.
+
+Execution cycle count: 3.
+
+```
+        // _ a
+push 2  // _ a 2
+swap 1  // _ 2 a
+div     // _ a/2 a%2
+```
+

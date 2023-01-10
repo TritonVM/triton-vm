@@ -489,21 +489,6 @@ Additionally, it defines the following transition constraints.
 1. `hv0 = inverse(rhs - lhs)` if `rhs - lhs ≠ 0`.
 1. `hv0 = 0` if `rhs - lhs = 0`.
 
-## Instruction `lsb`
-
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_grows_and_top_2_unconstrained`, and `keep_ram`.
-Additionally, it defines the following transition constraints.
-
-### Description
-
-1. The least significant bit is a bit
-1. The operand decomposes into right-shifted operand and the least significant bit
-
-### Polynomials
-
-1. `st0'·(st0' - 1)`
-1. `st0 - (2·st1' + st0')`
-
 ## Instruction `split`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_grows_and_top_2_unconstrained`, and `keep_ram`.

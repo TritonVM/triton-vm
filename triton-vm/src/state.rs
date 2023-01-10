@@ -356,14 +356,6 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 1;
             }
 
-            Lsb => {
-                let top = self.op_stack.pop()?;
-                let lsb = BFieldElement::new(top.value() & 1);
-                self.op_stack.push(BFieldElement::new(top.value() >> 1));
-                self.op_stack.push(lsb);
-                self.instruction_pointer += 1;
-            }
-
             Split => {
                 let elem = self.op_stack.pop()?;
                 let lo = BFieldElement::new(elem.value() & 0xffff_ffff);

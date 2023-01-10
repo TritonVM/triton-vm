@@ -92,7 +92,6 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Eq,
 
     // Bitwise arithmetic on stack
-    Lsb,
     Split,
     Lt,
     And,
@@ -148,7 +147,6 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
             Eq => write!(f, "eq"),
 
             // Bitwise arithmetic on stack
-            Lsb => write!(f, "lsb"),
             Split => write!(f, "split"),
             Lt => write!(f, "lt"),
             And => write!(f, "and"),
@@ -195,7 +193,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Mul => Mul,
             Invert => Invert,
             Eq => Eq,
-            Lsb => Lsb,
             Split => Split,
             Lt => Lt,
             And => And,
@@ -236,7 +233,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Mul => 34,
             Invert => 80,
             Eq => 42,
-            Lsb => 88,
             Split => 4,
             Lt => 12,
             And => 20,
@@ -244,11 +240,11 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Log2Floor => 36,
             Pow => 44,
             Div => 52,
-            XxAdd => 96,
-            XxMul => 104,
-            XInvert => 112,
+            XxAdd => 88,
+            XxMul => 96,
+            XInvert => 104,
             XbMul => 50,
-            ReadIo => 120,
+            ReadIo => 112,
             WriteIo => 58,
         }
     }
@@ -309,7 +305,6 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Mul => Mul,
             Invert => Invert,
             Eq => Eq,
-            Lsb => Lsb,
             Split => Split,
             Lt => Lt,
             And => And,
@@ -537,7 +532,6 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
         "eq" => vec![Eq],
 
         // Bitwise arithmetic on stack
-        "lsb" => vec![Lsb],
         "split" => vec![Split],
         "lt" => vec![Lt],
         "and" => vec![And],
@@ -559,6 +553,7 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
         // pseudo instructions
         "neg" => vec![Push(BFieldElement::one().neg()), Mul],
         "sub" => vec![Swap(ST1), Push(BFieldElement::one().neg()), Mul, Add],
+        "lsb" => pseudo_instruction_lsb(),
         "is_u32" => pseudo_instruction_is_u32(),
 
         _ => return Err(anyhow::Error::new(UnknownInstruction(token.to_string()))),
@@ -570,6 +565,15 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
         .collect();
 
     Ok(labelled_instruction)
+}
+
+fn pseudo_instruction_lsb() -> Vec<AnInstruction<String>> {
+    // input stack: _ a
+    vec![
+        Push(BFieldElement::new(2)), // _ a 2
+        Swap(ST1),                   // _ 2 a
+        Div,                         // _ a/2 a%2
+    ]
 }
 
 fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
@@ -630,7 +634,6 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         Mul,
         Invert,
         Eq,
-        Lsb,
         Split,
         Lt,
         And,
@@ -701,7 +704,6 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Invert,
         Split,
         Eq,
-        Lsb,
         XxAdd,
         XxMul,
         XInvert,
@@ -765,7 +767,7 @@ pub mod sample_programs {
         call foo
 
         return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
-        add mul invert split eq lsb xxadd xxmul xinvert xbmul
+        add mul invert split eq xxadd xxmul xinvert xbmul
 
         read_io write_io
     ";
@@ -823,7 +825,6 @@ pub mod sample_programs {
             "invert",
             "split",
             "eq",
-            "lsb",
             "xxadd",
             "xxmul",
             "xinvert",

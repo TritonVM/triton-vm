@@ -1012,7 +1012,6 @@ impl ExtProcessorTable {
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
             (Eq, factory.instruction_eq()),
-            (Lsb, factory.instruction_lsb()),
             (Split, factory.instruction_split()),
             (Lt, factory.instruction_lt()),
             (And, factory.instruction_and()),
@@ -2378,33 +2377,6 @@ impl DualRowConstraints {
             specific_constraints,
             self.step_1(),
             self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    /// 1. The lsb is a bit
-    /// 2. The operand decomposes into right-shifted operand and the lsb
-    pub fn instruction_lsb(
-        &self,
-    ) -> Vec<
-        ConstraintCircuitMonad<
-            ProcessorTableChallenges,
-            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
-        let operand = self.current_base_row_variables[ST0.master_base_table_index()].clone();
-        let shifted_operand = self.next_base_row_variables[ST1.master_base_table_index()].clone();
-        let lsb = self.next_base_row_variables[ST0.master_base_table_index()].clone();
-
-        let lsb_is_a_bit = lsb.clone() * (lsb.clone() - self.one());
-        let correct_decomposition = self.two() * shifted_operand + lsb - operand;
-
-        let specific_constraints = vec![lsb_is_a_bit, correct_decomposition];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.grow_stack_and_top_two_elements_unconstrained(),
             self.keep_ram(),
         ]
         .concat()
@@ -4745,7 +4717,6 @@ mod constraint_polynomial_tests {
             Mul => tc.instruction_mul(),
             Invert => tc.instruction_invert(),
             Eq => tc.instruction_eq(),
-            Lsb => tc.instruction_lsb(),
             Split => tc.instruction_split(),
             Lt => tc.instruction_lt(),
             And => tc.instruction_and(),
@@ -4935,15 +4906,6 @@ mod constraint_polynomial_tests {
             &[ST0, ST1, HV0],
             &[ST0, ST1, HV0],
         );
-    }
-
-    #[test]
-    fn transition_constraints_for_instruction_lsb_test() {
-        let test_rows = [get_test_row_from_source_code(
-            "push 3 lsb assert assert halt",
-            1,
-        )];
-        test_constraints_for_rows_with_debug_info(Lsb, &test_rows, &[ST0], &[ST0, ST1]);
     }
 
     #[test]
@@ -5211,7 +5173,6 @@ mod constraint_polynomial_tests {
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
             (Eq, factory.instruction_eq()),
-            (Lsb, factory.instruction_lsb()),
             (Split, factory.instruction_split()),
             (Lt, factory.instruction_lt()),
             (And, factory.instruction_and()),
