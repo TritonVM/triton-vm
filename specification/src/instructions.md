@@ -97,28 +97,28 @@ In conjunction with instruction `hash` and `assert_vector`, the instruction `div
 
 ## Bitwise Arithmetic on Stack
 
-| Instruction | Opcode | old OpStack | new OpStack   | Description                                                                                                                                                                |
-|:------------|-------:|:------------|:--------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `split`     |      4 | `_ a`       | `_ lo hi`     | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                              |
-| `lt`        |     12 | `_ b a`     | `_ a<b`       | “Less than” of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
-| `and`       |     20 | `_ b a`     | `_ a&b`       | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
-| `xor`       |     28 | `_ b a`     | `_ a^b`       | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                        |
-| `log2floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1. This is usually the same as $\lfloor\log_2\texttt{a}\rfloor$, except for 0. Crashes the VM if `a` is not u32.                           |
-| `pow`       |     44 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                            |
-| `div`       |     52 | `_ d n`     | `_ q r`       | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0. |
+| Instruction   | Opcode | old OpStack | new OpStack   | Description                                                                                                                                                                |
+|:--------------|-------:|:------------|:--------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `split`       |      4 | `_ a`       | `_ lo hi`     | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                              |
+| `lt`          |     12 | `_ b a`     | `_ a<b`       | “Less than” of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
+| `and`         |     20 | `_ b a`     | `_ a&b`       | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
+| `xor`         |     28 | `_ b a`     | `_ a^b`       | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                        |
+| `log_2_floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1. This is usually the same as $\lfloor\log_2\texttt{a}\rfloor$, except for 0. Crashes the VM if `a` is not u32.                           |
+| `pow`         |     44 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                            |
+| `div`         |     52 | `_ d n`     | `_ q r`       | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0. |
 
 ## Extension Field Arithmetic on Stack
 
 | Instruction | Opcode | old OpStack     | new OpStack     | Description                                                                                                                                                  |
 |:------------|-------:|:----------------|:----------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `xxadd`     |     96 | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.       |
-| `xxmul`     |    104 | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result. |
-| `xinvert`   |    112 | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                          |
+| `xxadd`     |     88 | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.       |
+| `xxmul`     |     96 | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result. |
+| `xinvert`   |    104 | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                          |
 | `xbmul`     |     50 | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.           |
 
 ## Input/Output
 
 | Instruction | Opcode | old OpStack | new OpStack | Description                                                             |
 |:------------|-------:|:------------|:------------|:------------------------------------------------------------------------|
-| `read_io`   |    120 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
+| `read_io`   |    112 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
 | `write_io`  |     58 | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |
