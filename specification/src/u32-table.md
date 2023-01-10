@@ -85,17 +85,16 @@ The instruction `div` _also_ uses the U32 Table to ensure that the numerator `n`
 For this range check, happening in its independent section, no result is required.
 The instruction `split` also uses the U32 Table for range checking only, _i.e._, to ensure that the instruction's resulting “high bits” and “low bits” each fit in a u32.
 
-To conditionally copy the required result to the processor, instruction de-selectors like in the Processor Table are used.
-Concretely, with `u32_instructions = {lt, and, xor, log_2_floor, pow, div}`, the following aliases are used:
+To conditionally copy the required result to the processor, instruction de-selectors (comparable to the ones in the Processor Table) are used.
+Concretely, with `u32_instructions = {lt, and, xor, log_2_floor, pow, div}`, the following (normalized) deselector for instruction `lt` is defined as:
 
-- `lt_div_deselector` = $\texttt{CI}\cdot\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \not\in \{\texttt{lt}, \texttt{div}\}}} \texttt{CI} - \texttt{opcode}(\texttt{i})$
-- `and_deselector` = $\texttt{CI}\cdot\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \neq \texttt{and}}} \texttt{CI} - \texttt{opcode}(\texttt{i})$
-- `xor_deselector` = $\texttt{CI}\cdot\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \neq \texttt{xor}}} \texttt{CI} - \texttt{opcode}(\texttt{i})$
-- `log_2_floor_deselector` = $\texttt{CI}\cdot\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \neq \texttt{log\_2\_floor}}} \texttt{CI} - \texttt{opcode}(\texttt{i})$
-- `pow_deselector` = $\texttt{CI}\cdot\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \neq \texttt{pow}}} \texttt{CI} - \texttt{opcode}(\texttt{i})$
+$$
+\frac{\texttt{CI}}{\texttt{opcode}(\texttt{lt})}\cdot\prod_{\substack{\texttt{i} \in \texttt{u32\_instructions}\\\texttt{i} \neq \texttt{lt}}} \frac{\texttt{CI} - \texttt{opcode}(\texttt{i})}{\texttt{opcode}(\texttt{lt}) - \texttt{opcode}(\texttt{i})}
+$$
 
+The deselectors `and_deselector`, `xor_deselector`, `log_2_floor_deselector`, `pow_deselector`, and `div_deselector` are defined accordingly.
 Throughout the next sections, the alias `Result` corresponds to the polynomial
-`LT·lt_div_deselector + AND·and_deselector + XOR·xor_deselector + Log2Floor·log_2_floor_deselector + Pow·pow_deselector`.
+`LT·lt_deselector + AND·and_deselector + XOR·xor_deselector + Log2Floor·log_2_floor_deselector + Pow·pow_deselector + LT·div_deselector`.
 
 ## Padding
 

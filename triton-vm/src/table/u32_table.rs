@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::ops::Mul;
 
 use ndarray::parallel::prelude::*;
@@ -72,69 +73,62 @@ impl ExtU32Table {
 
         let rp = circuit_builder.input(ExtRow(ProcessorPermArg.master_ext_table_index()));
 
-        let deselect_instructions = |instructions: &[Instruction]| {
-            instructions
+        let normalized_instruction_deselector = |instruction_to_select: Instruction| {
+            let instructions_to_deselect = [
+                Instruction::Lt,
+                Instruction::And,
+                Instruction::Xor,
+                Instruction::Log2Floor,
+                Instruction::Pow,
+                Instruction::Div,
+            ]
+            .into_iter()
+            .filter(|&instruction| instruction != instruction_to_select)
+            .collect_vec();
+
+            let deselect_0 = ci.clone();
+            let deselector = instructions_to_deselect
                 .iter()
-                .map(|&instr| ci.clone() - circuit_builder.b_constant(instr.opcode_b()))
-                .fold(one.clone(), ConstraintCircuitMonad::mul)
-                * ci.clone()
+                .map(|&instruction| ci.clone() - circuit_builder.b_constant(instruction.opcode_b()))
+                .fold(deselect_0, ConstraintCircuitMonad::mul);
+            let normalize_deselected_0 = instruction_to_select.opcode_b();
+            let normalizing_factor = instructions_to_deselect
+                .iter()
+                .fold(normalize_deselected_0, |acc, instr| {
+                    acc * (instruction_to_select.opcode_b() - instr.opcode_b())
+                })
+                .inverse();
+            circuit_builder.b_constant(normalizing_factor) * deselector
         };
-        let lt_div_deselector = deselect_instructions(&[
-            Instruction::And,
-            Instruction::Xor,
-            Instruction::Log2Floor,
-            Instruction::Pow,
-        ]);
-        let and_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::Xor,
-            Instruction::Log2Floor,
-            Instruction::Pow,
-        ]);
-        let xor_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::And,
-            Instruction::Log2Floor,
-            Instruction::Pow,
-        ]);
-        let log2floor_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::And,
-            Instruction::Xor,
-            Instruction::Pow,
-        ]);
-        let pow_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::And,
-            Instruction::Xor,
-            Instruction::Log2Floor,
-        ]);
-        let result = lt_div_deselector
+
+        let result = normalized_instruction_deselector(Instruction::Lt)
             * circuit_builder.input(BaseRow(LT.master_base_table_index()))
-            + and_deselector * circuit_builder.input(BaseRow(AND.master_base_table_index()))
-            + xor_deselector * circuit_builder.input(BaseRow(XOR.master_base_table_index()))
-            + log2floor_deselector
+            + normalized_instruction_deselector(Instruction::And)
+                * circuit_builder.input(BaseRow(AND.master_base_table_index()))
+            + normalized_instruction_deselector(Instruction::Xor)
+                * circuit_builder.input(BaseRow(XOR.master_base_table_index()))
+            + normalized_instruction_deselector(Instruction::Log2Floor)
                 * circuit_builder.input(BaseRow(Log2Floor.master_base_table_index()))
-            + pow_deselector * circuit_builder.input(BaseRow(Pow.master_base_table_index()));
+            + normalized_instruction_deselector(Instruction::Pow)
+                * circuit_builder.input(BaseRow(Pow.master_base_table_index()))
+            + normalized_instruction_deselector(Instruction::Div)
+                * circuit_builder.input(BaseRow(LT.master_base_table_index()));
 
         let initial_factor = challenge(ProcessorPermIndeterminate)
             - challenge(LhsWeight) * lhs
             - challenge(RhsWeight) * rhs
             - challenge(CIWeight) * ci
             - challenge(ResultWeight) * result;
-        let copy_flag_is_0_or_rp_has_accumulated_first_row =
+        let if_copy_flag_is_1_then_rp_has_accumulated_first_row =
             copy_flag.clone() * (rp.clone() - initial_factor);
 
         let default_initial = circuit_builder.x_constant(PermArg::default_initial());
-        let copy_flag_is_1_or_rp_is_default_initial = (one - copy_flag) * (default_initial - rp);
+        let if_copy_flag_is_0_then_rp_is_default_initial =
+            (one - copy_flag) * (default_initial - rp);
 
         [
-            copy_flag_is_1_or_rp_is_default_initial,
-            copy_flag_is_0_or_rp_has_accumulated_first_row,
+            if_copy_flag_is_0_then_rp_is_default_initial,
+            if_copy_flag_is_1_then_rp_has_accumulated_first_row,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -243,54 +237,48 @@ impl ExtU32Table {
         let lhs_inv_next = circuit_builder.input(NextBaseRow(LhsInv.master_base_table_index()));
         let rp_next = circuit_builder.input(NextExtRow(ProcessorPermArg.master_ext_table_index()));
 
-        let deselect_instructions = |instructions: &[Instruction]| {
-            instructions
+        let normalized_instruction_deselector = |instruction_to_select: Instruction| {
+            let instructions_to_deselect = [
+                Instruction::Lt,
+                Instruction::And,
+                Instruction::Xor,
+                Instruction::Log2Floor,
+                Instruction::Pow,
+                Instruction::Div,
+            ]
+            .into_iter()
+            .filter(|&instruction| instruction != instruction_to_select)
+            .collect_vec();
+
+            let deselect_0 = ci_next.clone();
+            let deselector = instructions_to_deselect
                 .iter()
-                .map(|&instr| ci_next.clone() - circuit_builder.b_constant(instr.opcode_b()))
-                .fold(one.clone(), ConstraintCircuitMonad::mul)
-                * ci_next.clone()
+                .map(|&instruction| {
+                    ci_next.clone() - circuit_builder.b_constant(instruction.opcode_b())
+                })
+                .fold(deselect_0, ConstraintCircuitMonad::mul);
+            let normalize_deselected_0 = instruction_to_select.opcode_b();
+            let normalizing_factor = instructions_to_deselect
+                .iter()
+                .fold(normalize_deselected_0, |acc, instr| {
+                    acc * (instruction_to_select.opcode_b() - instr.opcode_b())
+                })
+                .inverse();
+            circuit_builder.b_constant(normalizing_factor) * deselector
         };
-        let lt_div_deselector = deselect_instructions(&[
-            Instruction::And,
-            Instruction::Xor,
-            Instruction::Log2Floor,
-            Instruction::Pow,
-        ]);
-        let and_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::Xor,
-            Instruction::Log2Floor,
-            Instruction::Pow,
-        ]);
-        let xor_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::And,
-            Instruction::Log2Floor,
-            Instruction::Pow,
-        ]);
-        let log2floor_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::And,
-            Instruction::Xor,
-            Instruction::Pow,
-        ]);
-        let pow_deselector = deselect_instructions(&[
-            Instruction::Lt,
-            Instruction::Div,
-            Instruction::And,
-            Instruction::Xor,
-            Instruction::Log2Floor,
-        ]);
-        let result_next = lt_div_deselector
+
+        let result_next = normalized_instruction_deselector(Instruction::Lt)
             * circuit_builder.input(NextBaseRow(LT.master_base_table_index()))
-            + and_deselector * circuit_builder.input(NextBaseRow(AND.master_base_table_index()))
-            + xor_deselector * circuit_builder.input(NextBaseRow(XOR.master_base_table_index()))
-            + log2floor_deselector
+            + normalized_instruction_deselector(Instruction::Div)
+                * circuit_builder.input(NextBaseRow(LT.master_base_table_index()))
+            + normalized_instruction_deselector(Instruction::And)
+                * circuit_builder.input(NextBaseRow(AND.master_base_table_index()))
+            + normalized_instruction_deselector(Instruction::Xor)
+                * circuit_builder.input(NextBaseRow(XOR.master_base_table_index()))
+            + normalized_instruction_deselector(Instruction::Log2Floor)
                 * circuit_builder.input(NextBaseRow(Log2Floor.master_base_table_index()))
-            + pow_deselector * circuit_builder.input(NextBaseRow(Pow.master_base_table_index()));
+            + normalized_instruction_deselector(Instruction::Pow)
+                * circuit_builder.input(NextBaseRow(Pow.master_base_table_index()));
 
         let if_copy_flag_next_is_1_then_lhs_is_0 = copy_flag_next.clone() * lhs.clone();
         let if_copy_flag_next_is_1_then_rhs_is_0 = copy_flag_next.clone() * rhs.clone();
@@ -377,7 +365,7 @@ impl ExtU32Table {
                 * (pow - pow_next.clone() * pow_next * lhs_copy);
 
         let if_copy_flag_next_is_0_then_running_product_stays =
-            (copy_flag_next.clone() - one.clone()) * (rp_next.clone() - rp.clone());
+            (copy_flag_next.clone() - one) * (rp_next.clone() - rp.clone());
 
         let compressed_row_next = challenge(CIWeight) * ci_next
             + challenge(LhsWeight) * lhs_next
@@ -565,21 +553,17 @@ impl U32Table {
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
             if current_row[CopyFlag.base_table_index()].is_one() {
-                let ci_opcode = current_row[CI.base_table_index()].value();
-                let result = if ci_opcode == Instruction::Lt.opcode() as u64 {
-                    current_row[LT.base_table_index()]
-                } else if ci_opcode == Instruction::And.opcode() as u64 {
-                    current_row[AND.base_table_index()]
-                } else if ci_opcode == Instruction::Xor.opcode() as u64 {
-                    current_row[XOR.base_table_index()]
-                } else if ci_opcode == Instruction::Log2Floor.opcode() as u64 {
-                    current_row[Log2Floor.base_table_index()]
-                } else if ci_opcode == Instruction::Pow.opcode() as u64 {
-                    current_row[Pow.base_table_index()]
-                } else if ci_opcode == Instruction::Div.opcode() as u64 {
-                    current_row[LT.base_table_index()]
-                } else {
-                    BFieldElement::zero()
+                let current_instruction = current_row[CI.base_table_index()]
+                    .value()
+                    .try_into()
+                    .unwrap_or(Instruction::Split);
+                let result = match current_instruction {
+                    Instruction::Lt | Instruction::Div => current_row[LT.base_table_index()],
+                    Instruction::And => current_row[AND.base_table_index()],
+                    Instruction::Xor => current_row[XOR.base_table_index()],
+                    Instruction::Log2Floor => current_row[Log2Floor.base_table_index()],
+                    Instruction::Pow => current_row[Pow.base_table_index()],
+                    _ => BFieldElement::zero(),
                 };
 
                 let compressed_row = challenges.ci_weight * current_row[CI.base_table_index()]
