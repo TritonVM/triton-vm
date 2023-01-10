@@ -177,6 +177,7 @@ pub mod triton_vm_tests {
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
+    use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
@@ -424,10 +425,6 @@ pub mod triton_vm_tests {
         )
     }
 
-    pub fn test_program_for_instruction_split() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push -1 split swap1 lt assert halt ")
-    }
-
     pub fn property_based_test_program_for_split() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::QUOTIENT;
@@ -488,53 +485,162 @@ pub mod triton_vm_tests {
 
     pub fn property_based_test_program_for_lt() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
-        let st1 = rng.next_u32();
-        let st0 = rng.next_u32();
-        let result = match st0 < st1 {
+
+        let st1_0 = rng.next_u32();
+        let st0_0 = rng.next_u32();
+        let result_0 = match st0_0 < st1_0 {
             true => 1_u64.into(),
             false => 0_u64.into(),
         };
 
-        let source_code = format!("push {st1} push {st0} lt read_io eq assert halt");
+        let st1_1 = rng.next_u32();
+        let st0_1 = rng.next_u32();
+        let result_1 = match st0_1 < st1_1 {
+            true => 1_u64.into(),
+            false => 0_u64.into(),
+        };
+
+        let source_code = format!(
+            "push {st1_0} push {st0_0} lt read_io eq assert \
+             push {st1_1} push {st0_1} lt read_io eq assert halt"
+        );
         SourceCodeAndInput {
             source_code,
-            input: vec![result],
+            input: vec![result_0, result_1],
             secret_input: vec![],
         }
     }
 
     pub fn test_program_for_and() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 5 push 3 and assert halt")
+        SourceCodeAndInput::without_input(
+            "push 5 push 3 and assert push 12 push 5 and push 4 eq assert halt",
+        )
     }
 
     pub fn property_based_test_program_for_and() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
-        let st1 = rng.next_u32();
-        let st0 = rng.next_u32();
-        let result = st0.bitand(st1);
 
-        let source_code = format!("push {st1} push {st0} and read_io eq assert halt");
+        let st1_0 = rng.next_u32();
+        let st0_0 = rng.next_u32();
+        let result_0 = st0_0.bitand(st1_0);
+
+        let st1_1 = rng.next_u32();
+        let st0_1 = rng.next_u32();
+        let result_1 = st0_1.bitand(st1_1);
+
+        let source_code = format!(
+            "push {st1_0} push {st0_0} and read_io eq assert \
+             push {st1_1} push {st0_1} and read_io eq assert halt"
+        );
         SourceCodeAndInput {
             source_code,
-            input: vec![result.into()],
+            input: vec![result_0.into(), result_1.into()],
             secret_input: vec![],
         }
     }
 
     pub fn test_program_for_xor() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 7 push 6 xor assert halt")
+        SourceCodeAndInput::without_input(
+            "push 7 push 6 xor assert push 5 push 12 xor push 9 eq assert halt",
+        )
     }
 
     pub fn property_based_test_program_for_xor() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
-        let st1 = rng.next_u32();
-        let st0 = rng.next_u32();
-        let result = st0.bitxor(st1);
 
-        let source_code = format!("push {st1} push {st0} xor read_io eq assert halt");
+        let st1_0 = rng.next_u32();
+        let st0_0 = rng.next_u32();
+        let result_0 = st0_0.bitxor(st1_0);
+
+        let st1_1 = rng.next_u32();
+        let st0_1 = rng.next_u32();
+        let result_1 = st0_1.bitxor(st1_1);
+
+        let source_code = format!(
+            "push {st1_0} push {st0_0} xor read_io eq assert \
+             push {st1_1} push {st0_1} xor read_io eq assert halt"
+        );
         SourceCodeAndInput {
             source_code,
-            input: vec![result.into()],
+            input: vec![result_0.into(), result_1.into()],
+            secret_input: vec![],
+        }
+    }
+
+    pub fn test_program_for_log2floor() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push  0 log_2_floor push -1 eq assert \
+             push  1 log_2_floor push  0 eq assert \
+             push  2 log_2_floor push  1 eq assert \
+             push  3 log_2_floor push  1 eq assert \
+             push  4 log_2_floor push  2 eq assert \
+             push  7 log_2_floor push  2 eq assert \
+             push  8 log_2_floor push  3 eq assert \
+             push 15 log_2_floor push  3 eq assert \
+             push 16 log_2_floor push  4 eq assert \
+             push 31 log_2_floor push  4 eq assert \
+             push 32 log_2_floor push  5 eq assert \
+             push 33 log_2_floor push  5 eq assert \
+             push 4294967295 log_2_floor push 31 eq assert halt",
+        )
+    }
+
+    pub fn property_based_test_program_for_log2floor() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+
+        let st0_0 = rng.next_u32();
+        let l2f_0 = log_2_floor(st0_0 as u128) as u32;
+
+        let st0_1 = rng.next_u32();
+        let l2f_1 = log_2_floor(st0_1 as u128) as u32;
+
+        let source_code = format!(
+            "push {st0_0} log_2_floor read_io eq assert \
+             push {st0_1} log_2_floor read_io eq assert halt"
+        );
+        SourceCodeAndInput {
+            source_code,
+            input: vec![l2f_0.into(), l2f_1.into()],
+            secret_input: vec![],
+        }
+    }
+
+    pub fn test_program_for_pow() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push  0 push 0 pow push    1 eq assert \
+             push  0 push 1 pow push    1 eq assert \
+             push  0 push 2 pow push    1 eq assert \
+             push  1 push 0 pow push    0 eq assert \
+             push  2 push 0 pow push    0 eq assert \
+             push  2 push 5 pow push   25 eq assert \
+             push  5 push 2 pow push   32 eq assert \
+             push 10 push 2 pow push 1024 eq assert \
+             push  3 push 3 pow push   27 eq assert \
+             push  3 push 5 pow push  125 eq assert \
+             push  9 push 7 pow push 40353607 eq assert halt",
+        )
+    }
+
+    pub fn property_based_test_program_for_pow() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+
+        let base_0 = rng.next_u32();
+        let max_exponent = (32_f64 * f64::ln(2_f64) / f64::ln(base_0 as f64)).floor() as u32;
+        let exp_0 = rng.gen_range(0..max_exponent);
+        let result_0 = base_0.pow(exp_0);
+
+        let base_1 = rng.next_u32();
+        let max_exponent = (32_f64 * f64::ln(2_f64) / f64::ln(base_1 as f64)).floor() as u32;
+        let exp_1 = rng.gen_range(0..max_exponent);
+        let result_1 = base_0.pow(exp_1);
+
+        let source_code = format!(
+            "push {exp_0} push {base_0} pow read_io eq assert \
+             push {exp_1} push {base_1} pow read_io eq assert halt"
+        );
+        SourceCodeAndInput {
+            source_code,
+            input: vec![result_0.into(), result_1.into()],
             secret_input: vec![],
         }
     }
@@ -545,6 +651,7 @@ pub mod triton_vm_tests {
 
     pub fn property_based_test_program_for_div() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
+
         let denominator = rng.next_u32();
         let numerator = rng.next_u32();
         let quotient = numerator / denominator;
@@ -562,8 +669,12 @@ pub mod triton_vm_tests {
 
     pub fn property_based_test_program_for_is_u32() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
-        let st0 = rng.next_u32();
-        SourceCodeAndInput::without_input(&format!("push {st0} is_u32 assert halt"))
+        let st0_u32 = rng.next_u32();
+        let st0_not_u32 = (rng.next_u32() as u64) << 32;
+        SourceCodeAndInput::without_input(&format!(
+            "push {st0_u32} is_u32 assert \
+             push {st0_not_u32} is_u32 push 0 eq assert halt"
+        ))
     }
 
     pub fn property_based_test_program_for_random_ram_access() -> SourceCodeAndInput {
@@ -695,6 +806,7 @@ pub mod triton_vm_tests {
     pub fn small_tasm_test_programs() -> Vec<SourceCodeAndInput> {
         vec![
             test_program_for_halt(),
+            test_hash_nop_nop_lt(),
             test_program_for_push_pop_dup_swap_nop(),
             test_program_for_divine(),
             test_program_for_skiz(),
@@ -708,6 +820,12 @@ pub mod triton_vm_tests {
             test_program_for_eq(),
             test_program_for_lsb(),
             test_program_for_split(),
+            test_program_for_lt(),
+            test_program_for_and(),
+            test_program_for_xor(),
+            test_program_for_log2floor(),
+            test_program_for_pow(),
+            test_program_for_div(),
             test_program_for_xxadd(),
             test_program_for_xxmul(),
             test_program_for_xinvert(),
@@ -725,21 +843,11 @@ pub mod triton_vm_tests {
             property_based_test_program_for_lt(),
             property_based_test_program_for_and(),
             property_based_test_program_for_xor(),
+            property_based_test_program_for_log2floor(),
+            property_based_test_program_for_pow(),
             property_based_test_program_for_div(),
             property_based_test_program_for_is_u32(),
             property_based_test_program_for_random_ram_access(),
-        ]
-    }
-
-    /// programs with a cycle count of 150 and upwards
-    pub fn bigger_tasm_test_programs() -> Vec<SourceCodeAndInput> {
-        vec![
-            test_hash_nop_nop_lt(),
-            test_program_for_instruction_split(),
-            test_program_for_lt(),
-            test_program_for_and(),
-            test_program_for_xor(),
-            test_program_for_div(),
         ]
     }
 

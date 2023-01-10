@@ -905,7 +905,6 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_column::RamBaseTableColumn;
     use crate::table::u32_table::ExtU32Table;
     use crate::vm::simulate;
-    use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
@@ -1125,7 +1124,6 @@ pub(crate) mod triton_stark_tests {
     #[test]
     pub fn check_grand_cross_table_argument() {
         let mut code_collection = small_tasm_test_programs();
-        code_collection.append(&mut bigger_tasm_test_programs());
         code_collection.append(&mut property_based_test_programs());
 
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
@@ -1602,14 +1600,6 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_property_based_programs_test() {
         for (program_idx, program) in property_based_test_programs().into_iter().enumerate() {
-            println!("Testing program with index {program_idx}.");
-            triton_table_constraints_evaluate_to_zero(program);
-        }
-    }
-
-    #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_bigger_programs_test() {
-        for (program_idx, program) in bigger_tasm_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
         }
