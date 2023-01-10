@@ -526,7 +526,7 @@ impl U32Table {
         } else {
             next_row[Pow.base_table_index()]
                 * next_row[Pow.base_table_index()]
-                * next_row[LhsCopy.base_table_index()]
+                * row[LhsCopy.base_table_index()]
         };
 
         section
@@ -538,6 +538,12 @@ impl U32Table {
         padding_row[[LT.base_table_index()]] = BFieldElement::new(2);
         padding_row[[Log2Floor.base_table_index()]] = -BFieldElement::one();
         padding_row[[Pow.base_table_index()]] = BFieldElement::one();
+
+        if u32_table_len > 0 {
+            let last_row = u32_table.row(u32_table_len - 1);
+            padding_row[[CI.base_table_index()]] = last_row[CI.base_table_index()];
+            padding_row[[LhsCopy.base_table_index()]] = last_row[LhsCopy.base_table_index()];
+        }
 
         u32_table
             .slice_mut(s![u32_table_len.., ..])

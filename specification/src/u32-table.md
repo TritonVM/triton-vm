@@ -105,6 +105,8 @@ Each padding row is the all-zero row with the exception of
 - `Log2Floor`, which is -1, and
 - `Pow`, which is 1.
 
+Additionally, if the U32 Table is non-empty before applying padding, the padding row's two columns `CI` and `LhsCopy` are taken from the U32 Table's last row.
+
 # Arithmetic Intermediate Representation
 
 Let all household items (🪥, 🛁, etc.) be challenges, concretely evaluation points, supplied by the verifier.
@@ -194,7 +196,7 @@ These aliases, _i.e._, `LhsLsb` = `LHS` - 2·`LHS`' and `RhsLsb` = `RHS` - 2·`R
 1. If the `CopyFlag` in the next row is 0 and `LHS` in the next row is 0 and `LHS` in the current row is not 0, then `Log2Floor` in the current row is `Bits`.
 1. If the `CopyFlag` in the next row is 0 and `LHS` in the next row is not 0, then `Log2Floor` in the current row is `Log2Floor` in the next row.
 1. If the `CopyFlag` in the next row is 0 and `RhsLsb` in the current row is 0, then `Pow` in the current row is `Pow` in the next row squared.
-1. If the `CopyFlag` in the next row is 0 and `RhsLsb` in the current row is 1, then `Pow` in the current row is `Pow` in the next row squared times `LhsCopy` in the next row.
+1. If the `CopyFlag` in the next row is 0 and `RhsLsb` in the current row is 1, then `Pow` in the current row is `Pow` in the next row squared times `LhsCopy` in the current row.
 1. If the `CopyFlag` in the next row is 0, then `RunningProductProcessor` in the next row is `RunningProductProcessor` in the current row.
 1. If the `CopyFlag` in the next row is 1, then `RunningProductProcessor` in the next row has absorbed the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
 
@@ -219,7 +221,7 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `CopyFlag`' is 1 or `LHS`' is not 0 or `LHS` is 0 or `Log2Floor` is `Bits`.
 1. `CopyFlag`' is 1 or `LHS`' is 0 or `Log2Floor` is `Log2Floor`'.
 1. `CopyFlag`' is 1 or `RhsLsb` is 1 or `Pow` is `Pow`' times `Pow`'.
-1. `CopyFlag`' is 1 or `RhsLsb` is 0 or `Pow` is `Pow`' times `Pow`' times `LhsCopy`'.
+1. `CopyFlag`' is 1 or `RhsLsb` is 0 or `Pow` is `Pow`' times `Pow`' times `LhsCopy`.
 1. `CopyFlag`' is 1 or `RunningProductProcessor`' is `RunningProductProcessor`.
 1. `CopyFlag`' is 0 or `RunningProductProcessor`' is `RunningProductProcessor` times `(🧷 - 🥜·LHS' - 🌰·RHS' - 🥑·CI' - 🥕·Result')`.
 
