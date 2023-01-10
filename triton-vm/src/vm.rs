@@ -329,8 +329,8 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_hash() -> SourceCodeAndInput {
-        let source_code =
-            "push 0 push 0 push 0 push 1 push 2 push 3 hash pop pop pop pop pop read_io eq assert halt";
+        let source_code = "push 0 push 0 push 0 push 1 push 2 push 3 hash \
+            pop pop pop pop pop read_io eq assert halt";
         let mut hash_input = [BFieldElement::zero(); 10];
         hash_input[0] = BFieldElement::new(3);
         hash_input[1] = BFieldElement::new(2);
@@ -404,10 +404,8 @@ pub mod triton_vm_tests {
         let st4 = rng.gen_range(0..BFieldElement::QUOTIENT);
 
         let source_code = format!(
-            "push {} push {} push {} push {} push {} \
-            read_io read_io read_io read_io read_io \
-            assert_vector halt",
-            st4, st3, st2, st1, st0,
+            "push {st4} push {st3} push {st2} push {st1} push {st0} \
+            read_io read_io read_io read_io read_io assert_vector halt",
         );
 
         SourceCodeAndInput {
@@ -436,11 +434,7 @@ pub mod triton_vm_tests {
         let hi = st0 >> 32;
         let lo = st0 & 0xffff_ffff;
 
-        let source_code = format!(
-            "push {} split read_io eq assert read_io eq assert halt",
-            st0
-        );
-
+        let source_code = format!("push {st0} split read_io eq assert read_io eq assert halt");
         SourceCodeAndInput {
             source_code,
             input: vec![hi.into(), lo.into()],
@@ -460,11 +454,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::QUOTIENT;
 
-        let source_code = format!(
-            "push {} dup0 read_io eq assert dup0 divine eq assert halt",
-            st0
-        );
-
+        let source_code = format!("push {st0} dup0 read_io eq assert dup0 divine eq assert halt");
         SourceCodeAndInput {
             source_code,
             input: vec![st0.into()],
@@ -482,8 +472,7 @@ pub mod triton_vm_tests {
         let lsb = st0 % 2;
         let st0_shift_right = st0 >> 1;
 
-        let source_code = format!("push {} lsb read_io eq assert read_io eq assert halt", st0);
-
+        let source_code = format!("push {st0} lsb read_io eq assert read_io eq assert halt");
         SourceCodeAndInput {
             source_code,
             input: vec![lsb.into(), st0_shift_right.into()],
@@ -492,21 +481,21 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_lt() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 5 push 2 lt assert halt")
+        SourceCodeAndInput::without_input(
+            "push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt",
+        )
     }
 
     pub fn property_based_test_program_for_lt() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
         let st1 = rng.next_u32();
         let st0 = rng.next_u32();
-        let result = if st0 < st1 {
-            1_u64.into()
-        } else {
-            0_u64.into()
+        let result = match st0 < st1 {
+            true => 1_u64.into(),
+            false => 0_u64.into(),
         };
 
-        let source_code = format!("push {} push {} lt read_io eq assert halt", st1, st0);
-
+        let source_code = format!("push {st1} push {st0} lt read_io eq assert halt");
         SourceCodeAndInput {
             source_code,
             input: vec![result],
@@ -524,8 +513,7 @@ pub mod triton_vm_tests {
         let st0 = rng.next_u32();
         let result = st0.bitand(st1);
 
-        let source_code = format!("push {} push {} and read_io eq assert halt", st1, st0);
-
+        let source_code = format!("push {st1} push {st0} and read_io eq assert halt");
         SourceCodeAndInput {
             source_code,
             input: vec![result.into()],
@@ -543,8 +531,7 @@ pub mod triton_vm_tests {
         let st0 = rng.next_u32();
         let result = st0.bitxor(st1);
 
-        let source_code = format!("push {} push {} xor read_io eq assert halt", st1, st0);
-
+        let source_code = format!("push {st1} push {st0} xor read_io eq assert halt");
         SourceCodeAndInput {
             source_code,
             input: vec![result.into()],
@@ -564,10 +551,8 @@ pub mod triton_vm_tests {
         let remainder = numerator % denominator;
 
         let source_code = format!(
-            "push {} push {} div read_io eq assert read_io eq assert halt",
-            denominator, numerator
+            "push {denominator} push {numerator} div read_io eq assert read_io eq assert halt"
         );
-
         SourceCodeAndInput {
             source_code,
             input: vec![remainder.into(), quotient.into()],
@@ -578,10 +563,7 @@ pub mod triton_vm_tests {
     pub fn property_based_test_program_for_is_u32() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u32();
-
-        let source_code = format!("push {} is_u32 assert halt", st0);
-
-        SourceCodeAndInput::without_input(&source_code)
+        SourceCodeAndInput::without_input(&format!("push {st0} is_u32 assert halt"))
     }
 
     pub fn property_based_test_program_for_random_ram_access() -> SourceCodeAndInput {
@@ -609,8 +591,6 @@ pub mod triton_vm_tests {
         }
 
         // Read back in random order and check that the values did not change.
-        // For repeated sampling from the same range, better performance can be achieved by using
-        // `Uniform`. However, this is a test, and not very many samples – it's fine.
         let mut reading_permutation = (0..num_memory_accesses).collect_vec();
         for i in 0..num_memory_accesses {
             let j = rng.gen_range(0..num_memory_accesses);
@@ -671,8 +651,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let source_code = format!("push {} is_u32 assert halt", st0);
-        let program = SourceCodeAndInput::without_input(&source_code);
+        let program = SourceCodeAndInput::without_input(&format!("push {st0} is_u32 assert halt"));
         let _ = program.run();
     }
 
