@@ -509,7 +509,7 @@ impl U32Table {
             row[Bits.base_table_index()]
         };
 
-        row[Pow.base_table_index()] = if row[RHS.base_table_index()].is_zero() {
+        row[Pow.base_table_index()] = if rhs_lsb.is_zero() {
             next_row[Pow.base_table_index()] * next_row[Pow.base_table_index()]
         } else {
             next_row[Pow.base_table_index()]
