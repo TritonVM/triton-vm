@@ -876,6 +876,8 @@ pub(crate) mod triton_stark_tests {
     use itertools::izip;
     use ndarray::Array1;
     use num_traits::Zero;
+    use rand::prelude::ThreadRng;
+    use rand_core::RngCore;
 
     use triton_opcodes::instruction::AnInstruction;
     use triton_opcodes::program::Program;
@@ -2069,5 +2071,18 @@ pub(crate) mod triton_stark_tests {
                 println!("{}", report);
             }
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "multiplicative inverse of zero")]
+    pub fn negative_log_2_floor_test() {
+        let mut rng = ThreadRng::default();
+        let st0 = (rng.next_u32() as u64) << 32;
+
+        let source_code = format!("push {} log_2_floor halt", st0);
+        let (stark, proof) = parse_simulate_prove(&source_code, vec![], vec![], &mut None);
+        let result = stark.verify(proof, &mut None);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
     }
 }
