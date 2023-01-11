@@ -2074,13 +2074,23 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
-    #[should_panic(expected = "multiplicative inverse of zero")]
+    #[should_panic(expected = "Failed to convert BFieldElement")]
     pub fn negative_log_2_floor_test() {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
         let source_code = format!("push {} log_2_floor halt", st0);
         let (stark, proof) = parse_simulate_prove(&source_code, vec![], vec![], &mut None);
+        let result = stark.verify(proof, &mut None);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    #[should_panic(expected = "The logarithm of 0 does not exist")]
+    pub fn negative_log_2_floor_of_0_test() {
+        let source_code = "push 0 log_2_floor halt";
+        let (stark, proof) = parse_simulate_prove(source_code, vec![], vec![], &mut None);
         let result = stark.verify(proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());

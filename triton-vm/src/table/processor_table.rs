@@ -5013,7 +5013,7 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    #[should_panic(expected = "0 does not have a multiplicative inverse")]
+    #[should_panic(expected = "Division by 0 is impossible")]
     fn division_by_zero_is_impossible_test() {
         SourceCodeAndInput::without_input("div").run();
     }

@@ -15,6 +15,7 @@ pub enum InstructionError {
     JumpStackTooShallow,
     AssertionFailed(usize, u32, BFieldElement),
     InverseOfZero,
+    DivisionByZero,
     LogarithmOfZero,
     RunawayInstructionArg,
     UngracefulTermination,
@@ -50,6 +51,10 @@ impl Display for InstructionError {
 
             InverseOfZero => {
                 write!(f, "0 does not have a multiplicative inverse")
+            }
+
+            DivisionByZero => {
+                write!(f, "Division by 0 is impossible")
             }
 
             LogarithmOfZero => {

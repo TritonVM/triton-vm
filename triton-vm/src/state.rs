@@ -368,74 +368,91 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Lt => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop()?;
-                let lt = match lhs.value() < rhs.value() {
-                    true => BFieldElement::one(),
-                    false => BFieldElement::zero(),
-                };
+                let lhs = self.op_stack.pop_u32()?;
+                let rhs = self.op_stack.pop_u32()?;
+                let lt = BFieldElement::new((lhs < rhs) as u64);
                 self.op_stack.push(lt);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::Lt, lhs, rhs);
+                let u32_table_entry = (
+                    Instruction::Lt,
+                    BFieldElement::new(lhs as u64),
+                    BFieldElement::new(rhs as u64),
+                );
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             And => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop()?;
-                let and = BFieldElement::new(lhs.value() & rhs.value());
+                let lhs = self.op_stack.pop_u32()?;
+                let rhs = self.op_stack.pop_u32()?;
+                let and = BFieldElement::new((lhs & rhs) as u64);
                 self.op_stack.push(and);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::And, lhs, rhs);
+                let u32_table_entry = (
+                    Instruction::And,
+                    BFieldElement::new(lhs as u64),
+                    BFieldElement::new(rhs as u64),
+                );
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Xor => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop()?;
-                let xor = BFieldElement::new(lhs.value() ^ rhs.value());
+                let lhs = self.op_stack.pop_u32()?;
+                let rhs = self.op_stack.pop_u32()?;
+                let xor = BFieldElement::new((lhs ^ rhs) as u64);
                 self.op_stack.push(xor);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::Xor, lhs, rhs);
+                let u32_table_entry = (
+                    Instruction::Xor,
+                    BFieldElement::new(lhs as u64),
+                    BFieldElement::new(rhs as u64),
+                );
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Log2Floor => {
-                let lhs = self.op_stack.pop()?;
+                let lhs = self.op_stack.pop_u32()?;
                 if lhs.is_zero() {
                     return vm_err(LogarithmOfZero);
                 }
-                let l2f = BFieldElement::new(log_2_floor(lhs.value() as u128));
+                let l2f = BFieldElement::new(log_2_floor(lhs as u128));
                 self.op_stack.push(l2f);
                 self.instruction_pointer += 1;
-                let rhs = BFieldElement::zero();
-                let u32_table_entry = (Instruction::Log2Floor, lhs, rhs);
+                let u32_table_entry = (
+                    Instruction::Log2Floor,
+                    BFieldElement::new(lhs as u64),
+                    BFieldElement::zero(),
+                );
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Pow => {
-                let lhs = self.op_stack.pop()?;
-                let rhs = self.op_stack.pop()?;
-                let pow = lhs.mod_pow(rhs.value());
+                let lhs = self.op_stack.pop_u32()?;
+                let rhs = self.op_stack.pop_u32()?;
+                let pow = BFieldElement::new(lhs as u64).mod_pow(rhs as u64);
                 self.op_stack.push(pow);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::Pow, lhs, rhs);
+                let u32_table_entry = (
+                    Instruction::Pow,
+                    BFieldElement::new(lhs as u64),
+                    BFieldElement::new(rhs as u64),
+                );
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
             Div => {
-                let numer = self.op_stack.pop()?;
-                let denom = self.op_stack.pop()?;
+                let numer = self.op_stack.pop_u32()?;
+                let denom = self.op_stack.pop_u32()?;
                 if denom.is_zero() {
-                    return vm_err(InverseOfZero);
+                    return vm_err(DivisionByZero);
                 }
-                let quot = BFieldElement::new(numer.value() / denom.value());
-                let rem = BFieldElement::new(numer.value() % denom.value());
+                let quot = BFieldElement::new((numer / denom) as u64);
+                let rem = BFieldElement::new((numer % denom) as u64);
                 self.op_stack.push(quot);
                 self.op_stack.push(rem);
                 self.instruction_pointer += 1;
-                let u32_table_entry_0 = (Instruction::Lt, rem, denom);
-                let u32_table_entry_1 = (Instruction::Split, numer, quot);
+                let u32_table_entry_0 = (Instruction::Lt, rem, BFieldElement::new(denom as u64));
+                let u32_table_entry_1 =
+                    (Instruction::Split, BFieldElement::new(numer as u64), quot);
                 vm_output = Some(VMOutput::U32TableEntries(vec![
                     u32_table_entry_0,
                     u32_table_entry_1,
