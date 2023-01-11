@@ -4945,7 +4945,6 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_log2floor_test() {
         let test_rows = [
-            get_test_row_from_source_code("push  0 log_2_floor push -1 eq assert halt", 1),
             get_test_row_from_source_code("push  1 log_2_floor push  0 eq assert halt", 1),
             get_test_row_from_source_code("push  2 log_2_floor push  1 eq assert halt", 1),
             get_test_row_from_source_code("push  3 log_2_floor push  1 eq assert halt", 1),

@@ -103,7 +103,7 @@ In conjunction with instruction `hash` and `assert_vector`, the instruction `div
 | `lt`          |     12 | `_ b a`     | `_ a<b`       | “Less than” of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
 | `and`         |     20 | `_ b a`     | `_ a&b`       | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
 | `xor`         |     28 | `_ b a`     | `_ a^b`       | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                        |
-| `log_2_floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1. This is usually the same as $\lfloor\log_2\texttt{a}\rfloor$, except for 0. Crashes the VM if `a` is not u32.                           |
+| `log_2_floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1, _i.e._, $\lfloor\log_2\texttt{a}\rfloor$. Crashes the VM if `a` is 0 or not u32.                                                        |
 | `pow`         |     44 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                            |
 | `div`         |     52 | `_ d n`     | `_ q r`       | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0. |
 

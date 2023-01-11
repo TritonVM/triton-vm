@@ -11,22 +11,22 @@ The processor's current instruction `CI` determines which of columns is copied t
 
 ## Base Columns
 
-| name             | description                                                                                                   |
-|:-----------------|:--------------------------------------------------------------------------------------------------------------|
-| `CopyFlag`       | Marks the beginning of an independent section within the U32 table.                                           |
-| `Bits`           | The number of bits that LHS and RHS have already been shifted by.                                             |
-| `BitsMinus33Inv` | The inverse-or-zero of the difference between 33 and `Bits`.                                                  |
-| `CI`             | Current Instruction, the instruction the processor is currently executing.                                    |
-| `LHS` (`st0`)    | Left-hand side of the operation.                                                                              |
-| `RHS` (`st1`)    | Right-hand side of the operation.                                                                             |
-| `LT`             | The result (or intermediate result) of LHS < RHS.                                                             |
-| `AND`            | The result (or intermediate result) of LHS & RHS, _i.e._, bitwise and.                                        |
-| `XOR`            | The result (or intermediate result) of LHS ^ RHS, _i.e._, bitwise xor.                                        |
-| `Log2Floor`      | The number of bits in LHS minus 1, which is usually equivalent to the floor of log₂(LHS), except for LHS = 0. |
-| `LhsCopy`        | A copy of LHS in the first row in the current, independent section, _i.e._, when `CopyFlag` is 1.             |
-| `Pow`            | The result (or intermediate result) of $\texttt{LHS}^\texttt{RHS}$. Might overflow – care advised!            |
-| `LhsInv`         | The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to 0.                                    |
-| `RhsInv`         | The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to 0.                                    |
+| name             | description                                                                                        |
+|:-----------------|:---------------------------------------------------------------------------------------------------|
+| `CopyFlag`       | Marks the beginning of an independent section within the U32 table.                                |
+| `Bits`           | The number of bits that LHS and RHS have already been shifted by.                                  |
+| `BitsMinus33Inv` | The inverse-or-zero of the difference between 33 and `Bits`.                                       |
+| `CI`             | Current Instruction, the instruction the processor is currently executing.                         |
+| `LHS` (`st0`)    | Left-hand side of the operation.                                                                   |
+| `RHS` (`st1`)    | Right-hand side of the operation.                                                                  |
+| `LT`             | The result (or intermediate result) of LHS < RHS.                                                  |
+| `AND`            | The result (or intermediate result) of LHS & RHS, _i.e._, bitwise and.                             |
+| `XOR`            | The result (or intermediate result) of LHS ^ RHS, _i.e._, bitwise xor.                             |
+| `Log2Floor`      | The number of bits in LHS minus 1, _i.e._, the floor of log₂(LHS). Crashes the VM if `LHS` is 0.   |
+| `LhsCopy`        | A copy of LHS in the first row in the current, independent section, _i.e._, when `CopyFlag` is 1.  |
+| `Pow`            | The result (or intermediate result) of $\texttt{LHS}^\texttt{RHS}$. Might overflow – care advised! |
+| `LhsInv`         | The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to 0.                         |
+| `RhsInv`         | The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to 0.                         |
 
 `LT` can take on the values 0, 1, or 2, where
 - 0 means `LHS` >= `RHS` is definitely known in the current row,
@@ -139,6 +139,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. If `CopyFlag` is 0 and `LHS` is 0 and `RHS` is 0, then `AND` is 0.
 1. If `CopyFlag` is 0 and `LHS` is 0 and `RHS` is 0, then `XOR` is 0.
 1. If `CopyFlag` is 0 and `LHS` is 0 and `RHS` is 0, then `Pow` is 1.
+1. If `CopyFlag` is 1 and `LHS` is 0 and `CI` is the opcode of `log_2_floor`, the VM crashes.
 1. If `LHS` is 0, then `Log2Floor` is -1.
 
 Written in Disjunctive Normal Form, the same constraints can be expressed as:
@@ -155,6 +156,7 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `CopyFlag` is 1 or `LHS` is not 0 or `RHS` is not 0 or `AND` is 0.
 1. `CopyFlag` is 1 or `LHS` is not 0 or `RHS` is not 0 or `XOR` is 0.
 1. `CopyFlag` is 1 or `LHS` is not 0 or `RHS` is not 0 or `Pow` is 1.
+1. `CopyFlag` is 0 or `LHS` is not 0 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow`.
 1. `LHS` is not 0 or `Log2Floor` is -1.
 
 ### Consistency Constraints as Polynomials
@@ -171,6 +173,7 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(CopyFlag - 1)·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·AND`
 1. `(CopyFlag - 1)·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·XOR`
 1. `(CopyFlag - 1)·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·(Pow - 1)`
+1. `CopyFlag·(1 - LHS·LhsInv)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))`
 1. `(1 - LHS·LhsInv)·(Log2Floor + 1)`
 
 ## Transition Constraints

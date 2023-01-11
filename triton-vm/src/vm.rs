@@ -569,8 +569,7 @@ pub mod triton_vm_tests {
 
     pub fn test_program_for_log2floor() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
-            "push  0 log_2_floor push -1 eq assert \
-             push  1 log_2_floor push  0 eq assert \
+            "push  1 log_2_floor push  0 eq assert \
              push  2 log_2_floor push  1 eq assert \
              push  3 log_2_floor push  1 eq assert \
              push  4 log_2_floor push  2 eq assert \

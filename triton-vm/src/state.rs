@@ -402,10 +402,10 @@ impl<'pgm> VMState<'pgm> {
 
             Log2Floor => {
                 let lhs = self.op_stack.pop()?;
-                let l2f = match lhs.is_zero() {
-                    true => -BFieldElement::one(),
-                    false => BFieldElement::new(log_2_floor(lhs.value() as u128)),
-                };
+                if lhs.is_zero() {
+                    return vm_err(LogarithmOfZero);
+                }
+                let l2f = BFieldElement::new(log_2_floor(lhs.value() as u128));
                 self.op_stack.push(l2f);
                 self.instruction_pointer += 1;
                 let rhs = BFieldElement::zero();
