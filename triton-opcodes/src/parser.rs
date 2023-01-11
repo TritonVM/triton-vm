@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while1};
@@ -25,6 +26,8 @@ impl<'a> std::fmt::Display for ParseError<'a> {
         write!(f, "{}", pretty_print_error(self.input, self.errors.clone()))
     }
 }
+
+impl<'a> Error for ParseError<'a> {}
 
 /// Pretty-print a parse error
 ///
