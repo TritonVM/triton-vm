@@ -416,7 +416,7 @@ impl<'pgm> VMState<'pgm> {
             Pow => {
                 let lhs = self.op_stack.pop()?;
                 let rhs = self.op_stack.pop()?;
-                let pow = BFieldElement::new(lhs.value().pow(rhs.value() as u32));
+                let pow = lhs.mod_pow(rhs.value());
                 self.op_stack.push(pow);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (Instruction::Pow, lhs, rhs);

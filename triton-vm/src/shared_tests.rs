@@ -231,6 +231,27 @@ pub const FIB_SHOOTOUT: &str = "
         return
     ";
 
+pub const MANY_U32_INSTRUCTIONS: &str = "
+    push 1311768464867721216 split
+    push 13387 push 78810 lt
+    push     5 push     7 pow
+    push 69584 push  6796 xor
+    push 64972 push  3915 and
+    push 98668 push 15787 div
+    push 15787 push 98668 div
+    push 98141 push  7397 and
+    push 67749 push 60797 lt
+    push 49528 split
+    push 53483 lsb
+    push 79655 is_u32
+    push 60615 log_2_floor
+    push    13 push     5 pow
+    push 86323 push 37607 xor
+    push 32374 push 20636 pow
+    push 97416 log_2_floor
+    push 14392 push 31589 div
+    halt";
+
 pub const FIB_FIXED_7_LT: &str = "
     push 0
     push 1

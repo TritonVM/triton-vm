@@ -2019,6 +2019,36 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    fn constraints_evaluate_to_zero_on_many_u32_operations_test() {
+        let many_u32_instructions = SourceCodeAndInput::without_input(MANY_U32_INSTRUCTIONS);
+        triton_table_constraints_evaluate_to_zero(many_u32_instructions);
+    }
+
+    #[test]
+    fn triton_prove_verify_many_u32_operations_test() {
+        let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
+        let (stark, proof) =
+            parse_simulate_prove(MANY_U32_INSTRUCTIONS, vec![], vec![], &mut profiler);
+        let mut profiler = profiler.unwrap();
+        profiler.finish();
+
+        let result = stark.verify(proof, &mut None);
+        if let Err(e) = result {
+            panic!("The Verifier is unhappy! {}", e);
+        }
+        assert!(result.unwrap());
+
+        println!(
+            "{}",
+            profiler.report(
+                None,
+                Some(stark.claim.padded_height),
+                Some(stark.fri.domain.length)
+            )
+        );
+    }
+
+    #[test]
     #[ignore = "stress test"]
     fn prove_fib_successively_larger() {
         let source_code = FIBONACCI_VIT;
