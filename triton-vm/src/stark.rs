@@ -175,7 +175,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
-        let base_merkle_tree = fri_domain_master_base_table.merkle_tree();
+        let base_merkle_tree = fri_domain_master_base_table.merkle_tree(maybe_profiler);
         let base_merkle_tree_root = base_merkle_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree");
 
@@ -210,7 +210,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
-        let ext_merkle_tree = fri_domain_ext_master_table.merkle_tree();
+        let ext_merkle_tree = fri_domain_ext_master_table.merkle_tree(maybe_profiler);
         let ext_merkle_tree_root = ext_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");

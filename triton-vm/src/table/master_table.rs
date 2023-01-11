@@ -394,14 +394,23 @@ impl MasterBaseTable {
         }
     }
 
-    pub fn merkle_tree(&self) -> MerkleTree<StarkHasher, CpuParallel> {
+    pub fn merkle_tree(
+        &self,
+        maybe_profiler: &mut Option<TritonProfiler>,
+    ) -> MerkleTree<StarkHasher, CpuParallel> {
+        prof_start!(maybe_profiler, "leafs");
         let hashed_rows = self
             .master_base_matrix
             .axis_iter(Axis(0))
             .into_par_iter()
             .map(|row| StarkHasher::hash_slice(&row.to_vec()))
             .collect::<Vec<_>>();
-        CpuParallel::from_digests(&hashed_rows)
+        prof_stop!(maybe_profiler, "leafs");
+        prof_start!(maybe_profiler, "Merkle tree");
+        let ret = CpuParallel::from_digests(&hashed_rows);
+        prof_stop!(maybe_profiler, "Merkle tree");
+
+        ret
     }
 
     /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
@@ -514,7 +523,11 @@ impl MasterExtTable {
         randomizer_polynomials
     }
 
-    pub fn merkle_tree(&self) -> MerkleTree<StarkHasher, CpuParallel> {
+    pub fn merkle_tree(
+        &self,
+        maybe_profiler: &mut Option<TritonProfiler>,
+    ) -> MerkleTree<StarkHasher, CpuParallel> {
+        prof_start!(maybe_profiler, "leafs");
         let hashed_rows = self
             .master_ext_matrix
             .axis_iter(Axis(0))
@@ -528,7 +541,12 @@ impl MasterExtTable {
                 StarkHasher::hash_slice(&contiguous_row_bfe)
             })
             .collect::<Vec<_>>();
-        CpuParallel::from_digests(&hashed_rows)
+        prof_stop!(maybe_profiler, "leafs");
+        prof_start!(maybe_profiler, "Merkle tree");
+        let ret = CpuParallel::from_digests(&hashed_rows);
+        prof_stop!(maybe_profiler, "Merkle tree");
+
+        ret
     }
 
     fn table_slice_info(id: TableId) -> (usize, usize) {
