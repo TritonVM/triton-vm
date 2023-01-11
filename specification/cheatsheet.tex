@@ -63,12 +63,12 @@
     \texttt{ 80} & $\ovoid^1$    & \texttt{invert}                                    & \texttt{\_ st$_0$}                                                        & \texttt{\_ st$_0^{-1}$}                                                    \\
     \texttt{ 42} & $\ominus^1$   & \texttt{eq}                                        & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$==st$_1$)}                                               \\
     \texttt{  4} & $\oplus^2$    & \tcbox[colback=instr-u32]{\texttt{split}}          & \texttt{\_ st$_0$}                                                        & \texttt{\_ lo hi}                                                          \\
-    \texttt{ 12} & $\ominus$     & \tcbox[colback=instr-u32]{\texttt{lt}}             & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$<st$_1$)}                                                \\
-    \texttt{ 20} & $\ominus$     & \tcbox[colback=instr-u32]{\texttt{and}}            & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$\&st$_1$)}                                               \\
-    \texttt{ 28} & $\ominus$     & \tcbox[colback=instr-u32]{\texttt{xor}}            & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$\^{}st$_1$)}                                             \\
-    \texttt{ 36} & $\ovoid$      & \tcbox[colback=instr-u32]{\texttt{log\_2\_floor}}  & \texttt{\_ st$_0$}                                                        & \texttt{\_ $\lfloor\log_2$(st$_0$)$\rfloor$}                               \\
-    \texttt{ 44} & $\ominus$     & \tcbox[colback=instr-u32]{\texttt{pow}}            & \texttt{\_ e b}                                                           & \texttt{\_ b}$^\texttt{e}$                                                 \\
-    \texttt{ 52} & $\ominus$     & \tcbox[colback=instr-u32]{\texttt{div}}            & \texttt{\_ denom num}                                                     & \texttt{\_ quot rem}                                                       \\
+    \texttt{ 12} & $\ominus^1$   & \tcbox[colback=instr-u32]{\texttt{lt}}             & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$<st$_1$)}                                                \\
+    \texttt{ 20} & $\ominus^1$   & \tcbox[colback=instr-u32]{\texttt{and}}            & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$\&st$_1$)}                                               \\
+    \texttt{ 28} & $\ominus^1$   & \tcbox[colback=instr-u32]{\texttt{xor}}            & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$\^{}st$_1$)}                                             \\
+    \texttt{ 36} & $\ovoid^1$    & \tcbox[colback=instr-u32]{\texttt{log\_2\_floor}}  & \texttt{\_ st$_0$}                                                        & \texttt{\_ $\lfloor\log_2$(st$_0$)$\rfloor$}                               \\
+    \texttt{ 44} & $\ominus^1$   & \tcbox[colback=instr-u32]{\texttt{pow}}            & \texttt{\_ e b}                                                           & \texttt{\_ b}$^\texttt{e}$                                                 \\
+    \texttt{ 52} & $\ovoid^2$    & \tcbox[colback=instr-u32]{\texttt{div}}            & \texttt{\_ denom num}                                                     & \texttt{\_ quot rem}                                                       \\
     \texttt{ 88} & $\ovoid^3$    & \texttt{xxadd}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
     \texttt{ 96} & $\ovoid^3$    & \texttt{xxmul}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
     \texttt{104} & $\ovoid^3$    & \texttt{xinvert}                                   & \texttt{\_ x$_2$ x$_1$ x$_0$}                                             & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
@@ -79,62 +79,55 @@
 }
 
 \newpage
-\hspace*{-4em}%
-\scalebox{0.75}{
+\hspace*{-2.5em}%
+\scalebox{0.71}{
     \rowcolors{2}{row2}{row1}
 \begin{tabular}{lllllllllllllllllllllll}
     \toprule
-    Table       & \multicolumn{5}{l}{Base Columns}                                          &                   &              &                     &              &              &              &              &              &       &               &              &              &              &       &                   &               &  \\ \midrule
-    Program     & \multicolumn{3}{l}{Address}                   &             & \multicolumn{2}{l}{Instruction} & \multicolumn{3}{l}{IsPadding}                     &              &              &              &              &       &               &              &              &              &       &                   &               &               \\
-    Instruction & \multicolumn{3}{l}{Address}                   &             & \texttt{CI} & \texttt{NIA}      & \multicolumn{3}{l}{IsPadding}                     &              &              &              &              &       &               &              &              &              &       &                   &               &               \\
-    Processor   & \texttt{CLK} & IsPadding        & \texttt{IP} & \texttt{PI} & \texttt{CI} & \texttt{NIA}      & \texttt{IB0} & \dots               & \texttt{IB6} & \texttt{JSP} & \texttt{JSO} & \texttt{JSD} & \texttt{ST0} & \dots & \texttt{ST15} & \texttt{OSP} & \texttt{OSV} & \texttt{HV0} & \dots & \texttt{HV3}      & \texttt{RAMP} & \texttt{RAMV} \\
-    OpStack     & \texttt{CLK} & \texttt{clk\_di} &             &             &             &                   &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)}    &              &              &       &               & \texttt{OSP} & \texttt{OSV} &              &       &                   &               &               \\
-    RAM         & \texttt{CLK} & \texttt{clk\_di} &             & \texttt{PI} &             & \texttt{bcpc0}    & \multicolumn{2}{l}{\texttt{bcpc1}} &              &              &              &              &              &       &               &              &              & \multicolumn{3}{l}{\texttt{RAMP}DiffInv} & \texttt{RAMP} & \texttt{RAMV} \\
-    JumpStack   & \texttt{CLK} & \texttt{clk\_di} &             &             & \texttt{CI} &                   &              &                     &              & \texttt{JSP} & \texttt{JSO} & \texttt{JSD} &              &       &               &              &              &              &       &                   &               &               \\
-    Hash        & \multicolumn{4}{l}{RoundNumber}                             &             &                   &              &                     &              &              &              &              & \texttt{ST0} & \dots & \texttt{ST15} & \multicolumn{3}{r}{\texttt{CONSTANT0A}}    & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          \\ \bottomrule
+    Table       & \multicolumn{5}{l}{Base Columns}                                                 &                   &              &                     &              &              &              &                         &              &       &                               &              &               &              &       &                   &               &               \\ \midrule
+    Program     & \multicolumn{3}{l}{Address}                   &                    & \multicolumn{2}{l}{Instruction} & \multicolumn{3}{l}{IsPadding}                     &              &              &                         &              &       &                               &              &               &              &       &                   &               &               \\
+    Instruction & \multicolumn{3}{l}{Address}                   &                    & \texttt{CI} & \texttt{NIA}      & \multicolumn{3}{l}{IsPadding}                     &              &              &                         &              &       &                               &              &               &              &       &                   &               &               \\
+    Processor   & \texttt{CLK} & IsPadding        & \texttt{IP} & \texttt{PI}        & \texttt{CI} & \texttt{NIA}      & \texttt{IB0} & \dots               & \texttt{IB6} & \texttt{JSP} & \texttt{JSO} & \texttt{JSD}            & \texttt{ST0} & \dots & \texttt{ST15}                 & \texttt{OSP} & \texttt{OSV}  & \texttt{HV0} & \dots & \texttt{HV3}      & \texttt{RAMP} & \texttt{RAMV} \\
+    OpStack     & \texttt{CLK} & \texttt{clk\_di} &             &                    &             &                   &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)}    &                         &              &       &                               & \texttt{OSP} & \texttt{OSV}  &              &       &                   &               &               \\
+    RAM         & \texttt{CLK} & \texttt{clk\_di} &             & \texttt{PI}        &             & \texttt{bcpc0}    & \multicolumn{2}{l}{\texttt{bcpc1}} &              &              &              &                         &              &       &                               &              &               & \multicolumn{3}{l}{\texttt{RAMP}DiffInv} & \texttt{RAMP} & \texttt{RAMV} \\
+    JumpStack   & \texttt{CLK} & \texttt{clk\_di} &             &                    & \texttt{CI} &                   &              &                     &              & \texttt{JSP} & \texttt{JSO} & \texttt{JSD}            &              &       &                               &              &               &              &       &                   &               &               \\
+    Hash        & \multicolumn{4}{l}{RoundNumber}                                    &             &                   &              &                     &              &              &              &                         & \texttt{ST0} & \dots & \texttt{ST15}                 &     \multicolumn{3}{r}{\texttt{CONSTANT0A}} & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          \\
+    U32         & \texttt{CF}  & \multicolumn{3}{l}{\texttt{Bits\quad Bits-33\_inv}} & \texttt{CI} & \texttt{LHS}      & \texttt{RHS} & \texttt{LT}         & \texttt{AND} & \texttt{XOR} & \multicolumn{2}{l}{\texttt{Log2Floor}} & \texttt{Pow} & \multicolumn{2}{l}{\texttt{LHS\_inv}} & \multicolumn{2}{l}{RHS\_inv} &              &       &                   &               &               \\ \bottomrule
 \end{tabular}
 } %end scalebox
 \begin{tikzpicture}[remember picture, overlay]
-    \node[anchor=south west,inner sep=0] at (5,-11.9) {\includegraphics[keepaspectratio,width=0.4\textwidth]{src/img/aet-relations.pdf}};
+    \node[anchor=south west,inner sep=0] at (5,-10.6) {\includegraphics[keepaspectratio,width=0.4\textwidth]{src/img/aet-relations.pdf}};
 \end{tikzpicture}
-\vfill%
 \begin{minipage}[t][0.6\textheight][s]{0.3\textwidth}
     \vfill
     \rowcolors{2}{row2}{row1}
     \begin{tabular}{rl}
         \toprule
-        \#clk & instruction            \\ \midrule
-            2 & \texttt{neg}           \\
-            4 & \texttt{sub}           \\
-           68 & \texttt{is\_u32}       \\
-          139 & \texttt{split\_assert} \\
-          146 & \texttt{lte}           \\
-          148 & \texttt{lt}            \\
-          295 & \texttt{and}           \\
-          301 & \texttt{xor}           \\
-          195 & \texttt{reverse}       \\
-          164 & \texttt{div}           \\ \bottomrule
+        \#clk & instruction      \\ \midrule
+            2 & \texttt{neg}     \\
+            4 & \texttt{sub}     \\
+            7 & \texttt{is\_u32} \\
+            3 & \texttt{lsb}     \\ \bottomrule
     \end{tabular}
+    \vspace*{3em}
 
-    \vfill
     \rowcolors{2}{row2}{row1}
     \begin{tabular}{lrrr}
         \toprule
                     & base & ext & $\sum$ \\ \midrule
         Program     &    3 &   1 &      4 \\
         Instruction &    4 &   2 &      6 \\
-        Processor   &   43 &  11 &     54 \\
+        Processor   &   43 &  12 &     55 \\
         OpStack     &    5 &   2 &      7 \\
         RAM         &    8 &   6 &     14 \\
         JumpStack   &    6 &   2 &      8 \\
-        Hash        &   49 &   2 &     51 \\ \bottomrule\bottomrule
-        $\sum$      &  118 &  26 &    144
+        Hash        &   49 &   2 &     51 \\
+        U32         &   14 &   1 &     15 \\ \bottomrule\bottomrule
+        $\sum$      &  132 &  28 &    160
     \end{tabular}
 \end{minipage}%
 \hfill%
 \begin{minipage}[t][0.613\textheight][b]{0.5\textwidth}
-    \vfill
-    \vspace*{9em}
     \hfill
     \rowcolors{3}{row1}{row2}
     \begin{tabular}{lrr}
@@ -146,7 +139,7 @@
         5   &                   147\dots\!457 &                    368\dots\!864 \\
         6   &                   153\dots\!601 &                    307\dots\!720 \\ \bottomrule
     \end{tabular}
-    \vfill
+    \vspace*{3em}
 
     \hfill
     \rowcolors{2}{row2}{row1}
@@ -155,13 +148,14 @@
                     & init & cons & trans & term & $\sum$ \\ \midrule
         Program     &    2 &    1 &     3 &      &      6 \\
         Instruction &    3 &    1 &     5 &      &      9 \\
-        Processor   &   37 &   11 &    75 &    2 &    125 \\
+        Processor   &   38 &   11 &    76 &    2 &    127 \\
         OpStack     &    5 &      &     6 &      &     11 \\
         Ram         &    8 &      &    14 &    1 &     23 \\
         JumpStack   &    6 &      &     8 &      &     14 \\
         Hash        &    3 &   38 &    21 &      &     62 \\
+        U32         &    2 &   13 &    22 &    2 &     39 \\
         Cross-Table &      &      &       &    1 &      1 \\ \bottomrule\bottomrule
-        $\sum$      &   64 &   51 &   132 &    4 &    251
+        $\sum$      &   67 &   64 &   155 &    6 &    292
     \end{tabular}
 \end{minipage}
 

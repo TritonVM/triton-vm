@@ -1708,6 +1708,13 @@ mod master_table_tests {
             hash_table::EXT_WIDTH,
             hash_table::FULL_WIDTH
         );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "U32Table",
+            u32_table::BASE_WIDTH,
+            u32_table::EXT_WIDTH,
+            u32_table::FULL_WIDTH
+        );
         println!("|                    |            |           |            |");
         println!(
             "| Sum                | {:>10} | {:>9} | {:>10} |",

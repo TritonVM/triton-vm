@@ -1228,6 +1228,7 @@ pub(crate) mod triton_stark_tests {
             "ram table",
             "jump stack table",
             "hash table",
+            "u32 table",
             "cross-table arg",
         ];
         let all_init = [
