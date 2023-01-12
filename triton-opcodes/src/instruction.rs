@@ -580,7 +580,8 @@ fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
     // input stack: _ a
     vec![
         Dup(ST0),                    // _ a a
-        Split,                       // _ a lo hi
+        Split,                       // _ a hi lo
+        Swap(ST1),                   // _ a lo hi
         Push(BFieldElement::zero()), // _ a lo hi 0
         Eq,                          // _ a lo (hi==0)
         Swap(ST2),                   // _ (hi==0) lo a

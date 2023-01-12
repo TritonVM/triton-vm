@@ -360,10 +360,10 @@ impl<'pgm> VMState<'pgm> {
                 let elem = self.op_stack.pop()?;
                 let lo = BFieldElement::new(elem.value() & 0xffff_ffff);
                 let hi = BFieldElement::new(elem.value() >> 32);
-                self.op_stack.push(lo);
                 self.op_stack.push(hi);
+                self.op_stack.push(lo);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::Split, hi, lo);
+                let u32_table_entry = (Instruction::Split, lo, hi);
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 

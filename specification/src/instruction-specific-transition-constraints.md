@@ -502,8 +502,8 @@ Part of the correct transition, namely the range check on the instruction's resu
 
 ### Polynomials
 
-1. `st0 - (2^32·st0' + st1')`
-1. `st1'·(hv0·(st0' - (2^32 - 1)) - 1)`
+1. `st0 - (2^32·st1' + st0')`
+1. `st0'·(hv0·(st1' - (2^32 - 1)) - 1)`
 
 ### Helper variable definitions for `split`
 

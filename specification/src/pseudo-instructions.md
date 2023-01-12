@@ -38,14 +38,15 @@ add      // _ a-b
 ```
 ## Pseudo instruction `is_u32`
 
-Program length: 10.
+Program length: 12.
 
-Execution cycle count: 7.
+Execution cycle count: 8.
 
 ```
         // _ a
 dup 0   // _ a a
-split   // _ a lo hi
+split   // _ a hi lo
+swap 1  // _ a lo hi
 push 0  // _ a lo hi 0
 eq      // _ a lo (hi==0)
 swap 2  // _ (hi==0) lo a

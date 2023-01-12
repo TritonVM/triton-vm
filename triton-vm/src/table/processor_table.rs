@@ -2398,7 +2398,7 @@ impl DualRowConstraints {
         //
         // $st0 - (2^32·st0' + st1') = 0$
         let st0_decomposes_to_two_32_bit_chunks =
-            self.st0() - (two_pow_32.clone() * self.st0_next() + self.st1_next());
+            self.st0() - (two_pow_32.clone() * self.st1_next() + self.st0_next());
 
         // Helper variable `hv0` = 0 if either
         // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
@@ -2408,8 +2408,8 @@ impl DualRowConstraints {
         //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
         let hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0 = {
             let hv0 = self.hv0();
-            let hi = self.st0_next();
-            let lo = self.st1_next();
+            let hi = self.st1_next();
+            let lo = self.st0_next();
             let ffff_ffff = two_pow_32 - self.one();
 
             lo * (hv0 * (hi - ffff_ffff) - self.one())

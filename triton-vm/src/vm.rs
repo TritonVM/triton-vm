@@ -434,7 +434,7 @@ pub mod triton_vm_tests {
         let source_code = format!("push {st0} split read_io eq assert read_io eq assert halt");
         SourceCodeAndInput {
             source_code,
-            input: vec![hi.into(), lo.into()],
+            input: vec![lo.into(), hi.into()],
             secret_input: vec![],
         }
     }
@@ -669,7 +669,7 @@ pub mod triton_vm_tests {
     pub fn property_based_test_program_for_is_u32() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
         let st0_u32 = rng.next_u32();
-        let st0_not_u32 = (rng.next_u32() as u64) << 32;
+        let st0_not_u32 = ((rng.next_u32() as u64) << 32) + (rng.next_u32() as u64);
         SourceCodeAndInput::without_input(&format!(
             "push {st0_u32} is_u32 assert \
              push {st0_not_u32} is_u32 push 0 eq assert halt"
@@ -767,11 +767,11 @@ pub mod triton_vm_tests {
 
     pub fn test_program_for_split() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
-            "push -2 split push 4294967294 eq assert push 4294967295 eq assert \
-             push -1 split push 4294967295 eq assert push 0 eq assert \
+            "push -2 split push 4294967295 eq assert push 4294967294 eq assert \
+             push -1 split push 0 eq assert push 4294967295 eq assert \
              push  0 split push 0 eq assert push 0 eq assert \
-             push  1 split push 0 eq assert push 1 eq assert \
-             push  2 split push 0 eq assert push 2 eq assert \
+             push  1 split push 1 eq assert push 0 eq assert \
+             push  2 split push 2 eq assert push 0 eq assert \
              push 4294967297 split assert assert \
              halt",
         )

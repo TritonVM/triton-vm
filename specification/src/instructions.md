@@ -99,7 +99,7 @@ In conjunction with instruction `hash` and `assert_vector`, the instruction `div
 
 | Instruction   | Opcode | old OpStack | new OpStack   | Description                                                                                                                                                                |
 |:--------------|-------:|:------------|:--------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `split`       |      4 | `_ a`       | `_ lo hi`     | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                              |
+| `split`       |      4 | `_ a`       | `_ hi lo`     | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                              |
 | `lt`          |     12 | `_ b a`     | `_ a<b`       | “Less than” of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
 | `and`         |     20 | `_ b a`     | `_ a&b`       | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
 | `xor`         |     28 | `_ b a`     | `_ a^b`       | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                        |
