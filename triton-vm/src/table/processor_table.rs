@@ -1217,7 +1217,7 @@ impl SingleRowConstraints {
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         let bfe = if constant < 0 {
-            BFieldElement::new(BFieldElement::QUOTIENT - ((-constant) as u64))
+            BFieldElement::new(BFieldElement::P - ((-constant) as u64))
         } else {
             BFieldElement::new(constant as u64)
         };

@@ -398,11 +398,11 @@ pub mod triton_vm_tests {
 
     pub fn property_based_test_program_for_assert_vector() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
-        let st0 = rng.gen_range(0..BFieldElement::QUOTIENT);
-        let st1 = rng.gen_range(0..BFieldElement::QUOTIENT);
-        let st2 = rng.gen_range(0..BFieldElement::QUOTIENT);
-        let st3 = rng.gen_range(0..BFieldElement::QUOTIENT);
-        let st4 = rng.gen_range(0..BFieldElement::QUOTIENT);
+        let st0 = rng.gen_range(0..BFieldElement::P);
+        let st1 = rng.gen_range(0..BFieldElement::P);
+        let st2 = rng.gen_range(0..BFieldElement::P);
+        let st3 = rng.gen_range(0..BFieldElement::P);
+        let st4 = rng.gen_range(0..BFieldElement::P);
 
         let source_code = format!(
             "push {st4} push {st3} push {st2} push {st1} push {st0} \
@@ -427,7 +427,7 @@ pub mod triton_vm_tests {
 
     pub fn property_based_test_program_for_split() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
-        let st0 = rng.next_u64() % BFieldElement::QUOTIENT;
+        let st0 = rng.next_u64() % BFieldElement::P;
         let hi = st0 >> 32;
         let lo = st0 & 0xffff_ffff;
 
@@ -449,7 +449,7 @@ pub mod triton_vm_tests {
 
     pub fn property_based_test_program_for_eq() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
-        let st0 = rng.next_u64() % BFieldElement::QUOTIENT;
+        let st0 = rng.next_u64() % BFieldElement::P;
 
         let source_code = format!("push {st0} dup0 read_io eq assert dup0 divine eq assert halt");
         SourceCodeAndInput {

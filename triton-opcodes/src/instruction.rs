@@ -595,7 +595,7 @@ fn parse_elem(tokens: &mut SplitWhitespace) -> Result<BFieldElement> {
 
     let mut constant_n128: i128 = constant_s.parse::<i128>()?;
     if constant_n128 < 0 {
-        constant_n128 += BFieldElement::QUOTIENT as i128;
+        constant_n128 += BFieldElement::P as i128;
     }
     let constant_n64: u64 = constant_n128.try_into()?;
     let constant_elem = BFieldElement::new(constant_n64);
