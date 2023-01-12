@@ -19,7 +19,8 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use triton_opcodes::instruction::all_instructions_without_args;
-use triton_opcodes::instruction::{AnInstruction::*, Instruction};
+use triton_opcodes::instruction::AnInstruction::*;
+use triton_opcodes::instruction::Instruction;
 use triton_opcodes::ord_n::Ord7;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
@@ -49,7 +50,7 @@ use crate::table::table_column::ProcessorExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 5;
+pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 6;
 pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
 pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = ProcessorTableChallengeId::COUNT;
 
@@ -147,6 +148,7 @@ impl ProcessorTable {
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut to_hash_table_running_evaluation = EvalArg::default_initial();
         let mut from_hash_table_running_evaluation = EvalArg::default_initial();
+        let mut u32_table_running_product = PermArg::default_initial();
         let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
         let mut all_clock_jump_differences_running_product =
             PermArg::default_initial() * PermArg::default_initial() * PermArg::default_initial();
@@ -224,6 +226,7 @@ impl ProcessorTable {
             jump_stack_running_product *=
                 challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
 
+            // Hash Table – Hash's input from Processor to Hash Coprocessor
             if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
                 let st_0_through_9 = [
                     current_row[ST0.base_table_index()],
@@ -287,6 +290,45 @@ impl ProcessorTable {
                 }
             }
 
+            // U32 Table
+            if let Some(prev_row) = previous_row {
+                let previously_current_instruction = prev_row[CI.base_table_index()];
+                if previously_current_instruction == Instruction::Split.opcode_b() {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight;
+                }
+                if previously_current_instruction == Instruction::Lt.opcode_b()
+                    || previously_current_instruction == Instruction::And.opcode_b()
+                    || previously_current_instruction == Instruction::Xor.opcode_b()
+                    || previously_current_instruction == Instruction::Pow.opcode_b()
+                {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - prev_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - prev_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_result_weight;
+                }
+                if previously_current_instruction == Instruction::Log2Floor.opcode_b() {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - prev_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - prev_row[CI.base_table_index()] * challenges.u32_table_ci_weight
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_result_weight;
+                }
+                if previously_current_instruction == Instruction::Div.opcode_b() {
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - current_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - prev_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - Instruction::Lt.opcode_b() * challenges.u32_table_ci_weight
+                        - BFieldElement::one() * challenges.u32_table_result_weight;
+                    u32_table_running_product *= challenges.u32_table_perm_indeterminate
+                        - prev_row[ST0.base_table_index()] * challenges.u32_table_lhs_weight
+                        - current_row[ST1.base_table_index()] * challenges.u32_table_rhs_weight
+                        - Instruction::Split.opcode_b() * challenges.u32_table_ci_weight;
+                }
+            }
+
             // Clock Jump Difference
             let current_clock_jump_difference = current_row[ClockJumpDifference.base_table_index()];
             if !current_clock_jump_difference.is_zero() {
@@ -327,6 +369,7 @@ impl ProcessorTable {
             extension_row[ToHashTableEvalArg.ext_table_index()] = to_hash_table_running_evaluation;
             extension_row[FromHashTableEvalArg.ext_table_index()] =
                 from_hash_table_running_evaluation;
+            extension_row[U32TablePermArg.ext_table_index()] = u32_table_running_product;
             extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
             extension_row[UniqueClockJumpDifferencesEvalArg.ext_table_index()] =
@@ -511,6 +554,7 @@ pub enum ProcessorTableChallengeId {
     OpStackPermIndeterminate,
     RamPermIndeterminate,
     JumpStackPermIndeterminate,
+    U32PermIndeterminate,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     InstructionTableIpWeight,
@@ -554,6 +598,11 @@ pub enum ProcessorTableChallengeId {
     HashTableDigestOutputWeight2,
     HashTableDigestOutputWeight3,
     HashTableDigestOutputWeight4,
+
+    U32TableLhsWeight,
+    U32TableRhsWeight,
+    U32TableCiWeight,
+    U32TableResultWeight,
 }
 
 impl From<ProcessorTableChallengeId> for usize {
@@ -575,6 +624,7 @@ pub struct ProcessorTableChallenges {
     pub op_stack_perm_indeterminate: XFieldElement,
     pub ram_perm_indeterminate: XFieldElement,
     pub jump_stack_perm_indeterminate: XFieldElement,
+    pub u32_table_perm_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub instruction_table_ip_weight: XFieldElement,
@@ -618,6 +668,11 @@ pub struct ProcessorTableChallenges {
     pub hash_table_digest_output_weight2: XFieldElement,
     pub hash_table_digest_output_weight3: XFieldElement,
     pub hash_table_digest_output_weight4: XFieldElement,
+
+    pub u32_table_lhs_weight: XFieldElement,
+    pub u32_table_rhs_weight: XFieldElement,
+    pub u32_table_ci_weight: XFieldElement,
+    pub u32_table_result_weight: XFieldElement,
 }
 
 impl TableChallenges for ProcessorTableChallenges {
@@ -634,6 +689,7 @@ impl TableChallenges for ProcessorTableChallenges {
             OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
             RamPermIndeterminate => self.ram_perm_indeterminate,
             JumpStackPermIndeterminate => self.jump_stack_perm_indeterminate,
+            U32PermIndeterminate => self.u32_table_perm_indeterminate,
             InstructionTableIpWeight => self.instruction_table_ip_weight,
             InstructionTableCiProcessorWeight => self.instruction_table_ci_processor_weight,
             InstructionTableNiaWeight => self.instruction_table_nia_weight,
@@ -671,6 +727,10 @@ impl TableChallenges for ProcessorTableChallenges {
             HashTableDigestOutputWeight2 => self.hash_table_digest_output_weight2,
             HashTableDigestOutputWeight3 => self.hash_table_digest_output_weight3,
             HashTableDigestOutputWeight4 => self.hash_table_digest_output_weight4,
+            U32TableLhsWeight => self.u32_table_lhs_weight,
+            U32TableRhsWeight => self.u32_table_rhs_weight,
+            U32TableCiWeight => self.u32_table_ci_weight,
+            U32TableResultWeight => self.u32_table_result_weight,
         }
     }
 }
@@ -723,7 +783,7 @@ impl ExtProcessorTable {
         let osv_is_0 = factory.osv();
         let ramv_is_0 = factory.ramv();
         let ramp_is_0 = factory.ramp();
-        let previous_instruction = factory.previous_instruction();
+        let previous_instruction_is_0 = factory.previous_instruction();
 
         // The running evaluation of relevant clock cycles `rer` starts with the initial.
         let rer_starts_correctly = factory.rer() - constant_x(EvalArg::default_initial());
@@ -823,6 +883,10 @@ impl ExtProcessorTable {
         let running_evaluation_from_hash_table_is_initialized_correctly =
             factory.running_evaluation_from_hash_table() - constant_x(EvalArg::default_initial());
 
+        // u32 table
+        let running_product_for_u32_table_is_initialized_correctly =
+            factory.running_product_u32_table() - constant_x(PermArg::default_initial());
+
         [
             clk_is_0,
             ip_is_0,
@@ -849,7 +913,7 @@ impl ExtProcessorTable {
             osv_is_0,
             ramv_is_0,
             ramp_is_0,
-            previous_instruction,
+            previous_instruction_is_0,
             rer_starts_correctly,
             reu_starts_correctly,
             rpm_starts_correctly,
@@ -861,6 +925,7 @@ impl ExtProcessorTable {
             running_product_for_jump_stack_table_is_initialized_correctly,
             running_evaluation_to_hash_table_is_initialized_correctly,
             running_evaluation_from_hash_table_is_initialized_correctly,
+            running_product_for_u32_table_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -948,9 +1013,14 @@ impl ExtProcessorTable {
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
-            (Split, factory.instruction_split()),
             (Eq, factory.instruction_eq()),
-            (Lsb, factory.instruction_lsb()),
+            (Split, factory.instruction_split()),
+            (Lt, factory.instruction_lt()),
+            (And, factory.instruction_and()),
+            (Xor, factory.instruction_xor()),
+            (Log2Floor, factory.instruction_log_2_floor()),
+            (Pow, factory.instruction_pow()),
+            (Div, factory.instruction_div()),
             (XxAdd, factory.instruction_xxadd()),
             (XxMul, factory.instruction_xxmul()),
             (XInvert, factory.instruction_xinv()),
@@ -1046,6 +1116,7 @@ impl ExtProcessorTable {
             .push(factory.running_product_for_jump_stack_table_updates_correctly());
         transition_constraints.push(factory.running_evaluation_to_hash_table_updates_correctly());
         transition_constraints.push(factory.running_evaluation_from_hash_table_updates_correctly());
+        transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
         let mut built_transition_constraints = transition_constraints
             .into_iter()
@@ -1607,6 +1678,14 @@ impl SingleRowConstraints {
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_product_u32_table(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
     }
 }
 
@@ -2265,50 +2344,6 @@ impl DualRowConstraints {
         .concat()
     }
 
-    pub fn instruction_split(
-        &self,
-    ) -> Vec<
-        ConstraintCircuitMonad<
-            ProcessorTableChallenges,
-            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
-        let two_pow_32 = self.constant_b(BFieldElement::new(1_u64 << 32));
-
-        // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements.
-        //
-        // $st0 - (2^32·st0' + st1') = 0$
-        let st0_decomposes_to_two_32_bit_chunks =
-            self.st0() - (two_pow_32.clone() * self.st0_next() + self.st1_next());
-
-        // Helper variable `hv0` = 0 if either
-        // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
-        // 1. the low 32 bits (`st1'`) are 0.
-        //
-        // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
-        //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
-        let hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0 = {
-            let hv0 = self.hv0();
-            let hi = self.st0_next();
-            let lo = self.st1_next();
-            let ffff_ffff = two_pow_32 - self.one();
-
-            lo * (hv0 * (hi - ffff_ffff) - self.one())
-        };
-
-        let specific_constraints = vec![
-            st0_decomposes_to_two_32_bit_chunks,
-            hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0,
-        ];
-        [
-            specific_constraints,
-            self.grow_stack_and_top_two_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
     pub fn instruction_eq(
         &self,
     ) -> Vec<
@@ -2349,9 +2384,7 @@ impl DualRowConstraints {
         .concat()
     }
 
-    /// 1. The lsb is a bit
-    /// 2. The operand decomposes into right-shifted operand and the lsb
-    pub fn instruction_lsb(
+    pub fn instruction_split(
         &self,
     ) -> Vec<
         ConstraintCircuitMonad<
@@ -2359,18 +2392,159 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        let operand = self.current_base_row_variables[ST0.master_base_table_index()].clone();
-        let shifted_operand = self.next_base_row_variables[ST1.master_base_table_index()].clone();
-        let lsb = self.next_base_row_variables[ST0.master_base_table_index()].clone();
+        let two_pow_32 = self.constant_b(BFieldElement::new(1_u64 << 32));
 
-        let lsb_is_a_bit = lsb.clone() * (lsb.clone() - self.one());
-        let correct_decomposition = self.two() * shifted_operand + lsb - operand;
+        // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements.
+        //
+        // $st0 - (2^32·st0' + st1') = 0$
+        let st0_decomposes_to_two_32_bit_chunks =
+            self.st0() - (two_pow_32.clone() * self.st1_next() + self.st0_next());
 
-        let specific_constraints = vec![lsb_is_a_bit, correct_decomposition];
+        // Helper variable `hv0` = 0 if either
+        // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
+        // 1. the low 32 bits (`st1'`) are 0.
+        //
+        // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
+        //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
+        let hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0 = {
+            let hv0 = self.hv0();
+            let hi = self.st1_next();
+            let lo = self.st0_next();
+            let ffff_ffff = two_pow_32 - self.one();
+
+            lo * (hv0 * (hi - ffff_ffff) - self.one())
+        };
+
+        let specific_constraints = vec![
+            st0_decomposes_to_two_32_bit_chunks,
+            hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0,
+        ];
+        [
+            specific_constraints,
+            self.grow_stack_and_top_two_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_lt(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
         [
             specific_constraints,
             self.step_1(),
-            self.grow_stack_and_top_two_elements_unconstrained(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_and(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_xor(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_log_2_floor(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.unop(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_pow(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.binop(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_div(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // `n == d·q + r` means `st0 - st1·st1' - st0'`
+        let numerator_is_quotient_times_denominator_plus_remainder =
+            self.st0() - self.st1() * self.st1_next() - self.st0_next();
+
+        let st2_does_not_change = self.st2_next() - self.st2();
+
+        let specific_constraints = vec![
+            numerator_is_quotient_times_denominator_plus_remainder,
+            st2_does_not_change,
+        ];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.stack_remains_and_top_three_elements_unconstrained(),
             self.keep_ram(),
         ]
         .concat()
@@ -3093,6 +3267,14 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
     }
+    pub fn running_product_u32_table(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
+    }
 
     // Property: All polynomial variables that contain '_next' have the same
     // variable position / value as the one without '_next', +/- NUM_COLUMNS.
@@ -3533,6 +3715,14 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_product_u32_table_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
     }
 
     pub fn decompose_arg(
@@ -4054,6 +4244,75 @@ impl DualRowConstraints {
 
         hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
     }
+
+    pub fn running_product_to_u32_table_updates_correctly(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        let indeterminate = self.circuit_builder.challenge(U32PermIndeterminate);
+        let lhs_weight = self.circuit_builder.challenge(U32TableLhsWeight);
+        let rhs_weight = self.circuit_builder.challenge(U32TableRhsWeight);
+        let ci_weight = self.circuit_builder.challenge(U32TableCiWeight);
+        let result_weight = self.circuit_builder.challenge(U32TableResultWeight);
+
+        let split_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::Split);
+        let lt_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Lt);
+        let and_delector = InstructionDeselectors::instruction_deselector(self, Instruction::And);
+        let xor_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Xor);
+        let pow_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Pow);
+        let log_2_floor_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::Log2Floor);
+        let div_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Div);
+
+        let rp = self.running_product_u32_table();
+        let rp_next = self.running_product_u32_table_next();
+
+        let split_factor = indeterminate.clone()
+            - lhs_weight.clone() * self.st0_next()
+            - rhs_weight.clone() * self.st1_next()
+            - ci_weight.clone() * self.ci();
+        let binop_factor = indeterminate.clone()
+            - lhs_weight.clone() * self.st0()
+            - rhs_weight.clone() * self.st1()
+            - ci_weight.clone() * self.ci()
+            - result_weight.clone() * self.st0_next();
+        let unop_factor = indeterminate.clone()
+            - lhs_weight.clone() * self.st0()
+            - ci_weight.clone() * self.ci()
+            - result_weight.clone() * self.st0_next();
+        let div_factor_for_lt = indeterminate.clone()
+            - lhs_weight.clone() * self.st0_next()
+            - rhs_weight.clone() * self.st1()
+            - ci_weight.clone() * self.constant_b(Instruction::Lt.opcode_b())
+            - result_weight;
+        let div_factor_for_range_check = indeterminate
+            - lhs_weight * self.st0()
+            - rhs_weight * self.st1_next()
+            - ci_weight * self.constant_b(Instruction::Split.opcode_b());
+
+        let split_summand = split_deselector * (rp_next.clone() - rp.clone() * split_factor);
+        let lt_summand = lt_deselector * (rp_next.clone() - rp.clone() * binop_factor.clone());
+        let and_summand = and_delector * (rp_next.clone() - rp.clone() * binop_factor.clone());
+        let xor_summand = xor_deselector * (rp_next.clone() - rp.clone() * binop_factor.clone());
+        let pow_summand = pow_deselector * (rp_next.clone() - rp.clone() * binop_factor);
+        let log_2_floor_summand =
+            log_2_floor_deselector * (rp_next.clone() - rp.clone() * unop_factor);
+        let div_summand = div_deselector
+            * (rp_next.clone() - rp.clone() * div_factor_for_lt * div_factor_for_range_check);
+        let no_update_summand = (self.one() - self.ib2()) * (rp_next - rp);
+
+        split_summand
+            + lt_summand
+            + and_summand
+            + xor_summand
+            + pow_summand
+            + log_2_floor_summand
+            + div_summand
+            + no_update_summand
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -4402,6 +4661,7 @@ impl<'a> Display for ExtProcessorMatrixRow<'a> {
 mod constraint_polynomial_tests {
     use ndarray::Array2;
 
+    use crate::shared_tests::SourceCodeAndInput;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
     use crate::table::master_table::MasterTable;
@@ -4461,9 +4721,14 @@ mod constraint_polynomial_tests {
             Add => tc.instruction_add(),
             Mul => tc.instruction_mul(),
             Invert => tc.instruction_invert(),
-            Split => tc.instruction_split(),
             Eq => tc.instruction_eq(),
-            Lsb => tc.instruction_lsb(),
+            Split => tc.instruction_split(),
+            Lt => tc.instruction_lt(),
+            And => tc.instruction_and(),
+            Xor => tc.instruction_xor(),
+            Log2Floor => tc.instruction_log_2_floor(),
+            Pow => tc.instruction_pow(),
+            Div => tc.instruction_div(),
             XxAdd => tc.instruction_xxadd(),
             XxMul => tc.instruction_xxmul(),
             XInvert => tc.instruction_xinv(),
@@ -4649,12 +4914,108 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    fn transition_constraints_for_instruction_lsb_test() {
+    fn transition_constraints_for_instruction_lt_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push 3 push 3 lt push 0 eq assert halt", 2),
+            get_test_row_from_source_code("push 3 push 2 lt push 1 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push 3 lt push 0 eq assert halt", 2),
+            get_test_row_from_source_code("push 512 push 513 lt push 0 eq assert halt", 2),
+        ];
+        test_constraints_for_rows_with_debug_info(Lt, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_and_test() {
         let test_rows = [get_test_row_from_source_code(
-            "push 3 lsb assert assert halt",
-            1,
+            "push 5 push 12 and push 4 eq assert halt",
+            2,
         )];
-        test_constraints_for_rows_with_debug_info(Lsb, &test_rows, &[ST0], &[ST0, ST1]);
+        test_constraints_for_rows_with_debug_info(And, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_xor_test() {
+        let test_rows = [get_test_row_from_source_code(
+            "push 5 push 12 xor push 9 eq assert halt",
+            2,
+        )];
+        test_constraints_for_rows_with_debug_info(Xor, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_log2floor_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push  1 log_2_floor push  0 eq assert halt", 1),
+            get_test_row_from_source_code("push  2 log_2_floor push  1 eq assert halt", 1),
+            get_test_row_from_source_code("push  3 log_2_floor push  1 eq assert halt", 1),
+            get_test_row_from_source_code("push  4 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  5 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  6 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  7 log_2_floor push  2 eq assert halt", 1),
+            get_test_row_from_source_code("push  8 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push  9 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 10 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 11 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 12 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 13 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 14 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 15 log_2_floor push  3 eq assert halt", 1),
+            get_test_row_from_source_code("push 16 log_2_floor push  4 eq assert halt", 1),
+            get_test_row_from_source_code("push 17 log_2_floor push  4 eq assert halt", 1),
+        ];
+        test_constraints_for_rows_with_debug_info(Log2Floor, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_pow_test() {
+        let test_rows = [
+            get_test_row_from_source_code("push 0 push  0 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  0 pow push   0 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  0 pow push   0 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push  1 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  1 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  1 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push  2 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  2 pow push   2 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  2 pow push   4 eq assert halt", 2),
+            get_test_row_from_source_code("push 3 push  2 pow push   8 eq assert halt", 2),
+            get_test_row_from_source_code("push 4 push  2 pow push  16 eq assert halt", 2),
+            get_test_row_from_source_code("push 5 push  2 pow push  32 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push  3 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push  3 pow push   3 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push  3 pow push   9 eq assert halt", 2),
+            get_test_row_from_source_code("push 3 push  3 pow push  27 eq assert halt", 2),
+            get_test_row_from_source_code("push 4 push  3 pow push  81 eq assert halt", 2),
+            get_test_row_from_source_code("push 0 push 17 pow push   1 eq assert halt", 2),
+            get_test_row_from_source_code("push 1 push 17 pow push  17 eq assert halt", 2),
+            get_test_row_from_source_code("push 2 push 17 pow push 289 eq assert halt", 2),
+        ];
+        test_constraints_for_rows_with_debug_info(Pow, &test_rows, &[ST0, ST1], &[ST0]);
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_div_test() {
+        let test_rows = [
+            get_test_row_from_source_code(
+                "push 2 push 3 div push 1 eq assert push 1 eq assert halt",
+                2,
+            ),
+            get_test_row_from_source_code(
+                "push 3 push 7 div push 1 eq assert push 2 eq assert halt",
+                2,
+            ),
+            get_test_row_from_source_code(
+                "push 4 push 7 div push 3 eq assert push 1 eq assert halt",
+                2,
+            ),
+        ];
+        test_constraints_for_rows_with_debug_info(Div, &test_rows, &[ST0, ST1], &[ST0, ST1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Division by 0 is impossible")]
+    fn division_by_zero_is_impossible_test() {
+        SourceCodeAndInput::without_input("div").run();
     }
 
     #[test]
@@ -4815,9 +5176,14 @@ mod constraint_polynomial_tests {
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
-            (Split, factory.instruction_split()),
             (Eq, factory.instruction_eq()),
-            (Lsb, factory.instruction_lsb()),
+            (Split, factory.instruction_split()),
+            (Lt, factory.instruction_lt()),
+            (And, factory.instruction_and()),
+            (Xor, factory.instruction_xor()),
+            (Log2Floor, factory.instruction_log_2_floor()),
+            (Pow, factory.instruction_pow()),
+            (Div, factory.instruction_div()),
             (XxAdd, factory.instruction_xxadd()),
             (XxMul, factory.instruction_xxmul()),
             (XInvert, factory.instruction_xinv()),

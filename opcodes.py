@@ -22,9 +22,14 @@ class Instruction(IntEnum):
     Add = auto()
     Mul = auto()
     Invert = auto()
-    Split = auto()
     Eq = auto()
-    Lsb = auto()
+    Split = auto()
+    Lt = auto()
+    And = auto()
+    Xor = auto()
+    Log2Floor = auto()
+    Pow = auto()
+    Div = auto()
     XxAdd = auto()
     XxMul = auto()
     XInvert = auto()
@@ -35,6 +40,7 @@ class Instruction(IntEnum):
 class InstructionBucket(IntFlag):
     HasArg = auto()
     ShrinkStack = auto()
+    U32 = auto()
 
 # ===
 
@@ -44,6 +50,9 @@ def in_bucket(instruction_bucket, instruction):
     if instruction_bucket == InstructionBucket.ShrinkStack:
         return instruction in [Instruction.Pop, Instruction.Skiz, Instruction.Assert, Instruction.WriteIo,
                                Instruction.Add, Instruction.Mul, Instruction.Eq, Instruction.XbMul]
+    if instruction_bucket == InstructionBucket.U32:
+        return instruction in [Instruction.Lt, Instruction.And, Instruction.Xor, Instruction.Log2Floor,
+                               Instruction.Pow, Instruction.Div, Instruction.Split]
     return False
 
 def flag_set(instruction):
@@ -60,10 +69,14 @@ def opcode(instruction):
 
 def print_all_opcodes():
     for instruction in Instruction:
-        print(f"{opcode(instruction):>02} {str(instruction)}")
+        opc = opcode(instruction)
+        print(f"{opc:> 3} {opc:>07b} {str(instruction)}")
 
 def print_max_opcode():
-    print(f"highest opcode: {max([opcode(instruction) for instruction in Instruction])}")
+    max_opc = max([opcode(instruction) for instruction in Instruction])
+    print(f"highest opcode: {max_opc}")
+    print(f"#ibs:           {len(bin(max_opc)[2:])}")
+
 
 # ===
 

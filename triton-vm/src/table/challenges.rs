@@ -20,6 +20,7 @@ use crate::table::processor_table::IOChallenges;
 use crate::table::processor_table::ProcessorTableChallenges;
 use crate::table::program_table::ProgramTableChallenges;
 use crate::table::ram_table::RamTableChallenges;
+use crate::table::u32_table::U32TableChallenges;
 
 pub trait TableChallenges: Clone + Debug {
     type Id: Display
@@ -55,11 +56,12 @@ pub struct AllChallenges {
     pub ram_table_challenges: RamTableChallenges,
     pub jump_stack_table_challenges: JumpStackTableChallenges,
     pub hash_table_challenges: HashTableChallenges,
+    pub u32_table_challenges: U32TableChallenges,
     pub cross_table_challenges: CrossTableChallenges,
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 46 + NUM_CROSS_TABLE_WEIGHTS;
+    pub const TOTAL_CHALLENGES: usize = 51 + NUM_CROSS_TABLE_WEIGHTS;
 
     pub fn create_challenges(
         mut weights: Vec<XFieldElement>,
@@ -115,6 +117,13 @@ impl AllChallenges {
             hash_table_digest_output_weight2: weights.pop().unwrap(),
             hash_table_digest_output_weight3: weights.pop().unwrap(),
             hash_table_digest_output_weight4: weights.pop().unwrap(),
+
+            u32_table_lhs_weight: weights.pop().unwrap(),
+            u32_table_rhs_weight: weights.pop().unwrap(),
+            u32_table_ci_weight: weights.pop().unwrap(),
+            u32_table_result_weight: weights.pop().unwrap(),
+
+            u32_table_perm_indeterminate: weights.pop().unwrap(),
         };
 
         let program_table_challenges = ProgramTableChallenges {
@@ -203,6 +212,14 @@ impl AllChallenges {
             digest_output_weight4: processor_table_challenges.hash_table_digest_output_weight4,
         };
 
+        let u32_table_challenges = U32TableChallenges {
+            lhs_weight: processor_table_challenges.u32_table_lhs_weight,
+            rhs_weight: processor_table_challenges.u32_table_rhs_weight,
+            ci_weight: processor_table_challenges.u32_table_ci_weight,
+            result_weight: processor_table_challenges.u32_table_result_weight,
+            processor_perm_indeterminate: processor_table_challenges.u32_table_perm_indeterminate,
+        };
+
         let input_terminal = EvalArg::compute_terminal(
             claimed_input,
             EvalArg::default_initial(),
@@ -224,6 +241,7 @@ impl AllChallenges {
             processor_to_jump_stack_weight: weights.pop().unwrap(),
             processor_to_hash_weight: weights.pop().unwrap(),
             hash_to_processor_weight: weights.pop().unwrap(),
+            processor_to_u32_weight: weights.pop().unwrap(),
             all_clock_jump_differences_weight: weights.pop().unwrap(),
             input_to_processor_weight: weights.pop().unwrap(),
             processor_to_output_weight: weights.pop().unwrap(),
@@ -241,6 +259,7 @@ impl AllChallenges {
             ram_table_challenges,
             jump_stack_table_challenges,
             hash_table_challenges,
+            u32_table_challenges,
             cross_table_challenges,
         }
     }

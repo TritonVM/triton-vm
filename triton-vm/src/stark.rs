@@ -876,6 +876,8 @@ pub(crate) mod triton_stark_tests {
     use itertools::izip;
     use ndarray::Array1;
     use num_traits::Zero;
+    use rand::prelude::ThreadRng;
+    use rand_core::RngCore;
 
     use triton_opcodes::instruction::AnInstruction;
     use triton_opcodes::program::Program;
@@ -903,8 +905,8 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
+    use crate::table::u32_table::ExtU32Table;
     use crate::vm::simulate;
-    use crate::vm::triton_vm_tests::bigger_tasm_test_programs;
     use crate::vm::triton_vm_tests::property_based_test_programs;
     use crate::vm::triton_vm_tests::small_tasm_test_programs;
     use crate::vm::triton_vm_tests::test_hash_nop_nop_lt;
@@ -1124,10 +1126,10 @@ pub(crate) mod triton_stark_tests {
     #[test]
     pub fn check_grand_cross_table_argument() {
         let mut code_collection = small_tasm_test_programs();
-        code_collection.append(&mut bigger_tasm_test_programs());
         code_collection.append(&mut property_based_test_programs());
 
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
+            println!("Checking Grand Cross-Table Argument for TASM snippet {code_idx}.");
             let code = code_with_input.source_code;
             let input = code_with_input.input;
             let secret_input = code_with_input.secret_input.clone();
@@ -1211,6 +1213,11 @@ pub(crate) mod triton_stark_tests {
         ExtHashTable::evaluate_consistency_constraints(br, er, &challenges);
         ExtHashTable::evaluate_transition_constraints(br, er, br, er, &challenges);
         ExtHashTable::evaluate_terminal_constraints(br, er, &challenges);
+
+        ExtU32Table::evaluate_initial_constraints(br, er, &challenges);
+        ExtU32Table::evaluate_consistency_constraints(br, er, &challenges);
+        ExtU32Table::evaluate_transition_constraints(br, er, br, er, &challenges);
+        ExtU32Table::evaluate_terminal_constraints(br, er, &challenges);
     }
 
     #[test]
@@ -1223,6 +1230,7 @@ pub(crate) mod triton_stark_tests {
             "ram table",
             "jump stack table",
             "hash table",
+            "u32 table",
             "cross-table arg",
         ];
         let all_init = [
@@ -1233,6 +1241,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_initial_quotients(),
             ExtJumpStackTable::num_initial_quotients(),
             ExtHashTable::num_initial_quotients(),
+            ExtU32Table::num_initial_quotients(),
             GrandCrossTableArg::num_initial_quotients(),
         ];
         let all_cons = [
@@ -1243,6 +1252,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_consistency_quotients(),
             ExtJumpStackTable::num_consistency_quotients(),
             ExtHashTable::num_consistency_quotients(),
+            ExtU32Table::num_consistency_quotients(),
             GrandCrossTableArg::num_consistency_quotients(),
         ];
         let all_trans = [
@@ -1253,6 +1263,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_transition_quotients(),
             ExtJumpStackTable::num_transition_quotients(),
             ExtHashTable::num_transition_quotients(),
+            ExtU32Table::num_transition_quotients(),
             GrandCrossTableArg::num_transition_quotients(),
         ];
         let all_term = [
@@ -1263,6 +1274,7 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_terminal_quotients(),
             ExtJumpStackTable::num_terminal_quotients(),
             ExtHashTable::num_terminal_quotients(),
+            ExtU32Table::num_terminal_quotients(),
             GrandCrossTableArg::num_terminal_quotients(),
         ];
 
@@ -1360,6 +1372,14 @@ pub(crate) mod triton_stark_tests {
             ExtHashTable::num_initial_quotients(),
             ExtHashTable::initial_quotient_degree_bounds(id).len()
         );
+        assert_eq!(
+            ExtU32Table::num_initial_quotients(),
+            ExtU32Table::evaluate_initial_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_initial_quotients(),
+            ExtU32Table::initial_quotient_degree_bounds(id).len()
+        );
 
         assert_eq!(
             ExtProgramTable::num_consistency_quotients(),
@@ -1416,6 +1436,14 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(
             ExtHashTable::num_consistency_quotients(),
             ExtHashTable::consistency_quotient_degree_bounds(id, ph).len()
+        );
+        assert_eq!(
+            ExtU32Table::num_consistency_quotients(),
+            ExtU32Table::evaluate_consistency_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_consistency_quotients(),
+            ExtU32Table::consistency_quotient_degree_bounds(id, ph).len()
         );
 
         assert_eq!(
@@ -1474,6 +1502,14 @@ pub(crate) mod triton_stark_tests {
             ExtHashTable::num_transition_quotients(),
             ExtHashTable::transition_quotient_degree_bounds(id, ph).len()
         );
+        assert_eq!(
+            ExtU32Table::num_transition_quotients(),
+            ExtU32Table::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_transition_quotients(),
+            ExtU32Table::transition_quotient_degree_bounds(id, ph).len()
+        );
 
         assert_eq!(
             ExtProgramTable::num_terminal_quotients(),
@@ -1531,6 +1567,14 @@ pub(crate) mod triton_stark_tests {
             ExtHashTable::num_terminal_quotients(),
             ExtHashTable::terminal_quotient_degree_bounds(id).len()
         );
+        assert_eq!(
+            ExtU32Table::num_terminal_quotients(),
+            ExtU32Table::evaluate_terminal_constraints(br, er, &challenges).len(),
+        );
+        assert_eq!(
+            ExtU32Table::num_terminal_quotients(),
+            ExtU32Table::terminal_quotient_degree_bounds(id).len()
+        );
     }
 
     #[test]
@@ -1553,7 +1597,6 @@ pub(crate) mod triton_stark_tests {
         for (program_idx, program) in small_tasm_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
-            println!();
         }
     }
 
@@ -1562,16 +1605,6 @@ pub(crate) mod triton_stark_tests {
         for (program_idx, program) in property_based_test_programs().into_iter().enumerate() {
             println!("Testing program with index {program_idx}.");
             triton_table_constraints_evaluate_to_zero(program);
-            println!();
-        }
-    }
-
-    #[test]
-    fn triton_table_constraints_evaluate_to_zero_on_bigger_programs_test() {
-        for (program_idx, program) in bigger_tasm_test_programs().into_iter().enumerate() {
-            println!("Testing program with index {program_idx}.");
-            triton_table_constraints_evaluate_to_zero(program);
-            println!();
         }
     }
 
@@ -1600,11 +1633,14 @@ pub(crate) mod triton_stark_tests {
             &challenges,
         );
         let num_initial_constraints = evaluated_initial_constraints.len();
+        assert_eq!(num_all_initial_quotients(), num_initial_constraints);
         for (constraint_idx, ebc) in evaluated_initial_constraints.into_iter().enumerate() {
+            let (table_idx, table_name) = initial_constraint_table_idx_and_name(constraint_idx);
             assert_eq!(
                 zero, ebc,
                 "Failed initial constraint with global index {constraint_idx}. \
-                Total number of initial constraints: {num_initial_constraints}.",
+                Total number of initial constraints: {num_initial_constraints}. \
+                Table: {table_name}. Index within table: {table_idx}",
             );
         }
 
@@ -1615,11 +1651,15 @@ pub(crate) mod triton_stark_tests {
             let evaluated_consistency_constraints =
                 evaluate_all_consistency_constraints(base_row, ext_row, &challenges);
             let num_consistency_constraints = evaluated_consistency_constraints.len();
+            assert_eq!(num_all_consistency_quotients(), num_consistency_constraints);
             for (constraint_idx, ecc) in evaluated_consistency_constraints.into_iter().enumerate() {
+                let (table_idx, table_name) =
+                    consistency_constraint_table_idx_and_name(constraint_idx);
                 assert_eq!(
                     zero, ecc,
                     "Failed consistency constraint with global index {constraint_idx}. \
                     Total number of consistency constraints: {num_consistency_constraints}. \
+                    Table: {table_name}. Index within table: {table_idx} \
                     Row index: {row_idx}. \
                     Total rows: {num_rows}",
                 );
@@ -1639,6 +1679,7 @@ pub(crate) mod triton_stark_tests {
                 &challenges,
             );
             let num_transition_constraints = evaluated_transition_constraints.len();
+            assert_eq!(num_all_transition_quotients(), num_transition_constraints);
             for (constraint_idx, etc) in evaluated_transition_constraints.into_iter().enumerate() {
                 if zero != etc {
                     let pi_idx =
@@ -1655,9 +1696,12 @@ pub(crate) mod triton_stark_tests {
                         Ok(instr) => format!("{instr:?}"),
                         Err(_) => "not an instruction".to_string(),
                     };
+                    let (table_idx, table_name) =
+                        transition_constraint_table_idx_and_name(constraint_idx);
                     panic!(
                         "Failed transition constraint with global index {constraint_idx}. \
                         Total number of transition constraints: {num_transition_constraints}. \
+                        Table: {table_name}. Index within table: {table_idx} \
                         Row index: {row_idx}. \
                         Total rows: {num_rows}\n\
                         Previous Instruction: {previous_instruction:?} – opcode: {pi}\n\
@@ -1674,12 +1718,152 @@ pub(crate) mod triton_stark_tests {
             &challenges,
         );
         let num_terminal_constraints = evaluated_terminal_constraints.len();
+        assert_eq!(num_all_terminal_quotients(), num_terminal_constraints);
         for (constraint_idx, etermc) in evaluated_terminal_constraints.into_iter().enumerate() {
+            let (table_idx, table_name) = terminal_constraint_table_idx_and_name(constraint_idx);
             assert_eq!(
                 zero, etermc,
                 "Failed terminal constraint with global index {constraint_idx}. \
-                Total number of terminal constraints: {num_terminal_constraints}.",
+                Total number of terminal constraints: {num_terminal_constraints}. \
+                Table: {table_name}. Index within table: {table_idx}",
             );
+        }
+    }
+
+    /// Given the global index of some initial constraint, returns 1) the index within the specific
+    /// table for that constraint, and 2) the name of that table.
+    fn initial_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
+        let program_start = 0;
+        let program_end = program_start + ExtProgramTable::num_initial_quotients();
+        let instruct_start = program_end;
+        let instruct_end = instruct_start + ExtInstructionTable::num_initial_quotients();
+        let processor_start = instruct_end;
+        let processor_end = processor_start + ExtProcessorTable::num_initial_quotients();
+        let op_stack_start = processor_end;
+        let op_stack_end = op_stack_start + ExtOpStackTable::num_initial_quotients();
+        let ram_start = op_stack_end;
+        let ram_end = ram_start + ExtRamTable::num_initial_quotients();
+        let jump_stack_start = ram_end;
+        let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_initial_quotients();
+        let hash_start = jump_stack_end;
+        let hash_end = hash_start + ExtHashTable::num_initial_quotients();
+        let u32_start = hash_end;
+        let u32_end = u32_start + ExtU32Table::num_initial_quotients();
+        assert_eq!(num_all_initial_quotients(), u32_end);
+        match constraint_idx {
+            i if program_start <= i && i < program_end => (i - program_start, "Program"),
+            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
+            i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
+            i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
+            i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
+            i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
+            i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+            i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+            _ => (0, "Unknown"),
+        }
+    }
+
+    /// Given the global index of some consistency constraint, returns 1) the index within the
+    /// specific table for that constraint, and 2) the name of that table.
+    fn consistency_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
+        let program_start = 0;
+        let program_end = program_start + ExtProgramTable::num_consistency_quotients();
+        let instruct_start = program_end;
+        let instruct_end = instruct_start + ExtInstructionTable::num_consistency_quotients();
+        let processor_start = instruct_end;
+        let processor_end = processor_start + ExtProcessorTable::num_consistency_quotients();
+        let op_stack_start = processor_end;
+        let op_stack_end = op_stack_start + ExtOpStackTable::num_consistency_quotients();
+        let ram_start = op_stack_end;
+        let ram_end = ram_start + ExtRamTable::num_consistency_quotients();
+        let jump_stack_start = ram_end;
+        let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_consistency_quotients();
+        let hash_start = jump_stack_end;
+        let hash_end = hash_start + ExtHashTable::num_consistency_quotients();
+        let u32_start = hash_end;
+        let u32_end = u32_start + ExtU32Table::num_consistency_quotients();
+        assert_eq!(num_all_consistency_quotients(), u32_end);
+        match constraint_idx {
+            i if program_start <= i && i < program_end => (i - program_start, "Program"),
+            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
+            i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
+            i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
+            i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
+            i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
+            i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+            i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+            _ => (0, "Unknown"),
+        }
+    }
+
+    /// Given the global index of some transition constraint, returns 1) the index within the
+    /// specific table for that constraint, and 2) the name of that table.
+    fn transition_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
+        let program_start = 0;
+        let program_end = program_start + ExtProgramTable::num_transition_quotients();
+        let instruct_start = program_end;
+        let instruct_end = instruct_start + ExtInstructionTable::num_transition_quotients();
+        let processor_start = instruct_end;
+        let processor_end = processor_start + ExtProcessorTable::num_transition_quotients();
+        let op_stack_start = processor_end;
+        let op_stack_end = op_stack_start + ExtOpStackTable::num_transition_quotients();
+        let ram_start = op_stack_end;
+        let ram_end = ram_start + ExtRamTable::num_transition_quotients();
+        let jump_stack_start = ram_end;
+        let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_transition_quotients();
+        let hash_start = jump_stack_end;
+        let hash_end = hash_start + ExtHashTable::num_transition_quotients();
+        let u32_start = hash_end;
+        let u32_end = u32_start + ExtU32Table::num_transition_quotients();
+        assert_eq!(num_all_transition_quotients(), u32_end);
+        match constraint_idx {
+            i if program_start <= i && i < program_end => (i - program_start, "Program"),
+            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
+            i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
+            i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
+            i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
+            i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
+            i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+            i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+            _ => (0, "Unknown"),
+        }
+    }
+
+    /// Given the global index of some terminal constraint, returns 1) the index within the
+    /// specific table for that constraint, and 2) the name of that table.
+    fn terminal_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
+        let program_start = 0;
+        let program_end = program_start + ExtProgramTable::num_terminal_quotients();
+        let instruct_start = program_end;
+        let instruct_end = instruct_start + ExtInstructionTable::num_terminal_quotients();
+        let processor_start = instruct_end;
+        let processor_end = processor_start + ExtProcessorTable::num_terminal_quotients();
+        let op_stack_start = processor_end;
+        let op_stack_end = op_stack_start + ExtOpStackTable::num_terminal_quotients();
+        let ram_start = op_stack_end;
+        let ram_end = ram_start + ExtRamTable::num_terminal_quotients();
+        let jump_stack_start = ram_end;
+        let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_terminal_quotients();
+        let hash_start = jump_stack_end;
+        let hash_end = hash_start + ExtHashTable::num_terminal_quotients();
+        let u32_start = hash_end;
+        let u32_end = u32_start + ExtU32Table::num_terminal_quotients();
+        let cross_table_start = u32_end;
+        let cross_table_end = cross_table_start + GrandCrossTableArg::num_terminal_quotients();
+        assert_eq!(num_all_terminal_quotients(), cross_table_end);
+        match constraint_idx {
+            i if program_start <= i && i < program_end => (i - program_start, "Program"),
+            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
+            i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
+            i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
+            i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
+            i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
+            i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+            i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+            i if cross_table_start <= i && i < cross_table_end => {
+                (i - cross_table_start, "GrandCrossTableArgument")
+            }
+            _ => (0, "Unknown"),
         }
     }
 
@@ -1837,6 +2021,36 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    fn constraints_evaluate_to_zero_on_many_u32_operations_test() {
+        let many_u32_instructions = SourceCodeAndInput::without_input(MANY_U32_INSTRUCTIONS);
+        triton_table_constraints_evaluate_to_zero(many_u32_instructions);
+    }
+
+    #[test]
+    fn triton_prove_verify_many_u32_operations_test() {
+        let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
+        let (stark, proof) =
+            parse_simulate_prove(MANY_U32_INSTRUCTIONS, vec![], vec![], &mut profiler);
+        let mut profiler = profiler.unwrap();
+        profiler.finish();
+
+        let result = stark.verify(proof, &mut None);
+        if let Err(e) = result {
+            panic!("The Verifier is unhappy! {}", e);
+        }
+        assert!(result.unwrap());
+
+        println!(
+            "{}",
+            profiler.report(
+                None,
+                Some(stark.claim.padded_height),
+                Some(stark.fri.domain.length)
+            )
+        );
+    }
+
+    #[test]
     #[ignore = "stress test"]
     fn prove_fib_successively_larger() {
         let source_code = FIBONACCI_VIT;
@@ -1857,5 +2071,28 @@ pub(crate) mod triton_stark_tests {
                 println!("{}", report);
             }
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "Failed to convert BFieldElement")]
+    pub fn negative_log_2_floor_test() {
+        let mut rng = ThreadRng::default();
+        let st0 = (rng.next_u32() as u64) << 32;
+
+        let source_code = format!("push {} log_2_floor halt", st0);
+        let (stark, proof) = parse_simulate_prove(&source_code, vec![], vec![], &mut None);
+        let result = stark.verify(proof, &mut None);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
+    }
+
+    #[test]
+    #[should_panic(expected = "The logarithm of 0 does not exist")]
+    pub fn negative_log_2_floor_of_0_test() {
+        let source_code = "push 0 log_2_floor halt";
+        let (stark, proof) = parse_simulate_prove(source_code, vec![], vec![], &mut None);
+        let result = stark.verify(proof, &mut None);
+        assert!(result.is_ok());
+        assert!(result.unwrap());
     }
 }

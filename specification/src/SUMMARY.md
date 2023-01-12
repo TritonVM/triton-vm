@@ -16,6 +16,7 @@
     + [Random Access Memory Table](random-access-memory-table.md)
     + [Jump Stack Table](jump-stack-table.md)
     + [Hash Table](hash-table.md)
+    + [U32 Table](u32-table.md)
     + [Memory-Consistency](memory-consistency.md)
         * [Contiguity of Memory-Pointer Regions](contiguity-of-memory-pointer-regions.md)
         * [Clock Jump Differences and Inner Sorting](clock-jump-differences-and-inner-sorting.md)

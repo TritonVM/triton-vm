@@ -11,7 +11,7 @@ In the nomenclature of this note, a trace is a special kind of table that tracks
 
 ## Algebraic Execution Tables
 
-There are 7 Arithmetic Execution Tables in TritonVM.
+There are 8 Arithmetic Execution Tables in TritonVM.
 Their relation is described by below figure.
 A red arrow indicates an Evaluation Argument, a blue arrow indicates a Permutation Argument, and the green arrow is the Bézout Argument.
 
@@ -34,7 +34,7 @@ Together, these columns are referred to as table's _base_ columns, and make up t
 
 The entries of a table's columns corresponding to Permutation, Evaluation, and Bézout Arguments are elements from the _X-field_ $\mathbb{F}_{p^3}$.
 These columns are referred to as a table's _extension_ columns, both because the entries are elements of the X-field and because the entries can only be computed using the base tables, through an _extension_ process.
-Collectively, a table's base columns with its entries interpreted as elements of the X-field and the table's extension columns make up the _extension table_.
+Together, these columns are referred to as a table's _extension_ columns, and make up the _extension table_.
 
 ### Padding
 
@@ -44,7 +44,7 @@ The height $h$ of the longest AET determines the padded height for all tables, w
 
 ## Arithmetic Intermediate Representation
 
-For each table, up to three lists containing constraints of different type are given:
+For each table, up to four lists containing constraints of different type are given:
 1. Initial Constraints, defining values in a table's first row,
 1. Consistency Constraints, establishing consistency within any given row,
 1. Transition Constraints, establishing the consistency of two consecutive rows in relation to each other, and

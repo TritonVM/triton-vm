@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.24">
-<info created="D:20200729150742" modified="D:20221103102957"/>
+<info created="D:20200729150742" modified="D:20221229140740"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -320,13 +320,17 @@ h
 <layer name="perm_args"/>
 <layer name="multi_perm_arg"/>
 <layer name="bezout_args"/>
-<view layers="bg table_names eval_args perm_args multi_perm_arg bezout_args" active="eval_args"/>
-<path layer="bg" matrix="1 0 0 1 0 12" fill="white">
-108 204 m
-108 32 l
-280 32 l
-280 204 l
+<view layers="bg table_names eval_args perm_args multi_perm_arg bezout_args" active="bg"/>
+<path layer="bg" fill="white">
+80 216 m
+80 44 l
+280 44 l
+280 216 l
 h
+</path>
+<path layer="eval_args" stroke="darkred" pen="heavier" cap="1" join="1">
+172 124 m
+172 112 l
 </path>
 <path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="pointed/small">
 192 138 m
@@ -340,7 +344,7 @@ h
 <text matrix="1 0 0 1 64 -16" transformations="translations" pos="128 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
 <text matrix="1 0 0 1 -48 -16" transformations="translations" pos="192 96" stroke="black" type="label" width="33.347" height="6.926" depth="1.93" halign="center" valign="baseline">opStack</text>
 <text matrix="1 0 0 1 -16 -16" transformations="translations" pos="256 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
-<text matrix="1 0 0 1 -32 32" transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
+<text matrix="1 0 0 1 -64 16" transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
 <path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small">
 128 184 m
 128 132 l
@@ -392,29 +396,29 @@ h
 <path matrix="1 0 0 1 -48 10" stroke="darkred" fill="darkred" pen="heavier" cap="1" join="1">
 1.20123 0 0 1.20123 176 176 e
 </path>
-<path matrix="1 0 0 1 0 4" stroke="darkred" pen="heavier" cap="1" join="1" rarrow="farc/small">
-176 120 m
-176 116 l
-176 112
-172 112 c
-136 112 l
-132 112
-132 108 c
-132 104 l
+<path stroke="darkred" pen="heavier" cap="1" join="1" rarrow="farc/small">
+176 124 m
+176 108 l
+176 104
+172 104 c
+102 104 l
+98 104
+98 100 c
+98 92 l
 </path>
 <path stroke="darkred" pen="heavier" cap="1" join="1" rarrow="farc/small">
-124 108 m
-124 116 l
-124 120
-128 120 c
-160 120 l
-164 120
-168 124 c
+94 92 m
+94 104 l
+94 108
+98 108 c
+168 108 l
+172 108
+172 112 c
 </path>
-<path matrix="1 0 0 1 -8 -52" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
+<path matrix="1 0 0 1 -4 -52" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
 1.20123 0 0 1.20123 176 176 e
 </path>
-<path matrix="1 0 0 1 -44 -68" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
+<path matrix="1 0 0 1 -78 -84" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
 1.20123 0 0 1.20123 176 176 e
 </path>
 <path layer="multi_perm_arg" stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
@@ -450,6 +454,18 @@ h
 <path layer="eval_args" matrix="-0.499978 0.499979 -0.499979 -0.499978 329.995 108.001" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
 160 100 m
 8 0 0 -8 160 92 152 92 a
+</path>
+<text layer="table_names" transformations="translations" pos="96 128" stroke="black" type="label" width="15.11" height="6.531" depth="0" halign="center" valign="baseline">u32</text>
+<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="fpointed/small">
+96 124 m
+96 120 l
+96 116
+100 116 c
+156 116 l
+160 116
+160 120 c
+160 124
+169.127 126.735 c
 </path>
 </page>
 </ipe>

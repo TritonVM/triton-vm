@@ -10,6 +10,7 @@ use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
+use num_traits::Zero;
 use regex::Regex;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
@@ -22,7 +23,6 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use AnInstruction::*;
 use TokenError::*;
 
-use crate::instruction::DivinationHint::Quotient;
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
 use crate::ord_n::Ord7;
@@ -49,9 +49,7 @@ impl Display for LabelledInstruction {
 }
 
 #[derive(Debug, DisplayMacro, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
-pub enum DivinationHint {
-    Quotient,
-}
+pub enum DivinationHint {}
 
 /// A Triton VM instruction
 ///
@@ -82,19 +80,27 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     ReadMem,
     WriteMem,
 
-    // Hashing-related instructions
+    // Hashing-related
     Hash,
     DivineSibling,
     AssertVector,
 
-    // Arithmetic on stack instructions
+    // Base field arithmetic on stack
     Add,
     Mul,
     Invert,
-    Split,
     Eq,
-    Lsb,
 
+    // Bitwise arithmetic on stack
+    Split,
+    Lt,
+    And,
+    Xor,
+    Log2Floor,
+    Pow,
+    Div,
+
+    // Extension field arithmetic on stack
     XxAdd,
     XxMul,
     XInvert,
@@ -115,6 +121,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
             Divine(None) => write!(f, "divine"),
             Dup(arg) => write!(f, "dup{}", arg),
             Swap(arg) => write!(f, "swap{}", arg),
+
             // Control flow
             Nop => write!(f, "nop"),
             Skiz => write!(f, "skiz"),
@@ -128,19 +135,27 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
             ReadMem => write!(f, "read_mem"),
             WriteMem => write!(f, "write_mem"),
 
-            // Hash instructions
+            // Hashing-related
             Hash => write!(f, "hash"),
             DivineSibling => write!(f, "divine_sibling"),
             AssertVector => write!(f, "assert_vector"),
 
-            // Arithmetic on stack instructions
+            // Base field arithmetic on stack
             Add => write!(f, "add"),
             Mul => write!(f, "mul"),
             Invert => write!(f, "invert"),
-            Split => write!(f, "split"),
             Eq => write!(f, "eq"),
-            Lsb => write!(f, "lsb"),
 
+            // Bitwise arithmetic on stack
+            Split => write!(f, "split"),
+            Lt => write!(f, "lt"),
+            And => write!(f, "and"),
+            Xor => write!(f, "xor"),
+            Log2Floor => write!(f, "log_2_floor"),
+            Pow => write!(f, "pow"),
+            Div => write!(f, "div"),
+
+            // Extension field arithmetic on stack
             XxAdd => write!(f, "xxadd"),
             XxMul => write!(f, "xxmul"),
             XInvert => write!(f, "xinvert"),
@@ -177,9 +192,14 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Add => Add,
             Mul => Mul,
             Invert => Invert,
-            Split => Split,
             Eq => Eq,
-            Lsb => Lsb,
+            Split => Split,
+            Lt => Lt,
+            And => And,
+            Xor => Xor,
+            Log2Floor => Log2Floor,
+            Pow => Pow,
+            Div => Div,
             XxAdd => XxAdd,
             XxMul => XxMul,
             XInvert => XInvert,
@@ -194,33 +214,38 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         match self {
             Pop => 2,
             Push(_) => 1,
-            Divine(_) => 4,
-            Dup(_) => 5,
-            Swap(_) => 9,
-            Nop => 8,
-            Skiz => 6,
-            Call(_) => 13,
-            Return => 12,
-            Recurse => 16,
-            Assert => 10,
+            Divine(_) => 8,
+            Dup(_) => 9,
+            Swap(_) => 17,
+            Nop => 16,
+            Skiz => 10,
+            Call(_) => 25,
+            Return => 24,
+            Recurse => 32,
+            Assert => 18,
             Halt => 0,
-            ReadMem => 20,
-            WriteMem => 24,
-            Hash => 28,
-            DivineSibling => 32,
-            AssertVector => 36,
-            Add => 14,
-            Mul => 18,
-            Invert => 40,
-            Split => 44,
-            Eq => 22,
-            Lsb => 48,
-            XxAdd => 52,
-            XxMul => 56,
-            XInvert => 60,
-            XbMul => 26,
-            ReadIo => 64,
-            WriteIo => 30,
+            ReadMem => 40,
+            WriteMem => 48,
+            Hash => 56,
+            DivineSibling => 64,
+            AssertVector => 72,
+            Add => 26,
+            Mul => 34,
+            Invert => 80,
+            Eq => 42,
+            Split => 4,
+            Lt => 12,
+            And => 20,
+            Xor => 28,
+            Log2Floor => 36,
+            Pow => 44,
+            Div => 52,
+            XxAdd => 88,
+            XxMul => 96,
+            XInvert => 104,
+            XbMul => 50,
+            ReadIo => 112,
+            WriteIo => 58,
         }
     }
 
@@ -279,9 +304,14 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Add => Add,
             Mul => Mul,
             Invert => Invert,
-            Split => Split,
             Eq => Eq,
-            Lsb => Lsb,
+            Split => Split,
+            Lt => Lt,
+            And => And,
+            Xor => Xor,
+            Log2Floor => Log2Floor,
+            Pow => Pow,
+            Div => Div,
             XxAdd => XxAdd,
             XxMul => XxMul,
             XInvert => XInvert,
@@ -445,7 +475,6 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
         "pop" => vec![Pop],
         "push" => vec![Push(parse_elem(tokens)?)],
         "divine" => vec![Divine(None)],
-        "divine_quotient" => vec![Divine(Some(Quotient))],
         "dup0" => vec![Dup(ST0)],
         "dup1" => vec![Dup(ST1)],
         "dup2" => vec![Dup(ST2)],
@@ -491,40 +520,41 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
         "read_mem" => vec![ReadMem],
         "write_mem" => vec![WriteMem],
 
-        // Hashing-related instructions
+        // Hashing-related
         "hash" => vec![Hash],
         "divine_sibling" => vec![DivineSibling],
         "assert_vector" => vec![AssertVector],
 
-        // Arithmetic on stack instructions
+        // Base field arithmetic on stack
         "add" => vec![Add],
         "mul" => vec![Mul],
         "invert" => vec![Invert],
-        "split" => vec![Split],
         "eq" => vec![Eq],
-        "lsb" => vec![Lsb],
+
+        // Bitwise arithmetic on stack
+        "split" => vec![Split],
+        "lt" => vec![Lt],
+        "and" => vec![And],
+        "xor" => vec![Xor],
+        "log_2_floor" => vec![Log2Floor],
+        "pow" => vec![Pow],
+        "div" => vec![Div],
+
+        // Extension field arithmetic on stack
         "xxadd" => vec![XxAdd],
         "xxmul" => vec![XxMul],
         "xinvert" => vec![XInvert],
         "xbmul" => vec![XbMul],
 
-        // Pseudo-instructions
-        "neg" => vec![Push(BFieldElement::one().neg()), Mul],
-        "sub" => vec![Swap(ST1), Push(BFieldElement::one().neg()), Mul, Add],
-
-        "lte" => pseudo_instruction_lte(),
-        "lt" => pseudo_instruction_lt(),
-        "and" => pseudo_instruction_and(),
-        "xor" => pseudo_instruction_xor(),
-        "reverse" => pseudo_instruction_reverse(),
-        "div" => pseudo_instruction_div(),
-
-        "is_u32" => pseudo_instruction_is_u32(),
-        "split_assert" => pseudo_instruction_split_assert(),
-
         // Read/write
         "read_io" => vec![ReadIo],
         "write_io" => vec![WriteIo],
+
+        // pseudo instructions
+        "neg" => vec![Push(BFieldElement::one().neg()), Mul],
+        "sub" => vec![Swap(ST1), Push(BFieldElement::one().neg()), Mul, Add],
+        "lsb" => pseudo_instruction_lsb(),
+        "is_u32" => pseudo_instruction_is_u32(),
 
         _ => return Err(anyhow::Error::new(UnknownInstruction(token.to_string()))),
     };
@@ -537,176 +567,27 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
     Ok(labelled_instruction)
 }
 
+fn pseudo_instruction_lsb() -> Vec<AnInstruction<String>> {
+    // input stack: _ a
+    vec![
+        Push(BFieldElement::new(2)), // _ a 2
+        Swap(ST1),                   // _ 2 a
+        Div,                         // _ a/2 a%2
+    ]
+}
+
 fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
-    // _ a
-    let mut instructions = vec![Dup(ST0)];
-    // _ a a
-    for _ in 0..32 {
-        instructions.push(Lsb);
-        // _ a (a>>i) b
-        instructions.push(Pop);
-        // _ a (a>>i)
-    }
-    instructions.push(Push(0_u64.into()));
-    // _ a (a>>32) 0
-    instructions.push(Eq);
-    // _ a (a>>32)==0
-    instructions.push(Assert);
-    // _ a
-    instructions
-}
-
-fn pseudo_instruction_split_assert() -> Vec<AnInstruction<String>> {
+    // input stack: _ a
     vec![
-        vec![Split],
-        pseudo_instruction_is_u32(),
-        vec![Swap(ST1)],
-        pseudo_instruction_is_u32(),
-        vec![Swap(ST1)],
+        Dup(ST0),                    // _ a a
+        Split,                       // _ a hi lo
+        Swap(ST1),                   // _ a lo hi
+        Push(BFieldElement::zero()), // _ a lo hi 0
+        Eq,                          // _ a lo (hi==0)
+        Swap(ST2),                   // _ (hi==0) lo a
+        Eq,                          // _ (hi==0) (lo==a)
+        Mul,                         // _ (hi==0 & lo==a)
     ]
-    .concat()
-}
-
-fn pseudo_instruction_lte() -> Vec<AnInstruction<String>> {
-    vec![
-        vec![Push(-BFieldElement::new(1)), Mul, Add],
-        pseudo_instruction_split_assert(),
-        vec![Push(0_u64.into()), Eq, Swap(ST1), Pop],
-    ]
-    .concat()
-}
-
-fn pseudo_instruction_lt() -> Vec<AnInstruction<String>> {
-    vec![vec![Push(1_u64.into()), Add], pseudo_instruction_lte()].concat()
-}
-
-fn pseudo_instruction_div() -> Vec<AnInstruction<String>> {
-    vec![
-        vec![
-            // _ d n
-            Divine(Some(Quotient)),
-            // _ d n q
-        ],
-        pseudo_instruction_is_u32(),
-        vec![
-            // _ d n q
-            Dup(ST2),
-            // _ d n q d
-            Dup(ST1),
-            // _ d n q d q
-            Mul,
-            // _ d n q d·q
-            Dup(ST2),
-            // _ d n q d·q n
-            Swap(ST1),
-            // _ d n q n d·q
-            Push(-BFieldElement::new(1)),
-            // _ d n q n d·q -1
-            Mul,
-            // _ d n q n -d·q
-            Add,
-            // _ d n q r
-            Dup(ST3),
-            // _ d n q r d
-            Dup(ST1),
-            // _ d n q r d r
-        ],
-        pseudo_instruction_lt(),
-        vec![
-            // _ d n q r r<d
-            Assert,
-            // _ d n q r
-            Swap(ST2),
-            // _ d r q n
-            Pop,
-            // _ d r q
-            Swap(ST2),
-            // _ q r d
-            Pop,
-            // _ q r
-        ],
-    ]
-    .concat()
-}
-
-fn pseudo_instruction_and() -> Vec<AnInstruction<String>> {
-    let mut instructions = vec![];
-
-    // decompose into bits, interleaved
-    for _ in 0..32 {
-        // _ A||a B||b
-        instructions.push(Lsb);
-        // _ A||a B b
-        instructions.push(Swap(ST2));
-        // _ b B A||a
-        instructions.push(Lsb);
-        // _ b B A a
-        instructions.push(Swap(ST2));
-        // _ b a A B
-    }
-
-    // assert u32-ness of A & B
-    instructions.push(Push(0_u64.into()));
-    instructions.push(Eq);
-    instructions.push(Assert);
-    // _ (b a)^32 A
-    instructions.push(Push(0_u64.into()));
-    instructions.push(Eq);
-    instructions.push(Assert);
-    // _ (b a)^32
-
-    // start accumulating
-    instructions.push(Push(0_u64.into()));
-
-    for i in (0..32).rev() {
-        // _ (b a)^i b a acc
-        instructions.push(Swap(ST2));
-        // _ (b a)^i acc a b
-        instructions.push(Mul);
-        // _ (b a)^i acc a&b
-        instructions.push(Push((1_u64 << i).into()));
-        // _ (b a)^i acc (a&b) 2^i
-        instructions.push(Mul);
-        // _ (b a)^i acc (a&b)·2^i
-        instructions.push(Add);
-        // _ (b a)^i acc'
-    }
-
-    instructions
-}
-
-fn pseudo_instruction_xor() -> Vec<AnInstruction<String>> {
-    // a+b = a^b + (a&b)<<1 => a^b = a+b - 2·(a&b)
-    // Credit: Daniel Lubarov
-    vec![
-        vec![Dup(ST1), Dup(ST1)],
-        pseudo_instruction_and(),
-        vec![Push(-BFieldElement::new(2)), Mul, Add, Add],
-    ]
-    .concat()
-}
-
-fn pseudo_instruction_reverse() -> Vec<AnInstruction<String>> {
-    let mut instructions = vec![];
-
-    // decompose into bits
-    for _ in 0..32 {
-        instructions.push(Lsb);
-        instructions.push(Swap(ST1));
-    }
-    instructions.push(Push(0_u64.into()));
-    instructions.push(Eq);
-    instructions.push(Assert);
-
-    // start accumulating
-    instructions.push(Push(0_u64.into()));
-    for i in 0..32 {
-        instructions.push(Swap(ST1));
-        instructions.push(Push((1_u64 << i).into()));
-        instructions.push(Mul);
-        instructions.push(Add);
-    }
-    instructions
 }
 
 fn parse_elem(tokens: &mut SplitWhitespace) -> Result<BFieldElement> {
@@ -732,7 +613,7 @@ fn parse_label(tokens: &mut SplitWhitespace) -> Result<String> {
 }
 
 pub fn all_instructions_without_args() -> Vec<Instruction> {
-    let all_instructions = vec![
+    let all_instructions: [_; Instruction::COUNT] = [
         Pop,
         Push(Default::default()),
         Divine(None),
@@ -753,9 +634,14 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         Add,
         Mul,
         Invert,
-        Split,
         Eq,
-        Lsb,
+        Split,
+        Lt,
+        And,
+        Xor,
+        Log2Floor,
+        Pow,
+        Div,
         XxAdd,
         XxMul,
         XInvert,
@@ -763,8 +649,7 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         ReadIo,
         WriteIo,
     ];
-    assert_eq!(Instruction::COUNT, all_instructions.len());
-    all_instructions
+    all_instructions.to_vec()
 }
 
 pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
@@ -772,7 +657,6 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Pop,
         Push(BFieldElement::new(42)),
         Divine(None),
-        Divine(Some(Quotient)),
         Dup(ST0),
         Dup(ST1),
         Dup(ST2),
@@ -821,7 +705,6 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Invert,
         Split,
         Eq,
-        Lsb,
         XxAdd,
         XxMul,
         XInvert,
@@ -875,7 +758,7 @@ pub mod sample_programs {
     pub const ALL_INSTRUCTIONS: &str = "
         pop
         push 42
-        divine divine_quotient
+        divine
 
         dup0 dup1 dup2 dup3 dup4 dup5 dup6 dup7 dup8 dup9 dup10 dup11 dup12 dup13 dup14 dup15
         swap1 swap2 swap3 swap4 swap5 swap6 swap7 swap8 swap9 swap10 swap11 swap12 swap13 swap14 swap15
@@ -885,7 +768,7 @@ pub mod sample_programs {
         call foo
 
         return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
-        add mul invert split eq lsb xxadd xxmul xinvert xbmul
+        add mul invert split eq xxadd xxmul xinvert xbmul
 
         read_io write_io
     ";
@@ -895,7 +778,6 @@ pub mod sample_programs {
             "pop",
             "push 42",
             "divine",
-            "divine_quotient",
             "dup0",
             "dup1",
             "dup2",
@@ -944,7 +826,6 @@ pub mod sample_programs {
             "invert",
             "split",
             "eq",
-            "lsb",
             "xxadd",
             "xxmul",
             "xinvert",

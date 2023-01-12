@@ -12,10 +12,13 @@ For reasons of efficient [arithmetization](arithmetization.md), certain properti
 Concretely:
 - all double-word instructions have an odd opcode, _i.e._, the least significant bit is 1.
 - all instructions shrinking the operational stack are 2 mod 4, _i.e._, the second-to-least significant bit is 1.
+- all [u32 instructions ](u32-table.md) are 4 mod 8, _i.e._, the third-to-least significant bit is 1.
+Furthermore, given that an instruction is a u32 instruction, its next three least-significant bits (indices 3 through 5) identify the instruction.
 
-The former property is used by instruction [skiz](instruction-specific-transition-constraints.md#instruction-skiz).
-The latter property helps guarantee that operational stack underflow cannot happen.
+The first property is used by instruction [skiz](instruction-specific-transition-constraints.md#instruction-skiz).
+The second property helps guarantee that operational stack underflow cannot happen.
 It is used by several instructions through instruction group [`stack_shrinks_and_top_3_unconstrained`](instruction-groups.md#group-stack_shrinks_and_top_3_unconstrained).
+The third property allows efficient arithmetization of the running product for the Permutation Argument between [Processor Table](processor-table.md) and [U32 Table](u32-table.md).
 
 ## OpStack Manipulation
 
@@ -23,9 +26,9 @@ It is used by several instructions through instruction group [`stack_shrinks_and
 |:-------------|-------:|:--------------------|:----------------------|:---------------------------------------------------------------------------------|
 | `pop`        |      2 | `_ a`               | `_`                   | Pops top element from stack.                                                     |
 | `push` + `a` |      1 | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                       |
-| `divine`     |      4 | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
-| `dup`  + `i` |      5 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < 16`.  |
-| `swap` + `i` |      9 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < 16`.  |
+| `divine`     |      g | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
+| `dup`  + `i` |      9 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < 16`.  |
+| `swap` + `i` |     17 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < 16`.  |
 
 Instruction `divine` (together with [`divine_sibling`](#hashing)) make TritonVM a virtual machine that can execute non-deterministic programs.
 As programs go, this concept is somewhat unusual and benefits from additional explanation.
@@ -40,30 +43,30 @@ the value `a` was supplied as a secret input.
 
 ## Control Flow
 
-| Instruction  | Opcode | old OpStack | new OpStack | old `ip` | new `ip`     | old JumpStack | new JumpStack | Description                                                                                                                 |
-|:-------------|-------:|:------------|:------------|:---------|:-------------|:--------------|:--------------|:----------------------------------------------------------------------------------------------------------------------------|
-| `nop`        |      8 | `_`         | `_`         | `_`      | `_ + 1`      | `_`           | `_`           | Do nothing                                                                                                                  |
-| `skiz`       |      6 | `_ a`       | `_`         | `_`      | `_ + s`      | `_`           | `_`           | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether or not next instruction takes an argument. |
-| `call` + `d` |     13 | `_`         | `_`         | `o`      | `d`          | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                          |
-| `return`     |     12 | `_`         | `_`         | `_`      | `o`          | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                        |
-| `recurse`    |     16 | `_`         | `_`         | `_`      | `d`          | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).           |
-| `assert`     |     10 | `_ a`       | `_`         | `_`      | `_ + 1` or 💥 | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                     |
-| `halt`       |      0 | `_`         | `_`         | `_`      | `_ + 1`      | `_`           | `_`           | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                          |
+| Instruction  | Opcode | old OpStack | new OpStack | old `ip` | new `ip` | old JumpStack | new JumpStack | Description                                                                                                                 |
+|:-------------|-------:|:------------|:------------|:---------|:---------|:--------------|:--------------|:----------------------------------------------------------------------------------------------------------------------------|
+| `nop`        |     16 | `_`         | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Do nothing                                                                                                                  |
+| `skiz`       |     10 | `_ a`       | `_`         | `_`      | `_ + s`  | `_`           | `_`           | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether or not next instruction takes an argument. |
+| `call` + `d` |     25 | `_`         | `_`         | `o`      | `d`      | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                          |
+| `return`     |     24 | `_`         | `_`         | `_`      | `o`      | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                        |
+| `recurse`    |     32 | `_`         | `_`         | `_`      | `d`      | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).           |
+| `assert`     |     18 | `_ a`       | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                     |
+| `halt`       |      0 | `_`         | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                          |
 
 ## Memory Access
 
 | Instruction | Opcode | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                             |
 |:------------|-------:|:------------|:------------|:-----------|:-----------|:----------------------------------------------------------------------------------------|
-| `read_mem`  |     20 | `_ p a`     | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and overwrites the top of the OpStack with `v`. |
-| `write_mem` |     24 | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
+| `read_mem`  |     40 | `_ p a`     | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and overwrites the top of the OpStack with `v`. |
+| `write_mem` |     48 | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
 
 ## Hashing
 
 | Instruction      | Opcode | old OpStack     | new OpStack                   | Description                                                                                             |
 |:-----------------|-------:|:----------------|:------------------------------|:--------------------------------------------------------------------------------------------------------|
-| `hash`           |     28 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
-| `divine_sibling` |     32 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
-| `assert_vector`  |     36 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
+| `hash`           |     56 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
+| `divine_sibling` |     64 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
+| `assert_vector`  |     72 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are reversed and concatenated with six zeros, resulting in `abcdefghij000000`.
@@ -83,24 +86,39 @@ Depending on this least significant bit of `i`, `divine_sibling` either
 The 11th element of the operational stack `i` is shifted by 1 bit to the right, _i.e._, the least-significant bit is dropped.
 In conjunction with instruction `hash` and `assert_vector`, the instruction `divine_sibling` allows to efficiently verify a Merkle authentication path.
 
-## Arithmetic on Stack
+## Base Field Arithmetic on Stack
 
-| Instruction | Opcode | old OpStack     | new OpStack          | Description                                                                                                                                                                     |
-|:------------|-------:|:----------------|:---------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `add`       |     14 | `_ b a`         | `_ c`                | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                       |
-| `mul`       |     18 | `_ b a`         | `_ c`                | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                                                                   |
-| `invert`    |     40 | `_ a`           | `_ b`                | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0.                                                      |
-| `split`     |     44 | `_ a`           | `_ lo hi`            | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits. Use with care, preferably through [pseudo instructions](pseudo-instructions.md).                  |
-| `eq`        |     22 | `_ b a`         | `_ (a == b)`         | Tests the top two stack elements for equality.                                                                                                                                  |
-| `lsb`       |     48 | `_ a`           | `_ (a >> 1) (a % 2)` | Bit-shifts `a` to the right by 1 bit and pushes the least significant bit of `a` to the stack. Use with care, preferably through [pseudo instructions](pseudo-instructions.md). |
-| `xxadd`     |     52 | `_ z y x b c a` | `_ z y x w v u`      | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                          |
-| `xxmul`     |     56 | `_ z y x b c a` | `_ z y x w v u`      | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.                    |
-| `xinvert`   |     60 | `_ z y x`       | `_ w v u`            | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                                             |
-| `xbmul`     |     26 | `_ z y x a`     | `_ w v u`            | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.                              |
+| Instruction | Opcode | old OpStack | new OpStack  | Description                                                                                                                |
+|:------------|-------:|:------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
+| `add`       |     26 | `_ b a`     | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
+| `mul`       |     34 | `_ b a`     | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
+| `invert`    |     80 | `_ a`       | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
+| `eq`        |     42 | `_ b a`     | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
+
+## Bitwise Arithmetic on Stack
+
+| Instruction   | Opcode | old OpStack | new OpStack   | Description                                                                                                                                                                |
+|:--------------|-------:|:------------|:--------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `split`       |      4 | `_ a`       | `_ hi lo`     | Decomposes the top of the stack into the lower 32 bits and the upper 32 bits.                                                                                              |
+| `lt`          |     12 | `_ b a`     | `_ a<b`       | “Less than” of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
+| `and`         |     20 | `_ b a`     | `_ a&b`       | Bitwise and of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                                 |
+| `xor`         |     28 | `_ b a`     | `_ a^b`       | Bitwise exclusive or of the stack's two top-most elements. Crashes the VM if `a` or `b` is not u32.                                                                        |
+| `log_2_floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1, _i.e._, $\lfloor\log_2\texttt{a}\rfloor$. Crashes the VM if `a` is 0 or not u32.                                                        |
+| `pow`         |     44 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                            |
+| `div`         |     52 | `_ d n`     | `_ q r`       | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0. |
+
+## Extension Field Arithmetic on Stack
+
+| Instruction | Opcode | old OpStack     | new OpStack     | Description                                                                                                                                                  |
+|:------------|-------:|:----------------|:----------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `xxadd`     |     88 | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.       |
+| `xxmul`     |     96 | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result. |
+| `xinvert`   |    104 | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                          |
+| `xbmul`     |     50 | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.           |
 
 ## Input/Output
 
 | Instruction | Opcode | old OpStack | new OpStack | Description                                                             |
 |:------------|-------:|:------------|:------------|:------------------------------------------------------------------------|
-| `read_io`   |     64 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
-| `write_io`  |     30 | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |
+| `read_io`   |    112 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
+| `write_io`  |     58 | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |

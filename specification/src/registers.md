@@ -12,7 +12,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 | `ip`                   | instruction pointer          | contains the memory address (in Program Memory) of the instruction                                                 |
 | `ci`                   | current instruction register | contains the current instruction                                                                                   |
 | `nia`                  | next instruction register    | contains either the instruction at the next address in Program Memory, or the argument for the current instruction |
-| *`ib0` through `ib?`   | instruction bucket           | decomposition of the instruction's opcode used to keep the AIR degree low                                          |
+| *`ib0` through `ib6`   | instruction bit              | decomposition of the instruction's opcode used to keep the AIR degree low                                          |
 | `jsp`                  | jump stack pointer           | contains the memory address (in jump stack memory) of the top of the jump stack                                    |
 | `jso`                  | jump stack origin            | contains the value of the instruction pointer of the last `call`                                                   |
 | `jsd`                  | jump stack destination       | contains the argument of the last `call`                                                                           |
@@ -28,7 +28,7 @@ the remaining registers exist only to enable an efficient arithmetization and ar
 Register `ip`, the *instruction pointer*, contains the address of the current instruction in Program Memory.
 The instruction is contained in the register *current instruction*, or `ci`.
 Register *next instruction (or argument)*, or `nia`, either contains the next instruction or the argument for the current instruction in `ci`.
-For reasons of arithmetization, `ci` is decomposed, giving rise to the *instruction bucket registers*, labeled `ib0` through `ib?`.
+For reasons of arithmetization, `ci` is decomposed, giving rise to the *instruction bit registers*, labeled `ib0` through `ib6`.
 
 ## Stack
 
