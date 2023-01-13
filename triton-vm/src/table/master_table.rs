@@ -322,7 +322,7 @@ impl MasterBaseTable {
         roundup_npo2(max_height as u64) as usize
     }
 
-    fn u32_table_length(aet: &AlgebraicExecutionTrace) -> usize {
+    pub fn u32_table_length(aet: &AlgebraicExecutionTrace) -> usize {
         aet.u32_entries
             .iter()
             .map(|(_, lhs, rhs)| max(lhs.value(), rhs.value()))
