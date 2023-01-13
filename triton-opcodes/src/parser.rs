@@ -186,14 +186,27 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let add = instruction("add", Add);
     let mul = instruction("mul", Mul);
     let invert = instruction("invert", Invert);
-    let split = instruction("split", Split);
     let eq = instruction("eq", Eq);
+    let split = instruction("split", Split);
+    let lt = instruction("lt", Lt);
+    let and = instruction("and", And);
+    let xor = instruction("xor", Xor);
+    let log_2_floor = instruction("log_2_floor", Log2Floor);
+    let pow = instruction("pow", Pow);
+    let div = instruction("div", Div);
     let xxadd = instruction("xxadd", XxAdd);
     let xxmul = instruction("xxmul", XxMul);
     let xinvert = instruction("xinvert", XInvert);
     let xbmul = instruction("xbmul", XbMul);
 
-    let arithmetic_on_stack = alt((add, mul, invert, split, eq, xxadd, xxmul, xinvert, xbmul));
+    let base_field_arithmetic_on_stack = alt((add, mul, invert, eq));
+    let bitwise_arithmetic_on_stack = alt((split, lt, and, xor, log_2_floor, pow, div));
+    let extension_field_arithmetic_on_stack = alt((xxadd, xxmul, xinvert, xbmul));
+    let arithmetic_on_stack = alt((
+        base_field_arithmetic_on_stack,
+        bitwise_arithmetic_on_stack,
+        extension_field_arithmetic_on_stack,
+    ));
 
     // Read/write
     let read_io = instruction("read_io", ReadIo);
@@ -506,7 +519,6 @@ mod parser_tests {
         let simple_instructions = [
             "pop",
             "divine",
-            "divine_quotient",
             "nop",
             "return",
             "assert",
@@ -519,9 +531,14 @@ mod parser_tests {
             "add",
             "mul",
             "invert",
-            "split",
             "eq",
-            "lsb",
+            "split",
+            "lt",
+            "and",
+            "xor",
+            "log_2_floor",
+            "pow",
+            "div",
             "xxadd",
             "xxmul",
             "xinvert",
