@@ -4,7 +4,8 @@ use std::io::Cursor;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use crate::instruction::{convert_labels, parse, Instruction, LabelledInstruction};
+use crate::instruction::{convert_labels, parse as old_parse, Instruction, LabelledInstruction};
+use crate::parser::parse as nom_parse;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
@@ -26,11 +27,12 @@ impl Display for Program {
     }
 }
 
-pub struct SkippyIter {
+/// An `InstructionIter` loops the instructions of a `Program` by skipping duplicate placeholders.
+pub struct InstructionIter {
     cursor: Cursor<Vec<Instruction>>,
 }
 
-impl Iterator for SkippyIter {
+impl Iterator for InstructionIter {
     type Item = Instruction;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -46,11 +48,11 @@ impl Iterator for SkippyIter {
 impl IntoIterator for Program {
     type Item = Instruction;
 
-    type IntoIter = SkippyIter;
+    type IntoIter = InstructionIter;
 
     fn into_iter(self) -> Self::IntoIter {
         let cursor = Cursor::new(self.instructions);
-        SkippyIter { cursor }
+        InstructionIter { cursor }
     }
 }
 
@@ -71,8 +73,15 @@ impl Program {
 
     /// Create a `Program` by parsing source code.
     pub fn from_code(code: &str) -> Result<Self> {
-        let instructions = parse(code)?;
+        let instructions = old_parse(code)?;
         Ok(Program::new(&instructions))
+    }
+
+    /// Create a `Program` by parsing source code using Nom parser.
+    pub fn from_code_nom(code: &str) -> Result<Self> {
+        nom_parse(code)
+            .map(|program| Program::new(&program))
+            .map_err(|err| anyhow::anyhow!("{}", err))
     }
 
     /// Convert a `Program` to a `Vec<BFieldElement>`.

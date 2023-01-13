@@ -92,7 +92,6 @@ pub fn run(
         let step = current_state.step(&mut stdin, &mut secret_in);
         let (next_state, vm_output) = match step {
             Err(err) => {
-                println!("Encountered an error when running VM.");
                 return (states, stdout, Some(err));
             }
             Ok((next_state, vm_output)) => (next_state, vm_output),

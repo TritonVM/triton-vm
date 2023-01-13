@@ -31,20 +31,41 @@ use crate::ord_n::Ord7;
 pub type Instruction = AnInstruction<BFieldElement>;
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
-///
-/// A label name is a `String` that occurs as "`label_name`:".
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LabelledInstruction {
-    Instruction(AnInstruction<String>),
-    Label(String),
+#[derive(Debug, Clone, Eq, Hash)]
+pub enum LabelledInstruction<'a> {
+    /// Instructions belong to the ISA:
+    ///
+    /// https://triton-vm.org/spec/isa.html
+    Instruction(AnInstruction<String>, &'a str),
+
+    /// Labels look like "`<name>:`" and are translated into absolute addresses.
+    Label(String, &'a str),
 }
 
-impl Display for LabelledInstruction {
+// FIXME: This can be replaced with `#[derive(PartialEq)]` once old parser is dead.
+impl<'a> PartialEq for LabelledInstruction<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Instruction(instr1, _), Self::Instruction(instr2, _)) => instr1 == instr2,
+            (Self::Label(label1, _), Self::Label(label2, _)) => label1 == label2,
+            _ => false,
+        }
+    }
+}
+
+impl<'a> Display for LabelledInstruction<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LabelledInstruction::Instruction(instr) => write!(f, "{}", instr),
-            LabelledInstruction::Label(label_name) => write!(f, "{}:", label_name),
+            LabelledInstruction::Instruction(instr, _) => write!(f, "{}", instr),
+            LabelledInstruction::Label(label_name, _) => write!(f, "{}:", label_name),
         }
+    }
+}
+
+pub fn token_str<'a>(instruction: &LabelledInstruction<'a>) -> &'a str {
+    match instruction {
+        LabelledInstruction::Instruction(_, token_str) => token_str,
+        LabelledInstruction::Label(_, token_str) => token_str,
     }
 }
 
@@ -395,11 +416,11 @@ pub fn convert_labels(program: &[LabelledInstruction]) -> Vec<Instruction> {
     // 1. Add all labels to a map
     for labelled_instruction in program.iter() {
         match labelled_instruction {
-            LabelledInstruction::Label(label_name) => {
+            LabelledInstruction::Label(label_name, _) => {
                 label_map.insert(label_name.clone(), instruction_pointer);
             }
 
-            LabelledInstruction::Instruction(instr) => {
+            LabelledInstruction::Instruction(instr, _) => {
                 instruction_pointer += instr.size();
             }
         }
@@ -417,9 +438,9 @@ fn convert_labels_helper(
     label_map: &HashMap<String, usize>,
 ) -> Vec<Instruction> {
     match instruction {
-        LabelledInstruction::Label(_) => vec![],
+        LabelledInstruction::Label(_, _) => vec![],
 
-        LabelledInstruction::Instruction(instr) => {
+        LabelledInstruction::Instruction(instr, _) => {
             let unlabelled_instruction: Instruction = instr.map_call_address(|label_name| {
                 let label_not_found = format!("Label not found: {}", label_name);
                 let absolute_address = label_map.get(label_name).expect(&label_not_found);
@@ -431,7 +452,7 @@ fn convert_labels_helper(
     }
 }
 
-pub fn parse(code_with_comments: &str) -> Result<Vec<LabelledInstruction>> {
+pub fn parse(code_with_comments: &str) -> Result<Vec<LabelledInstruction<'static>>> {
     let remove_comments = Regex::new(r"//.*?(?:\n|$)").expect("a regex that matches comments");
     let code = remove_comments.replace_all(code_with_comments, "");
     let mut tokens = code.split_whitespace();
@@ -445,8 +466,8 @@ pub fn parse(code_with_comments: &str) -> Result<Vec<LabelledInstruction>> {
     let all_labels: Vec<String> = instructions
         .iter()
         .flat_map(|instr| match instr {
-            LabelledInstruction::Instruction(_) => vec![],
-            LabelledInstruction::Label(label) => vec![label.clone()],
+            LabelledInstruction::Instruction(_, _) => vec![],
+            LabelledInstruction::Label(label, _) => vec![label.clone()],
         })
         .collect();
     let mut seen_labels: HashSet<String> = HashSet::default();
@@ -464,10 +485,13 @@ pub fn parse(code_with_comments: &str) -> Result<Vec<LabelledInstruction>> {
     Ok(instructions)
 }
 
-fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<LabelledInstruction>> {
+fn parse_token(
+    token: &str,
+    tokens: &mut SplitWhitespace,
+) -> Result<Vec<LabelledInstruction<'static>>> {
     if let Some(label) = token.strip_suffix(':') {
         let label_name = label.to_string();
-        return Ok(vec![LabelledInstruction::Label(label_name)]);
+        return Ok(vec![LabelledInstruction::Label(label_name, "")]);
     }
 
     let instruction: Vec<AnInstruction<String>> = match token {
@@ -561,10 +585,84 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
 
     let labelled_instruction = instruction
         .into_iter()
-        .map(LabelledInstruction::Instruction)
+        .map(|instr| LabelledInstruction::Instruction(instr, ""))
         .collect();
 
     Ok(labelled_instruction)
+}
+
+pub fn is_instruction_name(s: &str) -> bool {
+    match s {
+        "pop" => true,
+        "push" => true,
+        "divine" => true,
+        "dup0" => true,
+        "dup1" => true,
+        "dup2" => true,
+        "dup3" => true,
+        "dup4" => true,
+        "dup5" => true,
+        "dup6" => true,
+        "dup7" => true,
+        "dup8" => true,
+        "dup9" => true,
+        "dup10" => true,
+        "dup11" => true,
+        "dup12" => true,
+        "dup13" => true,
+        "dup14" => true,
+        "dup15" => true,
+        "swap1" => true,
+        "swap2" => true,
+        "swap3" => true,
+        "swap4" => true,
+        "swap5" => true,
+        "swap6" => true,
+        "swap7" => true,
+        "swap8" => true,
+        "swap9" => true,
+        "swap10" => true,
+        "swap11" => true,
+        "swap12" => true,
+        "swap13" => true,
+        "swap14" => true,
+        "swap15" => true,
+
+        // Control flow
+        "nop" => true,
+        "skiz" => true,
+        "call" => true,
+        "return" => true,
+        "recurse" => true,
+        "assert" => true,
+        "halt" => true,
+
+        // Memory access
+        "read_mem" => true,
+        "write_mem" => true,
+
+        // Hashing-related instructions
+        "hash" => true,
+        "divine_sibling" => true,
+        "assert_vector" => true,
+
+        // Arithmetic on stack instructions
+        "add" => true,
+        "mul" => true,
+        "invert" => true,
+        "split" => true,
+        "eq" => true,
+        "xxadd" => true,
+        "xxmul" => true,
+        "xinvert" => true,
+        "xbmul" => true,
+
+        // Read/write
+        "read_io" => true,
+        "write_io" => true,
+
+        _ => false,
+    }
 }
 
 fn pseudo_instruction_lsb() -> Vec<AnInstruction<String>> {
@@ -648,7 +746,7 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
     all_instructions.to_vec()
 }
 
-pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
+pub fn all_labelled_instructions_with_args<'a>() -> Vec<LabelledInstruction<'a>> {
     vec![
         Pop,
         Push(BFieldElement::new(42)),
@@ -709,7 +807,7 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         WriteIo,
     ]
     .into_iter()
-    .map(LabelledInstruction::Instruction)
+    .map(|instr| LabelledInstruction::Instruction(instr, ""))
     .collect()
 }
 
