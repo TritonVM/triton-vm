@@ -38,9 +38,9 @@ add      // _ a-b
 ```
 ## Pseudo instruction `is_u32`
 
-Program length: 12.
+Program length: 5.
 
-Execution cycle count: 5.
+Execution cycle count: 4.
 
 ```
        // _ a
