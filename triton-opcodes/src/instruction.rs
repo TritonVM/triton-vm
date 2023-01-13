@@ -10,7 +10,6 @@ use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
-use num_traits::Zero;
 use regex::Regex;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
@@ -19,6 +18,7 @@ use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 
 use AnInstruction::*;
 use TokenError::*;
@@ -579,14 +579,10 @@ fn pseudo_instruction_lsb() -> Vec<AnInstruction<String>> {
 fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
     // input stack: _ a
     vec![
-        Dup(ST0),                    // _ a a
-        Split,                       // _ a hi lo
-        Swap(ST1),                   // _ a lo hi
-        Push(BFieldElement::zero()), // _ a lo hi 0
-        Eq,                          // _ a lo (hi==0)
-        Swap(ST2),                   // _ (hi==0) lo a
-        Eq,                          // _ (hi==0) (lo==a)
-        Mul,                         // _ (hi==0 & lo==a)
+        Split,             // _ hi lo
+        Pop,               // _ hi
+        Push(BFIELD_ZERO), // _ hi 0
+        Eq,                // _ (hi == 0)
     ]
 }
 

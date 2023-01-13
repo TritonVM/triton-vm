@@ -40,18 +40,14 @@ add      // _ a-b
 
 Program length: 12.
 
-Execution cycle count: 8.
+Execution cycle count: 5.
 
 ```
-        // _ a
-dup 0   // _ a a
-split   // _ a hi lo
-swap 1  // _ a lo hi
-push 0  // _ a lo hi 0
-eq      // _ a lo (hi==0)
-swap 2  // _ (hi==0) lo a
-eq      // _ (hi==0) (lo==a)
-mul     // _ (hi==0 & lo==a)
+       // _ a
+split  // _ hi lo
+pop    // _ hi
+push 0 // _ hi 0
+eq     // _ (hi == 0)
 ```
 
 ## Pseudo instruction `lsb`
