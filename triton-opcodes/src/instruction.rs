@@ -25,7 +25,7 @@ use TokenError::*;
 
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
-use crate::ord_n::Ord7;
+use crate::ord_n::Ord8;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -272,7 +272,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     /// Get the i'th instruction bit
-    pub fn ib(&self, arg: Ord7) -> BFieldElement {
+    pub fn ib(&self, arg: Ord8) -> BFieldElement {
         let opcode = self.opcode();
         let bit_number: usize = arg.into();
 
@@ -849,7 +849,7 @@ mod instruction_tests {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::instruction::all_labelled_instructions_with_args;
-    use crate::ord_n::Ord7;
+    use crate::ord_n::Ord8;
     use crate::program::Program;
 
     use super::all_instructions_without_args;
@@ -900,9 +900,9 @@ mod instruction_tests {
             num_bits += 1;
         }
         assert!(
-            num_bits <= Ord7::COUNT,
+            num_bits <= Ord8::COUNT,
             "Biggest instruction needs more than {} bits :(",
-            Ord7::COUNT
+            Ord8::COUNT
         );
 
         // assert consistency
@@ -969,10 +969,11 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use Ord7::*;
+        use Ord8::*;
 
         for instruction in all_instructions_without_args() {
-            for ib in [IB0, IB1, IB2, IB3, IB4, IB5, IB6] {
+            let all_ibs: [Ord8; Ord8::COUNT] = [IB0, IB1, IB2, IB3, IB4, IB5, IB6, IB7];
+            for ib in all_ibs {
                 let ib_value = instruction.ib(ib);
                 assert!(
                     ib_value.is_zero() || ib_value.is_one(),

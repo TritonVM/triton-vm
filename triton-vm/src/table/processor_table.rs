@@ -21,7 +21,7 @@ use strum_macros::EnumIter;
 use triton_opcodes::instruction::all_instructions_without_args;
 use triton_opcodes::instruction::AnInstruction::*;
 use triton_opcodes::instruction::Instruction;
-use triton_opcodes::ord_n::Ord7;
+use triton_opcodes::ord_n::Ord8;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -948,8 +948,9 @@ impl ExtProcessorTable {
             + constant(1 << 3) * factory.ib3()
             + constant(1 << 4) * factory.ib4()
             + constant(1 << 5) * factory.ib5()
-            + constant(1 << 6) * factory.ib6();
-        let ci_corresponds_to_ib0_thru_ib12 = factory.ci() - ib_composition;
+            + constant(1 << 6) * factory.ib6()
+            + constant(1 << 7) * factory.ib7();
+        let ci_corresponds_to_ib0_thru_ib7 = factory.ci() - ib_composition;
 
         let ib0_is_bit = factory.ib0() * (factory.ib0() - one.clone());
         let ib1_is_bit = factory.ib1() * (factory.ib1() - one.clone());
@@ -958,6 +959,7 @@ impl ExtProcessorTable {
         let ib4_is_bit = factory.ib4() * (factory.ib4() - one.clone());
         let ib5_is_bit = factory.ib5() * (factory.ib5() - one.clone());
         let ib6_is_bit = factory.ib6() * (factory.ib6() - one.clone());
+        let ib7_is_bit = factory.ib7() * (factory.ib7() - one.clone());
         let is_padding_is_bit = factory.is_padding() * (factory.is_padding() - one);
 
         // The inverse of clock jump difference with multiplicity `invm` is the inverse-or-zero of
@@ -974,8 +976,9 @@ impl ExtProcessorTable {
             ib4_is_bit,
             ib5_is_bit,
             ib6_is_bit,
+            ib7_is_bit,
             is_padding_is_bit,
-            ci_corresponds_to_ib0_thru_ib12,
+            ci_corresponds_to_ib0_thru_ib7,
             invm_is_zero_or_cjd_inverse,
             cjd_is_zero_or_invm_inverse,
         ]
@@ -1335,6 +1338,14 @@ impl SingleRowConstraints {
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.base_row_variables[IB6.master_base_table_index()].clone()
+    }
+    pub fn ib7(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB7.master_base_table_index()].clone()
     }
     pub fn jsp(
         &self,
@@ -2884,6 +2895,15 @@ impl DualRowConstraints {
         self.current_base_row_variables[IB6.master_base_table_index()].clone()
     }
 
+    pub fn ib7(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB7.master_base_table_index()].clone()
+    }
+
     pub fn jsp(
         &self,
     ) -> ConstraintCircuitMonad<
@@ -3369,6 +3389,14 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_base_row_variables[IB6.master_base_table_index()].clone()
+    }
+    pub fn ib7_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB7.master_base_table_index()].clone()
     }
 
     pub fn jsp_next(
@@ -4357,18 +4385,19 @@ impl InstructionDeselectors {
         circuit_builder: &ConstraintCircuitBuilder<ProcessorTableChallenges, II>,
         instruction: Instruction,
         instruction_bucket_polynomials: [ConstraintCircuitMonad<ProcessorTableChallenges, II>;
-            Ord7::COUNT],
+            Ord8::COUNT],
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, II> {
         let one = circuit_builder.b_constant(1u32.into());
 
-        let selector_bits: [_; Ord7::COUNT] = [
-            instruction.ib(Ord7::IB0),
-            instruction.ib(Ord7::IB1),
-            instruction.ib(Ord7::IB2),
-            instruction.ib(Ord7::IB3),
-            instruction.ib(Ord7::IB4),
-            instruction.ib(Ord7::IB5),
-            instruction.ib(Ord7::IB6),
+        let selector_bits: [_; Ord8::COUNT] = [
+            instruction.ib(Ord8::IB0),
+            instruction.ib(Ord8::IB1),
+            instruction.ib(Ord8::IB2),
+            instruction.ib(Ord8::IB3),
+            instruction.ib(Ord8::IB4),
+            instruction.ib(Ord8::IB5),
+            instruction.ib(Ord8::IB6),
+            instruction.ib(Ord8::IB7),
         ];
         let deselector_polynomials =
             selector_bits.map(|b| one.clone() - circuit_builder.b_constant(b));
@@ -4396,6 +4425,7 @@ impl InstructionDeselectors {
             factory.ib4(),
             factory.ib5(),
             factory.ib6(),
+            factory.ib7(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -4421,6 +4451,7 @@ impl InstructionDeselectors {
             factory.ib4(),
             factory.ib5(),
             factory.ib6(),
+            factory.ib7(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -4446,6 +4477,7 @@ impl InstructionDeselectors {
             factory.ib4_next(),
             factory.ib5_next(),
             factory.ib6_next(),
+            factory.ib7_next(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -4589,22 +4621,22 @@ impl<'a> Display for ProcessorMatrixRow<'a> {
 
         row_blank(f)?;
 
+        let w = 2;
         row(
             f,
             format!(
-                "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                "hv0-3:    [ {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
                 self.row[HV0.base_table_index()].value(),
                 self.row[HV1.base_table_index()].value(),
                 self.row[HV2.base_table_index()].value(),
                 self.row[HV3.base_table_index()].value(),
             ),
         )?;
-        let w = 2;
         row(
             f,
             format!(
-                "ib0-6:    \
-                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
+                "ib0-7:    \
+                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
                 self.row[IB0.base_table_index()].value(),
                 self.row[IB1.base_table_index()].value(),
                 self.row[IB2.base_table_index()].value(),
@@ -4612,6 +4644,7 @@ impl<'a> Display for ProcessorMatrixRow<'a> {
                 self.row[IB4.base_table_index()].value(),
                 self.row[IB5.base_table_index()].value(),
                 self.row[IB6.base_table_index()].value(),
+                self.row[IB7.base_table_index()].value(),
             ),
         )?;
         write!(
@@ -5108,13 +5141,14 @@ mod constraint_polynomial_tests {
                 .filter(|other_instruction| *other_instruction != instruction)
             {
                 let mut curr_row = master_base_table.slice_mut(s![0, ..]);
-                curr_row[IB0.master_base_table_index()] = other_instruction.ib(Ord7::IB0);
-                curr_row[IB1.master_base_table_index()] = other_instruction.ib(Ord7::IB1);
-                curr_row[IB2.master_base_table_index()] = other_instruction.ib(Ord7::IB2);
-                curr_row[IB3.master_base_table_index()] = other_instruction.ib(Ord7::IB3);
-                curr_row[IB4.master_base_table_index()] = other_instruction.ib(Ord7::IB4);
-                curr_row[IB5.master_base_table_index()] = other_instruction.ib(Ord7::IB5);
-                curr_row[IB6.master_base_table_index()] = other_instruction.ib(Ord7::IB6);
+                curr_row[IB0.master_base_table_index()] = other_instruction.ib(Ord8::IB0);
+                curr_row[IB1.master_base_table_index()] = other_instruction.ib(Ord8::IB1);
+                curr_row[IB2.master_base_table_index()] = other_instruction.ib(Ord8::IB2);
+                curr_row[IB3.master_base_table_index()] = other_instruction.ib(Ord8::IB3);
+                curr_row[IB4.master_base_table_index()] = other_instruction.ib(Ord8::IB4);
+                curr_row[IB5.master_base_table_index()] = other_instruction.ib(Ord8::IB5);
+                curr_row[IB6.master_base_table_index()] = other_instruction.ib(Ord8::IB6);
+                curr_row[IB7.master_base_table_index()] = other_instruction.ib(Ord8::IB7);
                 let result = deselector.clone().consume().evaluate(
                     master_base_table.view(),
                     master_ext_table.view(),
@@ -5131,13 +5165,14 @@ mod constraint_polynomial_tests {
 
             // Positive tests
             let mut curr_row = master_base_table.slice_mut(s![0, ..]);
-            curr_row[IB0.master_base_table_index()] = instruction.ib(Ord7::IB0);
-            curr_row[IB1.master_base_table_index()] = instruction.ib(Ord7::IB1);
-            curr_row[IB2.master_base_table_index()] = instruction.ib(Ord7::IB2);
-            curr_row[IB3.master_base_table_index()] = instruction.ib(Ord7::IB3);
-            curr_row[IB4.master_base_table_index()] = instruction.ib(Ord7::IB4);
-            curr_row[IB5.master_base_table_index()] = instruction.ib(Ord7::IB5);
-            curr_row[IB6.master_base_table_index()] = instruction.ib(Ord7::IB6);
+            curr_row[IB0.master_base_table_index()] = instruction.ib(Ord8::IB0);
+            curr_row[IB1.master_base_table_index()] = instruction.ib(Ord8::IB1);
+            curr_row[IB2.master_base_table_index()] = instruction.ib(Ord8::IB2);
+            curr_row[IB3.master_base_table_index()] = instruction.ib(Ord8::IB3);
+            curr_row[IB4.master_base_table_index()] = instruction.ib(Ord8::IB4);
+            curr_row[IB5.master_base_table_index()] = instruction.ib(Ord8::IB5);
+            curr_row[IB6.master_base_table_index()] = instruction.ib(Ord8::IB6);
+            curr_row[IB7.master_base_table_index()] = instruction.ib(Ord8::IB7);
             let result = deselector.consume().evaluate(
                 master_base_table.view(),
                 master_ext_table.view(),
