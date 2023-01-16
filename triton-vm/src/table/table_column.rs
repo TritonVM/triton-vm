@@ -201,6 +201,7 @@ pub enum JumpStackExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashBaseTableColumn {
     ROUNDNUMBER,
+    CI,
     STATE0,
     STATE1,
     STATE2,

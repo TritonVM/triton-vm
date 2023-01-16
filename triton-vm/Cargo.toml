@@ -31,7 +31,7 @@ default-features = false
 
 [dependencies]
 triton-opcodes = { path = "../triton-opcodes" }
-twenty-first = "0.11"
+twenty-first = {git = "https://github.com/Neptune-Crypto/twenty-first", branch = "sponge" }
 triton-profiler = "0.13"
 anyhow = "1.0"
 bincode = "1.3"

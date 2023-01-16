@@ -8,8 +8,8 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::ALPHA;
-use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::MDS;
 use twenty_first::shared_math::rescue_prime_regular::MDS_INV;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
@@ -458,8 +458,8 @@ impl HashTable {
         hash_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let hash_table_to_fill = hash_table.slice_mut(s![0..aet.hash_matrix.nrows(), ..]);
-        aet.hash_matrix.clone().move_into(hash_table_to_fill);
+        let hash_table_to_fill = hash_table.slice_mut(s![0..aet.hash_trace.nrows(), ..]);
+        aet.hash_trace.clone().move_into(hash_table_to_fill);
     }
 
     pub fn pad_trace(_hash_table: &mut ArrayViewMut2<BFieldElement>) {

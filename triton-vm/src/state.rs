@@ -3,9 +3,21 @@ use std::convert::TryInto;
 use std::fmt::Display;
 
 use anyhow::Result;
+use itertools::Itertools;
 use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+use twenty_first::shared_math::other::log_2_floor;
+use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
+use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
+use twenty_first::shared_math::rescue_prime_regular::RATE;
+use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
+use twenty_first::shared_math::traits::Inverse;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use triton_opcodes::instruction::AnInstruction::*;
 use triton_opcodes::instruction::Instruction;
@@ -13,21 +25,13 @@ use triton_opcodes::ord_n::Ord16;
 use triton_opcodes::ord_n::Ord16::*;
 use triton_opcodes::ord_n::Ord8;
 use triton_opcodes::program::Program;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::other::log_2_floor;
-use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
-use twenty_first::shared_math::rescue_prime_regular::DIGEST_LENGTH;
-use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
-use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
-use twenty_first::shared_math::traits::Inverse;
-use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::error::vm_err;
 use crate::error::vm_fail;
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStack;
 use crate::table::processor_table;
-use crate::table::processor_table::ProcessorMatrixRow;
+use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::table_column::BaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 
@@ -71,6 +75,13 @@ pub struct VMState<'pgm> {
 
     /// RAM pointer
     pub ramp: u64,
+
+    /// The current state of the one, global Sponge that can be manipulated using instructions
+    /// `AbsorbInit`, `Absorb`, and `Squeeze`. Instruction `AbsorbInit` resets the state prior to
+    /// absorbing.
+    /// Note that this is the _full_ state, including capacity. The capacity should never be
+    /// exposed outside of the VM.
+    pub sponge_state: [BFieldElement; STATE_SIZE],
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -78,10 +89,13 @@ pub enum VMOutput {
     /// Trace output from `write_io`
     WriteOutputSymbol(BFieldElement),
 
-    /// Trace of state registers for hash coprocessor table
-    ///
-    /// One row per round in the XLIX permutation
-    XlixTrace(Box<[[BFieldElement; STATE_SIZE]; 1 + NUM_ROUNDS]>),
+    /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
+    /// or any of the Sponge instructions `absorb_init`, `absorb`, `squeeze`.
+    /// One row per round in the XLIX permutation.
+    XlixTrace(
+        Instruction,
+        Box<[[BFieldElement; STATE_SIZE]; 1 + NUM_ROUNDS]>,
+    ),
 
     /// Executed u32 instruction as well as its left-hand side and right-hand side
     U32TableEntries(Vec<(Instruction, BFieldElement, BFieldElement)>),
@@ -292,19 +306,71 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Hash => {
-                let hash_input: [BFieldElement; 2 * DIGEST_LENGTH] = self.op_stack.pop_n()?;
-                let hash_trace = RescuePrimeRegular::trace(&hash_input);
-                let hash_output = &hash_trace[hash_trace.len() - 1][0..DIGEST_LENGTH];
-                vm_output = Some(VMOutput::XlixTrace(Box::new(hash_trace)));
+                let to_hash = self.op_stack.pop_n::<{ 2 * DIGEST_LENGTH }>()?;
+                let mut hash_input = [BFIELD_ZERO; STATE_SIZE];
+                hash_input[..2 * DIGEST_LENGTH].copy_from_slice(&to_hash);
+                // to distinguish between fix-length and variable-length inputs
+                hash_input[RATE] = BFIELD_ONE;
+                let xlix_trace = RescuePrimeRegular::full_trace(hash_input);
+                let hash_output = &xlix_trace[xlix_trace.len() - 1][0..DIGEST_LENGTH];
 
                 for i in (0..DIGEST_LENGTH).rev() {
                     self.op_stack.push(hash_output[i]);
                 }
-
                 for _ in 0..DIGEST_LENGTH {
                     self.op_stack.push(BFieldElement::zero());
                 }
 
+                vm_output = Some(VMOutput::XlixTrace(Hash, Box::new(xlix_trace)));
+                self.instruction_pointer += 1;
+            }
+
+            AbsorbInit => {
+                // fetch top elements but don't alter the stack
+                let to_absorb = self.op_stack.pop_n::<{ RATE }>()?;
+                for i in (0..RATE).rev() {
+                    self.op_stack.push(to_absorb[i]);
+                }
+
+                // reset the Sponge's state
+                self.sponge_state = [BFIELD_ZERO; STATE_SIZE];
+                self.sponge_state[..RATE].copy_from_slice(&to_absorb);
+                let xlix_trace = RescuePrimeRegular::full_trace(self.sponge_state);
+                self.sponge_state = xlix_trace.last().unwrap().to_owned();
+
+                vm_output = Some(VMOutput::XlixTrace(AbsorbInit, Box::new(xlix_trace)));
+                self.instruction_pointer += 1;
+            }
+
+            Absorb => {
+                // fetch top elements but don't alter the stack
+                let to_absorb = self.op_stack.pop_n::<{ RATE }>()?;
+                for i in (0..RATE).rev() {
+                    self.op_stack.push(to_absorb[i]);
+                }
+
+                self.sponge_state[..RATE]
+                    .iter_mut()
+                    .zip_eq(to_absorb.iter())
+                    .for_each(|(sponge_state_element, &to_absorb_element)| {
+                        *sponge_state_element += to_absorb_element;
+                    });
+                let xlix_trace = RescuePrimeRegular::full_trace(self.sponge_state);
+                self.sponge_state = xlix_trace.last().unwrap().to_owned();
+
+                vm_output = Some(VMOutput::XlixTrace(Absorb, Box::new(xlix_trace)));
+                self.instruction_pointer += 1;
+            }
+
+            Squeeze => {
+                let _ = self.op_stack.pop_n::<{ RATE }>()?;
+                let xlix_trace = RescuePrimeRegular::full_trace(self.sponge_state);
+                self.sponge_state = xlix_trace.last().unwrap().to_owned();
+                for i in (0..RATE).rev() {
+                    self.op_stack.push(self.sponge_state[i]);
+                }
+
+                vm_output = Some(VMOutput::XlixTrace(Squeeze, Box::new(xlix_trace)));
                 self.instruction_pointer += 1;
             }
 
@@ -680,10 +746,10 @@ impl<'pgm> VMState<'pgm> {
 
     fn divine_sibling(&mut self, secret_in: &mut Vec<BFieldElement>) -> Result<()> {
         // st0-st4
-        let _ = self.op_stack.pop_n::<DIGEST_LENGTH>()?;
+        let _ = self.op_stack.pop_n::<{ DIGEST_LENGTH }>()?;
 
         // st5-st9
-        let known_digest = self.op_stack.pop_n::<DIGEST_LENGTH>()?;
+        let known_digest = self.op_stack.pop_n::<{ DIGEST_LENGTH }>()?;
 
         // st10
         let node_index_elem: BFieldElement = self.op_stack.pop()?;
@@ -751,7 +817,7 @@ impl<'pgm> Display for VMState<'pgm> {
         match self.current_instruction() {
             Ok(_) => {
                 let row = self.to_processor_row();
-                write!(f, "{}", ProcessorMatrixRow { row: row.view() })
+                write!(f, "{}", ProcessorTraceRow { row: row.view() })
             }
             Err(_) => write!(f, "END-OF-FILE"),
         }

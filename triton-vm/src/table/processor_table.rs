@@ -18,14 +18,14 @@ use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
-use triton_opcodes::instruction::all_instructions_without_args;
-use triton_opcodes::instruction::AnInstruction::*;
-use triton_opcodes::instruction::Instruction;
-use triton_opcodes::ord_n::Ord8;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use triton_opcodes::instruction::all_instructions_without_args;
+use triton_opcodes::instruction::AnInstruction::*;
+use triton_opcodes::instruction::Instruction;
+use triton_opcodes::ord_n::Ord8;
 use ProcessorTableChallengeId::*;
 
 use crate::table::challenges::TableChallenges;
@@ -69,8 +69,8 @@ impl ProcessorTable {
     ) {
         // fill the processor table from the AET
         let mut processor_table_to_fill =
-            processor_table.slice_mut(s![0..aet.processor_matrix.nrows(), ..]);
-        aet.processor_matrix
+            processor_table.slice_mut(s![0..aet.processor_trace.nrows(), ..]);
+        aet.processor_trace
             .clone()
             .move_into(&mut processor_table_to_fill);
 
@@ -1013,6 +1013,9 @@ impl ExtProcessorTable {
             (Hash, factory.instruction_hash()),
             (DivineSibling, factory.instruction_divine_sibling()),
             (AssertVector, factory.instruction_assert_vector()),
+            (AbsorbInit, factory.instruction_absorb_init()),
+            (Absorb, factory.instruction_absorb()),
+            (Squeeze, factory.instruction_squeeze()),
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
@@ -2287,6 +2290,63 @@ impl DualRowConstraints {
             specific_constraints,
             self.step_1(),
             self.keep_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_absorb_init(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.keep_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_absorb(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.keep_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_squeeze(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.stack_remains_and_top_ten_elements_unconstrained(),
             self.keep_ram(),
         ]
         .concat()
@@ -4503,11 +4563,11 @@ impl InstructionDeselectors {
     }
 }
 
-pub struct ProcessorMatrixRow<'a> {
+pub struct ProcessorTraceRow<'a> {
     pub row: ArrayView1<'a, BFieldElement>,
 }
 
-impl<'a> Display for ProcessorMatrixRow<'a> {
+impl<'a> Display for ProcessorTraceRow<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn row(f: &mut std::fmt::Formatter<'_>, s: String) -> std::fmt::Result {
             writeln!(f, "│ {: <103} │", s)
@@ -4655,11 +4715,11 @@ impl<'a> Display for ProcessorMatrixRow<'a> {
     }
 }
 
-pub struct ExtProcessorMatrixRow<'a> {
+pub struct ExtProcessorTraceRow<'a> {
     pub row: ArrayView1<'a, XFieldElement>,
 }
 
-impl<'a> Display for ExtProcessorMatrixRow<'a> {
+impl<'a> Display for ExtProcessorTraceRow<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let row = |form: &mut std::fmt::Formatter<'_>,
                    desc: &str,
@@ -4694,14 +4754,15 @@ impl<'a> Display for ExtProcessorMatrixRow<'a> {
 mod constraint_polynomial_tests {
     use ndarray::Array2;
 
+    use triton_opcodes::ord_n::Ord16;
+    use triton_opcodes::program::Program;
+
     use crate::shared_tests::SourceCodeAndInput;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
     use crate::table::master_table::MasterTable;
-    use crate::table::processor_table::ProcessorMatrixRow;
+    use crate::table::processor_table::ProcessorTraceRow;
     use crate::vm::simulate_no_input;
-    use triton_opcodes::ord_n::Ord16;
-    use triton_opcodes::program::Program;
 
     use super::*;
 
@@ -4711,8 +4772,8 @@ mod constraint_polynomial_tests {
         let code = "push 2 push -1 add assert halt";
         let program = Program::from_code(code).unwrap();
         let (aet, _, _) = simulate_no_input(&program);
-        for row in aet.processor_matrix.rows() {
-            println!("{}", ProcessorMatrixRow { row });
+        for row in aet.processor_trace.rows() {
+            println!("{}", ProcessorTraceRow { row });
         }
     }
 
@@ -4751,6 +4812,9 @@ mod constraint_polynomial_tests {
             Hash => tc.instruction_hash(),
             DivineSibling => tc.instruction_divine_sibling(),
             AssertVector => tc.instruction_assert_vector(),
+            AbsorbInit => tc.instruction_absorb_init(),
+            Absorb => tc.instruction_absorb(),
+            Squeeze => tc.instruction_squeeze(),
             Add => tc.instruction_add(),
             Mul => tc.instruction_mul(),
             Invert => tc.instruction_invert(),
@@ -5208,6 +5272,9 @@ mod constraint_polynomial_tests {
             (Hash, factory.instruction_hash()),
             (DivineSibling, factory.instruction_divine_sibling()),
             (AssertVector, factory.instruction_assert_vector()),
+            (AbsorbInit, factory.instruction_absorb_init()),
+            (Absorb, factory.instruction_absorb()),
+            (Squeeze, factory.instruction_squeeze()),
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),

@@ -23,6 +23,6 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = "0.11"
+twenty-first = {git = "https://github.com/Neptune-Crypto/twenty-first", branch = "sponge" }
 triton-vm = { path = "../triton-vm" }
 itertools = "0.10"
