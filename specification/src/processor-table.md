@@ -15,9 +15,11 @@ Namely:
 1. `RunningProductOpStackTable` for the Permutation Argument with the [OpStack Table](operational-stack-table.md).
 1. `RunningProductRamTable` for the Permutation Argument with the [RAM Table](random-access-memory-table.md).
 1. `RunningProductJumpStackTable` for the Permutation Argument with the [Jump Stack Table](jump-stack-table.md).
-1. `RunningEvaluationToHashTable` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the input to the hash function from the Processor to the Hash Coprocessor.
+1. `RunningEvaluationHashInput` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the input to the hash function from the Processor to the Hash Coprocessor.
+1. `RunningEvaluationHashDigest` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the Hash Coprocessor to the Processor.
+1. `RunningEvaluationSpongeAbsorb` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the 10 next to-be-absorbed elements from the Processor to the Hash Coprocessor.
+1. `RunningEvaluationSpongeSqueeze` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the 10 next squeezed elements from the Hash Coprocessor to the Processor.
 1. `RunningProductU32Table` for the Permutation Argument with the [U32 Table](u32-table.md).
-1. `RunningEvaluationFromHashTable` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the Hash Coprocessor to the Processor.
 1. `RunningProductAllClockJumpDifferences` for the [Multi-Table Set Equality argument](memory-consistency.md#clock-jump-differences-with-multiplicities-in-the-processor-table) with the [RAM Table](random-access-memory-table.md), the [JumpStack Table](jump-stack-table.md), and the [OpStack Table](operational-stack-table.md).
 
 Lastly, extension columns `RunningEvaluationSelectedClockCycles` and `RunningEvaluationUniqueClockJumpDifferences` help achieving [memory consistency](memory-consistency.md#unique-clock-jump-differences-in-the-processor-table).
@@ -60,8 +62,8 @@ For example, take the following part of some execution trace.
 | $i$         | hash                |   17 |  …  |   22 | $🪣·a + \sum_j 🧄_j \cdot st_j$       | $b$                                     |
 | $i+1$       | `bar`               | 1337 |  …  |   22 | $🪣·a + \sum_{j=0}^9 🧄_j \cdot st_j$ | $🪟·b + \sum_{j=0}^4 🫑_j \cdot st_{j+5}$ |
 
-In order to verify the correctness of `RunningEvaluationToHashTable`, the corresponding transition constraint needs to conditionally “activate” on row-tuple ($i-1$, $i$), where it is conditional on `ci_next` (not `ci`), and verifies absorption of the next row, _i.e._, row $i$.
-However, in order to verify the correctness of `RunningEvaluationFromHashTable`, the corresponding transition constraint needs to conditionally “activate” on row-tuple ($i$, $i+1$), where it is conditional on `ci` (not `ci_next`), and verifies absorption of the next row, _i.e._, row $i+1$.
+In order to verify the correctness of `RunningEvaluationHashInput`, the corresponding transition constraint needs to conditionally “activate” on row-tuple ($i-1$, $i$), where it is conditional on `ci_next` (not `ci`), and verifies absorption of the next row, _i.e._, row $i$.
+However, in order to verify the correctness of `RunningEvaluationHashDigest`, the corresponding transition constraint needs to conditionally “activate” on row-tuple ($i$, $i+1$), where it is conditional on `ci` (not `ci_next`), and verifies absorption of the next row, _i.e._, row $i+1$.
 
 ## Initial Constraints
 
@@ -97,8 +99,10 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `RunningProductOpStackTable` has absorbed the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 1. `RunningProductRamTable` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. `RunningProductJumpStackTable` has absorbed the first row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
-1. `RunningEvaluationToHashTable` has absorbed the first row with respect to challenges 🧄0 through 🧄9 and indeterminate 🪣 if the current instruction is `hash`. Otherwise, it is 1.
-1. `RunningEvaluationFromHashTable` is 1.
+1. `RunningEvaluationHashInput` has absorbed the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🪣 if the current instruction is `hash`. Otherwise, it is 1.
+1. `RunningEvaluationHashDigest` is 1.
+1. `RunningEvaluationSpongeAbsorb` is has absorbed the first row with respect to challenges 🧅₀ through 🧅₉ and indeterminate 🧽 if the current instruction is `absorb_init`. Otherwise, it is 1.
+1. `RunningEvaluationSpongeSqueeze` is 1.
 1. `RunningProductU32Table` is 1.
 1. The running evaluation of relevant clock cycles is 1.
 1. The running evaluation of unique clock jump differences starts off having applied one evaluation step with the clock jump difference with respect to indeterminate 🛒, if the `cjd` column does not start with zero.
@@ -140,8 +144,12 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 1. `RunningProductOpStackTable - (🪤 - 🍋·clk - 🍊·ib1 - 🍉·osp - 🫒·osv)`
 1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction)`
 1. `RunningProductJumpStackTable - (🧴 - 🍇·clk - 🍅·ci - 🍌·jsp - 🍏·jso - 🍐·jsd)`
-1. `(ci - opcode(hash))·(RunningEvaluationToHashTable - 1) + hash_deselector·(RunningEvaluationToHashTable - 🪣 - 🧄0·st0 - 🧄1·st1 - 🧄2·st2 - 🧄3·st3 - 🧄4·st4 - 🧄5·st5 - 🧄6·st6 - 🧄7·st7 - 🧄8·st8 - 🧄9·st9)`
-1. `RunningEvaluationFromHashTable - 1`
+1. `(ci - opcode(hash))·(RunningEvaluationHashInput - 1)`<br />
+    `+ hash_deselector·(RunningEvaluationHashInput - 🪣 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`
+1. `RunningEvaluationHashDigest - 1`
+1. `(ci - opcode(absorb_init))·(RunningEvaluationSpongeAbsorb - 1)`<br />
+    ` + absorb_init_deselector·(RunningEvaluationSpongeAbsorb - 🧽 - 🧅₀·st0 - 🧅₁·st1 - 🧅₂·st2 - 🧅₃·st3 - 🧅₄·st4 - 🧅₅·st5 - 🧅₆·st6 - 🧅₇·st7 - 🧅₈·st8 - 🧅₉·st9)`
+1. `RunningEvaluationSpongeSqueeze - 1`
 1. `RunningProductU32Table - 1`
 1. `rer - 1`
 1. `cjd · (reu - 🛒 - cjd)) + (1 - cjd · invm) · (reu - 1)`
@@ -149,13 +157,13 @@ However, in order to verify the correctness of `RunningEvaluationFromHashTable`,
 
 ## Consistency Constraints
 
-1. The composition of instruction buckets `ib0` through `ib6` corresponds to the current instruction `ci`.
+1. The composition of instruction buckets `ib0` through `ib7` corresponds to the current instruction `ci`.
 1. The inverse of clock jump difference with multiplicity `invm` is the inverse-or-zero of the the clock jump difference `cjd`. (Results in 2 polynomials.)
 1. The padding indicator `IsPadding` is either 0 or 1.
 
 ### Consistency Constraints as Polynomials
 
-1. `ci - (2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
+1. `ci - (2^7·ib7 + 2^6·ib6 + 2^5·ib5 + 2^4·ib4 + 2^3·ib3 + 2^2·ib2 + 2^1·ib1 + 2^0·ib0)`
 1. `invm·(invm·cjd - 1)`
 1. `cjd·(invm·cjd - 1)`
 1. `IsPadding·(IsPadding - 1)`
@@ -175,8 +183,10 @@ The following constraints apply to every pair of rows.
 1. The running product for the OpStack Table absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 1. The running product for the RAM Table absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. The running product for the JumpStack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
-1. If the current instruction in the next row is `hash`, the running evaluation “to Hash Table” absorbs the next row with respect to challenges 🧄0 through 🧄9 and indeterminate 🪣. Otherwise, it remains unchanged.
-1. If the current instruction is `hash`, the running evaluation “from Hash Table” absorbs the next row with respect to challenges 🫑0 through 🫑4 and indeterminate 🪟. Otherwise, it remains unchanged.
+1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input absorbs the next row with respect to challenges 🧄0 through 🧄9 and indeterminate 🪣. Otherwise, it remains unchanged.
+1. If the current instruction is `hash`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🫑₀ through 🫑₄ and indeterminate 🪟. Otherwise, it remains unchanged.
+1. If the current instruction in the next row is `absorb_init` or `absorb`, then the running evaluation “Sponge absorb” absorbs the next row with respect to challenges 🧅₀ through 🧅₉ and indeterminate 🧽. Otherwise, it remains unchanged.
+1. If the current instruction is `squeeze`, then the running evaluation “Sponge squeeze” absorbs the next row with respect to challenges 🥔₀ through 🥔₉ and indeterminate 🚪.
 1.  1. If the current instruction is `split`, then the running product with the U32 Table absorbs `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the running product with the U32 Table absorbs `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
     1. If the current instruction is `log2floor`, then the running product with the U32 Table absorbs `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
@@ -195,14 +205,24 @@ The following constraints apply to every pair of rows.
 1. `clk' - (clk + 1)`
 1. `IsPadding·(IsPadding' - IsPadding)`
 1. `(1 - IsPadding')·(previous_instruction' - ci)`
-1. `(ci - opcode(read_io))·(RunningEvaluationStandardInput' - RunningEvaluationStandardInput) + read_io_deselector·(RunningEvaluationStandardInput' - 🛏·RunningEvaluationStandardInput - st0')`
-1. `(ci' - opcode(write_io))·(RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput) + write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
-1. `(1 - IsPadding')·(RunningProductInstructionTable' - RunningProductInstructionTable(🛁 - 🍓·ip' - 🍒·ci' - 🥭·nia')) + IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
+1. `(ci - opcode(read_io))·(RunningEvaluationStandardInput' - RunningEvaluationStandardInput)`<br />
+    `+ read_io_deselector·(RunningEvaluationStandardInput' - 🛏·RunningEvaluationStandardInput - st0')`
+1. `(ci' - opcode(write_io))·(RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput)`<br />
+    `+ write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
+1. `(1 - IsPadding')·(RunningProductInstructionTable' - RunningProductInstructionTable(🛁 - 🍓·ip' - 🍒·ci' - 🥭·nia'))`<br />
+    `+ IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒·osv')`
 1. `RunningProductRamTable' - RunningProductRamTable·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
 1. `RunningProductJumpStackTable' - RunningProductJumpStackTable·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
-1. `(ci' - opcode(hash))·(RunningEvaluationToHashTable' - RunningEvaluationToHashTable) + hash_deselector'·(RunningEvaluationToHashTable' - 🪣·RunningEvaluationToHashTable - 🧄0·st0' - 🧄1·st1' - 🧄2·st2' - 🧄3·st3' - 🧄4·st4' - 🧄5·st5' - 🧄6·st6' - 🧄7·st7' - 🧄8·st8' - 🧄9·st9')`
-1. `(ci - opcode(hash))·(RunningEvaluationFromHashTable' - RunningEvaluationFromHashTable) + hash_deselector·(RunningEvaluationFromHashTable' - 🪟·RunningEvaluationFromHashTable - 🫑0·st5' - 🫑1·st6' - 🫑2·st7' - 🫑3·st8' - 🫑4·st9')`
+1. `(ci' - opcode(hash))·(RunningEvaluationHashInput' - RunningEvaluationHashInput)`<br />
+    `+ hash_deselector'·(RunningEvaluationHashInput' - 🪣·RunningEvaluationHashInput - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
+1. `(ci - opcode(hash))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
+    `+ hash_deselector·(RunningEvaluationHashDigest' - 🪟·RunningEvaluationHashDigest - 🫑₀·st5' - 🫑₁·st6' - 🫑₂·st7' - 🫑₃·st8' - 🫑₄·st9')`
+1. `(ci' - opcode(absorb_init))·(ci' - opcode(absorb))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
+    `+ absorb_init_deselector·(RunningEvaluationSpongeAbsorb' - 🧽·RunningEvaluationSpongeAbsorb - 🧅₀·st0' - 🧅₁·st1' - 🧅₂·st2' - 🧅₃·st3' - 🧅₄·st4' - 🧅₅·st5' - 🧅₆·st6' - 🧅₇·st7' - 🧅₈·st8' - 🧅₉·st9')`<br />
+    `+ absorb_deselector·(RunningEvaluationSpongeAbsorb' - 🧽·RunningEvaluationSpongeAbsorb - 🧅₀·st0' - 🧅₁·st1' - 🧅₂·st2' - 🧅₃·st3' - 🧅₄·st4' - 🧅₅·st5' - 🧅₆·st6' - 🧅₇·st7' - 🧅₈·st8' - 🧅₉·st9')`
+1. `(ci - opcode(squeeze))·(RunningEvaluationSpongeSqueeze' - RunningEvaluationSpongeSqueeze)`<br />
+    `+ squeeze_deselector·(RunningEvaluationSpongeSqueeze' - 🚪·RunningEvaluationSpongeSqueeze - 🥔₀·st0' - 🥔₁·st1' - 🥔₂·st2' - 🥔₃·st3' - 🥔₄·st4' - 🥔₅·st5' - 🥔₆·st6' - 🥔₇·st7' - 🥔₈·st8' - 🥔₉·st9')`
 1.  1. `split_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1' - 🥑·ci))`
     1. `+ lt_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
     1. `+ and_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`

@@ -26,7 +26,7 @@ The third property allows efficient arithmetization of the running product for t
 |:-------------|-------:|:--------------------|:----------------------|:---------------------------------------------------------------------------------|
 | `pop`        |      2 | `_ a`               | `_`                   | Pops top element from stack.                                                     |
 | `push` + `a` |      1 | `_`                 | `_ a`                 | Pushes `a` onto the stack.                                                       |
-| `divine`     |      g | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
+| `divine`     |      8 | `_`                 | `_ a`                 | Pushes a non-deterministic element `a` to the stack. Interface for secret input. |
 | `dup`  + `i` |      9 | e.g., `_ e d c b a` | e.g., `_ e d c b a d` | Duplicates the element `i` positions away from the top, assuming `0 <= i < 16`.  |
 | `swap` + `i` |     17 | e.g., `_ e d c b a` | e.g., `_ e a c b d`   | Swaps the `i`th stack element with the top of the stack, assuming `0 < i < 16`.  |
 
@@ -43,15 +43,15 @@ the value `a` was supplied as a secret input.
 
 ## Control Flow
 
-| Instruction  | Opcode | old OpStack | new OpStack | old `ip` | new `ip` | old JumpStack | new JumpStack | Description                                                                                                                 |
-|:-------------|-------:|:------------|:------------|:---------|:---------|:--------------|:--------------|:----------------------------------------------------------------------------------------------------------------------------|
-| `nop`        |     16 | `_`         | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Do nothing                                                                                                                  |
-| `skiz`       |     10 | `_ a`       | `_`         | `_`      | `_ + s`  | `_`           | `_`           | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether or not next instruction takes an argument. |
-| `call` + `d` |     25 | `_`         | `_`         | `o`      | `d`      | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                          |
-| `return`     |     24 | `_`         | `_`         | `_`      | `o`      | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                        |
-| `recurse`    |     32 | `_`         | `_`         | `_`      | `d`      | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).           |
-| `assert`     |     18 | `_ a`       | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                     |
-| `halt`       |      0 | `_`         | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                          |
+| Instruction  | Opcode | old OpStack | new OpStack | old `ip` | new `ip` | old JumpStack | new JumpStack | Description                                                                                                              |
+|:-------------|-------:|:------------|:------------|:---------|:---------|:--------------|:--------------|:-------------------------------------------------------------------------------------------------------------------------|
+| `nop`        |     16 | `_`         | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Do nothing                                                                                                               |
+| `skiz`       |     10 | `_ a`       | `_`         | `_`      | `_ + s`  | `_`           | `_`           | Skip next instruction if `a` is zero. `s` ∈ {1, 2, 3} depends on `a` and whether the next instruction takes an argument. |
+| `call` + `d` |     25 | `_`         | `_`         | `o`      | `d`      | `_`           | `_ (o+2, d)`  | Push `(o+2,d)` to the jump stack, and jump to absolute address `d`                                                       |
+| `return`     |     24 | `_`         | `_`         | `_`      | `o`      | `_ (o, d)`    | `_`           | Pop one pair off the jump stack and jump to that pair's return address (which is the first element).                     |
+| `recurse`    |     32 | `_`         | `_`         | `_`      | `d`      | `_ (o, d)`    | `_ (o, d)`    | Peek at the top pair of the jump stack and jump to that pair's destination address (which is the second element).        |
+| `assert`     |     18 | `_ a`       | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Pops `a` if `a == 1`, else crashes the virtual machine.                                                                  |
+| `halt`       |      0 | `_`         | `_`         | `_`      | `_ + 1`  | `_`           | `_`           | Solves the halting problem (if the instruction is reached). Indicates graceful shutdown of the VM.                       |
 
 ## Memory Access
 
@@ -67,9 +67,9 @@ the value `a` was supplied as a secret input.
 | `hash`           |     56 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
 | `divine_sibling` |     64 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
 | `assert_vector`  |     72 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
-| `absorb_init`    |      ? | `_jihgfedcba`   | `_jihgfedcba`                 | Resets the Sponge's state and absorbs the stack's ten top-most elements.                                |
-| `absorb`         |      ? | `_jihgfedcba`   | `_jihgfedcba`                 | Absorbs the stack's ten top-most elements into the Sponge state.                                        |
-| `squeeze`        |      ? | `_jihgfedcba`   | `_zyxwvutsrq`                 | Squeezes the Sponge, overwriting the stack's ten top-most elements                                      |
+| `absorb_init`    |     80 | `_jihgfedcba`   | `_jihgfedcba`                 | Resets the Sponge's state and absorbs the stack's ten top-most elements.                                |
+| `absorb`         |     88 | `_jihgfedcba`   | `_jihgfedcba`                 | Absorbs the stack's ten top-most elements into the Sponge state.                                        |
+| `squeeze`        |     96 | `_jihgfedcba`   | `_zyxwvutsrq`                 | Squeezes the Sponge, overwriting the stack's ten top-most elements                                      |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are reversed and concatenated with six zeros, resulting in `abcdefghij000000`.
@@ -103,7 +103,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 |:------------|-------:|:------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
 | `add`       |     26 | `_ b a`     | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
 | `mul`       |     34 | `_ b a`     | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
-| `invert`    |     80 | `_ a`       | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
+| `invert`    |    104 | `_ a`       | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
 | `eq`        |     42 | `_ b a`     | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
 
 ## Bitwise Arithmetic on Stack
@@ -122,14 +122,14 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction | Opcode | old OpStack     | new OpStack     | Description                                                                                                                                                  |
 |:------------|-------:|:----------------|:----------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `xxadd`     |     88 | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.       |
-| `xxmul`     |     96 | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result. |
-| `xinvert`   |    104 | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                          |
+| `xxadd`     |    112 | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.       |
+| `xxmul`     |    120 | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result. |
+| `xinvert`   |    128 | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                          |
 | `xbmul`     |     50 | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.           |
 
 ## Input/Output
 
 | Instruction | Opcode | old OpStack | new OpStack | Description                                                             |
 |:------------|-------:|:------------|:------------|:------------------------------------------------------------------------|
-| `read_io`   |    112 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
+| `read_io`   |    136 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
 | `write_io`  |     58 | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |
