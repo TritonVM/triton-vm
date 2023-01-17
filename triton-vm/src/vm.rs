@@ -1,5 +1,9 @@
+use ndarray::s;
+use ndarray::Array2;
+use ndarray::ArrayBase;
 use ndarray::Axis;
-use ndarray::{Array2, ArrayBase, Ix2, OwnedRepr};
+use ndarray::Ix2;
+use ndarray::OwnedRepr;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
@@ -147,9 +151,9 @@ impl Default for AlgebraicExecutionTrace {
 impl AlgebraicExecutionTrace {
     pub fn append_hash_trace(&mut self, xlix_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
         let mut hash_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
-        for mut row in hash_trace_addendum.rows_mut() {
-            row[CI.base_table_index()] = Instruction::Hash.opcode_b();
-        }
+        hash_trace_addendum
+            .slice_mut(s![.., CI.base_table_index()])
+            .fill(Instruction::Hash.opcode_b());
         self.hash_trace
             .append(Axis(0), hash_trace_addendum.view())
             .expect("shapes must be identical");
@@ -165,9 +169,9 @@ impl AlgebraicExecutionTrace {
             Instruction::AbsorbInit | Instruction::Absorb | Instruction::Squeeze
         ));
         let mut sponge_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
-        for mut row in sponge_trace_addendum.rows_mut() {
-            row[CI.base_table_index()] = instruction.opcode_b();
-        }
+        sponge_trace_addendum
+            .slice_mut(s![.., CI.base_table_index()])
+            .fill(instruction.opcode_b());
         self.sponge_trace
             .append(Axis(0), sponge_trace_addendum.view())
             .expect("shapes must be identical");

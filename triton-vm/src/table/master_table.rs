@@ -315,11 +315,27 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 
 impl MasterBaseTable {
     pub fn padded_height(aet: &AlgebraicExecutionTrace, program: &[BFieldElement]) -> usize {
-        let instruction_table_len = program.len() + aet.processor_trace.nrows();
-        let hash_table_len = aet.hash_trace.nrows();
-        let u32_table_len = Self::u32_table_length(aet);
-        let max_height = max(max(instruction_table_len, hash_table_len), u32_table_len);
+        let max_height = [
+            Self::instruction_table_length(aet, program),
+            Self::hash_table_length(aet),
+            Self::u32_table_length(aet),
+        ]
+        .iter()
+        .max()
+        .unwrap()
+        .to_owned();
         roundup_npo2(max_height as u64) as usize
+    }
+
+    pub fn instruction_table_length(
+        aet: &AlgebraicExecutionTrace,
+        program: &[BFieldElement],
+    ) -> usize {
+        program.len() + aet.processor_trace.nrows()
+    }
+
+    pub fn hash_table_length(aet: &AlgebraicExecutionTrace) -> usize {
+        aet.sponge_trace.nrows() + aet.hash_trace.nrows()
     }
 
     fn u32_table_length(aet: &AlgebraicExecutionTrace) -> usize {
@@ -345,7 +361,7 @@ impl MasterBaseTable {
         let unit_distance = randomized_padded_trace_len / padded_height;
         let program_len = program.len();
         let main_execution_len = aet.processor_trace.nrows();
-        let hash_coprocessor_execution_len = aet.hash_trace.nrows();
+        let hash_coprocessor_execution_len = Self::hash_table_length(&aet);
         let u32_coprocesor_execution_len = Self::u32_table_length(&aet);
 
         let num_rows = randomized_padded_trace_len;
@@ -397,6 +413,7 @@ impl MasterBaseTable {
     pub fn pad(&mut self) {
         let program_len = self.program_len;
         let main_execution_len = self.main_execution_len;
+        let hash_coprocessor_execution_len = self.hash_coprocessor_execution_len;
         let u32_table_len = self.u32_coprocesor_execution_len;
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
@@ -412,7 +429,7 @@ impl MasterBaseTable {
         let jump_stack_table = &mut self.table_mut(TableId::JumpStackTable);
         JumpStackTable::pad_trace(jump_stack_table, main_execution_len);
         let hash_table = &mut self.table_mut(TableId::HashTable);
-        HashTable::pad_trace(hash_table);
+        HashTable::pad_trace(hash_table, hash_coprocessor_execution_len);
         let u32_table = &mut self.table_mut(TableId::U32Table);
         U32Table::pad_trace(u32_table, u32_table_len);
     }

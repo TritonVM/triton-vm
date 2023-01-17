@@ -1,7 +1,8 @@
 use itertools::Itertools;
-use ndarray::s;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use ndarray::{s, Array1};
 use num_traits::One;
 use strum::EnumCount;
 use strum_macros::Display;
@@ -16,6 +17,8 @@ use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use triton_opcodes::instruction::Instruction;
 
 use crate::table::challenges::TableChallenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
@@ -71,54 +74,109 @@ impl ExtHashTable {
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
 
         let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_base_table_index()));
+        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
         let running_evaluation_hash_input =
             circuit_builder.input(ExtRow(HashInputRunningEvaluation.master_ext_table_index()));
         let running_evaluation_hash_digest =
             circuit_builder.input(ExtRow(HashDigestRunningEvaluation.master_ext_table_index()));
+        let running_evaluation_sponge_absorb = circuit_builder.input(ExtRow(
+            SpongeAbsorbRunningEvaluation.master_ext_table_index(),
+        ));
+        let running_evaluation_sponge_squeeze = circuit_builder.input(ExtRow(
+            SpongeSqueezeRunningEvaluation.master_ext_table_index(),
+        ));
+        let running_evaluation_sponge_order = circuit_builder.input(ExtRow(
+            SpongeOrderRunningEvaluation.master_ext_table_index(),
+        ));
+
+        let ci_is_opcode_of_hash =
+            ci.clone() - circuit_builder.b_constant(Instruction::Hash.opcode_b());
+        let ci_is_opcode_of_absorb_init =
+            ci.clone() - circuit_builder.b_constant(Instruction::AbsorbInit.opcode_b());
         let state = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
         ]
         .map(|st| circuit_builder.input(BaseRow(st.master_base_table_index())));
-
-        let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
-
-        // Evaluation Argument “hash input”
-        // If the round number is 0, the running evaluation is the default initial.
-        // Else, the first update has been applied to the running evaluation.
-        let running_evaluation_hash_input_is_default_initial =
-            running_evaluation_hash_input.clone() - running_evaluation_initial.clone();
-        let compressed_row = [
-            challenge(StackInputWeight0),
-            challenge(StackInputWeight1),
-            challenge(StackInputWeight2),
-            challenge(StackInputWeight3),
-            challenge(StackInputWeight4),
-            challenge(StackInputWeight5),
-            challenge(StackInputWeight6),
-            challenge(StackInputWeight7),
-            challenge(StackInputWeight8),
-            challenge(StackInputWeight9),
+        let compressed_row: ConstraintCircuitMonad<_, _> = [
+            challenge(HashInputWeight0),
+            challenge(HashInputWeight1),
+            challenge(HashInputWeight2),
+            challenge(HashInputWeight3),
+            challenge(HashInputWeight4),
+            challenge(HashInputWeight5),
+            challenge(HashInputWeight6),
+            challenge(HashInputWeight7),
+            challenge(HashInputWeight8),
+            challenge(HashInputWeight9),
         ]
         .into_iter()
         .zip_eq(state.into_iter())
         .map(|(w, s)| s * w)
         .sum();
+
+        let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
+
+        let current_instruction_is_absorb_init_or_hash =
+            ci_is_opcode_of_absorb_init.clone() * ci_is_opcode_of_hash.clone();
+
+        // Evaluation Argument “hash input”
+        // If the round number is 0, the running evaluation is the default initial.
+        // If the current instruction is AbsorbInit, the running evaluation is the default initial.
+        // Else, the first update has been applied to the running evaluation.
         let from_processor_indeterminate = challenge(HashInputEvalIndeterminate);
-        let running_evaluation_hash_input_accumulates_first_row = running_evaluation_hash_input
+        let running_evaluation_hash_input_is_default_initial =
+            running_evaluation_hash_input.clone() - running_evaluation_initial.clone();
+        let running_evaluation_hash_input_has_accumulated_first_row = running_evaluation_hash_input
             - running_evaluation_initial.clone() * from_processor_indeterminate
-            - compressed_row;
+            - compressed_row.clone();
         let running_evaluation_hash_input_is_initialized_correctly = round_number.clone()
-            * running_evaluation_hash_input_accumulates_first_row
+            * ci_is_opcode_of_absorb_init.clone()
+            * running_evaluation_hash_input_has_accumulated_first_row
+            + ci_is_opcode_of_hash.clone()
+                * running_evaluation_hash_input_is_default_initial.clone()
             + (one - round_number) * running_evaluation_hash_input_is_default_initial;
 
         // Evaluation Argument “hash digest”
         let running_evaluation_hash_digest_is_default_initial =
-            running_evaluation_hash_digest - running_evaluation_initial;
+            running_evaluation_hash_digest - running_evaluation_initial.clone();
+
+        // Evaluation Argument “sponge absorb”
+        let sponge_absorb_indeterminate = challenge(SpongeAbsorbEvalIndeterminate);
+        let running_evaluation_sponge_absorb_is_default_initial =
+            running_evaluation_sponge_absorb.clone() - running_evaluation_initial.clone();
+        let running_evaluation_sponge_absorb_has_accumulated_first_row =
+            running_evaluation_sponge_absorb
+                - running_evaluation_initial.clone() * sponge_absorb_indeterminate
+                - compressed_row;
+        let running_evaluation_sponge_absorb_is_initialized_correctly = ci_is_opcode_of_hash
+            .clone()
+            * running_evaluation_sponge_absorb_has_accumulated_first_row
+            + ci_is_opcode_of_absorb_init.clone()
+                * running_evaluation_sponge_absorb_is_default_initial;
+
+        // Evaluation Argument “sponge squeeze”
+        let running_evaluation_sponge_squeeze_is_default_initial =
+            running_evaluation_sponge_squeeze - running_evaluation_initial.clone();
+
+        // Evaluation Argument “sponge order”
+        let sponge_order_indeterminate = challenge(SpongeOrderEvalIndeterminate);
+        let running_evaluation_sponge_order_is_default_initial =
+            running_evaluation_sponge_order.clone() - running_evaluation_initial.clone();
+        let running_evaluation_sponge_order_has_accumulated_ci = running_evaluation_sponge_order
+            - running_evaluation_initial * sponge_order_indeterminate
+            - ci;
+        let running_evaluation_sponge_order_is_initialized_correctly = ci_is_opcode_of_hash
+            * running_evaluation_sponge_order_has_accumulated_ci
+            + ci_is_opcode_of_absorb_init * running_evaluation_sponge_order_is_default_initial;
 
         [
             round_number_is_0_or_1,
+            current_instruction_is_absorb_init_or_hash,
             running_evaluation_hash_input_is_initialized_correctly,
             running_evaluation_hash_digest_is_default_initial,
+            running_evaluation_sponge_absorb_is_initialized_correctly,
+            running_evaluation_sponge_squeeze_is_default_initial,
+            running_evaluation_sponge_order_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -361,16 +419,16 @@ impl ExtHashTable {
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
         let xlix_input = next_state[0..2 * DIGEST_LENGTH].to_owned();
         let stack_input_weights = [
-            StackInputWeight0,
-            StackInputWeight1,
-            StackInputWeight2,
-            StackInputWeight3,
-            StackInputWeight4,
-            StackInputWeight5,
-            StackInputWeight6,
-            StackInputWeight7,
-            StackInputWeight8,
-            StackInputWeight9,
+            HashInputWeight0,
+            HashInputWeight1,
+            HashInputWeight2,
+            HashInputWeight3,
+            HashInputWeight4,
+            HashInputWeight5,
+            HashInputWeight6,
+            HashInputWeight7,
+            HashInputWeight8,
+            HashInputWeight9,
         ]
         .map(|w| circuit_builder.challenge(w));
         let compressed_row_from_processor = xlix_input
@@ -396,11 +454,11 @@ impl ExtHashTable {
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
         let hash_digest = next_state[0..DIGEST_LENGTH].to_owned();
         let digest_output_weights = [
-            DigestOutputWeight0,
-            DigestOutputWeight1,
-            DigestOutputWeight2,
-            DigestOutputWeight3,
-            DigestOutputWeight4,
+            HashDigestWeight0,
+            HashDigestWeight1,
+            HashDigestWeight2,
+            HashDigestWeight3,
+            HashDigestWeight4,
         ]
         .map(|w| circuit_builder.challenge(w));
         let compressed_row_hash_digest = hash_digest
@@ -453,13 +511,21 @@ impl HashTable {
         hash_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let hash_table_to_fill = hash_table.slice_mut(s![0..aet.hash_trace.nrows(), ..]);
-        aet.hash_trace.clone().move_into(hash_table_to_fill);
+        let sponge_part_start = 0;
+        let sponge_part_end = sponge_part_start + aet.sponge_trace.nrows();
+        let hash_part_start = sponge_part_end;
+        let hash_part_end = hash_part_start + aet.hash_trace.nrows();
+
+        let sponge_part = hash_table.slice_mut(s![sponge_part_start..sponge_part_end, ..]);
+        aet.sponge_trace.clone().move_into(sponge_part);
+        let hash_part = hash_table.slice_mut(s![hash_part_start..hash_part_end, ..]);
+        aet.hash_trace.clone().move_into(hash_part);
     }
 
-    pub fn pad_trace(_hash_table: &mut ArrayViewMut2<BFieldElement>) {
-        // Hash Table is padded with all-zero rows. It is also initialized with all-zero rows.
-        // Hence, no need to do anything.
+    pub fn pad_trace(hash_table: &mut ArrayViewMut2<BFieldElement>, hash_table_length: usize) {
+        hash_table
+            .slice_mut(s![hash_table_length.., CI.base_table_index()])
+            .fill(Instruction::Hash.opcode_b());
     }
 
     pub fn extend(
@@ -472,39 +538,58 @@ impl HashTable {
         assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
+        let mut sponge_absorb_running_evaluation = EvalArg::default_initial();
+        let mut sponge_squeeze_running_evaluation = EvalArg::default_initial();
+        let mut sponge_order_running_evaluation = EvalArg::default_initial();
 
+        let rate_registers = |row: ArrayView1<BFieldElement>| {
+            [
+                row[STATE0.base_table_index()],
+                row[STATE1.base_table_index()],
+                row[STATE2.base_table_index()],
+                row[STATE3.base_table_index()],
+                row[STATE4.base_table_index()],
+                row[STATE5.base_table_index()],
+                row[STATE6.base_table_index()],
+                row[STATE7.base_table_index()],
+                row[STATE8.base_table_index()],
+                row[STATE9.base_table_index()],
+            ]
+        };
+        let digest_registers = |row: ArrayView1<BFieldElement>| {
+            [
+                row[STATE0.base_table_index()],
+                row[STATE1.base_table_index()],
+                row[STATE2.base_table_index()],
+                row[STATE3.base_table_index()],
+                row[STATE4.base_table_index()],
+            ]
+        };
+
+        let previous_row = Array1::zeros([BASE_WIDTH]);
+        let mut previous_row = previous_row.view();
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
 
-            // Add compressed input to running evaluation if round index marks beginning of hashing
-            if current_row[ROUNDNUMBER.base_table_index()].is_one() {
-                let state_for_input = [
-                    current_row[STATE0.base_table_index()],
-                    current_row[STATE1.base_table_index()],
-                    current_row[STATE2.base_table_index()],
-                    current_row[STATE3.base_table_index()],
-                    current_row[STATE4.base_table_index()],
-                    current_row[STATE5.base_table_index()],
-                    current_row[STATE6.base_table_index()],
-                    current_row[STATE7.base_table_index()],
-                    current_row[STATE8.base_table_index()],
-                    current_row[STATE9.base_table_index()],
+            if current_row[ROUNDNUMBER.base_table_index()].is_one()
+                && current_row[CI.base_table_index()] == Instruction::Hash.opcode_b()
+            {
+                // add compressed input to running evaluation “hash input”
+                let hash_input_weights = [
+                    challenges.hash_input_weight0,
+                    challenges.hash_input_weight1,
+                    challenges.hash_input_weight2,
+                    challenges.hash_input_weight3,
+                    challenges.hash_input_weight4,
+                    challenges.hash_input_weight5,
+                    challenges.hash_input_weight6,
+                    challenges.hash_input_weight7,
+                    challenges.hash_input_weight8,
+                    challenges.hash_input_weight9,
                 ];
-                let stack_input_weights = [
-                    challenges.stack_input_weight0,
-                    challenges.stack_input_weight1,
-                    challenges.stack_input_weight2,
-                    challenges.stack_input_weight3,
-                    challenges.stack_input_weight4,
-                    challenges.stack_input_weight5,
-                    challenges.stack_input_weight6,
-                    challenges.stack_input_weight7,
-                    challenges.stack_input_weight8,
-                    challenges.stack_input_weight9,
-                ];
-                let compressed_hash_input: XFieldElement = state_for_input
+                let compressed_hash_input: XFieldElement = rate_registers(current_row)
                     .iter()
-                    .zip_eq(stack_input_weights.iter())
+                    .zip_eq(hash_input_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_input_running_evaluation = hash_input_running_evaluation
@@ -512,25 +597,20 @@ impl HashTable {
                     + compressed_hash_input;
             }
 
-            // Add compressed digest to running evaluation if round index marks end of hashing
-            if current_row[ROUNDNUMBER.base_table_index()].value() == NUM_ROUNDS as u64 + 1 {
-                let state_for_output = [
-                    current_row[STATE0.base_table_index()],
-                    current_row[STATE1.base_table_index()],
-                    current_row[STATE2.base_table_index()],
-                    current_row[STATE3.base_table_index()],
-                    current_row[STATE4.base_table_index()],
+            if current_row[ROUNDNUMBER.base_table_index()].value() == NUM_ROUNDS as u64 + 1
+                && current_row[CI.base_table_index()] == Instruction::Hash.opcode_b()
+            {
+                // add compressed digest to running evaluation “hash digest”
+                let hash_digest_weights = [
+                    challenges.hash_digest_weight0,
+                    challenges.hash_digest_weight1,
+                    challenges.hash_digest_weight2,
+                    challenges.hash_digest_weight3,
+                    challenges.hash_digest_weight4,
                 ];
-                let digest_output_weights = [
-                    challenges.digest_output_weight0,
-                    challenges.digest_output_weight1,
-                    challenges.digest_output_weight2,
-                    challenges.digest_output_weight3,
-                    challenges.digest_output_weight4,
-                ];
-                let compressed_hash_digest: XFieldElement = state_for_output
+                let compressed_hash_digest: XFieldElement = digest_registers(current_row)
                     .iter()
-                    .zip_eq(digest_output_weights.iter())
+                    .zip_eq(hash_digest_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_digest_running_evaluation = hash_digest_running_evaluation
@@ -538,11 +618,96 @@ impl HashTable {
                     + compressed_hash_digest;
             }
 
+            let sponge_absorb_weights = [
+                challenges.sponge_absorb_weight0,
+                challenges.sponge_absorb_weight1,
+                challenges.sponge_absorb_weight2,
+                challenges.sponge_absorb_weight3,
+                challenges.sponge_absorb_weight4,
+                challenges.sponge_absorb_weight5,
+                challenges.sponge_absorb_weight6,
+                challenges.sponge_absorb_weight7,
+                challenges.sponge_absorb_weight8,
+                challenges.sponge_absorb_weight9,
+            ];
+            if current_row[ROUNDNUMBER.base_table_index()].is_one()
+                && current_row[CI.base_table_index()] == Instruction::AbsorbInit.opcode_b()
+            {
+                // add compressed Sponge input to running evaluation “Sponge absorb”
+                let compressed_sponge_absorb: XFieldElement = rate_registers(current_row)
+                    .iter()
+                    .zip_eq(sponge_absorb_weights.iter())
+                    .map(|(&state, &weight)| weight * state)
+                    .sum();
+                sponge_absorb_running_evaluation = sponge_absorb_running_evaluation
+                    * challenges.sponge_absorb_eval_indeterminate
+                    + compressed_sponge_absorb;
+                sponge_order_running_evaluation = sponge_order_running_evaluation
+                    * challenges.sponge_order_eval_indeterminate
+                    + Instruction::AbsorbInit.opcode_b();
+            }
+
+            if current_row[ROUNDNUMBER.base_table_index()].is_one()
+                && current_row[CI.base_table_index()] == Instruction::Absorb.opcode_b()
+            {
+                // add compressed Sponge input to running evaluation “Sponge absorb”
+                let rate_current_row = rate_registers(current_row);
+                let rate_previous_row = rate_registers(previous_row);
+                let compressed_sponge_absorb: XFieldElement = sponge_absorb_weights
+                    .iter()
+                    .zip_eq(rate_current_row.iter().zip_eq(rate_previous_row.iter()))
+                    .map(|(&weight, (&curr_state, &prev_state))| weight * (curr_state - prev_state))
+                    .sum();
+                sponge_absorb_running_evaluation = sponge_absorb_running_evaluation
+                    * challenges.sponge_absorb_eval_indeterminate
+                    + compressed_sponge_absorb;
+                sponge_order_running_evaluation = sponge_order_running_evaluation
+                    * challenges.sponge_order_eval_indeterminate
+                    + Instruction::Absorb.opcode_b();
+            }
+
+            if current_row[ROUNDNUMBER.base_table_index()].is_one()
+                && current_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b()
+            {
+                // add compressed squeezed elements to running evaluation “Sponge squeeze”
+                let sponge_squeeze_weights = [
+                    challenges.sponge_squeeze_weight0,
+                    challenges.sponge_squeeze_weight1,
+                    challenges.sponge_squeeze_weight2,
+                    challenges.sponge_squeeze_weight3,
+                    challenges.sponge_squeeze_weight4,
+                    challenges.sponge_squeeze_weight5,
+                    challenges.sponge_squeeze_weight6,
+                    challenges.sponge_squeeze_weight7,
+                    challenges.sponge_squeeze_weight8,
+                    challenges.sponge_squeeze_weight9,
+                ];
+                let compressed_sponge_squeeze: XFieldElement = rate_registers(current_row)
+                    .iter()
+                    .zip_eq(sponge_squeeze_weights.iter())
+                    .map(|(&state, &weight)| weight * state)
+                    .sum();
+                sponge_squeeze_running_evaluation = sponge_squeeze_running_evaluation
+                    * challenges.sponge_squeeze_eval_indeterminate
+                    + compressed_sponge_squeeze;
+                sponge_order_running_evaluation = sponge_order_running_evaluation
+                    * challenges.sponge_order_eval_indeterminate
+                    + Instruction::Squeeze.opcode_b();
+            }
+
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[HashInputRunningEvaluation.ext_table_index()] =
                 hash_input_running_evaluation;
             extension_row[HashDigestRunningEvaluation.ext_table_index()] =
                 hash_digest_running_evaluation;
+            extension_row[SpongeAbsorbRunningEvaluation.ext_table_index()] =
+                sponge_absorb_running_evaluation;
+            extension_row[SpongeSqueezeRunningEvaluation.ext_table_index()] =
+                sponge_squeeze_running_evaluation;
+            extension_row[SpongeOrderRunningEvaluation.ext_table_index()] =
+                sponge_order_running_evaluation;
+
+            previous_row = current_row;
         }
     }
 }
@@ -555,22 +720,22 @@ pub enum HashTableChallengeId {
     SpongeSqueezeEvalIndeterminate,
     SpongeOrderEvalIndeterminate,
 
-    StackInputWeight0,
-    StackInputWeight1,
-    StackInputWeight2,
-    StackInputWeight3,
-    StackInputWeight4,
-    StackInputWeight5,
-    StackInputWeight6,
-    StackInputWeight7,
-    StackInputWeight8,
-    StackInputWeight9,
+    HashInputWeight0,
+    HashInputWeight1,
+    HashInputWeight2,
+    HashInputWeight3,
+    HashInputWeight4,
+    HashInputWeight5,
+    HashInputWeight6,
+    HashInputWeight7,
+    HashInputWeight8,
+    HashInputWeight9,
 
-    DigestOutputWeight0,
-    DigestOutputWeight1,
-    DigestOutputWeight2,
-    DigestOutputWeight3,
-    DigestOutputWeight4,
+    HashDigestWeight0,
+    HashDigestWeight1,
+    HashDigestWeight2,
+    HashDigestWeight3,
+    HashDigestWeight4,
 }
 
 impl From<HashTableChallengeId> for usize {
@@ -591,23 +756,23 @@ pub struct HashTableChallenges {
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     // 2 * DIGEST_LENGTH elements for the input to the hash function
-    pub stack_input_weight0: XFieldElement,
-    pub stack_input_weight1: XFieldElement,
-    pub stack_input_weight2: XFieldElement,
-    pub stack_input_weight3: XFieldElement,
-    pub stack_input_weight4: XFieldElement,
-    pub stack_input_weight5: XFieldElement,
-    pub stack_input_weight6: XFieldElement,
-    pub stack_input_weight7: XFieldElement,
-    pub stack_input_weight8: XFieldElement,
-    pub stack_input_weight9: XFieldElement,
+    pub hash_input_weight0: XFieldElement,
+    pub hash_input_weight1: XFieldElement,
+    pub hash_input_weight2: XFieldElement,
+    pub hash_input_weight3: XFieldElement,
+    pub hash_input_weight4: XFieldElement,
+    pub hash_input_weight5: XFieldElement,
+    pub hash_input_weight6: XFieldElement,
+    pub hash_input_weight7: XFieldElement,
+    pub hash_input_weight8: XFieldElement,
+    pub hash_input_weight9: XFieldElement,
 
     // DIGEST_LENGTH elements for the output of the hash function, i.e., the digest
-    pub digest_output_weight0: XFieldElement,
-    pub digest_output_weight1: XFieldElement,
-    pub digest_output_weight2: XFieldElement,
-    pub digest_output_weight3: XFieldElement,
-    pub digest_output_weight4: XFieldElement,
+    pub hash_digest_weight0: XFieldElement,
+    pub hash_digest_weight1: XFieldElement,
+    pub hash_digest_weight2: XFieldElement,
+    pub hash_digest_weight3: XFieldElement,
+    pub hash_digest_weight4: XFieldElement,
 
     // RATE elements for Sponge absorption
     pub sponge_absorb_weight0: XFieldElement,
@@ -663,21 +828,21 @@ impl TableChallenges for HashTableChallenges {
             SpongeAbsorbEvalIndeterminate => self.sponge_absorb_eval_indeterminate,
             SpongeSqueezeEvalIndeterminate => self.sponge_squeeze_eval_indeterminate,
             SpongeOrderEvalIndeterminate => self.sponge_order_eval_indeterminate,
-            StackInputWeight0 => self.stack_input_weight0,
-            StackInputWeight1 => self.stack_input_weight1,
-            StackInputWeight2 => self.stack_input_weight2,
-            StackInputWeight3 => self.stack_input_weight3,
-            StackInputWeight4 => self.stack_input_weight4,
-            StackInputWeight5 => self.stack_input_weight5,
-            StackInputWeight6 => self.stack_input_weight6,
-            StackInputWeight7 => self.stack_input_weight7,
-            StackInputWeight8 => self.stack_input_weight8,
-            StackInputWeight9 => self.stack_input_weight9,
-            DigestOutputWeight0 => self.digest_output_weight0,
-            DigestOutputWeight1 => self.digest_output_weight1,
-            DigestOutputWeight2 => self.digest_output_weight2,
-            DigestOutputWeight3 => self.digest_output_weight3,
-            DigestOutputWeight4 => self.digest_output_weight4,
+            HashInputWeight0 => self.hash_input_weight0,
+            HashInputWeight1 => self.hash_input_weight1,
+            HashInputWeight2 => self.hash_input_weight2,
+            HashInputWeight3 => self.hash_input_weight3,
+            HashInputWeight4 => self.hash_input_weight4,
+            HashInputWeight5 => self.hash_input_weight5,
+            HashInputWeight6 => self.hash_input_weight6,
+            HashInputWeight7 => self.hash_input_weight7,
+            HashInputWeight8 => self.hash_input_weight8,
+            HashInputWeight9 => self.hash_input_weight9,
+            HashDigestWeight0 => self.hash_digest_weight0,
+            HashDigestWeight1 => self.hash_digest_weight1,
+            HashDigestWeight2 => self.hash_digest_weight2,
+            HashDigestWeight3 => self.hash_digest_weight3,
+            HashDigestWeight4 => self.hash_digest_weight4,
         }
     }
 }
