@@ -147,14 +147,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 ## Transition Constraints
 
 1. If the round number is 0, the round number in the next row is 0.
-1. If the round number is 1, the round number in the next row is 2.
-1. If the round number is 2, the round number in the next row is 3.
-1. If the round number is 3, the round number in the next row is 4.
-1. If the round number is 4, the round number in the next row is 5.
-1. If the round number is 5, the round number in the next row is 6.
-1. If the round number is 6, the round number in the next row is 7.
-1. If the round number is 7, the round number in the next row is 8.
-1. If the round number is 8, the round number in the next row is 9.
+1. If the round number is 1, 2, 3, 4, 5, 6, 7, or 8, then the round number in the next row is incremented by 1.
 1. If the round number is 9, the round number in the next row is either 0 or 1.
 1. If the current instruction is `hash`, then the current instruction in the next row is `hash`.
 1. If the round number is not 9, the current instruction in the next row is the current instruction in the current row.
@@ -182,14 +175,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 1. `round_no` is 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or `round_no'` is 0.
-1. `round_no` is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or `round_no'` is 2.
-1. `round_no` is 0 or 1 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or `round_no'` is 3.
-1. `round_no` is 0 or 1 or 2 or 4 or 5 or 6 or 7 or 8 or 9 or `round_no'` is 4.
-1. `round_no` is 0 or 1 or 2 or 3 or 5 or 6 or 7 or 8 or 9 or `round_no'` is 5.
-1. `round_no` is 0 or 1 or 2 or 3 or 4 or 6 or 7 or 8 or 9 or `round_no'` is 6.
-1. `round_no` is 0 or 1 or 2 or 3 or 4 or 5 or 7 or 8 or 9 or `round_no'` is 7.
-1. `round_no` is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 8 or 9 or `round_no'` is 8.
-1. `round_no` is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or 9 or `round_no'` is 9.
+1. `round_no` is 0 or 9 or `round_no'` is `round_no` + 1.
 1. `round_no` is 0 or 1 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or `round_no'` is 0 or 1.
 1. `CI` is the opcode of `absorb_init` or `absorb` or `squeeze` or `CI'` is the opcode of `hash`.
 1. `round_no` is 9 or `CI'` is `CI`.
@@ -223,14 +209,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 ### Transition Constraints as Polynomials
 
 1. `(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 5)·(round_no - 6)·(round_no - 7)·(round_no - 8)·(round_no-9)·(round_no' - 0)`
-1. `(round_no - 0)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 5)·(round_no - 6)·(round_no - 7)·(round_no - 8)·(round_no-9)·(round_no' - 2)`
-1. `(round_no - 0)·(round_no - 1)·(round_no - 3)·(round_no - 4)·(round_no - 5)·(round_no - 6)·(round_no - 7)·(round_no - 8)·(round_no-9)·(round_no' - 3)`
-1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 4)·(round_no - 5)·(round_no - 6)·(round_no - 7)·(round_no - 8)·(round_no-9)·(round_no' - 4)`
-1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 5)·(round_no - 6)·(round_no - 7)·(round_no - 8)·(round_no-9)·(round_no' - 5)`
-1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 6)·(round_no - 7)·(round_no - 8)·(round_no-9)·(round_no' - 6)`
-1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 5)·(round_no - 7)·(round_no - 8)·(round_no-9)·(round_no' - 7)`
-1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 5)·(round_no - 6)·(round_no - 8)·(round_no-9)·(round_no' - 8)`
-1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 5)·(round_no - 6)·(round_no - 7)·(round_no-9)·(round_no' - 9)`
+1. `(round_no - 0)·(round_no - 9)·(round_no' - round_no - 1)`
 1. `(round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(round_no - 5)·(round_no - 6)·(round_no - 7)·(round_no-8)·(round_no' - 0)·(round_no' - 1)`
 1. `(CI - opcode(absorb_init))·(CI - opcode(absorb))·(CI - opcode(squeeze))·(CI' - opcode(hash))`
 1. `(round_no - 9)·(CI' - CI)`
