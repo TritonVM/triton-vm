@@ -192,12 +192,18 @@ impl ExtHashTable {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
         let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_base_table_index()));
+        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
         let state10 = circuit_builder.input(BaseRow(STATE10.master_base_table_index()));
         let state11 = circuit_builder.input(BaseRow(STATE11.master_base_table_index()));
         let state12 = circuit_builder.input(BaseRow(STATE12.master_base_table_index()));
         let state13 = circuit_builder.input(BaseRow(STATE13.master_base_table_index()));
         let state14 = circuit_builder.input(BaseRow(STATE14.master_base_table_index()));
         let state15 = circuit_builder.input(BaseRow(STATE15.master_base_table_index()));
+
+        let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
+        let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
+        let ci_is_absorb = ci.clone() - constant(Instruction::Absorb.opcode() as u64);
+        let ci_is_squeeze = ci - constant(Instruction::Squeeze.opcode() as u64);
 
         let round_number_deselector = |round_number_to_deselect| {
             (0..=NUM_ROUNDS + 1)
@@ -206,14 +212,21 @@ impl ExtHashTable {
                 .fold(constant(1), |a, b| a * b)
         };
 
-        let round_number_is_not_1_or = round_number_deselector(1);
+        let round_number_is_not_0 = round_number_deselector(0);
+        let round_number_is_not_1 = round_number_deselector(1);
         let mut consistency_constraint_circuits = vec![
-            round_number_is_not_1_or.clone() * (state10 - constant(1)), // <-- domain separation bit
-            round_number_is_not_1_or.clone() * state11,
-            round_number_is_not_1_or.clone() * state12,
-            round_number_is_not_1_or.clone() * state13,
-            round_number_is_not_1_or.clone() * state14,
-            round_number_is_not_1_or * state15,
+            round_number_is_not_0 * ci_is_hash.clone(),
+            round_number_is_not_1.clone()
+                * ci_is_absorb_init
+                * ci_is_absorb.clone()
+                * ci_is_squeeze.clone()
+                * (state10.clone() - constant(1)),
+            round_number_is_not_1.clone() * ci_is_hash * state10,
+            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state11,
+            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state12,
+            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state13,
+            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state14,
+            round_number_is_not_1 * ci_is_absorb * ci_is_squeeze * state15,
         ];
 
         let round_constant_offset = CONSTANT0A.master_base_table_index();
