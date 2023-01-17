@@ -190,7 +190,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1.  1. (`round_no'` is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or `CI'` is the opcode of `hash` or `absorb` or `squeeze` or `RunningEvaluationSpongeAbsorb` accumulates the next row)
     1. and (`round_no'` is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or `CI'` is the opcode of `hash` or `absorb_init` or `squeeze` or `RunningEvaluationSpongeAbsorb` accumulates the difference of the next row and the current row)
     1. and (`round_no'` is 1 or `RunningEvaluationSpongeAbsorb` remains unchanged)
-    1. and (`CI'` is the opcode of `absorb` or `absorb_init` or `RunningEvaluationSpongeAbsorb` remains unchanged).
+    1. and (`CI'` is the opcode of `absorb_init` or `absorb` or `RunningEvaluationSpongeAbsorb` remains unchanged).
 1. (`round_no'` is 0 or 2 or 3 or 4 or 5 or 6 or 7 or 8 or 9 or `CI'` is the opcode of `hash` or `absorb_init` or `absorb` or `RunningEvaluationSpongeSqueeze` accumulates the next row)<br />
     and (`round_no'` is 1 or `RunningEvaluationSpongeSqueeze` remains unchanged)<br />
     and (`CI'` is the opcode of `squeeze` or `RunningEvaluationSpongeSqueeze` remains unchanged).
@@ -229,14 +229,14 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
     `·(RunningEvaluationHashDigest' - 🪟·RunningEvaluationHashDigest - 🫑₀·st0' - 🫑₁·st1' - 🫑₂·st2' - 🫑₃·st3' - 🫑₄·st4')`<br />
     `+ (round_no' - 9)·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
     `+ (CI' - opcode(hash))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`
-1. `(round_no' - 0)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)·(round_no' - 6)·(round_no' - 7)·(round_no' - 8)·(round_no' - 9)`<br />
+1.  1. `(round_no' - 0)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)·(round_no' - 6)·(round_no' - 7)·(round_no' - 8)·(round_no' - 9)`<br />
     `·(CI' - opcode(hash))·(CI' - opcode(absorb))·(CI' - opcode(squeeze))`<br />
     `·(RunningEvaluationSpongeAbsorb' - 🧽·RunningEvaluationSpongeAbsorb - 🧅₀·st0' - 🧅₁·st1' - 🧅₂·st2' - 🧅₃·st3' - 🧅₄·st4' - 🧅₅·st5' - 🧅₆·st6' - 🧅₇·st7' - 🧅₈·st8' - 🧅₉·st9')`<br />
-    `+ (round_no' - 0)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)·(round_no' - 6)·(round_no' - 7)·(round_no' - 8)·(round_no' - 9)`<br />
+    1. `+ (round_no' - 0)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)·(round_no' - 6)·(round_no' - 7)·(round_no' - 8)·(round_no' - 9)`<br />
     `·(CI' - opcode(hash))·(CI' - opcode(absorb_init))·(CI' - opcode(squeeze))`<br />
     `·(RunningEvaluationSpongeAbsorb' - 🧽·RunningEvaluationSpongeAbsorb - 🧅₀·(st0' - st0) - 🧅₁·(st1' - st1) - 🧅₂·(st2' - st2) - 🧅₃·(st3' - st3) - 🧅₄·(st4' - st4) - 🧅₅·(st5' - st5) - 🧅₆·(st6' - st6) - 🧅₇·(st7' - st7) - 🧅₈·(st8' - st8) - 🧅₉·(st9' - st9))`<br />
-    `+ (round_no' - 1)·(RunningEvaluationSpongeAbsorb' - RunningEvaluationSpongeAbsorb)`<br />
-    `+ (CI' - opcode(absorb_init)·(CI' - opcode(absorb))·(RunningEvaluationSpongeAbsorb' - RunningEvaluationSpongeAbsorb))`
+    1. `+ (round_no' - 1)·(RunningEvaluationSpongeAbsorb' - RunningEvaluationSpongeAbsorb)`<br />
+    1. `+ (CI' - opcode(absorb_init)·(CI' - opcode(absorb))·(RunningEvaluationSpongeAbsorb' - RunningEvaluationSpongeAbsorb))`
 1. `(round_no' - 0)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)·(round_no' - 6)·(round_no' - 7)·(round_no' - 8)·(round_no' - 9)`<br />
     `·(CI' - opcode(hash))·(CI' - opcode(absorb_init))·(CI' - opcode(absorb))`<br />
     `·(RunningEvaluationSpongeSqueeze' - 🚪·RunningEvaluationSpongeSqueeze - 🥔₀·st0' - 🥔₁·st1' - 🥔₂·st2' - 🥔₃·st3' - 🥔₄·st4' - 🥔₅·st5' - 🥔₆·st6' - 🥔₇·st7' - 🥔₈·st8' - 🥔₉·st9')`<br />
