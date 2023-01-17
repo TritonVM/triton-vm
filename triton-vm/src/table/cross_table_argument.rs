@@ -106,8 +106,11 @@ pub struct CrossTableChallenges {
     pub processor_to_op_stack_weight: XFieldElement,
     pub processor_to_ram_weight: XFieldElement,
     pub processor_to_jump_stack_weight: XFieldElement,
-    pub processor_to_hash_weight: XFieldElement,
-    pub hash_to_processor_weight: XFieldElement,
+    pub hash_input_weight: XFieldElement,
+    pub hash_digest_weight: XFieldElement,
+    pub sponge_absorb_weight: XFieldElement,
+    pub sponge_squeeze_weight: XFieldElement,
+    pub sponge_order_weight: XFieldElement,
     pub processor_to_u32_weight: XFieldElement,
     pub all_clock_jump_differences_weight: XFieldElement,
     pub input_to_processor_weight: XFieldElement,
@@ -124,8 +127,11 @@ pub enum CrossTableChallengeId {
     ProcessorToOpStackWeight,
     ProcessorToRamWeight,
     ProcessorToJumpStackWeight,
-    ProcessorToHashWeight,
-    HashToProcessorWeight,
+    HashInputWeight,
+    HashDigestWeight,
+    SpongeAbsorbWeight,
+    SpongeSqueezeWeight,
+    SpongeOrderWeight,
     ProcessorToU32Weight,
     AllClockJumpDifferencesWeight,
     InputToProcessorWeight,
@@ -151,8 +157,11 @@ impl TableChallenges for CrossTableChallenges {
             ProcessorToOpStackWeight => self.processor_to_op_stack_weight,
             ProcessorToRamWeight => self.processor_to_ram_weight,
             ProcessorToJumpStackWeight => self.processor_to_jump_stack_weight,
-            ProcessorToHashWeight => self.processor_to_hash_weight,
-            HashToProcessorWeight => self.hash_to_processor_weight,
+            HashInputWeight => self.hash_input_weight,
+            HashDigestWeight => self.hash_digest_weight,
+            SpongeAbsorbWeight => self.sponge_absorb_weight,
+            SpongeSqueezeWeight => self.sponge_squeeze_weight,
+            SpongeOrderWeight => self.sponge_order_weight,
             ProcessorToU32Weight => self.processor_to_u32_weight,
             AllClockJumpDifferencesWeight => self.all_clock_jump_differences_weight,
             InputToProcessorWeight => self.input_to_processor_weight,
@@ -216,12 +225,21 @@ impl Evaluable for GrandCrossTableArg {
         let processor_to_jump_stack = ext_row
             [ProcessorExtTableColumn::JumpStackTablePermArg.master_ext_table_index()]
             - ext_row[JumpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()];
-        let processor_to_hash = ext_row
-            [ProcessorExtTableColumn::ToHashTableEvalArg.master_ext_table_index()]
-            - ext_row[HashExtTableColumn::FromProcessorRunningEvaluation.master_ext_table_index()];
-        let hash_to_processor = ext_row
-            [HashExtTableColumn::ToProcessorRunningEvaluation.master_ext_table_index()]
-            - ext_row[ProcessorExtTableColumn::FromHashTableEvalArg.master_ext_table_index()];
+        let hash_input = ext_row
+            [ProcessorExtTableColumn::HashInputEvalArg.master_ext_table_index()]
+            - ext_row[HashExtTableColumn::HashInputRunningEvaluation.master_ext_table_index()];
+        let hash_digest = ext_row
+            [HashExtTableColumn::HashDigestRunningEvaluation.master_ext_table_index()]
+            - ext_row[ProcessorExtTableColumn::HashDigestEvalArg.master_ext_table_index()];
+        let sponge_absorb = ext_row
+            [ProcessorExtTableColumn::SpongeAbsorbEvalArg.master_ext_table_index()]
+            - ext_row[HashExtTableColumn::SpongeAbsorbRunningEvaluation.master_ext_table_index()];
+        let sponge_squeeze = ext_row
+            [ProcessorExtTableColumn::SpongeSqueezeEvalArg.master_ext_table_index()]
+            - ext_row[HashExtTableColumn::SpongeSqueezeRunningEvaluation.master_ext_table_index()];
+        let sponge_order = ext_row
+            [ProcessorExtTableColumn::SpongeOrderEvalArg.master_ext_table_index()]
+            - ext_row[HashExtTableColumn::SpongeOrderRunningEvaluation.master_ext_table_index()];
         let processor_to_u32 = ext_row
             [ProcessorExtTableColumn::U32TablePermArg.master_ext_table_index()]
             - ext_row[U32ExtTableColumn::ProcessorPermArg.master_ext_table_index()];
@@ -241,8 +259,11 @@ impl Evaluable for GrandCrossTableArg {
             + challenges.get_challenge(ProcessorToOpStackWeight) * processor_to_op_stack
             + challenges.get_challenge(ProcessorToRamWeight) * processor_to_ram
             + challenges.get_challenge(ProcessorToJumpStackWeight) * processor_to_jump_stack
-            + challenges.get_challenge(ProcessorToHashWeight) * processor_to_hash
-            + challenges.get_challenge(HashToProcessorWeight) * hash_to_processor
+            + challenges.get_challenge(HashInputWeight) * hash_input
+            + challenges.get_challenge(HashDigestWeight) * hash_digest
+            + challenges.get_challenge(SpongeAbsorbWeight) * sponge_absorb
+            + challenges.get_challenge(SpongeSqueezeWeight) * sponge_squeeze
+            + challenges.get_challenge(SpongeOrderWeight) * sponge_order
             + challenges.get_challenge(ProcessorToU32Weight) * processor_to_u32
             + challenges.get_challenge(AllClockJumpDifferencesWeight) * all_clock_jump_differences;
         vec![non_linear_sum]

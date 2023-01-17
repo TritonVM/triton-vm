@@ -120,8 +120,16 @@ pub enum ProcessorExtTableColumn {
     RamTablePermArg,
     JumpStackTablePermArg,
 
-    ToHashTableEvalArg,
-    FromHashTableEvalArg,
+    /// For copying the hash function's input to the hash coprocessor.
+    HashInputEvalArg,
+    /// For copying the hash digest from the hash coprocessor.
+    HashDigestEvalArg,
+    /// For copying the RATE next to-be-absorbed elements to the hash coprocessor.
+    SpongeAbsorbEvalArg,
+    /// For copying the RATE next squeezed elements from the hash coprocessor.
+    SpongeSqueezeEvalArg,
+    /// For ensuring same execution order of Sponge instructions between processor and coprocessor.
+    SpongeOrderEvalArg,
 
     U32TablePermArg,
 
@@ -255,8 +263,12 @@ pub enum HashBaseTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashExtTableColumn {
-    ToProcessorRunningEvaluation,
-    FromProcessorRunningEvaluation,
+    HashInputRunningEvaluation,
+    HashDigestRunningEvaluation,
+
+    SpongeAbsorbRunningEvaluation,
+    SpongeSqueezeRunningEvaluation,
+    SpongeOrderRunningEvaluation,
 }
 
 // -------- U32 Table --------

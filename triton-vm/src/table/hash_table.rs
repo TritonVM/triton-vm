@@ -71,12 +71,10 @@ impl ExtHashTable {
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
 
         let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_base_table_index()));
-        let running_evaluation_from_processor = circuit_builder.input(ExtRow(
-            FromProcessorRunningEvaluation.master_ext_table_index(),
-        ));
-        let running_evaluation_to_processor = circuit_builder.input(ExtRow(
-            ToProcessorRunningEvaluation.master_ext_table_index(),
-        ));
+        let running_evaluation_hash_input =
+            circuit_builder.input(ExtRow(HashInputRunningEvaluation.master_ext_table_index()));
+        let running_evaluation_hash_digest =
+            circuit_builder.input(ExtRow(HashDigestRunningEvaluation.master_ext_table_index()));
         let state = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
         ]
@@ -84,11 +82,11 @@ impl ExtHashTable {
 
         let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
 
-        // Evaluation Argument “from processor”
+        // Evaluation Argument “hash input”
         // If the round number is 0, the running evaluation is the default initial.
         // Else, the first update has been applied to the running evaluation.
-        let running_evaluation_from_processor_is_default_initial =
-            running_evaluation_from_processor.clone() - running_evaluation_initial.clone();
+        let running_evaluation_hash_input_is_default_initial =
+            running_evaluation_hash_input.clone() - running_evaluation_initial.clone();
         let compressed_row = [
             challenge(StackInputWeight0),
             challenge(StackInputWeight1),
@@ -105,22 +103,22 @@ impl ExtHashTable {
         .zip_eq(state.into_iter())
         .map(|(w, s)| s * w)
         .sum();
-        let from_processor_indeterminate = challenge(FromProcessorEvalIndeterminate);
-        let running_evaluation_from_processor_is_updated = running_evaluation_from_processor
+        let from_processor_indeterminate = challenge(HashInputEvalIndeterminate);
+        let running_evaluation_hash_input_accumulates_first_row = running_evaluation_hash_input
             - running_evaluation_initial.clone() * from_processor_indeterminate
             - compressed_row;
-        let running_evaluation_from_processor_is_updated_if_and_only_if_not_a_padding_row =
-            round_number.clone() * running_evaluation_from_processor_is_updated
-                + (one - round_number) * running_evaluation_from_processor_is_default_initial;
+        let running_evaluation_hash_input_is_initialized_correctly = round_number.clone()
+            * running_evaluation_hash_input_accumulates_first_row
+            + (one - round_number) * running_evaluation_hash_input_is_default_initial;
 
-        // Evaluation Argument “to processor”
-        let running_evaluation_to_processor_is_default_initial =
-            running_evaluation_to_processor - running_evaluation_initial;
+        // Evaluation Argument “hash digest”
+        let running_evaluation_hash_digest_is_default_initial =
+            running_evaluation_hash_digest - running_evaluation_initial;
 
         [
             round_number_is_0_or_1,
-            running_evaluation_from_processor_is_updated_if_and_only_if_not_a_padding_row,
-            running_evaluation_to_processor_is_default_initial,
+            running_evaluation_hash_input_is_initialized_correctly,
+            running_evaluation_hash_digest_is_default_initial,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -188,27 +186,25 @@ impl ExtHashTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
-        let from_processor_eval_indeterminate =
-            circuit_builder.challenge(FromProcessorEvalIndeterminate);
-        let to_processor_eval_indeterminate =
-            circuit_builder.challenge(ToProcessorEvalIndeterminate);
+        let hash_input_eval_indeterminate = circuit_builder.challenge(HashInputEvalIndeterminate);
+        let hash_digest_eval_indeterminate = circuit_builder.challenge(HashDigestEvalIndeterminate);
 
         let round_number =
             circuit_builder.input(CurrentBaseRow(ROUNDNUMBER.master_base_table_index()));
-        let running_evaluation_from_processor = circuit_builder.input(CurrentExtRow(
-            FromProcessorRunningEvaluation.master_ext_table_index(),
+        let running_evaluation_hash_input = circuit_builder.input(CurrentExtRow(
+            HashInputRunningEvaluation.master_ext_table_index(),
         ));
-        let running_evaluation_to_processor = circuit_builder.input(CurrentExtRow(
-            ToProcessorRunningEvaluation.master_ext_table_index(),
+        let running_evaluation_hash_digest = circuit_builder.input(CurrentExtRow(
+            HashDigestRunningEvaluation.master_ext_table_index(),
         ));
 
         let round_number_next =
             circuit_builder.input(NextBaseRow(ROUNDNUMBER.master_base_table_index()));
-        let running_evaluation_from_processor_next = circuit_builder.input(NextExtRow(
-            FromProcessorRunningEvaluation.master_ext_table_index(),
+        let running_evaluation_hash_input_next = circuit_builder.input(NextExtRow(
+            HashInputRunningEvaluation.master_ext_table_index(),
         ));
-        let running_evaluation_to_processor_next = circuit_builder.input(NextExtRow(
-            ToProcessorRunningEvaluation.master_ext_table_index(),
+        let running_evaluation_hash_digest_next = circuit_builder.input(NextExtRow(
+            HashDigestRunningEvaluation.master_ext_table_index(),
         ));
 
         // round number
@@ -360,10 +356,9 @@ impl ExtHashTable {
         // Evaluation Arguments
 
         // from Processor Table to Hash Table
-        // If (and only if) the next row number is 1, update running evaluation “from processor.”
-        let running_evaluation_from_processor_remains = running_evaluation_from_processor_next
-            .clone()
-            - running_evaluation_from_processor.clone();
+        // If (and only if) the next row number is 1, update running evaluation “hash input.”
+        let running_evaluation_hash_input_remains =
+            running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
         let xlix_input = next_state[0..2 * DIGEST_LENGTH].to_owned();
         let stack_input_weights = [
             StackInputWeight0,
@@ -384,22 +379,22 @@ impl ExtHashTable {
             .map(|(state, weight)| weight * state)
             .sum();
 
-        let running_evaluation_from_processor_updates = running_evaluation_from_processor_next
-            - from_processor_eval_indeterminate * running_evaluation_from_processor
+        let running_evaluation_hash_input_updates = running_evaluation_hash_input_next
+            - hash_input_eval_indeterminate * running_evaluation_hash_input
             - compressed_row_from_processor;
         let round_number_next_unequal_1 = (0..=NUM_ROUNDS + 1)
             .filter(|&r| r != 1)
             .map(|r| round_number_next.clone() - constant(r as u64))
             .fold(constant(1), |a, b| a * b);
-        let running_evaluation_from_processor_is_updated_correctly =
-            running_evaluation_from_processor_remains * (round_number_next.clone() - constant(1))
-                + running_evaluation_from_processor_updates * round_number_next_unequal_1;
+        let running_evaluation_hash_input_is_updated_correctly =
+            running_evaluation_hash_input_remains * (round_number_next.clone() - constant(1))
+                + running_evaluation_hash_input_updates * round_number_next_unequal_1;
 
         // from Hash Table to Processor Table
-        // If (and only if) the next row number is 9, update running evaluation “to processor.”
-        let running_evaluation_to_processor_remains =
-            running_evaluation_to_processor_next.clone() - running_evaluation_to_processor.clone();
-        let xlix_digest = next_state[0..DIGEST_LENGTH].to_owned();
+        // If (and only if) the next row number is 9, update running evaluation “hash digest.”
+        let running_evaluation_hash_digest_remains =
+            running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
+        let hash_digest = next_state[0..DIGEST_LENGTH].to_owned();
         let digest_output_weights = [
             DigestOutputWeight0,
             DigestOutputWeight1,
@@ -408,21 +403,21 @@ impl ExtHashTable {
             DigestOutputWeight4,
         ]
         .map(|w| circuit_builder.challenge(w));
-        let compressed_row_to_processor = xlix_digest
+        let compressed_row_hash_digest = hash_digest
             .into_iter()
             .zip_eq(digest_output_weights.into_iter())
             .map(|(state, weight)| weight * state)
             .sum();
-        let running_evaluation_to_processor_updates = running_evaluation_to_processor_next
-            - to_processor_eval_indeterminate * running_evaluation_to_processor
-            - compressed_row_to_processor;
+        let running_evaluation_hash_digest_updates = running_evaluation_hash_digest_next
+            - hash_digest_eval_indeterminate * running_evaluation_hash_digest
+            - compressed_row_hash_digest;
         let round_number_next_leq_number_of_rounds = (0..=NUM_ROUNDS)
             .map(|r| round_number_next.clone() - constant(r as u64))
             .fold(constant(1), |a, b| a * b);
-        let running_evaluation_to_processor_is_updated_correctly =
-            running_evaluation_to_processor_remains
+        let running_evaluation_hash_digest_is_updated_correctly =
+            running_evaluation_hash_digest_remains
                 * (round_number_next - constant(NUM_ROUNDS as u64 + 1))
-                + running_evaluation_to_processor_updates * round_number_next_leq_number_of_rounds;
+                + running_evaluation_hash_digest_updates * round_number_next_leq_number_of_rounds;
 
         [
             vec![
@@ -432,8 +427,8 @@ impl ExtHashTable {
             ],
             hash_function_round_correctly_performs_update,
             vec![
-                running_evaluation_from_processor_is_updated_correctly,
-                running_evaluation_to_processor_is_updated_correctly,
+                running_evaluation_hash_input_is_updated_correctly,
+                running_evaluation_hash_digest_is_updated_correctly,
             ],
         ]
         .concat()
@@ -475,8 +470,8 @@ impl HashTable {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
-        let mut from_processor_running_evaluation = EvalArg::default_initial();
-        let mut to_processor_running_evaluation = EvalArg::default_initial();
+        let mut hash_input_running_evaluation = EvalArg::default_initial();
+        let mut hash_digest_running_evaluation = EvalArg::default_initial();
 
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
@@ -507,14 +502,14 @@ impl HashTable {
                     challenges.stack_input_weight8,
                     challenges.stack_input_weight9,
                 ];
-                let compressed_state_for_input: XFieldElement = state_for_input
+                let compressed_hash_input: XFieldElement = state_for_input
                     .iter()
                     .zip_eq(stack_input_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
-                from_processor_running_evaluation = from_processor_running_evaluation
-                    * challenges.from_processor_eval_indeterminate
-                    + compressed_state_for_input;
+                hash_input_running_evaluation = hash_input_running_evaluation
+                    * challenges.hash_input_eval_indeterminate
+                    + compressed_hash_input;
             }
 
             // Add compressed digest to running evaluation if round index marks end of hashing
@@ -533,29 +528,32 @@ impl HashTable {
                     challenges.digest_output_weight3,
                     challenges.digest_output_weight4,
                 ];
-                let compressed_state_for_output: XFieldElement = state_for_output
+                let compressed_hash_digest: XFieldElement = state_for_output
                     .iter()
                     .zip_eq(digest_output_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
-                to_processor_running_evaluation = to_processor_running_evaluation
-                    * challenges.to_processor_eval_indeterminate
-                    + compressed_state_for_output;
+                hash_digest_running_evaluation = hash_digest_running_evaluation
+                    * challenges.hash_digest_eval_indeterminate
+                    + compressed_hash_digest;
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[FromProcessorRunningEvaluation.ext_table_index()] =
-                from_processor_running_evaluation;
-            extension_row[ToProcessorRunningEvaluation.ext_table_index()] =
-                to_processor_running_evaluation;
+            extension_row[HashInputRunningEvaluation.ext_table_index()] =
+                hash_input_running_evaluation;
+            extension_row[HashDigestRunningEvaluation.ext_table_index()] =
+                hash_digest_running_evaluation;
         }
     }
 }
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum HashTableChallengeId {
-    FromProcessorEvalIndeterminate,
-    ToProcessorEvalIndeterminate,
+    HashInputEvalIndeterminate,
+    HashDigestEvalIndeterminate,
+    SpongeAbsorbEvalIndeterminate,
+    SpongeSqueezeEvalIndeterminate,
+    SpongeOrderEvalIndeterminate,
 
     StackInputWeight0,
     StackInputWeight1,
@@ -585,11 +583,14 @@ impl From<HashTableChallengeId> for usize {
 pub struct HashTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the hash table.
-    pub from_processor_eval_indeterminate: XFieldElement,
-    pub to_processor_eval_indeterminate: XFieldElement,
+    pub hash_input_eval_indeterminate: XFieldElement,
+    pub hash_digest_eval_indeterminate: XFieldElement,
+    pub sponge_absorb_eval_indeterminate: XFieldElement,
+    pub sponge_squeeze_eval_indeterminate: XFieldElement,
+    pub sponge_order_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    // There are 2 * DIGEST_LENGTH elements of these
+    // 2 * DIGEST_LENGTH elements for the input to the hash function
     pub stack_input_weight0: XFieldElement,
     pub stack_input_weight1: XFieldElement,
     pub stack_input_weight2: XFieldElement,
@@ -601,12 +602,54 @@ pub struct HashTableChallenges {
     pub stack_input_weight8: XFieldElement,
     pub stack_input_weight9: XFieldElement,
 
-    // There are DIGEST_LENGTH elements of these
+    // DIGEST_LENGTH elements for the output of the hash function, i.e., the digest
     pub digest_output_weight0: XFieldElement,
     pub digest_output_weight1: XFieldElement,
     pub digest_output_weight2: XFieldElement,
     pub digest_output_weight3: XFieldElement,
     pub digest_output_weight4: XFieldElement,
+
+    // RATE elements for Sponge absorption
+    pub sponge_absorb_weight0: XFieldElement,
+    pub sponge_absorb_weight1: XFieldElement,
+    pub sponge_absorb_weight2: XFieldElement,
+    pub sponge_absorb_weight3: XFieldElement,
+    pub sponge_absorb_weight4: XFieldElement,
+    pub sponge_absorb_weight5: XFieldElement,
+    pub sponge_absorb_weight6: XFieldElement,
+    pub sponge_absorb_weight7: XFieldElement,
+    pub sponge_absorb_weight8: XFieldElement,
+    pub sponge_absorb_weight9: XFieldElement,
+
+    // RATE elements for Sponge squeezing
+    pub sponge_squeeze_weight0: XFieldElement,
+    pub sponge_squeeze_weight1: XFieldElement,
+    pub sponge_squeeze_weight2: XFieldElement,
+    pub sponge_squeeze_weight3: XFieldElement,
+    pub sponge_squeeze_weight4: XFieldElement,
+    pub sponge_squeeze_weight5: XFieldElement,
+    pub sponge_squeeze_weight6: XFieldElement,
+    pub sponge_squeeze_weight7: XFieldElement,
+    pub sponge_squeeze_weight8: XFieldElement,
+    pub sponge_squeeze_weight9: XFieldElement,
+
+    // STATE elements for Sponge state consistency across XLIX sections within the table
+    pub sponge_state_weight0: XFieldElement,
+    pub sponge_state_weight1: XFieldElement,
+    pub sponge_state_weight2: XFieldElement,
+    pub sponge_state_weight3: XFieldElement,
+    pub sponge_state_weight4: XFieldElement,
+    pub sponge_state_weight5: XFieldElement,
+    pub sponge_state_weight6: XFieldElement,
+    pub sponge_state_weight7: XFieldElement,
+    pub sponge_state_weight8: XFieldElement,
+    pub sponge_state_weight9: XFieldElement,
+    pub sponge_state_weight10: XFieldElement,
+    pub sponge_state_weight11: XFieldElement,
+    pub sponge_state_weight12: XFieldElement,
+    pub sponge_state_weight13: XFieldElement,
+    pub sponge_state_weight14: XFieldElement,
+    pub sponge_state_weight15: XFieldElement,
 }
 
 impl TableChallenges for HashTableChallenges {
@@ -615,8 +658,11 @@ impl TableChallenges for HashTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            FromProcessorEvalIndeterminate => self.from_processor_eval_indeterminate,
-            ToProcessorEvalIndeterminate => self.to_processor_eval_indeterminate,
+            HashInputEvalIndeterminate => self.hash_input_eval_indeterminate,
+            HashDigestEvalIndeterminate => self.hash_digest_eval_indeterminate,
+            SpongeAbsorbEvalIndeterminate => self.sponge_absorb_eval_indeterminate,
+            SpongeSqueezeEvalIndeterminate => self.sponge_squeeze_eval_indeterminate,
+            SpongeOrderEvalIndeterminate => self.sponge_order_eval_indeterminate,
             StackInputWeight0 => self.stack_input_weight0,
             StackInputWeight1 => self.stack_input_weight1,
             StackInputWeight2 => self.stack_input_weight2,

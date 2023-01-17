@@ -61,7 +61,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 51 + NUM_CROSS_TABLE_WEIGHTS;
+    pub const TOTAL_CHALLENGES: usize = 93 + NUM_CROSS_TABLE_WEIGHTS;
 
     pub fn create_challenges(
         mut weights: Vec<XFieldElement>,
@@ -71,8 +71,11 @@ impl AllChallenges {
         let processor_table_challenges = ProcessorTableChallenges {
             standard_input_eval_indeterminate: weights.pop().unwrap(),
             standard_output_eval_indeterminate: weights.pop().unwrap(),
-            to_hash_table_eval_indeterminate: weights.pop().unwrap(),
-            from_hash_table_eval_indeterminate: weights.pop().unwrap(),
+            hash_input_eval_indeterminate: weights.pop().unwrap(),
+            hash_digest_eval_indeterminate: weights.pop().unwrap(),
+            sponge_absorb_eval_indeterminate: weights.pop().unwrap(),
+            sponge_squeeze_eval_indeterminate: weights.pop().unwrap(),
+            sponge_order_eval_indeterminate: weights.pop().unwrap(),
             instruction_perm_indeterminate: weights.pop().unwrap(),
             op_stack_perm_indeterminate: weights.pop().unwrap(),
             ram_perm_indeterminate: weights.pop().unwrap(),
@@ -117,6 +120,28 @@ impl AllChallenges {
             hash_table_digest_output_weight2: weights.pop().unwrap(),
             hash_table_digest_output_weight3: weights.pop().unwrap(),
             hash_table_digest_output_weight4: weights.pop().unwrap(),
+
+            sponge_absorb_weight0: weights.pop().unwrap(),
+            sponge_absorb_weight1: weights.pop().unwrap(),
+            sponge_absorb_weight2: weights.pop().unwrap(),
+            sponge_absorb_weight3: weights.pop().unwrap(),
+            sponge_absorb_weight4: weights.pop().unwrap(),
+            sponge_absorb_weight5: weights.pop().unwrap(),
+            sponge_absorb_weight6: weights.pop().unwrap(),
+            sponge_absorb_weight7: weights.pop().unwrap(),
+            sponge_absorb_weight8: weights.pop().unwrap(),
+            sponge_absorb_weight9: weights.pop().unwrap(),
+
+            sponge_squeeze_weight0: weights.pop().unwrap(),
+            sponge_squeeze_weight1: weights.pop().unwrap(),
+            sponge_squeeze_weight2: weights.pop().unwrap(),
+            sponge_squeeze_weight3: weights.pop().unwrap(),
+            sponge_squeeze_weight4: weights.pop().unwrap(),
+            sponge_squeeze_weight5: weights.pop().unwrap(),
+            sponge_squeeze_weight6: weights.pop().unwrap(),
+            sponge_squeeze_weight7: weights.pop().unwrap(),
+            sponge_squeeze_weight8: weights.pop().unwrap(),
+            sponge_squeeze_weight9: weights.pop().unwrap(),
 
             u32_table_lhs_weight: weights.pop().unwrap(),
             u32_table_rhs_weight: weights.pop().unwrap(),
@@ -189,10 +214,15 @@ impl AllChallenges {
         };
 
         let hash_table_challenges = HashTableChallenges {
-            from_processor_eval_indeterminate: processor_table_challenges
-                .to_hash_table_eval_indeterminate,
-            to_processor_eval_indeterminate: processor_table_challenges
-                .from_hash_table_eval_indeterminate,
+            hash_input_eval_indeterminate: processor_table_challenges.hash_input_eval_indeterminate,
+            hash_digest_eval_indeterminate: processor_table_challenges
+                .hash_digest_eval_indeterminate,
+            sponge_absorb_eval_indeterminate: processor_table_challenges
+                .sponge_absorb_eval_indeterminate,
+            sponge_squeeze_eval_indeterminate: processor_table_challenges
+                .sponge_squeeze_eval_indeterminate,
+            sponge_order_eval_indeterminate: processor_table_challenges
+                .sponge_order_eval_indeterminate,
 
             stack_input_weight0: processor_table_challenges.hash_table_stack_input_weight0,
             stack_input_weight1: processor_table_challenges.hash_table_stack_input_weight1,
@@ -210,6 +240,45 @@ impl AllChallenges {
             digest_output_weight2: processor_table_challenges.hash_table_digest_output_weight2,
             digest_output_weight3: processor_table_challenges.hash_table_digest_output_weight3,
             digest_output_weight4: processor_table_challenges.hash_table_digest_output_weight4,
+
+            sponge_absorb_weight0: processor_table_challenges.sponge_absorb_weight0,
+            sponge_absorb_weight1: processor_table_challenges.sponge_absorb_weight1,
+            sponge_absorb_weight2: processor_table_challenges.sponge_absorb_weight2,
+            sponge_absorb_weight3: processor_table_challenges.sponge_absorb_weight3,
+            sponge_absorb_weight4: processor_table_challenges.sponge_absorb_weight4,
+            sponge_absorb_weight5: processor_table_challenges.sponge_absorb_weight5,
+            sponge_absorb_weight6: processor_table_challenges.sponge_absorb_weight6,
+            sponge_absorb_weight7: processor_table_challenges.sponge_absorb_weight7,
+            sponge_absorb_weight8: processor_table_challenges.sponge_absorb_weight8,
+            sponge_absorb_weight9: processor_table_challenges.sponge_absorb_weight9,
+
+            sponge_squeeze_weight0: processor_table_challenges.sponge_squeeze_weight0,
+            sponge_squeeze_weight1: processor_table_challenges.sponge_squeeze_weight1,
+            sponge_squeeze_weight2: processor_table_challenges.sponge_squeeze_weight2,
+            sponge_squeeze_weight3: processor_table_challenges.sponge_squeeze_weight3,
+            sponge_squeeze_weight4: processor_table_challenges.sponge_squeeze_weight4,
+            sponge_squeeze_weight5: processor_table_challenges.sponge_squeeze_weight5,
+            sponge_squeeze_weight6: processor_table_challenges.sponge_squeeze_weight6,
+            sponge_squeeze_weight7: processor_table_challenges.sponge_squeeze_weight7,
+            sponge_squeeze_weight8: processor_table_challenges.sponge_squeeze_weight8,
+            sponge_squeeze_weight9: processor_table_challenges.sponge_squeeze_weight9,
+
+            sponge_state_weight0: weights.pop().unwrap(),
+            sponge_state_weight1: weights.pop().unwrap(),
+            sponge_state_weight2: weights.pop().unwrap(),
+            sponge_state_weight3: weights.pop().unwrap(),
+            sponge_state_weight4: weights.pop().unwrap(),
+            sponge_state_weight5: weights.pop().unwrap(),
+            sponge_state_weight6: weights.pop().unwrap(),
+            sponge_state_weight7: weights.pop().unwrap(),
+            sponge_state_weight8: weights.pop().unwrap(),
+            sponge_state_weight9: weights.pop().unwrap(),
+            sponge_state_weight10: weights.pop().unwrap(),
+            sponge_state_weight11: weights.pop().unwrap(),
+            sponge_state_weight12: weights.pop().unwrap(),
+            sponge_state_weight13: weights.pop().unwrap(),
+            sponge_state_weight14: weights.pop().unwrap(),
+            sponge_state_weight15: weights.pop().unwrap(),
         };
 
         let u32_table_challenges = U32TableChallenges {
@@ -239,8 +308,11 @@ impl AllChallenges {
             processor_to_op_stack_weight: weights.pop().unwrap(),
             processor_to_ram_weight: weights.pop().unwrap(),
             processor_to_jump_stack_weight: weights.pop().unwrap(),
-            processor_to_hash_weight: weights.pop().unwrap(),
-            hash_to_processor_weight: weights.pop().unwrap(),
+            hash_input_weight: weights.pop().unwrap(),
+            hash_digest_weight: weights.pop().unwrap(),
+            sponge_absorb_weight: weights.pop().unwrap(),
+            sponge_squeeze_weight: weights.pop().unwrap(),
+            sponge_order_weight: weights.pop().unwrap(),
             processor_to_u32_weight: weights.pop().unwrap(),
             all_clock_jump_differences_weight: weights.pop().unwrap(),
             input_to_processor_weight: weights.pop().unwrap(),

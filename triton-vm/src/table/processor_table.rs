@@ -146,8 +146,8 @@ impl ProcessorTable {
         let mut op_stack_table_running_product = PermArg::default_initial();
         let mut ram_table_running_product = PermArg::default_initial();
         let mut jump_stack_running_product = PermArg::default_initial();
-        let mut to_hash_table_running_evaluation = EvalArg::default_initial();
-        let mut from_hash_table_running_evaluation = EvalArg::default_initial();
+        let mut hash_input_running_evaluation = EvalArg::default_initial();
+        let mut hash_digest_running_evaluation = EvalArg::default_initial();
         let mut u32_table_running_product = PermArg::default_initial();
         let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
         let mut all_clock_jump_differences_running_product =
@@ -227,19 +227,19 @@ impl ProcessorTable {
                 challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
+            let st_0_through_9 = [
+                current_row[ST0.base_table_index()],
+                current_row[ST1.base_table_index()],
+                current_row[ST2.base_table_index()],
+                current_row[ST3.base_table_index()],
+                current_row[ST4.base_table_index()],
+                current_row[ST5.base_table_index()],
+                current_row[ST6.base_table_index()],
+                current_row[ST7.base_table_index()],
+                current_row[ST8.base_table_index()],
+                current_row[ST9.base_table_index()],
+            ];
             if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
-                let st_0_through_9 = [
-                    current_row[ST0.base_table_index()],
-                    current_row[ST1.base_table_index()],
-                    current_row[ST2.base_table_index()],
-                    current_row[ST3.base_table_index()],
-                    current_row[ST4.base_table_index()],
-                    current_row[ST5.base_table_index()],
-                    current_row[ST6.base_table_index()],
-                    current_row[ST7.base_table_index()],
-                    current_row[ST8.base_table_index()],
-                    current_row[ST9.base_table_index()],
-                ];
                 let hash_table_stack_input_challenges = [
                     challenges.hash_table_stack_input_weight0,
                     challenges.hash_table_stack_input_weight1,
@@ -257,8 +257,8 @@ impl ProcessorTable {
                     .zip_eq(hash_table_stack_input_challenges.into_iter())
                     .map(|(st, weight)| weight * st)
                     .sum();
-                to_hash_table_running_evaluation = to_hash_table_running_evaluation
-                    * challenges.to_hash_table_eval_indeterminate
+                hash_input_running_evaluation = hash_input_running_evaluation
+                    * challenges.hash_input_eval_indeterminate
                     + compressed_row_for_hash_input;
             }
 
@@ -284,8 +284,8 @@ impl ProcessorTable {
                         .zip_eq(hash_table_digest_output_challenges.into_iter())
                         .map(|(st, weight)| weight * st)
                         .sum();
-                    from_hash_table_running_evaluation = from_hash_table_running_evaluation
-                        * challenges.from_hash_table_eval_indeterminate
+                    hash_digest_running_evaluation = hash_digest_running_evaluation
+                        * challenges.hash_digest_eval_indeterminate
                         + compressed_row_for_hash_digest;
                 }
             }
@@ -366,9 +366,8 @@ impl ProcessorTable {
             extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
             extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
             extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
-            extension_row[ToHashTableEvalArg.ext_table_index()] = to_hash_table_running_evaluation;
-            extension_row[FromHashTableEvalArg.ext_table_index()] =
-                from_hash_table_running_evaluation;
+            extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
+            extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
             extension_row[U32TablePermArg.ext_table_index()] = u32_table_running_product;
             extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
@@ -547,8 +546,11 @@ pub enum ProcessorTableChallengeId {
     /// permutation/evaluation column of the processor table.
     StandardInputEvalIndeterminate,
     StandardOutputEvalIndeterminate,
-    ToHashTableEvalIndeterminate,
-    FromHashTableEvalIndeterminate,
+    HashInputEvalIndeterminate,
+    HashDigestEvalIndeterminate,
+    SpongeAbsorbEvalIndeterminate,
+    SpongeSqueezeEvalIndeterminate,
+    SpongeOrderEvalIndeterminate,
 
     InstructionPermIndeterminate,
     OpStackPermIndeterminate,
@@ -580,7 +582,7 @@ pub enum ProcessorTableChallengeId {
     UniqueClockJumpDifferencesEvalIndeterminate,
     AllClockJumpDifferencesMultiPermIndeterminate,
 
-    // 2 * DIGEST_LENGTH elements of these
+    // 2 * DIGEST_LENGTH elements for the input to the hash function
     HashTableStackInputWeight0,
     HashTableStackInputWeight1,
     HashTableStackInputWeight2,
@@ -592,12 +594,36 @@ pub enum ProcessorTableChallengeId {
     HashTableStackInputWeight8,
     HashTableStackInputWeight9,
 
-    // DIGEST_LENGTH elements of these
+    // DIGEST_LENGTH elements for the output of the hash function, i.e., the digest
     HashTableDigestOutputWeight0,
     HashTableDigestOutputWeight1,
     HashTableDigestOutputWeight2,
     HashTableDigestOutputWeight3,
     HashTableDigestOutputWeight4,
+
+    // RATE elements for Sponge absorption
+    SpongeAbsorbWeight0,
+    SpongeAbsorbWeight1,
+    SpongeAbsorbWeight2,
+    SpongeAbsorbWeight3,
+    SpongeAbsorbWeight4,
+    SpongeAbsorbWeight5,
+    SpongeAbsorbWeight6,
+    SpongeAbsorbWeight7,
+    SpongeAbsorbWeight8,
+    SpongeAbsorbWeight9,
+
+    // RATE elements for Sponge squeezing
+    SpongeSqueezeWeight0,
+    SpongeSqueezeWeight1,
+    SpongeSqueezeWeight2,
+    SpongeSqueezeWeight3,
+    SpongeSqueezeWeight4,
+    SpongeSqueezeWeight5,
+    SpongeSqueezeWeight6,
+    SpongeSqueezeWeight7,
+    SpongeSqueezeWeight8,
+    SpongeSqueezeWeight9,
 
     U32TableLhsWeight,
     U32TableRhsWeight,
@@ -617,8 +643,11 @@ pub struct ProcessorTableChallenges {
     /// permutation/evaluation column of the processor table.
     pub standard_input_eval_indeterminate: XFieldElement,
     pub standard_output_eval_indeterminate: XFieldElement,
-    pub to_hash_table_eval_indeterminate: XFieldElement,
-    pub from_hash_table_eval_indeterminate: XFieldElement,
+    pub hash_input_eval_indeterminate: XFieldElement,
+    pub hash_digest_eval_indeterminate: XFieldElement,
+    pub sponge_absorb_eval_indeterminate: XFieldElement,
+    pub sponge_squeeze_eval_indeterminate: XFieldElement,
+    pub sponge_order_eval_indeterminate: XFieldElement,
 
     pub instruction_perm_indeterminate: XFieldElement,
     pub op_stack_perm_indeterminate: XFieldElement,
@@ -650,7 +679,7 @@ pub struct ProcessorTableChallenges {
     pub unique_clock_jump_differences_eval_indeterminate: XFieldElement,
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 
-    // 2 * DIGEST_LENGTH elements of these
+    // 2 * DIGEST_LENGTH elements for the input to the hash function
     pub hash_table_stack_input_weight0: XFieldElement,
     pub hash_table_stack_input_weight1: XFieldElement,
     pub hash_table_stack_input_weight2: XFieldElement,
@@ -662,12 +691,36 @@ pub struct ProcessorTableChallenges {
     pub hash_table_stack_input_weight8: XFieldElement,
     pub hash_table_stack_input_weight9: XFieldElement,
 
-    // DIGEST_LENGTH elements of these
+    // DIGEST_LENGTH elements for the output of the hash function, i.e., the digest
     pub hash_table_digest_output_weight0: XFieldElement,
     pub hash_table_digest_output_weight1: XFieldElement,
     pub hash_table_digest_output_weight2: XFieldElement,
     pub hash_table_digest_output_weight3: XFieldElement,
     pub hash_table_digest_output_weight4: XFieldElement,
+
+    // RATE elements for Sponge absorption
+    pub sponge_absorb_weight0: XFieldElement,
+    pub sponge_absorb_weight1: XFieldElement,
+    pub sponge_absorb_weight2: XFieldElement,
+    pub sponge_absorb_weight3: XFieldElement,
+    pub sponge_absorb_weight4: XFieldElement,
+    pub sponge_absorb_weight5: XFieldElement,
+    pub sponge_absorb_weight6: XFieldElement,
+    pub sponge_absorb_weight7: XFieldElement,
+    pub sponge_absorb_weight8: XFieldElement,
+    pub sponge_absorb_weight9: XFieldElement,
+
+    // RATE elements for Sponge squeezing
+    pub sponge_squeeze_weight0: XFieldElement,
+    pub sponge_squeeze_weight1: XFieldElement,
+    pub sponge_squeeze_weight2: XFieldElement,
+    pub sponge_squeeze_weight3: XFieldElement,
+    pub sponge_squeeze_weight4: XFieldElement,
+    pub sponge_squeeze_weight5: XFieldElement,
+    pub sponge_squeeze_weight6: XFieldElement,
+    pub sponge_squeeze_weight7: XFieldElement,
+    pub sponge_squeeze_weight8: XFieldElement,
+    pub sponge_squeeze_weight9: XFieldElement,
 
     pub u32_table_lhs_weight: XFieldElement,
     pub u32_table_rhs_weight: XFieldElement,
@@ -683,8 +736,11 @@ impl TableChallenges for ProcessorTableChallenges {
         match id {
             StandardInputEvalIndeterminate => self.standard_input_eval_indeterminate,
             StandardOutputEvalIndeterminate => self.standard_output_eval_indeterminate,
-            ToHashTableEvalIndeterminate => self.to_hash_table_eval_indeterminate,
-            FromHashTableEvalIndeterminate => self.from_hash_table_eval_indeterminate,
+            HashInputEvalIndeterminate => self.hash_input_eval_indeterminate,
+            HashDigestEvalIndeterminate => self.hash_digest_eval_indeterminate,
+            SpongeAbsorbEvalIndeterminate => self.sponge_absorb_eval_indeterminate,
+            SpongeSqueezeEvalIndeterminate => self.sponge_squeeze_eval_indeterminate,
+            SpongeOrderEvalIndeterminate => self.sponge_order_eval_indeterminate,
             InstructionPermIndeterminate => self.instruction_perm_indeterminate,
             OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
             RamPermIndeterminate => self.ram_perm_indeterminate,
@@ -727,6 +783,26 @@ impl TableChallenges for ProcessorTableChallenges {
             HashTableDigestOutputWeight2 => self.hash_table_digest_output_weight2,
             HashTableDigestOutputWeight3 => self.hash_table_digest_output_weight3,
             HashTableDigestOutputWeight4 => self.hash_table_digest_output_weight4,
+            SpongeAbsorbWeight0 => self.sponge_absorb_weight0,
+            SpongeAbsorbWeight1 => self.sponge_absorb_weight1,
+            SpongeAbsorbWeight2 => self.sponge_absorb_weight2,
+            SpongeAbsorbWeight3 => self.sponge_absorb_weight3,
+            SpongeAbsorbWeight4 => self.sponge_absorb_weight4,
+            SpongeAbsorbWeight5 => self.sponge_absorb_weight5,
+            SpongeAbsorbWeight6 => self.sponge_absorb_weight6,
+            SpongeAbsorbWeight7 => self.sponge_absorb_weight7,
+            SpongeAbsorbWeight8 => self.sponge_absorb_weight8,
+            SpongeAbsorbWeight9 => self.sponge_absorb_weight9,
+            SpongeSqueezeWeight0 => self.sponge_squeeze_weight0,
+            SpongeSqueezeWeight1 => self.sponge_squeeze_weight1,
+            SpongeSqueezeWeight2 => self.sponge_squeeze_weight2,
+            SpongeSqueezeWeight3 => self.sponge_squeeze_weight3,
+            SpongeSqueezeWeight4 => self.sponge_squeeze_weight4,
+            SpongeSqueezeWeight5 => self.sponge_squeeze_weight5,
+            SpongeSqueezeWeight6 => self.sponge_squeeze_weight6,
+            SpongeSqueezeWeight7 => self.sponge_squeeze_weight7,
+            SpongeSqueezeWeight8 => self.sponge_squeeze_weight8,
+            SpongeSqueezeWeight9 => self.sponge_squeeze_weight9,
             U32TableLhsWeight => self.u32_table_lhs_weight,
             U32TableRhsWeight => self.u32_table_rhs_weight,
             U32TableCiWeight => self.u32_table_ci_weight,
@@ -866,22 +942,22 @@ impl ExtProcessorTable {
         let hash_selector = factory.ci() - constant(Instruction::Hash.opcode() as i32);
         let hash_deselector =
             InstructionDeselectors::instruction_deselector_single_row(&factory, Instruction::Hash);
-        let to_hash_table_indeterminate = challenge(ToHashTableEvalIndeterminate);
+        let to_hash_table_indeterminate = challenge(HashInputEvalIndeterminate);
         // the opStack is guaranteed to be initialized to 0 by virtue of other initial constraints
-        let compressed_row_to_hash_table = constant(0);
+        let compressed_row = constant(0);
         let running_evaluation_to_hash_table_has_absorbed_first_row = factory
-            .running_evaluation_to_hash_table()
+            .running_evaluation_hash_input()
             - to_hash_table_indeterminate * constant_x(EvalArg::default_initial())
-            - compressed_row_to_hash_table;
+            - compressed_row;
         let running_evaluation_to_hash_table_is_default_initial =
-            factory.running_evaluation_to_hash_table() - constant_x(EvalArg::default_initial());
+            factory.running_evaluation_hash_input() - constant_x(EvalArg::default_initial());
         let running_evaluation_to_hash_table_is_initialized_correctly = hash_selector
             * running_evaluation_to_hash_table_is_default_initial
             + hash_deselector * running_evaluation_to_hash_table_has_absorbed_first_row;
 
         // from hash table to processor
         let running_evaluation_from_hash_table_is_initialized_correctly =
-            factory.running_evaluation_from_hash_table() - constant_x(EvalArg::default_initial());
+            factory.running_evaluation_hash_digest() - constant_x(EvalArg::default_initial());
 
         // u32 table
         let running_product_for_u32_table_is_initialized_correctly =
@@ -1120,8 +1196,8 @@ impl ExtProcessorTable {
         transition_constraints.push(factory.running_product_for_ram_table_updates_correctly());
         transition_constraints
             .push(factory.running_product_for_jump_stack_table_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_to_hash_table_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_from_hash_table_updates_correctly());
+        transition_constraints.push(factory.running_evaluation_hash_input_updates_correctly());
+        transition_constraints.push(factory.running_evaluation_hash_digest_updates_correctly());
         transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
         let mut built_transition_constraints = transition_constraints
@@ -1677,21 +1753,45 @@ impl SingleRowConstraints {
     > {
         self.ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_to_hash_table(
+    pub fn running_evaluation_hash_input(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
+        self.ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_from_hash_table(
+    pub fn running_evaluation_hash_digest(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+        self.ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_absorb(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[SpongeAbsorbEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_squeeze(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[SpongeSqueezeEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_order(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[SpongeOrderEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table(
         &self,
@@ -3331,21 +3431,45 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_to_hash_table(
+    pub fn running_evaluation_hash_input(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.current_ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
+        self.current_ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_from_hash_table(
+    pub fn running_evaluation_hash_digest(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.current_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+        self.current_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_absorb(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[SpongeAbsorbEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_squeeze(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[SpongeSqueezeEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_order(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[SpongeOrderEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table(
         &self,
@@ -3788,21 +3912,45 @@ impl DualRowConstraints {
     > {
         self.next_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_to_hash_table_next(
+    pub fn running_evaluation_hash_input_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.next_ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
+        self.next_ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_from_hash_table_next(
+    pub fn running_evaluation_hash_digest_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.next_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+        self.next_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_absorb_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[SpongeAbsorbEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_squeeze_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[SpongeSqueezeEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_order_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[SpongeOrderEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table_next(
         &self,
@@ -4241,7 +4389,7 @@ impl DualRowConstraints {
             - self.running_product_jump_stack_table() * (indeterminate - compressed_row)
     }
 
-    pub fn running_evaluation_to_hash_table_updates_correctly(
+    pub fn running_evaluation_hash_input_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
@@ -4251,7 +4399,7 @@ impl DualRowConstraints {
             InstructionDeselectors::instruction_deselector_next(self, Instruction::Hash);
         let hash_selector = self.ci_next() - self.constant_b(Instruction::Hash.opcode_b());
 
-        let indeterminate = self.circuit_builder.challenge(ToHashTableEvalIndeterminate);
+        let indeterminate = self.circuit_builder.challenge(HashInputEvalIndeterminate);
 
         let weights = [
             self.circuit_builder.challenge(HashTableStackInputWeight0),
@@ -4282,16 +4430,16 @@ impl DualRowConstraints {
             .zip_eq(state.into_iter())
             .map(|(weight, state)| weight * state)
             .sum();
-        let running_evaluation_updates = self.running_evaluation_to_hash_table_next()
-            - indeterminate * self.running_evaluation_to_hash_table()
+        let running_evaluation_updates = self.running_evaluation_hash_input_next()
+            - indeterminate * self.running_evaluation_hash_input()
             - compressed_row;
         let running_evaluation_remains =
-            self.running_evaluation_to_hash_table_next() - self.running_evaluation_to_hash_table();
+            self.running_evaluation_hash_input_next() - self.running_evaluation_hash_input();
 
         hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
     }
 
-    pub fn running_evaluation_from_hash_table_updates_correctly(
+    pub fn running_evaluation_hash_digest_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
@@ -4301,9 +4449,7 @@ impl DualRowConstraints {
             InstructionDeselectors::instruction_deselector(self, Instruction::Hash);
         let hash_selector = self.ci() - self.constant_b(Instruction::Hash.opcode_b());
 
-        let indeterminate = self
-            .circuit_builder
-            .challenge(FromHashTableEvalIndeterminate);
+        let indeterminate = self.circuit_builder.challenge(HashDigestEvalIndeterminate);
 
         let weights = [
             self.circuit_builder.challenge(HashTableDigestOutputWeight0),
@@ -4324,11 +4470,11 @@ impl DualRowConstraints {
             .zip_eq(state.into_iter())
             .map(|(weight, state)| weight * state)
             .sum();
-        let running_evaluation_updates = self.running_evaluation_from_hash_table_next()
-            - indeterminate * self.running_evaluation_from_hash_table()
+        let running_evaluation_updates = self.running_evaluation_hash_digest_next()
+            - indeterminate * self.running_evaluation_hash_digest()
             - compressed_row;
-        let running_evaluation_remains = self.running_evaluation_from_hash_table_next()
-            - self.running_evaluation_from_hash_table();
+        let running_evaluation_remains =
+            self.running_evaluation_hash_digest_next() - self.running_evaluation_hash_digest();
 
         hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
     }
@@ -4740,8 +4886,11 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
         row(f, "opstack_table_pa", OpStackTablePermArg)?;
         row(f, "ram_table_pa", RamTablePermArg)?;
         row(f, "jumpstack_table_pa", JumpStackTablePermArg)?;
-        row(f, "to_hash_table_ea", ToHashTableEvalArg)?;
-        row(f, "from_hash_table_ea", FromHashTableEvalArg)?;
+        row(f, "hash_input_ea", HashInputEvalArg)?;
+        row(f, "hash_digest_ea", HashDigestEvalArg)?;
+        row(f, "sponge_absorb_ea", SpongeAbsorbEvalArg)?;
+        row(f, "sponge_squeeze_ea", SpongeSqueezeEvalArg)?;
+        row(f, "u32_table_ea", U32TablePermArg)?;
         write!(
             f,
             "     ╰───────────────────────────────────────────────────────\
