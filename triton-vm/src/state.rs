@@ -311,7 +311,7 @@ impl<'pgm> VMState<'pgm> {
                 hash_input[..2 * DIGEST_LENGTH].copy_from_slice(&to_hash);
                 // to distinguish between fix-length and variable-length inputs
                 hash_input[RATE] = BFIELD_ONE;
-                let xlix_trace = RescuePrimeRegular::full_trace(hash_input);
+                let xlix_trace = RescuePrimeRegular::trace(hash_input);
                 let hash_output = &xlix_trace[xlix_trace.len() - 1][0..DIGEST_LENGTH];
 
                 for i in (0..DIGEST_LENGTH).rev() {
@@ -335,7 +335,7 @@ impl<'pgm> VMState<'pgm> {
                 // reset the Sponge's state
                 self.sponge_state = [BFIELD_ZERO; STATE_SIZE];
                 self.sponge_state[..RATE].copy_from_slice(&to_absorb);
-                let xlix_trace = RescuePrimeRegular::full_trace(self.sponge_state);
+                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
                 self.sponge_state = xlix_trace.last().unwrap().to_owned();
 
                 vm_output = Some(VMOutput::XlixTrace(AbsorbInit, Box::new(xlix_trace)));
@@ -355,7 +355,7 @@ impl<'pgm> VMState<'pgm> {
                     .for_each(|(sponge_state_element, &to_absorb_element)| {
                         *sponge_state_element += to_absorb_element;
                     });
-                let xlix_trace = RescuePrimeRegular::full_trace(self.sponge_state);
+                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
                 self.sponge_state = xlix_trace.last().unwrap().to_owned();
 
                 vm_output = Some(VMOutput::XlixTrace(Absorb, Box::new(xlix_trace)));
@@ -364,7 +364,7 @@ impl<'pgm> VMState<'pgm> {
 
             Squeeze => {
                 let _ = self.op_stack.pop_n::<{ RATE }>()?;
-                let xlix_trace = RescuePrimeRegular::full_trace(self.sponge_state);
+                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
                 self.sponge_state = xlix_trace.last().unwrap().to_owned();
                 for i in (0..RATE).rev() {
                     self.op_stack.push(self.sponge_state[i]);
