@@ -15,6 +15,7 @@ use crate::table::challenges::AllChallenges;
 use crate::table::challenges::TableChallenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
+use crate::table::processor_table::PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::InstructionExtTableColumn;
@@ -26,10 +27,11 @@ use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn;
 
+pub const NUM_PUBLIC_EVAL_ARGS: usize = 2; // for public input and output
 pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
-pub const NUM_PRIVATE_EVAL_ARGS: usize = 3;
+pub const NUM_PRIVATE_EVAL_ARGS: usize =
+    PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS - NUM_PUBLIC_EVAL_ARGS;
 pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS;
-pub const NUM_PUBLIC_EVAL_ARGS: usize = 2;
 pub const NUM_CROSS_TABLE_WEIGHTS: usize = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
 pub trait CrossTableArg {

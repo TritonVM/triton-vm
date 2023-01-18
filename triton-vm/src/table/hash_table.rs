@@ -101,20 +101,20 @@ impl ExtHashTable {
         ]
         .map(|st| circuit_builder.input(BaseRow(st.master_base_table_index())));
         let compressed_row: ConstraintCircuitMonad<_, _> = [
-            challenge(HashInputWeight0),
-            challenge(HashInputWeight1),
-            challenge(HashInputWeight2),
-            challenge(HashInputWeight3),
-            challenge(HashInputWeight4),
-            challenge(HashInputWeight5),
-            challenge(HashInputWeight6),
-            challenge(HashInputWeight7),
-            challenge(HashInputWeight8),
-            challenge(HashInputWeight9),
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+            HashStateWeight5,
+            HashStateWeight6,
+            HashStateWeight7,
+            HashStateWeight8,
+            HashStateWeight9,
         ]
         .into_iter()
         .zip_eq(state.into_iter())
-        .map(|(w, s)| s * w)
+        .map(|(weight, state)| challenge(weight) * state)
         .sum();
 
         let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
@@ -319,6 +319,26 @@ impl ExtHashTable {
         let state_current = state.map(|state| current_base_row(state.master_base_table_index()));
         let state_next = state.map(|state| next_base_row(state.master_base_table_index()));
 
+        let state_weights = [
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+            HashStateWeight5,
+            HashStateWeight6,
+            HashStateWeight7,
+            HashStateWeight8,
+            HashStateWeight9,
+            HashStateWeight10,
+            HashStateWeight11,
+            HashStateWeight12,
+            HashStateWeight13,
+            HashStateWeight14,
+            HashStateWeight15,
+        ]
+        .map(|w| circuit_builder.challenge(w));
+
         // round number
         // round numbers evolve as
         // 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9, and
@@ -466,25 +486,6 @@ impl ExtHashTable {
             .collect_vec();
 
         // copy capacity between rounds with index 9 and 1 if instruction is “absorb”
-        let state_consistency_weights = [
-            SpongeStateWeight0,
-            SpongeStateWeight1,
-            SpongeStateWeight2,
-            SpongeStateWeight3,
-            SpongeStateWeight4,
-            SpongeStateWeight5,
-            SpongeStateWeight6,
-            SpongeStateWeight7,
-            SpongeStateWeight8,
-            SpongeStateWeight9,
-            SpongeStateWeight10,
-            SpongeStateWeight11,
-            SpongeStateWeight12,
-            SpongeStateWeight13,
-            SpongeStateWeight14,
-            SpongeStateWeight15,
-        ]
-        .map(|weight| circuit_builder.challenge(weight));
         let round_number_next_is_not_1 =
             Self::round_number_deselector(&circuit_builder, &round_number_next, 1);
 
@@ -493,7 +494,7 @@ impl ExtHashTable {
             .zip_eq(state_next[RATE..].iter())
             .map(|(current, next)| next.clone() - current.clone())
             .collect_vec();
-        let randomized_sum_of_capacity_differences = state_consistency_weights[RATE..]
+        let randomized_sum_of_capacity_differences = state_weights[RATE..]
             .iter()
             .zip_eq(difference_of_capacity_registers)
             .map(|(weight, state_difference)| weight.clone() * state_difference)
@@ -511,7 +512,7 @@ impl ExtHashTable {
             .zip_eq(state_next.iter())
             .map(|(current, next)| next.clone() - current.clone())
             .collect_vec();
-        let randomized_sum_of_state_differences = state_consistency_weights
+        let randomized_sum_of_state_differences = state_weights
             .iter()
             .zip_eq(difference_of_state_registers.iter())
             .map(|(weight, state_difference)| weight.clone() * state_difference.clone())
@@ -529,23 +530,10 @@ impl ExtHashTable {
         let running_evaluation_hash_input_remains =
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
         let xlix_input = state_next[0..2 * DIGEST_LENGTH].to_owned();
-        let hash_input_weights = [
-            HashInputWeight0,
-            HashInputWeight1,
-            HashInputWeight2,
-            HashInputWeight3,
-            HashInputWeight4,
-            HashInputWeight5,
-            HashInputWeight6,
-            HashInputWeight7,
-            HashInputWeight8,
-            HashInputWeight9,
-        ]
-        .map(|w| circuit_builder.challenge(w));
         let compressed_row_from_processor = xlix_input
             .into_iter()
-            .zip_eq(hash_input_weights.into_iter())
-            .map(|(state, weight)| weight * state)
+            .zip_eq(state_weights[0..2 * DIGEST_LENGTH].iter())
+            .map(|(state, weight)| weight.clone() * state)
             .sum();
 
         let running_evaluation_hash_input_updates = running_evaluation_hash_input_next
@@ -563,18 +551,10 @@ impl ExtHashTable {
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
         let hash_digest = state_next[0..DIGEST_LENGTH].to_owned();
-        let hash_digest_weights: [_; DIGEST_LENGTH] = [
-            HashDigestWeight0,
-            HashDigestWeight1,
-            HashDigestWeight2,
-            HashDigestWeight3,
-            HashDigestWeight4,
-        ]
-        .map(|w| circuit_builder.challenge(w));
         let compressed_row_hash_digest = hash_digest
             .into_iter()
-            .zip_eq(hash_digest_weights.into_iter())
-            .map(|(state, weight)| weight * state)
+            .zip_eq(state_weights[0..DIGEST_LENGTH].iter())
+            .map(|(state, weight)| weight.clone() * state)
             .sum();
         let running_evaluation_hash_digest_updates = running_evaluation_hash_digest_next
             - hash_digest_eval_indeterminate * running_evaluation_hash_digest
@@ -588,20 +568,7 @@ impl ExtHashTable {
                 + running_evaluation_hash_digest_updates * round_number_next_leq_number_of_rounds;
 
         // The running evaluation for “Sponge absorb” updates correctly.
-        let sponge_absorb_weights: [_; RATE] = [
-            SpongeAbsorbWeight0,
-            SpongeAbsorbWeight1,
-            SpongeAbsorbWeight2,
-            SpongeAbsorbWeight3,
-            SpongeAbsorbWeight4,
-            SpongeAbsorbWeight5,
-            SpongeAbsorbWeight6,
-            SpongeAbsorbWeight7,
-            SpongeAbsorbWeight8,
-            SpongeAbsorbWeight9,
-        ]
-        .map(|w| circuit_builder.challenge(w));
-        let compressed_next_row = sponge_absorb_weights
+        let compressed_next_row = state_weights[..RATE]
             .iter()
             .zip_eq(state_next[..RATE].iter())
             .map(|(weight, state)| weight.clone() * state.clone())
@@ -618,7 +585,7 @@ impl ExtHashTable {
                 * (ci_next.clone() - opcode_squeeze.clone())
                 * running_evaluation_sponge_absorb_has_accumulated_next_row;
 
-        let compressed_difference_of_rows = sponge_absorb_weights
+        let compressed_difference_of_rows = state_weights[..RATE]
             .iter()
             .zip_eq(difference_of_state_registers[..RATE].iter())
             .map(|(weight, state)| weight.clone() * state.clone())
@@ -650,20 +617,7 @@ impl ExtHashTable {
                 + if_ci_next_is_not_an_absorb_then_running_evaluation_sponge_absorb_remains;
 
         // The running evaluation for “Sponge squeeze” updates correctly.
-        let sponge_squeeze_weights: [_; RATE] = [
-            SpongeSqueezeWeight0,
-            SpongeSqueezeWeight1,
-            SpongeSqueezeWeight2,
-            SpongeSqueezeWeight3,
-            SpongeSqueezeWeight4,
-            SpongeSqueezeWeight5,
-            SpongeSqueezeWeight6,
-            SpongeSqueezeWeight7,
-            SpongeSqueezeWeight8,
-            SpongeSqueezeWeight9,
-        ]
-        .map(|w| circuit_builder.challenge(w));
-        let compressed_next_row = sponge_squeeze_weights
+        let compressed_next_row = state_weights[..RATE]
             .iter()
             .zip_eq(state_next[..RATE].iter())
             .map(|(weight, state)| weight.clone() * state.clone())
@@ -790,7 +744,7 @@ impl HashTable {
         let mut sponge_squeeze_running_evaluation = EvalArg::default_initial();
         let mut sponge_order_running_evaluation = EvalArg::default_initial();
 
-        let rate_registers = |row: ArrayView1<BFieldElement>| {
+        let state_registers = |row: ArrayView1<BFieldElement>| {
             [
                 row[STATE0.base_table_index()],
                 row[STATE1.base_table_index()],
@@ -804,15 +758,18 @@ impl HashTable {
                 row[STATE9.base_table_index()],
             ]
         };
-        let digest_registers = |row: ArrayView1<BFieldElement>| {
-            [
-                row[STATE0.base_table_index()],
-                row[STATE1.base_table_index()],
-                row[STATE2.base_table_index()],
-                row[STATE3.base_table_index()],
-                row[STATE4.base_table_index()],
-            ]
-        };
+        let state_weights = [
+            challenges.hash_state_weight0,
+            challenges.hash_state_weight1,
+            challenges.hash_state_weight2,
+            challenges.hash_state_weight3,
+            challenges.hash_state_weight4,
+            challenges.hash_state_weight5,
+            challenges.hash_state_weight6,
+            challenges.hash_state_weight7,
+            challenges.hash_state_weight8,
+            challenges.hash_state_weight9,
+        ];
 
         let previous_row = Array1::zeros([BASE_WIDTH]);
         let mut previous_row = previous_row.view();
@@ -823,21 +780,9 @@ impl HashTable {
                 && current_row[CI.base_table_index()] == Instruction::Hash.opcode_b()
             {
                 // add compressed input to running evaluation “hash input”
-                let hash_input_weights = [
-                    challenges.hash_input_weight0,
-                    challenges.hash_input_weight1,
-                    challenges.hash_input_weight2,
-                    challenges.hash_input_weight3,
-                    challenges.hash_input_weight4,
-                    challenges.hash_input_weight5,
-                    challenges.hash_input_weight6,
-                    challenges.hash_input_weight7,
-                    challenges.hash_input_weight8,
-                    challenges.hash_input_weight9,
-                ];
-                let compressed_hash_input: XFieldElement = rate_registers(current_row)
+                let compressed_hash_input: XFieldElement = state_registers(current_row)
                     .iter()
-                    .zip_eq(hash_input_weights.iter())
+                    .zip_eq(state_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_input_running_evaluation = hash_input_running_evaluation
@@ -849,16 +794,10 @@ impl HashTable {
                 && current_row[CI.base_table_index()] == Instruction::Hash.opcode_b()
             {
                 // add compressed digest to running evaluation “hash digest”
-                let hash_digest_weights = [
-                    challenges.hash_digest_weight0,
-                    challenges.hash_digest_weight1,
-                    challenges.hash_digest_weight2,
-                    challenges.hash_digest_weight3,
-                    challenges.hash_digest_weight4,
-                ];
-                let compressed_hash_digest: XFieldElement = digest_registers(current_row)
+                let compressed_hash_digest: XFieldElement = state_registers(current_row)
+                    [..DIGEST_LENGTH]
                     .iter()
-                    .zip_eq(hash_digest_weights.iter())
+                    .zip_eq(state_weights[..DIGEST_LENGTH].iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_digest_running_evaluation = hash_digest_running_evaluation
@@ -866,25 +805,13 @@ impl HashTable {
                     + compressed_hash_digest;
             }
 
-            let sponge_absorb_weights = [
-                challenges.sponge_absorb_weight0,
-                challenges.sponge_absorb_weight1,
-                challenges.sponge_absorb_weight2,
-                challenges.sponge_absorb_weight3,
-                challenges.sponge_absorb_weight4,
-                challenges.sponge_absorb_weight5,
-                challenges.sponge_absorb_weight6,
-                challenges.sponge_absorb_weight7,
-                challenges.sponge_absorb_weight8,
-                challenges.sponge_absorb_weight9,
-            ];
             if current_row[ROUNDNUMBER.base_table_index()].is_one()
                 && current_row[CI.base_table_index()] == Instruction::AbsorbInit.opcode_b()
             {
                 // add compressed Sponge input to running evaluation “Sponge absorb”
-                let compressed_sponge_absorb: XFieldElement = rate_registers(current_row)
+                let compressed_sponge_absorb: XFieldElement = state_registers(current_row)
                     .iter()
-                    .zip_eq(sponge_absorb_weights.iter())
+                    .zip_eq(state_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 sponge_absorb_running_evaluation = sponge_absorb_running_evaluation
@@ -899,9 +826,9 @@ impl HashTable {
                 && current_row[CI.base_table_index()] == Instruction::Absorb.opcode_b()
             {
                 // add compressed Sponge input to running evaluation “Sponge absorb”
-                let rate_current_row = rate_registers(current_row);
-                let rate_previous_row = rate_registers(previous_row);
-                let compressed_sponge_absorb: XFieldElement = sponge_absorb_weights
+                let rate_current_row = state_registers(current_row);
+                let rate_previous_row = state_registers(previous_row);
+                let compressed_sponge_absorb: XFieldElement = state_weights
                     .iter()
                     .zip_eq(rate_current_row.iter().zip_eq(rate_previous_row.iter()))
                     .map(|(&weight, (&curr_state, &prev_state))| weight * (curr_state - prev_state))
@@ -918,21 +845,9 @@ impl HashTable {
                 && current_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b()
             {
                 // add compressed squeezed elements to running evaluation “Sponge squeeze”
-                let sponge_squeeze_weights = [
-                    challenges.sponge_squeeze_weight0,
-                    challenges.sponge_squeeze_weight1,
-                    challenges.sponge_squeeze_weight2,
-                    challenges.sponge_squeeze_weight3,
-                    challenges.sponge_squeeze_weight4,
-                    challenges.sponge_squeeze_weight5,
-                    challenges.sponge_squeeze_weight6,
-                    challenges.sponge_squeeze_weight7,
-                    challenges.sponge_squeeze_weight8,
-                    challenges.sponge_squeeze_weight9,
-                ];
-                let compressed_sponge_squeeze: XFieldElement = rate_registers(current_row)
+                let compressed_sponge_squeeze: XFieldElement = state_registers(current_row)
                     .iter()
-                    .zip_eq(sponge_squeeze_weights.iter())
+                    .zip_eq(state_weights.iter())
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 sponge_squeeze_running_evaluation = sponge_squeeze_running_evaluation
@@ -968,66 +883,22 @@ pub enum HashTableChallengeId {
     SpongeSqueezeEvalIndeterminate,
     SpongeOrderEvalIndeterminate,
 
-    // 2 * DIGEST_LENGTH elements for the input to the hash function
-    HashInputWeight0,
-    HashInputWeight1,
-    HashInputWeight2,
-    HashInputWeight3,
-    HashInputWeight4,
-    HashInputWeight5,
-    HashInputWeight6,
-    HashInputWeight7,
-    HashInputWeight8,
-    HashInputWeight9,
-
-    // DIGEST_LENGTH elements for the output of the hash function, i.e., the digest
-    HashDigestWeight0,
-    HashDigestWeight1,
-    HashDigestWeight2,
-    HashDigestWeight3,
-    HashDigestWeight4,
-
-    // RATE elements for Sponge absorption
-    SpongeAbsorbWeight0,
-    SpongeAbsorbWeight1,
-    SpongeAbsorbWeight2,
-    SpongeAbsorbWeight3,
-    SpongeAbsorbWeight4,
-    SpongeAbsorbWeight5,
-    SpongeAbsorbWeight6,
-    SpongeAbsorbWeight7,
-    SpongeAbsorbWeight8,
-    SpongeAbsorbWeight9,
-
-    // RATE elements for Sponge squeezing
-    SpongeSqueezeWeight0,
-    SpongeSqueezeWeight1,
-    SpongeSqueezeWeight2,
-    SpongeSqueezeWeight3,
-    SpongeSqueezeWeight4,
-    SpongeSqueezeWeight5,
-    SpongeSqueezeWeight6,
-    SpongeSqueezeWeight7,
-    SpongeSqueezeWeight8,
-    SpongeSqueezeWeight9,
-
-    // STATE elements for Sponge state consistency across XLIX sections within the table
-    SpongeStateWeight0,
-    SpongeStateWeight1,
-    SpongeStateWeight2,
-    SpongeStateWeight3,
-    SpongeStateWeight4,
-    SpongeStateWeight5,
-    SpongeStateWeight6,
-    SpongeStateWeight7,
-    SpongeStateWeight8,
-    SpongeStateWeight9,
-    SpongeStateWeight10,
-    SpongeStateWeight11,
-    SpongeStateWeight12,
-    SpongeStateWeight13,
-    SpongeStateWeight14,
-    SpongeStateWeight15,
+    HashStateWeight0,
+    HashStateWeight1,
+    HashStateWeight2,
+    HashStateWeight3,
+    HashStateWeight4,
+    HashStateWeight5,
+    HashStateWeight6,
+    HashStateWeight7,
+    HashStateWeight8,
+    HashStateWeight9,
+    HashStateWeight10,
+    HashStateWeight11,
+    HashStateWeight12,
+    HashStateWeight13,
+    HashStateWeight14,
+    HashStateWeight15,
 }
 
 impl From<HashTableChallengeId> for usize {
@@ -1047,66 +918,22 @@ pub struct HashTableChallenges {
     pub sponge_order_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    // 2 * DIGEST_LENGTH elements for the input to the hash function
-    pub hash_input_weight0: XFieldElement,
-    pub hash_input_weight1: XFieldElement,
-    pub hash_input_weight2: XFieldElement,
-    pub hash_input_weight3: XFieldElement,
-    pub hash_input_weight4: XFieldElement,
-    pub hash_input_weight5: XFieldElement,
-    pub hash_input_weight6: XFieldElement,
-    pub hash_input_weight7: XFieldElement,
-    pub hash_input_weight8: XFieldElement,
-    pub hash_input_weight9: XFieldElement,
-
-    // DIGEST_LENGTH elements for the output of the hash function, i.e., the digest
-    pub hash_digest_weight0: XFieldElement,
-    pub hash_digest_weight1: XFieldElement,
-    pub hash_digest_weight2: XFieldElement,
-    pub hash_digest_weight3: XFieldElement,
-    pub hash_digest_weight4: XFieldElement,
-
-    // RATE elements for Sponge absorption
-    pub sponge_absorb_weight0: XFieldElement,
-    pub sponge_absorb_weight1: XFieldElement,
-    pub sponge_absorb_weight2: XFieldElement,
-    pub sponge_absorb_weight3: XFieldElement,
-    pub sponge_absorb_weight4: XFieldElement,
-    pub sponge_absorb_weight5: XFieldElement,
-    pub sponge_absorb_weight6: XFieldElement,
-    pub sponge_absorb_weight7: XFieldElement,
-    pub sponge_absorb_weight8: XFieldElement,
-    pub sponge_absorb_weight9: XFieldElement,
-
-    // RATE elements for Sponge squeezing
-    pub sponge_squeeze_weight0: XFieldElement,
-    pub sponge_squeeze_weight1: XFieldElement,
-    pub sponge_squeeze_weight2: XFieldElement,
-    pub sponge_squeeze_weight3: XFieldElement,
-    pub sponge_squeeze_weight4: XFieldElement,
-    pub sponge_squeeze_weight5: XFieldElement,
-    pub sponge_squeeze_weight6: XFieldElement,
-    pub sponge_squeeze_weight7: XFieldElement,
-    pub sponge_squeeze_weight8: XFieldElement,
-    pub sponge_squeeze_weight9: XFieldElement,
-
-    // STATE elements for Sponge state consistency across XLIX sections within the table
-    pub sponge_state_weight0: XFieldElement,
-    pub sponge_state_weight1: XFieldElement,
-    pub sponge_state_weight2: XFieldElement,
-    pub sponge_state_weight3: XFieldElement,
-    pub sponge_state_weight4: XFieldElement,
-    pub sponge_state_weight5: XFieldElement,
-    pub sponge_state_weight6: XFieldElement,
-    pub sponge_state_weight7: XFieldElement,
-    pub sponge_state_weight8: XFieldElement,
-    pub sponge_state_weight9: XFieldElement,
-    pub sponge_state_weight10: XFieldElement,
-    pub sponge_state_weight11: XFieldElement,
-    pub sponge_state_weight12: XFieldElement,
-    pub sponge_state_weight13: XFieldElement,
-    pub sponge_state_weight14: XFieldElement,
-    pub sponge_state_weight15: XFieldElement,
+    pub hash_state_weight0: XFieldElement,
+    pub hash_state_weight1: XFieldElement,
+    pub hash_state_weight2: XFieldElement,
+    pub hash_state_weight3: XFieldElement,
+    pub hash_state_weight4: XFieldElement,
+    pub hash_state_weight5: XFieldElement,
+    pub hash_state_weight6: XFieldElement,
+    pub hash_state_weight7: XFieldElement,
+    pub hash_state_weight8: XFieldElement,
+    pub hash_state_weight9: XFieldElement,
+    pub hash_state_weight10: XFieldElement,
+    pub hash_state_weight11: XFieldElement,
+    pub hash_state_weight12: XFieldElement,
+    pub hash_state_weight13: XFieldElement,
+    pub hash_state_weight14: XFieldElement,
+    pub hash_state_weight15: XFieldElement,
 }
 
 impl TableChallenges for HashTableChallenges {
@@ -1120,57 +947,22 @@ impl TableChallenges for HashTableChallenges {
             SpongeAbsorbEvalIndeterminate => self.sponge_absorb_eval_indeterminate,
             SpongeSqueezeEvalIndeterminate => self.sponge_squeeze_eval_indeterminate,
             SpongeOrderEvalIndeterminate => self.sponge_order_eval_indeterminate,
-            HashInputWeight0 => self.hash_input_weight0,
-            HashInputWeight1 => self.hash_input_weight1,
-            HashInputWeight2 => self.hash_input_weight2,
-            HashInputWeight3 => self.hash_input_weight3,
-            HashInputWeight4 => self.hash_input_weight4,
-            HashInputWeight5 => self.hash_input_weight5,
-            HashInputWeight6 => self.hash_input_weight6,
-            HashInputWeight7 => self.hash_input_weight7,
-            HashInputWeight8 => self.hash_input_weight8,
-            HashInputWeight9 => self.hash_input_weight9,
-            HashDigestWeight0 => self.hash_digest_weight0,
-            HashDigestWeight1 => self.hash_digest_weight1,
-            HashDigestWeight2 => self.hash_digest_weight2,
-            HashDigestWeight3 => self.hash_digest_weight3,
-            HashDigestWeight4 => self.hash_digest_weight4,
-            SpongeAbsorbWeight0 => self.sponge_absorb_weight0,
-            SpongeAbsorbWeight1 => self.sponge_absorb_weight1,
-            SpongeAbsorbWeight2 => self.sponge_absorb_weight2,
-            SpongeAbsorbWeight3 => self.sponge_absorb_weight3,
-            SpongeAbsorbWeight4 => self.sponge_absorb_weight4,
-            SpongeAbsorbWeight5 => self.sponge_absorb_weight5,
-            SpongeAbsorbWeight6 => self.sponge_absorb_weight6,
-            SpongeAbsorbWeight7 => self.sponge_absorb_weight7,
-            SpongeAbsorbWeight8 => self.sponge_absorb_weight8,
-            SpongeAbsorbWeight9 => self.sponge_absorb_weight9,
-            SpongeSqueezeWeight0 => self.sponge_squeeze_weight0,
-            SpongeSqueezeWeight1 => self.sponge_squeeze_weight1,
-            SpongeSqueezeWeight2 => self.sponge_squeeze_weight2,
-            SpongeSqueezeWeight3 => self.sponge_squeeze_weight3,
-            SpongeSqueezeWeight4 => self.sponge_squeeze_weight4,
-            SpongeSqueezeWeight5 => self.sponge_squeeze_weight5,
-            SpongeSqueezeWeight6 => self.sponge_squeeze_weight6,
-            SpongeSqueezeWeight7 => self.sponge_squeeze_weight7,
-            SpongeSqueezeWeight8 => self.sponge_squeeze_weight8,
-            SpongeSqueezeWeight9 => self.sponge_squeeze_weight9,
-            SpongeStateWeight0 => self.sponge_state_weight0,
-            SpongeStateWeight1 => self.sponge_state_weight1,
-            SpongeStateWeight2 => self.sponge_state_weight2,
-            SpongeStateWeight3 => self.sponge_state_weight3,
-            SpongeStateWeight4 => self.sponge_state_weight4,
-            SpongeStateWeight5 => self.sponge_state_weight5,
-            SpongeStateWeight6 => self.sponge_state_weight6,
-            SpongeStateWeight7 => self.sponge_state_weight7,
-            SpongeStateWeight8 => self.sponge_state_weight8,
-            SpongeStateWeight9 => self.sponge_state_weight9,
-            SpongeStateWeight10 => self.sponge_state_weight10,
-            SpongeStateWeight11 => self.sponge_state_weight11,
-            SpongeStateWeight12 => self.sponge_state_weight12,
-            SpongeStateWeight13 => self.sponge_state_weight13,
-            SpongeStateWeight14 => self.sponge_state_weight14,
-            SpongeStateWeight15 => self.sponge_state_weight15,
+            HashStateWeight0 => self.hash_state_weight0,
+            HashStateWeight1 => self.hash_state_weight1,
+            HashStateWeight2 => self.hash_state_weight2,
+            HashStateWeight3 => self.hash_state_weight3,
+            HashStateWeight4 => self.hash_state_weight4,
+            HashStateWeight5 => self.hash_state_weight5,
+            HashStateWeight6 => self.hash_state_weight6,
+            HashStateWeight7 => self.hash_state_weight7,
+            HashStateWeight8 => self.hash_state_weight8,
+            HashStateWeight9 => self.hash_state_weight9,
+            HashStateWeight10 => self.hash_state_weight10,
+            HashStateWeight11 => self.hash_state_weight11,
+            HashStateWeight12 => self.hash_state_weight12,
+            HashStateWeight13 => self.hash_state_weight13,
+            HashStateWeight14 => self.hash_state_weight14,
+            HashStateWeight15 => self.hash_state_weight15,
         }
     }
 }
