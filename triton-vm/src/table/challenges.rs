@@ -61,7 +61,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 55 + NUM_CROSS_TABLE_WEIGHTS;
+    pub const TOTAL_CHALLENGES: usize = 56 + NUM_CROSS_TABLE_WEIGHTS;
 
     pub fn create_challenges(
         mut weights: Vec<XFieldElement>,
@@ -104,6 +104,7 @@ impl AllChallenges {
             unique_clock_jump_differences_eval_indeterminate: weights.pop().unwrap(),
             all_clock_jump_differences_multi_perm_indeterminate: weights.pop().unwrap(),
 
+            hash_table_ci_weight: weights.pop().unwrap(),
             hash_state_weight0: weights.pop().unwrap(),
             hash_state_weight1: weights.pop().unwrap(),
             hash_state_weight2: weights.pop().unwrap(),
@@ -196,6 +197,7 @@ impl AllChallenges {
             sponge_order_eval_indeterminate: processor_table_challenges
                 .sponge_order_eval_indeterminate,
 
+            ci_weight: processor_table_challenges.hash_table_ci_weight,
             hash_state_weight0: processor_table_challenges.hash_state_weight0,
             hash_state_weight1: processor_table_challenges.hash_state_weight1,
             hash_state_weight2: processor_table_challenges.hash_state_weight2,

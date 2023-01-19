@@ -104,7 +104,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. `RunningEvaluationHashDigest` is 1.
 1. `RunningEvaluationSpongeAbsorb` has absorbed the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🧽 if the current instruction is `absorb_init`. Otherwise, it is 1.
 1. `RunningEvaluationSpongeSqueeze` is 1.
-1. `RunningEvaluationSpongeOrder` has absorbed `ci` with respect to indeterminate 🪞 if the current instruction is `absorb_init`. Otherwise, it is 1.
+1. `RunningEvaluationSpongeOrder` has absorbed `ci` and the first row with respect challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🪞 if the current instruction is `absorb_init`. Otherwise, it is 1.
 1. `RunningProductU32Table` is 1.
 1. The running evaluation of relevant clock cycles is 1.
 1. The running evaluation of unique clock jump differences starts off having applied one evaluation step with the clock jump difference with respect to indeterminate 🛒, if the `cjd` column does not start with zero.
@@ -153,7 +153,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
     ` + absorb_init_deselector·(RunningEvaluationSpongeAbsorb - 🧽 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`
 1. `RunningEvaluationSpongeSqueeze - 1`
 1. `(ci - opcode(absorb_init))·(RunningEvaluationSpongeOrder - 1)`<br />
-    ` + absorb_init_deselector·(RunningEvaluationSpongeOrder - 🪞 - ci)`
+    ` + absorb_init_deselector·(RunningEvaluationSpongeOrder - 🪞 - ci·🧅 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`
 1. `RunningProductU32Table - 1`
 1. `rer - 1`
 1. `cjd · (reu - 🛒 - cjd)) + (1 - cjd · invm) · (reu - 1)`
@@ -191,7 +191,7 @@ The following constraints apply to every pair of rows.
 1. If the current instruction is `hash`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
 1. If the current instruction in the next row is `absorb_init` or `absorb`, then the running evaluation “Sponge absorb” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🧽. Otherwise, it remains unchanged.
 1. If the current instruction is `squeeze`, then the running evaluation “Sponge squeeze” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🪣.
-1. If the current instruction in the next row is `absorb_init`, `absorb`, or `squeeze`, then the running evaluation “Sponge order” absorbs `ci` in the next row with respect to indeterminate 🪞.
+1. If the current instruction in the next row is `absorb_init`, `absorb`, or `squeeze`, then the running evaluation “Sponge order” absorbs `ci` and `st0` through `st9` in the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🪞.
 1.  1. If the current instruction is `split`, then the running product with the U32 Table absorbs `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the running product with the U32 Table absorbs `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
     1. If the current instruction is `log2floor`, then the running product with the U32 Table absorbs `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
@@ -229,9 +229,9 @@ The following constraints apply to every pair of rows.
 1. `(ci - opcode(squeeze))·(RunningEvaluationSpongeSqueeze' - RunningEvaluationSpongeSqueeze)`<br />
     `+ squeeze_deselector·(RunningEvaluationSpongeSqueeze' - 🪣·RunningEvaluationSpongeSqueeze - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
 1. `(ci' - opcode(absorb_init))·(ci' - opcode(absorb))·(ci' - opcode(squeeze))·(RunningEvaluationSpongeOrder' - RunningEvaluationSpongeOrder)`<br />
-    `+ absorb_init_deselector·(RunningEvaluationSpongeOrder' - 🪞·RunningEvaluationSpongeOrder - CI')`<br />
-    `+ absorb_deselector·(RunningEvaluationSpongeOrder' - 🪞·RunningEvaluationSpongeOrder - CI')`<br />
-    `+ squeeze_deselector·(RunningEvaluationSpongeOrder' - 🪞·RunningEvaluationSpongeOrder - CI')`<br />
+    `+ absorb_init_deselector·(RunningEvaluationSpongeOrder' - 🪞·RunningEvaluationSpongeOrder - 🧅·ci' - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`<br />
+    `+ absorb_deselector·(RunningEvaluationSpongeOrder' - 🪞·RunningEvaluationSpongeOrder - 🧅·ci' - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`<br />
+    `+ squeeze_deselector·(RunningEvaluationSpongeOrder' - 🪞·RunningEvaluationSpongeOrder - 🧅·ci' - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`<br />
 1.  1. `split_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1' - 🥑·ci))`
     1. `+ lt_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
     1. `+ and_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`

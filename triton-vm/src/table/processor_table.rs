@@ -295,7 +295,8 @@ impl ProcessorTable {
             {
                 sponge_order_running_evaluation = sponge_order_running_evaluation
                     * challenges.sponge_order_eval_indeterminate
-                    + current_row[CI.base_table_index()];
+                    + challenges.hash_table_ci_weight * current_row[CI.base_table_index()]
+                    + compressed_row_for_hash_input_and_sponge;
             }
 
             // U32 Table
@@ -594,6 +595,7 @@ pub enum ProcessorTableChallengeId {
     UniqueClockJumpDifferencesEvalIndeterminate,
     AllClockJumpDifferencesMultiPermIndeterminate,
 
+    HashTableCIWeight,
     HashStateWeight0,
     HashStateWeight1,
     HashStateWeight2,
@@ -659,6 +661,7 @@ pub struct ProcessorTableChallenges {
     pub unique_clock_jump_differences_eval_indeterminate: XFieldElement,
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 
+    pub hash_table_ci_weight: XFieldElement,
     pub hash_state_weight0: XFieldElement,
     pub hash_state_weight1: XFieldElement,
     pub hash_state_weight2: XFieldElement,
@@ -716,6 +719,7 @@ impl TableChallenges for ProcessorTableChallenges {
             AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
+            HashTableCIWeight => self.hash_table_ci_weight,
             HashStateWeight0 => self.hash_state_weight0,
             HashStateWeight1 => self.hash_state_weight1,
             HashStateWeight2 => self.hash_state_weight2,
@@ -4576,10 +4580,41 @@ impl DualRowConstraints {
             * (self.ci_next() - self.constant_b(Instruction::Squeeze.opcode_b()));
 
         let indeterminate = self.circuit_builder.challenge(SpongeOrderEvalIndeterminate);
+        let state_weights = [
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+            HashStateWeight5,
+            HashStateWeight6,
+            HashStateWeight7,
+            HashStateWeight8,
+            HashStateWeight9,
+        ]
+        .map(|w| self.circuit_builder.challenge(w));
+        let state = [
+            self.st0_next(),
+            self.st1_next(),
+            self.st2_next(),
+            self.st3_next(),
+            self.st4_next(),
+            self.st5_next(),
+            self.st6_next(),
+            self.st7_next(),
+            self.st8_next(),
+            self.st9_next(),
+        ];
+        let compressed_row = state_weights
+            .into_iter()
+            .zip_eq(state.into_iter())
+            .map(|(weight, state)| weight * state)
+            .sum();
 
         let running_evaluation_updates = self.running_evaluation_sponge_order_next()
             - indeterminate * self.running_evaluation_sponge_order()
-            - self.ci_next();
+            - self.circuit_builder.challenge(HashTableCIWeight) * self.ci_next()
+            - compressed_row;
         let running_evaluation_remains =
             self.running_evaluation_sponge_order_next() - self.running_evaluation_sponge_order();
 
