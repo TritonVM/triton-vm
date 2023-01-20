@@ -539,6 +539,9 @@ fn parse_token(token: &str, tokens: &mut SplitWhitespace) -> Result<Vec<Labelled
         "hash" => vec![Hash],
         "divine_sibling" => vec![DivineSibling],
         "assert_vector" => vec![AssertVector],
+        "absorb_init" => vec![AbsorbInit],
+        "absorb" => vec![Absorb],
+        "squeeze" => vec![Squeeze],
 
         // Base field arithmetic on stack
         "add" => vec![Add],
@@ -718,6 +721,9 @@ pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
         Hash,
         DivineSibling,
         AssertVector,
+        AbsorbInit,
+        Absorb,
+        Squeeze,
         Add,
         Mul,
         Invert,
@@ -786,6 +792,7 @@ pub mod sample_programs {
         call foo
 
         return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
+        absorb_init absorb squeeze
         add mul invert split eq xxadd xxmul xinvert xbmul
 
         read_io write_io
@@ -839,6 +846,9 @@ pub mod sample_programs {
             "hash",
             "divine_sibling",
             "assert_vector",
+            "absorb_init",
+            "absorb",
+            "squeeze",
             "add",
             "mul",
             "invert",
