@@ -238,6 +238,7 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
+    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use crate::shared_tests::SourceCodeAndInput;
     use crate::table::processor_table::ProcessorTraceRow;
@@ -490,6 +491,56 @@ pub mod triton_vm_tests {
         SourceCodeAndInput {
             source_code,
             input: vec![st4.into(), st3.into(), st2.into(), st1.into(), st0.into()],
+            secret_input: vec![],
+        }
+    }
+
+    pub fn property_based_test_program_for_sponge_instructions() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.gen_range(0..BFieldElement::P);
+        let st1 = rng.gen_range(0..BFieldElement::P);
+        let st2 = rng.gen_range(0..BFieldElement::P);
+        let st3 = rng.gen_range(0..BFieldElement::P);
+        let st4 = rng.gen_range(0..BFieldElement::P);
+        let st5 = rng.gen_range(0..BFieldElement::P);
+        let st6 = rng.gen_range(0..BFieldElement::P);
+        let st7 = rng.gen_range(0..BFieldElement::P);
+        let st8 = rng.gen_range(0..BFieldElement::P);
+        let st9 = rng.gen_range(0..BFieldElement::P);
+
+        let sponge_input =
+            [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9].map(BFieldElement::new);
+        let mut sponge_state = RescuePrimeRegular::absorb_init(&sponge_input);
+        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
+        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
+        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
+        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
+        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
+        RescuePrimeRegular::squeeze(&mut sponge_state);
+        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
+
+        let source_code = format!(
+            "
+            push {st9} push {st8} push {st7} push {st6} push {st5}
+            push {st4} push {st3} push {st2} push {st1} push {st0}
+            absorb_init hash squeeze absorb absorb hash squeeze absorb squeeze squeeze
+            read_io eq assert // st0
+            read_io eq assert // st1
+            read_io eq assert // st2
+            read_io eq assert // st3
+            read_io eq assert // st4
+            read_io eq assert // st5
+            read_io eq assert // st6
+            read_io eq assert // st7
+            read_io eq assert // st8
+            read_io eq assert // st9
+            halt
+            ",
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: sponge_output.to_vec(),
             secret_input: vec![],
         }
     }
