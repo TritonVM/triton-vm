@@ -453,6 +453,27 @@ pub mod triton_vm_tests {
         )
     }
 
+    pub fn test_program_for_sponge_instructions() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "absorb_init push 3 push 2 push 1 absorb absorb squeeze halt",
+        )
+    }
+
+    pub fn test_program_for_sponge_instructions_2() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "hash absorb_init push 3 push 2 push 1 absorb absorb squeeze halt",
+        )
+    }
+
+    pub fn test_program_for_many_sponge_instructions() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "absorb_init squeeze absorb absorb absorb squeeze squeeze squeeze absorb \
+            absorb_init absorb_init absorb_init absorb absorb_init squeeze squeeze \
+            absorb_init squeeze hash absorb hash squeeze hash absorb hash squeeze \
+            absorb_init absorb absorb absorb absorb absorb absorb absorb halt",
+        )
+    }
+
     pub fn property_based_test_program_for_assert_vector() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.gen_range(0..BFieldElement::P);
@@ -872,6 +893,9 @@ pub mod triton_vm_tests {
             test_program_for_divine_sibling_noswitch(),
             test_program_for_divine_sibling_switch(),
             test_program_for_assert_vector(),
+            test_program_for_sponge_instructions(),
+            test_program_for_sponge_instructions_2(),
+            test_program_for_many_sponge_instructions(),
             test_program_for_add_mul_invert(),
             test_program_for_eq(),
             test_program_for_lsb(),
