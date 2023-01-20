@@ -30,7 +30,7 @@ fn prove_halt(_criterion: &mut Criterion) {
     }
 
     let code = program.to_bwords();
-    let cycle_count = aet.processor_matrix.nrows();
+    let cycle_count = aet.processor_trace.nrows();
     let padded_height = MasterBaseTable::padded_height(&aet, &code);
     let claim = Claim {
         input: vec![],

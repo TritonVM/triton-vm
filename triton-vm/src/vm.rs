@@ -1,5 +1,9 @@
+use ndarray::s;
 use ndarray::Array2;
+use ndarray::ArrayBase;
 use ndarray::Axis;
+use ndarray::Ix2;
+use ndarray::OwnedRepr;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
@@ -15,6 +19,7 @@ use crate::table::hash_table;
 use crate::table::hash_table::NUM_ROUND_CONSTANTS;
 use crate::table::processor_table;
 use crate::table::table_column::BaseTableColumn;
+use crate::table::table_column::HashBaseTableColumn::CI;
 use crate::table::table_column::HashBaseTableColumn::CONSTANT0A;
 use crate::table::table_column::HashBaseTableColumn::ROUNDNUMBER;
 use crate::table::table_column::HashBaseTableColumn::STATE0;
@@ -37,7 +42,7 @@ pub fn simulate(
     let mut aet = AlgebraicExecutionTrace::default();
     let mut state = VMState::new(program);
     // record initial state
-    aet.processor_matrix
+    aet.processor_trace
         .push_row(state.to_processor_row().view())
         .expect("shapes must be identical");
 
@@ -49,7 +54,12 @@ pub fn simulate(
         };
 
         match vm_output {
-            Some(VMOutput::XlixTrace(hash_trace)) => aet.append_hash_trace(*hash_trace),
+            Some(VMOutput::XlixTrace(Instruction::Hash, xlix_trace)) => {
+                aet.append_hash_trace(*xlix_trace)
+            }
+            Some(VMOutput::XlixTrace(instruction, xlix_trace)) => {
+                aet.append_sponge_trace(instruction, *xlix_trace)
+            }
             Some(VMOutput::U32TableEntries(mut entries)) => {
                 aet.u32_entries.append(&mut entries);
             }
@@ -57,7 +67,7 @@ pub fn simulate(
             None => (),
         }
         // Record next, to be executed state.
-        aet.processor_matrix
+        aet.processor_trace
             .push_row(state.to_processor_row().view())
             .expect("shapes must be identical");
     }
@@ -110,27 +120,76 @@ pub fn run(
 
 #[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
-    pub processor_matrix: Array2<BFieldElement>,
-    pub hash_matrix: Array2<BFieldElement>,
+    /// Records the state of the processor after each instruction.
+    pub processor_trace: Array2<BFieldElement>,
+
+    /// For the `hash` instruction, the hash trace records the internal state of the XLIX
+    /// permutation for each round.
+    pub hash_trace: Array2<BFieldElement>,
+
+    /// For the Sponge instructions, i.e., `absorb_init`, `absorb`, and `squeeze`, the Sponge
+    /// trace records the internal state of the XLIX permutation for each round.
+    pub sponge_trace: Array2<BFieldElement>,
+
+    /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
+    /// alongside the u32 instruction that was executed at the time.
     pub u32_entries: Vec<(Instruction, BFieldElement, BFieldElement)>,
 }
 
 impl Default for AlgebraicExecutionTrace {
     fn default() -> Self {
         Self {
-            processor_matrix: Array2::default([0, processor_table::BASE_WIDTH]),
-            hash_matrix: Array2::default([0, hash_table::BASE_WIDTH]),
+            processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
+            hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
+            sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             u32_entries: vec![],
         }
     }
 }
 
 impl AlgebraicExecutionTrace {
-    pub fn append_hash_trace(&mut self, hash_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
-        let mut hash_matrix_addendum = Array2::default([NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
-        for (row_idx, mut row) in hash_matrix_addendum.rows_mut().into_iter().enumerate() {
+    pub fn append_hash_trace(&mut self, xlix_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
+        let mut hash_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
+        hash_trace_addendum
+            .slice_mut(s![.., CI.base_table_index()])
+            .fill(Instruction::Hash.opcode_b());
+        self.hash_trace
+            .append(Axis(0), hash_trace_addendum.view())
+            .expect("shapes must be identical");
+    }
+
+    pub fn append_sponge_trace(
+        &mut self,
+        instruction: Instruction,
+        xlix_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+    ) {
+        assert!(matches!(
+            instruction,
+            Instruction::AbsorbInit | Instruction::Absorb | Instruction::Squeeze
+        ));
+        let mut sponge_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
+        sponge_trace_addendum
+            .slice_mut(s![.., CI.base_table_index()])
+            .fill(instruction.opcode_b());
+        self.sponge_trace
+            .append(Axis(0), sponge_trace_addendum.view())
+            .expect("shapes must be identical");
+    }
+
+    /// Given an XLIX trace, this function adds
+    ///
+    /// 1. the round number, and
+    /// 2. the relevant round constants
+    ///
+    /// to each row. The result has the same width as the Hash Table. The current instruction is not
+    /// set.
+    fn add_round_number_and_constants(
+        xlix_trace: [[BFieldElement; 16]; 9],
+    ) -> ArrayBase<OwnedRepr<BFieldElement>, Ix2> {
+        let mut hash_trace_addendum = Array2::default([NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
+        for (row_idx, mut row) in hash_trace_addendum.rows_mut().into_iter().enumerate() {
             let round_number = row_idx + 1;
-            let trace_row = hash_trace[row_idx];
+            let trace_row = xlix_trace[row_idx];
             let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
             row[ROUNDNUMBER.base_table_index()] = BFieldElement::from(row_idx as u64 + 1);
             for st_idx in 0..STATE_SIZE {
@@ -140,9 +199,7 @@ impl AlgebraicExecutionTrace {
                 row[CONSTANT0A.base_table_index() + rc_idx] = round_constants[rc_idx];
             }
         }
-        self.hash_matrix
-            .append(Axis(0), hash_matrix_addendum.view())
-            .expect("shapes must be identical");
+        hash_trace_addendum
     }
 
     /// The 2·STATE_SIZE (= NUM_ROUND_CONSTANTS) round constants for round `round_number`.
@@ -180,9 +237,10 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
+    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use crate::shared_tests::SourceCodeAndInput;
-    use crate::table::processor_table::ProcessorMatrixRow;
+    use crate::table::processor_table::ProcessorTraceRow;
 
     use super::*;
 
@@ -243,8 +301,8 @@ pub mod triton_vm_tests {
         if let Some(e) = err {
             panic!("Execution failed: {e}");
         }
-        for row in aet.processor_matrix.rows() {
-            println!("{}", ProcessorMatrixRow { row });
+        for row in aet.processor_trace.rows() {
+            println!("{}", ProcessorTraceRow { row });
         }
     }
 
@@ -264,8 +322,8 @@ pub mod triton_vm_tests {
         let (aet, _, err) = simulate_no_input(&program);
 
         println!("{:?}", err);
-        for row in aet.processor_matrix.rows() {
-            println!("{}", ProcessorMatrixRow { row });
+        for row in aet.processor_trace.rows() {
+            println!("{}", ProcessorTraceRow { row });
         }
     }
 
@@ -395,6 +453,27 @@ pub mod triton_vm_tests {
         )
     }
 
+    pub fn test_program_for_sponge_instructions() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "absorb_init push 3 push 2 push 1 absorb absorb squeeze halt",
+        )
+    }
+
+    pub fn test_program_for_sponge_instructions_2() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "hash absorb_init push 3 push 2 push 1 absorb absorb squeeze halt",
+        )
+    }
+
+    pub fn test_program_for_many_sponge_instructions() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "absorb_init squeeze absorb absorb absorb squeeze squeeze squeeze absorb \
+            absorb_init absorb_init absorb_init absorb absorb_init squeeze squeeze \
+            absorb_init squeeze hash absorb hash squeeze hash absorb hash squeeze \
+            absorb_init absorb absorb absorb absorb absorb absorb absorb halt",
+        )
+    }
+
     pub fn property_based_test_program_for_assert_vector() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
         let st0 = rng.gen_range(0..BFieldElement::P);
@@ -411,6 +490,56 @@ pub mod triton_vm_tests {
         SourceCodeAndInput {
             source_code,
             input: vec![st4.into(), st3.into(), st2.into(), st1.into(), st0.into()],
+            secret_input: vec![],
+        }
+    }
+
+    pub fn property_based_test_program_for_sponge_instructions() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.gen_range(0..BFieldElement::P);
+        let st1 = rng.gen_range(0..BFieldElement::P);
+        let st2 = rng.gen_range(0..BFieldElement::P);
+        let st3 = rng.gen_range(0..BFieldElement::P);
+        let st4 = rng.gen_range(0..BFieldElement::P);
+        let st5 = rng.gen_range(0..BFieldElement::P);
+        let st6 = rng.gen_range(0..BFieldElement::P);
+        let st7 = rng.gen_range(0..BFieldElement::P);
+        let st8 = rng.gen_range(0..BFieldElement::P);
+        let st9 = rng.gen_range(0..BFieldElement::P);
+
+        let sponge_input =
+            [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9].map(BFieldElement::new);
+        let mut sponge_state = RescuePrimeRegular::absorb_init(&sponge_input);
+        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
+        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
+        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
+        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
+        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
+        RescuePrimeRegular::squeeze(&mut sponge_state);
+        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
+
+        let source_code = format!(
+            "
+            push {st9} push {st8} push {st7} push {st6} push {st5}
+            push {st4} push {st3} push {st2} push {st1} push {st0}
+            absorb_init hash squeeze absorb absorb hash squeeze absorb squeeze squeeze
+            read_io eq assert // st0
+            read_io eq assert // st1
+            read_io eq assert // st2
+            read_io eq assert // st3
+            read_io eq assert // st4
+            read_io eq assert // st5
+            read_io eq assert // st6
+            read_io eq assert // st7
+            read_io eq assert // st8
+            read_io eq assert // st9
+            halt
+            ",
+        );
+
+        SourceCodeAndInput {
+            source_code,
+            input: sponge_output.to_vec(),
             secret_input: vec![],
         }
     }
@@ -814,6 +943,9 @@ pub mod triton_vm_tests {
             test_program_for_divine_sibling_noswitch(),
             test_program_for_divine_sibling_switch(),
             test_program_for_assert_vector(),
+            test_program_for_sponge_instructions(),
+            test_program_for_sponge_instructions_2(),
+            test_program_for_many_sponge_instructions(),
             test_program_for_add_mul_invert(),
             test_program_for_eq(),
             test_program_for_lsb(),

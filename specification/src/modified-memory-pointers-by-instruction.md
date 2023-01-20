@@ -19,12 +19,20 @@
 |           `hash` |       |        |       |
 | `divine_sibling` |       |        |       |
 |  `assert_vector` |       |        |       |
+|    `absorb_init` |       |        |       |
+|         `absorb` |       |        |       |
+|        `squeeze` |       |        |       |
 |            `add` |   ⨯   |        |       |
 |            `mul` |   ⨯   |        |       |
 |         `invert` |       |        |       |
-|          `split` |   ⨯   |        |       |
 |             `eq` |   ⨯   |        |       |
-|            `lsb` |   ⨯   |        |       |
+|          `split` |   ⨯   |        |       |
+|             `lt` |   x   |        |       |
+|            `and` |   x   |        |       |
+|            `xor` |   x   |        |       |
+|    `log_2_floor` |       |        |       |
+|            `pow` |   x   |        |       |
+|            `div` |       |        |       |
 |          `xxadd` |       |        |       |
 |          `xxmul` |       |        |       |
 |        `xinvert` |       |        |       |

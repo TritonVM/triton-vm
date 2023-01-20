@@ -18,14 +18,14 @@ use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
-use triton_opcodes::instruction::all_instructions_without_args;
-use triton_opcodes::instruction::AnInstruction::*;
-use triton_opcodes::instruction::Instruction;
-use triton_opcodes::ord_n::Ord7;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use triton_opcodes::instruction::all_instructions_without_args;
+use triton_opcodes::instruction::AnInstruction::*;
+use triton_opcodes::instruction::Instruction;
+use triton_opcodes::ord_n::Ord8;
 use ProcessorTableChallengeId::*;
 
 use crate::table::challenges::TableChallenges;
@@ -51,7 +51,7 @@ use crate::table::table_column::ProcessorExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
 pub const PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 6;
-pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 5;
+pub const PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 8;
 pub const PROCESSOR_TABLE_NUM_EXTENSION_CHALLENGES: usize = ProcessorTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = ProcessorBaseTableColumn::COUNT;
@@ -69,8 +69,8 @@ impl ProcessorTable {
     ) {
         // fill the processor table from the AET
         let mut processor_table_to_fill =
-            processor_table.slice_mut(s![0..aet.processor_matrix.nrows(), ..]);
-        aet.processor_matrix
+            processor_table.slice_mut(s![0..aet.processor_trace.nrows(), ..]);
+        aet.processor_trace
             .clone()
             .move_into(&mut processor_table_to_fill);
 
@@ -146,8 +146,9 @@ impl ProcessorTable {
         let mut op_stack_table_running_product = PermArg::default_initial();
         let mut ram_table_running_product = PermArg::default_initial();
         let mut jump_stack_running_product = PermArg::default_initial();
-        let mut to_hash_table_running_evaluation = EvalArg::default_initial();
-        let mut from_hash_table_running_evaluation = EvalArg::default_initial();
+        let mut hash_input_running_evaluation = EvalArg::default_initial();
+        let mut hash_digest_running_evaluation = EvalArg::default_initial();
+        let mut sponge_running_evaluation = EvalArg::default_initial();
         let mut u32_table_running_product = PermArg::default_initial();
         let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
         let mut all_clock_jump_differences_running_product =
@@ -227,66 +228,56 @@ impl ProcessorTable {
                 challenges.jump_stack_perm_indeterminate - compressed_row_for_jump_stack_table;
 
             // Hash Table – Hash's input from Processor to Hash Coprocessor
+            let st_0_through_9 = [ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7, ST8, ST9]
+                .map(|st| current_row[st.base_table_index()]);
+            let hash_state_weights = [
+                challenges.hash_state_weight0,
+                challenges.hash_state_weight1,
+                challenges.hash_state_weight2,
+                challenges.hash_state_weight3,
+                challenges.hash_state_weight4,
+                challenges.hash_state_weight5,
+                challenges.hash_state_weight6,
+                challenges.hash_state_weight7,
+                challenges.hash_state_weight8,
+                challenges.hash_state_weight9,
+            ];
+            let compressed_row_for_hash_input_and_sponge: XFieldElement = st_0_through_9
+                .into_iter()
+                .zip_eq(hash_state_weights.into_iter())
+                .map(|(st, weight)| weight * st)
+                .sum();
+            let compressed_row_for_hash_digest: XFieldElement = st_0_through_9[5..=9]
+                .iter()
+                .zip_eq(hash_state_weights[0..=4].iter())
+                .map(|(&st, &weight)| weight * st)
+                .sum();
+
             if current_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
-                let st_0_through_9 = [
-                    current_row[ST0.base_table_index()],
-                    current_row[ST1.base_table_index()],
-                    current_row[ST2.base_table_index()],
-                    current_row[ST3.base_table_index()],
-                    current_row[ST4.base_table_index()],
-                    current_row[ST5.base_table_index()],
-                    current_row[ST6.base_table_index()],
-                    current_row[ST7.base_table_index()],
-                    current_row[ST8.base_table_index()],
-                    current_row[ST9.base_table_index()],
-                ];
-                let hash_table_stack_input_challenges = [
-                    challenges.hash_table_stack_input_weight0,
-                    challenges.hash_table_stack_input_weight1,
-                    challenges.hash_table_stack_input_weight2,
-                    challenges.hash_table_stack_input_weight3,
-                    challenges.hash_table_stack_input_weight4,
-                    challenges.hash_table_stack_input_weight5,
-                    challenges.hash_table_stack_input_weight6,
-                    challenges.hash_table_stack_input_weight7,
-                    challenges.hash_table_stack_input_weight8,
-                    challenges.hash_table_stack_input_weight9,
-                ];
-                let compressed_row_for_hash_input: XFieldElement = st_0_through_9
-                    .into_iter()
-                    .zip_eq(hash_table_stack_input_challenges.into_iter())
-                    .map(|(st, weight)| weight * st)
-                    .sum();
-                to_hash_table_running_evaluation = to_hash_table_running_evaluation
-                    * challenges.to_hash_table_eval_indeterminate
-                    + compressed_row_for_hash_input;
+                hash_input_running_evaluation = hash_input_running_evaluation
+                    * challenges.hash_input_eval_indeterminate
+                    + compressed_row_for_hash_input_and_sponge;
             }
 
             // Hash Table – Hash's output from Hash Coprocessor to Processor
             if let Some(prev_row) = previous_row {
                 if prev_row[CI.base_table_index()] == Instruction::Hash.opcode_b() {
-                    let st_5_through_9 = [
-                        current_row[ST5.base_table_index()],
-                        current_row[ST6.base_table_index()],
-                        current_row[ST7.base_table_index()],
-                        current_row[ST8.base_table_index()],
-                        current_row[ST9.base_table_index()],
-                    ];
-                    let hash_table_digest_output_challenges = [
-                        challenges.hash_table_digest_output_weight0,
-                        challenges.hash_table_digest_output_weight1,
-                        challenges.hash_table_digest_output_weight2,
-                        challenges.hash_table_digest_output_weight3,
-                        challenges.hash_table_digest_output_weight4,
-                    ];
-                    let compressed_row_for_hash_digest: XFieldElement = st_5_through_9
-                        .into_iter()
-                        .zip_eq(hash_table_digest_output_challenges.into_iter())
-                        .map(|(st, weight)| weight * st)
-                        .sum();
-                    from_hash_table_running_evaluation = from_hash_table_running_evaluation
-                        * challenges.from_hash_table_eval_indeterminate
+                    hash_digest_running_evaluation = hash_digest_running_evaluation
+                        * challenges.hash_digest_eval_indeterminate
                         + compressed_row_for_hash_digest;
+                }
+            }
+
+            // Hash Table – Sponge
+            if let Some(prev_row) = previous_row {
+                if prev_row[CI.base_table_index()] == Instruction::AbsorbInit.opcode_b()
+                    || prev_row[CI.base_table_index()] == Instruction::Absorb.opcode_b()
+                    || prev_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b()
+                {
+                    sponge_running_evaluation = sponge_running_evaluation
+                        * challenges.sponge_eval_indeterminate
+                        + challenges.hash_table_ci_weight * prev_row[CI.base_table_index()]
+                        + compressed_row_for_hash_input_and_sponge;
                 }
             }
 
@@ -366,9 +357,9 @@ impl ProcessorTable {
             extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
             extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
             extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
-            extension_row[ToHashTableEvalArg.ext_table_index()] = to_hash_table_running_evaluation;
-            extension_row[FromHashTableEvalArg.ext_table_index()] =
-                from_hash_table_running_evaluation;
+            extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
+            extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
+            extension_row[SpongeEvalArg.ext_table_index()] = sponge_running_evaluation;
             extension_row[U32TablePermArg.ext_table_index()] = u32_table_running_product;
             extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
@@ -547,8 +538,9 @@ pub enum ProcessorTableChallengeId {
     /// permutation/evaluation column of the processor table.
     StandardInputEvalIndeterminate,
     StandardOutputEvalIndeterminate,
-    ToHashTableEvalIndeterminate,
-    FromHashTableEvalIndeterminate,
+    HashInputEvalIndeterminate,
+    HashDigestEvalIndeterminate,
+    SpongeEvalIndeterminate,
 
     InstructionPermIndeterminate,
     OpStackPermIndeterminate,
@@ -580,24 +572,17 @@ pub enum ProcessorTableChallengeId {
     UniqueClockJumpDifferencesEvalIndeterminate,
     AllClockJumpDifferencesMultiPermIndeterminate,
 
-    // 2 * DIGEST_LENGTH elements of these
-    HashTableStackInputWeight0,
-    HashTableStackInputWeight1,
-    HashTableStackInputWeight2,
-    HashTableStackInputWeight3,
-    HashTableStackInputWeight4,
-    HashTableStackInputWeight5,
-    HashTableStackInputWeight6,
-    HashTableStackInputWeight7,
-    HashTableStackInputWeight8,
-    HashTableStackInputWeight9,
-
-    // DIGEST_LENGTH elements of these
-    HashTableDigestOutputWeight0,
-    HashTableDigestOutputWeight1,
-    HashTableDigestOutputWeight2,
-    HashTableDigestOutputWeight3,
-    HashTableDigestOutputWeight4,
+    HashTableCIWeight,
+    HashStateWeight0,
+    HashStateWeight1,
+    HashStateWeight2,
+    HashStateWeight3,
+    HashStateWeight4,
+    HashStateWeight5,
+    HashStateWeight6,
+    HashStateWeight7,
+    HashStateWeight8,
+    HashStateWeight9,
 
     U32TableLhsWeight,
     U32TableRhsWeight,
@@ -617,8 +602,9 @@ pub struct ProcessorTableChallenges {
     /// permutation/evaluation column of the processor table.
     pub standard_input_eval_indeterminate: XFieldElement,
     pub standard_output_eval_indeterminate: XFieldElement,
-    pub to_hash_table_eval_indeterminate: XFieldElement,
-    pub from_hash_table_eval_indeterminate: XFieldElement,
+    pub hash_input_eval_indeterminate: XFieldElement,
+    pub hash_digest_eval_indeterminate: XFieldElement,
+    pub sponge_eval_indeterminate: XFieldElement,
 
     pub instruction_perm_indeterminate: XFieldElement,
     pub op_stack_perm_indeterminate: XFieldElement,
@@ -650,24 +636,17 @@ pub struct ProcessorTableChallenges {
     pub unique_clock_jump_differences_eval_indeterminate: XFieldElement,
     pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
 
-    // 2 * DIGEST_LENGTH elements of these
-    pub hash_table_stack_input_weight0: XFieldElement,
-    pub hash_table_stack_input_weight1: XFieldElement,
-    pub hash_table_stack_input_weight2: XFieldElement,
-    pub hash_table_stack_input_weight3: XFieldElement,
-    pub hash_table_stack_input_weight4: XFieldElement,
-    pub hash_table_stack_input_weight5: XFieldElement,
-    pub hash_table_stack_input_weight6: XFieldElement,
-    pub hash_table_stack_input_weight7: XFieldElement,
-    pub hash_table_stack_input_weight8: XFieldElement,
-    pub hash_table_stack_input_weight9: XFieldElement,
-
-    // DIGEST_LENGTH elements of these
-    pub hash_table_digest_output_weight0: XFieldElement,
-    pub hash_table_digest_output_weight1: XFieldElement,
-    pub hash_table_digest_output_weight2: XFieldElement,
-    pub hash_table_digest_output_weight3: XFieldElement,
-    pub hash_table_digest_output_weight4: XFieldElement,
+    pub hash_table_ci_weight: XFieldElement,
+    pub hash_state_weight0: XFieldElement,
+    pub hash_state_weight1: XFieldElement,
+    pub hash_state_weight2: XFieldElement,
+    pub hash_state_weight3: XFieldElement,
+    pub hash_state_weight4: XFieldElement,
+    pub hash_state_weight5: XFieldElement,
+    pub hash_state_weight6: XFieldElement,
+    pub hash_state_weight7: XFieldElement,
+    pub hash_state_weight8: XFieldElement,
+    pub hash_state_weight9: XFieldElement,
 
     pub u32_table_lhs_weight: XFieldElement,
     pub u32_table_rhs_weight: XFieldElement,
@@ -683,8 +662,9 @@ impl TableChallenges for ProcessorTableChallenges {
         match id {
             StandardInputEvalIndeterminate => self.standard_input_eval_indeterminate,
             StandardOutputEvalIndeterminate => self.standard_output_eval_indeterminate,
-            ToHashTableEvalIndeterminate => self.to_hash_table_eval_indeterminate,
-            FromHashTableEvalIndeterminate => self.from_hash_table_eval_indeterminate,
+            HashInputEvalIndeterminate => self.hash_input_eval_indeterminate,
+            HashDigestEvalIndeterminate => self.hash_digest_eval_indeterminate,
+            SpongeEvalIndeterminate => self.sponge_eval_indeterminate,
             InstructionPermIndeterminate => self.instruction_perm_indeterminate,
             OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
             RamPermIndeterminate => self.ram_perm_indeterminate,
@@ -712,21 +692,17 @@ impl TableChallenges for ProcessorTableChallenges {
             AllClockJumpDifferencesMultiPermIndeterminate => {
                 self.all_clock_jump_differences_multi_perm_indeterminate
             }
-            HashTableStackInputWeight0 => self.hash_table_stack_input_weight0,
-            HashTableStackInputWeight1 => self.hash_table_stack_input_weight1,
-            HashTableStackInputWeight2 => self.hash_table_stack_input_weight2,
-            HashTableStackInputWeight3 => self.hash_table_stack_input_weight3,
-            HashTableStackInputWeight4 => self.hash_table_stack_input_weight4,
-            HashTableStackInputWeight5 => self.hash_table_stack_input_weight5,
-            HashTableStackInputWeight6 => self.hash_table_stack_input_weight6,
-            HashTableStackInputWeight7 => self.hash_table_stack_input_weight7,
-            HashTableStackInputWeight8 => self.hash_table_stack_input_weight8,
-            HashTableStackInputWeight9 => self.hash_table_stack_input_weight9,
-            HashTableDigestOutputWeight0 => self.hash_table_digest_output_weight0,
-            HashTableDigestOutputWeight1 => self.hash_table_digest_output_weight1,
-            HashTableDigestOutputWeight2 => self.hash_table_digest_output_weight2,
-            HashTableDigestOutputWeight3 => self.hash_table_digest_output_weight3,
-            HashTableDigestOutputWeight4 => self.hash_table_digest_output_weight4,
+            HashTableCIWeight => self.hash_table_ci_weight,
+            HashStateWeight0 => self.hash_state_weight0,
+            HashStateWeight1 => self.hash_state_weight1,
+            HashStateWeight2 => self.hash_state_weight2,
+            HashStateWeight3 => self.hash_state_weight3,
+            HashStateWeight4 => self.hash_state_weight4,
+            HashStateWeight5 => self.hash_state_weight5,
+            HashStateWeight6 => self.hash_state_weight6,
+            HashStateWeight7 => self.hash_state_weight7,
+            HashStateWeight8 => self.hash_state_weight8,
+            HashStateWeight9 => self.hash_state_weight9,
             U32TableLhsWeight => self.u32_table_lhs_weight,
             U32TableRhsWeight => self.u32_table_rhs_weight,
             U32TableCiWeight => self.u32_table_ci_weight,
@@ -866,22 +842,26 @@ impl ExtProcessorTable {
         let hash_selector = factory.ci() - constant(Instruction::Hash.opcode() as i32);
         let hash_deselector =
             InstructionDeselectors::instruction_deselector_single_row(&factory, Instruction::Hash);
-        let to_hash_table_indeterminate = challenge(ToHashTableEvalIndeterminate);
+        let hash_input_indeterminate = challenge(HashInputEvalIndeterminate);
         // the opStack is guaranteed to be initialized to 0 by virtue of other initial constraints
-        let compressed_row_to_hash_table = constant(0);
-        let running_evaluation_to_hash_table_has_absorbed_first_row = factory
-            .running_evaluation_to_hash_table()
-            - to_hash_table_indeterminate * constant_x(EvalArg::default_initial())
-            - compressed_row_to_hash_table;
-        let running_evaluation_to_hash_table_is_default_initial =
-            factory.running_evaluation_to_hash_table() - constant_x(EvalArg::default_initial());
-        let running_evaluation_to_hash_table_is_initialized_correctly = hash_selector
-            * running_evaluation_to_hash_table_is_default_initial
-            + hash_deselector * running_evaluation_to_hash_table_has_absorbed_first_row;
+        let compressed_row = constant(0);
+        let running_evaluation_hash_input_has_absorbed_first_row = factory
+            .running_evaluation_hash_input()
+            - hash_input_indeterminate * constant_x(EvalArg::default_initial())
+            - compressed_row;
+        let running_evaluation_hash_input_is_default_initial =
+            factory.running_evaluation_hash_input() - constant_x(EvalArg::default_initial());
+        let running_evaluation_hash_input_is_initialized_correctly = hash_selector
+            * running_evaluation_hash_input_is_default_initial
+            + hash_deselector * running_evaluation_hash_input_has_absorbed_first_row;
 
         // from hash table to processor
-        let running_evaluation_from_hash_table_is_initialized_correctly =
-            factory.running_evaluation_from_hash_table() - constant_x(EvalArg::default_initial());
+        let running_evaluation_hash_digest_is_initialized_correctly =
+            factory.running_evaluation_hash_digest() - constant_x(EvalArg::default_initial());
+
+        // Hash Table – Sponge
+        let running_evaluation_sponge_absorb_is_initialized_correctly =
+            factory.running_evaluation_sponge() - constant_x(EvalArg::default_initial());
 
         // u32 table
         let running_product_for_u32_table_is_initialized_correctly =
@@ -923,8 +903,9 @@ impl ExtProcessorTable {
             running_product_for_op_stack_table_is_initialized_correctly,
             running_product_for_ram_table_is_initialized_correctly,
             running_product_for_jump_stack_table_is_initialized_correctly,
-            running_evaluation_to_hash_table_is_initialized_correctly,
-            running_evaluation_from_hash_table_is_initialized_correctly,
+            running_evaluation_hash_input_is_initialized_correctly,
+            running_evaluation_hash_digest_is_initialized_correctly,
+            running_evaluation_sponge_absorb_is_initialized_correctly,
             running_product_for_u32_table_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
@@ -948,8 +929,9 @@ impl ExtProcessorTable {
             + constant(1 << 3) * factory.ib3()
             + constant(1 << 4) * factory.ib4()
             + constant(1 << 5) * factory.ib5()
-            + constant(1 << 6) * factory.ib6();
-        let ci_corresponds_to_ib0_thru_ib12 = factory.ci() - ib_composition;
+            + constant(1 << 6) * factory.ib6()
+            + constant(1 << 7) * factory.ib7();
+        let ci_corresponds_to_ib0_thru_ib7 = factory.ci() - ib_composition;
 
         let ib0_is_bit = factory.ib0() * (factory.ib0() - one.clone());
         let ib1_is_bit = factory.ib1() * (factory.ib1() - one.clone());
@@ -958,6 +940,7 @@ impl ExtProcessorTable {
         let ib4_is_bit = factory.ib4() * (factory.ib4() - one.clone());
         let ib5_is_bit = factory.ib5() * (factory.ib5() - one.clone());
         let ib6_is_bit = factory.ib6() * (factory.ib6() - one.clone());
+        let ib7_is_bit = factory.ib7() * (factory.ib7() - one.clone());
         let is_padding_is_bit = factory.is_padding() * (factory.is_padding() - one);
 
         // The inverse of clock jump difference with multiplicity `invm` is the inverse-or-zero of
@@ -974,8 +957,9 @@ impl ExtProcessorTable {
             ib4_is_bit,
             ib5_is_bit,
             ib6_is_bit,
+            ib7_is_bit,
             is_padding_is_bit,
-            ci_corresponds_to_ib0_thru_ib12,
+            ci_corresponds_to_ib0_thru_ib7,
             invm_is_zero_or_cjd_inverse,
             cjd_is_zero_or_invm_inverse,
         ]
@@ -1010,6 +994,9 @@ impl ExtProcessorTable {
             (Hash, factory.instruction_hash()),
             (DivineSibling, factory.instruction_divine_sibling()),
             (AssertVector, factory.instruction_assert_vector()),
+            (AbsorbInit, factory.instruction_absorb_init()),
+            (Absorb, factory.instruction_absorb()),
+            (Squeeze, factory.instruction_squeeze()),
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),
@@ -1114,8 +1101,9 @@ impl ExtProcessorTable {
         transition_constraints.push(factory.running_product_for_ram_table_updates_correctly());
         transition_constraints
             .push(factory.running_product_for_jump_stack_table_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_to_hash_table_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_from_hash_table_updates_correctly());
+        transition_constraints.push(factory.running_evaluation_hash_input_updates_correctly());
+        transition_constraints.push(factory.running_evaluation_hash_digest_updates_correctly());
+        transition_constraints.push(factory.running_evaluation_sponge_updates_correctly());
         transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
         let mut built_transition_constraints = transition_constraints
@@ -1335,6 +1323,14 @@ impl SingleRowConstraints {
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.base_row_variables[IB6.master_base_table_index()].clone()
+    }
+    pub fn ib7(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.base_row_variables[IB7.master_base_table_index()].clone()
     }
     pub fn jsp(
         &self,
@@ -1663,21 +1659,29 @@ impl SingleRowConstraints {
     > {
         self.ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_to_hash_table(
+    pub fn running_evaluation_hash_input(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
+        self.ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_from_hash_table(
+    pub fn running_evaluation_hash_digest(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+        self.ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table(
         &self,
@@ -2276,6 +2280,63 @@ impl DualRowConstraints {
             specific_constraints,
             self.step_1(),
             self.keep_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_absorb_init(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.keep_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_absorb(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.keep_stack(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_squeeze(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.stack_remains_and_top_ten_elements_unconstrained(),
             self.keep_ram(),
         ]
         .concat()
@@ -2884,6 +2945,15 @@ impl DualRowConstraints {
         self.current_base_row_variables[IB6.master_base_table_index()].clone()
     }
 
+    pub fn ib7(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_base_row_variables[IB7.master_base_table_index()].clone()
+    }
+
     pub fn jsp(
         &self,
     ) -> ConstraintCircuitMonad<
@@ -3251,21 +3321,29 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_to_hash_table(
+    pub fn running_evaluation_hash_input(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.current_ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
+        self.current_ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_from_hash_table(
+    pub fn running_evaluation_hash_digest(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.current_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+        self.current_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.current_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table(
         &self,
@@ -3369,6 +3447,14 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_base_row_variables[IB6.master_base_table_index()].clone()
+    }
+    pub fn ib7_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_base_row_variables[IB7.master_base_table_index()].clone()
     }
 
     pub fn jsp_next(
@@ -3700,21 +3786,29 @@ impl DualRowConstraints {
     > {
         self.next_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_to_hash_table_next(
+    pub fn running_evaluation_hash_input_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.next_ext_row_variables[ToHashTableEvalArg.master_ext_table_index()].clone()
+        self.next_ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_from_hash_table_next(
+    pub fn running_evaluation_hash_digest_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.next_ext_row_variables[FromHashTableEvalArg.master_ext_table_index()].clone()
+        self.next_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
+    }
+    pub fn running_evaluation_sponge_next(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        self.next_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table_next(
         &self,
@@ -4153,7 +4247,7 @@ impl DualRowConstraints {
             - self.running_product_jump_stack_table() * (indeterminate - compressed_row)
     }
 
-    pub fn running_evaluation_to_hash_table_updates_correctly(
+    pub fn running_evaluation_hash_input_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
@@ -4163,20 +4257,21 @@ impl DualRowConstraints {
             InstructionDeselectors::instruction_deselector_next(self, Instruction::Hash);
         let hash_selector = self.ci_next() - self.constant_b(Instruction::Hash.opcode_b());
 
-        let indeterminate = self.circuit_builder.challenge(ToHashTableEvalIndeterminate);
+        let indeterminate = self.circuit_builder.challenge(HashInputEvalIndeterminate);
 
         let weights = [
-            self.circuit_builder.challenge(HashTableStackInputWeight0),
-            self.circuit_builder.challenge(HashTableStackInputWeight1),
-            self.circuit_builder.challenge(HashTableStackInputWeight2),
-            self.circuit_builder.challenge(HashTableStackInputWeight3),
-            self.circuit_builder.challenge(HashTableStackInputWeight4),
-            self.circuit_builder.challenge(HashTableStackInputWeight5),
-            self.circuit_builder.challenge(HashTableStackInputWeight6),
-            self.circuit_builder.challenge(HashTableStackInputWeight7),
-            self.circuit_builder.challenge(HashTableStackInputWeight8),
-            self.circuit_builder.challenge(HashTableStackInputWeight9),
-        ];
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+            HashStateWeight5,
+            HashStateWeight6,
+            HashStateWeight7,
+            HashStateWeight8,
+            HashStateWeight9,
+        ]
+        .map(|w| self.circuit_builder.challenge(w));
         let state = [
             self.st0_next(),
             self.st1_next(),
@@ -4194,16 +4289,16 @@ impl DualRowConstraints {
             .zip_eq(state.into_iter())
             .map(|(weight, state)| weight * state)
             .sum();
-        let running_evaluation_updates = self.running_evaluation_to_hash_table_next()
-            - indeterminate * self.running_evaluation_to_hash_table()
+        let running_evaluation_updates = self.running_evaluation_hash_input_next()
+            - indeterminate * self.running_evaluation_hash_input()
             - compressed_row;
         let running_evaluation_remains =
-            self.running_evaluation_to_hash_table_next() - self.running_evaluation_to_hash_table();
+            self.running_evaluation_hash_input_next() - self.running_evaluation_hash_input();
 
         hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
     }
 
-    pub fn running_evaluation_from_hash_table_updates_correctly(
+    pub fn running_evaluation_hash_digest_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
@@ -4213,17 +4308,16 @@ impl DualRowConstraints {
             InstructionDeselectors::instruction_deselector(self, Instruction::Hash);
         let hash_selector = self.ci() - self.constant_b(Instruction::Hash.opcode_b());
 
-        let indeterminate = self
-            .circuit_builder
-            .challenge(FromHashTableEvalIndeterminate);
+        let indeterminate = self.circuit_builder.challenge(HashDigestEvalIndeterminate);
 
         let weights = [
-            self.circuit_builder.challenge(HashTableDigestOutputWeight0),
-            self.circuit_builder.challenge(HashTableDigestOutputWeight1),
-            self.circuit_builder.challenge(HashTableDigestOutputWeight2),
-            self.circuit_builder.challenge(HashTableDigestOutputWeight3),
-            self.circuit_builder.challenge(HashTableDigestOutputWeight4),
-        ];
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+        ]
+        .map(|w| self.circuit_builder.challenge(w));
         let state = [
             self.st5_next(),
             self.st6_next(),
@@ -4236,13 +4330,79 @@ impl DualRowConstraints {
             .zip_eq(state.into_iter())
             .map(|(weight, state)| weight * state)
             .sum();
-        let running_evaluation_updates = self.running_evaluation_from_hash_table_next()
-            - indeterminate * self.running_evaluation_from_hash_table()
+        let running_evaluation_updates = self.running_evaluation_hash_digest_next()
+            - indeterminate * self.running_evaluation_hash_digest()
             - compressed_row;
-        let running_evaluation_remains = self.running_evaluation_from_hash_table_next()
-            - self.running_evaluation_from_hash_table();
+        let running_evaluation_remains =
+            self.running_evaluation_hash_digest_next() - self.running_evaluation_hash_digest();
 
         hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+    }
+
+    pub fn running_evaluation_sponge_updates_correctly(
+        &self,
+    ) -> ConstraintCircuitMonad<
+        ProcessorTableChallenges,
+        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+    > {
+        let absorb_init_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::AbsorbInit);
+        let absorb_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::Absorb);
+        let squeeze_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::Squeeze);
+
+        let opcode_absorb_init = self.constant_b(Instruction::AbsorbInit.opcode_b());
+        let opcode_absorb = self.constant_b(Instruction::Absorb.opcode_b());
+        let opcode_squeeze = self.constant_b(Instruction::Squeeze.opcode_b());
+        let sponge_instruction_selector = (self.ci() - opcode_absorb_init)
+            * (self.ci() - opcode_absorb)
+            * (self.ci() - opcode_squeeze);
+
+        let weights = [
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+            HashStateWeight5,
+            HashStateWeight6,
+            HashStateWeight7,
+            HashStateWeight8,
+            HashStateWeight9,
+        ]
+        .map(|w| self.circuit_builder.challenge(w));
+        let state_next = [
+            self.st0_next(),
+            self.st1_next(),
+            self.st2_next(),
+            self.st3_next(),
+            self.st4_next(),
+            self.st5_next(),
+            self.st6_next(),
+            self.st7_next(),
+            self.st8_next(),
+            self.st9_next(),
+        ];
+        let compressed_row_next = weights
+            .into_iter()
+            .zip_eq(state_next.into_iter())
+            .map(|(weight, st_next)| weight * st_next)
+            .sum();
+
+        let indeterminate = self.circuit_builder.challenge(SpongeEvalIndeterminate);
+        let ci_weight = self.circuit_builder.challenge(HashTableCIWeight);
+        let running_evaluation_updates = self.running_evaluation_sponge_next()
+            - indeterminate * self.running_evaluation_sponge()
+            - ci_weight * self.ci()
+            - compressed_row_next;
+        let running_evaluation_remains =
+            self.running_evaluation_sponge_next() - self.running_evaluation_sponge();
+
+        sponge_instruction_selector * running_evaluation_remains
+            + absorb_init_deselector * running_evaluation_updates.clone()
+            + absorb_deselector * running_evaluation_updates.clone()
+            + squeeze_deselector * running_evaluation_updates
     }
 
     pub fn running_product_to_u32_table_updates_correctly(
@@ -4357,18 +4517,19 @@ impl InstructionDeselectors {
         circuit_builder: &ConstraintCircuitBuilder<ProcessorTableChallenges, II>,
         instruction: Instruction,
         instruction_bucket_polynomials: [ConstraintCircuitMonad<ProcessorTableChallenges, II>;
-            Ord7::COUNT],
+            Ord8::COUNT],
     ) -> ConstraintCircuitMonad<ProcessorTableChallenges, II> {
         let one = circuit_builder.b_constant(1u32.into());
 
-        let selector_bits: [_; Ord7::COUNT] = [
-            instruction.ib(Ord7::IB0),
-            instruction.ib(Ord7::IB1),
-            instruction.ib(Ord7::IB2),
-            instruction.ib(Ord7::IB3),
-            instruction.ib(Ord7::IB4),
-            instruction.ib(Ord7::IB5),
-            instruction.ib(Ord7::IB6),
+        let selector_bits: [_; Ord8::COUNT] = [
+            instruction.ib(Ord8::IB0),
+            instruction.ib(Ord8::IB1),
+            instruction.ib(Ord8::IB2),
+            instruction.ib(Ord8::IB3),
+            instruction.ib(Ord8::IB4),
+            instruction.ib(Ord8::IB5),
+            instruction.ib(Ord8::IB6),
+            instruction.ib(Ord8::IB7),
         ];
         let deselector_polynomials =
             selector_bits.map(|b| one.clone() - circuit_builder.b_constant(b));
@@ -4396,6 +4557,7 @@ impl InstructionDeselectors {
             factory.ib4(),
             factory.ib5(),
             factory.ib6(),
+            factory.ib7(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -4421,6 +4583,7 @@ impl InstructionDeselectors {
             factory.ib4(),
             factory.ib5(),
             factory.ib6(),
+            factory.ib7(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -4446,6 +4609,7 @@ impl InstructionDeselectors {
             factory.ib4_next(),
             factory.ib5_next(),
             factory.ib6_next(),
+            factory.ib7_next(),
         ];
 
         Self::instruction_deselector_common_functionality(
@@ -4471,11 +4635,11 @@ impl InstructionDeselectors {
     }
 }
 
-pub struct ProcessorMatrixRow<'a> {
+pub struct ProcessorTraceRow<'a> {
     pub row: ArrayView1<'a, BFieldElement>,
 }
 
-impl<'a> Display for ProcessorMatrixRow<'a> {
+impl<'a> Display for ProcessorTraceRow<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn row(f: &mut std::fmt::Formatter<'_>, s: String) -> std::fmt::Result {
             writeln!(f, "│ {: <103} │", s)
@@ -4589,22 +4753,22 @@ impl<'a> Display for ProcessorMatrixRow<'a> {
 
         row_blank(f)?;
 
+        let w = 2;
         row(
             f,
             format!(
-                "hv0-3:    [ {:>width$} | {:>width$} | {:>width$} | {:>width$} ]",
+                "hv0-3:    [ {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
                 self.row[HV0.base_table_index()].value(),
                 self.row[HV1.base_table_index()].value(),
                 self.row[HV2.base_table_index()].value(),
                 self.row[HV3.base_table_index()].value(),
             ),
         )?;
-        let w = 2;
         row(
             f,
             format!(
-                "ib0-6:    \
-                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
+                "ib0-7:    \
+                [ {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} | {:>w$} ]",
                 self.row[IB0.base_table_index()].value(),
                 self.row[IB1.base_table_index()].value(),
                 self.row[IB2.base_table_index()].value(),
@@ -4612,6 +4776,7 @@ impl<'a> Display for ProcessorMatrixRow<'a> {
                 self.row[IB4.base_table_index()].value(),
                 self.row[IB5.base_table_index()].value(),
                 self.row[IB6.base_table_index()].value(),
+                self.row[IB7.base_table_index()].value(),
             ),
         )?;
         write!(
@@ -4622,11 +4787,11 @@ impl<'a> Display for ProcessorMatrixRow<'a> {
     }
 }
 
-pub struct ExtProcessorMatrixRow<'a> {
+pub struct ExtProcessorTraceRow<'a> {
     pub row: ArrayView1<'a, XFieldElement>,
 }
 
-impl<'a> Display for ExtProcessorMatrixRow<'a> {
+impl<'a> Display for ExtProcessorTraceRow<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let row = |form: &mut std::fmt::Formatter<'_>,
                    desc: &str,
@@ -4647,8 +4812,10 @@ impl<'a> Display for ExtProcessorMatrixRow<'a> {
         row(f, "opstack_table_pa", OpStackTablePermArg)?;
         row(f, "ram_table_pa", RamTablePermArg)?;
         row(f, "jumpstack_table_pa", JumpStackTablePermArg)?;
-        row(f, "to_hash_table_ea", ToHashTableEvalArg)?;
-        row(f, "from_hash_table_ea", FromHashTableEvalArg)?;
+        row(f, "hash_input_ea", HashInputEvalArg)?;
+        row(f, "hash_digest_ea", HashDigestEvalArg)?;
+        row(f, "sponge_absorb_ea", SpongeEvalArg)?;
+        row(f, "u32_table_ea", U32TablePermArg)?;
         write!(
             f,
             "     ╰───────────────────────────────────────────────────────\
@@ -4661,14 +4828,15 @@ impl<'a> Display for ExtProcessorMatrixRow<'a> {
 mod constraint_polynomial_tests {
     use ndarray::Array2;
 
+    use triton_opcodes::ord_n::Ord16;
+    use triton_opcodes::program::Program;
+
     use crate::shared_tests::SourceCodeAndInput;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::challenges::AllChallenges;
     use crate::table::master_table::MasterTable;
-    use crate::table::processor_table::ProcessorMatrixRow;
+    use crate::table::processor_table::ProcessorTraceRow;
     use crate::vm::simulate_no_input;
-    use triton_opcodes::ord_n::Ord16;
-    use triton_opcodes::program::Program;
 
     use super::*;
 
@@ -4678,8 +4846,8 @@ mod constraint_polynomial_tests {
         let code = "push 2 push -1 add assert halt";
         let program = Program::from_code(code).unwrap();
         let (aet, _, _) = simulate_no_input(&program);
-        for row in aet.processor_matrix.rows() {
-            println!("{}", ProcessorMatrixRow { row });
+        for row in aet.processor_trace.rows() {
+            println!("{}", ProcessorTraceRow { row });
         }
     }
 
@@ -4718,6 +4886,9 @@ mod constraint_polynomial_tests {
             Hash => tc.instruction_hash(),
             DivineSibling => tc.instruction_divine_sibling(),
             AssertVector => tc.instruction_assert_vector(),
+            AbsorbInit => tc.instruction_absorb_init(),
+            Absorb => tc.instruction_absorb(),
+            Squeeze => tc.instruction_squeeze(),
             Add => tc.instruction_add(),
             Mul => tc.instruction_mul(),
             Invert => tc.instruction_invert(),
@@ -5108,13 +5279,14 @@ mod constraint_polynomial_tests {
                 .filter(|other_instruction| *other_instruction != instruction)
             {
                 let mut curr_row = master_base_table.slice_mut(s![0, ..]);
-                curr_row[IB0.master_base_table_index()] = other_instruction.ib(Ord7::IB0);
-                curr_row[IB1.master_base_table_index()] = other_instruction.ib(Ord7::IB1);
-                curr_row[IB2.master_base_table_index()] = other_instruction.ib(Ord7::IB2);
-                curr_row[IB3.master_base_table_index()] = other_instruction.ib(Ord7::IB3);
-                curr_row[IB4.master_base_table_index()] = other_instruction.ib(Ord7::IB4);
-                curr_row[IB5.master_base_table_index()] = other_instruction.ib(Ord7::IB5);
-                curr_row[IB6.master_base_table_index()] = other_instruction.ib(Ord7::IB6);
+                curr_row[IB0.master_base_table_index()] = other_instruction.ib(Ord8::IB0);
+                curr_row[IB1.master_base_table_index()] = other_instruction.ib(Ord8::IB1);
+                curr_row[IB2.master_base_table_index()] = other_instruction.ib(Ord8::IB2);
+                curr_row[IB3.master_base_table_index()] = other_instruction.ib(Ord8::IB3);
+                curr_row[IB4.master_base_table_index()] = other_instruction.ib(Ord8::IB4);
+                curr_row[IB5.master_base_table_index()] = other_instruction.ib(Ord8::IB5);
+                curr_row[IB6.master_base_table_index()] = other_instruction.ib(Ord8::IB6);
+                curr_row[IB7.master_base_table_index()] = other_instruction.ib(Ord8::IB7);
                 let result = deselector.clone().consume().evaluate(
                     master_base_table.view(),
                     master_ext_table.view(),
@@ -5131,13 +5303,14 @@ mod constraint_polynomial_tests {
 
             // Positive tests
             let mut curr_row = master_base_table.slice_mut(s![0, ..]);
-            curr_row[IB0.master_base_table_index()] = instruction.ib(Ord7::IB0);
-            curr_row[IB1.master_base_table_index()] = instruction.ib(Ord7::IB1);
-            curr_row[IB2.master_base_table_index()] = instruction.ib(Ord7::IB2);
-            curr_row[IB3.master_base_table_index()] = instruction.ib(Ord7::IB3);
-            curr_row[IB4.master_base_table_index()] = instruction.ib(Ord7::IB4);
-            curr_row[IB5.master_base_table_index()] = instruction.ib(Ord7::IB5);
-            curr_row[IB6.master_base_table_index()] = instruction.ib(Ord7::IB6);
+            curr_row[IB0.master_base_table_index()] = instruction.ib(Ord8::IB0);
+            curr_row[IB1.master_base_table_index()] = instruction.ib(Ord8::IB1);
+            curr_row[IB2.master_base_table_index()] = instruction.ib(Ord8::IB2);
+            curr_row[IB3.master_base_table_index()] = instruction.ib(Ord8::IB3);
+            curr_row[IB4.master_base_table_index()] = instruction.ib(Ord8::IB4);
+            curr_row[IB5.master_base_table_index()] = instruction.ib(Ord8::IB5);
+            curr_row[IB6.master_base_table_index()] = instruction.ib(Ord8::IB6);
+            curr_row[IB7.master_base_table_index()] = instruction.ib(Ord8::IB7);
             let result = deselector.consume().evaluate(
                 master_base_table.view(),
                 master_ext_table.view(),
@@ -5173,6 +5346,9 @@ mod constraint_polynomial_tests {
             (Hash, factory.instruction_hash()),
             (DivineSibling, factory.instruction_divine_sibling()),
             (AssertVector, factory.instruction_assert_vector()),
+            (AbsorbInit, factory.instruction_absorb_init()),
+            (Absorb, factory.instruction_absorb()),
+            (Squeeze, factory.instruction_squeeze()),
             (Add, factory.instruction_add()),
             (Mul, factory.instruction_mul()),
             (Invert, factory.instruction_invert()),

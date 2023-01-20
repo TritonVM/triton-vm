@@ -25,7 +25,7 @@ use TokenError::*;
 
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
-use crate::ord_n::Ord7;
+use crate::ord_n::Ord8;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
@@ -105,6 +105,9 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     Hash,
     DivineSibling,
     AssertVector,
+    AbsorbInit,
+    Absorb,
+    Squeeze,
 
     // Base field arithmetic on stack
     Add,
@@ -160,6 +163,9 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
             Hash => write!(f, "hash"),
             DivineSibling => write!(f, "divine_sibling"),
             AssertVector => write!(f, "assert_vector"),
+            AbsorbInit => write!(f, "absorb_init"),
+            Absorb => write!(f, "absorb"),
+            Squeeze => write!(f, "squeeze"),
 
             // Base field arithmetic on stack
             Add => write!(f, "add"),
@@ -210,6 +216,9 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Hash => Hash,
             DivineSibling => DivineSibling,
             AssertVector => AssertVector,
+            AbsorbInit => AbsorbInit,
+            Absorb => Absorb,
+            Squeeze => Squeeze,
             Add => Add,
             Mul => Mul,
             Invert => Invert,
@@ -250,9 +259,12 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Hash => 56,
             DivineSibling => 64,
             AssertVector => 72,
+            AbsorbInit => 80,
+            Absorb => 88,
+            Squeeze => 96,
             Add => 26,
             Mul => 34,
-            Invert => 80,
+            Invert => 104,
             Eq => 42,
             Split => 4,
             Lt => 12,
@@ -261,11 +273,11 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Log2Floor => 36,
             Pow => 44,
             Div => 52,
-            XxAdd => 88,
-            XxMul => 96,
-            XInvert => 104,
+            XxAdd => 112,
+            XxMul => 120,
+            XInvert => 128,
             XbMul => 50,
-            ReadIo => 112,
+            ReadIo => 136,
             WriteIo => 58,
         }
     }
@@ -293,7 +305,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     /// Get the i'th instruction bit
-    pub fn ib(&self, arg: Ord7) -> BFieldElement {
+    pub fn ib(&self, arg: Ord8) -> BFieldElement {
         let opcode = self.opcode();
         let bit_number: usize = arg.into();
 
@@ -322,6 +334,9 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Hash => Hash,
             DivineSibling => DivineSibling,
             AssertVector => AssertVector,
+            AbsorbInit => AbsorbInit,
+            Absorb => Absorb,
+            Squeeze => Squeeze,
             Add => Add,
             Mul => Mul,
             Invert => Invert,
@@ -548,6 +563,9 @@ fn parse_token(
         "hash" => vec![Hash],
         "divine_sibling" => vec![DivineSibling],
         "assert_vector" => vec![AssertVector],
+        "absorb_init" => vec![AbsorbInit],
+        "absorb" => vec![Absorb],
+        "squeeze" => vec![Squeeze],
 
         // Base field arithmetic on stack
         "add" => vec![Add],
@@ -725,6 +743,9 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         Hash,
         DivineSibling,
         AssertVector,
+        AbsorbInit,
+        Absorb,
+        Squeeze,
         Add,
         Mul,
         Invert,
@@ -794,6 +815,9 @@ pub fn all_labelled_instructions_with_args<'a>() -> Vec<LabelledInstruction<'a>>
         Hash,
         DivineSibling,
         AssertVector,
+        AbsorbInit,
+        Absorb,
+        Squeeze,
         Add,
         Mul,
         Invert,
@@ -862,6 +886,7 @@ pub mod sample_programs {
         call foo
 
         return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
+        absorb_init absorb squeeze
         add mul invert split eq xxadd xxmul xinvert xbmul
 
         read_io write_io
@@ -915,6 +940,9 @@ pub mod sample_programs {
             "hash",
             "divine_sibling",
             "assert_vector",
+            "absorb_init",
+            "absorb",
+            "squeeze",
             "add",
             "mul",
             "invert",
@@ -943,7 +971,7 @@ mod instruction_tests {
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
     use crate::instruction::all_labelled_instructions_with_args;
-    use crate::ord_n::Ord7;
+    use crate::ord_n::Ord8;
     use crate::program::Program;
 
     use super::all_instructions_without_args;
@@ -994,9 +1022,9 @@ mod instruction_tests {
             num_bits += 1;
         }
         assert!(
-            num_bits <= Ord7::COUNT,
+            num_bits <= Ord8::COUNT,
             "Biggest instruction needs more than {} bits :(",
-            Ord7::COUNT
+            Ord8::COUNT
         );
 
         // assert consistency
@@ -1063,10 +1091,11 @@ mod instruction_tests {
 
     #[test]
     fn ib_registers_are_binary_test() {
-        use Ord7::*;
+        use Ord8::*;
 
         for instruction in all_instructions_without_args() {
-            for ib in [IB0, IB1, IB2, IB3, IB4, IB5, IB6] {
+            let all_ibs: [Ord8; Ord8::COUNT] = [IB0, IB1, IB2, IB3, IB4, IB5, IB6, IB7];
+            for ib in all_ibs {
                 let ib_value = instruction.ib(ib);
                 assert!(
                     ib_value.is_zero() || ib_value.is_one(),

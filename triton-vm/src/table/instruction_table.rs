@@ -303,7 +303,7 @@ impl InstructionTable {
         // program is static.
         let program_len = program.len();
         let mut processor_trace_row_counts = vec![0; program_len];
-        for row in aet.processor_matrix.rows() {
+        for row in aet.processor_trace.rows() {
             let ip = row[ProcessorBaseTableColumn::IP.base_table_index()].value() as usize;
             assert!(ip < program_len, "IP out of bounds – forgot to \"halt\"?");
             processor_trace_row_counts[ip] += 1;

@@ -52,7 +52,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.finish();
         report = profiler.report(
-            Some(aet.processor_matrix.nrows()),
+            Some(aet.processor_trace.nrows()),
             Some(stark.claim.padded_height),
             Some(stark.fri.domain.length),
         );

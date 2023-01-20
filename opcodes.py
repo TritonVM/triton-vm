@@ -19,6 +19,9 @@ class Instruction(IntEnum):
     Hash = auto()
     DivineSibling = auto()
     AssertVector = auto()
+    AbsorbInit = auto()
+    Absorb = auto()
+    Squeeze = auto()
     Add = auto()
     Mul = auto()
     Invert = auto()
@@ -70,7 +73,7 @@ def opcode(instruction):
 def print_all_opcodes():
     for instruction in Instruction:
         opc = opcode(instruction)
-        print(f"{opc:> 3} {opc:>07b} {str(instruction)}")
+        print(f"{opc:> 4} {opc:>08b} {str(instruction)[12:]}")
 
 def print_max_opcode():
     max_opc = max([opcode(instruction) for instruction in Instruction])
@@ -81,9 +84,17 @@ def print_max_opcode():
 # ===
 
 def opcodes_are_unique_test():
+    get_indices = lambda x, xs: [i for (y, i) in zip(xs, range(len(xs))) if x == y]
+
     all_opcodes = [opcode(instruction) for instruction in Instruction]
-    all_opcodes = sorted(all_opcodes)
-    assert(list(set(all_opcodes)) == list(all_opcodes))
+    for op_code in all_opcodes:
+        instruction_idcs = get_indices(op_code, all_opcodes)
+        if len(instruction_idcs) != 1:
+            print(f"Opcode {op_code} is assigned to instructions:")
+            for idx in instruction_idcs:
+                print(f"  {Instruction[idx]}")
+
+    assert(sorted(list(set(all_opcodes))) == sorted(list(all_opcodes)))
 
 def tests():
     opcodes_are_unique_test()

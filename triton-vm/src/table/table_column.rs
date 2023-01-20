@@ -77,6 +77,7 @@ pub enum ProcessorBaseTableColumn {
     IB4,
     IB5,
     IB6,
+    IB7,
     JSP,
     JSO,
     JSD,
@@ -119,8 +120,13 @@ pub enum ProcessorExtTableColumn {
     RamTablePermArg,
     JumpStackTablePermArg,
 
-    ToHashTableEvalArg,
-    FromHashTableEvalArg,
+    /// For copying the hash function's input to the hash coprocessor.
+    HashInputEvalArg,
+    /// For copying the hash digest from the hash coprocessor.
+    HashDigestEvalArg,
+    /// For copying the RATE next to-be-absorbed to the hash coprocessor and the RATE squeezed
+    /// elements from the hash coprocessor, depending on the executed instruction.
+    SpongeEvalArg,
 
     U32TablePermArg,
 
@@ -200,6 +206,7 @@ pub enum JumpStackExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashBaseTableColumn {
     ROUNDNUMBER,
+    CI,
     STATE0,
     STATE1,
     STATE2,
@@ -253,8 +260,10 @@ pub enum HashBaseTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum HashExtTableColumn {
-    ToProcessorRunningEvaluation,
-    FromProcessorRunningEvaluation,
+    HashInputRunningEvaluation,
+    HashDigestRunningEvaluation,
+
+    SpongeRunningEvaluation,
 }
 
 // -------- U32 Table --------
