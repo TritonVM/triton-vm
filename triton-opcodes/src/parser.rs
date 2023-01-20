@@ -1,19 +1,35 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::error::Error;
-
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while, take_while1};
-use nom::character::complete::digit1;
-use nom::combinator::{cut, eof, fail, opt};
-use nom::error::{context, convert_error, ErrorKind, VerboseError, VerboseErrorKind};
-use nom::multi::{many0, many1};
-use nom::{Finish, IResult};
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use crate::instruction::AnInstruction::{self, *};
-use crate::instruction::{is_instruction_name, token_str, LabelledInstruction};
-use crate::ord_n::Ord16::{self, *};
+use nom::branch::alt;
+use nom::bytes::complete::tag;
+use nom::bytes::complete::take_while;
+use nom::bytes::complete::take_while1;
+use nom::character::complete::digit1;
+use nom::combinator::cut;
+use nom::combinator::eof;
+use nom::combinator::fail;
+use nom::combinator::opt;
+use nom::error::context;
+use nom::error::convert_error;
+use nom::error::ErrorKind;
+use nom::error::VerboseError;
+use nom::error::VerboseErrorKind;
+use nom::multi::many0;
+use nom::multi::many1;
+use nom::Finish;
+use nom::IResult;
+
+use crate::instruction::is_instruction_name;
+use crate::instruction::token_str;
+use crate::instruction::AnInstruction;
+use crate::instruction::AnInstruction::*;
+use crate::instruction::LabelledInstruction;
+use crate::ord_n::Ord16;
+use crate::ord_n::Ord16::*;
 
 #[derive(Debug, PartialEq)]
 pub struct ParseError<'a> {
@@ -179,8 +195,11 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let hash = instruction("hash", Hash);
     let divine_sibling = instruction("divine_sibling", DivineSibling);
     let assert_vector = instruction("assert_vector", AssertVector);
+    let absorb_init = instruction("absorb_init", AbsorbInit);
+    let absorb = instruction("absorb", Absorb);
+    let squeeze = instruction("squeeze", Squeeze);
 
-    let hashing_related = alt((hash, divine_sibling));
+    let hashing_related = alt((hash, divine_sibling, absorb_init, absorb, squeeze));
 
     // Arithmetic on stack instructions
     let add = instruction("add", Add);
@@ -426,15 +445,16 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 #[cfg(test)]
 mod parser_tests {
     use itertools::Itertools;
+
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
     use rand::Rng;
+    use LabelledInstruction::*;
 
     use crate::instruction;
     use crate::program::Program;
 
     use super::*;
-    use LabelledInstruction::*;
 
     struct TestCase<'a> {
         input: &'a str,
@@ -528,6 +548,9 @@ mod parser_tests {
             "hash",
             "divine_sibling",
             "assert_vector",
+            "absorb_init",
+            "absorb",
+            "squeeze",
             "add",
             "mul",
             "invert",
