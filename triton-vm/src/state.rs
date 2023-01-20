@@ -8,16 +8,16 @@ use ndarray::Array1;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegularState;
 use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 use twenty_first::shared_math::rescue_prime_regular::RATE;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::algebraic_hasher::Domain;
 
 use triton_opcodes::instruction::AnInstruction::*;
 use triton_opcodes::instruction::Instruction;
@@ -307,10 +307,8 @@ impl<'pgm> VMState<'pgm> {
 
             Hash => {
                 let to_hash = self.op_stack.pop_n::<{ 2 * DIGEST_LENGTH }>()?;
-                let mut hash_input = [BFIELD_ZERO; STATE_SIZE];
+                let mut hash_input = RescuePrimeRegularState::new(Domain::FixedLength).state;
                 hash_input[..2 * DIGEST_LENGTH].copy_from_slice(&to_hash);
-                // to distinguish between fix-length and variable-length inputs
-                hash_input[RATE] = BFIELD_ONE;
                 let xlix_trace = RescuePrimeRegular::trace(hash_input);
                 let hash_output = &xlix_trace[xlix_trace.len() - 1][0..DIGEST_LENGTH];
 
@@ -325,30 +323,16 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 1;
             }
 
-            AbsorbInit => {
+            AbsorbInit | Absorb => {
                 // fetch top elements but don't alter the stack
                 let to_absorb = self.op_stack.pop_n::<{ RATE }>()?;
                 for i in (0..RATE).rev() {
                     self.op_stack.push(to_absorb[i]);
                 }
 
-                // reset the Sponge's state
-                self.sponge_state = [BFIELD_ZERO; STATE_SIZE];
-                self.sponge_state[..RATE].copy_from_slice(&to_absorb);
-                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
-                self.sponge_state = xlix_trace.last().unwrap().to_owned();
-
-                vm_output = Some(VMOutput::XlixTrace(AbsorbInit, Box::new(xlix_trace)));
-                self.instruction_pointer += 1;
-            }
-
-            Absorb => {
-                // fetch top elements but don't alter the stack
-                let to_absorb = self.op_stack.pop_n::<{ RATE }>()?;
-                for i in (0..RATE).rev() {
-                    self.op_stack.push(to_absorb[i]);
+                if self.current_instruction()? == AbsorbInit {
+                    self.sponge_state = RescuePrimeRegularState::new(Domain::VariableLength).state;
                 }
-
                 self.sponge_state[..RATE]
                     .iter_mut()
                     .zip_eq(to_absorb.iter())
@@ -358,7 +342,10 @@ impl<'pgm> VMState<'pgm> {
                 let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
                 self.sponge_state = xlix_trace.last().unwrap().to_owned();
 
-                vm_output = Some(VMOutput::XlixTrace(Absorb, Box::new(xlix_trace)));
+                vm_output = Some(VMOutput::XlixTrace(
+                    self.current_instruction()?,
+                    Box::new(xlix_trace),
+                ));
                 self.instruction_pointer += 1;
             }
 
