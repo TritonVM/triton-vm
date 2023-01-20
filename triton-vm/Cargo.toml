@@ -1,6 +1,6 @@
 [package]
 name = "triton-vm"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2021"
 authors = ["Triton Software AG"]
 
@@ -30,7 +30,7 @@ version = "1"
 default-features = false
 
 [dependencies]
-triton-opcodes = { path = "../triton-opcodes" }
+triton-opcodes = "0.14"
 twenty-first = "0.14.1"
 triton-profiler = "0.13"
 anyhow = "1.0"
