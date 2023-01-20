@@ -39,7 +39,7 @@
 \begin{document}
 \pagestyle{empty}
 {
-\renewcommand{\arraystretch}{0.93}
+\renewcommand{\arraystretch}{0.86}
 \begin{tabular}{rllll}
     \texttt{  2} & $\ominus$     & \texttt{pop}                                       & \texttt{\_ st$_0$}                                                        & \texttt{\_}                                                                \\
     \texttt{  1} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{push + a}}       & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
@@ -58,9 +58,12 @@
     \texttt{ 56} & $\ovoid^{10}$ & \texttt{hash}                                      & \texttt{\_ st$_9$ $\!\!\dots\!\!$ st$_0$}                                 & \texttt{\_ d$_4$ $\!\!\dots\!\!$ d$_0$ 0 $\!\!\dots\!\!$ 0}                \\
     \texttt{ 64} & $\ovoid^{11}$ & \texttt{divine\_sibling}                           & \texttt{\_ idx st$_9$ $\!\!\dots\!\!$ st$_5$ d$_4$ $\!\!\dots\!\!$ d$_0$} & \texttt{\_ idx>>1 r$_4$ $\!\!\dots\!\!$ r$_0$ l$_4$ $\!\!\dots\!\!$ l$_0$} \\
     \texttt{ 72} & $\ovoid$      & \texttt{assert\_vector}                            & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{ 80} & $\ovoid$      & \texttt{absorb\_init}                              & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{ 88} & $\ovoid$      & \texttt{absorb}                                    & \texttt{\_}                                                               & \texttt{\_}                                                                \\
+    \texttt{ 96} & $\ovoid^{10}$ & \texttt{squeeze}                                   & \texttt{\_ st$_9$ $\dots$ st$_0$}                                         & \texttt{\_ sq$_9$ $\dots$ sq$_0$}                                          \\
     \texttt{ 26} & $\ominus^1$   & \texttt{add}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ sum}                                                            \\
     \texttt{ 34} & $\ominus^1$   & \texttt{mul}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ prod}                                                           \\
-    \texttt{ 80} & $\ovoid^1$    & \texttt{invert}                                    & \texttt{\_ st$_0$}                                                        & \texttt{\_ st$_0^{-1}$}                                                    \\
+    \texttt{104} & $\ovoid^1$    & \texttt{invert}                                    & \texttt{\_ st$_0$}                                                        & \texttt{\_ st$_0^{-1}$}                                                    \\
     \texttt{ 42} & $\ominus^1$   & \texttt{eq}                                        & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$==st$_1$)}                                               \\
     \texttt{  4} & $\oplus^2$    & \tcbox[colback=instr-u32]{\texttt{split}}          & \texttt{\_ st$_0$}                                                        & \texttt{\_ hi lo}                                                          \\
     \texttt{ 12} & $\ominus^1$   & \tcbox[colback=instr-u32]{\texttt{lt}}             & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$<st$_1$)}                                                \\
@@ -69,11 +72,11 @@
     \texttt{ 36} & $\ovoid^1$    & \tcbox[colback=instr-u32]{\texttt{log\_2\_floor}}  & \texttt{\_ st$_0$}                                                        & \texttt{\_ $\lfloor\log_2$(st$_0$)$\rfloor$}                               \\
     \texttt{ 44} & $\ominus^1$   & \tcbox[colback=instr-u32]{\texttt{pow}}            & \texttt{\_ e b}                                                           & \texttt{\_ b}$^\texttt{e}$                                                 \\
     \texttt{ 52} & $\ovoid^2$    & \tcbox[colback=instr-u32]{\texttt{div}}            & \texttt{\_ denom num}                                                     & \texttt{\_ quot rem}                                                       \\
-    \texttt{ 88} & $\ovoid^3$    & \texttt{xxadd}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
-    \texttt{ 96} & $\ovoid^3$    & \texttt{xxmul}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
-    \texttt{104} & $\ovoid^3$    & \texttt{xinvert}                                   & \texttt{\_ x$_2$ x$_1$ x$_0$}                                             & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
+    \texttt{112} & $\ovoid^3$    & \texttt{xxadd}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
+    \texttt{120} & $\ovoid^3$    & \texttt{xxmul}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
+    \texttt{128} & $\ovoid^3$    & \texttt{xinvert}                                   & \texttt{\_ x$_2$ x$_1$ x$_0$}                                             & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
     \texttt{ 50} & $\ominus^3$   & \texttt{xbmul}                                     & \texttt{\_ x$_2$ x$_1$ x$_0$ b}                                           & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
-    \texttt{112} & $\oplus$      & \texttt{read\_io}                                  & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
+    \texttt{136} & $\oplus$      & \texttt{read\_io}                                  & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
     \texttt{ 58} & $\ominus$     & \texttt{write\_io}                                 & \texttt{\_ st$_0$}                                                        & \texttt{\_}
 \end{tabular}
 }
@@ -87,11 +90,11 @@
     Table       & \multicolumn{5}{l}{Base Columns}                                                 &                   &              &                     &              &              &              &                         &              &       &                               &              &               &              &       &                   &               &               \\ \midrule
     Program     & \multicolumn{3}{l}{Address}                   &                    & \multicolumn{2}{l}{Instruction} & \multicolumn{3}{l}{IsPadding}                     &              &              &                         &              &       &                               &              &               &              &       &                   &               &               \\
     Instruction & \multicolumn{3}{l}{Address}                   &                    & \texttt{CI} & \texttt{NIA}      & \multicolumn{3}{l}{IsPadding}                     &              &              &                         &              &       &                               &              &               &              &       &                   &               &               \\
-    Processor   & \texttt{CLK} & IsPadding        & \texttt{IP} & \texttt{PI}        & \texttt{CI} & \texttt{NIA}      & \texttt{IB0} & \dots               & \texttt{IB6} & \texttt{JSP} & \texttt{JSO} & \texttt{JSD}            & \texttt{ST0} & \dots & \texttt{ST15}                 & \texttt{OSP} & \texttt{OSV}  & \texttt{HV0} & \dots & \texttt{HV3}      & \texttt{RAMP} & \texttt{RAMV} \\
+    Processor   & \texttt{CLK} & IsPadding        & \texttt{IP} & \texttt{PI}        & \texttt{CI} & \texttt{NIA}      & \texttt{IB0} & \dots               & \texttt{IB7} & \texttt{JSP} & \texttt{JSO} & \texttt{JSD}            & \texttt{ST0} & \dots & \texttt{ST15}                 & \texttt{OSP} & \texttt{OSV}  & \texttt{HV0} & \dots & \texttt{HV3}      & \texttt{RAMP} & \texttt{RAMV} \\
     OpStack     & \texttt{CLK} & \texttt{clk\_di} &             &                    &             &                   &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)}    &                         &              &       &                               & \texttt{OSP} & \texttt{OSV}  &              &       &                   &               &               \\
     RAM         & \texttt{CLK} & \texttt{clk\_di} &             & \texttt{PI}        &             & \texttt{bcpc0}    & \multicolumn{2}{l}{\texttt{bcpc1}} &              &              &              &                         &              &       &                               &              &               & \multicolumn{3}{l}{\texttt{RAMP}DiffInv} & \texttt{RAMP} & \texttt{RAMV} \\
     JumpStack   & \texttt{CLK} & \texttt{clk\_di} &             &                    & \texttt{CI} &                   &              &                     &              & \texttt{JSP} & \texttt{JSO} & \texttt{JSD}            &              &       &                               &              &               &              &       &                   &               &               \\
-    Hash        & \multicolumn{4}{l}{RoundNumber}                                    &             &                   &              &                     &              &              &              &                         & \texttt{ST0} & \dots & \texttt{ST15}                 &     \multicolumn{3}{r}{\texttt{CONSTANT0A}} & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          \\
+    Hash        & \multicolumn{4}{l}{RoundNumber}                                    & \texttt{CI} &                   &              &                     &              &              &              &                         & \texttt{ST0} & \dots & \texttt{ST15}                 &     \multicolumn{3}{r}{\texttt{CONSTANT0A}} & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          \\
     U32         & \texttt{CF}  & \multicolumn{3}{l}{\texttt{Bits\quad Bits-33\_inv}} & \texttt{CI} & \texttt{LHS}      & \texttt{RHS} & \texttt{LT}         & \texttt{AND} & \texttt{XOR} & \multicolumn{2}{l}{\texttt{Log2Floor}} & \texttt{Pow} & \multicolumn{2}{l}{\texttt{LHS\_inv}} & \multicolumn{2}{l}{RHS\_inv} &              &       &                   &               &               \\ \bottomrule
 \end{tabular}
 } %end scalebox
@@ -117,13 +120,13 @@
                     & base & ext & $\sum$ \\ \midrule
         Program     &    3 &   1 &      4 \\
         Instruction &    4 &   2 &      6 \\
-        Processor   &   43 &  12 &     55 \\
+        Processor   &   44 &  13 &     57 \\
         OpStack     &    5 &   2 &      7 \\
         RAM         &    8 &   6 &     14 \\
         JumpStack   &    6 &   2 &      8 \\
-        Hash        &   49 &   2 &     51 \\
+        Hash        &   50 &   3 &     53 \\
         U32         &   14 &   1 &     15 \\ \bottomrule\bottomrule
-        $\sum$      &  132 &  28 &    160
+        $\sum$      &  134 &  30 &    164
     \end{tabular}
 \end{minipage}%
 \hfill%
@@ -146,16 +149,16 @@
     \begin{tabular}{lrrrrr}
         \toprule
                     & init & cons & trans & term & $\sum$ \\ \midrule
-        Program     &    2 &    1 &     3 &      &      6 \\
-        Instruction &    3 &    1 &     5 &      &      9 \\
-        Processor   &   38 &   11 &    76 &    2 &    127 \\
-        OpStack     &    5 &      &     6 &      &     11 \\
-        Ram         &    8 &      &    14 &    1 &     23 \\
-        JumpStack   &    6 &      &     8 &      &     14 \\
-        Hash        &    3 &   38 &    21 &      &     62 \\
-        U32         &    2 &   13 &    22 &    2 &     39 \\
-        Cross-Table &      &      &       &    1 &      1 \\ \bottomrule\bottomrule
-        $\sum$      &   67 &   64 &   155 &    6 &    292
+        Program     &    2 &    1 &     3 &    0 &      6 \\
+        Instruction &    3 &    1 &     5 &    0 &      9 \\
+        Processor   &   39 &   12 &    77 &    2 &    130 \\
+        OpStack     &    5 &    0 &     6 &    0 &     11 \\
+        Ram         &    8 &    0 &    14 &    1 &     23 \\
+        JumpStack   &    6 &    0 &     8 &    0 &     14 \\
+        Hash        &    5 &   40 &    26 &    0 &     71 \\
+        U32         &    2 &   14 &    22 &    2 &     40 \\
+        Cross-Table &    0 &    0 &     0 &    1 &      1 \\ \bottomrule\bottomrule
+        $\sum$      &   70 &   68 &   161 &    6 &    305
     \end{tabular}
 \end{minipage}
 
