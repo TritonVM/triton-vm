@@ -61,7 +61,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 56 + NUM_CROSS_TABLE_WEIGHTS;
+    pub const TOTAL_CHALLENGES: usize = 52 + NUM_CROSS_TABLE_WEIGHTS;
 
     pub fn create_challenges(
         mut weights: Vec<XFieldElement>,
@@ -73,9 +73,7 @@ impl AllChallenges {
             standard_output_eval_indeterminate: weights.pop().unwrap(),
             hash_input_eval_indeterminate: weights.pop().unwrap(),
             hash_digest_eval_indeterminate: weights.pop().unwrap(),
-            sponge_absorb_eval_indeterminate: weights.pop().unwrap(),
-            sponge_squeeze_eval_indeterminate: weights.pop().unwrap(),
-            sponge_order_eval_indeterminate: weights.pop().unwrap(),
+            sponge_eval_indeterminate: weights.pop().unwrap(),
             instruction_perm_indeterminate: weights.pop().unwrap(),
             op_stack_perm_indeterminate: weights.pop().unwrap(),
             ram_perm_indeterminate: weights.pop().unwrap(),
@@ -190,12 +188,7 @@ impl AllChallenges {
             hash_input_eval_indeterminate: processor_table_challenges.hash_input_eval_indeterminate,
             hash_digest_eval_indeterminate: processor_table_challenges
                 .hash_digest_eval_indeterminate,
-            sponge_absorb_eval_indeterminate: processor_table_challenges
-                .sponge_absorb_eval_indeterminate,
-            sponge_squeeze_eval_indeterminate: processor_table_challenges
-                .sponge_squeeze_eval_indeterminate,
-            sponge_order_eval_indeterminate: processor_table_challenges
-                .sponge_order_eval_indeterminate,
+            sponge_eval_indeterminate: processor_table_challenges.sponge_eval_indeterminate,
 
             ci_weight: processor_table_challenges.hash_table_ci_weight,
             hash_state_weight0: processor_table_challenges.hash_state_weight0,
@@ -245,9 +238,7 @@ impl AllChallenges {
             processor_to_jump_stack_weight: weights.pop().unwrap(),
             hash_input_weight: weights.pop().unwrap(),
             hash_digest_weight: weights.pop().unwrap(),
-            sponge_absorb_weight: weights.pop().unwrap(),
-            sponge_squeeze_weight: weights.pop().unwrap(),
-            sponge_order_weight: weights.pop().unwrap(),
+            sponge_weight: weights.pop().unwrap(),
             processor_to_u32_weight: weights.pop().unwrap(),
             all_clock_jump_differences_weight: weights.pop().unwrap(),
             input_to_processor_weight: weights.pop().unwrap(),

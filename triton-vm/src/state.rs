@@ -364,11 +364,11 @@ impl<'pgm> VMState<'pgm> {
 
             Squeeze => {
                 let _ = self.op_stack.pop_n::<{ RATE }>()?;
-                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
-                self.sponge_state = xlix_trace.last().unwrap().to_owned();
                 for i in (0..RATE).rev() {
                     self.op_stack.push(self.sponge_state[i]);
                 }
+                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
+                self.sponge_state = xlix_trace.last().unwrap().to_owned();
 
                 vm_output = Some(VMOutput::XlixTrace(Squeeze, Box::new(xlix_trace)));
                 self.instruction_pointer += 1;

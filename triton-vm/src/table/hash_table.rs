@@ -10,6 +10,7 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
 use twenty_first::shared_math::rescue_prime_regular::ALPHA;
 use twenty_first::shared_math::rescue_prime_regular::MDS;
@@ -72,35 +73,30 @@ impl ExtHashTable {
     > {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
-        let one = circuit_builder.b_constant(1_u32.into());
+        let constant = |c| circuit_builder.b_constant(c);
+        let one = constant(BFIELD_ONE);
+
+        let base_row = |column: HashBaseTableColumn| {
+            circuit_builder.input(BaseRow(column.master_base_table_index()))
+        };
+        let ext_row = |column: HashExtTableColumn| {
+            circuit_builder.input(ExtRow(column.master_ext_table_index()))
+        };
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
 
-        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_base_table_index()));
-        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
-        let running_evaluation_hash_input =
-            circuit_builder.input(ExtRow(HashInputRunningEvaluation.master_ext_table_index()));
-        let running_evaluation_hash_digest =
-            circuit_builder.input(ExtRow(HashDigestRunningEvaluation.master_ext_table_index()));
-        let running_evaluation_sponge_absorb = circuit_builder.input(ExtRow(
-            SpongeAbsorbRunningEvaluation.master_ext_table_index(),
-        ));
-        let running_evaluation_sponge_squeeze = circuit_builder.input(ExtRow(
-            SpongeSqueezeRunningEvaluation.master_ext_table_index(),
-        ));
-        let running_evaluation_sponge_order = circuit_builder.input(ExtRow(
-            SpongeOrderRunningEvaluation.master_ext_table_index(),
-        ));
+        let round_number = base_row(ROUNDNUMBER);
+        let ci = base_row(CI);
+        let running_evaluation_hash_input = ext_row(HashInputRunningEvaluation);
+        let running_evaluation_hash_digest = ext_row(HashDigestRunningEvaluation);
+        let running_evaluation_sponge = ext_row(SpongeRunningEvaluation);
 
-        let ci_is_opcode_of_hash =
-            ci.clone() - circuit_builder.b_constant(Instruction::Hash.opcode_b());
-        let ci_is_opcode_of_absorb_init =
-            ci.clone() - circuit_builder.b_constant(Instruction::AbsorbInit.opcode_b());
+        let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode_b());
+        let ci_is_absorb_init = ci - constant(Instruction::AbsorbInit.opcode_b());
         let state = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
-        ]
-        .map(|st| circuit_builder.input(BaseRow(st.master_base_table_index())));
-        let compressed_row: ConstraintCircuitMonad<_, _> = [
+        ];
+        let state_weights = [
             HashStateWeight0,
             HashStateWeight1,
             HashStateWeight2,
@@ -111,16 +107,17 @@ impl ExtHashTable {
             HashStateWeight7,
             HashStateWeight8,
             HashStateWeight9,
-        ]
-        .into_iter()
-        .zip_eq(state.into_iter())
-        .map(|(weight, state)| challenge(weight) * state)
-        .sum();
+        ];
+        let compressed_row: ConstraintCircuitMonad<_, _> = state_weights
+            .into_iter()
+            .zip_eq(state.into_iter())
+            .map(|(weight, state)| challenge(weight) * base_row(state))
+            .sum();
 
         let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
 
         let current_instruction_is_absorb_init_or_hash =
-            ci_is_opcode_of_absorb_init.clone() * ci_is_opcode_of_hash.clone();
+            ci_is_absorb_init.clone() * ci_is_hash.clone();
 
         // Evaluation Argument “hash input”
         // If the round number is 0, the running evaluation is the default initial.
@@ -133,45 +130,26 @@ impl ExtHashTable {
             - running_evaluation_initial.clone() * from_processor_indeterminate
             - compressed_row.clone();
         let running_evaluation_hash_input_is_initialized_correctly = round_number.clone()
-            * ci_is_opcode_of_absorb_init.clone()
+            * ci_is_absorb_init.clone()
             * running_evaluation_hash_input_has_accumulated_first_row
-            + ci_is_opcode_of_hash.clone()
-                * running_evaluation_hash_input_is_default_initial.clone()
+            + ci_is_hash.clone() * running_evaluation_hash_input_is_default_initial.clone()
             + (one - round_number) * running_evaluation_hash_input_is_default_initial;
 
         // Evaluation Argument “hash digest”
         let running_evaluation_hash_digest_is_default_initial =
             running_evaluation_hash_digest - running_evaluation_initial.clone();
 
-        // Evaluation Argument “sponge absorb”
-        let sponge_absorb_indeterminate = challenge(SpongeAbsorbEvalIndeterminate);
-        let running_evaluation_sponge_absorb_is_default_initial =
-            running_evaluation_sponge_absorb.clone() - running_evaluation_initial.clone();
-        let running_evaluation_sponge_absorb_has_accumulated_first_row =
-            running_evaluation_sponge_absorb
-                - running_evaluation_initial.clone() * sponge_absorb_indeterminate
-                - compressed_row.clone();
-        let running_evaluation_sponge_absorb_is_initialized_correctly = ci_is_opcode_of_hash
-            .clone()
-            * running_evaluation_sponge_absorb_has_accumulated_first_row
-            + ci_is_opcode_of_absorb_init.clone()
-                * running_evaluation_sponge_absorb_is_default_initial;
-
-        // Evaluation Argument “sponge squeeze”
-        let running_evaluation_sponge_squeeze_is_default_initial =
-            running_evaluation_sponge_squeeze - running_evaluation_initial.clone();
-
-        // Evaluation Argument “sponge order”
-        let sponge_order_indeterminate = challenge(SpongeOrderEvalIndeterminate);
-        let running_evaluation_sponge_order_is_default_initial =
-            running_evaluation_sponge_order.clone() - running_evaluation_initial.clone();
-        let running_evaluation_sponge_order_has_accumulated_ci = running_evaluation_sponge_order
-            - running_evaluation_initial * sponge_order_indeterminate
-            - challenge(CIWeight) * ci
+        // Evaluation Argument “Sponge”
+        let sponge_indeterminate = challenge(SpongeEvalIndeterminate);
+        let running_evaluation_sponge_is_default_initial =
+            running_evaluation_sponge.clone() - running_evaluation_initial.clone();
+        let running_evaluation_sponge_has_accumulated_first_row = running_evaluation_sponge
+            - running_evaluation_initial * sponge_indeterminate
+            - challenge(CIWeight) * constant(Instruction::AbsorbInit.opcode_b())
             - compressed_row;
-        let running_evaluation_sponge_order_is_initialized_correctly = ci_is_opcode_of_hash
-            * running_evaluation_sponge_order_has_accumulated_ci
-            + ci_is_opcode_of_absorb_init * running_evaluation_sponge_order_is_default_initial;
+        let running_evaluation_sponge_absorb_is_initialized_correctly = ci_is_hash
+            * running_evaluation_sponge_has_accumulated_first_row
+            + ci_is_absorb_init * running_evaluation_sponge_is_default_initial;
 
         [
             round_number_is_0_or_1,
@@ -179,8 +157,6 @@ impl ExtHashTable {
             running_evaluation_hash_input_is_initialized_correctly,
             running_evaluation_hash_digest_is_default_initial,
             running_evaluation_sponge_absorb_is_initialized_correctly,
-            running_evaluation_sponge_squeeze_is_default_initial,
-            running_evaluation_sponge_order_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -232,7 +208,11 @@ impl ExtHashTable {
                 * ci_is_absorb.clone()
                 * ci_is_squeeze.clone()
                 * (state10.clone() - constant(1)),
-            round_number_is_not_1.clone() * ci_is_hash * state10,
+            round_number_is_not_1.clone()
+                * ci_is_hash
+                * ci_is_absorb.clone()
+                * ci_is_squeeze.clone()
+                * state10,
             round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state11,
             round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state12,
             round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state13,
@@ -268,55 +248,48 @@ impl ExtHashTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let b_constant = |c| circuit_builder.b_constant(c);
 
         let opcode_hash = constant(Instruction::Hash.opcode() as u64);
         let opcode_absorb_init = constant(Instruction::AbsorbInit.opcode() as u64);
         let opcode_absorb = constant(Instruction::Absorb.opcode() as u64);
         let opcode_squeeze = constant(Instruction::Squeeze.opcode() as u64);
 
-        let current_base_row = |column_idx| circuit_builder.input(CurrentBaseRow(column_idx));
-        let next_base_row = |column_idx| circuit_builder.input(NextBaseRow(column_idx));
-        let current_ext_row = |column_idx| circuit_builder.input(CurrentExtRow(column_idx));
-        let next_ext_row = |column_idx| circuit_builder.input(NextExtRow(column_idx));
+        let current_base_row = |column_idx: HashBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
+        };
+        let next_base_row = |column_idx: HashBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+        };
+        let current_ext_row = |column_idx: HashExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
+        };
+        let next_ext_row = |column_idx: HashExtTableColumn| {
+            circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
+        };
 
         let hash_input_eval_indeterminate = challenge(HashInputEvalIndeterminate);
         let hash_digest_eval_indeterminate = challenge(HashDigestEvalIndeterminate);
-        let sponge_absorb_eval_indeterminate = challenge(SpongeAbsorbEvalIndeterminate);
-        let sponge_squeeze_eval_indeterminate = challenge(SpongeSqueezeEvalIndeterminate);
-        let sponge_order_eval_indeterminate = challenge(SpongeOrderEvalIndeterminate);
+        let sponge_indeterminate = challenge(SpongeEvalIndeterminate);
 
-        let round_number = current_base_row(ROUNDNUMBER.master_base_table_index());
-        let ci = current_base_row(CI.master_base_table_index());
-        let running_evaluation_hash_input =
-            current_ext_row(HashInputRunningEvaluation.master_ext_table_index());
-        let running_evaluation_hash_digest =
-            current_ext_row(HashDigestRunningEvaluation.master_ext_table_index());
-        let running_evaluation_sponge_absorb =
-            current_ext_row(SpongeAbsorbRunningEvaluation.master_ext_table_index());
-        let running_evaluation_sponge_squeeze =
-            current_ext_row(SpongeSqueezeRunningEvaluation.master_ext_table_index());
-        let running_evaluation_sponge_order =
-            current_ext_row(SpongeOrderRunningEvaluation.master_ext_table_index());
+        let round_number = current_base_row(ROUNDNUMBER);
+        let ci = current_base_row(CI);
+        let running_evaluation_hash_input = current_ext_row(HashInputRunningEvaluation);
+        let running_evaluation_hash_digest = current_ext_row(HashDigestRunningEvaluation);
+        let running_evaluation_sponge = current_ext_row(SpongeRunningEvaluation);
 
-        let round_number_next = next_base_row(ROUNDNUMBER.master_base_table_index());
-        let ci_next = next_base_row(CI.master_base_table_index());
-        let running_evaluation_hash_input_next =
-            next_ext_row(HashInputRunningEvaluation.master_ext_table_index());
-        let running_evaluation_hash_digest_next =
-            next_ext_row(HashDigestRunningEvaluation.master_ext_table_index());
-        let running_evaluation_sponge_absorb_next =
-            next_ext_row(SpongeAbsorbRunningEvaluation.master_ext_table_index());
-        let running_evaluation_sponge_squeeze_next =
-            next_ext_row(SpongeSqueezeRunningEvaluation.master_ext_table_index());
-        let running_evaluation_sponge_order_next =
-            next_ext_row(SpongeOrderRunningEvaluation.master_ext_table_index());
+        let round_number_next = next_base_row(ROUNDNUMBER);
+        let ci_next = next_base_row(CI);
+        let running_evaluation_hash_input_next = next_ext_row(HashInputRunningEvaluation);
+        let running_evaluation_hash_digest_next = next_ext_row(HashDigestRunningEvaluation);
+        let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
 
         let state: [_; STATE_SIZE] = [
             STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
             STATE10, STATE11, STATE12, STATE13, STATE14, STATE15,
         ];
-        let state_current = state.map(|state| current_base_row(state.master_base_table_index()));
-        let state_next = state.map(|state| next_base_row(state.master_base_table_index()));
+        let state_current = state.map(current_base_row);
+        let state_next = state.map(next_base_row);
 
         let state_weights = [
             HashStateWeight0,
@@ -394,7 +367,7 @@ impl ExtHashTable {
             CONSTANT14A,
             CONSTANT15A,
         ]
-        .map(|c| circuit_builder.input(CurrentBaseRow(c.master_base_table_index())));
+        .map(current_base_row);
         let round_constants_b: [_; STATE_SIZE] = [
             CONSTANT0B,
             CONSTANT1B,
@@ -413,7 +386,7 @@ impl ExtHashTable {
             CONSTANT14B,
             CONSTANT15B,
         ]
-        .map(|c| circuit_builder.input(CurrentBaseRow(c.master_base_table_index())));
+        .map(current_base_row);
 
         // left-hand-side, starting at current round and going forward
 
@@ -430,9 +403,7 @@ impl ExtHashTable {
         let after_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| {
-                        circuit_builder.b_constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone()
-                    })
+                    .map(|j| b_constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
                     .sum::<ConstraintCircuitMonad<_, _>>()
             })
             .collect_vec();
@@ -453,10 +424,7 @@ impl ExtHashTable {
         let before_mds = (0..STATE_SIZE)
             .map(|i| {
                 (0..STATE_SIZE)
-                    .map(|j| {
-                        circuit_builder.b_constant(MDS_INV[i * STATE_SIZE + j])
-                            * before_constants[j].clone()
-                    })
+                    .map(|j| b_constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
                     .sum::<ConstraintCircuitMonad<_, _>>()
             })
             .collect_vec();
@@ -487,6 +455,7 @@ impl ExtHashTable {
         // copy capacity between rounds with index 9 and 1 if instruction is “absorb”
         let round_number_next_is_not_1 =
             Self::round_number_deselector(&circuit_builder, &round_number_next, 1);
+        let round_number_next_is_1 = round_number_next.clone() - constant(1);
 
         let difference_of_capacity_registers = state_current[RATE..]
             .iter()
@@ -526,6 +495,9 @@ impl ExtHashTable {
         // Evaluation Arguments
 
         // If (and only if) the next row number is 1, update running evaluation “hash input.”
+        let ci_next_is_not_hash = (ci_next.clone() - opcode_absorb_init.clone())
+            * (ci_next.clone() - opcode_absorb.clone())
+            * (ci_next.clone() - opcode_squeeze.clone());
         let running_evaluation_hash_input_remains =
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
         let xlix_input = state_next[0..2 * DIGEST_LENGTH].to_owned();
@@ -538,15 +510,16 @@ impl ExtHashTable {
         let running_evaluation_hash_input_updates = running_evaluation_hash_input_next
             - hash_input_eval_indeterminate * running_evaluation_hash_input
             - compressed_row_from_processor;
-        let round_number_next_unequal_1 = (0..=NUM_ROUNDS + 1)
-            .filter(|&r| r != 1)
-            .map(|r| round_number_next.clone() - constant(r as u64))
-            .fold(constant(1), |a, b| a * b);
-        let running_evaluation_hash_input_is_updated_correctly =
-            running_evaluation_hash_input_remains * (round_number_next.clone() - constant(1))
-                + running_evaluation_hash_input_updates * round_number_next_unequal_1;
+        let running_evaluation_hash_input_is_updated_correctly = round_number_next_is_not_1.clone()
+            * ci_next_is_not_hash.clone()
+            * running_evaluation_hash_input_updates
+            + round_number_next_is_1.clone() * running_evaluation_hash_input_remains.clone()
+            + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_input_remains;
 
         // If (and only if) the next row number is 9, update running evaluation “hash digest.”
+        let round_number_next_is_9 = round_number_next.clone() - constant(NUM_ROUNDS as u64 + 1);
+        let round_number_next_is_not_9 =
+            Self::round_number_deselector(&circuit_builder, &round_number_next, NUM_ROUNDS + 1);
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
         let hash_digest = state_next[0..DIGEST_LENGTH].to_owned();
@@ -558,31 +531,28 @@ impl ExtHashTable {
         let running_evaluation_hash_digest_updates = running_evaluation_hash_digest_next
             - hash_digest_eval_indeterminate * running_evaluation_hash_digest
             - compressed_row_hash_digest;
-        let round_number_next_leq_number_of_rounds = (0..=NUM_ROUNDS)
-            .map(|r| round_number_next.clone() - constant(r as u64))
-            .fold(constant(1), |a, b| a * b);
-        let running_evaluation_hash_digest_is_updated_correctly =
-            running_evaluation_hash_digest_remains
-                * (round_number_next.clone() - constant(NUM_ROUNDS as u64 + 1))
-                + running_evaluation_hash_digest_updates * round_number_next_leq_number_of_rounds;
+        let running_evaluation_hash_digest_is_updated_correctly = round_number_next_is_not_9
+            * ci_next_is_not_hash
+            * running_evaluation_hash_digest_updates
+            + round_number_next_is_9 * running_evaluation_hash_digest_remains.clone()
+            + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_digest_remains;
 
-        // The running evaluation for “Sponge absorb” updates correctly.
-        let compressed_next_row = state_weights[..RATE]
+        // The running evaluation for “Sponge” updates correctly.
+        let compressed_row_next = state_weights[..RATE]
             .iter()
             .zip_eq(state_next[..RATE].iter())
-            .map(|(weight, state)| weight.clone() * state.clone())
+            .map(|(weight, st_next)| weight.clone() * st_next.clone())
             .sum();
-        let running_evaluation_sponge_absorb_has_accumulated_next_row =
-            running_evaluation_sponge_absorb_next.clone()
-                - sponge_absorb_eval_indeterminate.clone()
-                    * running_evaluation_sponge_absorb.clone()
-                - compressed_next_row;
-        let if_round_no_next_is_1_and_ci_next_is_absorb_init_then_sponge_absorb_eval_is_updated =
+        let running_evaluation_sponge_has_accumulated_next_row = running_evaluation_sponge_next
+            .clone()
+            - sponge_indeterminate.clone() * running_evaluation_sponge.clone()
+            - challenge(CIWeight) * ci_next.clone()
+            - compressed_row_next;
+        let if_round_no_next_1_and_ci_next_absorb_init_or_squeeze_then_running_eval_sponge_updates =
             round_number_next_is_not_1.clone()
                 * (ci_next.clone() - opcode_hash.clone())
                 * (ci_next.clone() - opcode_absorb.clone())
-                * (ci_next.clone() - opcode_squeeze.clone())
-                * running_evaluation_sponge_absorb_has_accumulated_next_row;
+                * running_evaluation_sponge_has_accumulated_next_row;
 
         let compressed_difference_of_rows: ConstraintCircuitMonad<_, _> = state_weights[..RATE]
             .iter()
@@ -590,101 +560,31 @@ impl ExtHashTable {
             .map(|(weight, state_difference)| weight.clone() * state_difference.clone())
             .sum();
         let running_evaluation_sponge_absorb_has_accumulated_difference_of_rows =
-            running_evaluation_sponge_absorb_next.clone()
-                - sponge_absorb_eval_indeterminate * running_evaluation_sponge_absorb.clone()
-                - compressed_difference_of_rows.clone();
+            running_evaluation_sponge_next.clone()
+                - sponge_indeterminate * running_evaluation_sponge.clone()
+                - challenge(CIWeight) * ci_next.clone()
+                - compressed_difference_of_rows;
         let if_round_no_next_is_1_and_ci_next_is_absorb_then_sponge_absorb_eval_is_updated =
-            round_number_next_is_not_1.clone()
-                * (ci_next.clone() - opcode_hash.clone())
+            round_number_next_is_not_1
+                * (ci_next.clone() - opcode_hash)
                 * (ci_next.clone() - opcode_absorb_init.clone())
                 * (ci_next.clone() - opcode_squeeze.clone())
                 * running_evaluation_sponge_absorb_has_accumulated_difference_of_rows;
 
         let running_evaluation_sponge_absorb_remains =
-            running_evaluation_sponge_absorb_next - running_evaluation_sponge_absorb;
+            running_evaluation_sponge_next - running_evaluation_sponge;
         let if_round_no_next_is_not_1_then_running_evaluation_sponge_absorb_remains =
-            (round_number_next.clone() - constant(1))
-                * running_evaluation_sponge_absorb_remains.clone();
-        let if_ci_next_is_not_an_absorb_then_running_evaluation_sponge_absorb_remains =
-            (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_absorb.clone())
+            round_number_next_is_1 * running_evaluation_sponge_absorb_remains.clone();
+        let if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains =
+            (ci_next.clone() - opcode_absorb_init)
+                * (ci_next.clone() - opcode_absorb)
+                * (ci_next - opcode_squeeze)
                 * running_evaluation_sponge_absorb_remains;
         let running_evaluation_sponge_absorb_is_updated_correctly =
-            if_round_no_next_is_1_and_ci_next_is_absorb_init_then_sponge_absorb_eval_is_updated
+            if_round_no_next_1_and_ci_next_absorb_init_or_squeeze_then_running_eval_sponge_updates
                 + if_round_no_next_is_1_and_ci_next_is_absorb_then_sponge_absorb_eval_is_updated
                 + if_round_no_next_is_not_1_then_running_evaluation_sponge_absorb_remains
-                + if_ci_next_is_not_an_absorb_then_running_evaluation_sponge_absorb_remains;
-
-        // The running evaluation for “Sponge squeeze” updates correctly.
-        let compressed_next_row: ConstraintCircuitMonad<_, _> = state_weights[..RATE]
-            .iter()
-            .zip_eq(state_next[..RATE].iter())
-            .map(|(weight, state)| weight.clone() * state.clone())
-            .sum();
-        let running_evaluation_sponge_squeeze_has_accumulated_next_row =
-            running_evaluation_sponge_squeeze_next.clone()
-                - sponge_squeeze_eval_indeterminate * running_evaluation_sponge_squeeze.clone()
-                - compressed_next_row.clone();
-        let if_round_no_next_is_1_and_ci_next_is_squeeze_then_sponge_squeeze_eval_is_updated =
-            round_number_next_is_not_1.clone()
-                * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_absorb.clone())
-                * running_evaluation_sponge_squeeze_has_accumulated_next_row;
-
-        let running_evaluation_sponge_squeeze_remains =
-            running_evaluation_sponge_squeeze_next - running_evaluation_sponge_squeeze;
-        let if_round_no_next_is_not_1_then_running_evaluation_sponge_squeeze_remains =
-            (round_number_next.clone() - constant(1))
-                * running_evaluation_sponge_squeeze_remains.clone();
-        let if_ci_next_is_not_a_squeeze_then_running_evaluation_sponge_squeeze_remains =
-            (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_absorb.clone())
-                * running_evaluation_sponge_squeeze_remains;
-        let running_evaluation_sponge_squeeze_is_updated_correctly =
-            if_round_no_next_is_1_and_ci_next_is_squeeze_then_sponge_squeeze_eval_is_updated
-                + if_round_no_next_is_not_1_then_running_evaluation_sponge_squeeze_remains
-                + if_ci_next_is_not_a_squeeze_then_running_evaluation_sponge_squeeze_remains;
-
-        // The running evaluation for “Sponge order” updates correctly.
-        let running_evaluation_sponge_order_has_accumulated_ci_and_next_row =
-            running_evaluation_sponge_order_next.clone()
-                - sponge_order_eval_indeterminate.clone() * running_evaluation_sponge_order.clone()
-                - challenge(CIWeight) * ci_next.clone()
-                - compressed_next_row;
-        let if_round_next_is_1_and_ci_next_absorb_init_or_squeeze_then_sponge_order_eval_updates =
-            round_number_next_is_not_1.clone()
-                * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb.clone())
-                * running_evaluation_sponge_order_has_accumulated_ci_and_next_row;
-
-        let running_evaluation_sponge_order_has_accumulated_ci_and_row_difference =
-            running_evaluation_sponge_order_next.clone()
-                - sponge_order_eval_indeterminate * running_evaluation_sponge_order.clone()
-                - challenge(CIWeight) * ci_next.clone()
-                - compressed_difference_of_rows;
-        let if_round_no_next_is_1_and_ci_next_absorb_then_sponge_order_eval_updates =
-            round_number_next_is_not_1
-                * (ci_next.clone() - opcode_hash)
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_squeeze.clone())
-                * running_evaluation_sponge_order_has_accumulated_ci_and_row_difference;
-
-        let running_evaluation_sponge_order_remains =
-            running_evaluation_sponge_order_next - running_evaluation_sponge_order;
-        let if_round_no_next_is_not_1_then_running_evaluation_sponge_order_remains =
-            (round_number_next - constant(1)) * running_evaluation_sponge_order_remains.clone();
-        let if_ci_next_is_hash_then_running_evaluation_sponge_order_remains = (ci_next.clone()
-            - opcode_absorb_init)
-            * (ci_next.clone() - opcode_absorb)
-            * (ci_next - opcode_squeeze)
-            * running_evaluation_sponge_order_remains;
-        let running_evaluation_sponge_order_is_updated_correctly =
-            if_round_next_is_1_and_ci_next_absorb_init_or_squeeze_then_sponge_order_eval_updates
-                + if_round_no_next_is_1_and_ci_next_absorb_then_sponge_order_eval_updates
-                + if_round_no_next_is_not_1_then_running_evaluation_sponge_order_remains
-                + if_ci_next_is_hash_then_running_evaluation_sponge_order_remains;
+                + if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains;
 
         [
             vec![
@@ -701,8 +601,6 @@ impl ExtHashTable {
                 running_evaluation_hash_input_is_updated_correctly,
                 running_evaluation_hash_digest_is_updated_correctly,
                 running_evaluation_sponge_absorb_is_updated_correctly,
-                running_evaluation_sponge_squeeze_is_updated_correctly,
-                running_evaluation_sponge_order_is_updated_correctly,
             ],
         ]
         .concat()
@@ -754,11 +652,9 @@ impl HashTable {
         assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
-        let mut sponge_absorb_running_evaluation = EvalArg::default_initial();
-        let mut sponge_squeeze_running_evaluation = EvalArg::default_initial();
-        let mut sponge_order_running_evaluation = EvalArg::default_initial();
+        let mut sponge_running_evaluation = EvalArg::default_initial();
 
-        let state_registers = |row: ArrayView1<BFieldElement>| {
+        let rate_registers = |row: ArrayView1<BFieldElement>| {
             [
                 row[STATE0.base_table_index()],
                 row[STATE1.base_table_index()],
@@ -800,7 +696,7 @@ impl HashTable {
                 && current_instruction == opcode_hash
             {
                 // add compressed digest to running evaluation “hash digest”
-                let compressed_hash_digest: XFieldElement = state_registers(current_row)
+                let compressed_hash_digest: XFieldElement = rate_registers(current_row)
                     [..DIGEST_LENGTH]
                     .iter()
                     .zip_eq(state_weights[..DIGEST_LENGTH].iter())
@@ -811,15 +707,15 @@ impl HashTable {
                     + compressed_hash_digest;
             }
 
-            // all remaining Evaluation Arguments only get updated if the row number is 1
+            // all remaining Evaluation Arguments only get updated if the round number is 1
             if current_row[ROUNDNUMBER.base_table_index()].is_one() {
                 let elements_for_hash_input_and_sponge_operations = match current_instruction {
                     op if op == opcode_hash || op == opcode_absorb_init || op == opcode_squeeze => {
-                        state_registers(current_row)
+                        rate_registers(current_row)
                     }
                     op if op == opcode_absorb => {
-                        let rate_current_row = state_registers(current_row);
-                        let rate_previous_row = state_registers(previous_row);
+                        let rate_previous_row = rate_registers(previous_row);
+                        let rate_current_row = rate_registers(current_row);
                         rate_current_row
                             .iter()
                             .zip_eq(rate_previous_row.iter())
@@ -842,21 +738,12 @@ impl HashTable {
                             * challenges.hash_input_eval_indeterminate
                             + compressed_row_hash_input_and_sponge_operations;
                     }
-                    ci if ci == opcode_absorb_init || ci == opcode_absorb => {
-                        sponge_absorb_running_evaluation = sponge_absorb_running_evaluation
-                            * challenges.sponge_absorb_eval_indeterminate
-                            + compressed_row_hash_input_and_sponge_operations;
-                        sponge_order_running_evaluation = sponge_order_running_evaluation
-                            * challenges.sponge_order_eval_indeterminate
-                            + challenges.ci_weight * ci
-                            + compressed_row_hash_input_and_sponge_operations;
-                    }
-                    ci if ci == opcode_squeeze => {
-                        sponge_squeeze_running_evaluation = sponge_squeeze_running_evaluation
-                            * challenges.sponge_squeeze_eval_indeterminate
-                            + compressed_row_hash_input_and_sponge_operations;
-                        sponge_order_running_evaluation = sponge_order_running_evaluation
-                            * challenges.sponge_order_eval_indeterminate
+                    ci if ci == opcode_absorb_init
+                        || ci == opcode_absorb
+                        || ci == opcode_squeeze =>
+                    {
+                        sponge_running_evaluation = sponge_running_evaluation
+                            * challenges.sponge_eval_indeterminate
                             + challenges.ci_weight * ci
                             + compressed_row_hash_input_and_sponge_operations;
                     }
@@ -869,12 +756,7 @@ impl HashTable {
                 hash_input_running_evaluation;
             extension_row[HashDigestRunningEvaluation.ext_table_index()] =
                 hash_digest_running_evaluation;
-            extension_row[SpongeAbsorbRunningEvaluation.ext_table_index()] =
-                sponge_absorb_running_evaluation;
-            extension_row[SpongeSqueezeRunningEvaluation.ext_table_index()] =
-                sponge_squeeze_running_evaluation;
-            extension_row[SpongeOrderRunningEvaluation.ext_table_index()] =
-                sponge_order_running_evaluation;
+            extension_row[SpongeRunningEvaluation.ext_table_index()] = sponge_running_evaluation;
 
             previous_row = current_row;
         }
@@ -885,9 +767,7 @@ impl HashTable {
 pub enum HashTableChallengeId {
     HashInputEvalIndeterminate,
     HashDigestEvalIndeterminate,
-    SpongeAbsorbEvalIndeterminate,
-    SpongeSqueezeEvalIndeterminate,
-    SpongeOrderEvalIndeterminate,
+    SpongeEvalIndeterminate,
 
     CIWeight,
     HashStateWeight0,
@@ -920,9 +800,7 @@ pub struct HashTableChallenges {
     /// permutation/evaluation column of the hash table.
     pub hash_input_eval_indeterminate: XFieldElement,
     pub hash_digest_eval_indeterminate: XFieldElement,
-    pub sponge_absorb_eval_indeterminate: XFieldElement,
-    pub sponge_squeeze_eval_indeterminate: XFieldElement,
-    pub sponge_order_eval_indeterminate: XFieldElement,
+    pub sponge_eval_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
     pub ci_weight: XFieldElement,
@@ -952,9 +830,7 @@ impl TableChallenges for HashTableChallenges {
         match id {
             HashInputEvalIndeterminate => self.hash_input_eval_indeterminate,
             HashDigestEvalIndeterminate => self.hash_digest_eval_indeterminate,
-            SpongeAbsorbEvalIndeterminate => self.sponge_absorb_eval_indeterminate,
-            SpongeSqueezeEvalIndeterminate => self.sponge_squeeze_eval_indeterminate,
-            SpongeOrderEvalIndeterminate => self.sponge_order_eval_indeterminate,
+            SpongeEvalIndeterminate => self.sponge_eval_indeterminate,
             CIWeight => self.ci_weight,
             HashStateWeight0 => self.hash_state_weight0,
             HashStateWeight1 => self.hash_state_weight1,

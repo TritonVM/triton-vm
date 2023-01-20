@@ -148,9 +148,7 @@ impl ProcessorTable {
         let mut jump_stack_running_product = PermArg::default_initial();
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
-        let mut sponge_absorb_running_evaluation = EvalArg::default_initial();
-        let mut sponge_squeeze_running_evaluation = EvalArg::default_initial();
-        let mut sponge_order_running_evaluation = EvalArg::default_initial();
+        let mut sponge_running_evaluation = EvalArg::default_initial();
         let mut u32_table_running_product = PermArg::default_initial();
         let mut unique_clock_jump_differences_running_evaluation = EvalArg::default_initial();
         let mut all_clock_jump_differences_running_product =
@@ -270,33 +268,17 @@ impl ProcessorTable {
                 }
             }
 
-            // Hash Table – Sponge absorption
-            if current_row[CI.base_table_index()] == Instruction::AbsorbInit.opcode_b()
-                || current_row[CI.base_table_index()] == Instruction::Absorb.opcode_b()
-            {
-                sponge_absorb_running_evaluation = sponge_absorb_running_evaluation
-                    * challenges.sponge_absorb_eval_indeterminate
-                    + compressed_row_for_hash_input_and_sponge;
-            }
-
-            // Hash Table – Sponge squeezing
+            // Hash Table – Sponge
             if let Some(prev_row) = previous_row {
-                if prev_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b() {
-                    sponge_squeeze_running_evaluation = sponge_squeeze_running_evaluation
-                        * challenges.sponge_squeeze_eval_indeterminate
+                if prev_row[CI.base_table_index()] == Instruction::AbsorbInit.opcode_b()
+                    || prev_row[CI.base_table_index()] == Instruction::Absorb.opcode_b()
+                    || prev_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b()
+                {
+                    sponge_running_evaluation = sponge_running_evaluation
+                        * challenges.sponge_eval_indeterminate
+                        + challenges.hash_table_ci_weight * prev_row[CI.base_table_index()]
                         + compressed_row_for_hash_input_and_sponge;
                 }
-            }
-
-            // Hash Table – Sponge instruction order
-            if current_row[CI.base_table_index()] == Instruction::AbsorbInit.opcode_b()
-                || current_row[CI.base_table_index()] == Instruction::Absorb.opcode_b()
-                || current_row[CI.base_table_index()] == Instruction::Squeeze.opcode_b()
-            {
-                sponge_order_running_evaluation = sponge_order_running_evaluation
-                    * challenges.sponge_order_eval_indeterminate
-                    + challenges.hash_table_ci_weight * current_row[CI.base_table_index()]
-                    + compressed_row_for_hash_input_and_sponge;
             }
 
             // U32 Table
@@ -377,10 +359,7 @@ impl ProcessorTable {
             extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
             extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
             extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
-            extension_row[SpongeAbsorbEvalArg.ext_table_index()] = sponge_absorb_running_evaluation;
-            extension_row[SpongeSqueezeEvalArg.ext_table_index()] =
-                sponge_squeeze_running_evaluation;
-            extension_row[SpongeOrderEvalArg.ext_table_index()] = sponge_order_running_evaluation;
+            extension_row[SpongeEvalArg.ext_table_index()] = sponge_running_evaluation;
             extension_row[U32TablePermArg.ext_table_index()] = u32_table_running_product;
             extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
                 all_clock_jump_differences_running_product;
@@ -561,9 +540,7 @@ pub enum ProcessorTableChallengeId {
     StandardOutputEvalIndeterminate,
     HashInputEvalIndeterminate,
     HashDigestEvalIndeterminate,
-    SpongeAbsorbEvalIndeterminate,
-    SpongeSqueezeEvalIndeterminate,
-    SpongeOrderEvalIndeterminate,
+    SpongeEvalIndeterminate,
 
     InstructionPermIndeterminate,
     OpStackPermIndeterminate,
@@ -627,9 +604,7 @@ pub struct ProcessorTableChallenges {
     pub standard_output_eval_indeterminate: XFieldElement,
     pub hash_input_eval_indeterminate: XFieldElement,
     pub hash_digest_eval_indeterminate: XFieldElement,
-    pub sponge_absorb_eval_indeterminate: XFieldElement,
-    pub sponge_squeeze_eval_indeterminate: XFieldElement,
-    pub sponge_order_eval_indeterminate: XFieldElement,
+    pub sponge_eval_indeterminate: XFieldElement,
 
     pub instruction_perm_indeterminate: XFieldElement,
     pub op_stack_perm_indeterminate: XFieldElement,
@@ -689,9 +664,7 @@ impl TableChallenges for ProcessorTableChallenges {
             StandardOutputEvalIndeterminate => self.standard_output_eval_indeterminate,
             HashInputEvalIndeterminate => self.hash_input_eval_indeterminate,
             HashDigestEvalIndeterminate => self.hash_digest_eval_indeterminate,
-            SpongeAbsorbEvalIndeterminate => self.sponge_absorb_eval_indeterminate,
-            SpongeSqueezeEvalIndeterminate => self.sponge_squeeze_eval_indeterminate,
-            SpongeOrderEvalIndeterminate => self.sponge_order_eval_indeterminate,
+            SpongeEvalIndeterminate => self.sponge_eval_indeterminate,
             InstructionPermIndeterminate => self.instruction_perm_indeterminate,
             OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
             RamPermIndeterminate => self.ram_perm_indeterminate,
@@ -875,7 +848,7 @@ impl ExtProcessorTable {
         let running_evaluation_hash_input_has_absorbed_first_row = factory
             .running_evaluation_hash_input()
             - hash_input_indeterminate * constant_x(EvalArg::default_initial())
-            - compressed_row.clone();
+            - compressed_row;
         let running_evaluation_hash_input_is_default_initial =
             factory.running_evaluation_hash_input() - constant_x(EvalArg::default_initial());
         let running_evaluation_hash_input_is_initialized_correctly = hash_selector
@@ -886,40 +859,9 @@ impl ExtProcessorTable {
         let running_evaluation_hash_digest_is_initialized_correctly =
             factory.running_evaluation_hash_digest() - constant_x(EvalArg::default_initial());
 
-        // Sponge absorb
-        let absorb_init_selector = factory.ci() - constant(Instruction::AbsorbInit.opcode() as i32);
-        let absorb_init_deselector = InstructionDeselectors::instruction_deselector_single_row(
-            &factory,
-            Instruction::AbsorbInit,
-        );
-        let sponge_absorb_indeterminate = challenge(SpongeAbsorbEvalIndeterminate);
-        let running_evaluation_sponge_absorb_has_absorbed_first_row = factory
-            .running_evaluation_sponge_absorb()
-            - sponge_absorb_indeterminate * constant_x(EvalArg::default_initial())
-            - compressed_row;
-        let running_evaluation_sponge_absorb_is_default_initial =
-            factory.running_evaluation_sponge_absorb() - constant_x(EvalArg::default_initial());
+        // Hash Table – Sponge
         let running_evaluation_sponge_absorb_is_initialized_correctly =
-            absorb_init_selector.clone() * running_evaluation_sponge_absorb_is_default_initial
-                + absorb_init_deselector.clone()
-                    * running_evaluation_sponge_absorb_has_absorbed_first_row;
-
-        // Sponge squeeze
-        let running_evaluation_sponge_squeeze_is_initialized_correctly =
-            factory.running_evaluation_sponge_squeeze() - constant_x(EvalArg::default_initial());
-
-        // Sponge instruction's order
-        let sponge_absorb_indeterminate = challenge(SpongeAbsorbEvalIndeterminate);
-        let running_evaluation_sponge_order_is_default_initial =
-            factory.running_evaluation_sponge_order() - constant_x(EvalArg::default_initial());
-        let running_evaluation_sponge_order_has_absorbed_first_instruction = factory
-            .running_evaluation_sponge_order()
-            - sponge_absorb_indeterminate * constant_x(EvalArg::default_initial())
-            - constant(Instruction::AbsorbInit.opcode() as i32);
-        let running_evaluation_sponge_order_is_initialized_correctly = absorb_init_selector
-            * running_evaluation_sponge_order_is_default_initial
-            + absorb_init_deselector
-                * running_evaluation_sponge_order_has_absorbed_first_instruction;
+            factory.running_evaluation_sponge() - constant_x(EvalArg::default_initial());
 
         // u32 table
         let running_product_for_u32_table_is_initialized_correctly =
@@ -964,8 +906,6 @@ impl ExtProcessorTable {
             running_evaluation_hash_input_is_initialized_correctly,
             running_evaluation_hash_digest_is_initialized_correctly,
             running_evaluation_sponge_absorb_is_initialized_correctly,
-            running_evaluation_sponge_squeeze_is_initialized_correctly,
-            running_evaluation_sponge_order_is_initialized_correctly,
             running_product_for_u32_table_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
@@ -1163,9 +1103,7 @@ impl ExtProcessorTable {
             .push(factory.running_product_for_jump_stack_table_updates_correctly());
         transition_constraints.push(factory.running_evaluation_hash_input_updates_correctly());
         transition_constraints.push(factory.running_evaluation_hash_digest_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_sponge_absorb_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_sponge_squeeze_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_sponge_order_updates_correctly());
+        transition_constraints.push(factory.running_evaluation_sponge_updates_correctly());
         transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
         let mut built_transition_constraints = transition_constraints
@@ -1737,29 +1675,13 @@ impl SingleRowConstraints {
     > {
         self.ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_sponge_absorb(
+    pub fn running_evaluation_sponge(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.ext_row_variables[SpongeAbsorbEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge_squeeze(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.ext_row_variables[SpongeSqueezeEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge_order(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.ext_row_variables[SpongeOrderEvalArg.master_ext_table_index()].clone()
+        self.ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table(
         &self,
@@ -3415,29 +3337,13 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_sponge_absorb(
+    pub fn running_evaluation_sponge(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.current_ext_row_variables[SpongeAbsorbEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge_squeeze(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.current_ext_row_variables[SpongeSqueezeEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge_order(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.current_ext_row_variables[SpongeOrderEvalArg.master_ext_table_index()].clone()
+        self.current_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table(
         &self,
@@ -3896,29 +3802,13 @@ impl DualRowConstraints {
     > {
         self.next_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_evaluation_sponge_absorb_next(
+    pub fn running_evaluation_sponge_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.next_ext_row_variables[SpongeAbsorbEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge_squeeze_next(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.next_ext_row_variables[SpongeSqueezeEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge_order_next(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.next_ext_row_variables[SpongeOrderEvalArg.master_ext_table_index()].clone()
+        self.next_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
     pub fn running_product_u32_table_next(
         &self,
@@ -4449,78 +4339,25 @@ impl DualRowConstraints {
         hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
     }
 
-    pub fn running_evaluation_sponge_absorb_updates_correctly(
+    pub fn running_evaluation_sponge_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         let absorb_init_deselector =
-            InstructionDeselectors::instruction_deselector_next(self, Instruction::AbsorbInit);
+            InstructionDeselectors::instruction_deselector(self, Instruction::AbsorbInit);
         let absorb_deselector =
-            InstructionDeselectors::instruction_deselector_next(self, Instruction::Absorb);
-        let absorb_init_and_absorb_selector = (self.ci_next()
-            - self.constant_b(Instruction::AbsorbInit.opcode_b()))
-            * (self.ci_next() - self.constant_b(Instruction::Absorb.opcode_b()));
-
-        let indeterminate = self
-            .circuit_builder
-            .challenge(SpongeAbsorbEvalIndeterminate);
-
-        let weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
-        ]
-        .map(|w| self.circuit_builder.challenge(w));
-        let state = [
-            self.st0_next(),
-            self.st1_next(),
-            self.st2_next(),
-            self.st3_next(),
-            self.st4_next(),
-            self.st5_next(),
-            self.st6_next(),
-            self.st7_next(),
-            self.st8_next(),
-            self.st9_next(),
-        ];
-        let compressed_row = weights
-            .into_iter()
-            .zip_eq(state.into_iter())
-            .map(|(weight, state)| weight * state)
-            .sum();
-        let running_evaluation_updates = self.running_evaluation_sponge_absorb_next()
-            - indeterminate * self.running_evaluation_sponge_absorb()
-            - compressed_row;
-        let running_evaluation_remains =
-            self.running_evaluation_sponge_absorb_next() - self.running_evaluation_sponge_absorb();
-
-        absorb_init_and_absorb_selector * running_evaluation_remains
-            + absorb_init_deselector * running_evaluation_updates.clone()
-            + absorb_deselector * running_evaluation_updates
-    }
-
-    pub fn running_evaluation_sponge_squeeze_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
+            InstructionDeselectors::instruction_deselector(self, Instruction::Absorb);
         let squeeze_deselector =
             InstructionDeselectors::instruction_deselector(self, Instruction::Squeeze);
-        let squeeze_selector = self.ci() - self.constant_b(Instruction::Squeeze.opcode_b());
 
-        let indeterminate = self
-            .circuit_builder
-            .challenge(SpongeSqueezeEvalIndeterminate);
+        let opcode_absorb_init = self.constant_b(Instruction::AbsorbInit.opcode_b());
+        let opcode_absorb = self.constant_b(Instruction::Absorb.opcode_b());
+        let opcode_squeeze = self.constant_b(Instruction::Squeeze.opcode_b());
+        let sponge_instruction_selector = (self.ci() - opcode_absorb_init)
+            * (self.ci() - opcode_absorb)
+            * (self.ci() - opcode_squeeze);
 
         let weights = [
             HashStateWeight0,
@@ -4535,7 +4372,7 @@ impl DualRowConstraints {
             HashStateWeight9,
         ]
         .map(|w| self.circuit_builder.challenge(w));
-        let state = [
+        let state_next = [
             self.st0_next(),
             self.st1_next(),
             self.st2_next(),
@@ -4547,76 +4384,20 @@ impl DualRowConstraints {
             self.st8_next(),
             self.st9_next(),
         ];
-        let compressed_row = weights
+        let compressed_row_next = weights
             .into_iter()
-            .zip_eq(state.into_iter())
-            .map(|(weight, state)| weight * state)
-            .sum();
-        let running_evaluation_updates = self.running_evaluation_sponge_squeeze_next()
-            - indeterminate * self.running_evaluation_sponge_squeeze()
-            - compressed_row;
-        let running_evaluation_remains = self.running_evaluation_sponge_squeeze_next()
-            - self.running_evaluation_sponge_squeeze();
-
-        squeeze_selector * running_evaluation_remains
-            + squeeze_deselector * running_evaluation_updates
-    }
-
-    pub fn running_evaluation_sponge_order_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        let absorb_init_deselector =
-            InstructionDeselectors::instruction_deselector_next(self, Instruction::AbsorbInit);
-        let absorb_deselector =
-            InstructionDeselectors::instruction_deselector_next(self, Instruction::Absorb);
-        let squeeze_deselector =
-            InstructionDeselectors::instruction_deselector_next(self, Instruction::Squeeze);
-        let sponge_instruction_selector = (self.ci_next()
-            - self.constant_b(Instruction::AbsorbInit.opcode_b()))
-            * (self.ci_next() - self.constant_b(Instruction::Absorb.opcode_b()))
-            * (self.ci_next() - self.constant_b(Instruction::Squeeze.opcode_b()));
-
-        let indeterminate = self.circuit_builder.challenge(SpongeOrderEvalIndeterminate);
-        let state_weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
-        ]
-        .map(|w| self.circuit_builder.challenge(w));
-        let state = [
-            self.st0_next(),
-            self.st1_next(),
-            self.st2_next(),
-            self.st3_next(),
-            self.st4_next(),
-            self.st5_next(),
-            self.st6_next(),
-            self.st7_next(),
-            self.st8_next(),
-            self.st9_next(),
-        ];
-        let compressed_row = state_weights
-            .into_iter()
-            .zip_eq(state.into_iter())
-            .map(|(weight, state)| weight * state)
+            .zip_eq(state_next.into_iter())
+            .map(|(weight, st_next)| weight * st_next)
             .sum();
 
-        let running_evaluation_updates = self.running_evaluation_sponge_order_next()
-            - indeterminate * self.running_evaluation_sponge_order()
-            - self.circuit_builder.challenge(HashTableCIWeight) * self.ci_next()
-            - compressed_row;
+        let indeterminate = self.circuit_builder.challenge(SpongeEvalIndeterminate);
+        let ci_weight = self.circuit_builder.challenge(HashTableCIWeight);
+        let running_evaluation_updates = self.running_evaluation_sponge_next()
+            - indeterminate * self.running_evaluation_sponge()
+            - ci_weight * self.ci()
+            - compressed_row_next;
         let running_evaluation_remains =
-            self.running_evaluation_sponge_order_next() - self.running_evaluation_sponge_order();
+            self.running_evaluation_sponge_next() - self.running_evaluation_sponge();
 
         sponge_instruction_selector * running_evaluation_remains
             + absorb_init_deselector * running_evaluation_updates.clone()
@@ -5033,8 +4814,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
         row(f, "jumpstack_table_pa", JumpStackTablePermArg)?;
         row(f, "hash_input_ea", HashInputEvalArg)?;
         row(f, "hash_digest_ea", HashDigestEvalArg)?;
-        row(f, "sponge_absorb_ea", SpongeAbsorbEvalArg)?;
-        row(f, "sponge_squeeze_ea", SpongeSqueezeEvalArg)?;
+        row(f, "sponge_absorb_ea", SpongeEvalArg)?;
         row(f, "u32_table_ea", U32TablePermArg)?;
         write!(
             f,
