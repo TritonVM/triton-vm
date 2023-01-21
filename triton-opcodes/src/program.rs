@@ -4,8 +4,8 @@ use std::io::Cursor;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use crate::instruction::{convert_labels, parse as old_parse, Instruction, LabelledInstruction};
-use crate::parser::parse as nom_parse;
+use crate::instruction::{convert_labels, Instruction, LabelledInstruction};
+use crate::parser::parse;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
@@ -73,13 +73,7 @@ impl Program {
 
     /// Create a `Program` by parsing source code.
     pub fn from_code(code: &str) -> Result<Self> {
-        let instructions = old_parse(code)?;
-        Ok(Program::new(&instructions))
-    }
-
-    /// Create a `Program` by parsing source code using Nom parser.
-    pub fn from_code_nom(code: &str) -> Result<Self> {
-        nom_parse(code)
+        parse(code)
             .map(|program| Program::new(&program))
             .map_err(|err| anyhow::anyhow!("{}", err))
     }

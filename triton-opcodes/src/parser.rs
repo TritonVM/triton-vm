@@ -451,7 +451,6 @@ mod parser_tests {
     use rand::Rng;
     use LabelledInstruction::*;
 
-    use crate::instruction;
     use crate::program::Program;
 
     use super::*;
@@ -864,11 +863,10 @@ mod parser_tests {
     }
 
     #[test]
-    fn parse_program_equivalence_test() {
+    fn parse_program_test() {
         for size in 0..100 {
             let code = program_gen(size * 10);
 
-            let old_actual = instruction::parse(&code).map_err(|err| err.to_string());
             let new_actual = super::parse(&code).map_err(|err| err.to_string());
 
             // property: the new parser succeeds on all generated input programs.
@@ -876,28 +874,6 @@ mod parser_tests {
                 println!("The code:\n{}\n\n", code);
                 panic!("{}", new_actual.unwrap_err());
             }
-
-            // property: the old and the new parser are (mostly) equivalent.
-            //
-            // (there are small differences wrt. handling comments/whitespace.)
-            assert_eq!(old_actual, new_actual);
-
-            // property: parsing the pretty-printed program gives the same result.
-            //
-            // FIXME: The pretty-printer does not retain enough information to print
-            // the original labels, and it does not insert numeric labels either, so
-            // the ASTs will not match completely.
-            //
-            // let actual = new_actual.unwrap();
-            // let pgm = Program::new(&actual);
-            // let pp_code = format!("{}", pgm);
-            // let pp_actual = super::parse(&pp_code).map_err(|err| err.to_string());
-            //
-            // assert_eq!(
-            //     Ok(actual),
-            //     pp_actual,
-            //     "parsing the code and the pretty-printed code gives the same program"
-            // )
         }
     }
 }

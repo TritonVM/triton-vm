@@ -1,16 +1,10 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Display;
-use std::ops::Neg;
-use std::str::SplitWhitespace;
 use std::vec;
 
 use anyhow::bail;
 use anyhow::Result;
-use itertools::Itertools;
-use num_traits::One;
-use regex::Regex;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use strum_macros::Display as DisplayMacro;
@@ -18,7 +12,6 @@ use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 
 use AnInstruction::*;
 use TokenError::*;
@@ -467,148 +460,6 @@ fn convert_labels_helper(
     }
 }
 
-pub fn parse(code_with_comments: &str) -> Result<Vec<LabelledInstruction<'static>>> {
-    let remove_comments = Regex::new(r"//.*?(?:\n|$)").expect("a regex that matches comments");
-    let code = remove_comments.replace_all(code_with_comments, "");
-    let mut tokens = code.split_whitespace();
-    let mut instructions = vec![];
-
-    while let Some(token) = tokens.next() {
-        let mut instruction = parse_token(token, &mut tokens)?;
-        instructions.append(&mut instruction);
-    }
-
-    let all_labels: Vec<String> = instructions
-        .iter()
-        .flat_map(|instr| match instr {
-            LabelledInstruction::Instruction(_, _) => vec![],
-            LabelledInstruction::Label(label, _) => vec![label.clone()],
-        })
-        .collect();
-    let mut seen_labels: HashSet<String> = HashSet::default();
-    let mut duplicate_labels: HashSet<String> = HashSet::default();
-    for label in all_labels {
-        if !seen_labels.insert(label.clone()) {
-            duplicate_labels.insert(label);
-        }
-    }
-
-    if !duplicate_labels.is_empty() {
-        bail!("Duplicate labels: {}", duplicate_labels.iter().join(", "));
-    }
-
-    Ok(instructions)
-}
-
-fn parse_token(
-    token: &str,
-    tokens: &mut SplitWhitespace,
-) -> Result<Vec<LabelledInstruction<'static>>> {
-    if let Some(label) = token.strip_suffix(':') {
-        let label_name = label.to_string();
-        return Ok(vec![LabelledInstruction::Label(label_name, "")]);
-    }
-
-    let instruction: Vec<AnInstruction<String>> = match token {
-        // OpStack manipulation
-        "pop" => vec![Pop],
-        "push" => vec![Push(parse_elem(tokens)?)],
-        "divine" => vec![Divine(None)],
-        "dup0" => vec![Dup(ST0)],
-        "dup1" => vec![Dup(ST1)],
-        "dup2" => vec![Dup(ST2)],
-        "dup3" => vec![Dup(ST3)],
-        "dup4" => vec![Dup(ST4)],
-        "dup5" => vec![Dup(ST5)],
-        "dup6" => vec![Dup(ST6)],
-        "dup7" => vec![Dup(ST7)],
-        "dup8" => vec![Dup(ST8)],
-        "dup9" => vec![Dup(ST9)],
-        "dup10" => vec![Dup(ST10)],
-        "dup11" => vec![Dup(ST11)],
-        "dup12" => vec![Dup(ST12)],
-        "dup13" => vec![Dup(ST13)],
-        "dup14" => vec![Dup(ST14)],
-        "dup15" => vec![Dup(ST15)],
-        "swap1" => vec![Swap(ST1)],
-        "swap2" => vec![Swap(ST2)],
-        "swap3" => vec![Swap(ST3)],
-        "swap4" => vec![Swap(ST4)],
-        "swap5" => vec![Swap(ST5)],
-        "swap6" => vec![Swap(ST6)],
-        "swap7" => vec![Swap(ST7)],
-        "swap8" => vec![Swap(ST8)],
-        "swap9" => vec![Swap(ST9)],
-        "swap10" => vec![Swap(ST10)],
-        "swap11" => vec![Swap(ST11)],
-        "swap12" => vec![Swap(ST12)],
-        "swap13" => vec![Swap(ST13)],
-        "swap14" => vec![Swap(ST14)],
-        "swap15" => vec![Swap(ST15)],
-
-        // Control flow
-        "nop" => vec![Nop],
-        "skiz" => vec![Skiz],
-        "call" => vec![Call(parse_label(tokens)?)],
-        "return" => vec![Return],
-        "recurse" => vec![Recurse],
-        "assert" => vec![Assert],
-        "halt" => vec![Halt],
-
-        // Memory access
-        "read_mem" => vec![ReadMem],
-        "write_mem" => vec![WriteMem],
-
-        // Hashing-related
-        "hash" => vec![Hash],
-        "divine_sibling" => vec![DivineSibling],
-        "assert_vector" => vec![AssertVector],
-        "absorb_init" => vec![AbsorbInit],
-        "absorb" => vec![Absorb],
-        "squeeze" => vec![Squeeze],
-
-        // Base field arithmetic on stack
-        "add" => vec![Add],
-        "mul" => vec![Mul],
-        "invert" => vec![Invert],
-        "eq" => vec![Eq],
-
-        // Bitwise arithmetic on stack
-        "split" => vec![Split],
-        "lt" => vec![Lt],
-        "and" => vec![And],
-        "xor" => vec![Xor],
-        "log_2_floor" => vec![Log2Floor],
-        "pow" => vec![Pow],
-        "div" => vec![Div],
-
-        // Extension field arithmetic on stack
-        "xxadd" => vec![XxAdd],
-        "xxmul" => vec![XxMul],
-        "xinvert" => vec![XInvert],
-        "xbmul" => vec![XbMul],
-
-        // Read/write
-        "read_io" => vec![ReadIo],
-        "write_io" => vec![WriteIo],
-
-        // pseudo instructions
-        "neg" => vec![Push(BFieldElement::one().neg()), Mul],
-        "sub" => vec![Swap(ST1), Push(BFieldElement::one().neg()), Mul, Add],
-        "lsb" => pseudo_instruction_lsb(),
-        "is_u32" => pseudo_instruction_is_u32(),
-
-        _ => return Err(anyhow::Error::new(UnknownInstruction(token.to_string()))),
-    };
-
-    let labelled_instruction = instruction
-        .into_iter()
-        .map(|instr| LabelledInstruction::Instruction(instr, ""))
-        .collect();
-
-    Ok(labelled_instruction)
-}
-
 pub fn is_instruction_name(s: &str) -> bool {
     match s {
         "pop" => true,
@@ -681,47 +532,6 @@ pub fn is_instruction_name(s: &str) -> bool {
 
         _ => false,
     }
-}
-
-fn pseudo_instruction_lsb() -> Vec<AnInstruction<String>> {
-    // input stack: _ a
-    vec![
-        Push(BFieldElement::new(2)), // _ a 2
-        Swap(ST1),                   // _ 2 a
-        Div,                         // _ a/2 a%2
-    ]
-}
-
-fn pseudo_instruction_is_u32() -> Vec<AnInstruction<String>> {
-    // input stack: _ a
-    vec![
-        Split,             // _ hi lo
-        Pop,               // _ hi
-        Push(BFIELD_ZERO), // _ hi 0
-        Eq,                // _ (hi == 0)
-    ]
-}
-
-fn parse_elem(tokens: &mut SplitWhitespace) -> Result<BFieldElement> {
-    let constant_s = tokens.next().ok_or(UnexpectedEndOfStream)?;
-
-    let mut constant_n128: i128 = constant_s.parse::<i128>()?;
-    if constant_n128 < 0 {
-        constant_n128 += BFieldElement::P as i128;
-    }
-    let constant_n64: u64 = constant_n128.try_into()?;
-    let constant_elem = BFieldElement::new(constant_n64);
-
-    Ok(constant_elem)
-}
-
-fn parse_label(tokens: &mut SplitWhitespace) -> Result<String> {
-    let label = tokens
-        .next()
-        .map(|s| s.to_string())
-        .ok_or(UnexpectedEndOfStream)?;
-
-    Ok(label)
 }
 
 pub fn all_instructions_without_args() -> Vec<Instruction> {
@@ -970,13 +780,10 @@ mod instruction_tests {
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
-    use crate::instruction::all_labelled_instructions_with_args;
     use crate::ord_n::Ord8;
     use crate::program::Program;
 
     use super::all_instructions_without_args;
-    use super::parse;
-    use super::sample_programs;
     use super::AnInstruction::{self, *};
 
     #[test]
@@ -1054,22 +861,6 @@ mod instruction_tests {
         ];
 
         assert_eq!(expected, instructions);
-    }
-
-    #[test]
-    fn parse_and_display_each_instruction_test() {
-        let expected = all_labelled_instructions_with_args();
-        let actual = parse(sample_programs::ALL_INSTRUCTIONS).unwrap();
-
-        assert_eq!(expected, actual);
-
-        for (actual, expected) in actual
-            .iter()
-            .map(|instr| format!("{}", instr))
-            .zip_eq(sample_programs::all_instructions_displayed())
-        {
-            assert_eq!(expected, actual);
-        }
     }
 
     #[test]
