@@ -31,7 +31,7 @@ Execution cycle count: 4.
 
 ```
          // _ b a
-swap 1   // _ a b
+swap1    // _ a b
 push -1  // _ a b -1
 mul      // _ a -b
 add      // _ a-b
@@ -59,7 +59,7 @@ Execution cycle count: 3.
 ```
         // _ a
 push 2  // _ a 2
-swap 1  // _ 2 a
+swap1   // _ 2 a
 div     // _ a/2 a%2
 ```
 
