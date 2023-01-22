@@ -4,7 +4,9 @@ use std::io::Cursor;
 
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use crate::instruction::{convert_labels, Instruction, LabelledInstruction};
+use crate::instruction::convert_labels;
+use crate::instruction::Instruction;
+use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

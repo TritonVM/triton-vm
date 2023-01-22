@@ -97,6 +97,7 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     // Hashing-related
     Hash,
     DivineSibling,
+    SwapDigest,
     AssertVector,
     AbsorbInit,
     Absorb,
@@ -155,6 +156,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
             // Hashing-related
             Hash => write!(f, "hash"),
             DivineSibling => write!(f, "divine_sibling"),
+            SwapDigest => write!(f, "swap_digest"),
             AssertVector => write!(f, "assert_vector"),
             AbsorbInit => write!(f, "absorb_init"),
             Absorb => write!(f, "absorb"),
@@ -208,6 +210,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             WriteMem => WriteMem,
             Hash => Hash,
             DivineSibling => DivineSibling,
+            SwapDigest => SwapDigest,
             AssertVector => AssertVector,
             AbsorbInit => AbsorbInit,
             Absorb => Absorb,
@@ -251,13 +254,14 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             WriteMem => 48,
             Hash => 56,
             DivineSibling => 64,
-            AssertVector => 72,
-            AbsorbInit => 80,
-            Absorb => 88,
-            Squeeze => 96,
+            SwapDigest => 72,
+            AssertVector => 80,
+            AbsorbInit => 88,
+            Absorb => 96,
+            Squeeze => 104,
             Add => 26,
             Mul => 34,
-            Invert => 104,
+            Invert => 112,
             Eq => 42,
             Split => 4,
             Lt => 12,
@@ -266,23 +270,13 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Log2Floor => 36,
             Pow => 44,
             Div => 52,
-            XxAdd => 112,
-            XxMul => 120,
-            XInvert => 128,
+            XxAdd => 120,
+            XxMul => 128,
+            XInvert => 136,
             XbMul => 50,
-            ReadIo => 136,
+            ReadIo => 144,
             WriteIo => 58,
         }
-    }
-
-    /// Returns whether a given instruction modifies the op-stack.
-    ///
-    /// A modification involves any amount of pushing and/or popping.
-    pub fn is_op_stack_instruction(&self) -> bool {
-        !matches!(
-            self,
-            Nop | Call(_) | Return | Recurse | Halt | Hash | AssertVector
-        )
     }
 
     pub fn opcode_b(&self) -> BFieldElement {
@@ -326,6 +320,7 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             WriteMem => WriteMem,
             Hash => Hash,
             DivineSibling => DivineSibling,
+            SwapDigest => SwapDigest,
             AssertVector => AssertVector,
             AbsorbInit => AbsorbInit,
             Absorb => Absorb,
@@ -460,78 +455,79 @@ fn convert_labels_helper(
     }
 }
 
-pub fn is_instruction_name(s: &str) -> bool {
-    match s {
-        "pop" => true,
-        "push" => true,
-        "divine" => true,
-        "dup0" => true,
-        "dup1" => true,
-        "dup2" => true,
-        "dup3" => true,
-        "dup4" => true,
-        "dup5" => true,
-        "dup6" => true,
-        "dup7" => true,
-        "dup8" => true,
-        "dup9" => true,
-        "dup10" => true,
-        "dup11" => true,
-        "dup12" => true,
-        "dup13" => true,
-        "dup14" => true,
-        "dup15" => true,
-        "swap1" => true,
-        "swap2" => true,
-        "swap3" => true,
-        "swap4" => true,
-        "swap5" => true,
-        "swap6" => true,
-        "swap7" => true,
-        "swap8" => true,
-        "swap9" => true,
-        "swap10" => true,
-        "swap11" => true,
-        "swap12" => true,
-        "swap13" => true,
-        "swap14" => true,
-        "swap15" => true,
+pub fn is_instruction_name(token: &str) -> bool {
+    matches!(
+        token,
+        "pop"    |
+        "push"   |
+        "divine" |
+        "dup0"   |
+        "dup1"   |
+        "dup2"   |
+        "dup3"   |
+        "dup4"   |
+        "dup5"   |
+        "dup6"   |
+        "dup7"   |
+        "dup8"   |
+        "dup9"   |
+        "dup10"  |
+        "dup11"  |
+        "dup12"  |
+        "dup13"  |
+        "dup14"  |
+        "dup15"  |
+        "swap1"  |
+        "swap2"  |
+        "swap3"  |
+        "swap4"  |
+        "swap5"  |
+        "swap6"  |
+        "swap7"  |
+        "swap8"  |
+        "swap9"  |
+        "swap10" |
+        "swap11" |
+        "swap12" |
+        "swap13" |
+        "swap14" |
+        "swap15" |
 
         // Control flow
-        "nop" => true,
-        "skiz" => true,
-        "call" => true,
-        "return" => true,
-        "recurse" => true,
-        "assert" => true,
-        "halt" => true,
+        "nop"     |
+        "skiz"    |
+        "call"    |
+        "return"  |
+        "recurse" |
+        "assert"  |
+        "halt"    |
 
         // Memory access
-        "read_mem" => true,
-        "write_mem" => true,
+        "read_mem"  |
+        "write_mem" |
 
         // Hashing-related instructions
-        "hash" => true,
-        "divine_sibling" => true,
-        "assert_vector" => true,
+        "hash"           |
+        "swap_digest"    |
+        "divine_sibling" |
+        "assert_vector"  |
+
 
         // Arithmetic on stack instructions
-        "add" => true,
-        "mul" => true,
-        "invert" => true,
-        "split" => true,
-        "eq" => true,
-        "xxadd" => true,
-        "xxmul" => true,
-        "xinvert" => true,
-        "xbmul" => true,
+        "add"     |
+        "mul"     |
+        "invert"  |
+        "split"   |
+        "eq"      |
+        "xxadd"   |
+        "xxmul"   |
+        "xinvert" |
+        "xbmul"   |
 
         // Read/write
-        "read_io" => true,
-        "write_io" => true,
-
-        _ => false,
-    }
+        "read_io" |
+        "write_io"
+    )
 }
 
 pub fn all_instructions_without_args() -> Vec<Instruction> {
@@ -552,6 +548,7 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         WriteMem,
         Hash,
         DivineSibling,
+        SwapDigest,
         AssertVector,
         AbsorbInit,
         Absorb,
@@ -624,6 +621,7 @@ pub fn all_labelled_instructions_with_args<'a>() -> Vec<LabelledInstruction<'a>>
         WriteMem,
         Hash,
         DivineSibling,
+        SwapDigest,
         AssertVector,
         AbsorbInit,
         Absorb,
@@ -695,7 +693,7 @@ pub mod sample_programs {
         skiz
         call foo
 
-        return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
+        return recurse assert halt read_mem write_mem hash divine_sibling swap_digest assert_vector
         absorb_init absorb squeeze
         add mul invert split eq xxadd xxmul xinvert xbmul
 
@@ -749,6 +747,7 @@ pub mod sample_programs {
             "write_mem",
             "hash",
             "divine_sibling",
+            "swap_digest",
             "assert_vector",
             "absorb_init",
             "absorb",

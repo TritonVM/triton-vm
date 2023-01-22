@@ -194,12 +194,20 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     // Hashing-related instructions
     let hash = instruction("hash", Hash);
     let divine_sibling = instruction("divine_sibling", DivineSibling);
+    let swap_digest = instruction("swap_digest", SwapDigest);
     let assert_vector = instruction("assert_vector", AssertVector);
     let absorb_init = instruction("absorb_init", AbsorbInit);
     let absorb = instruction("absorb", Absorb);
     let squeeze = instruction("squeeze", Squeeze);
 
-    let hashing_related = alt((hash, divine_sibling, absorb_init, absorb, squeeze));
+    let hashing_related = alt((
+        hash,
+        divine_sibling,
+        swap_digest,
+        absorb_init,
+        absorb,
+        squeeze,
+    ));
 
     // Arithmetic on stack instructions
     let add = instruction("add", Add);
@@ -551,6 +559,7 @@ mod parser_tests {
             "write_mem",
             "hash",
             "divine_sibling",
+            "swap_digest",
             "assert_vector",
             "absorb_init",
             "absorb",

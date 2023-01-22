@@ -18,6 +18,7 @@ class Instruction(IntEnum):
     WriteMem = auto()
     Hash = auto()
     DivineSibling = auto()
+    SwapDigest = auto()
     AssertVector = auto()
     AbsorbInit = auto()
     Absorb = auto()
