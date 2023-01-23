@@ -366,6 +366,18 @@ impl<'pgm> VMState<'pgm> {
                 self.instruction_pointer += 1;
             }
 
+            SwapDigest => {
+                let digest_upper = self.op_stack.pop_n::<{ DIGEST_LENGTH }>()?;
+                let digest_lower = self.op_stack.pop_n::<{ DIGEST_LENGTH }>()?;
+                for i in (0..DIGEST_LENGTH).rev() {
+                    self.op_stack.push(digest_upper[i]);
+                }
+                for i in (0..DIGEST_LENGTH).rev() {
+                    self.op_stack.push(digest_lower[i]);
+                }
+                self.instruction_pointer += 1;
+            }
+
             AssertVector => {
                 if !self.assert_vector() {
                     return vm_err(AssertionFailed(

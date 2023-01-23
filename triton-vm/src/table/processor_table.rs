@@ -993,6 +993,7 @@ impl ExtProcessorTable {
             (WriteMem, factory.instruction_write_mem()),
             (Hash, factory.instruction_hash()),
             (DivineSibling, factory.instruction_divine_sibling()),
+            (SwapDigest, factory.instruction_swap_digest()),
             (AssertVector, factory.instruction_assert_vector()),
             (AbsorbInit, factory.instruction_absorb_init()),
             (Absorb, factory.instruction_absorb()),
@@ -2252,6 +2253,45 @@ impl DualRowConstraints {
         [
             specific_constraints,
             self.stack_remains_and_top_eleven_elements_unconstrained(),
+            self.step_1(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_swap_digest(
+        &self,
+    ) -> Vec<
+        ConstraintCircuitMonad<
+            ProcessorTableChallenges,
+            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
+        >,
+    > {
+        let move_st0_to_st5 = self.st5_next() - self.st0();
+        let move_st1_to_st6 = self.st6_next() - self.st1();
+        let move_st2_to_st7 = self.st7_next() - self.st2();
+        let move_st3_to_st8 = self.st8_next() - self.st3();
+        let move_st4_to_st9 = self.st9_next() - self.st4();
+        let move_st5_to_st0 = self.st0_next() - self.st5();
+        let move_st6_to_st1 = self.st1_next() - self.st6();
+        let move_st7_to_st2 = self.st2_next() - self.st7();
+        let move_st8_to_st3 = self.st3_next() - self.st8();
+        let move_st9_to_st4 = self.st4_next() - self.st9();
+        let specific_constraints = vec![
+            move_st0_to_st5,
+            move_st1_to_st6,
+            move_st2_to_st7,
+            move_st3_to_st8,
+            move_st4_to_st9,
+            move_st5_to_st0,
+            move_st6_to_st1,
+            move_st7_to_st2,
+            move_st8_to_st3,
+            move_st9_to_st4,
+        ];
+        [
+            specific_constraints,
+            self.stack_remains_and_top_ten_elements_unconstrained(),
             self.step_1(),
             self.keep_ram(),
         ]
@@ -4885,6 +4925,7 @@ mod constraint_polynomial_tests {
             WriteMem => tc.instruction_write_mem(),
             Hash => tc.instruction_hash(),
             DivineSibling => tc.instruction_divine_sibling(),
+            SwapDigest => tc.instruction_swap_digest(),
             AssertVector => tc.instruction_assert_vector(),
             AbsorbInit => tc.instruction_absorb_init(),
             Absorb => tc.instruction_absorb(),
@@ -5345,6 +5386,7 @@ mod constraint_polynomial_tests {
             (WriteMem, factory.instruction_write_mem()),
             (Hash, factory.instruction_hash()),
             (DivineSibling, factory.instruction_divine_sibling()),
+            (SwapDigest, factory.instruction_swap_digest()),
             (AssertVector, factory.instruction_assert_vector()),
             (AbsorbInit, factory.instruction_absorb_init()),
             (Absorb, factory.instruction_absorb()),

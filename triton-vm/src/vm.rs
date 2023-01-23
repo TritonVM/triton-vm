@@ -445,6 +445,14 @@ pub mod triton_vm_tests {
         }
     }
 
+    pub fn test_program_for_swap_digest() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input(
+            "push 23 push 24 push 25 push 26 push 1 \
+             push 12 push 13 push 14 push 15 push 16 \
+             swap_digest assert halt",
+        )
+    }
+
     pub fn test_program_for_assert_vector() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 1 push 2 push 3 push 4 push 5 \
@@ -963,6 +971,7 @@ pub mod triton_vm_tests {
             test_program_for_divine_sibling_noswitch(),
             test_program_for_divine_sibling_switch(),
             test_program_for_assert_vector(),
+            test_program_for_swap_digest(),
             test_program_for_sponge_instructions(),
             test_program_for_sponge_instructions_2(),
             test_program_for_many_sponge_instructions(),
