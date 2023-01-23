@@ -515,7 +515,12 @@ mod parser_tests {
 
     fn label_gen(size: usize) -> String {
         let mut rng = rand::thread_rng();
-        (0..size).map(|_| rng.gen_range('a'..='z')).collect()
+        let mut new_label = || -> String { (0..size).map(|_| rng.gen_range('a'..='z')).collect() };
+        let mut label = new_label();
+        while is_instruction_name(&label) {
+            label = new_label();
+        }
+        label
     }
 
     fn new_label_gen(labels: &mut Vec<String>) -> String {

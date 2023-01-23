@@ -29,8 +29,7 @@ pub fn parse_setup_simulate(
 ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>, Program) {
     let program = Program::from_code(code);
 
-    assert!(program.is_ok(), "program parses correctly");
-    let program = program.unwrap();
+    let program = program.expect("Program must parse.");
 
     prof_start!(maybe_profiler, "simulate");
     let (aet, stdout, err) = simulate(&program, input_symbols, secret_input_symbols);
