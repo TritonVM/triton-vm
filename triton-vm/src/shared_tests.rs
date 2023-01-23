@@ -241,15 +241,19 @@ pub const MANY_U32_INSTRUCTIONS: &str = "
     push 98141 push  7397 and
     push 67749 push 60797 lt
     push 49528 split
-    push 53483 lsb
-    push 79655 is_u32
+    push 53483 call lsb
+    push 79655 call is_u32
     push 60615 log_2_floor
     push    13 push     5 pow
     push 86323 push 37607 xor
     push 32374 push 20636 pow
     push 97416 log_2_floor
     push 14392 push 31589 div
-    halt";
+    halt
+    lsb:
+        push 2 swap1 div return
+    is_u32:
+        split pop push 0 eq return";
 
 pub const FIB_FIXED_7_LT: &str = "
     push 0

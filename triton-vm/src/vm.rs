@@ -588,7 +588,13 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_lsb() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 3 lsb assert assert halt")
+        SourceCodeAndInput::without_input(
+            "
+            push 3 call lsb assert assert halt
+            lsb:
+                push 2 swap1 div return
+            ",
+        )
     }
 
     pub fn property_based_test_program_for_lsb() -> SourceCodeAndInput {
@@ -597,7 +603,13 @@ pub mod triton_vm_tests {
         let lsb = st0 % 2;
         let st0_shift_right = st0 >> 1;
 
-        let source_code = format!("push {st0} lsb read_io eq assert read_io eq assert halt");
+        let source_code = format!(
+            "
+            push {st0} call lsb read_io eq assert read_io eq assert halt
+            lsb:
+                push 2 swap1 div return
+            "
+        );
         SourceCodeAndInput {
             source_code,
             input: vec![lsb.into(), st0_shift_right.into()],
@@ -799,8 +811,10 @@ pub mod triton_vm_tests {
         let st0_u32 = rng.next_u32();
         let st0_not_u32 = ((rng.next_u32() as u64) << 32) + (rng.next_u32() as u64);
         SourceCodeAndInput::without_input(&format!(
-            "push {st0_u32} is_u32 assert \
-             push {st0_not_u32} is_u32 push 0 eq assert halt"
+            "push {st0_u32} call is_u32 assert \
+             push {st0_not_u32} call is_u32 push 0 eq assert halt
+             is_u32:
+                 split pop push 0 eq return"
         ))
     }
 
@@ -889,7 +903,13 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let program = SourceCodeAndInput::without_input(&format!("push {st0} is_u32 assert halt"));
+        let program = SourceCodeAndInput::without_input(&format!(
+            "
+            push {st0} call is_u32 assert halt
+            is_u32:
+                split pop push 0 eq return
+            "
+        ));
         let _ = program.run();
     }
 
@@ -1115,8 +1135,14 @@ pub mod triton_vm_tests {
 
     #[test]
     fn pseudo_sub_test() {
-        let actual_stdout =
-            SourceCodeAndInput::without_input("push 7 push 19 sub write_io halt").run();
+        let actual_stdout = SourceCodeAndInput::without_input(
+            "
+            push 7 push 19 call sub write_io halt
+            sub:
+                swap1 push -1 mul add return
+            ",
+        )
+        .run();
         let expected_stdout = vec![BFieldElement::new(12)];
 
         assert_eq!(expected_stdout, actual_stdout);
