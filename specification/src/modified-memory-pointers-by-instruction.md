@@ -18,6 +18,7 @@
 |      `write_mem` |       |   ⨯    |       |
 |           `hash` |       |        |       |
 | `divine_sibling` |       |        |       |
+|    `swap_digest` |       |        |       |
 |  `assert_vector` |       |        |       |
 |    `absorb_init` |       |        |       |
 |         `absorb` |       |        |       |

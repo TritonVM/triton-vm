@@ -407,6 +407,37 @@ Since `st10` contains the Merkle tree node index,
 
 1. `hv0` holds the result of `st10 % 2` (the node index's least significant bit, indicating whether it is a left/right node).
 
+## Instruction `swap_digest`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_10_unconstrained`, and `keep_ram`.
+Additionally, it defines the following transition constraints.
+
+### Description
+
+1. `st0` is copied to `st5`.
+1. `st1` is copied to `st6`.
+1. `st2` is copied to `st7`.
+1. `st3` is copied to `st8`.
+1. `st4` is copied to `st9`.
+1. `st5` is copied to `st0`.
+1. `st6` is copied to `st1`.
+1. `st7` is copied to `st2`.
+1. `st8` is copied to `st3`.
+1. `st9` is copied to `st4`.
+
+### Polynomials
+
+1. `st5' - st0`
+1. `st6' - st1`
+1. `st7' - st2`
+1. `st8' - st3`
+1. `st9' - st4`
+1. `st0' - st5`
+1. `st1' - st6`
+1. `st2' - st7`
+1. `st3' - st8`
+1. `st4' - st9`
+
 ## Instruction `assert_vector`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `keep_stack`, and `keep_ram`.
