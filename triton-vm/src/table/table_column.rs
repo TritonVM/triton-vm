@@ -9,7 +9,6 @@ use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 
 use crate::table::master_table::EXT_HASH_TABLE_START;
-use crate::table::master_table::EXT_INSTRUCTION_TABLE_START;
 use crate::table::master_table::EXT_JUMP_STACK_TABLE_START;
 use crate::table::master_table::EXT_OP_STACK_TABLE_START;
 use crate::table::master_table::EXT_PROCESSOR_TABLE_START;
@@ -17,7 +16,6 @@ use crate::table::master_table::EXT_PROGRAM_TABLE_START;
 use crate::table::master_table::EXT_RAM_TABLE_START;
 use crate::table::master_table::EXT_U32_TABLE_START;
 use crate::table::master_table::HASH_TABLE_START;
-use crate::table::master_table::INSTRUCTION_TABLE_START;
 use crate::table::master_table::JUMP_STACK_TABLE_START;
 use crate::table::master_table::OP_STACK_TABLE_START;
 use crate::table::master_table::PROCESSOR_TABLE_START;
@@ -38,24 +36,6 @@ pub enum ProgramBaseTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProgramExtTableColumn {
-    RunningEvaluation,
-}
-
-// -------- Instruction Table --------
-
-#[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
-pub enum InstructionBaseTableColumn {
-    Address,
-    CI,
-    NIA,
-    IsPadding,
-}
-
-#[repr(usize)]
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
-pub enum InstructionExtTableColumn {
-    RunningProductPermArg,
     RunningEvaluation,
 }
 
@@ -341,13 +321,6 @@ impl BaseTableColumn for ProgramBaseTableColumn {
     }
 }
 
-impl BaseTableColumn for InstructionBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
 impl BaseTableColumn for ProcessorBaseTableColumn {
     #[inline]
     fn base_table_index(&self) -> usize {
@@ -397,13 +370,6 @@ pub trait ExtTableColumn {
 }
 
 impl ExtTableColumn for ProgramExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl ExtTableColumn for InstructionExtTableColumn {
     #[inline]
     fn ext_table_index(&self) -> usize {
         (*self) as usize
@@ -465,13 +431,6 @@ impl MasterBaseTableColumn for ProgramBaseTableColumn {
     }
 }
 
-impl MasterBaseTableColumn for InstructionBaseTableColumn {
-    #[inline]
-    fn master_base_table_index(&self) -> usize {
-        INSTRUCTION_TABLE_START + self.base_table_index()
-    }
-}
-
 impl MasterBaseTableColumn for ProcessorBaseTableColumn {
     #[inline]
     fn master_base_table_index(&self) -> usize {
@@ -527,13 +486,6 @@ impl MasterExtTableColumn for ProgramExtTableColumn {
     }
 }
 
-impl MasterExtTableColumn for InstructionExtTableColumn {
-    #[inline]
-    fn master_ext_table_index(&self) -> usize {
-        EXT_INSTRUCTION_TABLE_START + self.ext_table_index()
-    }
-}
-
 impl MasterExtTableColumn for ProcessorExtTableColumn {
     #[inline]
     fn master_ext_table_index(&self) -> usize {
@@ -583,7 +535,6 @@ mod table_column_tests {
     use strum::IntoEnumIterator;
 
     use crate::table::hash_table;
-    use crate::table::instruction_table;
     use crate::table::jump_stack_table;
     use crate::table::op_stack_table;
     use crate::table::processor_table;
@@ -602,15 +553,6 @@ mod table_column_tests {
                 .base_table_index()
                 + 1,
             "ProgramTable's BASE_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            instruction_table::BASE_WIDTH,
-            InstructionBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "InstructionTable's BASE_WIDTH is 1 + its max column index",
         );
         assert_eq!(
             processor_table::BASE_WIDTH,
@@ -668,15 +610,6 @@ mod table_column_tests {
             "ProgramTable's EXT_WIDTH is 1 + its max column index",
         );
         assert_eq!(
-            instruction_table::EXT_WIDTH,
-            InstructionExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "InstructionTable's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
             processor_table::EXT_WIDTH,
             ProcessorExtTableColumn::iter()
                 .last()
@@ -722,10 +655,6 @@ mod table_column_tests {
             assert_eq!(expected_column_index, column.master_base_table_index());
             expected_column_index += 1;
         }
-        for column in InstructionBaseTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_base_table_index());
-            expected_column_index += 1;
-        }
         for column in ProcessorBaseTableColumn::iter() {
             assert_eq!(expected_column_index, column.master_base_table_index());
             expected_column_index += 1;
@@ -752,10 +681,6 @@ mod table_column_tests {
     fn master_ext_table_is_contiguous() {
         let mut expected_column_index = 0;
         for column in ProgramExtTableColumn::iter() {
-            assert_eq!(expected_column_index, column.master_ext_table_index());
-            expected_column_index += 1;
-        }
-        for column in InstructionExtTableColumn::iter() {
             assert_eq!(expected_column_index, column.master_ext_table_index());
             expected_column_index += 1;
         }

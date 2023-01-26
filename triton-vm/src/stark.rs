@@ -887,7 +887,6 @@ pub(crate) mod triton_stark_tests {
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
     use crate::table::hash_table::ExtHashTable;
-    use crate::table::instruction_table::ExtInstructionTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::master_table::all_degrees_with_origin;
     use crate::table::master_table::MasterExtTable;
@@ -1182,11 +1181,6 @@ pub(crate) mod triton_stark_tests {
         ExtProgramTable::evaluate_transition_constraints(br, er, br, er, &challenges);
         ExtProgramTable::evaluate_terminal_constraints(br, er, &challenges);
 
-        ExtInstructionTable::evaluate_initial_constraints(br, er, &challenges);
-        ExtInstructionTable::evaluate_consistency_constraints(br, er, &challenges);
-        ExtInstructionTable::evaluate_transition_constraints(br, er, br, er, &challenges);
-        ExtInstructionTable::evaluate_terminal_constraints(br, er, &challenges);
-
         ExtProcessorTable::evaluate_initial_constraints(br, er, &challenges);
         ExtProcessorTable::evaluate_consistency_constraints(br, er, &challenges);
         ExtProcessorTable::evaluate_transition_constraints(br, er, br, er, &challenges);
@@ -1222,7 +1216,6 @@ pub(crate) mod triton_stark_tests {
     fn print_number_of_all_constraints_per_table() {
         let table_names = [
             "program table",
-            "instruction table",
             "processor table",
             "op stack table",
             "ram table",
@@ -1233,7 +1226,6 @@ pub(crate) mod triton_stark_tests {
         ];
         let all_init = [
             ExtProgramTable::num_initial_quotients(),
-            ExtInstructionTable::num_initial_quotients(),
             ExtProcessorTable::num_initial_quotients(),
             ExtOpStackTable::num_initial_quotients(),
             ExtRamTable::num_initial_quotients(),
@@ -1244,7 +1236,6 @@ pub(crate) mod triton_stark_tests {
         ];
         let all_cons = [
             ExtProgramTable::num_consistency_quotients(),
-            ExtInstructionTable::num_consistency_quotients(),
             ExtProcessorTable::num_consistency_quotients(),
             ExtOpStackTable::num_consistency_quotients(),
             ExtRamTable::num_consistency_quotients(),
@@ -1255,7 +1246,6 @@ pub(crate) mod triton_stark_tests {
         ];
         let all_trans = [
             ExtProgramTable::num_transition_quotients(),
-            ExtInstructionTable::num_transition_quotients(),
             ExtProcessorTable::num_transition_quotients(),
             ExtOpStackTable::num_transition_quotients(),
             ExtRamTable::num_transition_quotients(),
@@ -1266,7 +1256,6 @@ pub(crate) mod triton_stark_tests {
         ];
         let all_term = [
             ExtProgramTable::num_terminal_quotients(),
-            ExtInstructionTable::num_terminal_quotients(),
             ExtProcessorTable::num_terminal_quotients(),
             ExtOpStackTable::num_terminal_quotients(),
             ExtRamTable::num_terminal_quotients(),
@@ -1322,14 +1311,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(
             ExtProgramTable::num_initial_quotients(),
             ExtProgramTable::initial_quotient_degree_bounds(id).len()
-        );
-        assert_eq!(
-            ExtInstructionTable::num_initial_quotients(),
-            ExtInstructionTable::evaluate_initial_constraints(br, er, &challenges).len(),
-        );
-        assert_eq!(
-            ExtInstructionTable::num_initial_quotients(),
-            ExtInstructionTable::initial_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtProcessorTable::num_initial_quotients(),
@@ -1389,14 +1370,6 @@ pub(crate) mod triton_stark_tests {
             ExtProgramTable::consistency_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
-            ExtInstructionTable::num_consistency_quotients(),
-            ExtInstructionTable::evaluate_consistency_constraints(br, er, &challenges).len(),
-        );
-        assert_eq!(
-            ExtInstructionTable::num_consistency_quotients(),
-            ExtInstructionTable::consistency_quotient_degree_bounds(id, ph).len()
-        );
-        assert_eq!(
             ExtProcessorTable::num_consistency_quotients(),
             ExtProcessorTable::evaluate_consistency_constraints(br, er, &challenges).len(),
         );
@@ -1454,14 +1427,6 @@ pub(crate) mod triton_stark_tests {
             ExtProgramTable::transition_quotient_degree_bounds(id, ph).len()
         );
         assert_eq!(
-            ExtInstructionTable::num_transition_quotients(),
-            ExtInstructionTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
-        );
-        assert_eq!(
-            ExtInstructionTable::num_transition_quotients(),
-            ExtInstructionTable::transition_quotient_degree_bounds(id, ph).len()
-        );
-        assert_eq!(
             ExtProcessorTable::num_transition_quotients(),
             ExtProcessorTable::evaluate_transition_constraints(br, er, br, er, &challenges).len(),
         );
@@ -1517,14 +1482,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(
             ExtProgramTable::num_terminal_quotients(),
             ExtProgramTable::terminal_quotient_degree_bounds(id).len()
-        );
-        assert_eq!(
-            ExtInstructionTable::num_terminal_quotients(),
-            ExtInstructionTable::evaluate_terminal_constraints(br, er, &challenges).len(),
-        );
-        assert_eq!(
-            ExtInstructionTable::num_terminal_quotients(),
-            ExtInstructionTable::terminal_quotient_degree_bounds(id).len()
         );
         assert_eq!(
             ExtProcessorTable::num_terminal_quotients(),
@@ -1734,9 +1691,7 @@ pub(crate) mod triton_stark_tests {
     fn initial_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
         let program_start = 0;
         let program_end = program_start + ExtProgramTable::num_initial_quotients();
-        let instruct_start = program_end;
-        let instruct_end = instruct_start + ExtInstructionTable::num_initial_quotients();
-        let processor_start = instruct_end;
+        let processor_start = program_end;
         let processor_end = processor_start + ExtProcessorTable::num_initial_quotients();
         let op_stack_start = processor_end;
         let op_stack_end = op_stack_start + ExtOpStackTable::num_initial_quotients();
@@ -1751,7 +1706,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(num_all_initial_quotients(), u32_end);
         match constraint_idx {
             i if program_start <= i && i < program_end => (i - program_start, "Program"),
-            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
             i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
             i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
             i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
@@ -1767,9 +1721,7 @@ pub(crate) mod triton_stark_tests {
     fn consistency_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
         let program_start = 0;
         let program_end = program_start + ExtProgramTable::num_consistency_quotients();
-        let instruct_start = program_end;
-        let instruct_end = instruct_start + ExtInstructionTable::num_consistency_quotients();
-        let processor_start = instruct_end;
+        let processor_start = program_end;
         let processor_end = processor_start + ExtProcessorTable::num_consistency_quotients();
         let op_stack_start = processor_end;
         let op_stack_end = op_stack_start + ExtOpStackTable::num_consistency_quotients();
@@ -1784,7 +1736,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(num_all_consistency_quotients(), u32_end);
         match constraint_idx {
             i if program_start <= i && i < program_end => (i - program_start, "Program"),
-            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
             i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
             i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
             i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
@@ -1800,9 +1751,7 @@ pub(crate) mod triton_stark_tests {
     fn transition_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
         let program_start = 0;
         let program_end = program_start + ExtProgramTable::num_transition_quotients();
-        let instruct_start = program_end;
-        let instruct_end = instruct_start + ExtInstructionTable::num_transition_quotients();
-        let processor_start = instruct_end;
+        let processor_start = program_end;
         let processor_end = processor_start + ExtProcessorTable::num_transition_quotients();
         let op_stack_start = processor_end;
         let op_stack_end = op_stack_start + ExtOpStackTable::num_transition_quotients();
@@ -1817,7 +1766,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(num_all_transition_quotients(), u32_end);
         match constraint_idx {
             i if program_start <= i && i < program_end => (i - program_start, "Program"),
-            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
             i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
             i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
             i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
@@ -1833,9 +1781,7 @@ pub(crate) mod triton_stark_tests {
     fn terminal_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &'static str) {
         let program_start = 0;
         let program_end = program_start + ExtProgramTable::num_terminal_quotients();
-        let instruct_start = program_end;
-        let instruct_end = instruct_start + ExtInstructionTable::num_terminal_quotients();
-        let processor_start = instruct_end;
+        let processor_start = program_end;
         let processor_end = processor_start + ExtProcessorTable::num_terminal_quotients();
         let op_stack_start = processor_end;
         let op_stack_end = op_stack_start + ExtOpStackTable::num_terminal_quotients();
@@ -1852,7 +1798,6 @@ pub(crate) mod triton_stark_tests {
         assert_eq!(num_all_terminal_quotients(), cross_table_end);
         match constraint_idx {
             i if program_start <= i && i < program_end => (i - program_start, "Program"),
-            i if instruct_start <= i && i < instruct_end => (i - instruct_start, "Instruction"),
             i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
             i if op_stack_start <= i && i < op_stack_end => (i - op_stack_start, "OpStack"),
             i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),

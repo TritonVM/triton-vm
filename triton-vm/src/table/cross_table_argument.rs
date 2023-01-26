@@ -18,12 +18,10 @@ use crate::table::extension_table::Quotientable;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS;
 use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_column::HashExtTableColumn;
-use crate::table::table_column::InstructionExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::OpStackExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn;
-use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn;
 
@@ -206,12 +204,6 @@ impl Evaluable for GrandCrossTableArg {
             [ProcessorExtTableColumn::OutputTableEvalArg.master_ext_table_index()]
             - challenges.get_challenge(OutputTerminal);
 
-        let program_to_instruction = ext_row
-            [ProgramExtTableColumn::RunningEvaluation.master_ext_table_index()]
-            - ext_row[InstructionExtTableColumn::RunningEvaluation.master_ext_table_index()];
-        let processor_to_instruction = ext_row
-            [ProcessorExtTableColumn::InstructionTablePermArg.master_ext_table_index()]
-            - ext_row[InstructionExtTableColumn::RunningProductPermArg.master_ext_table_index()];
         let processor_to_op_stack = ext_row
             [ProcessorExtTableColumn::OpStackTablePermArg.master_ext_table_index()]
             - ext_row[OpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()];
@@ -243,8 +235,6 @@ impl Evaluable for GrandCrossTableArg {
 
         let non_linear_sum = challenges.get_challenge(InputToProcessorWeight) * input_to_processor
             + challenges.get_challenge(ProcessorToOutputWeight) * processor_to_output
-            + challenges.get_challenge(ProgramToInstructionWeight) * program_to_instruction
-            + challenges.get_challenge(ProcessorToInstructionWeight) * processor_to_instruction
             + challenges.get_challenge(ProcessorToOpStackWeight) * processor_to_op_stack
             + challenges.get_challenge(ProcessorToRamWeight) * processor_to_ram
             + challenges.get_challenge(ProcessorToJumpStackWeight) * processor_to_jump_stack

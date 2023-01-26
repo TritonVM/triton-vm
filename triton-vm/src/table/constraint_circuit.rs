@@ -926,12 +926,11 @@ mod constraint_circuit_tests {
     use twenty_first::shared_math::other::random_elements;
 
     use crate::table::challenges::AllChallenges;
-    use crate::table::instruction_table::ExtInstructionTable;
-    use crate::table::instruction_table::InstructionTableChallengeId;
-    use crate::table::instruction_table::InstructionTableChallenges;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
+    use crate::table::processor_table::ProcessorTableChallengeId;
+    use crate::table::processor_table::ProcessorTableChallenges;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
 
@@ -970,8 +969,8 @@ mod constraint_circuit_tests {
     }
 
     fn random_circuit_builder() -> (
-        ConstraintCircuitMonad<InstructionTableChallenges, DualRowIndicator<50, 40>>,
-        ConstraintCircuitBuilder<InstructionTableChallenges, DualRowIndicator<50, 40>>,
+        ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<50, 40>>,
+        ConstraintCircuitBuilder<ProcessorTableChallenges, DualRowIndicator<50, 40>>,
     ) {
         let mut rng = thread_rng();
         let num_base_columns = 50;
@@ -997,8 +996,7 @@ mod constraint_circuit_tests {
                 }
                 2 => {
                     // p(x, y, z) = rand_i
-                    circuit_builder
-                        .challenge(InstructionTableChallengeId::ProcessorPermIndeterminate)
+                    circuit_builder.challenge(ProcessorTableChallengeId::U32PermIndeterminate)
                 }
                 3 => {
                     // p(x, y, z) = 0
@@ -1012,7 +1010,7 @@ mod constraint_circuit_tests {
                     // p(x, y, z) = rand_i * x
                     let input_value =
                         DualRowIndicator::CurrentExtRow(rng.next_u64() as usize % num_ext_columns);
-                    let challenge = InstructionTableChallengeId::ProcessorPermIndeterminate;
+                    let challenge = ProcessorTableChallengeId::U32PermIndeterminate;
                     circuit_builder.input(input_value) * circuit_builder.challenge(challenge)
                 }
                 _ => unreachable!(),
@@ -1118,7 +1116,7 @@ mod constraint_circuit_tests {
     #[test]
     fn circuit_equality_check_and_constant_folding_test() {
         let circuit_builder: ConstraintCircuitBuilder<
-            InstructionTableChallenges,
+            ProcessorTableChallenges,
             DualRowIndicator<5, 3>,
         > = ConstraintCircuitBuilder::new();
         let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
@@ -1352,17 +1350,6 @@ mod constraint_circuit_tests {
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap();
 
         println!("Max degree constraint for {table_name} table: {circuit_degree}");
-    }
-
-    #[test]
-    fn constant_folding_instruction_table_test() {
-        let challenges = AllChallenges::placeholder(&[], &[]);
-        let constraint_circuits = ExtInstructionTable::ext_transition_constraints_as_circuits();
-        constant_folding_of_table_constraints_test(
-            constraint_circuits,
-            challenges.instruction_table_challenges,
-            "instruction",
-        );
     }
 
     #[test]

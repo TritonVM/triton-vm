@@ -44,8 +44,6 @@ use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
 use crate::table::hash_table::ExtHashTable;
 use crate::table::hash_table::HashTable;
-use crate::table::instruction_table::ExtInstructionTable;
-use crate::table::instruction_table::InstructionTable;
 use crate::table::jump_stack_table::ExtJumpStackTable;
 use crate::table::jump_stack_table::JumpStackTable;
 use crate::table::op_stack_table::ExtOpStackTable;
@@ -64,7 +62,6 @@ use crate::vm::AlgebraicExecutionTrace;
 pub const NUM_TABLES: usize = TableId::COUNT;
 
 pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
-    + instruction_table::BASE_WIDTH
     + processor_table::BASE_WIDTH
     + op_stack_table::BASE_WIDTH
     + ram_table::BASE_WIDTH
@@ -72,7 +69,6 @@ pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + hash_table::BASE_WIDTH
     + u32_table::BASE_WIDTH;
 pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
-    + instruction_table::EXT_WIDTH
     + processor_table::EXT_WIDTH
     + op_stack_table::EXT_WIDTH
     + ram_table::EXT_WIDTH
@@ -83,9 +79,7 @@ pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
 
 pub const PROGRAM_TABLE_START: usize = 0;
 pub const PROGRAM_TABLE_END: usize = PROGRAM_TABLE_START + program_table::BASE_WIDTH;
-pub const INSTRUCTION_TABLE_START: usize = PROGRAM_TABLE_END;
-pub const INSTRUCTION_TABLE_END: usize = INSTRUCTION_TABLE_START + instruction_table::BASE_WIDTH;
-pub const PROCESSOR_TABLE_START: usize = INSTRUCTION_TABLE_END;
+pub const PROCESSOR_TABLE_START: usize = PROGRAM_TABLE_END;
 pub const PROCESSOR_TABLE_END: usize = PROCESSOR_TABLE_START + processor_table::BASE_WIDTH;
 pub const OP_STACK_TABLE_START: usize = PROCESSOR_TABLE_END;
 pub const OP_STACK_TABLE_END: usize = OP_STACK_TABLE_START + op_stack_table::BASE_WIDTH;
@@ -100,10 +94,7 @@ pub const U32_TABLE_END: usize = U32_TABLE_START + u32_table::BASE_WIDTH;
 
 pub const EXT_PROGRAM_TABLE_START: usize = 0;
 pub const EXT_PROGRAM_TABLE_END: usize = EXT_PROGRAM_TABLE_START + program_table::EXT_WIDTH;
-pub const EXT_INSTRUCTION_TABLE_START: usize = EXT_PROGRAM_TABLE_END;
-pub const EXT_INSTRUCTION_TABLE_END: usize =
-    EXT_INSTRUCTION_TABLE_START + instruction_table::EXT_WIDTH;
-pub const EXT_PROCESSOR_TABLE_START: usize = EXT_INSTRUCTION_TABLE_END;
+pub const EXT_PROCESSOR_TABLE_START: usize = EXT_PROGRAM_TABLE_END;
 pub const EXT_PROCESSOR_TABLE_END: usize = EXT_PROCESSOR_TABLE_START + processor_table::EXT_WIDTH;
 pub const EXT_OP_STACK_TABLE_START: usize = EXT_PROCESSOR_TABLE_END;
 pub const EXT_OP_STACK_TABLE_END: usize = EXT_OP_STACK_TABLE_START + op_stack_table::EXT_WIDTH;
@@ -121,7 +112,6 @@ pub const EXT_U32_TABLE_END: usize = EXT_U32_TABLE_START + u32_table::EXT_WIDTH;
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum TableId {
     ProgramTable,
-    InstructionTable,
     ProcessorTable,
     OpStackTable,
     RamTable,
@@ -316,7 +306,10 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 impl MasterBaseTable {
     pub fn padded_height(aet: &AlgebraicExecutionTrace, program: &[BFieldElement]) -> usize {
         let max_height = [
-            Self::instruction_table_length(aet, program),
+            // The Program Table's side of the instruction lookup argument requires at least one
+            // padding row to account for the processor's “next instruction or argument.”
+            Self::program_length(program) + 1,
+            Self::processor_table_length(aet),
             Self::hash_table_length(aet),
             Self::u32_table_length(aet),
         ]
@@ -327,11 +320,12 @@ impl MasterBaseTable {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn instruction_table_length(
-        aet: &AlgebraicExecutionTrace,
-        program: &[BFieldElement],
-    ) -> usize {
-        program.len() + aet.processor_trace.nrows()
+    pub fn program_length(program: &[BFieldElement]) -> usize {
+        program.len()
+    }
+
+    pub fn processor_table_length(aet: &AlgebraicExecutionTrace) -> usize {
+        aet.processor_trace.nrows()
     }
 
     pub fn hash_table_length(aet: &AlgebraicExecutionTrace) -> usize {
@@ -383,8 +377,6 @@ impl MasterBaseTable {
 
         let program_table = &mut master_base_table.table_mut(TableId::ProgramTable);
         ProgramTable::fill_trace(program_table, program);
-        let instruction_table = &mut master_base_table.table_mut(TableId::InstructionTable);
-        InstructionTable::fill_trace(instruction_table, &aet, program);
         let op_stack_table = &mut master_base_table.table_mut(TableId::OpStackTable);
         let op_stack_clk_jump_diffs = OpStackTable::fill_trace(op_stack_table, &aet);
         let ram_table = &mut master_base_table.table_mut(TableId::RamTable);
@@ -418,8 +410,6 @@ impl MasterBaseTable {
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
         ProgramTable::pad_trace(program_table, program_len);
-        let instruction_table = &mut self.table_mut(TableId::InstructionTable);
-        InstructionTable::pad_trace(instruction_table, program_len + main_execution_len);
         let processor_table = &mut self.table_mut(TableId::ProcessorTable);
         ProcessorTable::pad_trace(processor_table, main_execution_len);
         let op_stack_table = &mut self.table_mut(TableId::OpStackTable);
@@ -491,11 +481,6 @@ impl MasterBaseTable {
             master_ext_table.table_mut(TableId::ProgramTable),
             &challenges.program_table_challenges,
         );
-        InstructionTable::extend(
-            self.table(TableId::InstructionTable),
-            master_ext_table.table_mut(TableId::InstructionTable),
-            &challenges.instruction_table_challenges,
-        );
         ProcessorTable::extend(
             self.table(TableId::ProcessorTable),
             master_ext_table.table_mut(TableId::ProcessorTable),
@@ -534,7 +519,6 @@ impl MasterBaseTable {
         use TableId::*;
         match id {
             ProgramTable => (PROGRAM_TABLE_START, PROGRAM_TABLE_END),
-            InstructionTable => (INSTRUCTION_TABLE_START, INSTRUCTION_TABLE_END),
             ProcessorTable => (PROCESSOR_TABLE_START, PROCESSOR_TABLE_END),
             OpStackTable => (OP_STACK_TABLE_START, OP_STACK_TABLE_END),
             RamTable => (RAM_TABLE_START, RAM_TABLE_END),
@@ -606,7 +590,6 @@ impl MasterExtTable {
         use TableId::*;
         match id {
             ProgramTable => (EXT_PROGRAM_TABLE_START, EXT_PROGRAM_TABLE_END),
-            InstructionTable => (EXT_INSTRUCTION_TABLE_START, EXT_INSTRUCTION_TABLE_END),
             ProcessorTable => (EXT_PROCESSOR_TABLE_START, EXT_PROCESSOR_TABLE_END),
             OpStackTable => (EXT_OP_STACK_TABLE_START, EXT_OP_STACK_TABLE_END),
             RamTable => (EXT_RAM_TABLE_START, EXT_RAM_TABLE_END),
@@ -639,7 +622,6 @@ pub fn all_degrees_with_origin(
     let ph = padded_height;
     [
         ExtProgramTable::all_degrees_with_origin("program table", id, ph),
-        ExtInstructionTable::all_degrees_with_origin("instruction table", id, ph),
         ExtProcessorTable::all_degrees_with_origin("processor table", id, ph),
         ExtOpStackTable::all_degrees_with_origin("op stack table", id, ph),
         ExtRamTable::all_degrees_with_origin("ram table", id, ph),
@@ -669,7 +651,6 @@ pub fn num_all_table_quotients() -> usize {
 
 pub fn num_all_initial_quotients() -> usize {
     ExtProgramTable::num_initial_quotients()
-        + ExtInstructionTable::num_initial_quotients()
         + ExtProcessorTable::num_initial_quotients()
         + ExtOpStackTable::num_initial_quotients()
         + ExtRamTable::num_initial_quotients()
@@ -680,7 +661,6 @@ pub fn num_all_initial_quotients() -> usize {
 
 pub fn num_all_consistency_quotients() -> usize {
     ExtProgramTable::num_consistency_quotients()
-        + ExtInstructionTable::num_consistency_quotients()
         + ExtProcessorTable::num_consistency_quotients()
         + ExtOpStackTable::num_consistency_quotients()
         + ExtRamTable::num_consistency_quotients()
@@ -691,7 +671,6 @@ pub fn num_all_consistency_quotients() -> usize {
 
 pub fn num_all_transition_quotients() -> usize {
     ExtProgramTable::num_transition_quotients()
-        + ExtInstructionTable::num_transition_quotients()
         + ExtProcessorTable::num_transition_quotients()
         + ExtOpStackTable::num_transition_quotients()
         + ExtRamTable::num_transition_quotients()
@@ -702,7 +681,6 @@ pub fn num_all_transition_quotients() -> usize {
 
 pub fn num_all_terminal_quotients() -> usize {
     ExtProgramTable::num_terminal_quotients()
-        + ExtInstructionTable::num_terminal_quotients()
         + ExtProcessorTable::num_terminal_quotients()
         + ExtOpStackTable::num_terminal_quotients()
         + ExtRamTable::num_terminal_quotients()
@@ -715,7 +693,6 @@ pub fn num_all_terminal_quotients() -> usize {
 pub fn all_initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
     [
         ExtProgramTable::initial_quotient_degree_bounds(interpolant_degree),
-        ExtInstructionTable::initial_quotient_degree_bounds(interpolant_degree),
         ExtProcessorTable::initial_quotient_degree_bounds(interpolant_degree),
         ExtOpStackTable::initial_quotient_degree_bounds(interpolant_degree),
         ExtRamTable::initial_quotient_degree_bounds(interpolant_degree),
@@ -732,7 +709,6 @@ pub fn all_consistency_quotient_degree_bounds(
 ) -> Vec<Degree> {
     [
         ExtProgramTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
-        ExtInstructionTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtProcessorTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtOpStackTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtRamTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
@@ -749,7 +725,6 @@ pub fn all_transition_quotient_degree_bounds(
 ) -> Vec<Degree> {
     [
         ExtProgramTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
-        ExtInstructionTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtProcessorTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtOpStackTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtRamTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
@@ -763,7 +738,6 @@ pub fn all_transition_quotient_degree_bounds(
 pub fn all_terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
     [
         ExtProgramTable::terminal_quotient_degree_bounds(interpolant_degree),
-        ExtInstructionTable::terminal_quotient_degree_bounds(interpolant_degree),
         ExtProcessorTable::terminal_quotient_degree_bounds(interpolant_degree),
         ExtOpStackTable::terminal_quotient_degree_bounds(interpolant_degree),
         ExtRamTable::terminal_quotient_degree_bounds(interpolant_degree),
@@ -857,10 +831,7 @@ pub fn fill_all_initial_quotients(
     // between prover and verifier, and the shapes must check out.
     let program_section_start = 0;
     let program_section_end = program_section_start + ExtProgramTable::num_initial_quotients();
-    let instruction_section_start = program_section_end;
-    let instruction_section_end =
-        instruction_section_start + ExtInstructionTable::num_initial_quotients();
-    let processor_section_start = instruction_section_end;
+    let processor_section_start = program_section_end;
     let processor_section_end =
         processor_section_start + ExtProcessorTable::num_initial_quotients();
     let op_stack_section_start = processor_section_end;
@@ -881,15 +852,6 @@ pub fn fill_all_initial_quotients(
         master_base_table,
         master_ext_table,
         &mut program_quot_table,
-        zerofier_inverse,
-        challenges,
-    );
-    let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
-    ExtInstructionTable::fill_initial_quotients(
-        master_base_table,
-        master_ext_table,
-        &mut instruction_quot_table,
         zerofier_inverse,
         challenges,
     );
@@ -957,10 +919,7 @@ pub fn fill_all_consistency_quotients(
     // between prover and verifier, and the shapes must check out.
     let program_section_start = 0;
     let program_section_end = program_section_start + ExtProgramTable::num_consistency_quotients();
-    let instruction_section_start = program_section_end;
-    let instruction_section_end =
-        instruction_section_start + ExtInstructionTable::num_consistency_quotients();
-    let processor_section_start = instruction_section_end;
+    let processor_section_start = program_section_end;
     let processor_section_end =
         processor_section_start + ExtProcessorTable::num_consistency_quotients();
     let op_stack_section_start = processor_section_end;
@@ -982,15 +941,6 @@ pub fn fill_all_consistency_quotients(
         master_base_table,
         master_ext_table,
         &mut program_quot_table,
-        zerofier_inverse,
-        challenges,
-    );
-    let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
-    ExtInstructionTable::fill_consistency_quotients(
-        master_base_table,
-        master_ext_table,
-        &mut instruction_quot_table,
         zerofier_inverse,
         challenges,
     );
@@ -1060,10 +1010,7 @@ pub fn fill_all_transition_quotients(
     // between prover and verifier, and the shapes must check out.
     let program_section_start = 0;
     let program_section_end = program_section_start + ExtProgramTable::num_transition_quotients();
-    let instruction_section_start = program_section_end;
-    let instruction_section_end =
-        instruction_section_start + ExtInstructionTable::num_transition_quotients();
-    let processor_section_start = instruction_section_end;
+    let processor_section_start = program_section_end;
     let processor_section_end =
         processor_section_start + ExtProcessorTable::num_transition_quotients();
     let op_stack_section_start = processor_section_end;
@@ -1084,17 +1031,6 @@ pub fn fill_all_transition_quotients(
         master_base_table,
         master_ext_table,
         &mut program_quot_table,
-        zerofier_inverse,
-        challenges,
-        trace_domain,
-        quotient_domain,
-    );
-    let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
-    ExtInstructionTable::fill_transition_quotients(
-        master_base_table,
-        master_ext_table,
-        &mut instruction_quot_table,
         zerofier_inverse,
         challenges,
         trace_domain,
@@ -1176,10 +1112,7 @@ pub fn fill_all_terminal_quotients(
     // between prover and verifier, and the shapes must check out.
     let program_section_start = 0;
     let program_section_end = program_section_start + ExtProgramTable::num_terminal_quotients();
-    let instruction_section_start = program_section_end;
-    let instruction_section_end =
-        instruction_section_start + ExtInstructionTable::num_terminal_quotients();
-    let processor_section_start = instruction_section_end;
+    let processor_section_start = program_section_end;
     let processor_section_end =
         processor_section_start + ExtProcessorTable::num_terminal_quotients();
     let op_stack_section_start = processor_section_end;
@@ -1203,15 +1136,6 @@ pub fn fill_all_terminal_quotients(
         master_base_table,
         master_ext_table,
         &mut program_quot_table,
-        zerofier_inverse,
-        challenges,
-    );
-    let mut instruction_quot_table =
-        quot_table.slice_mut(s![.., instruction_section_start..instruction_section_end]);
-    ExtInstructionTable::fill_terminal_quotients(
-        master_base_table,
-        master_ext_table,
-        &mut instruction_quot_table,
         zerofier_inverse,
         challenges,
     );
@@ -1395,7 +1319,6 @@ pub fn evaluate_all_initial_constraints(
 ) -> Vec<XFieldElement> {
     [
         ExtProgramTable::evaluate_initial_constraints(base_row, ext_row, challenges),
-        ExtInstructionTable::evaluate_initial_constraints(base_row, ext_row, challenges),
         ExtProcessorTable::evaluate_initial_constraints(base_row, ext_row, challenges),
         ExtOpStackTable::evaluate_initial_constraints(base_row, ext_row, challenges),
         ExtRamTable::evaluate_initial_constraints(base_row, ext_row, challenges),
@@ -1413,7 +1336,6 @@ pub fn evaluate_all_consistency_constraints(
 ) -> Vec<XFieldElement> {
     [
         ExtProgramTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
-        ExtInstructionTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
         ExtProcessorTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
         ExtOpStackTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
         ExtRamTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
@@ -1437,7 +1359,6 @@ pub fn evaluate_all_transition_constraints(
     let ner = next_ext_row;
     [
         ExtProgramTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
-        ExtInstructionTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
         ExtProcessorTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
         ExtOpStackTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
         ExtRamTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
@@ -1455,7 +1376,6 @@ pub fn evaluate_all_terminal_constraints(
 ) -> Vec<XFieldElement> {
     [
         ExtProgramTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
-        ExtInstructionTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtProcessorTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtOpStackTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtRamTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
@@ -1517,7 +1437,6 @@ mod master_table_tests {
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::hash_table;
-    use crate::table::instruction_table;
     use crate::table::jump_stack_table;
     use crate::table::master_table::consistency_quotient_zerofier_inverse;
     use crate::table::master_table::initial_quotient_zerofier_inverse;
@@ -1534,8 +1453,6 @@ mod master_table_tests {
     use crate::table::ram_table;
     use crate::table::table_column::HashBaseTableColumn;
     use crate::table::table_column::HashExtTableColumn;
-    use crate::table::table_column::InstructionBaseTableColumn;
-    use crate::table::table_column::InstructionExtTableColumn;
     use crate::table::table_column::JumpStackBaseTableColumn;
     use crate::table::table_column::JumpStackExtTableColumn;
     use crate::table::table_column::MasterBaseTableColumn;
@@ -1559,10 +1476,6 @@ mod master_table_tests {
         assert_eq!(
             program_table::BASE_WIDTH,
             master_base_table.table(ProgramTable).ncols()
-        );
-        assert_eq!(
-            instruction_table::BASE_WIDTH,
-            master_base_table.table(InstructionTable).ncols()
         );
         assert_eq!(
             processor_table::BASE_WIDTH,
@@ -1597,10 +1510,6 @@ mod master_table_tests {
         assert_eq!(
             program_table::EXT_WIDTH,
             master_ext_table.table(ProgramTable).ncols()
-        );
-        assert_eq!(
-            instruction_table::EXT_WIDTH,
-            master_ext_table.table(InstructionTable).ncols()
         );
         assert_eq!(
             processor_table::EXT_WIDTH,
@@ -1703,13 +1612,6 @@ mod master_table_tests {
         );
         println!(
             "| {:<18} | {:>10} | {:>9} | {:>10} |",
-            "InstructionTable",
-            instruction_table::BASE_WIDTH,
-            instruction_table::EXT_WIDTH,
-            instruction_table::FULL_WIDTH
-        );
-        println!(
-            "| {:<18} | {:>10} | {:>9} | {:>10} |",
             "ProcessorTable",
             processor_table::BASE_WIDTH,
             processor_table::EXT_WIDTH,
@@ -1768,12 +1670,6 @@ mod master_table_tests {
                 column.master_base_table_index()
             );
         }
-        for column in InstructionBaseTableColumn::iter() {
-            println!(
-                "{:>3} | instruction | {column}",
-                column.master_base_table_index()
-            );
-        }
         for column in ProcessorBaseTableColumn::iter() {
             println!(
                 "{:>3} | processor   | {column}",
@@ -1816,12 +1712,6 @@ mod master_table_tests {
         for column in ProgramExtTableColumn::iter() {
             println!(
                 "{:>3} | program     | {column}",
-                column.master_ext_table_index()
-            );
-        }
-        for column in InstructionExtTableColumn::iter() {
-            println!(
-                "{:>3} | instruction | {column}",
                 column.master_ext_table_index()
             );
         }

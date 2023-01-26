@@ -13,7 +13,6 @@ use crate::table::cross_table_argument::CrossTableChallenges;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::NUM_CROSS_TABLE_WEIGHTS;
 use crate::table::hash_table::HashTableChallenges;
-use crate::table::instruction_table::InstructionTableChallenges;
 use crate::table::jump_stack_table::JumpStackTableChallenges;
 use crate::table::op_stack_table::OpStackTableChallenges;
 use crate::table::processor_table::IOChallenges;
@@ -48,7 +47,6 @@ pub trait TableChallenges: Clone + Debug {
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
     pub program_table_challenges: ProgramTableChallenges,
-    pub instruction_table_challenges: InstructionTableChallenges,
     pub input_challenges: IOChallenges,
     pub output_challenges: IOChallenges,
     pub processor_table_challenges: ProcessorTableChallenges,
@@ -127,18 +125,6 @@ impl AllChallenges {
             address_weight: weights.pop().unwrap(),
             instruction_weight: weights.pop().unwrap(),
             next_instruction_weight: weights.pop().unwrap(),
-        };
-
-        let instruction_table_challenges = InstructionTableChallenges {
-            processor_perm_indeterminate: processor_table_challenges.instruction_perm_indeterminate,
-            ip_processor_weight: processor_table_challenges.instruction_table_ip_weight,
-            ci_processor_weight: processor_table_challenges.instruction_table_ci_processor_weight,
-            nia_processor_weight: processor_table_challenges.instruction_table_nia_weight,
-
-            program_eval_indeterminate: program_table_challenges.instruction_eval_indeterminate,
-            address_weight: program_table_challenges.address_weight,
-            instruction_weight: program_table_challenges.instruction_weight,
-            next_instruction_weight: program_table_challenges.next_instruction_weight,
         };
 
         let input_challenges = IOChallenges {
@@ -249,7 +235,6 @@ impl AllChallenges {
 
         AllChallenges {
             program_table_challenges,
-            instruction_table_challenges,
             input_challenges,
             output_challenges,
             processor_table_challenges,
