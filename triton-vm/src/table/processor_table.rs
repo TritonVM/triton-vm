@@ -4507,7 +4507,7 @@ impl InstructionDeselectors {
     > {
         self.deselectors
             .get(&instruction)
-            .unwrap_or_else(|| panic!("The instruction {} does not exist!", instruction))
+            .unwrap_or_else(|| panic!("The instruction {instruction} does not exist!"))
             .clone()
     }
 
@@ -4642,7 +4642,7 @@ pub struct ProcessorTraceRow<'a> {
 impl<'a> Display for ProcessorTraceRow<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fn row(f: &mut std::fmt::Formatter<'_>, s: String) -> std::fmt::Result {
-            writeln!(f, "│ {: <103} │", s)
+            writeln!(f, "│ {s: <103} │")
         }
 
         fn row_blank(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -4665,7 +4665,7 @@ impl<'a> Display for ProcessorTraceRow<'a> {
         };
 
         writeln!(f, " ╭───────────────────────────╮")?;
-        writeln!(f, " │ {: <25} │", format!("{}", instruction_with_arg))?;
+        writeln!(f, " │ {: <25} │", format!("{instruction_with_arg}"))?;
         writeln!(
             f,
             "╭┴───────────────────────────┴────────────────────────────────────\
@@ -4799,7 +4799,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
          -> std::fmt::Result {
             // without the extra `format!()`, alignment in `writeln!()` fails
             let formatted_col_elem = format!("{}", self.row[col.ext_table_index()]);
-            writeln!(form, "     │ {: <18}  {:>73} │", desc, formatted_col_elem,)
+            writeln!(form, "     │ {desc: <18}  {formatted_col_elem:>73} │")
         };
         writeln!(
             f,

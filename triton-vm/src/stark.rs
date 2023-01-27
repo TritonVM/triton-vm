@@ -64,13 +64,11 @@ impl StarkParameters {
 
         assert!(
             is_power_of_two(fri_expansion_factor),
-            "FRI expansion factor must be a power of two, but got {}.",
-            fri_expansion_factor
+            "FRI expansion factor must be a power of two, but got {fri_expansion_factor}."
         );
         assert!(
             fri_expansion_factor > 1,
-            "FRI expansion factor must be greater than one, but got {}.",
-            fri_expansion_factor
+            "FRI expansion factor must be greater than one, but got {fri_expansion_factor}."
         );
 
         let mut log2_of_fri_expansion_factor = 0;
@@ -114,7 +112,7 @@ impl Error for StarkValidationError {}
 
 impl fmt::Display for StarkValidationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "STARK error: {:?}", self)
+        write!(f, "STARK error: {self:?}")
     }
 }
 
@@ -307,7 +305,7 @@ impl Stark {
                 combination_root, fri_first_round_merkle_root,
                 "Combination root from STARK and from FRI must agree."
             ),
-            Err(e) => panic!("The FRI prover failed because of: {}", e),
+            Err(e) => panic!("The FRI prover failed because of: {e}"),
         }
         prof_stop!(maybe_profiler, "FRI");
 
@@ -926,7 +924,7 @@ pub(crate) mod triton_stark_tests {
 
         let (aet, stdout, err) = simulate(&program, input_symbols, secret_input_symbols);
         if let Some(error) = err {
-            panic!("The VM encountered the following problem: {}", error);
+            panic!("The VM encountered the following problem: {error}");
         }
         (aet, stdout, program)
     }
@@ -1091,7 +1089,7 @@ pub(crate) mod triton_stark_tests {
         let num_trace_randomizers = 2;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
         for deg in all_degrees_with_origin(interpolant_degree, padded_height) {
-            println!("{}", deg);
+            println!("{deg}");
         }
     }
 
@@ -1291,13 +1289,14 @@ pub(crate) mod triton_stark_tests {
         {
             let num_total = num_init + num_cons + num_trans + num_term;
             println!(
-                "| {:<20} | {:>5} | {:>5} | {:>5} | {:>5} | {:>5} |",
-                name, num_init, num_cons, num_trans, num_term, num_total,
+                "| {name:<20} | {num_init:>5} | {num_cons:>5} \
+                 | {num_trans:>5} | {num_term:>5} | {num_total:>5} |",
             );
         }
         println!(
-            "| {:<20} | {:>5} | {:>5} | {:>5} | {:>5} | {:>5} |",
-            "Sum", num_total_init, num_total_cons, num_total_trans, num_total_term, num_total
+            "| {:<20} | {num_total_init:>5} | {num_total_cons:>5} \
+             | {num_total_trans:>5} | {num_total_term:>5} | {num_total:>5} |",
+            "Sum",
         );
     }
 
@@ -1881,7 +1880,7 @@ pub(crate) mod triton_stark_tests {
 
         let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
-            panic!("The Verifier is unhappy! {}", e);
+            panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
     }
@@ -1899,7 +1898,7 @@ pub(crate) mod triton_stark_tests {
 
         let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
-            panic!("The Verifier is unhappy! {}", e);
+            panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
@@ -1933,12 +1932,9 @@ pub(crate) mod triton_stark_tests {
             let result = stark.verify(proof.clone(), &mut None);
             if let Err(e) = result {
                 if let Err(e) = save_proof(filename, proof) {
-                    panic!("Unsyntactical proof and can't save! {}", e);
+                    panic!("Unsyntactical proof and can't save! {e}");
                 }
-                panic!(
-                    "Saved proof to {} because verifier is unhappy! {}",
-                    filename, e
-                );
+                panic!("Saved proof to {filename} because verifier is unhappy! {e}");
             }
             assert!(result.unwrap());
         }
@@ -1958,12 +1954,12 @@ pub(crate) mod triton_stark_tests {
         let filename = "halt_error.tsp";
         let proof = match load_proof(filename) {
             Ok(p) => p,
-            Err(e) => panic!("Could not load proof from disk at {}: {}", filename, e),
+            Err(e) => panic!("Could not load proof from disk at {filename}: {e}"),
         };
 
         let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
-            panic!("Verifier is unhappy! {}", e);
+            panic!("Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
     }
@@ -1981,7 +1977,7 @@ pub(crate) mod triton_stark_tests {
 
         let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
-            panic!("The Verifier is unhappy! {}", e);
+            panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
@@ -2010,7 +2006,7 @@ pub(crate) mod triton_stark_tests {
             let (stark, proof) = parse_simulate_prove(code, stdin, secret_in, &mut None);
             match stark.verify(proof, &mut None) {
                 Ok(result) => assert!(result, "The Verifier disagrees!"),
-                Err(err) => panic!("The Verifier is unhappy! {}", err),
+                Err(err) => panic!("The Verifier is unhappy! {err}"),
             }
 
             assert_eq!(
@@ -2036,7 +2032,7 @@ pub(crate) mod triton_stark_tests {
 
         let result = stark.verify(proof, &mut None);
         if let Err(e) = result {
-            panic!("The Verifier is unhappy! {}", e);
+            panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
@@ -2068,7 +2064,7 @@ pub(crate) mod triton_stark_tests {
                     Some(stark.claim.padded_height),
                     Some(stark.fri.domain.length),
                 );
-                println!("{}", report);
+                println!("{report}");
             }
         }
     }
@@ -2079,7 +2075,7 @@ pub(crate) mod triton_stark_tests {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
 
-        let source_code = format!("push {} log_2_floor halt", st0);
+        let source_code = format!("push {st0} log_2_floor halt");
         let (stark, proof) = parse_simulate_prove(&source_code, vec![], vec![], &mut None);
         let result = stark.verify(proof, &mut None);
         assert!(result.is_ok());

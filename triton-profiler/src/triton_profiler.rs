@@ -23,7 +23,6 @@ struct Task {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-
 enum TaskType {
     Generic,
     IterationZero,
@@ -288,7 +287,7 @@ impl Profiler for TritonProfiler {
         let dir = benchmark_dir
             .to_str()
             .expect("Directory must be valid unicode");
-        let name = format!("{}{}", dir, benchmark_id);
+        let name = format!("{dir}{benchmark_id}");
         self.start(&name);
     }
 
@@ -296,7 +295,7 @@ impl Profiler for TritonProfiler {
         let dir = benchmark_dir
             .to_str()
             .expect("Directory must be valid unicode");
-        let name = format!("{}{}", dir, benchmark_id);
+        let name = format!("{dir}{benchmark_id}");
         self.stop(&name)
     }
 }
@@ -375,7 +374,7 @@ impl Report {
     }
 
     fn display_time_aligned(time: Duration) -> String {
-        let unaligned_time = format!("{:.2?}", time);
+        let unaligned_time = format!("{time:.2?}");
         let time_components: Vec<_> = unaligned_time.split('.').collect();
         if time_components.len() != 2 {
             return unaligned_time;
@@ -402,7 +401,7 @@ impl Display for Report {
         };
         let total_time_string = Report::display_time_aligned(self.total_time).bold();
         let separation = String::from_utf8(vec![b' '; max_width - title.width()]).unwrap();
-        writeln!(f, "{}{}   {}", title, separation, total_time_string)?;
+        writeln!(f, "{title}{separation}   {total_time_string}")?;
 
         for task in self.tasks.iter() {
             for ancestor_index in task.ancestors.iter() {
@@ -414,7 +413,7 @@ impl Display for Report {
                 let uncle_weight = &self.tasks[*ancestor_index].younger_max_weight;
                 spacer = spacer.color(uncle_weight.color());
 
-                write!(f, "{}", spacer)?;
+                write!(f, "{spacer}")?;
             }
             let tracer = if task.is_last_sibling {
                 "└".normal()
@@ -427,7 +426,7 @@ impl Display for Report {
                     .color(),
             );
             let dash = "─".color(task.weight.color());
-            write!(f, "{}{}", tracer, dash)?;
+            write!(f, "{tracer}{dash}")?;
 
             let padding_length = max_width - task.name.len() - 2 * task.depth;
             assert!(
@@ -454,8 +453,8 @@ impl Display for Report {
             };
             let relative_time_string_colored = relative_time_string.color(task.weight.color());
             f.write_fmt(format_args!(
-                "{}{}   {}{}\n",
-                task_name_colored, padding, task_time_colored, relative_time_string_colored,
+                "{task_name_colored}{padding}   \
+                {task_time_colored}{relative_time_string_colored}\n"
             ))?;
         }
 

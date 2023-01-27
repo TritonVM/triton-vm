@@ -26,13 +26,13 @@ fn prove_fib_100(criterion: &mut Criterion) {
 
     // stark object
     let program = match Program::from_code(FIBONACCI_VIT) {
-        Err(e) => panic!("Cannot compile source code into program: {}", e),
+        Err(e) => panic!("Cannot compile source code into program: {e}"),
         Ok(p) => p,
     };
     let input = vec![100_u64.into()];
     let (aet, output, err) = simulate(&program, input.clone(), vec![]);
     if let Some(error) = err {
-        panic!("The VM encountered the following problem: {}", error);
+        panic!("The VM encountered the following problem: {error}");
     }
 
     let instructions = program.to_bwords();
@@ -67,7 +67,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
     group.finish();
 
     println!("Writing report ...");
-    println!("{}", report);
+    println!("{report}");
 }
 
 criterion_group! {

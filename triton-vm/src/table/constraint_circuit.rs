@@ -292,14 +292,14 @@ impl<T: TableChallenges, II: InputIndicator> Display for ConstraintCircuit<T, II
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.expression {
             XConstant(xfe) => {
-                write!(f, "{}", xfe)
+                write!(f, "{xfe}")
             }
             BConstant(bfe) => {
-                write!(f, "{}", bfe)
+                write!(f, "{bfe}")
             }
-            Input(input) => write!(f, "{} ", input),
+            Input(input) => write!(f, "{input} "),
             Challenge(self_challenge_id) => {
-                write!(f, "#{}", self_challenge_id)
+                write!(f, "#{self_challenge_id}")
             }
             BinaryOperation(operation, lhs, rhs) => {
                 write!(
@@ -660,7 +660,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
             XConstant(xfe) => xfe,
             BConstant(bfe) => bfe.lift(),
             Input(input) => input.evaluate(base_table, ext_table),
-            Challenge(challenge_id) => panic!("Challenge {} not evaluated", challenge_id),
+            Challenge(challenge_id) => panic!("Challenge {challenge_id} not evaluated"),
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs_value = lhs.as_ref().borrow().evaluate_inner(base_table, ext_table);
                 let rhs_value = rhs.as_ref().borrow().evaluate_inner(base_table, ext_table);

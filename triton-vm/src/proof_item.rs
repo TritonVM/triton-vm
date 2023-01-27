@@ -150,8 +150,7 @@ where
                 )))),
             },
             other => Err(anyhow::Error::new(ProofStreamError::new(&format!(
-                "expected compressed authentication paths, but got something else: {:?}",
-                other
+                "expected compressed authentication paths, but got something else: {other:?}",
             )))),
         }
     }

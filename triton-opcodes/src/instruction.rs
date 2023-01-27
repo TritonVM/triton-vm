@@ -49,8 +49,8 @@ impl<'a> PartialEq for LabelledInstruction<'a> {
 impl<'a> Display for LabelledInstruction<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LabelledInstruction::Instruction(instr, _) => write!(f, "{}", instr),
-            LabelledInstruction::Label(label_name, _) => write!(f, "{}:", label_name),
+            LabelledInstruction::Instruction(instr, _) => write!(f, "{instr}"),
+            LabelledInstruction::Label(label_name, _) => write!(f, "{label_name}:"),
         }
     }
 }
@@ -133,16 +133,16 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         match self {
             // OpStack manipulation
             Pop => write!(f, "pop"),
-            Push(arg) => write!(f, "push {}", arg),
+            Push(arg) => write!(f, "push {arg}"),
             Divine(Some(hint)) => write!(f, "divine_{}", format!("{hint}").to_ascii_lowercase()),
             Divine(None) => write!(f, "divine"),
-            Dup(arg) => write!(f, "dup{}", arg),
-            Swap(arg) => write!(f, "swap{}", arg),
+            Dup(arg) => write!(f, "dup{arg}"),
+            Swap(arg) => write!(f, "swap{arg}"),
 
             // Control flow
             Nop => write!(f, "nop"),
             Skiz => write!(f, "skiz"),
-            Call(arg) => write!(f, "call {}", arg),
+            Call(arg) => write!(f, "call {arg}"),
             Return => write!(f, "return"),
             Recurse => write!(f, "recurse"),
             Assert => write!(f, "assert"),
@@ -408,7 +408,7 @@ pub enum TokenError {
 impl Display for TokenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UnknownInstruction(s) => write!(f, "UnknownInstruction({})", s),
+            UnknownInstruction(s) => write!(f, "UnknownInstruction({s})"),
             UnexpectedEndOfStream => write!(f, "UnexpectedEndOfStream"),
         }
     }
@@ -450,7 +450,7 @@ fn convert_labels_helper(
 
         LabelledInstruction::Instruction(instr, _) => {
             let unlabelled_instruction: Instruction = instr.map_call_address(|label_name| {
-                let label_not_found = format!("Label not found: {}", label_name);
+                let label_not_found = format!("Label not found: {label_name}");
                 let absolute_address = label_map.get(label_name).expect(&label_not_found);
                 BFieldElement::new(*absolute_address as u64)
             });
@@ -890,10 +890,7 @@ mod instruction_tests {
                 let ib_value = instruction.ib(ib);
                 assert!(
                     ib_value.is_zero() || ib_value.is_one(),
-                    "IB{} for instruction {} is 0 or 1 ({})",
-                    ib,
-                    instruction,
-                    ib_value
+                    "IB{ib} for instruction {instruction} is 0 or 1 ({ib_value})",
                 );
             }
         }

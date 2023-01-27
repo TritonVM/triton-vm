@@ -26,7 +26,7 @@ fn verify_halt(criterion: &mut Criterion) {
 
     // stark object
     let program = match Program::from_code("halt") {
-        Err(e) => panic!("Cannot compile source code into program: {}", e),
+        Err(e) => panic!("Cannot compile source code into program: {e}"),
         Ok(p) => p,
     };
 
@@ -37,7 +37,7 @@ fn verify_halt(criterion: &mut Criterion) {
     let (proof, stark) = if proof_file_exists(filename) {
         let proof = match load_proof(filename) {
             Ok(p) => p,
-            Err(e) => panic!("Could not load proof from disk: {:?}", e),
+            Err(e) => panic!("Could not load proof from disk: {e:?}"),
         };
         let padded_height = proof.padded_height();
         let claim = Claim {
@@ -51,7 +51,7 @@ fn verify_halt(criterion: &mut Criterion) {
     } else {
         let (aet, output, err) = simulate_no_input(&program);
         if let Some(error) = err {
-            panic!("The VM encountered the following problem: {}", error);
+            panic!("The VM encountered the following problem: {error}");
         }
         maybe_cycle_count = Some(aet.processor_trace.nrows());
         let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
@@ -64,14 +64,14 @@ fn verify_halt(criterion: &mut Criterion) {
         let stark = Stark::new(claim, stark_parameters);
         let proof = stark.prove(aet, &mut None);
         if let Err(e) = save_proof(filename, proof.clone()) {
-            panic!("Problem! could not save proof to disk: {:?}", e);
+            panic!("Problem! could not save proof to disk: {e:?}");
         }
         (proof, stark)
     };
 
     let result = stark.verify(proof.clone(), &mut None);
     if let Err(e) = result {
-        panic!("The Verifier is unhappy! {}", e);
+        panic!("The Verifier is unhappy! {e}");
     }
 
     let mut maybe_profiler = Some(TritonProfiler::new("Verify Halt"));
@@ -98,7 +98,7 @@ fn verify_halt(criterion: &mut Criterion) {
     group.finish();
 
     println!("Writing report ...");
-    println!("{}", report);
+    println!("{report}");
 }
 
 criterion_group! {

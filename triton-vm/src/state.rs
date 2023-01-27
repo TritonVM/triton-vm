@@ -742,7 +742,7 @@ impl<'pgm> VMState<'pgm> {
         let node_index_elem: BFieldElement = self.op_stack.pop()?;
         let node_index: u32 = node_index_elem
             .try_into()
-            .unwrap_or_else(|_| panic!("{:?} is not a u32", node_index_elem));
+            .unwrap_or_else(|_| panic!("{node_index_elem:?} is not a u32"));
 
         // nondeterministic guess, flipped
         let sibling_digest: [BFieldElement; DIGEST_LENGTH] = {
@@ -846,7 +846,7 @@ mod vm_state_tests {
         let (trace, _out, _err) = run(&program, vec![], vec![]);
 
         for state in trace.iter() {
-            println!("{}", state);
+            println!("{state}");
         }
     }
 
@@ -877,7 +877,7 @@ mod vm_state_tests {
         let last_state = trace.last().unwrap();
         assert_eq!(BFieldElement::zero(), last_state.op_stack.safe_peek(ST0));
 
-        println!("{}", last_state);
+        println!("{last_state}");
     }
 
     #[test]
@@ -887,10 +887,10 @@ mod vm_state_tests {
         let (trace, _out, err) = run(&program, vec![], vec![]);
 
         for state in trace.iter() {
-            println!("{}", state);
+            println!("{state}");
         }
         if let Some(e) = err {
-            println!("Error: {}", e);
+            println!("Error: {e}");
         }
 
         // check for graceful termination
@@ -913,7 +913,7 @@ mod vm_state_tests {
         let program = Program::from_code(basic_ram_read_write_code).unwrap();
         let (trace, _out, err) = run(&program, vec![], vec![]);
         if let Some(e) = err {
-            println!("Error: {}", e);
+            println!("Error: {e}");
         }
 
         let last_state = trace.last().expect("Execution seems to have failed.");
@@ -941,7 +941,7 @@ mod vm_state_tests {
         let program = Program::from_code(edgy_ram_writes_code).unwrap();
         let (trace, _out, err) = run(&program, vec![], vec![]);
         if let Some(e) = err {
-            println!("Error: {}", e);
+            println!("Error: {e}");
         }
 
         let last_state = trace.last().expect("Execution seems to have failed.");
@@ -990,10 +990,10 @@ mod vm_state_tests {
         let (trace, _out, err) = run(&program, input_symbols, vec![]);
 
         for state in trace.iter() {
-            println!("{}", state);
+            println!("{state}");
         }
         if let Some(e) = err {
-            panic!("The VM encountered an error: {}", e);
+            panic!("The VM encountered an error: {e}");
         }
 
         // check for graceful termination
@@ -1148,10 +1148,10 @@ mod vm_state_tests {
         let (trace, _out, err) = run(&program, input, secret_input);
 
         for state in trace.iter() {
-            println!("{}", state);
+            println!("{state}");
         }
         if let Some(e) = err {
-            panic!("The VM encountered an error: {}", e);
+            panic!("The VM encountered an error: {e}");
         }
 
         // check for graceful termination
@@ -1180,10 +1180,10 @@ mod vm_state_tests {
         let (trace, out, err) = run(&program, input_symbols, vec![]);
         assert_eq!(out[0], BFieldElement::new(4));
         for state in trace.iter() {
-            println!("{}", state);
+            println!("{state}");
         }
         if let Some(e) = err {
-            panic!("The VM encountered an error: {}", e);
+            panic!("The VM encountered an error: {e}");
         }
 
         // check for graceful termination
@@ -1212,9 +1212,9 @@ mod vm_state_tests {
         let program = Program::from_code(countdown_code).unwrap();
         let (trace, out, err) = run(&program, vec![], vec![]);
 
-        println!("{}", program);
+        println!("{program}");
         for state in trace.iter() {
-            println!("{}", state);
+            println!("{state}");
         }
 
         if let Some(e) = err {
@@ -1251,12 +1251,12 @@ mod vm_state_tests {
         let code = GCD_X_Y;
         let program = Program::from_code(code).unwrap();
 
-        println!("{}", program);
+        println!("{program}");
         let (trace, out, _err) = run(&program, vec![42_u64.into(), 56_u64.into()], vec![]);
 
-        println!("{}", program);
+        println!("{program}");
         for state in trace.iter() {
-            println!("{}", state);
+            println!("{state}");
         }
 
         let expected = BFieldElement::new(14);

@@ -111,7 +111,7 @@ fn main() {
     write(&table_name_snake, source_code);
 
     if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
-        println!("cargo fmt failed: {}", fmt_failed);
+        println!("cargo fmt failed: {fmt_failed}");
     }
 }
 

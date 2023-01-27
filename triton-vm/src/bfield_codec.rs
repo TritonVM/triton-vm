@@ -592,25 +592,25 @@ mod bfield_codec_tests {
 
             if str.len() % EXTENSION_DEGREE != 0 {
                 if let Ok(sth) = Vec::<XFieldElement>::decode(&str) {
-                    panic!("{:?}", sth);
+                    panic!("{sth:?}");
                 }
             }
 
             if str.len() % DIGEST_LENGTH != 0 {
                 if let Ok(sth) = Vec::<Digest>::decode(&str) {
-                    panic!("{:?}", sth);
+                    panic!("{sth:?}");
                 }
             }
 
             if let Ok(sth) = Vec::<Vec<BFieldElement>>::decode(&str) {
                 if !sth.is_empty() {
-                    panic!("{:?}", sth);
+                    panic!("{sth:?}");
                 }
             }
 
             if let Ok(sth) = Vec::<Vec<XFieldElement>>::decode(&str) {
                 if !sth.is_empty() {
-                    panic!("{:?}", sth);
+                    panic!("{sth:?}");
                 }
             }
 

@@ -19,14 +19,14 @@ fn prove_halt(_criterion: &mut Criterion) {
 
     // stark object
     let program = match Program::from_code("halt") {
-        Err(e) => panic!("Cannot compile source code into program: {}", e),
+        Err(e) => panic!("Cannot compile source code into program: {e}"),
         Ok(p) => p,
     };
 
     // witness
     let (aet, output, err) = simulate_no_input(&program);
     if let Some(error) = err {
-        panic!("The VM encountered the following problem: {}", error);
+        panic!("The VM encountered the following problem: {error}");
     }
 
     let code = program.to_bwords();
@@ -54,10 +54,10 @@ fn prove_halt(_criterion: &mut Criterion) {
     // save proof
     let filename = "halt.tsp";
     if let Err(e) = save_proof(filename, proof) {
-        println!("Error saving proof: {:?}", e);
+        println!("Error saving proof: {e:?}");
     }
 
-    println!("{}", report);
+    println!("{report}");
 }
 
 criterion_group! {

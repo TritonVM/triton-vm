@@ -19,7 +19,7 @@ pub enum Ord8 {
 impl Display for Ord8 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n: usize = (*self).into();
-        write!(f, "{}", n)
+        write!(f, "{n}")
     }
 }
 
@@ -51,7 +51,7 @@ impl TryFrom<usize> for Ord8 {
             5 => Ok(IB5),
             6 => Ok(IB6),
             7 => Ok(IB7),
-            _ => Err(format!("{} is out of range for Ord8", value)),
+            _ => Err(format!("{value} is out of range for Ord8")),
         }
     }
 }
@@ -81,7 +81,7 @@ pub enum Ord16 {
 impl Display for Ord16 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let n: usize = (*self).into();
-        write!(f, "{}", n)
+        write!(f, "{n}")
     }
 }
 
@@ -136,7 +136,7 @@ impl TryFrom<u32> for Ord16 {
             13 => Ok(ST13),
             14 => Ok(ST14),
             15 => Ok(ST15),
-            _ => Err(format!("{} is out of range for Ord16", n)),
+            _ => Err(format!("{n} is out of range for Ord16")),
         }
     }
 }

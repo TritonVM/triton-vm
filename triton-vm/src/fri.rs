@@ -35,7 +35,7 @@ impl Error for FriValidationError {}
 
 impl fmt::Display for FriValidationError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Deserialization error for LowDegreeProof: {:?}", self)
+        write!(f, "Deserialization error for LowDegreeProof: {self:?}")
     }
 }
 
@@ -374,8 +374,8 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         if last_poly_degree > degree_of_last_round as isize {
             println!(
-                "last_poly_degree is {}, degree_of_last_round is {}",
-                last_poly_degree, degree_of_last_round
+                "last_poly_degree is {last_poly_degree}, \
+                 degree_of_last_round is {degree_of_last_round}",
             );
             return Err(anyhow::Error::new(
                 FriValidationError::LastIterationTooHighDegree,
@@ -601,7 +601,7 @@ mod triton_xfri_tests {
         let (_, merkle_root_of_round_0) = fri.prove(&subgroup, &mut proof_stream).unwrap();
         let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         if let Err(e) = verdict {
-            panic!("Found error: {}", e);
+            panic!("Found error: {e}");
         }
     }
 
@@ -625,7 +625,7 @@ mod triton_xfri_tests {
         let (_, merkle_root_of_round_0) = fri.prove(&codeword, &mut proof_stream).unwrap();
         let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         if let Err(e) = verdict {
-            panic!("Found error: {}", e);
+            panic!("Found error: {e}");
         }
     }
 
@@ -651,11 +651,9 @@ mod triton_xfri_tests {
             let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
             if verify_result.is_err() {
                 println!(
-                    "There are {} points, |<128>^{}| = {}, and verify_result = {:?}",
+                    "There are {} points, |<128>^{n}| = {}, and verify_result = {verify_result:?}",
                     points.len(),
-                    n,
                     points.iter().unique().count(),
-                    verify_result
                 );
             }
 
@@ -666,7 +664,7 @@ mod triton_xfri_tests {
             let bad_root_digest = corrupt_digest(&merkle_root_of_round_0);
             let bad_verify_result = fri.verify(&mut proof_stream, &bad_root_digest, &mut None);
             assert!(bad_verify_result.is_err());
-            println!("bad_verify_result = {:?}", bad_verify_result);
+            println!("bad_verify_result = {bad_verify_result:?}");
 
             // TODO: Add negative test with bad Merkle authentication path
             // This probably requires manipulating the proof stream somehow.
@@ -742,7 +740,7 @@ mod triton_xfri_tests {
             &mut None,
         );
         if let Err(e) = verdict {
-            panic!("Found error: {}", e);
+            panic!("Found error: {e}");
         }
     }
 }

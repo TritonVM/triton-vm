@@ -476,7 +476,7 @@ mod parser_tests {
                 "{}",
                 test_case.message
             ),
-            Err(parse_err) => panic!("{}:\n{}", test_case.message, parse_err),
+            Err(parse_err) => panic!("{}:\n{parse_err}", test_case.message),
         }
     }
 
@@ -489,12 +489,12 @@ mod parser_tests {
         }
 
         let error = result.unwrap_err();
-        let actual_error_message = format!("{}", error);
+        let actual_error_message = format!("{error}");
         let actual_error_count = actual_error_message
             .match_indices(test_case.expected_error)
             .count();
         if test_case.expected_error_count != actual_error_count {
-            println!("{}", actual_error_message);
+            println!("{actual_error_message}");
             assert_eq!(
                 test_case.expected_error_count, actual_error_count,
                 "parser should report '{}' {} times: {}",
@@ -594,17 +594,17 @@ mod parser_tests {
             "push" => {
                 let max: i128 = BFieldElement::MAX as i128;
                 let arg: i128 = rng.gen_range(-max..max);
-                vec!["push".to_string(), format!("{}", arg)]
+                vec!["push".to_string(), format!("{arg}")]
             }
 
             "dup" => {
                 let arg: usize = rng.gen_range(0..15);
-                vec![format!("dup{}", arg)]
+                vec![format!("dup{arg}")]
             }
 
             "swap" => {
                 let arg: usize = rng.gen_range(1..15);
-                vec![format!("swap{}", arg)]
+                vec![format!("swap{arg}")]
             }
 
             "skiz" => {
@@ -618,7 +618,7 @@ mod parser_tests {
                 vec!["call".to_string(), some_label]
             }
 
-            unknown => panic!("Unknown generator, {}", unknown),
+            unknown => panic!("Unknown generator, {unknown}"),
         }
     }
 
@@ -632,7 +632,7 @@ mod parser_tests {
 
         // Embed all used labels randomly
         for label in labels.into_iter().sorted().dedup() {
-            program.push(vec![format!("{}:", label)]);
+            program.push(vec![format!("{label}:")]);
         }
         program.shuffle(&mut rand::thread_rng());
 
@@ -876,7 +876,7 @@ mod parser_tests {
 
             // property: the new parser succeeds on all generated input programs.
             if new_actual.is_err() {
-                println!("The code:\n{}\n\n", code);
+                println!("The code:\n{code}\n\n");
                 panic!("{}", new_actual.unwrap_err());
             }
         }

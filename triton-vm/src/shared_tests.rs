@@ -34,7 +34,7 @@ pub fn parse_setup_simulate(
     prof_start!(maybe_profiler, "simulate");
     let (aet, stdout, err) = simulate(&program, input_symbols, secret_input_symbols);
     if let Some(error) = err {
-        panic!("The VM encountered the following problem: {}", error);
+        panic!("The VM encountered the following problem: {error}");
     }
     prof_stop!(maybe_profiler, "simulate");
 
@@ -93,7 +93,7 @@ impl SourceCodeAndInput {
         let program = Program::from_code(&self.source_code).expect("Could not load source code");
         let (_, output, err) = run(&program, self.input.clone(), self.secret_input.clone());
         if let Some(e) = err {
-            panic!("Running the program failed: {}", e)
+            panic!("Running the program failed: {e}")
         }
         output
     }
@@ -131,7 +131,7 @@ pub fn proof_file_exists(filename: &str) -> bool {
     if !Path::new(&proofs_directory()).is_dir() {
         return false;
     }
-    let full_filename = format!("{}{}", proofs_directory(), filename);
+    let full_filename = format!("{}{filename}", proofs_directory());
     if File::open(full_filename).is_err() {
         return false;
     }
@@ -139,11 +139,11 @@ pub fn proof_file_exists(filename: &str) -> bool {
 }
 
 pub fn load_proof(filename: &str) -> Result<Proof> {
-    let full_filename = format!("{}{}", proofs_directory(), filename);
+    let full_filename = format!("{}{filename}", proofs_directory());
     let mut contents: Vec<u8> = vec![];
     let mut file_handle = File::open(full_filename)?;
     let i = file_handle.read_to_end(&mut contents)?;
-    println!("Read {} bytes of proof data from disk.", i);
+    println!("Read {i} bytes of proof data from disk.");
     let proof: Proof = bincode::deserialize(&contents).expect("Cannot deserialize proof.");
 
     Ok(proof)
@@ -153,17 +153,17 @@ pub fn save_proof(filename: &str, proof: Proof) -> Result<()> {
     if !proofs_directory_exists() {
         create_proofs_directory()?;
     }
-    let full_filename = format!("{}{}", proofs_directory(), filename);
+    let full_filename = format!("{}{filename}", proofs_directory());
     let mut file_handle = match File::create(full_filename.clone()) {
         Ok(fh) => fh,
-        Err(e) => panic!("Cannot write proof to disk at {}: {:?}", full_filename, e),
+        Err(e) => panic!("Cannot write proof to disk at {full_filename}: {e:?}"),
     };
     let binary = match bincode::serialize(&proof) {
         Ok(b) => b,
-        Err(e) => panic!("Cannot serialize proof: {:?}", e),
+        Err(e) => panic!("Cannot serialize proof: {e:?}"),
     };
     let amount = file_handle.write(&binary)?;
-    println!("Wrote {} bytes of proof data to disk.", amount);
+    println!("Wrote {amount} bytes of proof data to disk.");
     Ok(())
 }
 

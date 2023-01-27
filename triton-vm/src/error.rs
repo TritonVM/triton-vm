@@ -30,7 +30,7 @@ impl Display for InstructionError {
             }
 
             InstructionPointerOverflow(ip) => {
-                write!(f, "Instruction pointer {} points outside of program", ip)
+                write!(f, "Instruction pointer {ip} points outside of program")
             }
 
             OpStackTooShallow => {
@@ -44,8 +44,7 @@ impl Display for InstructionError {
             AssertionFailed(ip, clk, st0) => {
                 write!(
                     f,
-                    "Assertion failed: st0 must be 1. ip: {}, clk: {}, st0: {}",
-                    ip, clk, st0
+                    "Assertion failed: st0 must be 1. ip: {ip}, clk: {clk}, st0: {st0}"
                 )
             }
 

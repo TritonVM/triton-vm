@@ -1752,8 +1752,8 @@ mod master_table_tests {
         );
         println!("|                    |            |           |            |");
         println!(
-            "| Sum                | {:>10} | {:>9} | {:>10} |",
-            NUM_BASE_COLUMNS, NUM_EXT_COLUMNS, NUM_COLUMNS,
+            "| Sum                | {NUM_BASE_COLUMNS:>10} \
+             | {NUM_EXT_COLUMNS:>9} | {NUM_COLUMNS:>10} |",
         );
     }
 

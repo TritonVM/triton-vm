@@ -317,11 +317,11 @@ pub mod triton_vm_tests {
     ";
         let program = Program::from_code(code).unwrap();
 
-        println!("{}", program);
+        println!("{program}");
 
         let (aet, _, err) = simulate_no_input(&program);
 
-        println!("{:?}", err);
+        println!("{err:?}");
         for row in aet.processor_trace.rows() {
             println!("{}", ProcessorTraceRow { row });
         }
