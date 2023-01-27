@@ -32,6 +32,7 @@ use crate::table::table_column::ProgramBaseTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn::*;
 use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::ProgramExtTableColumn::*;
+use crate::vm::AlgebraicExecutionTrace;
 
 pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
 pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
@@ -146,13 +147,17 @@ impl ExtProgramTable {
 }
 
 impl ProgramTable {
-    pub fn fill_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program: &[BFieldElement]) {
+    pub fn fill_trace(
+        program_table: &mut ArrayViewMut2<BFieldElement>,
+        aet: &AlgebraicExecutionTrace,
+    ) {
+        let program = aet.program.to_bwords();
         let program_len = program.len();
         let address_column = program_table.slice_mut(s![..program_len, Address.base_table_index()]);
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);
 
-        let instructions = Array1::from(program.to_owned());
+        let instructions = Array1::from(program);
         let instruction_column =
             program_table.slice_mut(s![..program_len, Instruction.base_table_index()]);
         instructions.move_into(instruction_column);

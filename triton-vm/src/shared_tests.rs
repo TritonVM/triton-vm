@@ -26,7 +26,7 @@ pub fn parse_setup_simulate(
     input_symbols: Vec<BFieldElement>,
     secret_input_symbols: Vec<BFieldElement>,
     maybe_profiler: &mut Option<TritonProfiler>,
-) -> (AlgebraicExecutionTrace, Vec<BFieldElement>, Program) {
+) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
     let program = Program::from_code(code);
 
     let program = program.expect("Program must parse.");
@@ -38,7 +38,7 @@ pub fn parse_setup_simulate(
     }
     prof_stop!(maybe_profiler, "simulate");
 
-    (aet, stdout, program)
+    (aet, stdout)
 }
 
 pub fn parse_simulate_prove(
@@ -47,17 +47,17 @@ pub fn parse_simulate_prove(
     secret_input_symbols: Vec<BFieldElement>,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> (Stark, Proof) {
-    let (aet, output_symbols, program) = parse_setup_simulate(
+    let (aet, output_symbols) = parse_setup_simulate(
         code,
         input_symbols.clone(),
         secret_input_symbols,
         maybe_profiler,
     );
 
-    let padded_height = MasterBaseTable::padded_height(&aet, &program.to_bwords());
+    let padded_height = MasterBaseTable::padded_height(&aet);
     let claim = Claim {
         input: input_symbols,
-        program: program.to_bwords(),
+        program: aet.program.to_bwords(),
         output: output_symbols,
         padded_height,
     };

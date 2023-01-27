@@ -155,12 +155,8 @@ impl Stark {
     ) -> Proof {
         prof_start!(maybe_profiler, "base tables");
         prof_start!(maybe_profiler, "create");
-        let mut master_base_table = MasterBaseTable::new(
-            aet,
-            &self.claim.program,
-            self.parameters.num_trace_randomizers,
-            self.fri.domain,
-        );
+        let mut master_base_table =
+            MasterBaseTable::new(aet, self.parameters.num_trace_randomizers, self.fri.domain);
         prof_stop!(maybe_profiler, "create");
 
         prof_start!(maybe_profiler, "pad");
@@ -915,7 +911,7 @@ pub(crate) mod triton_stark_tests {
         code: &str,
         input_symbols: Vec<BFieldElement>,
         secret_input_symbols: Vec<BFieldElement>,
-    ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>, Program) {
+    ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
         let program = Program::from_code(code);
 
         assert!(program.is_ok(), "program parses correctly");
@@ -925,7 +921,7 @@ pub(crate) mod triton_stark_tests {
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {error}");
         }
-        (aet, stdout, program)
+        (aet, stdout)
     }
 
     pub fn parse_simulate_pad(
@@ -933,13 +929,12 @@ pub(crate) mod triton_stark_tests {
         stdin: Vec<BFieldElement>,
         secret_in: Vec<BFieldElement>,
     ) -> (Stark, MasterBaseTable, MasterBaseTable) {
-        let (aet, stdout, program) = parse_setup_simulate(code, stdin.clone(), secret_in);
+        let (aet, stdout) = parse_setup_simulate(code, stdin.clone(), secret_in);
 
-        let instructions = program.to_bwords();
-        let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
+        let padded_height = MasterBaseTable::padded_height(&aet);
         let claim = Claim {
             input: stdin,
-            program: instructions,
+            program: aet.program.to_bwords(),
             output: stdout,
             padded_height,
         };
@@ -950,7 +945,6 @@ pub(crate) mod triton_stark_tests {
 
         let mut master_base_table = MasterBaseTable::new(
             aet,
-            &stark.claim.program,
             stark.parameters.num_trace_randomizers,
             stark.fri.domain,
         );

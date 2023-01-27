@@ -54,7 +54,7 @@ fn verify_halt(criterion: &mut Criterion) {
             panic!("The VM encountered the following problem: {error}");
         }
         maybe_cycle_count = Some(aet.processor_trace.nrows());
-        let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
+        let padded_height = MasterBaseTable::padded_height(&aet);
         let claim = Claim {
             input: vec![],
             program: instructions,

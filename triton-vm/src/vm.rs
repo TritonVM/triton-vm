@@ -39,7 +39,7 @@ pub fn simulate(
     Vec<BFieldElement>,
     Option<anyhow::Error>,
 ) {
-    let mut aet = AlgebraicExecutionTrace::default();
+    let mut aet = AlgebraicExecutionTrace::new(program.clone());
     let mut state = VMState::new(program);
     // record initial state
     aet.processor_trace
@@ -120,6 +120,9 @@ pub fn run(
 
 #[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
+    /// The program that was executed in order to generate the trace.
+    pub program: Program,
+
     /// Records the state of the processor after each instruction.
     pub processor_trace: Array2<BFieldElement>,
 
@@ -136,18 +139,17 @@ pub struct AlgebraicExecutionTrace {
     pub u32_entries: Vec<(Instruction, BFieldElement, BFieldElement)>,
 }
 
-impl Default for AlgebraicExecutionTrace {
-    fn default() -> Self {
+impl AlgebraicExecutionTrace {
+    pub fn new(program: Program) -> Self {
         Self {
+            program,
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             u32_entries: vec![],
         }
     }
-}
 
-impl AlgebraicExecutionTrace {
     pub fn append_hash_trace(&mut self, xlix_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
         let mut hash_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
         hash_trace_addendum

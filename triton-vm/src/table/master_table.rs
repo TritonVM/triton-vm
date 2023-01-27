@@ -304,11 +304,11 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 }
 
 impl MasterBaseTable {
-    pub fn padded_height(aet: &AlgebraicExecutionTrace, program: &[BFieldElement]) -> usize {
+    pub fn padded_height(aet: &AlgebraicExecutionTrace) -> usize {
         let max_height = [
             // The Program Table's side of the instruction lookup argument requires at least one
             // padding row to account for the processor's “next instruction or argument.”
-            Self::program_length(program) + 1,
+            Self::program_length(aet) + 1,
             Self::processor_table_length(aet),
             Self::hash_table_length(aet),
             Self::u32_table_length(aet),
@@ -320,8 +320,8 @@ impl MasterBaseTable {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn program_length(program: &[BFieldElement]) -> usize {
-        program.len()
+    pub fn program_length(aet: &AlgebraicExecutionTrace) -> usize {
+        aet.program.to_bwords().len()
     }
 
     pub fn processor_table_length(aet: &AlgebraicExecutionTrace) -> usize {
@@ -345,18 +345,13 @@ impl MasterBaseTable {
 
     pub fn new(
         aet: AlgebraicExecutionTrace,
-        program: &[BFieldElement],
         num_trace_randomizers: usize,
         fri_domain: ArithmeticDomain,
     ) -> Self {
-        let padded_height = Self::padded_height(&aet, program);
+        let padded_height = Self::padded_height(&aet);
         let randomized_padded_trace_len =
             randomized_padded_trace_len(num_trace_randomizers, padded_height);
         let unit_distance = randomized_padded_trace_len / padded_height;
-        let program_len = program.len();
-        let main_execution_len = aet.processor_trace.nrows();
-        let hash_coprocessor_execution_len = Self::hash_table_length(&aet);
-        let u32_coprocesor_execution_len = Self::u32_table_length(&aet);
 
         let num_rows = randomized_padded_trace_len;
         let num_columns = NUM_BASE_COLUMNS;
@@ -365,10 +360,10 @@ impl MasterBaseTable {
         let mut master_base_table = Self {
             padded_height,
             num_trace_randomizers,
-            program_len,
-            main_execution_len,
-            hash_coprocessor_execution_len,
-            u32_coprocesor_execution_len,
+            program_len: Self::program_length(&aet),
+            main_execution_len: Self::processor_table_length(&aet),
+            hash_coprocessor_execution_len: Self::hash_table_length(&aet),
+            u32_coprocesor_execution_len: Self::u32_table_length(&aet),
             randomized_padded_trace_len,
             rand_trace_to_padded_trace_unit_distance: unit_distance,
             fri_domain,
@@ -376,7 +371,7 @@ impl MasterBaseTable {
         };
 
         let program_table = &mut master_base_table.table_mut(TableId::ProgramTable);
-        ProgramTable::fill_trace(program_table, program);
+        ProgramTable::fill_trace(program_table, &aet);
         let op_stack_table = &mut master_base_table.table_mut(TableId::OpStackTable);
         let op_stack_clk_jump_diffs = OpStackTable::fill_trace(op_stack_table, &aet);
         let ram_table = &mut master_base_table.table_mut(TableId::RamTable);
