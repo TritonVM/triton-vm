@@ -39,7 +39,6 @@ blake3 = "1.2"
 byteorder = "1.4"
 console = "0.15.2"
 colored = "2.0"
-hashbrown = "0.13.1"
 itertools = "0.10.5"
 nom = "7.1"
 num-bigint = { version = "0.4", features = ["serde"] }
