@@ -30,13 +30,14 @@ use crate::table::master_table::U32_TABLE_START;
 pub enum ProgramBaseTableColumn {
     Address,
     Instruction,
+    LookupMultiplicity,
     IsPadding,
 }
 
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProgramExtTableColumn {
-    RunningEvaluation,
+    InstructionLookupServerLogDerivative,
 }
 
 // -------- Processor Table --------
@@ -95,7 +96,7 @@ pub enum ProcessorBaseTableColumn {
 pub enum ProcessorExtTableColumn {
     InputTableEvalArg,
     OutputTableEvalArg,
-    InstructionTablePermArg,
+    InstructionLookupClientLogDerivative,
     OpStackTablePermArg,
     RamTablePermArg,
     JumpStackTablePermArg,

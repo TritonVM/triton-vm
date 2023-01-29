@@ -9,6 +9,7 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use ProgramTableChallengeId::*;
@@ -21,7 +22,7 @@ use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
-use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::LookupArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
@@ -56,19 +57,21 @@ impl ExtProgramTable {
         >,
     > {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let one = circuit_builder.b_constant(1_u32.into());
 
         let address = circuit_builder.input(BaseRow(Address.master_base_table_index()));
-        let running_evaluation =
-            circuit_builder.input(ExtRow(RunningEvaluation.master_ext_table_index()));
+        let instruction_lookup_log_derivative = circuit_builder.input(ExtRow(
+            InstructionLookupServerLogDerivative.master_ext_table_index(),
+        ));
 
         let first_address_is_zero = address;
 
-        let running_evaluation_is_initialized_correctly = running_evaluation - one;
+        let instruction_lookup_log_derivative_is_initialized_correctly =
+            instruction_lookup_log_derivative
+                - circuit_builder.x_constant(LookupArg::default_initial());
 
         vec![
             first_address_is_zero.consume(),
-            running_evaluation_is_initialized_correctly.consume(),
+            instruction_lookup_log_derivative_is_initialized_correctly.consume(),
         ]
     }
 
@@ -98,38 +101,43 @@ impl ExtProgramTable {
         let address = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
         let instruction =
             circuit_builder.input(CurrentBaseRow(Instruction.master_base_table_index()));
+        let lookup_multiplicity =
+            circuit_builder.input(CurrentBaseRow(LookupMultiplicity.master_base_table_index()));
         let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_base_table_index()));
-        let running_evaluation =
-            circuit_builder.input(CurrentExtRow(RunningEvaluation.master_ext_table_index()));
+        let log_derivative = circuit_builder.input(CurrentExtRow(
+            InstructionLookupServerLogDerivative.master_ext_table_index(),
+        ));
         let address_next = circuit_builder.input(NextBaseRow(Address.master_base_table_index()));
         let instruction_next =
             circuit_builder.input(NextBaseRow(Instruction.master_base_table_index()));
         let is_padding_next =
             circuit_builder.input(NextBaseRow(IsPadding.master_base_table_index()));
-        let running_evaluation_next =
-            circuit_builder.input(NextExtRow(RunningEvaluation.master_ext_table_index()));
+        let log_derivative_next = circuit_builder.input(NextExtRow(
+            InstructionLookupServerLogDerivative.master_ext_table_index(),
+        ));
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
         let is_padding_is_0_or_remains_unchanged =
             is_padding.clone() * (is_padding_next - is_padding.clone());
 
-        let running_evaluation_remains =
-            running_evaluation_next.clone() - running_evaluation.clone();
+        let log_derivative_remains = log_derivative_next.clone() - log_derivative.clone();
         let compressed_row = circuit_builder.challenge(AddressWeight) * address
             + circuit_builder.challenge(InstructionWeight) * instruction
             + circuit_builder.challenge(NextInstructionWeight) * instruction_next;
 
-        let indeterminate = circuit_builder.challenge(InstructionEvalIndeterminate);
-        let running_evaluation_updates =
-            running_evaluation_next - (indeterminate * running_evaluation + compressed_row);
-        let running_evaluation_updates_if_and_only_if_not_a_padding_row =
-            (one - is_padding.clone()) * running_evaluation_updates
-                + is_padding * running_evaluation_remains;
+        let indeterminate = circuit_builder.challenge(InstructionLookupIndeterminate);
+
+        let log_derivative_updates = (log_derivative_next - log_derivative)
+            * (indeterminate - compressed_row)
+            - lookup_multiplicity;
+        let log_derivative_updates_if_and_only_if_not_a_padding_row = (one - is_padding.clone())
+            * log_derivative_updates
+            + is_padding * log_derivative_remains;
 
         [
             address_increases_by_one,
             is_padding_is_0_or_remains_unchanged,
-            running_evaluation_updates_if_and_only_if_not_a_padding_row,
+            log_derivative_updates_if_and_only_if_not_a_padding_row,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -151,16 +159,24 @@ impl ProgramTable {
         program_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let program = aet.program.to_bwords();
-        let program_len = program.len();
+        let program_len = aet.program.len();
         let address_column = program_table.slice_mut(s![..program_len, Address.base_table_index()]);
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);
 
-        let instructions = Array1::from(program);
+        let instructions = Array1::from(aet.program.to_bwords());
         let instruction_column =
             program_table.slice_mut(s![..program_len, Instruction.base_table_index()]);
         instructions.move_into(instruction_column);
+
+        let multiplicities = Array1::from_iter(
+            aet.instruction_multiplicities
+                .iter()
+                .map(|&m| BFieldElement::new(m as u64)),
+        );
+        let multiplicities_column =
+            program_table.slice_mut(s![..program_len, LookupMultiplicity.base_table_index()]);
+        multiplicities.move_into(multiplicities_column);
     }
 
     pub fn pad_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program_len: usize) {
@@ -182,30 +198,33 @@ impl ProgramTable {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
-        let mut instruction_table_running_evaluation = EvalArg::default_initial();
+        let mut instruction_lookup_log_derivative = LookupArg::default_initial();
 
         for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
             let row = window.slice(s![0, ..]);
             let next_row = window.slice(s![1, ..]);
             let mut extension_row = ext_table.slice_mut(s![idx, ..]);
 
-            // The running evaluation linking Program Table and Instruction Table does record the
-            // initial in the first row, contrary to most other running evaluations and products.
-            // The running product's final value, allowing for a meaningful cross-table argument,
-            // is recorded in the first padding row. This row is guaranteed to exist.
-            extension_row[RunningEvaluation.ext_table_index()] =
-                instruction_table_running_evaluation;
-            // update the running evaluation if not a padding row
+            // In the Program Table, the logarithmic derivative for the instruction lookup
+            // argument does record the initial in the first row, as an exception to all other
+            // table-linking arguments.
+            // The logarithmic derivative's final value, allowing for a meaningful cross-table
+            // argument, is recorded in the first padding row. This row is enforced to exist.
+            extension_row[InstructionLookupServerLogDerivative.ext_table_index()] =
+                instruction_lookup_log_derivative;
+            // update the logarithmic derivative if not a padding row
             if row[IsPadding.base_table_index()].is_zero() {
+                let lookup_multiplicity = row[LookupMultiplicity.base_table_index()];
                 let address = row[Address.base_table_index()];
                 let instruction = row[Instruction.base_table_index()];
                 let next_instruction = next_row[Instruction.base_table_index()];
-                let compressed_row_for_evaluation_argument = address * challenges.address_weight
+                let compressed_row_for_instruction_lookup = address * challenges.address_weight
                     + instruction * challenges.instruction_weight
                     + next_instruction * challenges.next_instruction_weight;
-                instruction_table_running_evaluation = instruction_table_running_evaluation
-                    * challenges.instruction_eval_indeterminate
-                    + compressed_row_for_evaluation_argument;
+                instruction_lookup_log_derivative += (challenges.instruction_lookup_indeterminate
+                    - compressed_row_for_instruction_lookup)
+                    .inverse()
+                    * lookup_multiplicity;
             }
         }
 
@@ -214,13 +233,14 @@ impl ProgramTable {
             .into_iter()
             .last()
             .expect("Program Table must not be empty.");
-        last_row[RunningEvaluation.ext_table_index()] = instruction_table_running_evaluation;
+        last_row[InstructionLookupServerLogDerivative.ext_table_index()] =
+            instruction_lookup_log_derivative;
     }
 }
 
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
 pub enum ProgramTableChallengeId {
-    InstructionEvalIndeterminate,
+    InstructionLookupIndeterminate,
     AddressWeight,
     InstructionWeight,
     NextInstructionWeight,
@@ -238,7 +258,7 @@ impl TableChallenges for ProgramTableChallenges {
     #[inline]
     fn get_challenge(&self, id: Self::Id) -> XFieldElement {
         match id {
-            InstructionEvalIndeterminate => self.instruction_eval_indeterminate,
+            InstructionLookupIndeterminate => self.instruction_lookup_indeterminate,
             AddressWeight => self.address_weight,
             InstructionWeight => self.instruction_weight,
             NextInstructionWeight => self.next_instruction_weight,
@@ -250,7 +270,7 @@ impl TableChallenges for ProgramTableChallenges {
 pub struct ProgramTableChallenges {
     /// The weight that combines two consecutive rows in the
     /// permutation/evaluation column of the program table.
-    pub instruction_eval_indeterminate: XFieldElement,
+    pub instruction_lookup_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to program table.)
     pub address_weight: XFieldElement,

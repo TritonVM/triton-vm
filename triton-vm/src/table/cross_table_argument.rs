@@ -1,12 +1,16 @@
+use itertools::Itertools;
+use std::ops::Add;
 use std::ops::Mul;
 
 use ndarray::ArrayView1;
 use num_traits::One;
+use num_traits::Zero;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use CrossTableChallengeId::*;
@@ -22,6 +26,7 @@ use crate::table::table_column::JumpStackExtTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::OpStackExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn;
+use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn;
 
@@ -94,6 +99,43 @@ impl CrossTableArg for EvalArg {
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct LookupArg {}
+
+impl CrossTableArg for LookupArg {
+    fn default_initial() -> XFieldElement {
+        XFieldElement::zero()
+    }
+
+    fn compute_terminal(
+        symbols: &[BFieldElement],
+        initial: XFieldElement,
+        challenge: XFieldElement,
+    ) -> XFieldElement {
+        symbols
+            .iter()
+            .map(|symbol| (challenge - symbol.lift()).inverse())
+            .fold(initial, XFieldElement::add)
+    }
+}
+
+impl LookupArg {
+    pub fn compute_terminal_with_multiplicities(
+        symbols: &[BFieldElement],
+        multiplicities: &[u32],
+        initial: XFieldElement,
+        challenge: XFieldElement,
+    ) -> XFieldElement {
+        symbols
+            .iter()
+            .zip_eq(multiplicities.iter())
+            .map(|(symbol, &multiplicity)| {
+                (challenge - symbol.lift()).inverse() * XFieldElement::from(multiplicity)
+            })
+            .fold(initial, XFieldElement::add)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct GrandCrossTableArg {}
 
 #[derive(Clone, Debug)]
@@ -101,8 +143,7 @@ pub struct CrossTableChallenges {
     pub input_terminal: XFieldElement,
     pub output_terminal: XFieldElement,
 
-    pub program_to_instruction_weight: XFieldElement,
-    pub processor_to_instruction_weight: XFieldElement,
+    pub processor_to_program_weight: XFieldElement,
     pub processor_to_op_stack_weight: XFieldElement,
     pub processor_to_ram_weight: XFieldElement,
     pub processor_to_jump_stack_weight: XFieldElement,
@@ -120,8 +161,7 @@ pub enum CrossTableChallengeId {
     InputTerminal,
     OutputTerminal,
 
-    ProgramToInstructionWeight,
-    ProcessorToInstructionWeight,
+    ProcessorToProgramWeight,
     ProcessorToOpStackWeight,
     ProcessorToRamWeight,
     ProcessorToJumpStackWeight,
@@ -148,8 +188,7 @@ impl TableChallenges for CrossTableChallenges {
         match id {
             InputTerminal => self.input_terminal,
             OutputTerminal => self.output_terminal,
-            ProgramToInstructionWeight => self.program_to_instruction_weight,
-            ProcessorToInstructionWeight => self.processor_to_instruction_weight,
+            ProcessorToProgramWeight => self.processor_to_program_weight,
             ProcessorToOpStackWeight => self.processor_to_op_stack_weight,
             ProcessorToRamWeight => self.processor_to_ram_weight,
             ProcessorToJumpStackWeight => self.processor_to_jump_stack_weight,
@@ -204,6 +243,11 @@ impl Evaluable for GrandCrossTableArg {
             [ProcessorExtTableColumn::OutputTableEvalArg.master_ext_table_index()]
             - challenges.get_challenge(OutputTerminal);
 
+        let instruction_lookup = ext_row
+            [ProcessorExtTableColumn::InstructionLookupClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[ProgramExtTableColumn::InstructionLookupServerLogDerivative
+                .master_ext_table_index()];
         let processor_to_op_stack = ext_row
             [ProcessorExtTableColumn::OpStackTablePermArg.master_ext_table_index()]
             - ext_row[OpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()];
@@ -233,7 +277,9 @@ impl Evaluable for GrandCrossTableArg {
                 * ext_row[JumpStackExtTableColumn::AllClockJumpDifferencesPermArg
                     .master_ext_table_index()];
 
-        let non_linear_sum = challenges.get_challenge(InputToProcessorWeight) * input_to_processor
+        let non_linear_sum = challenges.get_challenge(ProcessorToProgramWeight)
+            * instruction_lookup
+            + challenges.get_challenge(InputToProcessorWeight) * input_to_processor
             + challenges.get_challenge(ProcessorToOutputWeight) * processor_to_output
             + challenges.get_challenge(ProcessorToOpStackWeight) * processor_to_op_stack
             + challenges.get_challenge(ProcessorToRamWeight) * processor_to_ram

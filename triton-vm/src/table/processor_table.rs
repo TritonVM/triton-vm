@@ -37,6 +37,7 @@ use crate::table::constraint_circuit::InputIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::LookupArg;
 use crate::table::cross_table_argument::PermArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -142,7 +143,7 @@ impl ProcessorTable {
 
         let mut input_table_running_evaluation = EvalArg::default_initial();
         let mut output_table_running_evaluation = EvalArg::default_initial();
-        let mut instruction_table_running_product = PermArg::default_initial();
+        let mut instruction_lookup_log_derivative = LookupArg::default_initial();
         let mut op_stack_table_running_product = PermArg::default_initial();
         let mut ram_table_running_product = PermArg::default_initial();
         let mut jump_stack_running_product = PermArg::default_initial();
@@ -176,17 +177,17 @@ impl ProcessorTable {
                     + output_symbol;
             }
 
-            // Instruction table
+            // Program table
             if current_row[IsPadding.base_table_index()].is_zero() {
                 let ip = current_row[IP.base_table_index()];
                 let ci = current_row[CI.base_table_index()];
                 let nia = current_row[NIA.base_table_index()];
-                let compressed_row_for_instruction_table_permutation_argument = ip
-                    * challenges.instruction_table_ip_weight
-                    + ci * challenges.instruction_table_ci_processor_weight
-                    + nia * challenges.instruction_table_nia_weight;
-                instruction_table_running_product *= challenges.instruction_perm_indeterminate
-                    - compressed_row_for_instruction_table_permutation_argument;
+                let compressed_row_for_instruction_lookup = ip * challenges.program_table_ip_weight
+                    + ci * challenges.program_table_ci_processor_weight
+                    + nia * challenges.program_table_nia_weight;
+                instruction_lookup_log_derivative += (challenges.instruction_lookup_indeterminate
+                    - compressed_row_for_instruction_lookup)
+                    .inverse();
             }
 
             // OpStack table
@@ -352,8 +353,8 @@ impl ProcessorTable {
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
             extension_row[OutputTableEvalArg.ext_table_index()] = output_table_running_evaluation;
-            extension_row[InstructionTablePermArg.ext_table_index()] =
-                instruction_table_running_product;
+            extension_row[InstructionLookupClientLogDerivative.ext_table_index()] =
+                instruction_lookup_log_derivative;
             extension_row[OpStackTablePermArg.ext_table_index()] = op_stack_table_running_product;
             extension_row[RamTablePermArg.ext_table_index()] = ram_table_running_product;
             extension_row[JumpStackTablePermArg.ext_table_index()] = jump_stack_running_product;
@@ -542,16 +543,16 @@ pub enum ProcessorTableChallengeId {
     HashDigestEvalIndeterminate,
     SpongeEvalIndeterminate,
 
-    InstructionPermIndeterminate,
+    InstructionLookupIndeterminate,
     OpStackPermIndeterminate,
     RamPermIndeterminate,
     JumpStackPermIndeterminate,
     U32PermIndeterminate,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    InstructionTableIpWeight,
-    InstructionTableCiProcessorWeight,
-    InstructionTableNiaWeight,
+    ProgramTableIpWeight,
+    ProgramTableCiProcessorWeight,
+    ProgramTableNiaWeight,
 
     OpStackTableClkWeight,
     OpStackTableIb1Weight,
@@ -606,16 +607,16 @@ pub struct ProcessorTableChallenges {
     pub hash_digest_eval_indeterminate: XFieldElement,
     pub sponge_eval_indeterminate: XFieldElement,
 
-    pub instruction_perm_indeterminate: XFieldElement,
+    pub instruction_lookup_indeterminate: XFieldElement,
     pub op_stack_perm_indeterminate: XFieldElement,
     pub ram_perm_indeterminate: XFieldElement,
     pub jump_stack_perm_indeterminate: XFieldElement,
     pub u32_table_perm_indeterminate: XFieldElement,
 
     /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub instruction_table_ip_weight: XFieldElement,
-    pub instruction_table_ci_processor_weight: XFieldElement,
-    pub instruction_table_nia_weight: XFieldElement,
+    pub program_table_ip_weight: XFieldElement,
+    pub program_table_ci_processor_weight: XFieldElement,
+    pub program_table_nia_weight: XFieldElement,
 
     pub op_stack_table_clk_weight: XFieldElement,
     pub op_stack_table_ib1_weight: XFieldElement,
@@ -665,14 +666,14 @@ impl TableChallenges for ProcessorTableChallenges {
             HashInputEvalIndeterminate => self.hash_input_eval_indeterminate,
             HashDigestEvalIndeterminate => self.hash_digest_eval_indeterminate,
             SpongeEvalIndeterminate => self.sponge_eval_indeterminate,
-            InstructionPermIndeterminate => self.instruction_perm_indeterminate,
+            InstructionLookupIndeterminate => self.instruction_lookup_indeterminate,
             OpStackPermIndeterminate => self.op_stack_perm_indeterminate,
             RamPermIndeterminate => self.ram_perm_indeterminate,
             JumpStackPermIndeterminate => self.jump_stack_perm_indeterminate,
             U32PermIndeterminate => self.u32_table_perm_indeterminate,
-            InstructionTableIpWeight => self.instruction_table_ip_weight,
-            InstructionTableCiProcessorWeight => self.instruction_table_ci_processor_weight,
-            InstructionTableNiaWeight => self.instruction_table_nia_weight,
+            ProgramTableIpWeight => self.program_table_ip_weight,
+            ProgramTableCiProcessorWeight => self.program_table_ci_processor_weight,
+            ProgramTableNiaWeight => self.program_table_nia_weight,
             OpStackTableClkWeight => self.op_stack_table_clk_weight,
             OpStackTableIb1Weight => self.op_stack_table_ib1_weight,
             OpStackTableOspWeight => self.op_stack_table_osp_weight,
@@ -792,16 +793,17 @@ impl ExtProcessorTable {
         let running_evaluation_for_standard_input_is_initialized_correctly =
             factory.running_evaluation_standard_input() - constant_x(EvalArg::default_initial());
 
-        // instruction table
-        let instruction_indeterminate = challenge(InstructionPermIndeterminate);
-        let instruction_ci_weight = challenge(InstructionTableCiProcessorWeight);
-        let instruction_nia_weight = challenge(InstructionTableNiaWeight);
-        let compressed_row_for_instruction_table =
+        // program table
+        let instruction_lookup_indeterminate = challenge(InstructionLookupIndeterminate);
+        let instruction_ci_weight = challenge(ProgramTableCiProcessorWeight);
+        let instruction_nia_weight = challenge(ProgramTableNiaWeight);
+        let compressed_row_for_instruction_lookup =
             instruction_ci_weight * factory.ci() + instruction_nia_weight * factory.nia();
-        let running_product_for_instruction_table_is_initialized_correctly = factory
-            .running_product_instruction_table()
-            - constant_x(PermArg::default_initial())
-                * (instruction_indeterminate - compressed_row_for_instruction_table);
+        let instruction_lookup_log_derivative_is_initialized_correctly = (factory
+            .instruction_lookup_log_derivative()
+            - constant_x(LookupArg::default_initial()))
+            * (instruction_lookup_indeterminate - compressed_row_for_instruction_lookup)
+            - factory.one();
 
         // standard output
         let running_evaluation_for_standard_output_is_initialized_correctly =
@@ -898,7 +900,7 @@ impl ExtProcessorTable {
             reu_starts_correctly,
             rpm_starts_correctly,
             running_evaluation_for_standard_input_is_initialized_correctly,
-            running_product_for_instruction_table_is_initialized_correctly,
+            instruction_lookup_log_derivative_is_initialized_correctly,
             running_evaluation_for_standard_output_is_initialized_correctly,
             running_product_for_op_stack_table_is_initialized_correctly,
             running_product_for_ram_table_is_initialized_correctly,
@@ -1094,7 +1096,7 @@ impl ExtProcessorTable {
         transition_constraints
             .push(factory.running_evaluation_for_standard_input_updates_correctly());
         transition_constraints
-            .push(factory.running_product_for_instruction_table_updates_correctly());
+            .push(factory.log_derivative_for_instruction_lookup_updates_correctly());
         transition_constraints
             .push(factory.running_evaluation_for_standard_output_updates_correctly());
         transition_constraints.push(factory.running_product_for_op_stack_table_updates_correctly());
@@ -1627,13 +1629,14 @@ impl SingleRowConstraints {
     > {
         self.ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_product_instruction_table(
+    pub fn instruction_lookup_log_derivative(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.ext_row_variables[InstructionTablePermArg.master_ext_table_index()].clone()
+        self.ext_row_variables[InstructionLookupClientLogDerivative.master_ext_table_index()]
+            .clone()
     }
     pub fn running_product_op_stack_table(
         &self,
@@ -3289,13 +3292,15 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_product_instruction_table(
+    pub fn instruction_lookup_log_derivative(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.current_ext_row_variables[InstructionTablePermArg.master_ext_table_index()].clone()
+        self.current_ext_row_variables
+            [InstructionLookupClientLogDerivative.master_ext_table_index()]
+        .clone()
     }
     pub fn running_product_op_stack_table(
         &self,
@@ -3754,13 +3759,14 @@ impl DualRowConstraints {
     > {
         self.next_ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_product_instruction_table_next(
+    pub fn instruction_lookup_log_derivative_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.next_ext_row_variables[InstructionTablePermArg.master_ext_table_index()].clone()
+        self.next_ext_row_variables[InstructionLookupClientLogDerivative.master_ext_table_index()]
+            .clone()
     }
     pub fn running_product_op_stack_table_next(
         &self,
@@ -4137,27 +4143,31 @@ impl DualRowConstraints {
             + read_io_deselector * running_evaluation_updates
     }
 
-    pub fn running_product_for_instruction_table_updates_correctly(
+    pub fn log_derivative_for_instruction_lookup_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        let indeterminate = self.circuit_builder.challenge(InstructionPermIndeterminate);
-        let ip_weight = self.circuit_builder.challenge(InstructionTableIpWeight);
+        let indeterminate = self
+            .circuit_builder
+            .challenge(InstructionLookupIndeterminate);
+        let ip_weight = self.circuit_builder.challenge(ProgramTableIpWeight);
         let ci_weight = self
             .circuit_builder
-            .challenge(InstructionTableCiProcessorWeight);
-        let nia_weight = self.circuit_builder.challenge(InstructionTableNiaWeight);
+            .challenge(ProgramTableCiProcessorWeight);
+        let nia_weight = self.circuit_builder.challenge(ProgramTableNiaWeight);
         let compressed_row =
             ip_weight * self.ip_next() + ci_weight * self.ci_next() + nia_weight * self.nia_next();
-        let running_product_updates = self.running_product_instruction_table_next()
-            - self.running_product_instruction_table() * (indeterminate - compressed_row);
-        let running_product_remains = self.running_product_instruction_table_next()
-            - self.running_product_instruction_table();
+        let log_derivative_updates = (self.instruction_lookup_log_derivative_next()
+            - self.instruction_lookup_log_derivative())
+            * (indeterminate - compressed_row)
+            - self.one();
+        let log_derivative_remains = self.instruction_lookup_log_derivative_next()
+            - self.instruction_lookup_log_derivative();
 
-        (self.one() - self.is_padding_next()) * running_product_updates
-            + self.is_padding_next() * running_product_remains
+        (self.one() - self.is_padding_next()) * log_derivative_updates
+            + self.is_padding_next() * log_derivative_remains
     }
 
     pub fn running_evaluation_for_standard_output_updates_correctly(
@@ -4808,7 +4818,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
         )?;
         row(f, "input_table_ea", InputTableEvalArg)?;
         row(f, "output_table_ea", OutputTableEvalArg)?;
-        row(f, "instr_table_pa", InstructionTablePermArg)?;
+        row(f, "instr_lookup_ld", InstructionLookupClientLogDerivative)?;
         row(f, "opstack_table_pa", OpStackTablePermArg)?;
         row(f, "ram_table_pa", RamTablePermArg)?;
         row(f, "jumpstack_table_pa", JumpStackTablePermArg)?;

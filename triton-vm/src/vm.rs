@@ -41,6 +41,8 @@ pub fn simulate(
 ) {
     let mut aet = AlgebraicExecutionTrace::new(program.clone());
     let mut state = VMState::new(program);
+    assert_eq!(program.len(), aet.instruction_multiplicities.len());
+
     // record initial state
     aet.processor_trace
         .push_row(state.to_processor_row().view())
@@ -48,6 +50,11 @@ pub fn simulate(
 
     let mut stdout = vec![];
     while !state.is_complete() {
+        // If the instruction pointer is out of bounds, the corresponding error handling happens
+        // in the state transition function `step_mut`.
+        if state.instruction_pointer < aet.instruction_multiplicities.len() {
+            aet.instruction_multiplicities[state.instruction_pointer] += 1;
+        }
         let vm_output = match state.step_mut(&mut stdin, &mut secret_in) {
             Err(err) => return (aet, stdout, Some(err)),
             Ok(vm_output) => vm_output,
@@ -72,6 +79,10 @@ pub fn simulate(
             .expect("shapes must be identical");
     }
 
+    // also record the execution of instruction `halt`
+    if state.instruction_pointer < aet.instruction_multiplicities.len() {
+        aet.instruction_multiplicities[state.instruction_pointer] += 1;
+    }
     (aet, stdout, None)
 }
 
@@ -123,6 +134,13 @@ pub struct AlgebraicExecutionTrace {
     /// The program that was executed in order to generate the trace.
     pub program: Program,
 
+    /// The number of times each instruction has been executed.
+    ///
+    /// Each instruction in the `program` has one associated entry in `instruction_multiplicities`,
+    /// counting the number of times this specific instruction at that location in the program
+    /// memory has been executed.
+    pub instruction_multiplicities: Vec<u32>,
+
     /// Records the state of the processor after each instruction.
     pub processor_trace: Array2<BFieldElement>,
 
@@ -141,8 +159,10 @@ pub struct AlgebraicExecutionTrace {
 
 impl AlgebraicExecutionTrace {
     pub fn new(program: Program) -> Self {
+        let instruction_multiplicities = vec![0_u32; program.len()];
         Self {
             program,
+            instruction_multiplicities,
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
