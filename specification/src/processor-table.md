@@ -11,7 +11,7 @@ The Processor Table has 15 extension columns, corresponding to Evaluation Argume
 Namely:
 1. `RunningEvaluationStandardInput` for the Evaluation Argument with the input symbols.
 1. `RunningEvaluationStandardOutput` for the Evaluation Argument with the output symbols.
-1. `RunningProductInstructionTable` for the Permutation Argument with the [Instruction Table](instruction-table.md).
+1. `InstructionLookupClientLogDerivative` for the Lookup Argument with the [Program Table](program-table.md)
 1. `RunningProductOpStackTable` for the Permutation Argument with the [OpStack Table](operational-stack-table.md).
 1. `RunningProductRamTable` for the Permutation Argument with the [RAM Table](random-access-memory-table.md).
 1. `RunningProductJumpStackTable` for the Permutation Argument with the [Jump Stack Table](jump-stack-table.md).
@@ -94,7 +94,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. The RAM value `ramv` is 0.
 1. `RunningEvaluationStandardInput` is 1.
 1. `RunningEvaluationStandardOutput` is 1.
-1. `RunningProductInstructionTable` has absorbed the first row with respect to challenges 🍓, 🍒, and 🥭 and indeterminate 🛁.
+1. `InstructionLookupClientLogDerivative` has absorbed the first row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥.
 1. `RunningProductOpStackTable` has absorbed the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 1. `RunningProductRamTable` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. `RunningProductJumpStackTable` has absorbed the first row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
@@ -138,7 +138,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. `ramv`
 1. `RunningEvaluationStandardInput - 1`
 1. `RunningEvaluationStandardOutput - 1`
-1. `RunningProductInstructionTable - (🛁 - 🍓·ip - 🍒·ci - 🥭·nia)`
+1. `InstructionLookupClientLogDerivative · (🪥 - 🥝·ip - 🥥·ci - 🫐·nia) - 1`
 1. `RunningProductOpStackTable - (🪤 - 🍋·clk - 🍊·ib1 - 🍉·osp - 🫒·osv)`
 1. `RunningProductRamTable - (🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction)`
 1. `RunningProductJumpStackTable - (🧴 - 🍇·clk - 🍅·ci - 🍌·jsp - 🍏·jso - 🍐·jsd)`
@@ -175,7 +175,7 @@ The following constraints apply to every pair of rows.
 1. The current instruction `ci` in the current row is copied into `previous_instruction` in the next row or the next row is a padding row.
 1. The running evaluation for standard input absorbs `st0` of the next row with respect to 🛏 if the current instruction is `read_io`, and remains unchanged otherwise.
 1. The running evaluation for standard output absorbs `st0` of the next row with respect to 🧯 if the current instruction in the next row is `write_io`, and remains unchanged otherwise.
-1. If the next row is not a padding row, the running product for the Instruction Table absorbs the next row with respect to challenges 🍓, 🍒, and 🥭 and indeterminate 🛁. Otherwise, it remains unchanged.
+1. If the next row is not a padding row, the logarithmic derivative for the Program Table absorbs the next row with respect to challenges 🥝, 🥥, and 🫐 and indeterminate 🪥. Otherwise, it remains unchanged.
 1. The running product for the OpStack Table absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
 1. The running product for the RAM Table absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
 1. The running product for the JumpStack Table absorbs the next row with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
@@ -204,7 +204,7 @@ The following constraints apply to every pair of rows.
     `+ read_io_deselector·(RunningEvaluationStandardInput' - 🛏·RunningEvaluationStandardInput - st0')`
 1. `(ci' - opcode(write_io))·(RunningEvaluationStandardOutput' - RunningEvaluationStandardOutput)`<br />
     `+ write_io_deselector'·(RunningEvaluationStandardOutput' - 🧯·RunningEvaluationStandardOutput - st0')`
-1. `(1 - IsPadding')·(RunningProductInstructionTable' - RunningProductInstructionTable(🛁 - 🍓·ip' - 🍒·ci' - 🥭·nia'))`<br />
+1. `(1 - IsPadding') · ((InstructionLookupClientLogDerivative' - InstructionLookupClientLogDerivative) · (🛁 - 🥝·ip' - 🥥·ci' - 🫐·nia') - 1)`<br />
     `+ IsPadding'·(RunningProductInstructionTable' - RunningProductInstructionTable)`
 1. `RunningProductOpStackTable' - RunningProductOpStackTable·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒·osv')`
 1. `RunningProductRamTable' - RunningProductRamTable·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
