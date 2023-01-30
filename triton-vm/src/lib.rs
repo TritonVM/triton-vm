@@ -8,6 +8,5 @@ pub mod proof_item;
 pub mod proof_stream;
 pub mod shared_tests;
 pub mod stark;
-pub mod state;
 pub mod table;
 pub mod vm;
