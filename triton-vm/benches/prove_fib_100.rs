@@ -36,7 +36,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
     }
 
     let instructions = program.to_bwords();
-    let padded_height = MasterBaseTable::padded_height(&aet, &instructions);
+    let padded_height = MasterBaseTable::padded_height(&aet);
     let claim = Claim {
         input,
         program: instructions,

@@ -13,6 +13,8 @@ use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use triton_opcodes::instruction::Instruction;
 use triton_opcodes::program::Program;
 
+use crate::error::vm_fail;
+use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::state::VMOutput;
 use crate::state::VMState;
 use crate::table::hash_table;
@@ -39,20 +41,27 @@ pub fn simulate(
     Vec<BFieldElement>,
     Option<anyhow::Error>,
 ) {
-    let mut aet = AlgebraicExecutionTrace::default();
+    let mut aet = AlgebraicExecutionTrace::new(program.clone());
     let mut state = VMState::new(program);
-    // record initial state
-    aet.processor_trace
-        .push_row(state.to_processor_row().view())
-        .expect("shapes must be identical");
+    assert_eq!(program.len(), aet.instruction_multiplicities.len());
 
     let mut stdout = vec![];
-    while !state.is_complete() {
+    while !state.halting {
+        aet.processor_trace
+            .push_row(state.to_processor_row().view())
+            .expect("shapes must be identical");
+
+        if state.instruction_pointer < aet.instruction_multiplicities.len() {
+            aet.instruction_multiplicities[state.instruction_pointer] += 1;
+        } else {
+            let failure_reason = vm_fail(InstructionPointerOverflow(state.instruction_pointer));
+            return (aet, stdout, Some(failure_reason));
+        }
+
         let vm_output = match state.step_mut(&mut stdin, &mut secret_in) {
             Err(err) => return (aet, stdout, Some(err)),
             Ok(vm_output) => vm_output,
         };
-
         match vm_output {
             Some(VMOutput::XlixTrace(Instruction::Hash, xlix_trace)) => {
                 aet.append_hash_trace(*xlix_trace)
@@ -66,10 +75,6 @@ pub fn simulate(
             Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
             None => (),
         }
-        // Record next, to be executed state.
-        aet.processor_trace
-            .push_row(state.to_processor_row().view())
-            .expect("shapes must be identical");
     }
 
     (aet, stdout, None)
@@ -94,25 +99,22 @@ pub fn run(
     mut stdin: Vec<BFieldElement>,
     mut secret_in: Vec<BFieldElement>,
 ) -> (Vec<VMState>, Vec<BFieldElement>, Option<anyhow::Error>) {
-    let mut states = vec![VMState::new(program)];
-    let mut current_state = states.last().unwrap();
-
+    let mut states = vec![];
     let mut stdout = vec![];
-    while !current_state.is_complete() {
+    let mut current_state = VMState::new(program);
+
+    while !current_state.halting {
+        states.push(current_state.clone());
         let step = current_state.step(&mut stdin, &mut secret_in);
         let (next_state, vm_output) = match step {
-            Err(err) => {
-                return (states, stdout, Some(err));
-            }
+            Err(err) => return (states, stdout, Some(err)),
             Ok((next_state, vm_output)) => (next_state, vm_output),
         };
 
         if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
             stdout.push(written_word);
         }
-
-        states.push(next_state);
-        current_state = states.last().unwrap();
+        current_state = next_state;
     }
 
     (states, stdout, None)
@@ -120,6 +122,16 @@ pub fn run(
 
 #[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
+    /// The program that was executed in order to generate the trace.
+    pub program: Program,
+
+    /// The number of times each instruction has been executed.
+    ///
+    /// Each instruction in the `program` has one associated entry in `instruction_multiplicities`,
+    /// counting the number of times this specific instruction at that location in the program
+    /// memory has been executed.
+    pub instruction_multiplicities: Vec<u32>,
+
     /// Records the state of the processor after each instruction.
     pub processor_trace: Array2<BFieldElement>,
 
@@ -136,18 +148,19 @@ pub struct AlgebraicExecutionTrace {
     pub u32_entries: Vec<(Instruction, BFieldElement, BFieldElement)>,
 }
 
-impl Default for AlgebraicExecutionTrace {
-    fn default() -> Self {
+impl AlgebraicExecutionTrace {
+    pub fn new(program: Program) -> Self {
+        let instruction_multiplicities = vec![0_u32; program.len()];
         Self {
+            program,
+            instruction_multiplicities,
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             u32_entries: vec![],
         }
     }
-}
 
-impl AlgebraicExecutionTrace {
     pub fn append_hash_trace(&mut self, xlix_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
         let mut hash_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
         hash_trace_addendum

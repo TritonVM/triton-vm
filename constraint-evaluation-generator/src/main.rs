@@ -10,7 +10,6 @@ use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::hash_table::ExtHashTable;
-use triton_vm::table::instruction_table::ExtInstructionTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
 use triton_vm::table::op_stack_table::ExtOpStackTable;
 use triton_vm::table::processor_table::ExtProcessorTable;
@@ -29,17 +28,6 @@ fn main() {
         &mut ExtProgramTable::ext_consistency_constraints_as_circuits(),
         &mut ExtProgramTable::ext_transition_constraints_as_circuits(),
         &mut ExtProgramTable::ext_terminal_constraints_as_circuits(),
-    );
-    write(&table_name_snake, source_code);
-
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["instruction"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut ExtInstructionTable::ext_initial_constraints_as_circuits(),
-        &mut ExtInstructionTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtInstructionTable::ext_transition_constraints_as_circuits(),
-        &mut ExtInstructionTable::ext_terminal_constraints_as_circuits(),
     );
     write(&table_name_snake, source_code);
 

@@ -43,27 +43,21 @@ pub const HV_REGISTER_COUNT: usize = 4;
 
 #[derive(Debug, Default, Clone)]
 pub struct VMState<'pgm> {
-    ///
-    /// Triton VM's four kinds of memory:
-    ///
-    /// 1. **Program memory**, from which the VM reads instructions
+    // Triton VM's memory
+    /// **Program memory**, from which the VM reads instructions
     pub program: &'pgm [Instruction],
 
-    /// 2. **Random-access memory**, to which the VM can read and write field elements
+    /// **Random-access memory**, to which the VM can read and write field elements
     pub ram: HashMap<BFieldElement, BFieldElement>,
 
-    /// 3. **Op-stack memory**, which stores the part of the operational stack
-    ///    that is not represented explicitly by the operational stack registers
-    ///
-    ///    *(An implementation detail: We keep the entire stack in one `Vec<>`.)*
+    /// **Op-stack memory**, which stores the part of the operational stack that is not
+    /// represented explicitly by the operational stack registers
     pub op_stack: OpStack,
 
-    /// 4. Jump-stack memory, which stores the entire jump stack
+    /// **Jump-stack memory**, which stores the entire jump stack
     pub jump_stack: Vec<(BFieldElement, BFieldElement)>,
 
-    ///
-    /// Registers
-    ///
+    // Registers
     /// Number of cycles the program has been running for
     pub cycle_count: u32,
 
@@ -82,6 +76,10 @@ pub struct VMState<'pgm> {
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside of the VM.
     pub sponge_state: [BFieldElement; STATE_SIZE],
+
+    // Bookkeeping
+    /// Indicates whether the terminating instruction `halt` has been executed.
+    pub halting: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -101,7 +99,6 @@ pub enum VMOutput {
     U32TableEntries(Vec<(Instruction, BFieldElement, BFieldElement)>),
 }
 
-#[allow(clippy::needless_range_loop)]
 impl<'pgm> VMState<'pgm> {
     /// Create initial `VMState` for a given `program`
     ///
@@ -109,18 +106,9 @@ impl<'pgm> VMState<'pgm> {
     /// inner helper functions refer to it, a read-only reference is kept in
     /// the struct.
     pub fn new(program: &'pgm Program) -> Self {
-        let program = &program.instructions;
         Self {
-            program,
+            program: &program.instructions,
             ..VMState::default()
-        }
-    }
-
-    /// Determine if this is a final state.
-    pub fn is_complete(&self) -> bool {
-        match self.current_instruction() {
-            Ok(Instruction::Halt) => true,
-            _ => self.program.len() <= self.instruction_pointer,
         }
     }
 
@@ -203,7 +191,6 @@ impl<'pgm> VMState<'pgm> {
         stdin: &mut Vec<BFieldElement>,
         secret_in: &mut Vec<BFieldElement>,
     ) -> Result<Option<VMOutput>> {
-        // All instructions increase the cycle count
         self.cycle_count += 1;
         let mut vm_output = None;
         self.previous_instruction = match self.current_instruction() {
@@ -285,6 +272,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Halt => {
+                self.halting = true;
                 self.instruction_pointer += 1;
             }
 

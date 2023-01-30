@@ -8,7 +8,6 @@
 - [Arithmetization](arithmetization.md)
     + [Permutation and Evaluation Arguments]()
     + [Program Table](program-table.md)
-    + [Instruction Table](instruction-table.md)
     + [Processor Table](processor-table.md)
         * [Instruction Groups](instruction-groups.md)
         * [Instruction-Specific Transition Constraints](instruction-specific-transition-constraints.md)

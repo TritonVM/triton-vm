@@ -13,7 +13,6 @@ use crate::table::cross_table_argument::CrossTableChallenges;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::NUM_CROSS_TABLE_WEIGHTS;
 use crate::table::hash_table::HashTableChallenges;
-use crate::table::instruction_table::InstructionTableChallenges;
 use crate::table::jump_stack_table::JumpStackTableChallenges;
 use crate::table::op_stack_table::OpStackTableChallenges;
 use crate::table::processor_table::IOChallenges;
@@ -48,7 +47,6 @@ pub trait TableChallenges: Clone + Debug {
 #[derive(Debug, Clone)]
 pub struct AllChallenges {
     pub program_table_challenges: ProgramTableChallenges,
-    pub instruction_table_challenges: InstructionTableChallenges,
     pub input_challenges: IOChallenges,
     pub output_challenges: IOChallenges,
     pub processor_table_challenges: ProcessorTableChallenges,
@@ -61,7 +59,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 52 + NUM_CROSS_TABLE_WEIGHTS;
+    pub const TOTAL_CHALLENGES: usize = 47 + NUM_CROSS_TABLE_WEIGHTS;
 
     pub fn create_challenges(
         mut weights: Vec<XFieldElement>,
@@ -74,14 +72,14 @@ impl AllChallenges {
             hash_input_eval_indeterminate: weights.pop().unwrap(),
             hash_digest_eval_indeterminate: weights.pop().unwrap(),
             sponge_eval_indeterminate: weights.pop().unwrap(),
-            instruction_perm_indeterminate: weights.pop().unwrap(),
+            instruction_lookup_indeterminate: weights.pop().unwrap(),
             op_stack_perm_indeterminate: weights.pop().unwrap(),
             ram_perm_indeterminate: weights.pop().unwrap(),
             jump_stack_perm_indeterminate: weights.pop().unwrap(),
 
-            instruction_table_ip_weight: weights.pop().unwrap(),
-            instruction_table_ci_processor_weight: weights.pop().unwrap(),
-            instruction_table_nia_weight: weights.pop().unwrap(),
+            program_table_ip_weight: weights.pop().unwrap(),
+            program_table_ci_processor_weight: weights.pop().unwrap(),
+            program_table_nia_weight: weights.pop().unwrap(),
 
             op_stack_table_clk_weight: weights.pop().unwrap(),
             op_stack_table_ib1_weight: weights.pop().unwrap(),
@@ -123,22 +121,11 @@ impl AllChallenges {
         };
 
         let program_table_challenges = ProgramTableChallenges {
-            instruction_eval_indeterminate: weights.pop().unwrap(),
-            address_weight: weights.pop().unwrap(),
-            instruction_weight: weights.pop().unwrap(),
-            next_instruction_weight: weights.pop().unwrap(),
-        };
-
-        let instruction_table_challenges = InstructionTableChallenges {
-            processor_perm_indeterminate: processor_table_challenges.instruction_perm_indeterminate,
-            ip_processor_weight: processor_table_challenges.instruction_table_ip_weight,
-            ci_processor_weight: processor_table_challenges.instruction_table_ci_processor_weight,
-            nia_processor_weight: processor_table_challenges.instruction_table_nia_weight,
-
-            program_eval_indeterminate: program_table_challenges.instruction_eval_indeterminate,
-            address_weight: program_table_challenges.address_weight,
-            instruction_weight: program_table_challenges.instruction_weight,
-            next_instruction_weight: program_table_challenges.next_instruction_weight,
+            instruction_lookup_indeterminate: processor_table_challenges
+                .instruction_lookup_indeterminate,
+            address_weight: processor_table_challenges.program_table_ip_weight,
+            instruction_weight: processor_table_challenges.program_table_ci_processor_weight,
+            next_instruction_weight: processor_table_challenges.program_table_nia_weight,
         };
 
         let input_challenges = IOChallenges {
@@ -231,8 +218,7 @@ impl AllChallenges {
         let cross_table_challenges = CrossTableChallenges {
             input_terminal,
             output_terminal,
-            program_to_instruction_weight: weights.pop().unwrap(),
-            processor_to_instruction_weight: weights.pop().unwrap(),
+            processor_to_program_weight: weights.pop().unwrap(),
             processor_to_op_stack_weight: weights.pop().unwrap(),
             processor_to_ram_weight: weights.pop().unwrap(),
             processor_to_jump_stack_weight: weights.pop().unwrap(),
@@ -249,7 +235,6 @@ impl AllChallenges {
 
         AllChallenges {
             program_table_challenges,
-            instruction_table_challenges,
             input_challenges,
             output_challenges,
             processor_table_challenges,

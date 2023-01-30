@@ -97,7 +97,9 @@ impl Program {
             .collect()
     }
 
-    pub fn len(&self) -> usize {
+    /// The total length of the program as `BFieldElement`s. Double-word instructions contribute
+    /// two `BFieldElement`s.
+    pub fn len_bwords(&self) -> usize {
         self.instructions.len()
     }
 
