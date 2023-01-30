@@ -308,7 +308,7 @@ impl MasterBaseTable {
         let max_height = [
             // The Program Table's side of the instruction lookup argument requires at least one
             // padding row to account for the processor's “next instruction or argument.”
-            Self::program_length(aet) + 1,
+            Self::program_table_length(aet) + 1,
             Self::processor_table_length(aet),
             Self::hash_table_length(aet),
             Self::u32_table_length(aet),
@@ -320,7 +320,7 @@ impl MasterBaseTable {
         roundup_npo2(max_height as u64) as usize
     }
 
-    pub fn program_length(aet: &AlgebraicExecutionTrace) -> usize {
+    pub fn program_table_length(aet: &AlgebraicExecutionTrace) -> usize {
         aet.program.to_bwords().len()
     }
 
@@ -360,7 +360,7 @@ impl MasterBaseTable {
         let mut master_base_table = Self {
             padded_height,
             num_trace_randomizers,
-            program_len: Self::program_length(&aet),
+            program_len: Self::program_table_length(&aet),
             main_execution_len: Self::processor_table_length(&aet),
             hash_coprocessor_execution_len: Self::hash_table_length(&aet),
             u32_coprocesor_execution_len: Self::u32_table_length(&aet),
