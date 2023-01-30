@@ -76,6 +76,10 @@ pub struct VMState<'pgm> {
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside of the VM.
     pub sponge_state: [BFieldElement; STATE_SIZE],
+
+    // Bookkeeping
+    /// Indicates whether the terminating instruction `halt` has been executed.
+    pub halting: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -105,14 +109,6 @@ impl<'pgm> VMState<'pgm> {
         Self {
             program: &program.instructions,
             ..VMState::default()
-        }
-    }
-
-    /// Determine if this is a final state.
-    pub fn is_complete(&self) -> bool {
-        match self.current_instruction() {
-            Ok(Instruction::Halt) => true,
-            _ => self.program.len() <= self.instruction_pointer,
         }
     }
 
@@ -276,6 +272,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Halt => {
+                self.halting = true;
                 self.instruction_pointer += 1;
             }
 

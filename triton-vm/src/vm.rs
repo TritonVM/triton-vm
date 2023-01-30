@@ -13,6 +13,8 @@ use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use triton_opcodes::instruction::Instruction;
 use triton_opcodes::program::Program;
 
+use crate::error::vm_fail;
+use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::state::VMOutput;
 use crate::state::VMState;
 use crate::table::hash_table;
@@ -43,23 +45,23 @@ pub fn simulate(
     let mut state = VMState::new(program);
     assert_eq!(program.len(), aet.instruction_multiplicities.len());
 
-    // record initial state
-    aet.processor_trace
-        .push_row(state.to_processor_row().view())
-        .expect("shapes must be identical");
-
     let mut stdout = vec![];
-    while !state.is_complete() {
-        // If the instruction pointer is out of bounds, the corresponding error handling happens
-        // in the state transition function `step_mut`.
+    while !state.halting {
+        aet.processor_trace
+            .push_row(state.to_processor_row().view())
+            .expect("shapes must be identical");
+
         if state.instruction_pointer < aet.instruction_multiplicities.len() {
             aet.instruction_multiplicities[state.instruction_pointer] += 1;
+        } else {
+            let failure_reason = vm_fail(InstructionPointerOverflow(state.instruction_pointer));
+            return (aet, stdout, Some(failure_reason));
         }
+
         let vm_output = match state.step_mut(&mut stdin, &mut secret_in) {
             Err(err) => return (aet, stdout, Some(err)),
             Ok(vm_output) => vm_output,
         };
-
         match vm_output {
             Some(VMOutput::XlixTrace(Instruction::Hash, xlix_trace)) => {
                 aet.append_hash_trace(*xlix_trace)
@@ -73,16 +75,8 @@ pub fn simulate(
             Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
             None => (),
         }
-        // Record next, to be executed state.
-        aet.processor_trace
-            .push_row(state.to_processor_row().view())
-            .expect("shapes must be identical");
     }
 
-    // also record the execution of instruction `halt`
-    if state.instruction_pointer < aet.instruction_multiplicities.len() {
-        aet.instruction_multiplicities[state.instruction_pointer] += 1;
-    }
     (aet, stdout, None)
 }
 
@@ -105,25 +99,22 @@ pub fn run(
     mut stdin: Vec<BFieldElement>,
     mut secret_in: Vec<BFieldElement>,
 ) -> (Vec<VMState>, Vec<BFieldElement>, Option<anyhow::Error>) {
-    let mut states = vec![VMState::new(program)];
-    let mut current_state = states.last().unwrap();
-
+    let mut states = vec![];
     let mut stdout = vec![];
-    while !current_state.is_complete() {
+    let mut current_state = VMState::new(program);
+
+    while !current_state.halting {
+        states.push(current_state.clone());
         let step = current_state.step(&mut stdin, &mut secret_in);
         let (next_state, vm_output) = match step {
-            Err(err) => {
-                return (states, stdout, Some(err));
-            }
+            Err(err) => return (states, stdout, Some(err)),
             Ok((next_state, vm_output)) => (next_state, vm_output),
         };
 
         if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
             stdout.push(written_word);
         }
-
-        states.push(next_state);
-        current_state = states.last().unwrap();
+        current_state = next_state;
     }
 
     (states, stdout, None)
