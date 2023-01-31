@@ -55,27 +55,21 @@ pub const HV_REGISTER_COUNT: usize = 4;
 
 #[derive(Debug, Default, Clone)]
 pub struct VMState<'pgm> {
-    ///
-    /// Triton VM's four kinds of memory:
-    ///
-    /// 1. **Program memory**, from which the VM reads instructions
+    // Memory
+    /// The **program memory** stores the instructions (and their arguments) of the program
+    /// currently being executed by Triton VM. It is read-only.
     pub program: &'pgm [Instruction],
 
-    /// 2. **Random-access memory**, to which the VM can read and write field elements
+    /// The read-write **random-access memory** allows Triton VM to store arbitrary data.
     pub ram: HashMap<BFieldElement, BFieldElement>,
 
-    /// 3. **Op-stack memory**, which stores the part of the operational stack
-    ///    that is not represented explicitly by the operational stack registers
-    ///
-    ///    *(An implementation detail: We keep the entire stack in one `Vec<>`.)*
+    /// The **Op-stack memory** stores Triton VM's entire operational stack.
     pub op_stack: OpStack,
 
-    /// 4. Jump-stack memory, which stores the entire jump stack
+    /// The **Jump-stack memory** stores the entire jump stack.
     pub jump_stack: Vec<(BFieldElement, BFieldElement)>,
 
-    ///
-    /// Registers
-    ///
+    // Registers
     /// Number of cycles the program has been running for
     pub cycle_count: u32,
 
@@ -117,7 +111,6 @@ pub enum VMOutput {
     U32TableEntries(Vec<(Instruction, BFieldElement, BFieldElement)>),
 }
 
-#[allow(clippy::needless_range_loop)]
 impl<'pgm> VMState<'pgm> {
     /// Create initial `VMState` for a given `program`
     ///
@@ -1964,9 +1957,6 @@ pub mod triton_vm_tests {
 
         assert_eq!(expected_stdout, actual_stdout);
     }
-
-    // Property: All instructions increase the cycle count by 1.
-    // Property: Most instructions increase the instruction pointer by 1.
 
     #[test]
     #[allow(clippy::assertions_on_constants)]
