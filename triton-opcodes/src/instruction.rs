@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::Display;
 use std::vec;
 
@@ -14,7 +13,6 @@ use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use AnInstruction::*;
-use TokenError::*;
 
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
@@ -24,42 +22,15 @@ use crate::ord_n::Ord8;
 pub type Instruction = AnInstruction<BFieldElement>;
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
-#[derive(Debug, Clone, Eq, Hash)]
-pub enum LabelledInstruction<'a> {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum LabelledInstruction {
     /// Instructions belong to the ISA:
     ///
     /// https://triton-vm.org/spec/isa.html
-    Instruction(AnInstruction<String>, &'a str),
+    Instruction(AnInstruction<String>),
 
     /// Labels look like "`<name>:`" and are translated into absolute addresses.
-    Label(String, &'a str),
-}
-
-// FIXME: This can be replaced with `#[derive(PartialEq)]` once old parser is dead.
-impl<'a> PartialEq for LabelledInstruction<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Instruction(instr1, _), Self::Instruction(instr2, _)) => instr1 == instr2,
-            (Self::Label(label1, _), Self::Label(label2, _)) => label1 == label2,
-            _ => false,
-        }
-    }
-}
-
-impl<'a> Display for LabelledInstruction<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LabelledInstruction::Instruction(instr, _) => write!(f, "{instr}"),
-            LabelledInstruction::Label(label_name, _) => write!(f, "{label_name}:"),
-        }
-    }
-}
-
-pub fn token_str<'a>(instruction: &LabelledInstruction<'a>) -> &'a str {
-    match instruction {
-        LabelledInstruction::Instruction(_, token_str) => token_str,
-        LabelledInstruction::Label(_, token_str) => token_str,
-    }
+    Label(String),
 }
 
 #[derive(Debug, DisplayMacro, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
@@ -399,23 +370,6 @@ fn ord16_to_bfe(n: &Ord16) -> BFieldElement {
     n.into()
 }
 
-#[derive(Debug)]
-pub enum TokenError {
-    UnexpectedEndOfStream,
-    UnknownInstruction(String),
-}
-
-impl Display for TokenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            UnknownInstruction(s) => write!(f, "UnknownInstruction({s})"),
-            UnexpectedEndOfStream => write!(f, "UnexpectedEndOfStream"),
-        }
-    }
-}
-
-impl Error for TokenError {}
-
 /// Convert a program with labels to a program with absolute positions
 pub fn convert_labels(program: &[LabelledInstruction]) -> Vec<Instruction> {
     let mut label_map = HashMap::<String, usize>::new();
@@ -424,11 +378,11 @@ pub fn convert_labels(program: &[LabelledInstruction]) -> Vec<Instruction> {
     // 1. Add all labels to a map
     for labelled_instruction in program.iter() {
         match labelled_instruction {
-            LabelledInstruction::Label(label_name, _) => {
+            LabelledInstruction::Label(label_name) => {
                 label_map.insert(label_name.clone(), instruction_pointer);
             }
 
-            LabelledInstruction::Instruction(instr, _) => {
+            LabelledInstruction::Instruction(instr) => {
                 instruction_pointer += instr.size();
             }
         }
@@ -446,9 +400,9 @@ fn convert_labels_helper(
     label_map: &HashMap<String, usize>,
 ) -> Vec<Instruction> {
     match instruction {
-        LabelledInstruction::Label(_, _) => vec![],
+        LabelledInstruction::Label(_) => vec![],
 
-        LabelledInstruction::Instruction(instr, _) => {
+        LabelledInstruction::Instruction(instr) => {
             let unlabelled_instruction: Instruction = instr.map_call_address(|label_name| {
                 let label_not_found = format!("Label not found: {label_name}");
                 let absolute_address = label_map.get(label_name).expect(&label_not_found);
@@ -462,73 +416,27 @@ fn convert_labels_helper(
 
 pub fn is_instruction_name(s: &str) -> bool {
     match s {
-        "pop" => true,
-        "push" => true,
-        "divine" => true,
-        "dup0" => true,
-        "dup1" => true,
-        "dup2" => true,
-        "dup3" => true,
-        "dup4" => true,
-        "dup5" => true,
-        "dup6" => true,
-        "dup7" => true,
-        "dup8" => true,
-        "dup9" => true,
-        "dup10" => true,
-        "dup11" => true,
-        "dup12" => true,
-        "dup13" => true,
-        "dup14" => true,
-        "dup15" => true,
-        "swap1" => true,
-        "swap2" => true,
-        "swap3" => true,
-        "swap4" => true,
-        "swap5" => true,
-        "swap6" => true,
-        "swap7" => true,
-        "swap8" => true,
-        "swap9" => true,
-        "swap10" => true,
-        "swap11" => true,
-        "swap12" => true,
-        "swap13" => true,
-        "swap14" => true,
-        "swap15" => true,
+        // OpStack manipulation
+        "pop" | "push" | "divine" => true,
+        "dup0" | "dup1" | "dup2" | "dup3" | "dup4" | "dup5" | "dup6" | "dup7" | "dup8" | "dup9"
+        | "dup10" | "dup11" | "dup12" | "dup13" | "dup14" | "dup15" => true,
+        "swap1" | "swap2" | "swap3" | "swap4" | "swap5" | "swap6" | "swap7" | "swap8" | "swap9"
+        | "swap10" | "swap11" | "swap12" | "swap13" | "swap14" | "swap15" => true,
 
         // Control flow
-        "nop" => true,
-        "skiz" => true,
-        "call" => true,
-        "return" => true,
-        "recurse" => true,
-        "assert" => true,
-        "halt" => true,
+        "nop" | "skiz" | "call" | "return" | "recurse" | "assert" | "halt" => true,
 
         // Memory access
-        "read_mem" => true,
-        "write_mem" => true,
+        "read_mem" | "write_mem" => true,
 
         // Hashing-related instructions
-        "hash" => true,
-        "divine_sibling" => true,
-        "assert_vector" => true,
+        "hash" | "divine_sibling" | "assert_vector" => true,
 
         // Arithmetic on stack instructions
-        "add" => true,
-        "mul" => true,
-        "invert" => true,
-        "split" => true,
-        "eq" => true,
-        "xxadd" => true,
-        "xxmul" => true,
-        "xinvert" => true,
-        "xbmul" => true,
+        "add" | "mul" | "invert" | "split" | "eq" | "xxadd" | "xxmul" | "xinvert" | "xbmul" => true,
 
         // Read/write
-        "read_io" => true,
-        "write_io" => true,
+        "read_io" | "write_io" => true,
 
         _ => false,
     }
@@ -577,7 +485,7 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
     all_instructions.to_vec()
 }
 
-pub fn all_labelled_instructions_with_args<'a>() -> Vec<LabelledInstruction<'a>> {
+pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
     vec![
         Pop,
         Push(BFieldElement::new(42)),
@@ -641,7 +549,7 @@ pub fn all_labelled_instructions_with_args<'a>() -> Vec<LabelledInstruction<'a>>
         WriteIo,
     ]
     .into_iter()
-    .map(|instr| LabelledInstruction::Instruction(instr, ""))
+    .map(LabelledInstruction::Instruction)
     .collect()
 }
 

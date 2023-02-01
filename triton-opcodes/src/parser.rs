@@ -24,7 +24,6 @@ use nom::Finish;
 use nom::IResult;
 
 use crate::instruction::is_instruction_name;
-use crate::instruction::token_str;
 use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
@@ -37,6 +36,22 @@ pub struct ParseError<'a> {
     pub errors: VerboseError<&'a str>,
 }
 
+/// A `ParsedInstruction` has `call` addresses encoded as label names.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ParsedInstruction<'a> {
+    Instruction(AnInstruction<String>, &'a str),
+    Label(String, &'a str),
+}
+
+impl<'a> std::fmt::Display for ParsedInstruction<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParsedInstruction::Instruction(instr, _) => write!(f, "{instr}"),
+            ParsedInstruction::Label(label_name, _) => write!(f, "{label_name}:"),
+        }
+    }
+}
+
 impl<'a> std::fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", pretty_print_error(self.input, self.errors.clone()))
@@ -44,6 +59,30 @@ impl<'a> std::fmt::Display for ParseError<'a> {
 }
 
 impl<'a> Error for ParseError<'a> {}
+
+impl<'a> ParsedInstruction<'a> {
+    pub fn token_str(&self) -> &'a str {
+        match self {
+            ParsedInstruction::Instruction(_, token_str) => token_str,
+            ParsedInstruction::Label(_, token_str) => token_str,
+        }
+    }
+
+    pub fn to_labelled(&self) -> LabelledInstruction {
+        use ParsedInstruction::*;
+        match self {
+            Instruction(instr, _) => LabelledInstruction::Instruction(instr.to_owned()),
+            Label(label, _) => LabelledInstruction::Label(label.to_owned()),
+        }
+    }
+}
+
+pub fn to_labelled(instructions: &[ParsedInstruction]) -> Vec<LabelledInstruction> {
+    instructions
+        .iter()
+        .map(|instruction| instruction.to_labelled())
+        .collect()
+}
 
 /// Pretty-print a parse error
 ///
@@ -65,7 +104,7 @@ pub fn pretty_print_error(s: &str, mut e: VerboseError<&str>) -> String {
 }
 
 /// Parse a program
-pub fn parse(input: &str) -> Result<Vec<LabelledInstruction>, ParseError> {
+pub fn parse(input: &str) -> Result<Vec<ParsedInstruction>, ParseError> {
     let instructions = match program(input).finish() {
         Ok((_s, instructions)) => Ok(instructions),
         Err(errors) => Err(ParseError { input, errors }),
@@ -78,15 +117,15 @@ pub fn parse(input: &str) -> Result<Vec<LabelledInstruction>, ParseError> {
 
 fn scan_missing_duplicate_labels<'a>(
     input: &'a str,
-    instructions: &[LabelledInstruction<'a>],
+    instructions: &[ParsedInstruction<'a>],
 ) -> Result<(), ParseError<'a>> {
-    let mut seen: HashMap<&str, LabelledInstruction> = HashMap::default();
-    let mut duplicates: HashSet<LabelledInstruction> = HashSet::default();
-    let mut missings: HashSet<LabelledInstruction> = HashSet::default();
+    let mut seen: HashMap<&str, ParsedInstruction> = HashMap::default();
+    let mut duplicates: HashSet<ParsedInstruction> = HashSet::default();
+    let mut missings: HashSet<ParsedInstruction> = HashSet::default();
 
     // Find duplicate labels, including the first occurrence of each duplicate.
     for instruction in instructions.iter() {
-        if let LabelledInstruction::Label(label, _token_s) = instruction {
+        if let ParsedInstruction::Label(label, _token_s) = instruction {
             if let Some(first_label) = seen.get(label.as_str()) {
                 duplicates.insert(first_label.to_owned());
                 duplicates.insert(instruction.to_owned());
@@ -98,7 +137,7 @@ fn scan_missing_duplicate_labels<'a>(
 
     // Find missing labels
     for instruction in instructions.iter() {
-        if let LabelledInstruction::Instruction(Call(addr), _token_s) = instruction {
+        if let ParsedInstruction::Instruction(Call(addr), _token_s) = instruction {
             if !seen.contains_key(addr.as_str()) {
                 missings.insert(instruction.to_owned());
             }
@@ -115,7 +154,7 @@ fn scan_missing_duplicate_labels<'a>(
 
     for duplicate in duplicates {
         let error = (
-            token_str(&duplicate),
+            duplicate.token_str(),
             VerboseErrorKind::Context("duplicate label"),
         );
         errors.push(error);
@@ -123,7 +162,7 @@ fn scan_missing_duplicate_labels<'a>(
 
     for missing in missings {
         let error = (
-            token_str(&missing),
+            missing.token_str(),
             VerboseErrorKind::Context("missing label"),
         );
         errors.push(error);
@@ -137,7 +176,7 @@ fn scan_missing_duplicate_labels<'a>(
 /// error type, but we want `nom::error::VerboseError` as it allows `context()`.
 type ParseResult<'input, Out> = IResult<&'input str, Out, VerboseError<&'input str>>;
 
-fn program(s: &str) -> ParseResult<Vec<LabelledInstruction>> {
+fn program(s: &str) -> ParseResult<Vec<ParsedInstruction>> {
     let (s, _) = comment_or_whitespace0(s)?;
     let (s, instructions) = many0(alt((label, labelled_instruction)))(s)?;
     let (s, _) = context("expecting label, instruction or eof", eof)(s)?;
@@ -145,12 +184,12 @@ fn program(s: &str) -> ParseResult<Vec<LabelledInstruction>> {
     Ok((s, instructions))
 }
 
-fn labelled_instruction(s_instr: &str) -> ParseResult<LabelledInstruction> {
+fn labelled_instruction(s_instr: &str) -> ParseResult<ParsedInstruction> {
     let (s, instr) = an_instruction(s_instr)?;
-    Ok((s, LabelledInstruction::Instruction(instr, s_instr)))
+    Ok((s, ParsedInstruction::Instruction(instr, s_instr)))
 }
 
-fn label(label_s: &str) -> ParseResult<LabelledInstruction> {
+fn label(label_s: &str) -> ParseResult<ParsedInstruction> {
     let (s, addr) = label_addr(label_s)?;
     let (s, _) = token0(":")(s)?; // don't require space after ':'
 
@@ -161,7 +200,7 @@ fn label(label_s: &str) -> ParseResult<LabelledInstruction> {
         return cut(context("label cannot be named after instruction", fail))(label_s);
     }
 
-    Ok((s, LabelledInstruction::Label(addr, label_s)))
+    Ok((s, ParsedInstruction::Label(addr, label_s)))
 }
 
 fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
@@ -472,7 +511,7 @@ mod parser_tests {
         match parse(test_case.input) {
             Ok(actual) => assert_eq!(
                 test_case.expected,
-                Program::new(&actual),
+                Program::new(&to_labelled(&actual)),
                 "{}",
                 test_case.message
             ),
@@ -766,8 +805,8 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "foo: call foo",
             expected: Program::new(&[
-                Label("foo".to_string(), ""),
-                Instruction(Call("foo".to_string()), ""),
+                Label("foo".to_string()),
+                Instruction(Call("foo".to_string())),
             ]),
             message: "parse labels and calls to labels",
         });
@@ -775,8 +814,8 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "foo:call foo",
             expected: Program::new(&[
-                Label("foo".to_string(), ""),
-                Instruction(Call("foo".to_string()), ""),
+                Label("foo".to_string()),
+                Instruction(Call("foo".to_string())),
             ]),
             message: "whitespace is not required after 'label:'",
         });
@@ -808,8 +847,8 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "pops: call pops",
             expected: Program::new(&[
-                Label("pops".to_string(), ""),
-                Instruction(Call("pops".to_string()), ""),
+                Label("pops".to_string()),
+                Instruction(Call("pops".to_string())),
             ]),
             message: "labels that share a common prefix with instruction are labels",
         });
@@ -817,8 +856,8 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "_call: call _call",
             expected: Program::new(&[
-                Label("_call".to_string(), ""),
-                Instruction(Call("_call".to_string()), ""),
+                Label("_call".to_string()),
+                Instruction(Call("_call".to_string())),
             ]),
             message: "labels that share a common suffix with instruction are labels",
         });
@@ -853,8 +892,8 @@ mod parser_tests {
         parse_program_prop(TestCase {
             input: "foo: [foo]",
             expected: Program::new(&[
-                Label("foo".to_string(), ""),
-                Instruction(Call("foo".to_string()), ""),
+                Label("foo".to_string()),
+                Instruction(Call("foo".to_string())),
             ]),
             message: "Handle brackets as call syntax sugar",
         });

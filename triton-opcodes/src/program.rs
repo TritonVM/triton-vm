@@ -5,7 +5,7 @@ use std::io::Cursor;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use crate::instruction::{convert_labels, Instruction, LabelledInstruction};
-use crate::parser::parse;
+use crate::parser::{parse, to_labelled};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
@@ -74,7 +74,7 @@ impl Program {
     /// Create a `Program` by parsing source code.
     pub fn from_code(code: &str) -> Result<Self> {
         parse(code)
-            .map(|program| Program::new(&program))
+            .map(|program| Program::new(&to_labelled(&program)))
             .map_err(|err| anyhow::anyhow!("{}", err))
     }
 
