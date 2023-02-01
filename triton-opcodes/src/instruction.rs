@@ -33,6 +33,15 @@ pub enum LabelledInstruction {
     Label(String),
 }
 
+impl std::fmt::Display for LabelledInstruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
+            LabelledInstruction::Label(label_name) => write!(f, "{label_name}:"),
+        }
+    }
+}
+
 #[derive(Debug, DisplayMacro, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
 pub enum DivinationHint {}
 
