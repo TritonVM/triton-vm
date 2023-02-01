@@ -318,10 +318,12 @@ mod proof_item_typed_tests {
     use itertools::Itertools;
     use rand::thread_rng;
     use rand::RngCore;
+    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
+    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use crate::proof_stream::ProofStream;
 
@@ -378,7 +380,8 @@ mod proof_item_typed_tests {
     #[test]
     fn test_serialize_stark_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
-        let mut proof_stream = ProofStream::<ProofItem, H>::new();
+        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
         let map = (0..7).into_iter().map(|_| random_digest()).collect_vec();
         let auth_struct = (0..8)
             .into_iter()
@@ -415,8 +418,10 @@ mod proof_item_typed_tests {
 
         let proof = proof_stream.to_proof();
 
+        let another_sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
         let mut proof_stream_ =
-            ProofStream::<ProofItem, H>::from_proof(&proof).expect("invalid parsing of proof");
+            ProofStream::<ProofItem, H>::from_proof(&proof, another_sponge_state)
+                .expect("invalid parsing of proof");
 
         let mut fs_ = vec![];
         fs_.push(proof_stream_.verifier_fiat_shamir());

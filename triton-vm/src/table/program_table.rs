@@ -159,7 +159,7 @@ impl ProgramTable {
         program_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let program_len = aet.program.len();
+        let program_len: usize = aet.program.len_bwords();
         let address_column = program_table.slice_mut(s![..program_len, Address.base_table_index()]);
         let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
         addresses.move_into(address_column);

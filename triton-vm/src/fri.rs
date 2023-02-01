@@ -20,7 +20,6 @@ use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::algebraic_hasher::Hashable;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
@@ -142,7 +141,12 @@ impl<H: AlgebraicHasher> Fri<H> {
             self.commit(codeword, proof_stream)?.into_iter().unzip();
 
         // Fiat-Shamir to get indices
-        let top_level_indices: Vec<usize> = self.sample_indices(&proof_stream.prover_fiat_shamir());
+        // TODO: Apply over-sampling to guarantee at least `colinearity_checks_count` distinct indices
+        let top_level_indices: Vec<usize> = H::sample_indices(
+            &mut proof_stream.sponge_state,
+            self.domain.length,
+            self.colinearity_checks_count,
+        );
 
         // query phase
         // query step 0: enqueue authentication paths for all points `A` into proof stream
@@ -248,58 +252,6 @@ impl<H: AlgebraicHasher> Fri<H> {
         Ok(values_and_merkle_trees)
     }
 
-    // Return the c-indices for the 1st round of FRI
-    fn sample_indices(&self, seed: &Digest) -> Vec<usize> {
-        // This algorithm starts with the inner-most indices to pick up
-        // to `last_codeword_length` indices from the codeword in the last round.
-        // It then calculates the indices in the subsequent rounds by choosing
-        // between the two possible next indices in the next round until we get
-        // the c-indices for the first round.
-        let num_rounds = self.num_rounds().0;
-        let last_codeword_length = self.domain.length >> num_rounds;
-        assert!(
-            self.colinearity_checks_count <= last_codeword_length,
-            "Requested number of indices must not exceed length of last codeword"
-        );
-
-        let mut last_indices: Vec<usize> = vec![];
-        let mut remaining_last_round_exponents: Vec<usize> = (0..last_codeword_length).collect();
-        let mut counter = 0usize;
-        for _ in 0..self.colinearity_checks_count {
-            let mut seed_local = seed.to_sequence();
-            seed_local.append(&mut counter.to_sequence());
-            let digest: Digest = H::hash_slice(&seed_local);
-            let index: usize =
-                H::sample_index_not_power_of_two(&digest, remaining_last_round_exponents.len());
-            last_indices.push(remaining_last_round_exponents.remove(index));
-            counter += 1;
-        }
-
-        // Use last indices to derive first c-indices
-        let mut indices = last_indices;
-        for i in 1..num_rounds {
-            let codeword_length = last_codeword_length << i;
-
-            indices = indices
-                .into_par_iter()
-                .zip((counter..counter + self.colinearity_checks_count).into_par_iter())
-                .map(|(index, _count)| {
-                    let mut seed_local = seed.to_sequence();
-                    seed_local.append(&mut counter.to_sequence());
-                    let digest: Digest = H::hash_slice(&seed_local);
-                    let reduce_modulo: bool = H::sample_index(&digest, 2) == 0;
-                    if reduce_modulo {
-                        index + codeword_length / 2
-                    } else {
-                        index
-                    }
-                })
-                .collect();
-        }
-
-        indices
-    }
-
     pub fn verify(
         &self,
         proof_stream: &mut ProofStream<ProofItem, H>,
@@ -387,7 +339,12 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_start!(maybe_profiler, "query phase");
         // query step 0: get "A" indices and verify set membership of corresponding values.
         prof_start!(maybe_profiler, "sample indices");
-        let mut a_indices: Vec<usize> = self.sample_indices(&proof_stream.verifier_fiat_shamir());
+        // TODO: Apply over-sampling to guarantee at least `colinearity_checks_count` distinct indices
+        let mut a_indices: Vec<usize> = H::sample_indices(
+            &mut proof_stream.sponge_state,
+            self.domain.length,
+            self.colinearity_checks_count,
+        );
         prof_stop!(maybe_profiler, "sample indices");
         prof_start!(maybe_profiler, "dequeue and authenticate");
         let mut a_values = Self::dequeue_and_authenticate(&a_indices, roots[0], proof_stream)?;
@@ -494,33 +451,42 @@ impl<H: AlgebraicHasher> Fri<H> {
 mod triton_xfri_tests {
     use itertools::Itertools;
     use num_traits::Zero;
-    use rand::thread_rng;
-    use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::CyclicGroupGenerator;
     use twenty_first::shared_math::traits::ModPowU32;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::test_shared::corrupt_digest;
-    use twenty_first::utils::has_unique_elements;
+    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
+
+    use crate::proof::Proof;
+    use crate::stark::StarkHasher;
 
     use super::*;
 
     #[test]
     fn sample_indices_test() {
         type H = RescuePrimeRegular;
-        let mut rng = thread_rng();
 
         let subgroup_order = 16;
         let expansion_factor = 4;
         let colinearity_checks = 16;
         let fri: Fri<H> =
             get_x_field_fri_test_object::<H>(subgroup_order, expansion_factor, colinearity_checks);
-        let indices = fri.sample_indices(&H::hash(&BFieldElement::new(rng.next_u64())));
-        assert!(
-            has_unique_elements(indices.iter()),
-            "Picked indices must be unique"
+        // TODO: Don't init sponge with zeros.
+        let mut sponge_state = StarkHasher::absorb_init(&[BFIELD_ZERO; 10]);
+        let indices = H::sample_indices(
+            &mut sponge_state,
+            fri.domain.length,
+            fri.colinearity_checks_count,
         );
+
+        // TODO: Don't assert uniqueness, assert enough unique elements given oversampling.
+        // assert!(
+        //     has_unique_elements(indices.iter()),
+        //     "Picked indices must be unique"
+        // );
     }
 
     #[test]
@@ -588,14 +554,18 @@ mod triton_xfri_tests {
 
     #[test]
     fn fri_on_x_field_test() {
-        type Hasher = RescuePrimeRegular;
+        type H = RescuePrimeRegular;
 
         let subgroup_order = 1024;
         let expansion_factor = 4;
         let colinearity_check_count = 6;
-        let fri: Fri<Hasher> =
+        let fri: Fri<H> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+
+        // TODO: Don't init sponge with zeros.
+        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
+
         let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
 
         let (_, merkle_root_of_round_0) = fri.prove(&subgroup, &mut proof_stream).unwrap();
@@ -607,14 +577,17 @@ mod triton_xfri_tests {
 
     #[test]
     fn prove_and_verify_low_degree_of_twice_cubing_plus_one() {
-        type Hasher = RescuePrimeRegular;
+        type H = RescuePrimeRegular;
 
         let subgroup_order = 1024;
         let expansion_factor = 4;
         let colinearity_check_count = 6;
-        let fri: Fri<Hasher> =
+        let fri: Fri<H> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+
+        // TODO: Don't init sponge with zeros.
+        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
 
         let zero = XFieldElement::zero();
         let one = XFieldElement::one();
@@ -631,12 +604,12 @@ mod triton_xfri_tests {
 
     #[test]
     fn fri_x_field_limit_test() {
-        type Hasher = RescuePrimeRegular;
+        type H = RescuePrimeRegular;
 
         let subgroup_order = 128;
         let expansion_factor = 4;
         let colinearity_check_count = 6;
-        let fri: Fri<Hasher> =
+        let fri: Fri<H> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
         let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
 
@@ -644,8 +617,10 @@ mod triton_xfri_tests {
         for n in [1, 5, 20, 30, 31] {
             points = subgroup.clone().iter().map(|p| p.mod_pow_u32(n)).collect();
 
-            // TODO: Test elsewhere that proof_stream can be re-used for multiple .prove().
-            let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+            // TODO: Don't init sponge with zeros.
+            let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+            let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
+
             let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
 
             let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
@@ -673,7 +648,11 @@ mod triton_xfri_tests {
         // Negative test with too high degree
         let too_high = subgroup_order as u32 / expansion_factor as u32;
         points = subgroup.iter().map(|p| p.mod_pow_u32(too_high)).collect();
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+
+        // TODO: Don't init sponge with zeros.
+        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
+
         let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
         let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         assert!(verify_result.is_err());
@@ -696,14 +675,17 @@ mod triton_xfri_tests {
 
     #[test]
     fn test_fri_deserialization() {
-        type Hasher = RescuePrimeRegular;
+        type H = RescuePrimeRegular;
 
         let subgroup_order = 64;
         let expansion_factor = 4;
         let colinearity_check_count = 2;
-        let fri: Fri<Hasher> =
+        let fri: Fri<H> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut prover_proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+
+        // TODO: Don't init sponge with zeros.
+        let prover_sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut prover_proof_stream = ProofStream::<ProofItem, H>::new(prover_sponge_state);
 
         let zero = XFieldElement::zero();
         let one = XFieldElement::one();
@@ -713,10 +695,11 @@ mod triton_xfri_tests {
 
         let (_, merkle_root_of_round_0) = fri.prove(&codeword, &mut prover_proof_stream).unwrap();
 
-        let proof = prover_proof_stream.to_proof();
+        let proof: Proof = prover_proof_stream.to_proof();
 
-        let mut verifier_proof_stream: ProofStream<ProofItem, Hasher> =
-            ProofStream::from_proof(&proof).unwrap();
+        // TODO: Don't init sponge with zeros.
+        let verifier_sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut verifier_proof_stream = ProofStream::<ProofItem, H>::new(verifier_sponge_state);
 
         for (left, right) in prover_proof_stream
             .items

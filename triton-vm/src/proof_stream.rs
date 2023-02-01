@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::fmt::Display;
-use std::marker::PhantomData;
 
 use anyhow::Result;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
@@ -11,10 +10,14 @@ use crate::proof::Proof;
 use crate::proof_item::MayBeUncast;
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ProofStream<Item: Clone + BFieldCodec + MayBeUncast, H: AlgebraicHasher> {
+pub struct ProofStream<Item, H>
+where
+    Item: Clone + BFieldCodec + MayBeUncast,
+    H: AlgebraicHasher,
+{
     pub items: Vec<Item>,
-    items_index: usize,
-    _hasher: PhantomData<H>,
+    pub items_index: usize,
+    pub sponge_state: H::SpongeState,
 }
 
 #[derive(Debug, Clone)]
@@ -44,12 +47,11 @@ where
     Item: Clone + BFieldCodec + MayBeUncast,
     H: AlgebraicHasher,
 {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new(sponge_state: H::SpongeState) -> Self {
         ProofStream {
             items: vec![],
             items_index: 0,
-            _hasher: PhantomData,
+            sponge_state,
         }
     }
 
@@ -82,7 +84,8 @@ where
     }
 
     /// Convert the proof into a proof stream for the verifier.
-    pub fn from_proof(proof: &Proof) -> Result<Self> {
+    pub fn from_proof(proof: &Proof, sponge_state: H::SpongeState) -> Result<Self> {
+        // TODO: Actually update sponge for each item.
         let mut index = 0;
         let mut items = vec![];
         while index < proof.0.len() {
@@ -109,17 +112,19 @@ where
         Ok(ProofStream {
             items,
             items_index: 0,
-            _hasher: PhantomData,
+            sponge_state,
         })
     }
 
     /// Send a proof item as prover to verifier.
     pub fn enqueue(&mut self, item: &Item) {
+        // TODO: Absorb item into sponge.
         self.items.push(item.clone());
     }
 
     /// Receive a proof item from prover as verifier.
     pub fn dequeue(&mut self) -> Result<Item> {
+        // TODO: Absorb item into sponge.
         let item = self
             .items
             .get(self.items_index)
@@ -129,20 +134,22 @@ where
         Ok(item.clone())
     }
 
+    // TODO: Provide challenge by squeezing instead.
     pub fn prover_fiat_shamir(&self) -> Digest {
         let mut transcript = vec![];
         for item in self.items.iter() {
             transcript.append(&mut item.encode());
         }
-        H::hash_slice(&transcript)
+        H::hash_varlen(&transcript)
     }
 
+    // TODO: Provide challenge by squeezing instead.
     pub fn verifier_fiat_shamir(&self) -> Digest {
         let mut transcript = vec![];
         for item in self.items[0..self.items_index].iter() {
             transcript.append(&mut item.uncast());
         }
-        H::hash_slice(&transcript)
+        H::hash_varlen(&transcript)
     }
 }
 
@@ -151,10 +158,11 @@ mod proof_stream_typed_tests {
     use itertools::Itertools;
     use num_traits::One;
 
-    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::b_field_element::{BFieldElement, BFIELD_ZERO};
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::x_field_element::XFieldElement;
+    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use super::*;
 
@@ -251,7 +259,8 @@ mod proof_stream_typed_tests {
     #[test]
     fn prover_verifier_fiat_shamir_test() {
         type H = RescuePrimeRegular;
-        let mut proof_stream = ProofStream::<TestItem, H>::new();
+        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<TestItem, H>::new(sponge_state);
         let ps: &mut ProofStream<TestItem, H> = &mut proof_stream;
 
         let digest_1 = H::hash(&BFieldElement::one());
@@ -285,7 +294,8 @@ mod proof_stream_typed_tests {
     #[test]
     fn test_serialize_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
-        let mut proof_stream = ProofStream::<TestItem, H>::new();
+        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<TestItem, H>::new(sponge_state);
         let manyb1: Vec<BFieldElement> = random_elements(10);
         let manyx: Vec<XFieldElement> = random_elements(13);
         let manyb2: Vec<BFieldElement> = random_elements(11);
@@ -300,8 +310,9 @@ mod proof_stream_typed_tests {
 
         let proof = proof_stream.to_proof();
 
-        let mut proof_stream =
-            ProofStream::<TestItem, H>::from_proof(&proof).expect("invalid parsing of proof");
+        let another_sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<TestItem, H>::from_proof(&proof, another_sponge_state)
+            .expect("invalid parsing of proof");
 
         let fs1_ = proof_stream.verifier_fiat_shamir();
         match proof_stream.dequeue().expect("can't dequeue item").as_bs() {

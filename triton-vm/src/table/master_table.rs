@@ -435,7 +435,7 @@ impl MasterBaseTable {
             .master_base_matrix
             .axis_iter(Axis(0))
             .into_par_iter()
-            .map(|row| StarkHasher::hash_slice(&row.to_vec()))
+            .map(|row| StarkHasher::hash_varlen(&row.to_vec()))
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "leafs");
         prof_start!(maybe_profiler, "Merkle tree");
@@ -570,7 +570,7 @@ impl MasterExtTable {
                     .iter()
                     .map(|xfe| xfe.coefficients.to_vec())
                     .concat();
-                StarkHasher::hash_slice(&contiguous_row_bfe)
+                StarkHasher::hash_varlen(&contiguous_row_bfe)
             })
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "leafs");

@@ -830,7 +830,7 @@ pub fn simulate(
 ) {
     let mut aet = AlgebraicExecutionTrace::new(program.clone());
     let mut state = VMState::new(program);
-    assert_eq!(program.len(), aet.instruction_multiplicities.len());
+    assert_eq!(program.len_bwords(), aet.instruction_multiplicities.len());
 
     let mut stdout = vec![];
     while !state.halting {
@@ -937,7 +937,7 @@ pub struct AlgebraicExecutionTrace {
 
 impl AlgebraicExecutionTrace {
     pub fn new(program: Program) -> Self {
-        let instruction_multiplicities = vec![0_u32; program.len()];
+        let instruction_multiplicities = vec![0_u32; program.len_bwords()];
         Self {
             program,
             instruction_multiplicities,

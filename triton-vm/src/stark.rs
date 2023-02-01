@@ -20,16 +20,17 @@ use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::other::roundup_npo2;
-use twenty_first::shared_math::rescue_prime_digest::Digest;
 use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
@@ -175,11 +176,14 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir");
         let padded_height = BFieldElement::new(master_base_table.padded_height as u64);
-        let mut proof_stream = StarkProofStream::new();
+        // TODO: Don't init sponge with zeros.
+        let sponge_state = StarkHasher::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = StarkProofStream::new(sponge_state);
+
         proof_stream.enqueue(&ProofItem::PaddedHeight(padded_height));
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
-        let extension_weights = Self::sample_weights(
-            proof_stream.prover_fiat_shamir(),
+        let extension_weights = StarkHasher::sample_weights(
+            &mut proof_stream.sponge_state,
             AllChallenges::TOTAL_CHALLENGES,
         );
         let extension_challenges = AllChallenges::create_challenges(
@@ -242,11 +246,11 @@ impl Stark {
         // polynomial, each extension polynomial, and each quotient. The factor is 2 because
         // transition constraints check 2 rows.
         prof_start!(maybe_profiler, "Fiat-Shamir");
-        let non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
+        // let non_lin_combi_weights_seed = proof_stream.prover_fiat_shamir();
         let num_non_lin_combi_weights =
             2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
         let non_lin_combi_weights =
-            Self::sample_weights(non_lin_combi_weights_seed, num_non_lin_combi_weights);
+            StarkHasher::sample_weights(&mut proof_stream.sponge_state, num_non_lin_combi_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "nonlinear combination");
@@ -287,9 +291,9 @@ impl Stark {
 
         // Get indices of master table rows to prove nonlinear combination
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
-        let indices_seed = proof_stream.prover_fiat_shamir();
+        // let indices_seed = proof_stream.prover_fiat_shamir();
         let revealed_current_row_indices = StarkHasher::sample_indices(
-            &indices_seed,
+            &mut proof_stream.sponge_state,
             self.fri.domain.length,
             self.parameters.num_non_linear_codeword_checks,
         );
@@ -513,20 +517,15 @@ impl Stark {
         );
     }
 
-    fn sample_weights(seed: Digest, num_weights: usize) -> Vec<XFieldElement> {
-        StarkHasher::get_n_hash_rounds(&seed, num_weights)
-            .iter()
-            .map(XFieldElement::sample)
-            .collect()
-    }
-
     pub fn verify(
         &self,
         proof: Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<bool> {
         prof_start!(maybe_profiler, "deserialize");
-        let mut proof_stream = StarkProofStream::from_proof(&proof)?;
+        // TODO: Don't init sponge with zeros.
+        let sponge_state = StarkHasher::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = StarkProofStream::from_proof(&proof, sponge_state)?;
         prof_stop!(maybe_profiler, "deserialize");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1");
@@ -536,9 +535,11 @@ impl Stark {
         }
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
 
-        let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
-        let extension_challenge_weights =
-            Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
+        // let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
+        let extension_challenge_weights = StarkHasher::sample_weights(
+            &mut proof_stream.sponge_state,
+            AllChallenges::TOTAL_CHALLENGES,
+        );
         let challenges = AllChallenges::create_challenges(
             extension_challenge_weights,
             &self.claim.input,
@@ -554,20 +555,20 @@ impl Stark {
         // polynomial, each extension polynomial, and each quotient. The factor is 2 because
         // transition constraints check 2 rows.
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
-        let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
+        // let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
         let num_non_lin_combi_weights =
             2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
-        let non_lin_combi_weights = Array1::from(Self::sample_weights(
-            non_lin_combi_weights_seed,
+        let non_lin_combi_weights = Array1::from(StarkHasher::sample_weights(
+            &mut proof_stream.sponge_state,
             num_non_lin_combi_weights,
         ));
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
-        let indices_seed = proof_stream.verifier_fiat_shamir();
+        // let indices_seed = proof_stream.verifier_fiat_shamir();
         let revealed_current_row_indices = StarkHasher::sample_indices(
-            &indices_seed,
+            &mut proof_stream.sponge_state,
             self.fri.domain.length,
             self.parameters.num_non_linear_codeword_checks,
         );
@@ -594,7 +595,7 @@ impl Stark {
             .as_compressed_authentication_paths()?;
         let leaf_digests_base: Vec<_> = base_table_rows
             .par_iter()
-            .map(|revealed_base_elem| StarkHasher::hash_slice(revealed_base_elem))
+            .map(|revealed_base_elem| StarkHasher::hash_varlen(revealed_base_elem))
             .collect();
         prof_stop!(maybe_profiler, "dequeue base elements");
 
@@ -621,7 +622,7 @@ impl Stark {
                     .iter()
                     .flat_map(|xfe| xfe.coefficients.to_vec())
                     .collect_vec();
-                StarkHasher::hash_slice(&bvalues)
+                StarkHasher::hash_varlen(&bvalues)
             })
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "dequeue extension elements");
