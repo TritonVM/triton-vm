@@ -4,9 +4,8 @@ The RAM is accessible through `read_mem` and `write_mem` commands.
 
 ## Base Columns
 
-The RAM Table has 8 columns:
+The RAM Table has 7 columns:
 1. the cycle counter `clk`,
-1. the inverse-or-zero of clock cycle differences minus 1 `clk_di`,
 1. the instruction executed in the previous clock cycle `previous_instruction`,
 1. RAM address pointer `ramp`,
 1. the value of the memory at that address `ramv`,
@@ -14,9 +13,9 @@ The RAM Table has 8 columns:
 1. Bézout coefficient polynomial coefficient 0 `bcpc0`,
 1. Bézout coefficient polynomial coefficient 1 `bcpc1`,
 
-| Clock | Inverse of Clock Difference Minus One | Previous Instruction | RAM Pointer | RAM Value | Inverse of RAM Pointer Difference | Bézout coefficient polynomial's coefficients 0 | Bézout coefficient polynomial's coefficients 1 |
-|:------|:--------------------------------------|:---------------------|:------------|:----------|:----------------------------------|:-----------------------------------------------|:-----------------------------------------------|
-| -     | -                                     | -                    | -           | -         | -                                 | -                                              | -                                              |
+| Clock | Previous Instruction | RAM Pointer | RAM Value | Inverse of RAM Pointer Difference | Bézout coefficient polynomial's coefficients 0 | Bézout coefficient polynomial's coefficients 1 |
+|:------|:---------------------|:------------|:----------|:----------------------------------|:-----------------------------------------------|:-----------------------------------------------|
+| -     | -                    | -           | -         | -                                 | -                                              | -                                              |
 
 Columns `clk`, `previous_instruction`, `ramp`, and `ramv` correspond to the columns of the same name in the [Processor Table](processor-table.md).
 A permutation argument with the Processor Table establishes that, selecting the columns with these labels, the two tables' sets of rows are identical.
@@ -27,17 +26,14 @@ The function of `iord` is best explained in the context of sorting the RAM Table
 The Bézout coefficient polynomial coefficients `bcpc0` and `bcpc1` represent the coefficients of polynomials that are needed for the [contiguity argument](memory-consistency.md#contiguity-for-ram-table).
 This argument establishes that all regions of constant `ramp` are contiguous.
 
-Column `clk_di` is used to discount clock cycle differences that are equal to one.
-It is necessary to establish the [inner sorting](memory-consistency.md#clock-jump-differences-and-inner-sorting) by `clk` within contiguous regions of constant `ramp`.
-
 ## Extension Columns
 
-The RAM Table has 2 extension columns, `rppa` and `rpcjd`.
+The RAM Table has 2 extension columns, `rppa` and `ClockJumpDifferenceLookupClientLogDerivative`.
 
 1. A Permutation Argument establishes that the rows in the RAM Table correspond to the rows of the [Processor Table](processor-table.md), after selecting for columns `clk`, `ramp`, `ramv` in both tables.
     The running product for this argument is contained in the `rppa` column.
-1. In order to achieve [memory consistency](memory-consistency.md), a [multi-table Permutation Argument](memory-consistency.md#memory-like-tables) shows that all clock jump differences greater than one, from all memory-like tables (i.e., including the [OpStack Table](operational-stack-table.md) and the [JumpStack Table](jump-stack-table.md)), are contained in the `cjd` column of the [Processor Table](processor-table.md).
-    The running product for this argument is contained in the `rpcjd` column.
+1. In order to achieve [memory consistency](memory-consistency.md), a [Lookup Argument](lookup-argument.md) shows that all clock jump differences are contained in the `clk` column of the [Processor Table](processor-table.md).
+  The logarithmic derivative for this argument is contained in the `ClockJumpDifferenceLookupClientLogDerivative` column.
 
 ## Sorting Rows
 
@@ -183,8 +179,8 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. The Bézout coefficient 1 `bc1` is equal to the first coefficient of the Bézout coefficient polynomial `bcpc1`.
 1. The running product polynomial `rpp` starts with `🧼 - ramp`.
 1. The formal derivative `fd` starts with 1.
-1. The running product for clock jump differences `rpcjd` starts with 1.
 1. The running product for the permutation argument with the Processor Table `rppa` has absorbed the first row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
+1. The logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` is 0.
 
 ### Initial Constraints as Polynomials
 
@@ -194,8 +190,8 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `bc1 - bcpc1`
 1. `rpp - 🧼 + ramp`
 1. `fd - 1`
-1. `rpcjd - 1`
 1. `rppa - 🛋 - 🍍·clk - 🍈·ramp - 🍎·ramv - 🌽·previous_instruction`
+1. `ClockJumpDifferenceLookupClientLogDerivative`
 
 ## Consistency Constraints
 
@@ -208,9 +204,9 @@ None.
 1. If the `ramp` does not change and `previous_instruction` in the next row is not `write_mem`, then the RAM value `ramv` does not change.
 1. The Bézout coefficient polynomial coefficients are allowed to change only when the `ramp` changes.
 1. The running product polynomial `rpp` accumulates a factor `(🧼 - ramp)` whenever `ramp` changes.
-1. The clock difference inverse `clk_di` is the inverse-or-zero of the clock difference minus 1.
-1. The running product for clock jump differences `rpcjd` accumulates a factor `(🚿 - clk' + clk)` whenever that difference is greater than one and `ramp` is the same.
 1. The running product for the permutation argument with the Processor Table `rppa` absorbs the next row with respect to challenges 🍍, 🍈, 🍎, and 🌽 and indeterminate 🛋.
+1. If the RAM pointer `ramp` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪑.
+  Otherwise, it remains the same.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `iord` is 0 or `iord` is the inverse of `(ramp' - ramp)`.
@@ -223,12 +219,9 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. the formal derivative `fd` applies the product rule of differentiation (as necessary).
 1. Bézout coefficient 0 is evaluated correctly.
 1. Bézout coefficient 1 is evaluated correctly.
-1. `clk_di` is zero or the inverse of `(clk' - clk - 1)`.
-1. `(clk' - clk - 1)` is zero or the inverse of `clk_di`.
-1. `(clk' - clk - 1) ≠ 0` and `rpcjd' = rpcjd`;
-    or `ramp' - ramp ≠ 0` and `rpcjd' = rpcjd`;
-    or `(clk' - clk - 1) = 0` and `ramp' - ramp = 0` and `rpcjd' = rpcjd·(🚿 - clk' + clk)`.
 1. `rppa' = rppa·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
+1. - the `ramp` changes or the logarithmic derivative accumulates a summand, and
+   - the `ramp` does not change or the logarithmic derivative does not change.
 
 ### Transition Constraints as Polynomials
 
@@ -242,10 +235,9 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(iord·(ramp' - ramp) - 1)·(fd' - fd) + (ramp' - ramp)·(fd' - fd·(ramp'-🧼) - rpp)`
 1. `(iord·(ramp' - ramp) - 1)·(bc0' - bc0) + (ramp' - ramp)·(bc0' - bc0·🧼 - bcpc0')`
 1. `(iord·(ramp' - ramp) - 1)·(bc1' - bc1) + (ramp' - ramp)·(bc1' - bc1·🧼 - bcpc1')`
-1. `clk_di·(clk_di·(clk' - clk - 1) - 1)`
-1. `(clk' - clk - 1)·(clk_di·(clk' - clk - 1) - 1)`
-1. `(clk' - clk - 1)·(rpcjd' - rpcjd) + (1 - (ramp' - ramp)·iord)·(rpcjd' - rpcjd) + (1 - (clk' - clk - 1)·clk_di)·ramp·(rpcjd' - rpcjd·(🚿 - clk' + clk))`
 1. `rppa' - rppa·(🛋 - 🍍·clk' - 🍈·ramp' - 🍎·ramv' - 🌽·previous_instruction')`
+1. `(iord·(ramp' - ramp) - 1)·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪑 - clk' + clk) - 1)`<br />
+   `+ (ramp' - ramp)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`
 
 ## Terminal Constraints
 

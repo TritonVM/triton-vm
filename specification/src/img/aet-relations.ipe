@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.24">
-<info created="D:20200729150742" modified="D:20230129181210"/>
+<info created="D:20200729150742" modified="D:20230203165232"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -318,119 +318,74 @@ h
 <layer name="table_names"/>
 <layer name="eval_args"/>
 <layer name="perm_args"/>
-<layer name="multi_perm_arg"/>
+<layer name="lookup_args"/>
 <layer name="bezout_args"/>
-<view layers="bg table_names eval_args perm_args multi_perm_arg bezout_args" active="table_names"/>
+<view layers="bg table_names eval_args perm_args lookup_args bezout_args" active="lookup_args"/>
 <path layer="bg" fill="white">
-80 188 m
-80 44 l
-280 44 l
-280 188 l
+120 172 m
+120 60 l
+272 60 l
+272 172 l
 h
 </path>
-<path layer="perm_args" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="pointed/small">
+<path layer="eval_args" stroke="darkred" pen="1.6" cap="1" join="1">
+158.864 117.909 m
+164.993 121.995 l
+</path>
+<path stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
+168 124 m
+156 116 l
+</path>
+<path stroke="white" cap="1" join="1">
+158.864 117.909 m
+164.993 121.995 l
+</path>
+<path layer="lookup_args" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="pointed/small">
 192 138 m
 192 154 l
 </path>
 <text layer="table_names" matrix="1 0 0 1 -16 -32" transformations="translations" pos="208 160" stroke="black" type="label" width="38.135" height="4.407" depth="1.93" halign="center" valign="baseline">processor</text>
 <text matrix="1 0 0 1 -16 -32" transformations="translations" pos="208 192" stroke="black" type="label" width="34.343" height="4.407" depth="1.93" halign="center" valign="baseline">program</text>
-<text matrix="1 0 0 1 -16 -64" transformations="translations" pos="272 224" stroke="darkgray" type="label" width="27.618" height="5.756" depth="1.93" halign="center" valign="baseline">output</text>
-<text matrix="1 0 0 1 0 -32" transformations="translations" pos="128 192" stroke="darkgray" type="label" width="21.42" height="6.538" depth="1.93" halign="center" valign="baseline">input</text>
-<path layer="eval_args" stroke="darkred" pen="1.6" cap="1" join="1">
-176 120 m
-176 108 l
-176 104
-172 104 c
-100 104 l
-96 104
-96 100 c
-96 96 l
-</path>
-<text layer="table_names" matrix="1 0 0 1 64 -16" transformations="translations" pos="128 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
+<text matrix="1 0 0 1 -32 -64" transformations="translations" pos="272 224" stroke="darkgray" type="label" width="27.618" height="5.756" depth="1.93" halign="center" valign="baseline">output</text>
+<text matrix="1 0 0 1 16 -32" transformations="translations" pos="128 192" stroke="darkgray" type="label" width="21.42" height="6.538" depth="1.93" halign="center" valign="baseline">input</text>
+<text matrix="1 0 0 1 64 -16" transformations="translations" pos="128 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
 <text matrix="1 0 0 1 -48 -16" transformations="translations" pos="192 96" stroke="black" type="label" width="33.347" height="6.926" depth="1.93" halign="center" valign="baseline">opStack</text>
-<text matrix="1 0 0 1 -16 -16" transformations="translations" pos="256 96" stroke="black" type="label" width="21.793" height="6.919" depth="0" halign="center" valign="baseline">RAM</text>
-<text matrix="1 0 0 1 -64 16" transformations="translations" pos="160 64" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
-<path layer="eval_args" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small">
-128 154 m
-128 134 l
-128 130
-132 130 c
-168 130 l
+<text matrix="1 0 0 1 -16 -16" transformations="translations" pos="256 96" stroke="black" type="label" width="44.085" height="6.926" depth="1.93" halign="center" valign="baseline">jumpStack</text>
+<path layer="eval_args" matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small">
+144 152 m
+144 132 l
+144 128
+148 128 c
+168 128 l
 </path>
-<path stroke="darkred" pen="heavier" cap="1" join="1" rarrow="arc/small">
-256 154 m
-256 134 l
-256 130
-252 130 c
-216 130 l
+<path matrix="1 0 0 1 0 2" stroke="darkred" pen="heavier" cap="1" join="1" rarrow="arc/small">
+240 152 m
+240 132 l
+240 128
+236 128 c
+216 128 l
 </path>
-<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+<path layer="perm_args" matrix="1 0 0 1 -2.5 0" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
 192 124 m
 192 92 l
 </path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
-200 124 m
-200 104 l
-200 100
-204 100 c
-228 100 l
-232 100
-232 96 c
-232 92 l
-</path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
-184 124 m
-184 104 l
-184 100
-180 100 c
-148 100 l
-144 100
-144 96 c
+<path matrix="1 0 0 1 -4 0" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+180 124 m
+180 108 l
+180 104
+176 104 c
+148 104 l
+144 104
+144 100 c
 144 92 l
 </path>
 <path layer="eval_args" matrix="1 0 0 1 40 -46" stroke="darkred" fill="white" pen="heavier" cap="1" join="1">
 1.20123 0 0 1.20123 176 176 e
 </path>
-<path matrix="1 0 0 1 -48 -22" stroke="darkred" fill="darkred" pen="heavier" cap="1" join="1">
+<path matrix="1 0 0 1 -32 -22" stroke="darkred" fill="darkred" pen="heavier" cap="1" join="1">
 1.20123 0 0 1.20123 176 176 e
 </path>
-<path stroke="darkred" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
-176 124 m
-176 108 l
-176 104
-172 104 c
-100 104 l
-96 104
-96 100 c
-96 92 l
-</path>
-<path layer="multi_perm_arg" stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
-208 124 m
-208 120 l
-208 116
-212 116 c
-252 116 l
-256 116
-256 112 c
-256 64 l
-</path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
-240 76 m
-240 64 l
-</path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
-192 76 m
-192 64 l
-</path>
-<path stroke="darkblue" pen="heavier" cap="1" join="1" rarrow="fpointed/small">
-144 76 m
-144 64 l
-</path>
-<path stroke="darkblue" pen="fat" cap="1" join="1">
-140 64 m
-260 64 l
-</path>
-<path layer="bezout_args" matrix="-0.499978 0.499979 -0.499979 -0.499978 369.995 62.0012" stroke="darkgreen" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
+<path layer="bezout_args" matrix="-0.499978 -0.499979 -0.499979 0.499978 317.994 105.999" stroke="darkgreen" pen="heavier" cap="1" join="1" arrow="farc/small" rarrow="farc/small">
 160 100 m
 8 0 0 -8 160 92 152 92 a
 </path>
@@ -438,26 +393,45 @@ h
 160 100 m
 8 0 0 -8 160 92 152 92 a
 </path>
-<text layer="table_names" transformations="translations" pos="96 128" stroke="black" type="label" width="15.11" height="6.531" depth="0" halign="center" valign="baseline">u32</text>
-<path layer="eval_args" stroke="white" cap="1" join="1">
-176 120 m
-176 108 l
-176 104
-172 104 c
-100 104 l
-96 104
-96 100 c
-96 96 l
-</path>
+<text layer="table_names" matrix="1 0 0 1 144 -16" transformations="translations" pos="96 128" stroke="black" type="label" width="15.11" height="6.531" depth="0" halign="center" valign="baseline">u32</text>
 <path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="fpointed/small">
-168 124 m
-164 120 l
-160 116
-156 116 c
-100 116 l
-96 116
-96 120 c
-96 124 l
+216 124 m
+228 116 l
+</path>
+<text matrix="-1 0 0 1 240 -16" transformations="translations" pos="96 128" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
+<path layer="lookup_args" matrix="1 0 0 1 -3 0" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+184 124 m
+184 104 l
+184 100
+180 100 c
+152 100 l
+148 100
+148 96 c
+148 92 l
+</path>
+<path layer="perm_args" matrix="-1 0 0 1 388 0" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+180 124 m
+180 108 l
+180 104
+176 104 c
+148 104 l
+144 104
+144 100 c
+144 92 l
+</path>
+<path layer="lookup_args" matrix="-1 0 0 1 387 0" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+184 124 m
+184 104 l
+184 100
+180 100 c
+152 100 l
+148 100
+148 96 c
+148 92 l
+</path>
+<path matrix="1 0 0 1 2.5 0" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="pointed/small" rarrow="pointed/small">
+192 124 m
+192 92 l
 </path>
 </page>
 </ipe>

@@ -8,19 +8,18 @@ It is initially empty.
 
 ## Base Columns
 
-The Operational Stack Table consists of 5 columns:
+The Operational Stack Table consists of 4 columns:
 1. the cycle counter `clk`
-1. the inverse-or-zero of the difference between two consecutive `clk` values minus one, `clk_di`,
 1. the shrink stack indicator `shrink_stack`
 1. the operational stack value `osv`, and
 1. the operational stack pointer `osp`.
 
-| Clock | Inverse of Clock Difference Minus One | Shrink Stack Indicator | Op Stack Pointer | Op Stack Value |
-|:------|:--------------------------------------|:-----------------------|:-----------------|:---------------|
-| -     | -                                     | -                      | -                | -              |
+| Clock | Shrink Stack Indicator | Op Stack Pointer | Op Stack Value |
+|:------|:-----------------------|:-----------------|:---------------|
+| -     | -                      | -                | -              |
 
 Columns `clk`, `shrink_stack`, `osp`, and `osv` correspond to columns `clk`, `ib1`, `osp`, and `osv` in the [Processor Table](processor-table.md), respectively.
-A Permutation Argument with the Processor Table establishes that, selecting the columns with these labels, the two tables' sets of rows are identical.
+A [Permutation Argument](permutation-argument.md) with the Processor Table establishes that, selecting the columns with these labels, the two tables' sets of rows are identical.
 
 In order to guarantee [memory consistency](memory-consistency.md), the rows of the operational stack table are sorted by operational stack pointer `osp` first, cycle count `clk` second.
 The mechanics are best illustrated by an example.
@@ -64,41 +63,41 @@ Execution trace:
 
 Operational Stack Table:
 
-| `clk` |               `clk_di` | `shrink_stack` | (comment) | `osp` | `osv` |
-|------:|-----------------------:|---------------:|:----------|------:|------:|
-|     0 |  (23 - 0 - 1)${}^{-1}$ |              0 | (`push`)  |     4 |     0 |
-|    23 |  (1 - 23 - 1)${}^{-1}$ |              1 | (`pop`)   |     4 |     0 |
-|     1 |  (22 - 1 - 1)${}^{-1}$ |              0 | (`push`)  |     5 |     0 |
-|    22 |  (2 - 22 - 1)${}^{-1}$ |              1 | (`pop`)   |     5 |     0 |
-|     2 |  (21 - 2 - 1)${}^{-1}$ |              0 | (`push`)  |     6 |     0 |
-|    21 |  (3 - 21 - 1)${}^{-1}$ |              1 | (`pop`)   |     6 |     0 |
-|     3 |  (12 - 3 - 1)${}^{-1}$ |              0 | (`push`)  |     7 |     0 |
-|    12 | (20 - 12 - 1)${}^{-1}$ |              0 | (`push`)  |     7 |     0 |
-|    20 |  (4 - 20 - 1)${}^{-1}$ |              1 | (`pop`)   |     7 |     0 |
-|     4 |  (11 - 4 - 1)${}^{-1}$ |              0 | (`push`)  |     8 |     0 |
-|    11 | (13 - 11 - 1)${}^{-1}$ |              1 | (`pop`)   |     8 |     0 |
-|    13 | (14 - 13 - 1)${}^{-1}$ |              0 | (`swap`)  |     8 |     0 |
-|    14 | (19 - 14 - 1)${}^{-1}$ |              0 | (`push`)  |     8 |     0 |
-|    19 |  (5 - 19 - 1)${}^{-1}$ |              1 | (`pop`)   |     8 |     0 |
-|     5 |  (10 - 5 - 1)${}^{-1}$ |              0 | (`push`)  |     9 |    42 |
-|    10 | (15 - 10 - 1)${}^{-1}$ |              1 | (`pop`)   |     9 |    99 |
-|    15 | (16 - 15 - 1)${}^{-1}$ |              0 | (`swap`)  |     9 |    77 |
-|    16 | (18 - 16 - 1)${}^{-1}$ |              0 | (`push`)  |     9 |    77 |
-|    18 |  (6 - 18 - 1)${}^{-1}$ |              1 | (`pop`)   |     9 |    77 |
-|     6 |   (9 - 6 - 1)${}^{-1}$ |              0 | (`push`)  |    10 |    43 |
-|     9 |  (17 - 9 - 1)${}^{-1}$ |              1 | (`pop`)   |    10 |    43 |
-|    17 |  (7 - 17 - 1)${}^{-1}$ |              1 | (`pop`)   |    10 |    78 |
-|     7 |   (8 - 7 - 1)${}^{-1}$ |              0 | (`nop`)   |    11 |    44 |
-|     8 |                      0 |              1 | (`pop`)   |    11 |    44 |
+| `clk` | `shrink_stack` | (comment) | `osp` | `osv` |
+|------:|---------------:|:----------|------:|------:|
+|     0 |              0 | (`push`)  |     4 |     0 |
+|    23 |              1 | (`pop`)   |     4 |     0 |
+|     1 |              0 | (`push`)  |     5 |     0 |
+|    22 |              1 | (`pop`)   |     5 |     0 |
+|     2 |              0 | (`push`)  |     6 |     0 |
+|    21 |              1 | (`pop`)   |     6 |     0 |
+|     3 |              0 | (`push`)  |     7 |     0 |
+|    12 |              0 | (`push`)  |     7 |     0 |
+|    20 |              1 | (`pop`)   |     7 |     0 |
+|     4 |              0 | (`push`)  |     8 |     0 |
+|    11 |              1 | (`pop`)   |     8 |     0 |
+|    13 |              0 | (`swap`)  |     8 |     0 |
+|    14 |              0 | (`push`)  |     8 |     0 |
+|    19 |              1 | (`pop`)   |     8 |     0 |
+|     5 |              0 | (`push`)  |     9 |    42 |
+|    10 |              1 | (`pop`)   |     9 |    99 |
+|    15 |              0 | (`swap`)  |     9 |    77 |
+|    16 |              0 | (`push`)  |     9 |    77 |
+|    18 |              1 | (`pop`)   |     9 |    77 |
+|     6 |              0 | (`push`)  |    10 |    43 |
+|     9 |              1 | (`pop`)   |    10 |    43 |
+|    17 |              1 | (`pop`)   |    10 |    78 |
+|     7 |              0 | (`nop`)   |    11 |    44 |
+|     8 |              1 | (`pop`)   |    11 |    44 |
 
 ## Extension Columns
 
-The Op Stack Table has 2 extension columns, `rppa` and `rpcjd`.
+The Op Stack Table has 2 extension columns, `rppa` and `ClockJumpDifferenceLookupClientLogDerivative`.
 
 1. A Permutation Argument establishes that the rows of the Op Stack Table correspond to the rows of the [Processor Table](processor-table.md).
   The running product for this argument is contained in the `rppa` column.
-1. In order to achieve [memory consistency](memory-consistency.md), a [multi-table Permutation Argument](memory-consistency.md#memory-like-tables) shows that all clock jump differences greater than one, from all memory-like tables (i.e., including the [RAM Table](random-access-memory-table.md) and the [JumpStack Table](jump-stack-table.md)), are contained in the `cjd` column of the [Processor Table](processor-table.md).
-  The running product for this argument is contained in the `rpcjd` column.
+1. In order to achieve [memory consistency](memory-consistency.md), a [Lookup Argument](lookup-argument.md) shows that all clock jump differences are contained in the `clk` column of the [Processor Table](processor-table.md).
+  The logarithmic derivative for this argument is contained in the `ClockJumpDifferenceLookupClientLogDerivative` column.
 
 ## Padding
 
@@ -116,11 +115,8 @@ Memory-consistency follows from two more primitive properties:
   Since the memory pointer for the Op Stack table, `osp` can change by at most one per cycle, it is possible to enforce a full sorting using AIR constraints.
 2. Correct inner-sorting within contiguous regions.
   Specifically, the rows within each contiguous region of constant memory pointer should be sorted for clock cycle.
-  This property is established by the clock jump difference lookup argument.
-  In a nutshell, every difference of consecutive clock cycles that
-  a) occurs within one contiguous block of constant memory pointer, and
-  b) is greater than 1, is shown itself to be a valid clock cycle through a separate cross-table argument.
-  The construction is described in more details in [Memory Consistency](memory-consistency.md#memory-like-tables).
+  This property is established by the clock jump difference [Lookup Argument](lookup-argument.md).
+  In a nutshell, every difference of consecutive clock cycles that occurs within one contiguous block of constant memory pointer is shown itself to be a valid clock cycle through a separate cross-table argument.
 
 # Arithmetic Intermediate Representation
 
@@ -134,7 +130,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `osv` is 0.
 1. `osp` is the number of available stack registers, _i.e._, 16.
 1. The running product for the permutation argument with the Processor Table `rppa` starts off having accumulated the first row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
-1. The running product of clock jump differences `rpcjd` starts off with 1.
+1. The logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` is 0.
 
 ### Initial Constraints as Polynomials
 
@@ -142,7 +138,7 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 1. `osv`
 1. `osp - 16`
 1. `rppa - (🪤 - 🍋·clk - 🍊·ib1 - 🍉·osp - 🫒osv)`
-1. `rpcjd - 1`
+1. `ClockJumpDifferenceLookupClientLogDerivative`
 
 ## Consistency Constraints
 
@@ -154,32 +150,26 @@ None.
   - the `osp` increases by 1, *or*
   - the `osp` does not change AND the `osv` does not change, *or*
   - the `osp` does not change AND the shrink stack indicator `shrink_stack` is 1.
-1. The clock jump difference inverse column `clk_di` is the inverse of the clock jump difference minus one if a) the clock jump difference is greater than 1, and b) the op stack pointer remains the same.
 1. The running product for the permutation argument with the Processor Table `rppa` absorbs the next row with respect to challenges 🍋, 🍊, 🍉, and 🫒 and indeterminate 🪤.
-1. The running product for clock jump differences `rpcjd` accumulates a factor `(clk' - clk)` (relative to indeterminate `🚿`) if
-  a) the clock jump difference is greater than 1, and if
-  b) the op stack pointer does not change;
-  and remains the same otherwise.
+1. If the op stack pointer `osp` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪞.
+  Otherwise, it remains the same.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
 1.
   - the `osp` increases by 1 or the `osp` does not change
   - the `osp` increases by 1 or the `osv` does not change or the shrink stack indicator `shrink_stack` is 1
-1. `osp' - osp = 1` or `clk_di` is the multiplicative inverse of `(clk' - clk - 1)` or `0` if that inverse does not exist.
 1. `rppa' = rppa·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒osv')`
-1. `rpcjd' = rpcjd` and `(clk' - clk - 1) = 0`;
-  or `rpcjd' = rpcjd` and `osp' ≠ osp`;
-  or `rpcjd' = rpcjd·(🚿 - clk' + clk)` and `(clk' - clk - 1)·clk_di = 1` and `osp' = osp`.
+1. - the `osp` changes or the logarithmic derivative accumulates a summand, and
+   - the `osp` does not change or the logarithmic derivative does not change.
 
 ### Transition Constraints as Polynomials
 
 1. `(osp' - (osp + 1))·(osp' - osp)`
 1. `(osp' - (osp + 1))·(osv' - osv)·(1 - shrink_stack)`
-1. `clk_di·(osp' - osp - 1)·(1 - clk_di·(clk' - clk - one))`
-1. `(clk' - clk - one)·(osp' - osp - 1)·(1 - clk_di·(clk' - clk - one))`
 1. `rppa' - rppa·(🪤 - 🍋·clk' - 🍊·ib1' - 🍉·osp' - 🫒osv')`
-1. `(clk' - clk - 1)·(rpcjd' - rpcjd) + (osp' - osp - 1)·(rpcjd' - rpcjd) + (1 - (clk' - clk - 1)·clk_di)·(osp' - osp)·(rpcjd' - rpcjd·(🚿 - clk' + clk))`
+1. `(osp' - (osp + 1))·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪞 - clk' + clk) - 1)`<br />
+   `+ (osp' - osp)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`
 
 ## Terminal Constraints
 
