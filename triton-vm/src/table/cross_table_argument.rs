@@ -31,10 +31,12 @@ use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn;
 
 pub const NUM_PUBLIC_EVAL_ARGS: usize = 2; // for public input and output
-pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 pub const NUM_PRIVATE_EVAL_ARGS: usize =
     PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS - NUM_PUBLIC_EVAL_ARGS;
-pub const NUM_CROSS_TABLE_ARGS: usize = NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS;
+pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
+pub const NUM_LOOKUP_ARGS: usize = 4;
+pub const NUM_CROSS_TABLE_ARGS: usize =
+    NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS + NUM_LOOKUP_ARGS;
 pub const NUM_CROSS_TABLE_WEIGHTS: usize = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
 pub trait CrossTableArg {
@@ -151,7 +153,9 @@ pub struct CrossTableChallenges {
     pub hash_digest_weight: XFieldElement,
     pub sponge_weight: XFieldElement,
     pub processor_to_u32_weight: XFieldElement,
-    pub all_clock_jump_differences_weight: XFieldElement,
+    pub clock_jump_difference_lookup_op_stack_weight: XFieldElement,
+    pub clock_jump_difference_lookup_ram_weight: XFieldElement,
+    pub clock_jump_difference_lookup_jump_stack_weight: XFieldElement,
     pub input_to_processor_weight: XFieldElement,
     pub processor_to_output_weight: XFieldElement,
 }
@@ -169,7 +173,9 @@ pub enum CrossTableChallengeId {
     HashDigestWeight,
     SpongeWeight,
     ProcessorToU32Weight,
-    AllClockJumpDifferencesWeight,
+    ClockJumpDifferenceLookupOpStackWeight,
+    ClockJumpDifferenceLookupRamWeight,
+    ClockJumpDifferenceLookupJumpStackWeight,
     InputToProcessorWeight,
     ProcessorToOutputWeight,
 }
@@ -196,7 +202,13 @@ impl TableChallenges for CrossTableChallenges {
             HashDigestWeight => self.hash_digest_weight,
             SpongeWeight => self.sponge_weight,
             ProcessorToU32Weight => self.processor_to_u32_weight,
-            AllClockJumpDifferencesWeight => self.all_clock_jump_differences_weight,
+            ClockJumpDifferenceLookupOpStackWeight => {
+                self.clock_jump_difference_lookup_op_stack_weight
+            }
+            ClockJumpDifferenceLookupRamWeight => self.clock_jump_difference_lookup_ram_weight,
+            ClockJumpDifferenceLookupJumpStackWeight => {
+                self.clock_jump_difference_lookup_jump_stack_weight
+            }
             InputToProcessorWeight => self.input_to_processor_weight,
             ProcessorToOutputWeight => self.processor_to_output_weight,
         }
@@ -268,14 +280,21 @@ impl Evaluable for GrandCrossTableArg {
         let processor_to_u32 = ext_row
             [ProcessorExtTableColumn::U32TablePermArg.master_ext_table_index()]
             - ext_row[U32ExtTableColumn::ProcessorPermArg.master_ext_table_index()];
-        let all_clock_jump_differences = ext_row
-            [ProcessorExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()]
-            - ext_row
-                [OpStackExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()]
-                * ext_row
-                    [RamExtTableColumn::AllClockJumpDifferencesPermArg.master_ext_table_index()]
-                * ext_row[JumpStackExtTableColumn::AllClockJumpDifferencesPermArg
-                    .master_ext_table_index()];
+        let clock_jump_difference_lookup_op_stack = ext_row
+            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivativeOpStack
+                .master_ext_table_index()]
+            - ext_row[OpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
+                .master_ext_table_index()];
+        let clock_jump_difference_lookup_ram = ext_row
+            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivativeRam
+                .master_ext_table_index()]
+            - ext_row[RamExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
+                .master_ext_table_index()];
+        let clock_jump_difference_lookup_jump_stack = ext_row
+            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivativeJumpStack
+                .master_ext_table_index()]
+            - ext_row[JumpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
+                .master_ext_table_index()];
 
         let non_linear_sum = challenges.get_challenge(ProcessorToProgramWeight)
             * instruction_lookup
@@ -288,7 +307,12 @@ impl Evaluable for GrandCrossTableArg {
             + challenges.get_challenge(HashDigestWeight) * hash_digest
             + challenges.get_challenge(SpongeWeight) * sponge
             + challenges.get_challenge(ProcessorToU32Weight) * processor_to_u32
-            + challenges.get_challenge(AllClockJumpDifferencesWeight) * all_clock_jump_differences;
+            + challenges.get_challenge(ClockJumpDifferenceLookupOpStackWeight)
+                * clock_jump_difference_lookup_op_stack
+            + challenges.get_challenge(ClockJumpDifferenceLookupRamWeight)
+                * clock_jump_difference_lookup_ram
+            + challenges.get_challenge(ClockJumpDifferenceLookupJumpStackWeight)
+                * clock_jump_difference_lookup_jump_stack;
         vec![non_linear_sum]
     }
 }
@@ -330,7 +354,7 @@ impl Quotientable for GrandCrossTableArg {
 
     fn terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
         let zerofier_degree = 1 as Degree;
-        let max_columns_involved_in_one_cross_table_argument = 3;
+        let max_columns_involved_in_one_cross_table_argument = 1;
         vec![
             interpolant_degree * max_columns_involved_in_one_cross_table_argument - zerofier_degree,
         ]

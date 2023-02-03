@@ -29,6 +29,7 @@ use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::LookupArg;
 use crate::table::cross_table_argument::PermArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -58,15 +59,15 @@ pub struct RamTable {}
 pub struct ExtRamTable {}
 
 impl RamTable {
-    /// Fills the trace table in-place and returns all clock jump differences greater than 1.
+    /// Fills the trace table in-place and returns all clock jump differences.
     pub fn fill_trace(
         ram_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) -> Vec<BFieldElement> {
         // Store the registers relevant for the Ram Table, i.e., CLK, RAMP, RAMV, and
         // PreviousInstruction, with RAMP as the key. Preserves, thus allows reusing, the order
-        // of the processor's rows, which are sorted by CLK. Note that the Ram Table must not be
-        // sorted by RAMP, but must form contiguous regions of RAMP values.
+        // of the processor's rows, which are sorted by CLK. Note that the Ram Table does not
+        // have to be sorted by RAMP, but must form contiguous regions of RAMP values.
         let mut pre_processed_ram_table: HashMap<_, Vec<_>> = HashMap::new();
         for processor_row in aet.processor_trace.rows() {
             let clk = processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
@@ -130,20 +131,14 @@ impl RamTable {
         }
         assert_eq!(aet.processor_trace.nrows(), ram_table_row_idx);
 
-        // - Set inverse of clock difference - 1.
         // - Set inverse of RAMP difference.
         // - Fill in the Bézout coefficients if the RAMP has changed.
-        // - Collect all clock jump differences greater than 1.
+        // - Collect all clock jump differences.
         // The Ram Table and the Processor Table have the same length.
-        let mut clock_jump_differences_greater_than_1 = vec![];
+        let mut clock_jump_differences = vec![];
         for row_idx in 0..aet.processor_trace.nrows() - 1 {
             let (mut curr_row, mut next_row) =
                 ram_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
-
-            let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
-            let clk_diff_minus_1 = clk_diff - BFieldElement::one();
-            let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
-            curr_row[InverseOfClkDiffMinusOne.base_table_index()] = clk_diff_minus_1_inverse;
 
             let ramp_diff = next_row[RAMP.base_table_index()] - curr_row[RAMP.base_table_index()];
             let ramp_diff_inverse = ramp_diff.inverse_or_zero();
@@ -156,15 +151,20 @@ impl RamTable {
             next_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()] = current_bcpc_0;
             next_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()] = current_bcpc_1;
 
-            if ramp_diff.is_zero() && !clk_diff.is_zero() && !clk_diff.is_one() {
-                clock_jump_differences_greater_than_1.push(clk_diff);
+            let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
+            if ramp_diff.is_zero() {
+                assert!(
+                    !clk_diff.is_zero(),
+                    "All rows must have distinct CLK values, but don't on row with index {row_idx}."
+                );
+                clock_jump_differences.push(clk_diff);
             }
         }
 
         assert_eq!(0, bezout_coefficient_polynomial_coefficients_0.len());
         assert_eq!(0, bezout_coefficient_polynomial_coefficients_1.len());
 
-        clock_jump_differences_greater_than_1
+        clock_jump_differences
     }
 
     pub fn pad_trace(ram_table: &mut ArrayViewMut2<BFieldElement>, processor_table_len: usize) {
@@ -211,7 +211,6 @@ impl RamTable {
         let ramp_difference_inverse =
             padding_row_template[InverseOfRampDifference.base_table_index()];
         padding_row_template[InverseOfRampDifference.base_table_index()] = BFieldElement::zero();
-        padding_row_template[InverseOfClkDiffMinusOne.base_table_index()] = BFieldElement::zero();
         let mut padding_section =
             ram_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
         padding_section
@@ -224,31 +223,17 @@ impl RamTable {
         let clk_col = Array1::from_iter(clk_range.map(|clk| BFieldElement::new(clk as u64)));
         clk_col.move_into(padding_section.slice_mut(s![.., CLK.base_table_index()]));
 
-        // InverseOfRampDifference and InverseOfClkDiffMinusOne must be consistent at the padding
-        // section's boundaries.
+        // InverseOfRampDifference must be consistent at the padding section's boundaries.
         ram_table[[
             max_clk_before_padding_row_idx,
             InverseOfRampDifference.base_table_index(),
         ]] = BFieldElement::zero();
-        ram_table[[
-            max_clk_before_padding_row_idx,
-            InverseOfClkDiffMinusOne.base_table_index(),
-        ]] = BFieldElement::zero();
         if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
-            let max_clk_after_padding = padded_height - 1;
-            let clk_diff_minus_one_at_padding_section_lower_boundary = ram_table
-                [[rows_to_move_dest_section_start, CLK.base_table_index()]]
-                - BFieldElement::new(max_clk_after_padding as u64)
-                - BFieldElement::one();
             let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
             ram_table[[
                 last_row_in_padding_section_idx,
                 InverseOfRampDifference.base_table_index(),
             ]] = ramp_difference_inverse;
-            ram_table[[
-                last_row_in_padding_section_idx,
-                InverseOfClkDiffMinusOne.base_table_index(),
-            ]] = clk_diff_minus_one_at_padding_section_lower_boundary.inverse_or_zero();
         }
     }
 
@@ -261,7 +246,7 @@ impl RamTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut running_product_for_perm_arg = PermArg::default_initial();
-        let mut all_clock_jump_differences_running_product = PermArg::default_initial();
+        let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
 
         // initialize columns establishing Bézout relation
         let mut running_product_of_ramp =
@@ -298,11 +283,10 @@ impl RamTable {
                     // prove that clock jump is directed forward
                     let clock_jump_difference =
                         current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
-                    if !clock_jump_difference.is_one() {
-                        all_clock_jump_differences_running_product *= challenges
-                            .all_clock_jump_differences_multi_perm_indeterminate
-                            - clock_jump_difference;
-                    }
+                    clock_jump_diff_lookup_log_derivative += (challenges
+                        .clock_jump_difference_lookup_indeterminate
+                        - clock_jump_difference)
+                        .inverse();
                 }
             }
 
@@ -320,8 +304,8 @@ impl RamTable {
             extension_row[FormalDerivative.ext_table_index()] = formal_derivative;
             extension_row[BezoutCoefficient0.ext_table_index()] = bezout_coefficient_0;
             extension_row[BezoutCoefficient1.ext_table_index()] = bezout_coefficient_1;
-            extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
-                all_clock_jump_differences_running_product;
+            extension_row[ClockJumpDifferenceLookupClientLogDerivative.ext_table_index()] =
+                clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
         }
     }
@@ -357,10 +341,10 @@ impl ExtRamTable {
         let fd = circuit_builder.input(ExtRow(FormalDerivative.master_ext_table_index()));
         let bc0 = circuit_builder.input(ExtRow(BezoutCoefficient0.master_ext_table_index()));
         let bc1 = circuit_builder.input(ExtRow(BezoutCoefficient1.master_ext_table_index()));
-        let rpcjd = circuit_builder.input(ExtRow(
-            AllClockJumpDifferencesPermArg.master_ext_table_index(),
-        ));
         let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
+        let clock_jump_diff_log_derivative = circuit_builder.input(ExtRow(
+            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
+        ));
 
         let write_mem_opcode = circuit_builder.b_constant(Instruction::WriteMem.opcode_b());
         let ramv_is_0_or_was_written_to =
@@ -368,11 +352,12 @@ impl ExtRamTable {
         let bezout_coefficient_polynomial_coefficient_0_is_0 = bcpc0;
         let bezout_coefficient_0_is_0 = bc0;
         let bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1 = bc1 - bcpc1;
-        let formal_derivative_is_1 = fd - one.clone();
+        let formal_derivative_is_1 = fd - one;
         let running_product_polynomial_is_initialized_correctly =
             rp - (bezout_challenge - ramp.clone());
 
-        let running_product_for_clock_jump_differences_is_initialized_to_1 = rpcjd - one;
+        let clock_jump_diff_log_derivative_is_initialized_correctly = clock_jump_diff_log_derivative
+            - circuit_builder.x_constant(LookupArg::default_initial());
 
         let clk_weight = circuit_builder.challenge(ClkWeight);
         let ramp_weight = circuit_builder.challenge(RampWeight);
@@ -392,8 +377,8 @@ impl ExtRamTable {
             bezout_coefficient_1_is_bezout_coefficient_polynomial_coefficient_1,
             running_product_polynomial_is_initialized_correctly,
             formal_derivative_is_1,
-            running_product_for_clock_jump_differences_is_initialized_to_1,
             running_product_permutation_argument_is_initialized_correctly,
+            clock_jump_diff_log_derivative_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -416,8 +401,6 @@ impl ExtRamTable {
         let one = circuit_builder.b_constant(1u32.into());
 
         let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
-        let cjd_challenge =
-            circuit_builder.challenge(AllClockJumpDifferencesMultiPermIndeterminate);
         let rppa_challenge = circuit_builder.challenge(ProcessorPermIndeterminate);
         let clk_weight = circuit_builder.challenge(ClkWeight);
         let ramp_weight = circuit_builder.challenge(RampWeight);
@@ -436,19 +419,16 @@ impl ExtRamTable {
         let bcpc1 = circuit_builder.input(CurrentBaseRow(
             BezoutCoefficientPolynomialCoefficient1.master_base_table_index(),
         ));
-        let clk_diff_minus_one_inv = circuit_builder.input(CurrentBaseRow(
-            InverseOfClkDiffMinusOne.master_base_table_index(),
-        ));
         let rp =
             circuit_builder.input(CurrentExtRow(RunningProductOfRAMP.master_ext_table_index()));
         let fd = circuit_builder.input(CurrentExtRow(FormalDerivative.master_ext_table_index()));
         let bc0 = circuit_builder.input(CurrentExtRow(BezoutCoefficient0.master_ext_table_index()));
         let bc1 = circuit_builder.input(CurrentExtRow(BezoutCoefficient1.master_ext_table_index()));
-        let rpcjd = circuit_builder.input(CurrentExtRow(
-            AllClockJumpDifferencesPermArg.master_ext_table_index(),
-        ));
         let rppa = circuit_builder.input(CurrentExtRow(
             RunningProductPermArg.master_ext_table_index(),
+        ));
+        let clock_jump_diff_log_derivative = circuit_builder.input(CurrentExtRow(
+            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
         ));
 
         let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
@@ -469,11 +449,11 @@ impl ExtRamTable {
             circuit_builder.input(NextExtRow(BezoutCoefficient0.master_ext_table_index()));
         let bc1_next =
             circuit_builder.input(NextExtRow(BezoutCoefficient1.master_ext_table_index()));
-        let rpcjd_next = circuit_builder.input(NextExtRow(
-            AllClockJumpDifferencesPermArg.master_ext_table_index(),
-        ));
         let rppa_next =
             circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
+        let clock_jump_diff_log_derivative_next = circuit_builder.input(NextExtRow(
+            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
+        ));
 
         let ramp_diff = ramp_next.clone() - ramp;
         let ramp_changes = ramp_diff.clone() * iord.clone();
@@ -520,33 +500,27 @@ impl ExtRamTable {
             * (bc1_next.clone() - bezout_challenge * bc1.clone() - bcpc1_next)
             + (one.clone() - ramp_changes.clone()) * (bc1_next - bc1);
 
-        let clk_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
-        let clk_di_is_inverse_of_clk_diff =
-            clk_diff_minus_one_inv.clone() * clk_diff_minus_one.clone();
-        let clk_di_is_zero_or_inverse_of_clkd =
-            clk_diff_minus_one_inv.clone() * (clk_di_is_inverse_of_clk_diff.clone() - one.clone());
-        let clkd_is_zero_or_inverse_of_clk_di =
-            clk_diff_minus_one.clone() * (clk_di_is_inverse_of_clk_diff - one.clone());
-
-        // Running product of clock jump differences (“rpcjd”) updates iff
-        //  - the RAMP remains the same, and
-        //  - the clock difference is greater than 1.
-        let clk_diff = clk_next.clone() - clk;
-        let clk_diff_eq_one = one.clone() - clk_diff.clone();
-        let clk_diff_gt_one = one.clone() - clk_diff_minus_one * clk_diff_minus_one_inv;
-        let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
-        let rpcjd_absorbs_clk_diff = rpcjd_next - rpcjd * (cjd_challenge - clk_diff);
-        let rpcjd_updates_correctly =
-            (one - ramp_changes) * clk_diff_eq_one * rpcjd_absorbs_clk_diff
-                + ramp_diff * rpcjd_remains.clone()
-                + clk_diff_gt_one * rpcjd_remains;
-
-        let compressed_row_for_permutation_argument = clk_next * clk_weight
+        let compressed_row_for_permutation_argument = clk_next.clone() * clk_weight
             + ramp_next * ramp_weight
             + ramv_next * ramv_weight
             + previous_instruction_next * previous_instruction_weight;
         let rppa_updates_correctly =
             rppa_next - rppa * (rppa_challenge - compressed_row_for_permutation_argument);
+
+        // The running sum of the logarithmic derivative for the clock jump difference Lookup
+        // Argument accumulates a summand of `clk_diff` if and only if the `ramp` does not change.
+        // Expressed differently:
+        // - the `ramp` changes or the log derivative accumulates a summand, and
+        // - the `ramp` does not change or the log derivative does not change.
+        let log_derivative_remains =
+            clock_jump_diff_log_derivative_next.clone() - clock_jump_diff_log_derivative.clone();
+        let clk_diff = clk_next - clk;
+        let log_derivative_accumulates = (clock_jump_diff_log_derivative_next
+            - clock_jump_diff_log_derivative)
+            * (circuit_builder.challenge(ClockJumpDifferenceLookupIndeterminate) - clk_diff)
+            - one.clone();
+        let log_derivative_updates_correctly =
+            (one - ramp_changes) * log_derivative_accumulates + ramp_diff * log_derivative_remains;
 
         [
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
@@ -559,10 +533,8 @@ impl ExtRamTable {
             formal_derivative_updates_correctly,
             bezout_coefficient_0_is_constructed_correctly,
             bezout_coefficient_1_is_constructed_correctly,
-            clk_di_is_zero_or_inverse_of_clkd,
-            clkd_is_zero_or_inverse_of_clk_di,
-            rpcjd_updates_correctly,
             rppa_updates_correctly,
+            log_derivative_updates_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -596,7 +568,7 @@ pub enum RamTableChallengeId {
     RamvWeight,
     RampWeight,
     PreviousInstructionWeight,
-    AllClockJumpDifferencesMultiPermIndeterminate,
+    ClockJumpDifferenceLookupIndeterminate,
 }
 
 impl From<RamTableChallengeId> for usize {
@@ -619,8 +591,8 @@ pub struct RamTableChallenges {
     pub ramv_weight: XFieldElement,
     pub previous_instruction_weight: XFieldElement,
 
-    /// Point of evaluation for accumulating all clock jump differences into a running product
-    pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
+    /// Indeterminate for the logarithmic derivative of the clock jump difference's Lookup Argument.
+    pub clock_jump_difference_lookup_indeterminate: XFieldElement,
 }
 
 impl TableChallenges for RamTableChallenges {
@@ -635,8 +607,8 @@ impl TableChallenges for RamTableChallenges {
             RamvWeight => self.ramv_weight,
             RampWeight => self.ramp_weight,
             PreviousInstructionWeight => self.previous_instruction_weight,
-            AllClockJumpDifferencesMultiPermIndeterminate => {
-                self.all_clock_jump_differences_multi_perm_indeterminate
+            ClockJumpDifferenceLookupIndeterminate => {
+                self.clock_jump_difference_lookup_indeterminate
             }
         }
     }

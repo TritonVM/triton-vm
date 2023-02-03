@@ -84,11 +84,14 @@ pub enum ProcessorBaseTableColumn {
     HV1,
     HV2,
     HV3,
-    ClockJumpDifference,
-    ClockJumpDifferenceInverse,
-    UniqueClockJumpDiffDiffInverse,
     RAMP,
     RAMV,
+    /// The number of clock jump differences of magnitude `CLK` in the OpStack Table.
+    ClockJumpDifferenceLookupMultiplicityOpStack,
+    /// The number of clock jump differences of magnitude `CLK` in the RAM Table.
+    ClockJumpDifferenceLookupMultiplicityRam,
+    /// The number of clock jump differences of magnitude `CLK` in the JumpStack Table.
+    ClockJumpDifferenceLookupMultiplicityJumpStack,
 }
 
 #[repr(usize)]
@@ -111,9 +114,15 @@ pub enum ProcessorExtTableColumn {
 
     U32TablePermArg,
 
-    SelectedClockCyclesEvalArg,
-    UniqueClockJumpDifferencesEvalArg,
-    AllClockJumpDifferencesPermArg,
+    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
+    /// Argument with the OpStack Table.
+    ClockJumpDifferenceLookupServerLogDerivativeOpStack,
+    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
+    /// Argument with the Ram Table.
+    ClockJumpDifferenceLookupServerLogDerivativeRam,
+    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
+    /// Argument with the JumpStack Table.
+    ClockJumpDifferenceLookupServerLogDerivativeJumpStack,
 }
 
 // -------- OpStack Table --------
@@ -122,7 +131,6 @@ pub enum ProcessorExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum OpStackBaseTableColumn {
     CLK,
-    InverseOfClkDiffMinusOne,
     IB1ShrinkStack,
     OSP,
     OSV,
@@ -132,7 +140,9 @@ pub enum OpStackBaseTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum OpStackExtTableColumn {
     RunningProductPermArg,
-    AllClockJumpDifferencesPermArg,
+    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
+    /// Argument with the Processor Table.
+    ClockJumpDifferenceLookupClientLogDerivative,
 }
 
 // -------- RAM Table --------
@@ -141,7 +151,6 @@ pub enum OpStackExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum RamBaseTableColumn {
     CLK,
-    InverseOfClkDiffMinusOne,
     PreviousInstruction,
     RAMP,
     RAMV,
@@ -158,7 +167,9 @@ pub enum RamExtTableColumn {
     BezoutCoefficient0,
     BezoutCoefficient1,
     RunningProductPermArg,
-    AllClockJumpDifferencesPermArg,
+    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
+    /// Argument with the Processor Table.
+    ClockJumpDifferenceLookupClientLogDerivative,
 }
 
 // -------- JumpStack Table --------
@@ -167,7 +178,6 @@ pub enum RamExtTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum JumpStackBaseTableColumn {
     CLK,
-    InverseOfClkDiffMinusOne,
     CI,
     JSP,
     JSO,
@@ -178,7 +188,9 @@ pub enum JumpStackBaseTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum JumpStackExtTableColumn {
     RunningProductPermArg,
-    AllClockJumpDifferencesPermArg,
+    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
+    /// Argument with the Processor Table.
+    ClockJumpDifferenceLookupClientLogDerivative,
 }
 
 // -------- Hash Table --------

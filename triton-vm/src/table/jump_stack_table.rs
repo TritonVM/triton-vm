@@ -7,8 +7,6 @@ use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
-use num_traits::One;
-use num_traits::Zero;
 use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
@@ -30,6 +28,7 @@ use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::LookupArg;
 use crate::table::cross_table_argument::PermArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -66,7 +65,6 @@ impl ExtJumpStackTable {
         >,
     > {
         let circuit_builder = ConstraintCircuitBuilder::new();
-        let one = circuit_builder.b_constant(1_u32.into());
 
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
         let jsp = circuit_builder.input(BaseRow(JSP.master_base_table_index()));
@@ -74,8 +72,8 @@ impl ExtJumpStackTable {
         let jsd = circuit_builder.input(BaseRow(JSD.master_base_table_index()));
         let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
         let rppa = circuit_builder.input(ExtRow(RunningProductPermArg.master_ext_table_index()));
-        let rpcjd = circuit_builder.input(ExtRow(
-            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        let clock_jump_diff_log_derivative = circuit_builder.input(ExtRow(
+            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
         ));
 
         let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermRowIndeterminate);
@@ -83,7 +81,9 @@ impl ExtJumpStackTable {
         let compressed_row = circuit_builder.challenge(CiWeight) * ci;
         let rppa_starts_correctly = rppa - (processor_perm_indeterminate - compressed_row);
 
-        let rpcjd_starts_with_one = rpcjd - one;
+        // A clock jump difference of 0 is not allowed. Hence, the initial is recorded.
+        let clock_jump_diff_log_derivative_starts_correctly = clock_jump_diff_log_derivative
+            - circuit_builder.x_constant(LookupArg::default_initial());
 
         [
             clk,
@@ -91,7 +91,7 @@ impl ExtJumpStackTable {
             jso,
             jsd,
             rppa_starts_correctly,
-            rpcjd_starts_with_one,
+            clock_jump_diff_log_derivative_starts_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -124,14 +124,11 @@ impl ExtJumpStackTable {
         let jsp = circuit_builder.input(CurrentBaseRow(JSP.master_base_table_index()));
         let jso = circuit_builder.input(CurrentBaseRow(JSO.master_base_table_index()));
         let jsd = circuit_builder.input(CurrentBaseRow(JSD.master_base_table_index()));
-        let clk_di = circuit_builder.input(CurrentBaseRow(
-            InverseOfClkDiffMinusOne.master_base_table_index(),
-        ));
         let rppa = circuit_builder.input(CurrentExtRow(
             RunningProductPermArg.master_ext_table_index(),
         ));
-        let rpcjd = circuit_builder.input(CurrentExtRow(
-            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        let clock_jump_diff_log_derivative = circuit_builder.input(CurrentExtRow(
+            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
         ));
 
         let clk_next = circuit_builder.input(NextBaseRow(CLK.master_base_table_index()));
@@ -139,13 +136,10 @@ impl ExtJumpStackTable {
         let jsp_next = circuit_builder.input(NextBaseRow(JSP.master_base_table_index()));
         let jso_next = circuit_builder.input(NextBaseRow(JSO.master_base_table_index()));
         let jsd_next = circuit_builder.input(NextBaseRow(JSD.master_base_table_index()));
-        let clk_di_next = circuit_builder.input(NextBaseRow(
-            InverseOfClkDiffMinusOne.master_base_table_index(),
-        ));
         let rppa_next =
             circuit_builder.input(NextExtRow(RunningProductPermArg.master_ext_table_index()));
-        let rpcjd_next = circuit_builder.input(NextExtRow(
-            AllClockJumpDifferencesPermArg.master_ext_table_index(),
+        let clock_jump_diff_log_derivative_next = circuit_builder.input(NextExtRow(
+            ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
         ));
 
         // 1. The jump stack pointer jsp increases by 1
@@ -177,20 +171,8 @@ impl ExtJumpStackTable {
             * (ci.clone() - call_opcode)
             * (ci - return_opcode);
 
-        // 5. If the memory pointer `jsp` does not change, then
-        // `clk_di'` is the inverse-or-zero of the clock jump
-        // difference minus one.
-        let jsp_changes = jsp_next.clone() - jsp.clone() - one.clone();
-        let clock_diff_minus_one = clk_next.clone() - clk.clone() - one.clone();
-        let clkdi_is_inverse_of_clock_diff_minus_one = clk_di_next * clock_diff_minus_one.clone();
-        let clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes =
-            clk_di.clone() * clkdi_is_inverse_of_clock_diff_minus_one.clone() * jsp_changes.clone();
-        let clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes =
-            clock_diff_minus_one.clone() * clkdi_is_inverse_of_clock_diff_minus_one * jsp_changes;
-
-        // 6. The running product for the permutation argument `rppa`
-        //  accumulates one row in each row, relative to weights `a`,
-        //  `b`, `c`, `d`, `e`, and indeterminate `α`.
+        // The running product for the permutation argument `rppa` accumulates one row in each
+        // row, relative to weights `a`, `b`, `c`, `d`, `e`, and indeterminate `α`.
         let compressed_row = circuit_builder.challenge(ClkWeight) * clk_next.clone()
             + circuit_builder.challenge(CiWeight) * ci_next
             + circuit_builder.challenge(JspWeight) * jsp_next.clone()
@@ -200,39 +182,29 @@ impl ExtJumpStackTable {
         let rppa_updates_correctly = rppa_next
             - rppa * (circuit_builder.challenge(ProcessorPermRowIndeterminate) - compressed_row);
 
-        // 7. The running product for clock jump differences `rpcjd`
-        // accumulates a factor `(clk' - clk - 1)` (relative to
-        // indeterminate `β`) if a) the clock jump difference is
-        // greater than 1, and if b) the jump stack pointer does not
-        // change; and remains the same otherwise.
-        //
-        //   (1 - (clk' - clk - 1) · clk_di) · (rpcjd' - rpcjd)
-        // + (jsp' - jsp) · (rpcjd' - rpcjd)
-        // + (clk' - clk - 1) · (jsp' - jsp - 1)
-        //     · (rpcjd' - rpcjd · (β - clk' + clk))`
-        let indeterminate =
-            circuit_builder.challenge(AllClockJumpDifferencesMultiPermIndeterminate);
-        let rpcjd_remains = rpcjd_next.clone() - rpcjd.clone();
-        let jsp_diff = jsp_next - jsp;
-        let rpcjd_update = rpcjd_next - rpcjd * (indeterminate - clk_next.clone() + clk.clone());
-        let rpcjd_remains_if_clk_increments_by_one =
-            (one.clone() - clock_diff_minus_one * clk_di) * rpcjd_remains.clone();
-        let rpcjd_remains_if_jsp_changes = jsp_diff.clone() * rpcjd_remains;
-        let rpcjd_updates_if_jsp_remains_and_clk_jumps =
-            (clk_next - clk - one.clone()) * (jsp_diff - one) * rpcjd_update;
-        let rpcjd_updates_correctly = rpcjd_remains_if_clk_increments_by_one
-            + rpcjd_remains_if_jsp_changes
-            + rpcjd_updates_if_jsp_remains_and_clk_jumps;
+        // The running sum of the logarithmic derivative for the clock jump difference Lookup
+        // Argument accumulates a summand of `clk_diff` if and only if the `jsp` does not change.
+        // Expressed differently:
+        // - the `jsp` changes or the log derivative accumulates a summand, and
+        // - the `jsp` does not change or the log derivative does not change.
+        let log_derivative_remains =
+            clock_jump_diff_log_derivative_next.clone() - clock_jump_diff_log_derivative.clone();
+        let clk_diff = clk_next - clk;
+        let log_derivative_accumulates = (clock_jump_diff_log_derivative_next
+            - clock_jump_diff_log_derivative)
+            * (circuit_builder.challenge(ClockJumpDifferenceLookupIndeterminate) - clk_diff)
+            - one.clone();
+        let log_derivative_updates_correctly = (jsp_next.clone() - jsp.clone() - one)
+            * log_derivative_accumulates
+            + (jsp_next - jsp) * log_derivative_remains;
 
         [
             jsp_inc_or_stays,
             jsp_inc_or_jso_stays_or_ci_is_ret,
             jsp_inc_or_jsd_stays_or_ci_ret,
             jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
-            clkdi_is_zero_or_clkdi_is_inverse_of_clock_diff_minus_one_or_jsp_changes,
-            clock_diff_minus_one_is_zero_or_clock_diff_minus_one_is_clkdi_inverse_or_jsp_changes,
             rppa_updates_correctly,
-            rpcjd_updates_correctly,
+            log_derivative_updates_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -249,7 +221,7 @@ impl ExtJumpStackTable {
 }
 
 impl JumpStackTable {
-    /// Fills the trace table in-place and returns all clock jump differences greater than 1.
+    /// Fills the trace table in-place and returns all clock jump differences.
     pub fn fill_trace(
         jump_stack_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
@@ -291,25 +263,18 @@ impl JumpStackTable {
         }
         assert_eq!(aet.processor_trace.nrows(), jump_stack_table_row);
 
-        // Set inverse of (clock difference - 1). Also, collect all clock jump differences
-        // greater than 1.
+        // Collect all clock jump differences.
         // The Jump Stack Table and the Processor Table have the same length.
-        let mut clock_jump_differences_greater_than_1 = vec![];
+        let mut clock_jump_differences = vec![];
         for row_idx in 0..aet.processor_trace.nrows() - 1 {
-            let (mut curr_row, next_row) =
-                jump_stack_table.multi_slice_mut((s![row_idx, ..], s![row_idx + 1, ..]));
+            let curr_row = jump_stack_table.row(row_idx);
+            let next_row = jump_stack_table.row(row_idx + 1);
             let clk_diff = next_row[CLK.base_table_index()] - curr_row[CLK.base_table_index()];
-            let clk_diff_minus_1 = clk_diff - BFieldElement::one();
-            let clk_diff_minus_1_inverse = clk_diff_minus_1.inverse_or_zero();
-            curr_row[InverseOfClkDiffMinusOne.base_table_index()] = clk_diff_minus_1_inverse;
-
-            if curr_row[JSP.base_table_index()] == next_row[JSP.base_table_index()]
-                && clk_diff.value() > 1
-            {
-                clock_jump_differences_greater_than_1.push(clk_diff);
+            if curr_row[JSP.base_table_index()] == next_row[JSP.base_table_index()] {
+                clock_jump_differences.push(clk_diff);
             }
         }
-        clock_jump_differences_greater_than_1
+        clock_jump_differences
     }
 
     pub fn pad_trace(
@@ -354,12 +319,11 @@ impl JumpStackTable {
                 .move_into(&mut jump_stack_table.slice_mut(s![rows_to_move_dest_range, ..]));
         }
 
-        // Fill the created gap with padding rows, i.e., with (adjusted) copies of the last row
-        // before the gap. This is the padding section.
-        let mut padding_row_template = jump_stack_table
+        // Fill the created gap with padding rows, i.e., with copies of the last row before the
+        // gap. This is the padding section.
+        let padding_row_template = jump_stack_table
             .row(max_clk_before_padding_row_idx)
             .to_owned();
-        padding_row_template[InverseOfClkDiffMinusOne.base_table_index()] = BFieldElement::zero();
         let mut padding_section =
             jump_stack_table.slice_mut(s![padding_section_start..padding_section_end, ..]);
         padding_section
@@ -372,24 +336,6 @@ impl JumpStackTable {
             (processor_table_len..padded_height).map(|clk| BFieldElement::new(clk as u64)),
         );
         new_clk_values.move_into(padding_section.slice_mut(s![.., CLK.base_table_index()]));
-
-        // InverseOfClkDiffMinusOne must be consistent at the padding section's boundaries.
-        jump_stack_table[[
-            max_clk_before_padding_row_idx,
-            InverseOfClkDiffMinusOne.base_table_index(),
-        ]] = BFieldElement::zero();
-        if num_rows_to_move > 0 && rows_to_move_dest_section_start > 0 {
-            let max_clk_after_padding = padded_height - 1;
-            let clk_diff_minus_one_at_padding_section_lower_boundary = jump_stack_table
-                [[rows_to_move_dest_section_start, CLK.base_table_index()]]
-                - BFieldElement::new(max_clk_after_padding as u64)
-                - BFieldElement::one();
-            let last_row_in_padding_section_idx = rows_to_move_dest_section_start - 1;
-            jump_stack_table[[
-                last_row_in_padding_section_idx,
-                InverseOfClkDiffMinusOne.base_table_index(),
-            ]] = clk_diff_minus_one_at_padding_section_lower_boundary.inverse_or_zero();
-        }
     }
 
     pub fn extend(
@@ -401,7 +347,7 @@ impl JumpStackTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
         let mut running_product = PermArg::default_initial();
-        let mut all_clock_jump_differences_running_product = PermArg::default_initial();
+        let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
 
         for row_idx in 0..base_table.nrows() {
@@ -425,18 +371,17 @@ impl JumpStackTable {
                 if prev_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
                     let clock_jump_difference =
                         current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
-                    if !clock_jump_difference.is_one() {
-                        all_clock_jump_differences_running_product *= challenges
-                            .all_clock_jump_differences_multi_perm_indeterminate
-                            - clock_jump_difference;
-                    }
+                    clock_jump_diff_lookup_log_derivative += (challenges
+                        .clock_jump_difference_lookup_indeterminate
+                        - clock_jump_difference)
+                        .inverse();
                 }
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[RunningProductPermArg.ext_table_index()] = running_product;
-            extension_row[AllClockJumpDifferencesPermArg.ext_table_index()] =
-                all_clock_jump_differences_running_product;
+            extension_row[ClockJumpDifferenceLookupClientLogDerivative.ext_table_index()] =
+                clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
         }
     }
@@ -450,7 +395,7 @@ pub enum JumpStackTableChallengeId {
     JspWeight,
     JsoWeight,
     JsdWeight,
-    AllClockJumpDifferencesMultiPermIndeterminate,
+    ClockJumpDifferenceLookupIndeterminate,
 }
 
 impl From<JumpStackTableChallengeId> for usize {
@@ -472,8 +417,8 @@ pub struct JumpStackTableChallenges {
     pub jso_weight: XFieldElement,
     pub jsd_weight: XFieldElement,
 
-    /// Weight for accumulating all clock jump differences
-    pub all_clock_jump_differences_multi_perm_indeterminate: XFieldElement,
+    /// Indeterminate for the logarithmic derivative of the clock jump difference's Lookup Argument.
+    pub clock_jump_difference_lookup_indeterminate: XFieldElement,
 }
 
 impl TableChallenges for JumpStackTableChallenges {
@@ -488,8 +433,8 @@ impl TableChallenges for JumpStackTableChallenges {
             JspWeight => self.jsp_weight,
             JsoWeight => self.jso_weight,
             JsdWeight => self.jsd_weight,
-            AllClockJumpDifferencesMultiPermIndeterminate => {
-                self.all_clock_jump_differences_multi_perm_indeterminate
+            ClockJumpDifferenceLookupIndeterminate => {
+                self.clock_jump_difference_lookup_indeterminate
             }
         }
     }
