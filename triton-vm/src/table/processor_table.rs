@@ -73,31 +73,29 @@ impl ProcessorTable {
     ) {
         // compute the lookup multiplicities of the clock jump differences
         let num_rows = aet.processor_trace.nrows();
-        let mut clk_jump_diff_multiplicities_op_stack = Array1::zeros([num_rows]);
+        let mut clk_jump_diff_multiplicities = Array1::zeros([num_rows]);
         for clk_jump_diff in clk_jump_diffs_op_stack.iter() {
             let clk = clk_jump_diff.value() as usize;
             match clk < num_rows {
-                true => clk_jump_diff_multiplicities_op_stack[clk] += BFIELD_ONE,
+                true => clk_jump_diff_multiplicities[clk] += BFIELD_ONE,
                 false => panic!(
                     "Op Stack: clock jump diff {clk} must fit in trace with {num_rows} rows."
                 ),
             }
         }
-        let mut clk_jump_diff_multiplicities_ram = Array1::zeros([num_rows]);
         for clk_jump_diff in clk_jump_diffs_ram.iter() {
             let clk = clk_jump_diff.value() as usize;
             match clk < num_rows {
-                true => clk_jump_diff_multiplicities_ram[clk] += BFIELD_ONE,
+                true => clk_jump_diff_multiplicities[clk] += BFIELD_ONE,
                 false => {
                     panic!("RAM: clock jump diff {clk} must fit in trace with {num_rows} rows.")
                 }
             }
         }
-        let mut clk_jump_diff_multiplicities_jump_stack = Array1::zeros([num_rows]);
         for clk_jump_diff in clk_jump_diffs_jump_stack.iter() {
             let clk = clk_jump_diff.value() as usize;
             match clk < num_rows {
-                true => clk_jump_diff_multiplicities_jump_stack[clk] += BFIELD_ONE,
+                true => clk_jump_diff_multiplicities[clk] += BFIELD_ONE,
                 false => panic!(
                     "Jump Stack: clock jump diff {clk} must fit in trace with {num_rows} rows."
                 ),
@@ -111,14 +109,8 @@ impl ProcessorTable {
             .clone()
             .move_into(&mut processor_table_to_fill);
         processor_table_to_fill
-            .column_mut(ClockJumpDifferenceLookupMultiplicityOpStack.base_table_index())
-            .assign(&clk_jump_diff_multiplicities_op_stack);
-        processor_table_to_fill
-            .column_mut(ClockJumpDifferenceLookupMultiplicityRam.base_table_index())
-            .assign(&clk_jump_diff_multiplicities_ram);
-        processor_table_to_fill
-            .column_mut(ClockJumpDifferenceLookupMultiplicityJumpStack.base_table_index())
-            .assign(&clk_jump_diff_multiplicities_jump_stack);
+            .column_mut(ClockJumpDifferenceLookupMultiplicity.base_table_index())
+            .assign(&clk_jump_diff_multiplicities);
     }
 
     pub fn pad_trace(
@@ -131,11 +123,7 @@ impl ProcessorTable {
         );
         let mut padding_template = processor_table.row(processor_table_len - 1).to_owned();
         padding_template[IsPadding.base_table_index()] = BFieldElement::one();
-        padding_template[ClockJumpDifferenceLookupMultiplicityOpStack.base_table_index()] =
-            BFieldElement::zero();
-        padding_template[ClockJumpDifferenceLookupMultiplicityRam.base_table_index()] =
-            BFieldElement::zero();
-        padding_template[ClockJumpDifferenceLookupMultiplicityJumpStack.base_table_index()] =
+        padding_template[ClockJumpDifferenceLookupMultiplicity.base_table_index()] =
             BFieldElement::zero();
         processor_table
             .slice_mut(s![processor_table_len.., ..])
@@ -149,15 +137,14 @@ impl ProcessorTable {
             processor_table.slice_mut(s![processor_table_len.., CLK.base_table_index()]),
         );
 
-        // The memory-like tables do not have a padding indicator. Hence, clock jump differences are
-        // being looked up in their padding sections. The clock jump differences in that section are
-        // always 1. The lookup multiplicities of clock value 1 must be increased accordingly.
-        let num_padding_rows = processor_table.nrows() - processor_table_len;
+        // The 3 memory-like tables do not have a padding indicator. Hence, clock jump differences
+        // are being looked up in their padding sections. The clock jump differences in that
+        // section are always 1. The lookup multiplicities of clock value 1 must be increased
+        // accordingly: one per padding row, times the number of memory-like tables, which is 3.
+        let num_padding_rows = 3 * (processor_table.nrows() - processor_table_len);
         let num_pad_rows = BFieldElement::new(num_padding_rows as u64);
         let mut row_1 = processor_table.row_mut(1);
-        row_1[ClockJumpDifferenceLookupMultiplicityOpStack.base_table_index()] += num_pad_rows;
-        row_1[ClockJumpDifferenceLookupMultiplicityRam.base_table_index()] += num_pad_rows;
-        row_1[ClockJumpDifferenceLookupMultiplicityJumpStack.base_table_index()] += num_pad_rows;
+        row_1[ClockJumpDifferenceLookupMultiplicity.base_table_index()] += num_pad_rows;
     }
 
     pub fn extend(
@@ -180,8 +167,6 @@ impl ProcessorTable {
         let mut sponge_running_evaluation = EvalArg::default_initial();
         let mut u32_table_running_product = PermArg::default_initial();
         let mut clock_jump_diff_lookup_op_stack_log_derivative = LookupArg::default_initial();
-        let mut clock_jump_diff_lookup_ram_log_derivative = LookupArg::default_initial();
-        let mut clock_jump_diff_lookup_jump_stack_log_derivative = LookupArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
         for row_idx in 0..base_table.nrows() {
@@ -349,24 +334,12 @@ impl ProcessorTable {
                 }
             }
 
-            // Lookup Arguments for clock jump differences
-            let lookup_multiplicity_op_stack =
-                current_row[ClockJumpDifferenceLookupMultiplicityOpStack.base_table_index()];
+            // Lookup Argument for clock jump differences
+            let lookup_multiplicity =
+                current_row[ClockJumpDifferenceLookupMultiplicity.base_table_index()];
             clock_jump_diff_lookup_op_stack_log_derivative +=
-                (challenges.clock_jump_difference_lookup_op_stack_indeterminate - clk).inverse()
-                    * lookup_multiplicity_op_stack;
-
-            let lookup_multiplicity_ram =
-                current_row[ClockJumpDifferenceLookupMultiplicityRam.base_table_index()];
-            clock_jump_diff_lookup_ram_log_derivative +=
-                (challenges.clock_jump_difference_lookup_ram_indeterminate - clk).inverse()
-                    * lookup_multiplicity_ram;
-
-            let lookup_multiplicity_jump_stack =
-                current_row[ClockJumpDifferenceLookupMultiplicityJumpStack.base_table_index()];
-            clock_jump_diff_lookup_jump_stack_log_derivative +=
-                (challenges.clock_jump_difference_lookup_jump_stack_indeterminate - clk).inverse()
-                    * lookup_multiplicity_jump_stack;
+                (challenges.clock_jump_difference_lookup_indeterminate - clk).inverse()
+                    * lookup_multiplicity;
 
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[InputTableEvalArg.ext_table_index()] = input_table_running_evaluation;
@@ -380,13 +353,8 @@ impl ProcessorTable {
             extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
             extension_row[SpongeEvalArg.ext_table_index()] = sponge_running_evaluation;
             extension_row[U32TablePermArg.ext_table_index()] = u32_table_running_product;
-            extension_row[ClockJumpDifferenceLookupServerLogDerivativeOpStack.ext_table_index()] =
+            extension_row[ClockJumpDifferenceLookupServerLogDerivative.ext_table_index()] =
                 clock_jump_diff_lookup_op_stack_log_derivative;
-            extension_row[ClockJumpDifferenceLookupServerLogDerivativeRam.ext_table_index()] =
-                clock_jump_diff_lookup_ram_log_derivative;
-            extension_row
-                [ClockJumpDifferenceLookupServerLogDerivativeJumpStack.ext_table_index()] =
-                clock_jump_diff_lookup_jump_stack_log_derivative;
             previous_row = Some(current_row);
         }
     }
@@ -552,9 +520,7 @@ pub enum ProcessorTableChallengeId {
     JumpStackTableJsoWeight,
     JumpStackTableJsdWeight,
 
-    ClockJumpDifferenceLookupOpStackIndeterminate,
-    ClockJumpDifferenceLookupRamIndeterminate,
-    ClockJumpDifferenceLookupJumpStackIndeterminate,
+    ClockJumpDifferenceLookupIndeterminate,
 
     HashTableCIWeight,
     HashStateWeight0,
@@ -617,9 +583,7 @@ pub struct ProcessorTableChallenges {
     pub jump_stack_table_jso_weight: XFieldElement,
     pub jump_stack_table_jsd_weight: XFieldElement,
 
-    pub clock_jump_difference_lookup_op_stack_indeterminate: XFieldElement,
-    pub clock_jump_difference_lookup_ram_indeterminate: XFieldElement,
-    pub clock_jump_difference_lookup_jump_stack_indeterminate: XFieldElement,
+    pub clock_jump_difference_lookup_indeterminate: XFieldElement,
 
     pub hash_table_ci_weight: XFieldElement,
     pub hash_state_weight0: XFieldElement,
@@ -671,14 +635,8 @@ impl TableChallenges for ProcessorTableChallenges {
             JumpStackTableJspWeight => self.jump_stack_table_jsp_weight,
             JumpStackTableJsoWeight => self.jump_stack_table_jso_weight,
             JumpStackTableJsdWeight => self.jump_stack_table_jsd_weight,
-            ClockJumpDifferenceLookupOpStackIndeterminate => {
-                self.clock_jump_difference_lookup_op_stack_indeterminate
-            }
-            ClockJumpDifferenceLookupRamIndeterminate => {
-                self.clock_jump_difference_lookup_ram_indeterminate
-            }
-            ClockJumpDifferenceLookupJumpStackIndeterminate => {
-                self.clock_jump_difference_lookup_jump_stack_indeterminate
+            ClockJumpDifferenceLookupIndeterminate => {
+                self.clock_jump_difference_lookup_indeterminate
             }
             HashTableCIWeight => self.hash_table_ci_weight,
             HashStateWeight0 => self.hash_state_weight0,
@@ -783,12 +741,6 @@ impl ExtProcessorTable {
             - constant_x(PermArg::default_initial())
                 * (op_stack_indeterminate - compressed_row_for_op_stack_table);
 
-        // op-stack table – clock jump difference lookup argument
-        // A clock jump difference of 0 is illegal. Hence, the initial is recorded.
-        let clock_jump_diff_lookup_log_derivative_op_stack_is_initialized_correctly = factory
-            .clock_jump_difference_lookup_server_log_derivative_op_stack()
-            - constant_x(LookupArg::default_initial());
-
         // ram table
         let ram_indeterminate = challenge(RamPermIndeterminate);
         // note: `clk`, `ramp`, and `ramv` are already constrained to be 0.
@@ -797,12 +749,6 @@ impl ExtProcessorTable {
             .running_product_ram_table()
             - constant_x(PermArg::default_initial())
                 * (ram_indeterminate - compressed_row_for_ram_table);
-
-        // ram table – clock jump difference lookup argument
-        // A clock jump difference of 0 is illegal. Hence, the initial is recorded.
-        let clock_jump_diff_lookup_log_derivative_ram_is_initialized_correctly = factory
-            .clock_jump_difference_lookup_server_log_derivative_ram()
-            - constant_x(LookupArg::default_initial());
 
         // jump-stack table
         let jump_stack_indeterminate = challenge(JumpStackPermIndeterminate);
@@ -814,10 +760,10 @@ impl ExtProcessorTable {
             - constant_x(PermArg::default_initial())
                 * (jump_stack_indeterminate - compressed_row_for_jump_stack_table);
 
-        // jump-stack table – clock jump difference lookup argument
+        // clock jump difference lookup argument
         // A clock jump difference of 0 is illegal. Hence, the initial is recorded.
-        let clock_jump_diff_lookup_log_derivative_jump_stack_is_initialized_correctly = factory
-            .clock_jump_difference_lookup_server_log_derivative_jump_stack()
+        let clock_jump_diff_lookup_log_derivative_is_initialized_correctly = factory
+            .clock_jump_difference_lookup_server_log_derivative()
             - constant_x(LookupArg::default_initial());
 
         // from processor to hash table
@@ -880,11 +826,9 @@ impl ExtProcessorTable {
             instruction_lookup_log_derivative_is_initialized_correctly,
             running_evaluation_for_standard_output_is_initialized_correctly,
             running_product_for_op_stack_table_is_initialized_correctly,
-            clock_jump_diff_lookup_log_derivative_op_stack_is_initialized_correctly,
             running_product_for_ram_table_is_initialized_correctly,
-            clock_jump_diff_lookup_log_derivative_ram_is_initialized_correctly,
             running_product_for_jump_stack_table_is_initialized_correctly,
-            clock_jump_diff_lookup_log_derivative_jump_stack_is_initialized_correctly,
+            clock_jump_diff_lookup_log_derivative_is_initialized_correctly,
             running_evaluation_hash_input_is_initialized_correctly,
             running_evaluation_hash_digest_is_initialized_correctly,
             running_evaluation_sponge_absorb_is_initialized_correctly,
@@ -904,7 +848,7 @@ impl ExtProcessorTable {
         let one = factory.one();
         let constant = |c| factory.constant_from_i32(c);
 
-        // The composition of instruction buckets ib0-ib9 corresponds the current instruction ci.v
+        // The composition of instruction buckets ib0-ib7 corresponds the current instruction ci.
         let ib_composition = one.clone() * factory.ib0()
             + constant(1 << 1) * factory.ib1()
             + constant(1 << 2) * factory.ib2()
@@ -929,17 +873,9 @@ impl ExtProcessorTable {
         // exempt from this rule is the row wth CLK == 1: since the memory-like tables don't have
         // an “awareness” of padding rows, they keep looking up clock jump differences of
         // magnitude 1.
-        let clock_jump_diff_lookup_multiplicity_of_op_stack_is_0_in_padding_rows = factory
-            .is_padding()
+        let clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows = factory.is_padding()
             * (factory.clk() - factory.one())
-            * factory.clock_jump_difference_lookup_multiplicity_op_stack();
-        let clock_jump_diff_lookup_multiplicity_of_ram_is_0_in_padding_rows = factory.is_padding()
-            * (factory.clk() - factory.one())
-            * factory.clock_jump_difference_lookup_multiplicity_ram();
-        let clock_jump_diff_lookup_multiplicity_of_jump_stack_is_0_in_padding_rows = factory
-            .is_padding()
-            * (factory.clk() - factory.one())
-            * factory.clock_jump_difference_lookup_multiplicity_jump_stack();
+            * factory.clock_jump_difference_lookup_multiplicity();
 
         [
             ib0_is_bit,
@@ -952,9 +888,7 @@ impl ExtProcessorTable {
             ib7_is_bit,
             is_padding_is_bit,
             ci_corresponds_to_ib0_thru_ib7,
-            clock_jump_diff_lookup_multiplicity_of_op_stack_is_0_in_padding_rows,
-            clock_jump_diff_lookup_multiplicity_of_ram_is_0_in_padding_rows,
-            clock_jump_diff_lookup_multiplicity_of_jump_stack_is_0_in_padding_rows,
+            clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -1025,39 +959,17 @@ impl ExtProcessorTable {
         transition_constraints.insert(1, factory.is_padding_is_zero_or_does_not_change());
         transition_constraints.insert(2, factory.previous_instruction_is_copied_correctly());
 
-        // constraints related to clock jump difference Lookup Arguments
-        let log_derivative_op_stack_indeterminate = factory
+        // constraints related to clock jump difference Lookup Argument
+        let clock_jump_difference_lookup_indeterminate = factory
             .circuit_builder
-            .challenge(ClockJumpDifferenceLookupOpStackIndeterminate);
-        let log_derivative_op_stack_accumulates_clk_next = (factory
-            .clock_jump_difference_lookup_server_log_derivative_op_stack_next()
-            - factory.clock_jump_difference_lookup_server_log_derivative_op_stack())
-            * (log_derivative_op_stack_indeterminate - factory.clk_next())
-            - factory.clock_jump_difference_lookup_multiplicity_op_stack_next();
+            .challenge(ClockJumpDifferenceLookupIndeterminate);
+        let log_derivative_accumulates_clk_next = (factory
+            .clock_jump_difference_lookup_server_log_derivative_next()
+            - factory.clock_jump_difference_lookup_server_log_derivative())
+            * (clock_jump_difference_lookup_indeterminate - factory.clk_next())
+            - factory.clock_jump_difference_lookup_multiplicity_next();
 
-        let log_derivative_ram_indeterminate = factory
-            .circuit_builder
-            .challenge(ClockJumpDifferenceLookupRamIndeterminate);
-        let log_derivative_ram_accumulates_clk_next = (factory
-            .clock_jump_difference_lookup_server_log_derivative_ram_next()
-            - factory.clock_jump_difference_lookup_server_log_derivative_ram())
-            * (log_derivative_ram_indeterminate - factory.clk_next())
-            - factory.clock_jump_difference_lookup_multiplicity_ram_next();
-
-        let log_derivative_jump_stack_indeterminate = factory
-            .circuit_builder
-            .challenge(ClockJumpDifferenceLookupJumpStackIndeterminate);
-        let log_derivative_jump_stack_accumulates_clk_next = (factory
-            .clock_jump_difference_lookup_server_log_derivative_jump_stack_next()
-            - factory.clock_jump_difference_lookup_server_log_derivative_jump_stack())
-            * (log_derivative_jump_stack_indeterminate - factory.clk_next())
-            - factory.clock_jump_difference_lookup_multiplicity_jump_stack_next();
-
-        transition_constraints.append(&mut vec![
-            log_derivative_op_stack_accumulates_clk_next,
-            log_derivative_ram_accumulates_clk_next,
-            log_derivative_jump_stack_accumulates_clk_next,
-        ]);
+        transition_constraints.push(log_derivative_accumulates_clk_next);
 
         // constraints related to evaluation and permutation arguments
 
@@ -1513,34 +1425,14 @@ impl SingleRowConstraints {
     > {
         self.base_row_variables[RAMP.master_base_table_index()].clone()
     }
-    pub fn clock_jump_difference_lookup_multiplicity_op_stack(
+    pub fn clock_jump_difference_lookup_multiplicity(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
-        self.base_row_variables
-            [ClockJumpDifferenceLookupMultiplicityOpStack.master_base_table_index()]
-        .clone()
-    }
-    pub fn clock_jump_difference_lookup_multiplicity_ram(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.base_row_variables[ClockJumpDifferenceLookupMultiplicityRam.master_base_table_index()]
+        self.base_row_variables[ClockJumpDifferenceLookupMultiplicity.master_base_table_index()]
             .clone()
-    }
-    pub fn clock_jump_difference_lookup_multiplicity_jump_stack(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.base_row_variables
-            [ClockJumpDifferenceLookupMultiplicityJumpStack.master_base_table_index()]
-        .clone()
     }
     pub fn previous_instruction(
         &self,
@@ -1584,16 +1476,6 @@ impl SingleRowConstraints {
     > {
         self.ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn clock_jump_difference_lookup_server_log_derivative_op_stack(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeOpStack.master_ext_table_index()]
-        .clone()
-    }
     pub fn running_product_ram_table(
         &self,
     ) -> ConstraintCircuitMonad<
@@ -1601,16 +1483,6 @@ impl SingleRowConstraints {
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn clock_jump_difference_lookup_server_log_derivative_ram(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeRam.master_ext_table_index()]
-        .clone()
     }
     pub fn running_product_jump_stack_table(
         &self,
@@ -1620,14 +1492,14 @@ impl SingleRowConstraints {
     > {
         self.ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn clock_jump_difference_lookup_server_log_derivative_jump_stack(
+    pub fn clock_jump_difference_lookup_server_log_derivative(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeJumpStack.master_ext_table_index()]
+            [ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()]
         .clone()
     }
     pub fn running_evaluation_hash_input(
@@ -3220,16 +3092,6 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn clock_jump_difference_lookup_server_log_derivative_op_stack(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.current_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeOpStack.master_ext_table_index()]
-        .clone()
-    }
     pub fn running_product_ram_table(
         &self,
     ) -> ConstraintCircuitMonad<
@@ -3237,16 +3099,6 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.current_ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn clock_jump_difference_lookup_server_log_derivative_ram(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.current_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeRam.master_ext_table_index()]
-        .clone()
     }
     pub fn running_product_jump_stack_table(
         &self,
@@ -3256,14 +3108,14 @@ impl DualRowConstraints {
     > {
         self.current_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn clock_jump_difference_lookup_server_log_derivative_jump_stack(
+    pub fn clock_jump_difference_lookup_server_log_derivative(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.current_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeJumpStack.master_ext_table_index()]
+            [ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()]
         .clone()
     }
     pub fn running_evaluation_hash_input(
@@ -3618,36 +3470,14 @@ impl DualRowConstraints {
         self.next_base_row_variables[RAMV.master_base_table_index()].clone()
     }
 
-    pub fn clock_jump_difference_lookup_multiplicity_op_stack_next(
+    pub fn clock_jump_difference_lookup_multiplicity_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_base_row_variables
-            [ClockJumpDifferenceLookupMultiplicityOpStack.master_base_table_index()]
-        .clone()
-    }
-
-    pub fn clock_jump_difference_lookup_multiplicity_ram_next(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.next_base_row_variables
-            [ClockJumpDifferenceLookupMultiplicityRam.master_base_table_index()]
-        .clone()
-    }
-
-    pub fn clock_jump_difference_lookup_multiplicity_jump_stack_next(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.next_base_row_variables
-            [ClockJumpDifferenceLookupMultiplicityJumpStack.master_base_table_index()]
+            [ClockJumpDifferenceLookupMultiplicity.master_base_table_index()]
         .clone()
     }
 
@@ -3693,16 +3523,6 @@ impl DualRowConstraints {
     > {
         self.next_ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn clock_jump_difference_lookup_server_log_derivative_op_stack_next(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.next_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeOpStack.master_ext_table_index()]
-        .clone()
-    }
     pub fn running_product_ram_table_next(
         &self,
     ) -> ConstraintCircuitMonad<
@@ -3710,16 +3530,6 @@ impl DualRowConstraints {
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn clock_jump_difference_lookup_server_log_derivative_ram_next(
-        &self,
-    ) -> ConstraintCircuitMonad<
-        ProcessorTableChallenges,
-        DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-    > {
-        self.next_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeRam.master_ext_table_index()]
-        .clone()
     }
     pub fn running_product_jump_stack_table_next(
         &self,
@@ -3729,14 +3539,14 @@ impl DualRowConstraints {
     > {
         self.next_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
     }
-    pub fn clock_jump_difference_lookup_server_log_derivative_jump_stack_next(
+    pub fn clock_jump_difference_lookup_server_log_derivative_next(
         &self,
     ) -> ConstraintCircuitMonad<
         ProcessorTableChallenges,
         DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
     > {
         self.next_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivativeJumpStack.master_ext_table_index()]
+            [ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()]
         .clone()
     }
     pub fn running_evaluation_hash_input_next(

@@ -34,7 +34,7 @@ pub const NUM_PUBLIC_EVAL_ARGS: usize = 2; // for public input and output
 pub const NUM_PRIVATE_EVAL_ARGS: usize =
     PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS - NUM_PUBLIC_EVAL_ARGS;
 pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
-pub const NUM_LOOKUP_ARGS: usize = 4;
+pub const NUM_LOOKUP_ARGS: usize = 2;
 pub const NUM_CROSS_TABLE_ARGS: usize =
     NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS + NUM_LOOKUP_ARGS;
 pub const NUM_CROSS_TABLE_WEIGHTS: usize = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
@@ -153,9 +153,7 @@ pub struct CrossTableChallenges {
     pub hash_digest_weight: XFieldElement,
     pub sponge_weight: XFieldElement,
     pub processor_to_u32_weight: XFieldElement,
-    pub clock_jump_difference_lookup_op_stack_weight: XFieldElement,
-    pub clock_jump_difference_lookup_ram_weight: XFieldElement,
-    pub clock_jump_difference_lookup_jump_stack_weight: XFieldElement,
+    pub clock_jump_difference_lookup_weight: XFieldElement,
     pub input_to_processor_weight: XFieldElement,
     pub processor_to_output_weight: XFieldElement,
 }
@@ -173,9 +171,7 @@ pub enum CrossTableChallengeId {
     HashDigestWeight,
     SpongeWeight,
     ProcessorToU32Weight,
-    ClockJumpDifferenceLookupOpStackWeight,
-    ClockJumpDifferenceLookupRamWeight,
-    ClockJumpDifferenceLookupJumpStackWeight,
+    ClockJumpDifferenceLookupWeight,
     InputToProcessorWeight,
     ProcessorToOutputWeight,
 }
@@ -202,13 +198,7 @@ impl TableChallenges for CrossTableChallenges {
             HashDigestWeight => self.hash_digest_weight,
             SpongeWeight => self.sponge_weight,
             ProcessorToU32Weight => self.processor_to_u32_weight,
-            ClockJumpDifferenceLookupOpStackWeight => {
-                self.clock_jump_difference_lookup_op_stack_weight
-            }
-            ClockJumpDifferenceLookupRamWeight => self.clock_jump_difference_lookup_ram_weight,
-            ClockJumpDifferenceLookupJumpStackWeight => {
-                self.clock_jump_difference_lookup_jump_stack_weight
-            }
+            ClockJumpDifferenceLookupWeight => self.clock_jump_difference_lookup_weight,
             InputToProcessorWeight => self.input_to_processor_weight,
             ProcessorToOutputWeight => self.processor_to_output_weight,
         }
@@ -280,18 +270,12 @@ impl Evaluable for GrandCrossTableArg {
         let processor_to_u32 = ext_row
             [ProcessorExtTableColumn::U32TablePermArg.master_ext_table_index()]
             - ext_row[U32ExtTableColumn::ProcessorPermArg.master_ext_table_index()];
-        let clock_jump_difference_lookup_op_stack = ext_row
-            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivativeOpStack
+        let clock_jump_difference_lookup = ext_row
+            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivative
                 .master_ext_table_index()]
             - ext_row[OpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
-                .master_ext_table_index()];
-        let clock_jump_difference_lookup_ram = ext_row
-            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivativeRam
                 .master_ext_table_index()]
             - ext_row[RamExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
-                .master_ext_table_index()];
-        let clock_jump_difference_lookup_jump_stack = ext_row
-            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivativeJumpStack
                 .master_ext_table_index()]
             - ext_row[JumpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
                 .master_ext_table_index()];
@@ -307,12 +291,8 @@ impl Evaluable for GrandCrossTableArg {
             + challenges.get_challenge(HashDigestWeight) * hash_digest
             + challenges.get_challenge(SpongeWeight) * sponge
             + challenges.get_challenge(ProcessorToU32Weight) * processor_to_u32
-            + challenges.get_challenge(ClockJumpDifferenceLookupOpStackWeight)
-                * clock_jump_difference_lookup_op_stack
-            + challenges.get_challenge(ClockJumpDifferenceLookupRamWeight)
-                * clock_jump_difference_lookup_ram
-            + challenges.get_challenge(ClockJumpDifferenceLookupJumpStackWeight)
-                * clock_jump_difference_lookup_jump_stack;
+            + challenges.get_challenge(ClockJumpDifferenceLookupWeight)
+                * clock_jump_difference_lookup;
         vec![non_linear_sum]
     }
 }

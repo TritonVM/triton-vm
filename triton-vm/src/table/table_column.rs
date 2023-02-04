@@ -86,12 +86,8 @@ pub enum ProcessorBaseTableColumn {
     HV3,
     RAMP,
     RAMV,
-    /// The number of clock jump differences of magnitude `CLK` in the OpStack Table.
-    ClockJumpDifferenceLookupMultiplicityOpStack,
-    /// The number of clock jump differences of magnitude `CLK` in the RAM Table.
-    ClockJumpDifferenceLookupMultiplicityRam,
-    /// The number of clock jump differences of magnitude `CLK` in the JumpStack Table.
-    ClockJumpDifferenceLookupMultiplicityJumpStack,
+    /// The number of clock jump differences of magnitude `CLK` in all memory-like tables.
+    ClockJumpDifferenceLookupMultiplicity,
 }
 
 #[repr(usize)]
@@ -115,14 +111,8 @@ pub enum ProcessorExtTableColumn {
     U32TablePermArg,
 
     /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
-    /// Argument with the OpStack Table.
-    ClockJumpDifferenceLookupServerLogDerivativeOpStack,
-    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
-    /// Argument with the Ram Table.
-    ClockJumpDifferenceLookupServerLogDerivativeRam,
-    /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
-    /// Argument with the JumpStack Table.
-    ClockJumpDifferenceLookupServerLogDerivativeJumpStack,
+    /// Argument with the memory-like tables.
+    ClockJumpDifferenceLookupServerLogDerivative,
 }
 
 // -------- OpStack Table --------

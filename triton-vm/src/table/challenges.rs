@@ -58,7 +58,7 @@ pub struct AllChallenges {
 }
 
 impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 47 + NUM_CROSS_TABLE_WEIGHTS;
+    pub const TOTAL_CHALLENGES: usize = 45 + NUM_CROSS_TABLE_WEIGHTS;
 
     pub fn create_challenges(
         mut weights: Vec<XFieldElement>,
@@ -96,9 +96,7 @@ impl AllChallenges {
             jump_stack_table_jso_weight: weights.pop().unwrap(),
             jump_stack_table_jsd_weight: weights.pop().unwrap(),
 
-            clock_jump_difference_lookup_op_stack_indeterminate: weights.pop().unwrap(),
-            clock_jump_difference_lookup_ram_indeterminate: weights.pop().unwrap(),
-            clock_jump_difference_lookup_jump_stack_indeterminate: weights.pop().unwrap(),
+            clock_jump_difference_lookup_indeterminate: weights.pop().unwrap(),
 
             hash_table_ci_weight: weights.pop().unwrap(),
             hash_state_weight0: weights.pop().unwrap(),
@@ -145,7 +143,7 @@ impl AllChallenges {
             osv_weight: processor_table_challenges.op_stack_table_osv_weight,
             osp_weight: processor_table_challenges.op_stack_table_osp_weight,
             clock_jump_difference_lookup_indeterminate: processor_table_challenges
-                .clock_jump_difference_lookup_op_stack_indeterminate,
+                .clock_jump_difference_lookup_indeterminate,
         };
 
         let ram_table_challenges = RamTableChallenges {
@@ -157,7 +155,7 @@ impl AllChallenges {
             previous_instruction_weight: processor_table_challenges
                 .ram_table_previous_instruction_weight,
             clock_jump_difference_lookup_indeterminate: processor_table_challenges
-                .clock_jump_difference_lookup_ram_indeterminate,
+                .clock_jump_difference_lookup_indeterminate,
         };
 
         let jump_stack_table_challenges = JumpStackTableChallenges {
@@ -168,7 +166,7 @@ impl AllChallenges {
             jso_weight: processor_table_challenges.jump_stack_table_jso_weight,
             jsd_weight: processor_table_challenges.jump_stack_table_jsd_weight,
             clock_jump_difference_lookup_indeterminate: processor_table_challenges
-                .clock_jump_difference_lookup_jump_stack_indeterminate,
+                .clock_jump_difference_lookup_indeterminate,
         };
 
         let hash_table_challenges = HashTableChallenges {
@@ -226,9 +224,7 @@ impl AllChallenges {
             hash_digest_weight: weights.pop().unwrap(),
             sponge_weight: weights.pop().unwrap(),
             processor_to_u32_weight: weights.pop().unwrap(),
-            clock_jump_difference_lookup_op_stack_weight: weights.pop().unwrap(),
-            clock_jump_difference_lookup_ram_weight: weights.pop().unwrap(),
-            clock_jump_difference_lookup_jump_stack_weight: weights.pop().unwrap(),
+            clock_jump_difference_lookup_weight: weights.pop().unwrap(),
             input_to_processor_weight: weights.pop().unwrap(),
             processor_to_output_weight: weights.pop().unwrap(),
         };
