@@ -166,7 +166,7 @@ None.
 1. (`jsp` does not change and `jso` does not change and `jsd` does not change and the current instruction `ci` is `call`), *or*
 1. (`jsp` does not change and the current instruction `ci` is `return`).
 1. The running product for the permutation argument `rppa` absorbs the next row  with respect to challenges 🍇, 🍅, 🍌, 🍏, and 🍐 and indeterminate 🧴.
-1. If the jump stack pointer `jsp` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🧺.
+1. If the jump stack pointer `jsp` does not change, then the logarithmic derivative for the clock jump difference lookup `ClockJumpDifferenceLookupClientLogDerivative` accumulates a factor `(clk' - clk)` relative to indeterminate 🪞.
   Otherwise, it remains the same.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
@@ -187,7 +187,7 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `clk_di·(jsp' - jsp - 1)·(1 - clk_di·(clk' - clk - one))`
 1. `(clk' - clk - one)·(jsp' - jsp - 1)·(1 - clk_di·(clk' - clk - one))`
 1. `rppa' - rppa·(🧴 - 🍇·clk' - 🍅·ci' - 🍌·jsp' - 🍏·jso' - 🍐·jsd')`
-1. `(jsp' - (jsp + 1))·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🧺 - clk' + clk) - 1)`<br />
+1. `(jsp' - (jsp + 1))·((ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative) · (🪞 - clk' + clk) - 1)`<br />
    `+ (jsp' - jsp)·(ClockJumpDifferenceLookupClientLogDerivative' - ClockJumpDifferenceLookupClientLogDerivative)`
 
 ## Terminal Constraints

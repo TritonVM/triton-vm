@@ -15,3 +15,6 @@ As a result, in this regime, showing that a clock jump difference is in $F$ guar
 
 The set of values in the Processor Table's clock cycle column is $F \cup \lbrace 0 \rbrace$.
 A standard [Lookup Argument](lookup-argument.md) can show that the clock jump differences are elements of that column.
+Since all three memory-like tables look up the same property, the [Processor Table](processor-table.md) acts as a single server as opposed to three distinct servers.
+Concretely, the lookup multiplicities of the three clients, _i.e._, the memory-like tables, are recorded in a single column `cjd_mul`.
+It contains the element-wise sum of the three distinct lookup multiplicities.

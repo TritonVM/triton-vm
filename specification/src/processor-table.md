@@ -7,8 +7,8 @@ Each register is assigned a column in the processor table.
 
 ## Extension Colums
 
-The Processor Table has 13 extension columns, corresponding to Evaluation Arguments and Permutation Arguments.
-Namely:
+The Processor Table has the following extension columns, corresponding to [Evaluation Arguments](evaluation-argument.md), [Permutation Arguments](permutation-argument.md), and [Lookup Arguments](lookup-argument.md):
+
 1. `RunningEvaluationStandardInput` for the Evaluation Argument with the input symbols.
 1. `RunningEvaluationStandardOutput` for the Evaluation Argument with the output symbols.
 1. `InstructionLookupClientLogDerivative` for the Lookup Argument with the [Program Table](program-table.md)
@@ -19,22 +19,17 @@ Namely:
 1. `RunningEvaluationHashDigest` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the hash coprocessor to the processor.
 1. `RunningEvaluationSponge` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the 10 next to-be-absorbed elements from the processor to the hash coprocessor or the 10 next squeezed elements from the hash coprocessor to the processor, depending on the instruction.
 1. `RunningProductU32Table` for the Permutation Argument with the [U32 Table](u32-table.md).
-1. `ClockJumpDifferenceLookupServerLogDerivativeOpStack` for the [Lookup Argument](lookup-argument.md) of clock jump differences with the [OpStack Table](operational-stack-table.md).
-1. `ClockJumpDifferenceLookupServerLogDerivativeRam` for the [Lookup Argument](lookup-argument.md) of clock jump differences with the [RAM Table](random-access-memory-table.md).
-1. `ClockJumpDifferenceLookupServerLogDerivativeJumpStack` for the [Lookup Argument](lookup-argument.md) of clock jump differences with the [JumpStack Table](jump-stack-table.md).
-
+1. `ClockJumpDifferenceLookupServerLogDerivative` for the Lookup Argument of clock jump differences with the [OpStack Table](operational-stack-table.md), the [RAM Table](random-access-memory-table.md), and the [JumpStack Table](jump-stack-table.md).
 
 ## Padding
 
 A padding row is a copy of the Processor Table's last row with the following modifications:
 1. column `clk` is increased by 1,
 1. column `IsPadding` is set to 1,
-1. column `cjd_mul_op_stack` is set to 0,
-1. column `cjd_mul_ram` is set to 0, and
-1. column `cjd_mul_jump_stack` is set to 0.
+1. column `cjd_mul` is set to 0,
 
 A notable exception:
-if the row with `clk` equal to 1 is a padding row, then the values of `cjd_mul_op_stack`, `cjd_mul_ram`, and `cjd_mul_jump_stack` are not constrained in that row.
+if the row with `clk` equal to 1 is a padding row, then the value of `cjd_mul` is not constrained in that row.
 The reason for this exception is the lack of “awareness” of padding rows in the three memory-like tables.
 In fact, all memory-like tables keep looking up clock jump differences in their padding section.
 All these clock jumps are guaranteed to have magnitude 1 due to the [Permutation Arguments](permutation-argument.md) with the respective memory-like tables.
@@ -95,9 +90,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. `RunningEvaluationHashDigest` is 1.
 1. `RunningEvaluationSponge` is 1.
 1. `RunningProductU32Table` is 1.
-1. `ClockJumpDifferenceLookupServerLogDerivativeOpStack` is 0.
-1. `ClockJumpDifferenceLookupServerLogDerivativeRam` is 0.
-1. `ClockJumpDifferenceLookupServerLogDerivativeJumpStack` is 0.
+1. `ClockJumpDifferenceLookupServerLogDerivative` is 0.
 
 ### Initial Constraints as Polynomials
 
@@ -138,9 +131,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. `RunningEvaluationHashDigest - 1`
 1. `RunningEvaluationSponge - 1`
 1. `RunningProductU32Table - 1`
-1. `ClockJumpDifferenceLookupServerLogDerivativeOpStack`
-1. `ClockJumpDifferenceLookupServerLogDerivativeRam`
-1. `ClockJumpDifferenceLookupServerLogDerivativeJumpStack`
+1. `ClockJumpDifferenceLookupServerLogDerivative`
 
 ## Consistency Constraints
 
@@ -154,9 +145,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. The instruction bit `ib6` is a bit.
 1. The instruction bit `ib7` is a bit.
 1. The padding indicator `IsPadding` is either 0 or 1.
-1. If the current padding row is a padding row and `clk` is not 1, then the clock jump difference lookup multiplicity of the Op Stack Table is 0.
-1. If the current padding row is a padding row and `clk` is not 1, then the clock jump difference lookup multiplicity of the Ram Table is 0.
-1. If the current padding row is a padding row and `clk` is not 1, then the clock jump difference lookup multiplicity of the Jump Stack Table is 0.
+1. If the current padding row is a padding row and `clk` is not 1, then the clock jump difference lookup multiplicity is 0.
 
 ### Consistency Constraints as Polynomials
 
@@ -170,9 +159,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. `ib6·(ib6 - 1)`
 1. `ib7·(ib7 - 1)`
 1. `IsPadding·(IsPadding - 1)`
-1. `IsPadding·(clk - 1)·ClockJumpDifferenceLookupServerLogDerivativeOpStack`
-1. `IsPadding·(clk - 1)·ClockJumpDifferenceLookupServerLogDerivativeRam`
-1. `IsPadding·(clk - 1)·ClockJumpDifferenceLookupServerLogDerivativeJumpStack`
+1. `IsPadding·(clk - 1)·ClockJumpDifferenceLookupServerLogDerivative`
 
 ## Transition Constraints
 
@@ -198,9 +185,7 @@ The following additional constraints also apply to every pair of rows.
         1. `st0` in the next row and `st1` in the current row as well as the constants `opcode(lt)` and `1` with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
         1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
     1. Else, _i.e._, if the current instruction is not a u32 instruction, the running product with the U32 Table remains unchanged.
-1. The running sum for the logarithmic derivative of the clock jump difference lookup argument with the Op Stack Table accumulates the next row's `clk` with the appropriate multiplicity with respect to indeterminate 🪞.
-1. The running sum for the logarithmic derivative of the clock jump difference lookup argument with the Ram Table accumulates the next row's `clk` with the appropriate multiplicity with respect to indeterminate 🪑.
-1. The running sum for the logarithmic derivative of the clock jump difference lookup argument with the Jump Stack Table accumulates the next row's `clk` with the appropriate multiplicity with respect to indeterminate 🧺.
+1. The running sum for the logarithmic derivative of the clock jump difference lookup argument accumulates the next row's `clk` with the appropriate multiplicity `cjd_mul` with respect to indeterminate 🪞.
 
 ### Transition Constraints as Polynomials
 
@@ -231,12 +216,8 @@ The following additional constraints also apply to every pair of rows.
     1. `+ log_2_floor_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0'))`
     1. `+ div_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕)·(🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split)))`
     1. `+ (1 - ib2)·(RunningProductU32Table' - RunningProductU32Table)`
-1. `(ClockJumpDifferenceLookupServerLogDerivativeOpStack' - ClockJumpDifferenceLookupServerLogDerivativeOpStack)`<br />
-    `·(🪞 - clk') - cjd_mul_op_stack'`
-1. `(ClockJumpDifferenceLookupServerLogDerivativeRam' - ClockJumpDifferenceLookupServerLogDerivativeRam)`<br />
-    `·(🪑 - clk') - cjd_mul_ram'`
-1. `(ClockJumpDifferenceLookupServerLogDerivativeJumpStack' - ClockJumpDifferenceLookupServerLogDerivativeJumpStack)`<br />
-    `·(🧺 - clk') - cjd_mul_jump_stack'`
+1. `(ClockJumpDifferenceLookupServerLogDerivative' - ClockJumpDifferenceLookupServerLogDerivative)`<br />
+    `·(🪞 - clk') - cjd_mul'`
 
 ## Terminal Constraints
 
