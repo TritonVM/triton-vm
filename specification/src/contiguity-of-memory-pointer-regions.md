@@ -16,16 +16,31 @@ Analogously to the OpStack Table, the JumpStack's memory pointer `jsp` can only 
 
 ## Contiguity for RAM Table
 
-This *contiguity argument* is a collection of several columns and constraints.
+The *Contiguity Argument* for the RAM table establishes that all RAM pointer regions start with distinct values.
+It is easy to ignore _consecutive_ duplicates in the list of all RAM pointers using one additional base column.
+This allows identification of the RAM pointer values at the regions' boundaries, $A$.
+The Contiguity Argument then shows that the list $A$ contains no duplicates.
+For this, it uses [Bézout's identity for univariate polynomials](https://en.wikipedia.org/wiki/Polynomial_greatest_common_divisor#B%C3%A9zout's_identity_and_extended_GCD_algorithm).
+Concretely, the prover shows that for the polynomial $f_A(X)$ with all elements of $A$ as roots, _i.e._,
+$$
+f_A(X) = \prod_{i=0}^n X - a_i
+$$
+and its formal derivative $f'_A(X)$, there exist $u(X)$ and $v(X)$ with appropriate degrees such that
+$$
+u(X) \cdot f_A(X) + v(X) \cdot f'_A(X) = 1.
+$$
+In other words, the Contiguity Argument establishes that the greatest common divisor of $f_A(X)$ and $f'_A(X)$ is 1.
+This implies that all roots of $f_A(X)$ have multiplicity 1, which holds if and only if there are no duplicate elements in list $A$.
+
+The following columns and constraints are needed for the Contiguity Argument:
 
  - Base column `iord` and two deterministic transition constraints enable conditioning on a changed memory pointer.
  - Base columns `bcpc0` and `bcpc1` and two deterministic transition constraints contain and constrain the symbolic Bézout coefficient polynomials' coefficients.
- - Extension column `rpp` is a running product similar to that of a conditioned permutation argument. A randomized transition constraint verifies the correct accumulation of factors for updating this column.
+ - Extension column `rpp` is a running product similar to that of a conditioned [permutation argument](permutation-argument.md). A randomized transition constraint verifies the correct accumulation of factors for updating this column.
  - Extension column `fd` is the formal derivative of `rpp`. A randomized transition constraint verifies the correct application of the product rule of differentiation to update this column.
  - Extension columns `bc0` and `bc1` build up the Bézout coefficient polynomials based on the corresponding base columns, `bcpc0` and `bcpc1`.
 Two randomized transition constraints enforce the correct build-up of the Bézout coefficient polynomials.
- - A terminal constraint takes the weighted sum of the running product and the formal derivative, where the weights are the Bézout coefficient polynomials, and equates it to one. This equation asserts the Bézout relation. It can only be satisfied if the greatest common divisor of the running product and its formal derivative is one – implying that no change in the memory pointer resets it to a value used earlier.
-
+ - A terminal constraint takes the weighted sum of the running product and the formal derivative, where the weights are the Bézout coefficient polynomials, and equates it to one. This equation asserts the Bézout relation.
 
 The following table illustrates the idea.
 Columns not needed for establishing memory consistency are not displayed.

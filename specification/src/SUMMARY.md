@@ -18,7 +18,6 @@
 - [Table Linking](table-linking.md)
     + [Permutation Argument](permutation-argument.md)
     + [Evaluation Argument](evaluation-argument.md)
-    + [Bézout Argument](bezout-argument.md)
     + [Lookup Argument](lookup-argument.md)
 - [Memory-Consistency](memory-consistency.md)
     + [Contiguity of Memory-Pointer Regions](contiguity-of-memory-pointer-regions.md)

@@ -6,7 +6,7 @@ Triton has three memory-like units: the RAM, the JumpStack, and the OpStack. Eac
  2. Inner-sorting within contiguous regions. Within each such contiguous region, the rows are sorted in ascending order by clock cycle.
 
 The contiguity of regions of constant memory pointer is established differently for the RAM Table than for the OpStack or JumpStack Tables. The OpStack and JumpStack Tables enjoy a particular property whereby the memory pointer can only ever increase or decrease by one (or stay the same). As a result, simple AIR constraints can enforce the correct sorting by memory pointer. In contrast, the memory pointer for the RAM Table can jump arbitrarily.
-As explained in the [next section](contiguity-of-memory-pointer-regions.md), a [Bézout argument](bezout-argument.md) establishes contiguity.
+As explained in the [next section](contiguity-of-memory-pointer-regions.md), a Contiguity Argument establishes contiguity.
 
 The correct inner sorting is established the same way for all three memory-like tables.
 Their respective clock jump differences – differences of clock cycles within regions of constant memory pointer – are shown to be contained in the set of all clock cycles through [Lookup Arguments](lookup-argument.md).

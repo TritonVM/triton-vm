@@ -13,7 +13,7 @@ In the nomenclature of this note, a trace is a special kind of table that tracks
 
 There are 8 Arithmetic Execution Tables in TritonVM.
 Their relation is described by below figure.
-A red arrow indicates an Evaluation Argument, a blue arrow indicates a Permutation Argument, and the green arrow is the Bézout Argument.
+A a blue arrow indicates a [Permutation Argument](permutation-argument.md), a red arrow indicates an [Evaluation Argument](evaluation-argument.md), a purple arrow indicates a [Lookup Argument](lookup-argument.md), and the green arrow is the [Contiguity Argument](contiguity-of-memory-pointer-regions.md).
 
 ![](img/aet-relations.png)
 
@@ -32,7 +32,7 @@ Together, these columns are referred to as table's _base_ columns, and make up t
 
 ### Extension Tables
 
-The entries of a table's columns corresponding to Permutation, Evaluation, and Bézout Arguments are elements from the _X-field_ $\mathbb{F}_{p^3}$.
+The entries of a table's columns corresponding to Permutation, Evaluation, and Lookup Arguments are elements from the _X-field_ $\mathbb{F}_{p^3}$.
 These columns are referred to as a table's _extension_ columns, both because the entries are elements of the X-field and because the entries can only be computed using the base tables, through an _extension_ process.
 Together, these columns are referred to as a table's _extension_ columns, and make up the _extension table_.
 
