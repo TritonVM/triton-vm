@@ -156,12 +156,18 @@ where
 mod proof_stream_typed_tests {
     use itertools::Itertools;
     use num_traits::One;
-
-    use twenty_first::shared_math::b_field_element::{BFieldElement, BFIELD_ZERO};
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
+    use twenty_first::util_types::merkle_tree::CpuParallel;
+    use twenty_first::util_types::merkle_tree::MerkleTree;
+    use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
+
+    use crate::proof_item::FriResponse;
+    use crate::proof_item::ProofItem;
 
     use super::*;
 
@@ -339,5 +345,41 @@ mod proof_stream_typed_tests {
         assert_eq!(fs2, fs2_);
         assert_eq!(fs3, fs3_);
         assert_eq!(fs4, fs4_);
+    }
+
+    #[test]
+    fn enqueue_dequeue_verify_partial_authentication_structure() {
+        type H = RescuePrimeRegular;
+
+        let leaf_values: Vec<XFieldElement> = random_elements(256);
+        let leaf_digests = leaf_values.iter().map(H::hash).collect_vec();
+        let merkle_tree: MerkleTree<H, _> = CpuParallel::from_digests(&leaf_digests);
+        let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
+        let authentication_structure = merkle_tree.get_authentication_structure(&indices_to_check);
+        let fri_response_content = authentication_structure
+            .iter()
+            .zip_eq(indices_to_check.iter())
+            .map(|(path, &idx)| (path.to_owned(), leaf_values[idx].clone()))
+            .collect_vec();
+        let fri_response = FriResponse(fri_response_content);
+
+        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
+
+        let maybe_same_fri_response = proof_stream.dequeue().unwrap().as_fri_response().unwrap();
+        let FriResponse(dequeued_paths_and_leafs) = maybe_same_fri_response;
+        let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
+        let maybe_same_leaf_digests = leaf_values.iter().map(H::hash).collect_vec();
+        let path_digest_pairs = paths
+            .into_iter()
+            .zip_eq(maybe_same_leaf_digests)
+            .collect_vec();
+        assert_eq!(indices_to_check.len(), path_digest_pairs.len());
+        MerkleTree::<H, CpuParallel>::verify_authentication_structure(
+            merkle_tree.get_root(),
+            &indices_to_check,
+            &path_digest_pairs,
+        );
     }
 }
