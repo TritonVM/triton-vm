@@ -85,7 +85,6 @@ where
 
     /// Convert the proof into a proof stream for the verifier.
     pub fn from_proof(proof: &Proof, sponge_state: H::SpongeState) -> Result<Self> {
-        // TODO: Actually update sponge for each item.
         let mut index = 0;
         let mut items = vec![];
         while index < proof.0.len() {
@@ -255,7 +254,6 @@ mod proof_stream_typed_tests {
         }
     }
 
-    // Property: prover_fiat_shamir() is equivalent to verifier_fiat_shamir() when the entire stream has been read.
     #[test]
     fn prover_verifier_fiat_shamir_test() {
         type H = RescuePrimeRegular;
@@ -270,7 +268,8 @@ mod proof_stream_typed_tests {
         assert_eq!(
             ps.prover_fiat_shamir(),
             ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() are equivalent when the entire stream is read"
+            "prover_fiat_shamir() and verifier_fiat_shamir() must be equivalent \
+            when the entire stream is read"
         );
 
         let digest_2 = H::hash(&BFieldElement::one());
@@ -279,7 +278,8 @@ mod proof_stream_typed_tests {
         assert_ne!(
             ps.prover_fiat_shamir(),
             ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() are different when the stream isn't fully read"
+            "prover_fiat_shamir() and verifier_fiat_shamir() must be different \
+            when the stream isn't fully read"
         );
 
         let _ = ps.dequeue();
@@ -287,7 +287,8 @@ mod proof_stream_typed_tests {
         assert_eq!(
             ps.prover_fiat_shamir(),
             ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() are equivalent when the entire stream is read again",
+            "prover_fiat_shamir() and verifier_fiat_shamir() must be equivalent \
+            when the entire stream is read again",
         );
     }
 

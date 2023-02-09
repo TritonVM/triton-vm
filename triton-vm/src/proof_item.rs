@@ -1,3 +1,4 @@
+use anyhow::bail;
 use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::rescue_prime_digest::Digest;
@@ -12,6 +13,10 @@ use crate::bfield_codec::BFieldCodec;
 type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// A `FriResponse` is a vector of partial authentication paths and `XFieldElements`. The
+/// `XFieldElements` are the values of the leaves of the Merkle tree. They correspond to the
+/// queried index of the FRI codeword (of that round). The corresponding partial authentication
+/// paths are the paths from the queried leaf to the root of the Merkle tree.
 pub struct FriResponse(pub Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>);
 
 impl BFieldCodec for FriResponse {
@@ -145,13 +150,13 @@ where
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
             Self::Uncast(str) => match AuthenticationStructure::<Digest>::decode(str) {
                 Ok(boxed_auth_struct) => Ok(*boxed_auth_struct),
-                Err(e) => Err(anyhow::Error::new(ProofStreamError::new(&format!(
+                Err(e) => bail!(ProofStreamError::new(&format!(
                     "cast to authentication structure failed: {e}"
-                )))),
+                ))),
             },
-            other => Err(anyhow::Error::new(ProofStreamError::new(&format!(
+            other => bail!(ProofStreamError::new(&format!(
                 "expected compressed authentication paths, but got something else: {other:?}",
-            )))),
+            ))),
         }
     }
 
@@ -160,13 +165,11 @@ where
             Self::MasterBaseTableRows(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<BFieldElement>>::decode(str) {
                 Ok(base_element_vectors) => Ok(*base_element_vectors),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to base element vectors failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to base element vectors failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected master base table rows, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -175,13 +178,13 @@ where
             Self::MasterExtTableRows(xss) => Ok(xss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<XFieldElement>>::decode(str) {
                 Ok(ext_element_vectors) => Ok(*ext_element_vectors),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
+                Err(_) => bail!(ProofStreamError::new(
                     "cast to extension field element vectors failed",
-                ))),
+                )),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected master extension table rows, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -190,13 +193,11 @@ where
             Self::MerkleRoot(bs) => Ok(*bs),
             Self::Uncast(str) => match Digest::decode(str) {
                 Ok(merkle_root) => Ok(*merkle_root),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to Merkle root failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to Merkle root failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected merkle root, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -205,13 +206,11 @@ where
             Self::AuthenticationPath(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Digest>::decode(str) {
                 Ok(authentication_path) => Ok(*authentication_path),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to authentication path failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to authentication path failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected authentication path, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -235,13 +234,11 @@ where
             Self::FriCodeword(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
                 Ok(fri_codeword) => Ok(*fri_codeword),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to FRI codeword failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to FRI codeword failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected FRI codeword, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -250,13 +247,11 @@ where
             Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
             Self::Uncast(str) => match FriResponse::decode(str) {
                 Ok(fri_proof) => Ok(*fri_proof),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to FRI proof failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to FRI proof failed")),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected FRI proof, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -265,13 +260,11 @@ where
             Self::PaddedHeight(padded_height) => Ok(padded_height.to_owned()),
             Self::Uncast(str) => match BFieldElement::decode(str) {
                 Ok(padded_height) => Ok(*padded_height),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to padded heights failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to padded heights failed")),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected padded table height, but got something else",
-            ))),
+            )),
         }
     }
 }
@@ -283,12 +276,12 @@ impl BFieldCodec for ProofItem {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
         if let Some(len) = str.get(0) {
             if len.value() as usize + 1 != str.len() {
-                Err(anyhow::Error::new(ProofStreamError::new("length mismatch")))
+                bail!(ProofStreamError::new("length mismatch"))
             } else {
                 Ok(Box::new(Self::Uncast(str[1..].to_vec())))
             }
         } else {
-            Err(anyhow::Error::new(ProofStreamError::new("empty buffer")))
+            bail!(ProofStreamError::new("empty buffer"))
         }
     }
 

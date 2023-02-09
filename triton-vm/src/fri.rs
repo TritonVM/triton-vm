@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
+use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
@@ -103,24 +104,19 @@ impl<H: AlgebraicHasher> Fri<H> {
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) -> Result<Vec<XFieldElement>> {
         let fri_response = proof_stream.dequeue()?.as_fri_response()?;
-        let dequeued_paths_and_leafs = fri_response.0;
-        let paths = dequeued_paths_and_leafs.clone().into_iter().map(|(p, _)| p);
-        let values: Vec<XFieldElement> = dequeued_paths_and_leafs
-            .into_iter()
-            .map(|(_, v)| v)
-            .collect();
-        let digests: Vec<Digest> = values.par_iter().map(H::hash).collect();
-        let path_digest_pairs = paths.into_iter().zip(digests).collect_vec();
+        let FriResponse(dequeued_paths_and_leafs) = fri_response;
+        let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
+        let leaf_digests: Vec<_> = leaf_values.par_iter().map(H::hash).collect();
+        let path_digest_pairs = paths.into_iter().zip_eq(leaf_digests).collect_vec();
+        debug_assert_eq!(indices.len(), path_digest_pairs.len());
         if MerkleTree::<H, Maker>::verify_authentication_structure(
             root,
             indices,
             &path_digest_pairs,
         ) {
-            Ok(values)
+            Ok(leaf_values)
         } else {
-            Err(anyhow::Error::new(
-                FriValidationError::BadMerkleAuthenticationPath,
-            ))
+            bail!(FriValidationError::BadMerkleAuthenticationPath)
         }
     }
 
@@ -411,9 +407,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_start!(maybe_profiler, "compare last codeword");
         a_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
         if (0..self.colinearity_checks_count).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
-            return Err(anyhow::Error::new(
-                FriValidationError::MismatchingLastCodeword,
-            ));
+            bail!(FriValidationError::MismatchingLastCodeword);
         }
         prof_stop!(maybe_profiler, "compare last codeword");
         Ok(())
@@ -625,14 +619,12 @@ mod triton_xfri_tests {
 
             let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
             if verify_result.is_err() {
-                println!(
+                panic!(
                     "There are {} points, |<128>^{n}| = {}, and verify_result = {verify_result:?}",
                     points.len(),
                     points.iter().unique().count(),
                 );
             }
-
-            assert!(verify_result.is_ok());
 
             // Manipulate Merkle root of 0 and verify failure with expected error message
             proof_stream.reset_for_verifier();
@@ -699,21 +691,33 @@ mod triton_xfri_tests {
 
         // TODO: Don't init sponge with zeros.
         let verifier_sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
-        let mut verifier_proof_stream = ProofStream::<ProofItem, H>::new(verifier_sponge_state);
+        let mut verifier_proof_stream: ProofStream<ProofItem, H> =
+            ProofStream::from_proof(&proof, verifier_sponge_state).unwrap();
 
-        for (left, right) in prover_proof_stream
+        assert_eq!(prover_proof_stream.len(), verifier_proof_stream.len());
+        for (prover_item, verifier_item) in prover_proof_stream
             .items
             .iter()
             .zip_eq(verifier_proof_stream.items.iter())
         {
-            if let ProofItem::MerkleRoot(left_root) = left {
-                assert_eq!(*left_root, right.as_merkle_root().unwrap());
-            } else if let ProofItem::FriResponse(left_response) = left {
-                assert_eq!(*left_response, right.as_fri_response().unwrap());
-            } else if let ProofItem::FriCodeword(left_codeword) = left {
-                assert_eq!(*left_codeword, right.as_fri_codeword().unwrap());
-            } else {
-                panic!("did not recognize FRI proof item");
+            use ProofItem::*;
+            match prover_item {
+                MerkleRoot(prover_root) => {
+                    assert_eq!(*prover_root, verifier_item.as_merkle_root().unwrap())
+                }
+                FriResponse(prover_response) => {
+                    assert_eq!(*prover_response, verifier_item.as_fri_response().unwrap())
+                }
+                FriCodeword(prover_codeword) => {
+                    assert_eq!(*prover_codeword, verifier_item.as_fri_codeword().unwrap())
+                }
+                _ => {
+                    panic!(
+                        "Did not recognize FRI proof items.\n\
+                         Prover item:   {prover_item:?}\n\
+                         Verifier item: {verifier_item:?}"
+                    )
+                }
             }
         }
 
