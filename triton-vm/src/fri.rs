@@ -89,9 +89,23 @@ impl<H: AlgebraicHasher> Fri<H> {
         let value_ap_pairs: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = merkle_tree
             .get_authentication_structure(indices)
             .into_iter()
-            .zip(indices.iter())
+            .zip_eq(indices.iter())
             .map(|(ap, i)| (ap, codeword[*i]))
             .collect_vec();
+        // auth_pairs: &[(PartialAuthenticationPath<Digest>, Digest)],
+        let digest_ap_pairs = value_ap_pairs
+            .iter()
+            .map(|(ap, value)| (ap.clone(), H::hash(value)))
+            .collect_vec();
+        let hm = MerkleTree::<H, Maker>::verify_authentication_structure(
+            merkle_tree.get_root(),
+            indices,
+            &digest_ap_pairs,
+        );
+        assert!(
+            hm,
+            "Can we verify the authentication structure before enqueuing it?"
+        );
         proof_stream.enqueue(&ProofItem::FriResponse(FriResponse(value_ap_pairs)))
     }
 
@@ -138,11 +152,18 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // Fiat-Shamir to get indices
         // TODO: Apply over-sampling to guarantee at least `colinearity_checks_count` distinct indices
-        let top_level_indices: Vec<usize> = H::sample_indices(
+        let mut top_level_indices: Vec<usize> = H::sample_indices(
             &mut proof_stream.sponge_state,
             self.domain.length,
             self.colinearity_checks_count,
         );
+        top_level_indices.sort();
+        println!(
+            "Number of indices before dedup: {}",
+            top_level_indices.len()
+        );
+        top_level_indices.dedup();
+        println!("Number of indices after dedup: {}", top_level_indices.len());
 
         // query phase
         // query step 0: enqueue authentication paths for all points `A` into proof stream
@@ -203,9 +224,9 @@ impl<H: AlgebraicHasher> Fri<H> {
         for _round in 0..num_rounds {
             let n = codeword_local.len();
 
-            // Get challenge
-            let challenge_digest = proof_stream.prover_fiat_shamir();
-            let alpha: XFieldElement = XFieldElement::sample(&challenge_digest);
+            // Get the Fiat-Shamir challenge by squeezing the sponge (this happens implicitly in sample_weights()).
+            // FIXME: This is a good example of why squeezing should happen in proof_stream, not on the hasher trait.
+            let alpha: XFieldElement = H::sample_weights(&mut proof_stream.sponge_state, 1)[0];
 
             let x_offset: Vec<XFieldElement> = subgroup_generator
                 .get_cyclic_group_elements(None)
@@ -258,7 +279,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         let (num_rounds, degree_of_last_round) = self.num_rounds();
         let num_rounds = num_rounds as usize;
 
-        // Extract all roots and calculate alpha, the challenges
+        // Extract all roots and calculate alpha based on Fiat-Shamir challenge
         let mut roots: Vec<Digest> = vec![];
         let mut alphas: Vec<XFieldElement> = vec![];
 
@@ -274,9 +295,9 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         prof_start!(maybe_profiler, "roots and alpha");
         for _round in 0..num_rounds {
-            // Get a challenge from the proof stream
-            let challenge = proof_stream.verifier_fiat_shamir();
-            let alpha: XFieldElement = XFieldElement::sample(&challenge);
+            // Get the Fiat-Shamir challenge by squeezing the sponge (this happens implicitly in sample_weights()).
+            // FIXME: This is a good example of why squeezing should happen in proof_stream, not on the hasher trait.
+            let alpha: XFieldElement = H::sample_weights(&mut proof_stream.sponge_state, 1)[0];
             alphas.push(alpha);
 
             let root: Digest = proof_stream.dequeue()?.as_merkle_root()?;
@@ -341,6 +362,8 @@ impl<H: AlgebraicHasher> Fri<H> {
             self.domain.length,
             self.colinearity_checks_count,
         );
+        a_indices.sort();
+        a_indices.dedup();
         prof_stop!(maybe_profiler, "sample indices");
         prof_start!(maybe_profiler, "dequeue and authenticate");
         let mut a_values = Self::dequeue_and_authenticate(&a_indices, roots[0], proof_stream)?;
@@ -546,6 +569,7 @@ mod triton_xfri_tests {
         assert_eq!((3, 7), fri.num_rounds());
     }
 
+    // XXX
     #[test]
     fn fri_on_x_field_test() {
         type H = RescuePrimeRegular;

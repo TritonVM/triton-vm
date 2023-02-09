@@ -367,6 +367,8 @@ mod proof_stream_typed_tests {
         let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
 
+        // TODO: Also check that deserializing from Proof works here.
+
         let maybe_same_fri_response = proof_stream.dequeue().unwrap().as_fri_response().unwrap();
         let FriResponse(dequeued_paths_and_leafs) = maybe_same_fri_response;
         let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
