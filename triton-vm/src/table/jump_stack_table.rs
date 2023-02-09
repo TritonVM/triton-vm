@@ -1,4 +1,6 @@
 use std::cmp::Ordering;
+use std::fmt::Display;
+use std::fmt::Formatter;
 
 use ndarray::parallel::prelude::*;
 use ndarray::s;
@@ -8,19 +10,13 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
 use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use std::fmt::Display;
-use std::fmt::Formatter;
-use JumpStackTableChallengeId::*;
-
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId::*;
+use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -43,10 +39,6 @@ use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const JUMP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
-pub const JUMP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-pub const JUMP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = JumpStackTableChallengeId::COUNT;
-
 pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = JumpStackExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -58,12 +50,8 @@ pub struct JumpStackTable {}
 pub struct ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            JumpStackTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
@@ -76,9 +64,9 @@ impl ExtJumpStackTable {
             ClockJumpDifferenceLookupClientLogDerivative.master_ext_table_index(),
         ));
 
-        let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermRowIndeterminate);
+        let processor_perm_indeterminate = circuit_builder.challenge(JumpStackIndeterminate);
         // note: `clk`, `jsp`, `jso`, and `jsd` are all constrained to be 0 and can thus be omitted.
-        let compressed_row = circuit_builder.challenge(CiWeight) * ci;
+        let compressed_row = circuit_builder.challenge(JumpStackCiWeight) * ci;
         let rppa_starts_correctly = rppa - (processor_perm_indeterminate - compressed_row);
 
         // A clock jump difference of 0 is not allowed. Hence, the initial is recorded.
@@ -97,22 +85,14 @@ impl ExtJumpStackTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            JumpStackTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            JumpStackTableChallenges,
-            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
@@ -173,14 +153,14 @@ impl ExtJumpStackTable {
 
         // The running product for the permutation argument `rppa` accumulates one row in each
         // row, relative to weights `a`, `b`, `c`, `d`, `e`, and indeterminate `α`.
-        let compressed_row = circuit_builder.challenge(ClkWeight) * clk_next.clone()
-            + circuit_builder.challenge(CiWeight) * ci_next
-            + circuit_builder.challenge(JspWeight) * jsp_next.clone()
-            + circuit_builder.challenge(JsoWeight) * jso_next
-            + circuit_builder.challenge(JsdWeight) * jsd_next;
+        let compressed_row = circuit_builder.challenge(JumpStackClkWeight) * clk_next.clone()
+            + circuit_builder.challenge(JumpStackCiWeight) * ci_next
+            + circuit_builder.challenge(JumpStackJspWeight) * jsp_next.clone()
+            + circuit_builder.challenge(JumpStackJsoWeight) * jso_next
+            + circuit_builder.challenge(JumpStackJsdWeight) * jsd_next;
 
-        let rppa_updates_correctly = rppa_next
-            - rppa * (circuit_builder.challenge(ProcessorPermRowIndeterminate) - compressed_row);
+        let rppa_updates_correctly =
+            rppa_next - rppa * (circuit_builder.challenge(JumpStackIndeterminate) - compressed_row);
 
         // The running sum of the logarithmic derivative for the clock jump difference Lookup
         // Argument accumulates a summand of `clk_diff` if and only if the `jsp` does not change.
@@ -210,12 +190,8 @@ impl ExtJumpStackTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            JumpStackTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         vec![]
     }
 }
@@ -341,11 +317,21 @@ impl JumpStackTable {
     pub fn extend(
         base_table: ArrayView2<BFieldElement>,
         mut ext_table: ArrayViewMut2<XFieldElement>,
-        challenges: &JumpStackTableChallenges,
+        challenges: &Challenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+
+        let clk_weight = challenges.get_challenge(JumpStackClkWeight);
+        let ci_weight = challenges.get_challenge(JumpStackCiWeight);
+        let jsp_weight = challenges.get_challenge(JumpStackJspWeight);
+        let jso_weight = challenges.get_challenge(JumpStackJsoWeight);
+        let jsd_weight = challenges.get_challenge(JumpStackJsdWeight);
+        let perm_arg_indeterminate = challenges.get_challenge(JumpStackIndeterminate);
+        let clock_jump_difference_lookup_indeterminate =
+            challenges.get_challenge(ClockJumpDifferenceLookupIndeterminate);
+
         let mut running_product = PermArg::default_initial();
         let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
@@ -358,23 +344,21 @@ impl JumpStackTable {
             let jso = current_row[JSO.base_table_index()];
             let jsd = current_row[JSD.base_table_index()];
 
-            let compressed_row_for_permutation_argument = clk * challenges.clk_weight
-                + ci * challenges.ci_weight
-                + jsp * challenges.jsp_weight
-                + jso * challenges.jso_weight
-                + jsd * challenges.jsd_weight;
-            running_product *=
-                challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
+            let compressed_row_for_permutation_argument = clk * clk_weight
+                + ci * ci_weight
+                + jsp * jsp_weight
+                + jso * jso_weight
+                + jsd * jsd_weight;
+            running_product *= perm_arg_indeterminate - compressed_row_for_permutation_argument;
 
             // clock jump difference
             if let Some(prev_row) = previous_row {
                 if prev_row[JSP.base_table_index()] == current_row[JSP.base_table_index()] {
                     let clock_jump_difference =
                         current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
-                    clock_jump_diff_lookup_log_derivative += (challenges
-                        .clock_jump_difference_lookup_indeterminate
-                        - clock_jump_difference)
-                        .inverse();
+                    clock_jump_diff_lookup_log_derivative +=
+                        (clock_jump_difference_lookup_indeterminate - clock_jump_difference)
+                            .inverse();
                 }
             }
 
@@ -383,59 +367,6 @@ impl JumpStackTable {
             extension_row[ClockJumpDifferenceLookupClientLogDerivative.ext_table_index()] =
                 clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum JumpStackTableChallengeId {
-    ProcessorPermRowIndeterminate,
-    ClkWeight,
-    CiWeight,
-    JspWeight,
-    JsoWeight,
-    JsdWeight,
-    ClockJumpDifferenceLookupIndeterminate,
-}
-
-impl From<JumpStackTableChallengeId> for usize {
-    fn from(val: JumpStackTableChallengeId) -> Self {
-        val as usize
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct JumpStackTableChallenges {
-    /// The weight that combines two consecutive rows in the
-    /// permutation/evaluation column of the jump-stack table.
-    pub processor_perm_indeterminate: XFieldElement,
-
-    /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub clk_weight: XFieldElement,
-    pub ci_weight: XFieldElement,
-    pub jsp_weight: XFieldElement,
-    pub jso_weight: XFieldElement,
-    pub jsd_weight: XFieldElement,
-
-    /// Indeterminate for the logarithmic derivative of the clock jump difference's Lookup Argument.
-    pub clock_jump_difference_lookup_indeterminate: XFieldElement,
-}
-
-impl TableChallenges for JumpStackTableChallenges {
-    type Id = JumpStackTableChallengeId;
-
-    #[inline]
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
-        match id {
-            ProcessorPermRowIndeterminate => self.processor_perm_indeterminate,
-            ClkWeight => self.clk_weight,
-            CiWeight => self.ci_weight,
-            JspWeight => self.jsp_weight,
-            JsoWeight => self.jso_weight,
-            JsdWeight => self.jsd_weight,
-            ClockJumpDifferenceLookupIndeterminate => {
-                self.clock_jump_difference_lookup_indeterminate
-            }
         }
     }
 }

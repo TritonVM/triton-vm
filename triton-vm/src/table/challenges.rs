@@ -1,257 +1,218 @@
+//! Challenges are needed for the cross-table arguments, _i.e._, Permutation Arguments, Evaluation
+//! Arguments, and Lookup Arguments, as well as for the RAM Table's Contiguity Argument.
+//!
+//! There are three types of challenges:
+//! - **Weights**. Weights are used to non-linearly combine multiple elements into one element. The
+//! resulting single element can then be used in a cross-table argument.
+//! - **Indeterminates**. All cross-table arguments work by checking the equality of polynomials (or
+//! rational functions). Through the Schwartz-Zippel lemma, this equality check can be performed
+//! by evaluating the polynomials (or rational functions) in a single point. The challenges that
+//! are indeterminates are exactly this evaluation point. The polynomials (or rational functions)
+//! are never stored explicitly. Instead, they are directly evaluated at the point indicated by a
+//! challenge of “type” `Indeterminate`, giving rise to “running products”, “running
+//! evaluations”, _et cetera_.
+//! - **Terminals**. The public input (respectively output) of the program is not stored in any
+//! table. Instead, the terminal of the Evaluation Argument is computed directly from the
+//! public input (respectively output) and the indeterminate.
+
 use std::fmt::Debug;
-use std::fmt::Display;
 use std::hash::Hash;
 
 use strum::EnumCount;
-use strum::IntoEnumIterator;
+use strum_macros::Display;
+use strum_macros::EnumCount as EnumCountMacro;
+use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::random_elements;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::table::challenges::ChallengeId::*;
 use crate::table::cross_table_argument::CrossTableArg;
-use crate::table::cross_table_argument::CrossTableChallenges;
 use crate::table::cross_table_argument::EvalArg;
-use crate::table::cross_table_argument::NUM_CROSS_TABLE_WEIGHTS;
-use crate::table::hash_table::HashTableChallenges;
-use crate::table::jump_stack_table::JumpStackTableChallenges;
-use crate::table::op_stack_table::OpStackTableChallenges;
-use crate::table::processor_table::IOChallenges;
-use crate::table::processor_table::ProcessorTableChallenges;
-use crate::table::program_table::ProgramTableChallenges;
-use crate::table::ram_table::RamTableChallenges;
-use crate::table::u32_table::U32TableChallenges;
 
-pub trait TableChallenges: Clone + Debug {
-    type Id: Display
-        + Clone
-        + Copy
-        + Debug
-        + EnumCount
-        + IntoEnumIterator
-        + Into<usize>
-        + PartialEq
-        + Hash;
+/// A `ChallengeId` is a unique, symbolic identifier for a challenge used in Triton VM. The
+/// `ChallengeId` enum works in tandem with the struct `Challenges`, which can be
+/// instantiated to hold actual challenges that can be indexed by some `ChallengeId`.
+///
+/// Since almost all challenges relate to the Processor Table in some form, the words “Processor
+/// Table” are usually omitted from the `ChallengeId`'s name.
+#[repr(usize)]
+#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+pub enum ChallengeId {
+    /// The indeterminate for the Evaluation Argument with standard input.
+    StandardInputIndeterminate,
 
-    fn count() -> usize {
-        Self::Id::COUNT
-    }
+    /// The indeterminate for the Evaluation Argument with standard output.
+    StandardOutputIndeterminate,
 
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement;
+    /// The indeterminate for the instruction Lookup Argument between the Processor Table and the
+    /// Program Table guaranteeing that the instructions and their arguments are copied
+    /// correctly.
+    InstructionLookupIndeterminate,
 
-    fn to_vec(&self) -> Vec<XFieldElement> {
-        Self::Id::iter().map(|id| self.get_challenge(id)).collect()
+    HashInputIndeterminate,
+    HashDigestIndeterminate,
+    SpongeIndeterminate,
+
+    OpStackIndeterminate,
+    RamIndeterminate,
+    JumpStackIndeterminate,
+
+    U32Indeterminate,
+
+    /// The indeterminate for the Lookup Argument between the Processor Table and all memory-like
+    /// tables, _i.e._, the OpStack Table, the Ram Table, and the JumpStack Table, guaranteeing
+    /// that all clock jump differences are directed forward.
+    ClockJumpDifferenceLookupIndeterminate,
+
+    /// The indeterminate for the Contiguity Argument within the Ram Table.
+    RamTableBezoutRelationIndeterminate,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `Address` in the Program Table
+    /// - `IP` in the Processor Table
+    ProgramAddressWeight,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `Instruction` in the Program Table
+    /// - `CI` in the Processor Table
+    ProgramInstructionWeight,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `Instruction'` (_i.e._, in the next row) in the Program Table
+    /// - `NIA` in the Processor Table
+    ProgramNextInstructionWeight,
+
+    OpStackClkWeight,
+    OpStackIb1Weight,
+    OpStackOspWeight,
+    OpStackOsvWeight,
+
+    RamClkWeight,
+    RamRampWeight,
+    RamRamvWeight,
+    RamPreviousInstructionWeight,
+
+    JumpStackClkWeight,
+    JumpStackCiWeight,
+    JumpStackJspWeight,
+    JumpStackJsoWeight,
+    JumpStackJsdWeight,
+
+    HashCIWeight,
+    HashStateWeight0,
+    HashStateWeight1,
+    HashStateWeight2,
+    HashStateWeight3,
+    HashStateWeight4,
+    HashStateWeight5,
+    HashStateWeight6,
+    HashStateWeight7,
+    HashStateWeight8,
+    HashStateWeight9,
+    HashStateWeight10,
+    HashStateWeight11,
+    HashStateWeight12,
+    HashStateWeight13,
+    HashStateWeight14,
+    HashStateWeight15,
+
+    U32LhsWeight,
+    U32RhsWeight,
+    U32CiWeight,
+    U32ResultWeight,
+
+    ProcessorToProgramWeight,
+    InputToProcessorWeight,
+    ProcessorToOutputWeight,
+    ProcessorToOpStackWeight,
+    ProcessorToRamWeight,
+    ProcessorToJumpStackWeight,
+    HashInputWeight,
+    HashDigestWeight,
+    SpongeWeight,
+    ProcessorToU32Weight,
+    ClockJumpDifferenceLookupWeight,
+
+    /// The terminal for the Evaluation Argument with standard input.
+    StandardInputTerminal,
+
+    /// The terminal for the Evaluation Argument with standard output.
+    StandardOutputTerminal,
+}
+
+impl ChallengeId {
+    pub fn index(&self) -> usize {
+        *self as usize
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct AllChallenges {
-    pub program_table_challenges: ProgramTableChallenges,
-    pub input_challenges: IOChallenges,
-    pub output_challenges: IOChallenges,
-    pub processor_table_challenges: ProcessorTableChallenges,
-    pub op_stack_table_challenges: OpStackTableChallenges,
-    pub ram_table_challenges: RamTableChallenges,
-    pub jump_stack_table_challenges: JumpStackTableChallenges,
-    pub hash_table_challenges: HashTableChallenges,
-    pub u32_table_challenges: U32TableChallenges,
-    pub cross_table_challenges: CrossTableChallenges,
+/// The `Challenges` struct holds the challenges used in Triton VM. The concrete challenges are
+/// known only at runtime. The challenges are indexed using enum `ChallengeId`. The `Challenges`
+/// struct is essentially a thin wrapper around an array of `XFieldElement`s, providing
+/// convenience methods.
+pub struct Challenges {
+    pub challenges: [XFieldElement; Self::count()],
 }
 
-impl AllChallenges {
-    pub const TOTAL_CHALLENGES: usize = 45 + NUM_CROSS_TABLE_WEIGHTS;
+impl Challenges {
+    pub const fn count() -> usize {
+        ChallengeId::COUNT
+    }
 
-    pub fn create_challenges(
-        mut weights: Vec<XFieldElement>,
-        claimed_input: &[BFieldElement],
-        claimed_output: &[BFieldElement],
+    /// The number of weights to sample using the Fiat-Shamir heuristic. This number is lower
+    /// than the number of challenges: the input terminal and output terminal are not sampled but
+    /// computed from the public input and output.
+    pub const fn num_challenges_to_sample() -> usize {
+        Self::count() - 2
+    }
+
+    pub fn new(
+        mut challenges: Vec<XFieldElement>,
+        public_input: &[BFieldElement],
+        public_output: &[BFieldElement],
     ) -> Self {
-        let processor_table_challenges = ProcessorTableChallenges {
-            standard_input_eval_indeterminate: weights.pop().unwrap(),
-            standard_output_eval_indeterminate: weights.pop().unwrap(),
-            hash_input_eval_indeterminate: weights.pop().unwrap(),
-            hash_digest_eval_indeterminate: weights.pop().unwrap(),
-            sponge_eval_indeterminate: weights.pop().unwrap(),
-            instruction_lookup_indeterminate: weights.pop().unwrap(),
-            op_stack_perm_indeterminate: weights.pop().unwrap(),
-            ram_perm_indeterminate: weights.pop().unwrap(),
-            jump_stack_perm_indeterminate: weights.pop().unwrap(),
+        assert_eq!(challenges.len(), Self::num_challenges_to_sample());
 
-            program_table_ip_weight: weights.pop().unwrap(),
-            program_table_ci_processor_weight: weights.pop().unwrap(),
-            program_table_nia_weight: weights.pop().unwrap(),
+        // The terminals are computed from the public input and output, and the indeterminates.
+        // Then, the terminals are inserted into the challenges vector.
+        // The indeterminates' positions must not change after they have been used for the first
+        // time. Therefore, the insertion index of the terminals must be greater than the index of
+        // the indeterminates.
+        assert!(StandardInputIndeterminate.index() < StandardInputTerminal.index());
+        assert!(StandardInputIndeterminate.index() < StandardOutputTerminal.index());
 
-            op_stack_table_clk_weight: weights.pop().unwrap(),
-            op_stack_table_ib1_weight: weights.pop().unwrap(),
-            op_stack_table_osp_weight: weights.pop().unwrap(),
-            op_stack_table_osv_weight: weights.pop().unwrap(),
-
-            ram_table_clk_weight: weights.pop().unwrap(),
-            ram_table_ramp_weight: weights.pop().unwrap(),
-            ram_table_ramv_weight: weights.pop().unwrap(),
-            ram_table_previous_instruction_weight: weights.pop().unwrap(),
-
-            jump_stack_table_clk_weight: weights.pop().unwrap(),
-            jump_stack_table_ci_weight: weights.pop().unwrap(),
-            jump_stack_table_jsp_weight: weights.pop().unwrap(),
-            jump_stack_table_jso_weight: weights.pop().unwrap(),
-            jump_stack_table_jsd_weight: weights.pop().unwrap(),
-
-            clock_jump_difference_lookup_indeterminate: weights.pop().unwrap(),
-
-            hash_table_ci_weight: weights.pop().unwrap(),
-            hash_state_weight0: weights.pop().unwrap(),
-            hash_state_weight1: weights.pop().unwrap(),
-            hash_state_weight2: weights.pop().unwrap(),
-            hash_state_weight3: weights.pop().unwrap(),
-            hash_state_weight4: weights.pop().unwrap(),
-            hash_state_weight5: weights.pop().unwrap(),
-            hash_state_weight6: weights.pop().unwrap(),
-            hash_state_weight7: weights.pop().unwrap(),
-            hash_state_weight8: weights.pop().unwrap(),
-            hash_state_weight9: weights.pop().unwrap(),
-
-            u32_table_lhs_weight: weights.pop().unwrap(),
-            u32_table_rhs_weight: weights.pop().unwrap(),
-            u32_table_ci_weight: weights.pop().unwrap(),
-            u32_table_result_weight: weights.pop().unwrap(),
-
-            u32_table_perm_indeterminate: weights.pop().unwrap(),
-        };
-
-        let program_table_challenges = ProgramTableChallenges {
-            instruction_lookup_indeterminate: processor_table_challenges
-                .instruction_lookup_indeterminate,
-            address_weight: processor_table_challenges.program_table_ip_weight,
-            instruction_weight: processor_table_challenges.program_table_ci_processor_weight,
-            next_instruction_weight: processor_table_challenges.program_table_nia_weight,
-        };
-
-        let input_challenges = IOChallenges {
-            processor_eval_indeterminate: processor_table_challenges
-                .standard_input_eval_indeterminate,
-        };
-
-        let output_challenges = IOChallenges {
-            processor_eval_indeterminate: processor_table_challenges
-                .standard_output_eval_indeterminate,
-        };
-
-        let op_stack_table_challenges = OpStackTableChallenges {
-            processor_perm_indeterminate: processor_table_challenges.op_stack_perm_indeterminate,
-            clk_weight: processor_table_challenges.op_stack_table_clk_weight,
-            ib1_weight: processor_table_challenges.op_stack_table_ib1_weight,
-            osv_weight: processor_table_challenges.op_stack_table_osv_weight,
-            osp_weight: processor_table_challenges.op_stack_table_osp_weight,
-            clock_jump_difference_lookup_indeterminate: processor_table_challenges
-                .clock_jump_difference_lookup_indeterminate,
-        };
-
-        let ram_table_challenges = RamTableChallenges {
-            bezout_relation_indeterminate: weights.pop().unwrap(),
-            processor_perm_indeterminate: processor_table_challenges.ram_perm_indeterminate,
-            clk_weight: processor_table_challenges.ram_table_clk_weight,
-            ramp_weight: processor_table_challenges.ram_table_ramp_weight,
-            ramv_weight: processor_table_challenges.ram_table_ramv_weight,
-            previous_instruction_weight: processor_table_challenges
-                .ram_table_previous_instruction_weight,
-            clock_jump_difference_lookup_indeterminate: processor_table_challenges
-                .clock_jump_difference_lookup_indeterminate,
-        };
-
-        let jump_stack_table_challenges = JumpStackTableChallenges {
-            processor_perm_indeterminate: processor_table_challenges.jump_stack_perm_indeterminate,
-            clk_weight: processor_table_challenges.jump_stack_table_clk_weight,
-            ci_weight: processor_table_challenges.jump_stack_table_ci_weight,
-            jsp_weight: processor_table_challenges.jump_stack_table_jsp_weight,
-            jso_weight: processor_table_challenges.jump_stack_table_jso_weight,
-            jsd_weight: processor_table_challenges.jump_stack_table_jsd_weight,
-            clock_jump_difference_lookup_indeterminate: processor_table_challenges
-                .clock_jump_difference_lookup_indeterminate,
-        };
-
-        let hash_table_challenges = HashTableChallenges {
-            hash_input_eval_indeterminate: processor_table_challenges.hash_input_eval_indeterminate,
-            hash_digest_eval_indeterminate: processor_table_challenges
-                .hash_digest_eval_indeterminate,
-            sponge_eval_indeterminate: processor_table_challenges.sponge_eval_indeterminate,
-
-            ci_weight: processor_table_challenges.hash_table_ci_weight,
-            hash_state_weight0: processor_table_challenges.hash_state_weight0,
-            hash_state_weight1: processor_table_challenges.hash_state_weight1,
-            hash_state_weight2: processor_table_challenges.hash_state_weight2,
-            hash_state_weight3: processor_table_challenges.hash_state_weight3,
-            hash_state_weight4: processor_table_challenges.hash_state_weight4,
-            hash_state_weight5: processor_table_challenges.hash_state_weight5,
-            hash_state_weight6: processor_table_challenges.hash_state_weight6,
-            hash_state_weight7: processor_table_challenges.hash_state_weight7,
-            hash_state_weight8: processor_table_challenges.hash_state_weight8,
-            hash_state_weight9: processor_table_challenges.hash_state_weight9,
-            hash_state_weight10: weights.pop().unwrap(),
-            hash_state_weight11: weights.pop().unwrap(),
-            hash_state_weight12: weights.pop().unwrap(),
-            hash_state_weight13: weights.pop().unwrap(),
-            hash_state_weight14: weights.pop().unwrap(),
-            hash_state_weight15: weights.pop().unwrap(),
-        };
-
-        let u32_table_challenges = U32TableChallenges {
-            lhs_weight: processor_table_challenges.u32_table_lhs_weight,
-            rhs_weight: processor_table_challenges.u32_table_rhs_weight,
-            ci_weight: processor_table_challenges.u32_table_ci_weight,
-            result_weight: processor_table_challenges.u32_table_result_weight,
-            processor_perm_indeterminate: processor_table_challenges.u32_table_perm_indeterminate,
-        };
+        assert!(StandardOutputIndeterminate.index() < StandardInputTerminal.index());
+        assert!(StandardOutputIndeterminate.index() < StandardOutputTerminal.index());
 
         let input_terminal = EvalArg::compute_terminal(
-            claimed_input,
+            public_input,
             EvalArg::default_initial(),
-            processor_table_challenges.standard_input_eval_indeterminate,
+            challenges[StandardInputIndeterminate.index()],
         );
         let output_terminal = EvalArg::compute_terminal(
-            claimed_output,
+            public_output,
             EvalArg::default_initial(),
-            processor_table_challenges.standard_output_eval_indeterminate,
+            challenges[StandardOutputIndeterminate.index()],
         );
 
-        let cross_table_challenges = CrossTableChallenges {
-            input_terminal,
-            output_terminal,
-            processor_to_program_weight: weights.pop().unwrap(),
-            processor_to_op_stack_weight: weights.pop().unwrap(),
-            processor_to_ram_weight: weights.pop().unwrap(),
-            processor_to_jump_stack_weight: weights.pop().unwrap(),
-            hash_input_weight: weights.pop().unwrap(),
-            hash_digest_weight: weights.pop().unwrap(),
-            sponge_weight: weights.pop().unwrap(),
-            processor_to_u32_weight: weights.pop().unwrap(),
-            clock_jump_difference_lookup_weight: weights.pop().unwrap(),
-            input_to_processor_weight: weights.pop().unwrap(),
-            processor_to_output_weight: weights.pop().unwrap(),
-        };
+        challenges.insert(StandardInputTerminal.index(), input_terminal);
+        challenges.insert(StandardOutputTerminal.index(), output_terminal);
+        assert_eq!(challenges.len(), Self::count());
+        let challenges = challenges.try_into().unwrap();
 
-        assert!(weights.is_empty(), "{} weights left unused.", weights.len());
-
-        AllChallenges {
-            program_table_challenges,
-            input_challenges,
-            output_challenges,
-            processor_table_challenges,
-            op_stack_table_challenges,
-            ram_table_challenges,
-            jump_stack_table_challenges,
-            hash_table_challenges,
-            u32_table_challenges,
-            cross_table_challenges,
-        }
+        Self { challenges }
     }
 
-    /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use Fiat-Shamir to
-    /// derive the actual challenges.
-    pub fn placeholder(claimed_input: &[BFieldElement], claimed_output: &[BFieldElement]) -> Self {
-        Self::create_challenges(
-            random_elements(Self::TOTAL_CHALLENGES),
-            claimed_input,
-            claimed_output,
-        )
+    /// Stand-in challenges. Can be used in tests. For non-interactive STARKs, use the
+    /// Fiat-Shamir heuristic to derive the actual challenges.
+    pub fn placeholder(public_input: &[BFieldElement], public_output: &[BFieldElement]) -> Self {
+        let stand_in_challenges = random_elements(Self::num_challenges_to_sample());
+        Self::new(stand_in_challenges, public_input, public_output)
+    }
+
+    #[inline(always)]
+    pub fn get_challenge(&self, id: ChallengeId) -> XFieldElement {
+        self.challenges[id.index()]
     }
 }

@@ -41,7 +41,7 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
-use crate::table::challenges::AllChallenges;
+use crate::table::challenges::Challenges;
 use crate::table::master_table::*;
 use crate::vm::AlgebraicExecutionTrace;
 
@@ -180,13 +180,10 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         let extension_weights = Self::sample_weights(
             proof_stream.prover_fiat_shamir(),
-            AllChallenges::TOTAL_CHALLENGES,
+            Challenges::num_challenges_to_sample(),
         );
-        let extension_challenges = AllChallenges::create_challenges(
-            extension_weights,
-            &self.claim.input,
-            &self.claim.output,
-        );
+        let extension_challenges =
+            Challenges::new(extension_weights, &self.claim.input, &self.claim.output);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
@@ -537,9 +534,11 @@ impl Stark {
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
 
         let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
-        let extension_challenge_weights =
-            Self::sample_weights(extension_challenge_seed, AllChallenges::TOTAL_CHALLENGES);
-        let challenges = AllChallenges::create_challenges(
+        let extension_challenge_weights = Self::sample_weights(
+            extension_challenge_seed,
+            Challenges::num_challenges_to_sample(),
+        );
+        let challenges = Challenges::new(
             extension_challenge_weights,
             &self.claim.input,
             &self.claim.output,
@@ -872,11 +871,14 @@ pub(crate) mod triton_stark_tests {
     use num_traits::Zero;
     use rand::prelude::ThreadRng;
     use rand_core::RngCore;
-
     use triton_opcodes::instruction::AnInstruction;
     use triton_opcodes::program::Program;
 
     use crate::shared_tests::*;
+    use crate::table::challenges::ChallengeId::StandardInputIndeterminate;
+    use crate::table::challenges::ChallengeId::StandardInputTerminal;
+    use crate::table::challenges::ChallengeId::StandardOutputIndeterminate;
+    use crate::table::challenges::ChallengeId::StandardOutputTerminal;
     use crate::table::cross_table_argument::CrossTableArg;
     use crate::table::cross_table_argument::EvalArg;
     use crate::table::cross_table_argument::GrandCrossTableArg;
@@ -964,12 +966,12 @@ pub(crate) mod triton_stark_tests {
         MasterBaseTable,
         MasterBaseTable,
         MasterExtTable,
-        AllChallenges,
+        Challenges,
     ) {
         let (stark, unpadded_master_base_table, master_base_table) =
             parse_simulate_pad(code, stdin, secret_in);
 
-        let dummy_challenges = AllChallenges::placeholder(&stark.claim.input, &stark.claim.output);
+        let dummy_challenges = Challenges::placeholder(&stark.claim.input, &stark.claim.output);
         let master_ext_table = master_base_table.extend(
             &dummy_challenges,
             stark.parameters.num_randomizer_polynomials,
@@ -1106,7 +1108,7 @@ pub(crate) mod triton_stark_tests {
         let ine = EvalArg::compute_terminal(
             &stark.claim.input,
             EvalArg::default_initial(),
-            all_challenges.input_challenges.processor_eval_indeterminate,
+            all_challenges.get_challenge(StandardInputIndeterminate),
         );
         assert_eq!(ptie, ine, "The input evaluation arguments do not match.");
 
@@ -1114,9 +1116,7 @@ pub(crate) mod triton_stark_tests {
         let oute = EvalArg::compute_terminal(
             &stark.claim.output,
             EvalArg::default_initial(),
-            all_challenges
-                .output_challenges
-                .processor_eval_indeterminate,
+            all_challenges.get_challenge(StandardOutputIndeterminate),
         );
         assert_eq!(ptoe, oute, "The output evaluation arguments do not match.");
     }
@@ -1137,12 +1137,12 @@ pub(crate) mod triton_stark_tests {
             let processor_table = master_ext_table.table(ProcessorTable);
             let processor_table_last_row = processor_table.slice(s![-1, ..]);
             assert_eq!(
-                all_challenges.cross_table_challenges.input_terminal,
+                all_challenges.get_challenge(StandardInputTerminal),
                 processor_table_last_row[InputTableEvalArg.ext_table_index()],
                 "The input terminal must match for TASM snippet #{code_idx}."
             );
             assert_eq!(
-                all_challenges.cross_table_challenges.output_terminal,
+                all_challenges.get_challenge(StandardOutputTerminal),
                 processor_table_last_row[OutputTableEvalArg.ext_table_index()],
                 "The output terminal must match for TASM snippet #{code_idx}."
             );
@@ -1170,7 +1170,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
-        let challenges = AllChallenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(&[], &[]);
         let base_row = Array1::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
 
@@ -1294,7 +1294,7 @@ pub(crate) mod triton_stark_tests {
     fn number_of_quotient_degree_bounds_match_number_of_constraints_test() {
         let base_row = Array1::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
-        let challenges = AllChallenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(&[], &[]);
         let padded_height = 2;
         let num_trace_randomizers = 2;
         let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);

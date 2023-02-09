@@ -37,7 +37,7 @@ use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
-use crate::table::challenges::AllChallenges;
+use crate::table::challenges::Challenges;
 use crate::table::cross_table_argument::GrandCrossTableArg;
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::extension_table::Evaluable;
@@ -450,7 +450,7 @@ impl MasterBaseTable {
     /// adding some number of columns.
     pub fn extend(
         &self,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
         num_randomizer_polynomials: usize,
     ) -> MasterExtTable {
         // randomizer polynomials
@@ -474,37 +474,37 @@ impl MasterBaseTable {
         ProgramTable::extend(
             self.table(TableId::ProgramTable),
             master_ext_table.table_mut(TableId::ProgramTable),
-            &challenges.program_table_challenges,
+            challenges,
         );
         ProcessorTable::extend(
             self.table(TableId::ProcessorTable),
             master_ext_table.table_mut(TableId::ProcessorTable),
-            &challenges.processor_table_challenges,
+            challenges,
         );
         OpStackTable::extend(
             self.table(TableId::OpStackTable),
             master_ext_table.table_mut(TableId::OpStackTable),
-            &challenges.op_stack_table_challenges,
+            challenges,
         );
         RamTable::extend(
             self.table(TableId::RamTable),
             master_ext_table.table_mut(TableId::RamTable),
-            &challenges.ram_table_challenges,
+            challenges,
         );
         JumpStackTable::extend(
             self.table(TableId::JumpStackTable),
             master_ext_table.table_mut(TableId::JumpStackTable),
-            &challenges.jump_stack_table_challenges,
+            challenges,
         );
         HashTable::extend(
             self.table(TableId::HashTable),
             master_ext_table.table_mut(TableId::HashTable),
-            &challenges.hash_table_challenges,
+            challenges,
         );
         U32Table::extend(
             self.table(TableId::U32Table),
             master_ext_table.table_mut(TableId::U32Table),
-            &challenges.u32_table_challenges,
+            challenges,
         );
 
         master_ext_table
@@ -820,7 +820,7 @@ pub fn fill_all_initial_quotients(
     master_ext_table: ArrayView2<XFieldElement>,
     quot_table: &mut ArrayViewMut2<XFieldElement>,
     zerofier_inverse: ArrayView1<BFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) {
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
@@ -908,7 +908,7 @@ pub fn fill_all_consistency_quotients(
     master_ext_table: ArrayView2<XFieldElement>,
     quot_table: &mut ArrayViewMut2<XFieldElement>,
     zerofier_inverse: ArrayView1<BFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) {
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
@@ -997,7 +997,7 @@ pub fn fill_all_transition_quotients(
     master_ext_table: ArrayView2<XFieldElement>,
     quot_table: &mut ArrayViewMut2<XFieldElement>,
     zerofier_inverse: ArrayView1<BFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
 ) {
@@ -1101,7 +1101,7 @@ pub fn fill_all_terminal_quotients(
     master_ext_table: ArrayView2<XFieldElement>,
     quot_table: &mut ArrayViewMut2<XFieldElement>,
     zerofier_inverse: ArrayView1<BFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) {
     // The order of the quotient tables is not actually important. However, it must be consistent
     // between prover and verifier, and the shapes must check out.
@@ -1210,7 +1210,7 @@ pub fn all_quotients(
     quotient_domain_master_ext_table: ArrayView2<XFieldElement>,
     trace_domain: ArithmeticDomain,
     quotient_domain: ArithmeticDomain,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> Array2<XFieldElement> {
     assert_eq!(
@@ -1310,7 +1310,7 @@ pub fn all_quotients(
 pub fn evaluate_all_initial_constraints(
     base_row: ArrayView1<BFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) -> Vec<XFieldElement> {
     [
         ExtProgramTable::evaluate_initial_constraints(base_row, ext_row, challenges),
@@ -1327,7 +1327,7 @@ pub fn evaluate_all_initial_constraints(
 pub fn evaluate_all_consistency_constraints(
     base_row: ArrayView1<BFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) -> Vec<XFieldElement> {
     [
         ExtProgramTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
@@ -1346,7 +1346,7 @@ pub fn evaluate_all_transition_constraints(
     current_ext_row: ArrayView1<XFieldElement>,
     next_base_row: ArrayView1<BFieldElement>,
     next_ext_row: ArrayView1<XFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) -> Vec<XFieldElement> {
     let cbr = current_base_row;
     let cer = current_ext_row;
@@ -1367,7 +1367,7 @@ pub fn evaluate_all_transition_constraints(
 pub fn evaluate_all_terminal_constraints(
     base_row: ArrayView1<BFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) -> Vec<XFieldElement> {
     [
         ExtProgramTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
@@ -1387,7 +1387,7 @@ pub fn evaluate_all_constraints(
     current_ext_row: ArrayView1<XFieldElement>,
     next_base_row: ArrayView1<BFieldElement>,
     next_ext_row: ArrayView1<XFieldElement>,
-    challenges: &AllChallenges,
+    challenges: &Challenges,
 ) -> Vec<XFieldElement> {
     [
         evaluate_all_initial_constraints(current_base_row, current_ext_row, challenges),

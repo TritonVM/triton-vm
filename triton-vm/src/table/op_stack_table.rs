@@ -8,17 +8,13 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use ndarray::Axis;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use OpStackTableChallengeId::*;
-
 use crate::op_stack::OP_STACK_REG_COUNT;
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId::*;
+use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -41,10 +37,6 @@ use crate::table::table_column::OpStackExtTableColumn::*;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const OP_STACK_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
-pub const OP_STACK_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-pub const OP_STACK_TABLE_NUM_EXTENSION_CHALLENGES: usize = OpStackTableChallengeId::COUNT;
-
 pub const BASE_WIDTH: usize = OpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = OpStackExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -56,12 +48,8 @@ pub struct OpStackTable {}
 pub struct ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            OpStackTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
@@ -79,9 +67,10 @@ impl ExtOpStackTable {
 
         // The running product for the permutation argument `rppa` starts off having accumulated the
         // first row. Note that `clk` and `osv` are constrained to be 0, and `osp` to be 16.
-        let compressed_row = circuit_builder.challenge(Ib1Weight) * ib1
-            + circuit_builder.challenge(OspWeight) * circuit_builder.b_constant(16_u32.into());
-        let processor_perm_indeterminate = circuit_builder.challenge(ProcessorPermIndeterminate);
+        let compressed_row = circuit_builder.challenge(OpStackIb1Weight) * ib1
+            + circuit_builder.challenge(OpStackOspWeight)
+                * circuit_builder.b_constant(16_u32.into());
+        let processor_perm_indeterminate = circuit_builder.challenge(OpStackIndeterminate);
         let rppa_initial = processor_perm_indeterminate - compressed_row;
         let rppa_starts_correctly = rppa - rppa_initial;
 
@@ -99,26 +88,16 @@ impl ExtOpStackTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            OpStackTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            OpStackTableChallenges,
-            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
-        let circuit_builder = ConstraintCircuitBuilder::<
-            OpStackTableChallenges,
-            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >::new();
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+        let circuit_builder =
+            ConstraintCircuitBuilder::<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>::new();
         let one = circuit_builder.b_constant(1u32.into());
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
@@ -159,11 +138,11 @@ impl ExtOpStackTable {
             * (one.clone() - ib1_shrink_stack);
 
         // The running product for the permutation argument `rppa` is updated correctly.
-        let alpha = circuit_builder.challenge(ProcessorPermIndeterminate);
-        let compressed_row = circuit_builder.challenge(ClkWeight) * clk_next.clone()
-            + circuit_builder.challenge(Ib1Weight) * ib1_shrink_stack_next
-            + circuit_builder.challenge(OspWeight) * osp_next.clone()
-            + circuit_builder.challenge(OsvWeight) * osv_next;
+        let alpha = circuit_builder.challenge(OpStackIndeterminate);
+        let compressed_row = circuit_builder.challenge(OpStackClkWeight) * clk_next.clone()
+            + circuit_builder.challenge(OpStackIb1Weight) * ib1_shrink_stack_next
+            + circuit_builder.challenge(OpStackOspWeight) * osp_next.clone()
+            + circuit_builder.challenge(OpStackOsvWeight) * osv_next;
 
         let rppa_updates_correctly = rppa_next - rppa * (alpha - compressed_row);
 
@@ -193,12 +172,8 @@ impl ExtOpStackTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            OpStackTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         // no further constraints
         vec![]
     }
@@ -323,11 +298,20 @@ impl OpStackTable {
     pub fn extend(
         base_table: ArrayView2<BFieldElement>,
         mut ext_table: ArrayViewMut2<XFieldElement>,
-        challenges: &OpStackTableChallenges,
+        challenges: &Challenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+
+        let clk_weight = challenges.get_challenge(OpStackClkWeight);
+        let ib1_weight = challenges.get_challenge(OpStackIb1Weight);
+        let osp_weight = challenges.get_challenge(OpStackOspWeight);
+        let osv_weight = challenges.get_challenge(OpStackOsvWeight);
+        let perm_arg_indeterminate = challenges.get_challenge(OpStackIndeterminate);
+        let clock_jump_difference_lookup_indeterminate =
+            challenges.get_challenge(ClockJumpDifferenceLookupIndeterminate);
+
         let mut running_product = PermArg::default_initial();
         let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
@@ -339,22 +323,18 @@ impl OpStackTable {
             let osp = current_row[OSP.base_table_index()];
             let osv = current_row[OSV.base_table_index()];
 
-            let compressed_row_for_permutation_argument = clk * challenges.clk_weight
-                + ib1 * challenges.ib1_weight
-                + osp * challenges.osp_weight
-                + osv * challenges.osv_weight;
-            running_product *=
-                challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
+            let compressed_row_for_permutation_argument =
+                clk * clk_weight + ib1 * ib1_weight + osp * osp_weight + osv * osv_weight;
+            running_product *= perm_arg_indeterminate - compressed_row_for_permutation_argument;
 
             // clock jump difference
             if let Some(prev_row) = previous_row {
                 if prev_row[OSP.base_table_index()] == current_row[OSP.base_table_index()] {
                     let clock_jump_difference =
                         current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
-                    clock_jump_diff_lookup_log_derivative += (challenges
-                        .clock_jump_difference_lookup_indeterminate
-                        - clock_jump_difference)
-                        .inverse();
+                    clock_jump_diff_lookup_log_derivative +=
+                        (clock_jump_difference_lookup_indeterminate - clock_jump_difference)
+                            .inverse();
                 }
             }
 
@@ -365,54 +345,4 @@ impl OpStackTable {
             previous_row = Some(current_row);
         }
     }
-}
-
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum OpStackTableChallengeId {
-    ProcessorPermIndeterminate,
-    ClkWeight,
-    Ib1Weight,
-    OsvWeight,
-    OspWeight,
-    ClockJumpDifferenceLookupIndeterminate,
-}
-
-impl From<OpStackTableChallengeId> for usize {
-    fn from(val: OpStackTableChallengeId) -> Self {
-        val as usize
-    }
-}
-
-impl TableChallenges for OpStackTableChallenges {
-    type Id = OpStackTableChallengeId;
-
-    #[inline]
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
-        match id {
-            ProcessorPermIndeterminate => self.processor_perm_indeterminate,
-            ClkWeight => self.clk_weight,
-            Ib1Weight => self.ib1_weight,
-            OsvWeight => self.osv_weight,
-            OspWeight => self.osp_weight,
-            ClockJumpDifferenceLookupIndeterminate => {
-                self.clock_jump_difference_lookup_indeterminate
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct OpStackTableChallenges {
-    /// The weight that combines two consecutive rows in the
-    /// permutation/evaluation column of the op-stack table.
-    pub processor_perm_indeterminate: XFieldElement,
-
-    /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub clk_weight: XFieldElement,
-    pub ib1_weight: XFieldElement,
-    pub osv_weight: XFieldElement,
-    pub osp_weight: XFieldElement,
-
-    /// Indeterminate for the logarithmic derivative of the clock jump difference's Lookup Argument.
-    pub clock_jump_difference_lookup_indeterminate: XFieldElement,
 }

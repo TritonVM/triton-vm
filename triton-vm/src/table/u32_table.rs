@@ -1,6 +1,6 @@
-use itertools::Itertools;
 use std::ops::Mul;
 
+use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
@@ -11,17 +11,13 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
+use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use triton_opcodes::instruction::Instruction;
-use U32TableChallengeId::*;
-
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId::*;
+use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
@@ -43,10 +39,6 @@ use crate::table::table_column::U32ExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const U32_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 2;
-pub const U32_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-pub const U32_TABLE_NUM_EXTENSION_CHALLENGES: usize = U32TableChallengeId::COUNT;
-
 pub const BASE_WIDTH: usize = U32BaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = U32ExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -56,12 +48,8 @@ pub struct U32Table {}
 pub struct ExtU32Table {}
 
 impl ExtU32Table {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            U32TableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let one = circuit_builder.b_constant(1_u32.into());
@@ -111,11 +99,11 @@ impl ExtU32Table {
                 * circuit_builder.input(BaseRow(Pow.master_base_table_index()));
         //  + normalized_instruction_deselector(Instruction::Split) * 0, which is superfluous
 
-        let initial_factor = challenge(ProcessorPermIndeterminate)
-            - challenge(LhsWeight) * lhs
-            - challenge(RhsWeight) * rhs
-            - challenge(CIWeight) * ci
-            - challenge(ResultWeight) * result;
+        let initial_factor = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * lhs
+            - challenge(U32RhsWeight) * rhs
+            - challenge(U32CiWeight) * ci
+            - challenge(U32ResultWeight) * result;
         let if_copy_flag_is_1_then_rp_has_accumulated_first_row =
             copy_flag.clone() * (rp.clone() - initial_factor);
 
@@ -131,12 +119,8 @@ impl ExtU32Table {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            U32TableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
@@ -207,9 +191,8 @@ impl ExtU32Table {
         .to_vec()
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<U32TableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
-    > {
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let one = circuit_builder.b_constant(1_u32.into());
@@ -370,12 +353,12 @@ impl ExtU32Table {
         let if_copy_flag_next_is_0_then_running_product_stays =
             (copy_flag_next.clone() - one) * (rp_next.clone() - rp.clone());
 
-        let compressed_row_next = challenge(CIWeight) * ci_next
-            + challenge(LhsWeight) * lhs_next
-            + challenge(RhsWeight) * rhs_next
-            + challenge(ResultWeight) * result_next;
-        let if_copy_flag_next_is_1_then_running_product_absorbs_next_row = copy_flag_next
-            * (rp_next - rp * (challenge(ProcessorPermIndeterminate) - compressed_row_next));
+        let compressed_row_next = challenge(U32CiWeight) * ci_next
+            + challenge(U32LhsWeight) * lhs_next
+            + challenge(U32RhsWeight) * rhs_next
+            + challenge(U32ResultWeight) * result_next;
+        let if_copy_flag_next_is_1_then_running_product_absorbs_next_row =
+            copy_flag_next * (rp_next - rp * (challenge(U32Indeterminate) - compressed_row_next));
 
         [
             if_copy_flag_next_is_1_then_lhs_is_0,
@@ -405,12 +388,8 @@ impl ExtU32Table {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            U32TableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
@@ -546,11 +525,17 @@ impl U32Table {
     pub fn extend(
         base_table: ArrayView2<BFieldElement>,
         mut ext_table: ArrayViewMut2<XFieldElement>,
-        challenges: &U32TableChallenges,
+        challenges: &Challenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+
+        let ci_weight = challenges.get_challenge(U32CiWeight);
+        let lhs_weight = challenges.get_challenge(U32LhsWeight);
+        let rhs_weight = challenges.get_challenge(U32RhsWeight);
+        let result_weight = challenges.get_challenge(U32ResultWeight);
+        let processor_perm_indeterminate = challenges.get_challenge(U32Indeterminate);
 
         let mut running_product = PermArg::default_initial();
         for row_idx in 0..base_table.nrows() {
@@ -570,54 +555,15 @@ impl U32Table {
                     ci => panic!("Instruction in U32 Table must be a u32 instruction. Got {ci}"),
                 };
 
-                let compressed_row = challenges.ci_weight * current_row[CI.base_table_index()]
-                    + challenges.lhs_weight * current_row[LHS.base_table_index()]
-                    + challenges.rhs_weight * current_row[RHS.base_table_index()]
-                    + challenges.result_weight * result;
-                running_product *= challenges.processor_perm_indeterminate - compressed_row;
+                let compressed_row = ci_weight * current_row[CI.base_table_index()]
+                    + lhs_weight * current_row[LHS.base_table_index()]
+                    + rhs_weight * current_row[RHS.base_table_index()]
+                    + result_weight * result;
+                running_product *= processor_perm_indeterminate - compressed_row;
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[ProcessorPermArg.ext_table_index()] = running_product;
         }
     }
-}
-
-#[repr(usize)]
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum U32TableChallengeId {
-    LhsWeight,
-    RhsWeight,
-    CIWeight,
-    ResultWeight,
-    ProcessorPermIndeterminate,
-}
-
-impl From<U32TableChallengeId> for usize {
-    fn from(val: U32TableChallengeId) -> Self {
-        val as usize
-    }
-}
-
-impl TableChallenges for U32TableChallenges {
-    type Id = U32TableChallengeId;
-
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
-        match id {
-            LhsWeight => self.lhs_weight,
-            RhsWeight => self.rhs_weight,
-            CIWeight => self.ci_weight,
-            ResultWeight => self.result_weight,
-            ProcessorPermIndeterminate => self.processor_perm_indeterminate,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct U32TableChallenges {
-    pub lhs_weight: XFieldElement,
-    pub rhs_weight: XFieldElement,
-    pub ci_weight: XFieldElement,
-    pub result_weight: XFieldElement,
-    pub processor_perm_indeterminate: XFieldElement,
 }

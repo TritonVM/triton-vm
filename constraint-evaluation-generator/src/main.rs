@@ -5,7 +5,6 @@ use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use triton_vm::table::challenges::TableChallenges;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
@@ -124,15 +123,14 @@ fn write(table_name_snake: &str, rust_source_code: String) {
     std::fs::write(output_filename, rust_source_code).expect("Write Rust source code");
 }
 
-fn gen<T: TableChallenges, SII: InputIndicator, DII: InputIndicator>(
+fn gen<SII: InputIndicator, DII: InputIndicator>(
     table_name_snake: &str,
     table_id_name: &str,
-    initial_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
-    consistency_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
-    transition_constraint_circuits: &mut [ConstraintCircuit<T, DII>],
-    terminal_constraint_circuits: &mut [ConstraintCircuit<T, SII>],
+    initial_constraint_circuits: &mut [ConstraintCircuit<SII>],
+    consistency_constraint_circuits: &mut [ConstraintCircuit<SII>],
+    transition_constraint_circuits: &mut [ConstraintCircuit<DII>],
+    terminal_constraint_circuits: &mut [ConstraintCircuit<SII>],
 ) -> String {
-    let challenge_enum_name = format!("{table_id_name}ChallengeId");
     let table_mod_name = format!("Ext{table_id_name}");
 
     let num_initial_constraints = initial_constraint_circuits.len();
@@ -161,12 +159,11 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::table::challenges::AllChallenges;
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::Challenges;
+use crate::table::challenges::ChallengeId::*;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
 use crate::table::{table_name_snake}::{table_mod_name};
-use crate::table::{table_name_snake}::{challenge_enum_name}::*;
 
 // This file has been auto-generated. Any modifications _will_ be lost.
 // To re-generate, execute:
@@ -177,9 +174,8 @@ impl Evaluable for {table_mod_name} {{
     fn evaluate_initial_constraints(
         base_row: ArrayView1<BFieldElement>,
         ext_row: ArrayView1<XFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        let challenges = &challenges.{table_name_snake}_challenges;
         {initial_constraint_strings}
     }}
 
@@ -188,9 +184,8 @@ impl Evaluable for {table_mod_name} {{
     fn evaluate_consistency_constraints(
         base_row: ArrayView1<BFieldElement>,
         ext_row: ArrayView1<XFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        let challenges = &challenges.{table_name_snake}_challenges;
         {consistency_constraint_strings}
     }}
 
@@ -201,9 +196,8 @@ impl Evaluable for {table_mod_name} {{
         current_ext_row: ArrayView1<XFieldElement>,
         next_base_row: ArrayView1<BFieldElement>,
         next_ext_row: ArrayView1<XFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        let challenges = &challenges.{table_name_snake}_challenges;
         {transition_constraint_strings}
     }}
 
@@ -212,9 +206,8 @@ impl Evaluable for {table_mod_name} {{
     fn evaluate_terminal_constraints(
         base_row: ArrayView1<BFieldElement>,
         ext_row: ArrayView1<XFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        let challenges = &challenges.{table_name_snake}_challenges;
         {terminal_constraint_strings}
     }}
 }}
@@ -274,8 +267,8 @@ impl Quotientable for {table_mod_name} {{
     )
 }
 
-fn turn_circuits_into_degree_bounds_string<T: TableChallenges, II: InputIndicator>(
-    constraint_circuits: &[ConstraintCircuit<T, II>],
+fn turn_circuits_into_degree_bounds_string<II: InputIndicator>(
+    constraint_circuits: &[ConstraintCircuit<II>],
 ) -> String {
     constraint_circuits
         .iter()
@@ -284,8 +277,8 @@ fn turn_circuits_into_degree_bounds_string<T: TableChallenges, II: InputIndicato
         .join(",\n")
 }
 
-fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
-    constraint_circuits: &mut [ConstraintCircuit<T, II>],
+fn turn_circuits_into_string<II: InputIndicator>(
+    constraint_circuits: &mut [ConstraintCircuit<II>],
 ) -> String {
     // Delete redundant nodes
     ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
@@ -356,9 +349,9 @@ fn turn_circuits_into_string<T: TableChallenges, II: InputIndicator>(
 /// Produce the code to evaluate code for all nodes that share a value number of
 /// times visited. A value for all nodes with a higher count than the provided are assumed
 /// to be in scope.
-fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
+fn declare_nodes_with_visit_count<II: InputIndicator>(
     requested_visited_count: usize,
-    circuits: &[ConstraintCircuit<T, II>],
+    circuits: &[ConstraintCircuit<II>],
 ) -> String {
     let mut in_scope: HashSet<usize> = HashSet::new();
     let mut output = String::default();
@@ -375,9 +368,9 @@ fn declare_nodes_with_visit_count<T: TableChallenges, II: InputIndicator>(
     output
 }
 
-fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
+fn declare_single_node_with_visit_count<II: InputIndicator>(
     requested_visited_count: usize,
-    circuit: &ConstraintCircuit<T, II>,
+    circuit: &ConstraintCircuit<II>,
     in_scope: &mut HashSet<usize>,
     output: &mut String,
 ) {
@@ -433,9 +426,7 @@ fn declare_single_node_with_visit_count<T: TableChallenges, II: InputIndicator>(
 
 /// Return a variable name for the node. Returns `point[n]` if node is just
 /// a value from the codewords. Otherwise returns the ID of the circuit.
-fn get_binding_name<T: TableChallenges, II: InputIndicator>(
-    circuit: &ConstraintCircuit<T, II>,
-) -> String {
+fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> String {
     match &circuit.expression {
         CircuitExpression::XConstant(xfe) => print_xfe(xfe),
         CircuitExpression::BConstant(bfe) => print_bfe(bfe),
@@ -450,9 +441,7 @@ fn get_binding_name<T: TableChallenges, II: InputIndicator>(
 /// Recursively check whether a node is composed of only BFieldElements, i.e., only uses
 /// (1) inputs from base rows, (2) constants from the B-field, and (3) binary operations on
 /// BFieldElements.
-fn is_bfield_element<T: TableChallenges, II: InputIndicator>(
-    circuit: &ConstraintCircuit<T, II>,
-) -> bool {
+fn is_bfield_element<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> bool {
     match &circuit.expression {
         CircuitExpression::XConstant(_) => false,
         CircuitExpression::BConstant(_) => true,
@@ -466,9 +455,9 @@ fn is_bfield_element<T: TableChallenges, II: InputIndicator>(
 
 /// Return (1) the code for evaluating a single node and (2) a list of symbols that this evaluation
 /// depends on.
-fn evaluate_single_node<T: TableChallenges, II: InputIndicator>(
+fn evaluate_single_node<II: InputIndicator>(
     requested_visited_count: usize,
-    circuit: &ConstraintCircuit<T, II>,
+    circuit: &ConstraintCircuit<II>,
     in_scope: &HashSet<usize>,
 ) -> (String, Vec<String>) {
     let mut output = String::default();

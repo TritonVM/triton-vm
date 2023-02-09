@@ -1,4 +1,3 @@
-use ndarray::ArrayView2;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::cmp;
@@ -7,12 +6,12 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::iter::Sum;
-use std::marker::PhantomData;
 use std::ops::Add;
 use std::ops::Mul;
 use std::ops::Sub;
 use std::rc::Rc;
 
+use ndarray::ArrayView2;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -21,7 +20,8 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use CircuitExpression::*;
 
-use super::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId;
+use crate::table::challenges::Challenges;
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 pub enum BinOp {
@@ -197,19 +197,19 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicat
 }
 
 #[derive(Debug, Clone)]
-pub enum CircuitExpression<T: TableChallenges, II: InputIndicator> {
+pub enum CircuitExpression<II: InputIndicator> {
     XConstant(XFieldElement),
     BConstant(BFieldElement),
     Input(II),
-    Challenge(T::Id),
+    Challenge(ChallengeId),
     BinaryOperation(
         BinOp,
-        Rc<RefCell<ConstraintCircuit<T, II>>>,
-        Rc<RefCell<ConstraintCircuit<T, II>>>,
+        Rc<RefCell<ConstraintCircuit<II>>>,
+        Rc<RefCell<ConstraintCircuit<II>>>,
     ),
 }
 
-impl<T: TableChallenges, II: InputIndicator> Hash for CircuitExpression<T, II> {
+impl<II: InputIndicator> Hash for CircuitExpression<II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
             BConstant(bfe) => bfe.hash(state),
@@ -227,28 +227,28 @@ impl<T: TableChallenges, II: InputIndicator> Hash for CircuitExpression<T, II> {
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> Hash for ConstraintCircuit<T, II> {
+impl<II: InputIndicator> Hash for ConstraintCircuit<II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.expression.hash(state)
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> Hash for ConstraintCircuitMonad<T, II> {
+impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.circuit.as_ref().borrow().expression.hash(state)
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ConstraintCircuit<T: TableChallenges, II: InputIndicator> {
+pub struct ConstraintCircuit<II: InputIndicator> {
     pub id: usize,
     pub visited_counter: usize,
-    pub expression: CircuitExpression<T, II>,
+    pub expression: CircuitExpression<II>,
 }
 
-impl<T: TableChallenges, II: InputIndicator> Eq for ConstraintCircuit<T, II> {}
+impl<II: InputIndicator> Eq for ConstraintCircuit<II> {}
 
-impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuit<T, II> {
+impl<II: InputIndicator> PartialEq for ConstraintCircuit<II> {
     /// Calculate equality of circuits.
     /// In particular, this function does *not* attempt to simplify
     /// or reduce neutral terms or products. So this comparison will
@@ -288,7 +288,7 @@ impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuit<T, 
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> Display for ConstraintCircuit<T, II> {
+impl<II: InputIndicator> Display for ConstraintCircuit<II> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.expression {
             XConstant(xfe) => {
@@ -314,7 +314,7 @@ impl<T: TableChallenges, II: InputIndicator> Display for ConstraintCircuit<T, II
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
+impl<II: InputIndicator> ConstraintCircuit<II> {
     /// Increment `visited_counter` by one for each reachable node
     fn traverse_single(&mut self) {
         self.visited_counter += 1;
@@ -327,7 +327,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     /// Count how many times each reachable node is reached when traversing from
     /// the starting points that are given as input. The result is stored in the
     /// `visited_counter` field in each node.
-    pub fn traverse_multiple(ccs: &mut [ConstraintCircuit<T, II>]) {
+    pub fn traverse_multiple(ccs: &mut [ConstraintCircuit<II>]) {
         for cc in ccs.iter_mut() {
             assert!(
                 cc.visited_counter.is_zero(),
@@ -363,7 +363,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Verify that a multitree has unique IDs. Panics otherwise.
-    pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<T, II>]) {
+    pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
         let mut ids: HashSet<usize> = HashSet::new();
 
         for circuit in constraints.iter_mut() {
@@ -475,7 +475,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Reduce size of multitree by simplifying constant expressions such as `1·X` to `X`.
-    pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<T, II>]) {
+    pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<II>]) {
         for circuit in circuits.iter_mut() {
             let mut mutated = circuit.constant_fold_inner();
             while mutated {
@@ -627,7 +627,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Replace all challenges with constants in subtree
-    fn apply_challenges_to_one_root(&mut self, challenges: &T) {
+    fn apply_challenges_to_one_root(&mut self, challenges: &Challenges) {
         match &self.expression {
             Challenge(challenge_id) => {
                 *self.expression.borrow_mut() = XConstant(challenges.get_challenge(*challenge_id))
@@ -645,7 +645,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
     }
 
     /// Simplify the circuit constraints by replacing the known challenges with roots
-    pub fn apply_challenges(constraints: &mut [ConstraintCircuit<T, II>], challenges: &T) {
+    pub fn apply_challenges(constraints: &mut [ConstraintCircuit<II>], challenges: &Challenges) {
         for circuit in constraints.iter_mut() {
             circuit.apply_challenges_to_one_root(challenges);
         }
@@ -677,7 +677,7 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
         &self,
         base_table: ArrayView2<BFieldElement>,
         ext_table: ArrayView2<XFieldElement>,
-        challenges: &T,
+        challenges: &Challenges,
     ) -> XFieldElement {
         let mut self_to_evaluate = self.clone();
         self_to_evaluate.apply_challenges_to_one_root(challenges);
@@ -686,13 +686,13 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuit<T, II> {
 }
 
 #[derive(Clone)]
-pub struct ConstraintCircuitMonad<T: TableChallenges, II: InputIndicator> {
-    pub circuit: Rc<RefCell<ConstraintCircuit<T, II>>>,
-    pub all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<T, II>>>>,
+pub struct ConstraintCircuitMonad<II: InputIndicator> {
+    pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
+    pub all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<II>>>>,
     pub id_counter_ref: Rc<RefCell<usize>>,
 }
 
-impl<T: TableChallenges, II: InputIndicator> Debug for ConstraintCircuitMonad<T, II> {
+impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
     // We cannot derive `Debug` as `all_nodes` contains itself which a derived `Debug` will
     // attempt to print as well, thus leading to infinite recursion.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -710,13 +710,13 @@ impl<T: TableChallenges, II: InputIndicator> Debug for ConstraintCircuitMonad<T,
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> Display for ConstraintCircuitMonad<T, II> {
+impl<II: InputIndicator> Display for ConstraintCircuitMonad<II> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.circuit.as_ref().borrow())
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuitMonad<T, II> {
+impl<II: InputIndicator> PartialEq for ConstraintCircuitMonad<II> {
     // Equality for the ConstraintCircuitMonad is defined by the circuit, not the
     // other metadata (e.g. ID) that it carries around.
     fn eq(&self, other: &Self) -> bool {
@@ -724,16 +724,16 @@ impl<T: TableChallenges, II: InputIndicator> PartialEq for ConstraintCircuitMona
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> Eq for ConstraintCircuitMonad<T, II> {}
+impl<II: InputIndicator> Eq for ConstraintCircuitMonad<II> {}
 
 /// Helper function for binary operations that are used to generate new parent
 /// nodes in the multitree that represents the algebraic circuit. Ensures that
 /// each newly created node has a unique ID.
-fn binop<T: TableChallenges, II: InputIndicator>(
+fn binop<II: InputIndicator>(
     binop: BinOp,
-    lhs: ConstraintCircuitMonad<T, II>,
-    rhs: ConstraintCircuitMonad<T, II>,
-) -> ConstraintCircuitMonad<T, II> {
+    lhs: ConstraintCircuitMonad<II>,
+    rhs: ConstraintCircuitMonad<II>,
+) -> ConstraintCircuitMonad<II> {
     // Get ID for the new node
     let new_index = lhs.id_counter_ref.as_ref().borrow().to_owned();
 
@@ -795,24 +795,24 @@ fn binop<T: TableChallenges, II: InputIndicator>(
     new_node
 }
 
-impl<T: TableChallenges, II: InputIndicator> Add for ConstraintCircuitMonad<T, II> {
-    type Output = ConstraintCircuitMonad<T, II>;
+impl<II: InputIndicator> Add for ConstraintCircuitMonad<II> {
+    type Output = ConstraintCircuitMonad<II>;
 
     fn add(self, rhs: Self) -> Self::Output {
         binop(BinOp::Add, self, rhs)
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> Sub for ConstraintCircuitMonad<T, II> {
-    type Output = ConstraintCircuitMonad<T, II>;
+impl<II: InputIndicator> Sub for ConstraintCircuitMonad<II> {
+    type Output = ConstraintCircuitMonad<II>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         binop(BinOp::Sub, self, rhs)
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> Mul for ConstraintCircuitMonad<T, II> {
-    type Output = ConstraintCircuitMonad<T, II>;
+impl<II: InputIndicator> Mul for ConstraintCircuitMonad<II> {
+    type Output = ConstraintCircuitMonad<II>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         binop(BinOp::Mul, self, rhs)
@@ -822,16 +822,16 @@ impl<T: TableChallenges, II: InputIndicator> Mul for ConstraintCircuitMonad<T, I
 /// This will panic if the iterator is empty because the neutral
 /// element needs a unique ID, and we have no way of getting that
 /// here.
-impl<T: TableChallenges, II: InputIndicator> Sum for ConstraintCircuitMonad<T, II> {
+impl<II: InputIndicator> Sum for ConstraintCircuitMonad<II> {
     fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         iter.reduce(|accum, item| accum + item)
             .expect("ConstraintCircuitMonad Iterator was empty")
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitMonad<T, II> {
+impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// Unwrap a ConstraintCircuitMonad to reveal its inner ConstraintCircuit
-    pub fn consume(self) -> ConstraintCircuit<T, II> {
+    pub fn consume(self) -> ConstraintCircuit<II> {
         self.circuit.try_borrow().unwrap().to_owned()
     }
 }
@@ -839,52 +839,50 @@ impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitMonad<T, II> {
 #[derive(Debug, Clone)]
 /// Helper struct to construct new leaf nodes in the circuit multitree. Ensures that each newly
 /// created node gets a unique ID.
-pub struct ConstraintCircuitBuilder<T: TableChallenges, II: InputIndicator> {
+pub struct ConstraintCircuitBuilder<II: InputIndicator> {
     id_counter: Rc<RefCell<usize>>,
-    all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<T, II>>>>,
-    _table_type: PhantomData<T>,
+    all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<II>>>>,
 }
 
-impl<T: TableChallenges, II: InputIndicator> Default for ConstraintCircuitBuilder<T, II> {
+impl<II: InputIndicator> Default for ConstraintCircuitBuilder<II> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: TableChallenges, II: InputIndicator> ConstraintCircuitBuilder<T, II> {
+impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
     pub fn new() -> Self {
         Self {
             id_counter: Rc::new(RefCell::new(0)),
             all_nodes: Rc::new(RefCell::new(HashSet::default())),
-            _table_type: PhantomData,
         }
     }
 
     /// Create constant leaf node
-    pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<T, II> {
+    pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<II> {
         let expression = XConstant(xfe);
         self.make_leaf(expression)
     }
 
     /// Create constant leaf node
-    pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<T, II> {
+    pub fn b_constant(&self, bfe: BFieldElement) -> ConstraintCircuitMonad<II> {
         let expression = BConstant(bfe);
         self.make_leaf(expression)
     }
 
     /// Create deterministic input leaf node
-    pub fn input(&self, input: II) -> ConstraintCircuitMonad<T, II> {
+    pub fn input(&self, input: II) -> ConstraintCircuitMonad<II> {
         let expression = Input(input);
         self.make_leaf(expression)
     }
 
     /// Create challenge leaf node
-    pub fn challenge(&self, challenge_id: T::Id) -> ConstraintCircuitMonad<T, II> {
+    pub fn challenge(&self, challenge_id: ChallengeId) -> ConstraintCircuitMonad<II> {
         let expression = Challenge(challenge_id);
         self.make_leaf(expression)
     }
 
-    fn make_leaf(&self, expression: CircuitExpression<T, II>) -> ConstraintCircuitMonad<T, II> {
+    fn make_leaf(&self, expression: CircuitExpression<II>) -> ConstraintCircuitMonad<II> {
         let new_id = self.id_counter.as_ref().borrow().to_owned();
         let new_node = ConstraintCircuitMonad {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
@@ -925,19 +923,18 @@ mod constraint_circuit_tests {
     use rand::RngCore;
     use twenty_first::shared_math::other::random_elements;
 
-    use crate::table::challenges::AllChallenges;
+    use crate::table::challenges::ChallengeId::U32Indeterminate;
+    use crate::table::challenges::Challenges;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
-    use crate::table::processor_table::ProcessorTableChallengeId;
-    use crate::table::processor_table::ProcessorTableChallenges;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
 
     use super::*;
 
-    fn node_counter_inner<T: TableChallenges, II: InputIndicator>(
-        constraint: &mut ConstraintCircuit<T, II>,
+    fn node_counter_inner<II: InputIndicator>(
+        constraint: &mut ConstraintCircuit<II>,
         counter: &mut usize,
     ) {
         if constraint.visited_counter == 0 {
@@ -952,9 +949,7 @@ mod constraint_circuit_tests {
     }
 
     /// Count the total number of nodes in call constraints
-    fn node_counter<T: TableChallenges, II: InputIndicator>(
-        constraints: &mut [ConstraintCircuit<T, II>],
-    ) -> usize {
+    fn node_counter<II: InputIndicator>(constraints: &mut [ConstraintCircuit<II>]) -> usize {
         let mut counter = 0;
 
         for constraint in constraints.iter_mut() {
@@ -969,8 +964,8 @@ mod constraint_circuit_tests {
     }
 
     fn random_circuit_builder() -> (
-        ConstraintCircuitMonad<ProcessorTableChallenges, DualRowIndicator<50, 40>>,
-        ConstraintCircuitBuilder<ProcessorTableChallenges, DualRowIndicator<50, 40>>,
+        ConstraintCircuitMonad<DualRowIndicator<50, 40>>,
+        ConstraintCircuitBuilder<DualRowIndicator<50, 40>>,
     ) {
         let mut rng = thread_rng();
         let num_base_columns = 50;
@@ -996,7 +991,7 @@ mod constraint_circuit_tests {
                 }
                 2 => {
                     // p(x, y, z) = rand_i
-                    circuit_builder.challenge(ProcessorTableChallengeId::U32PermIndeterminate)
+                    circuit_builder.challenge(U32Indeterminate)
                 }
                 3 => {
                     // p(x, y, z) = 0
@@ -1010,8 +1005,8 @@ mod constraint_circuit_tests {
                     // p(x, y, z) = rand_i * x
                     let input_value =
                         DualRowIndicator::CurrentExtRow(rng.next_u64() as usize % num_ext_columns);
-                    let challenge = ProcessorTableChallengeId::U32PermIndeterminate;
-                    circuit_builder.input(input_value) * circuit_builder.challenge(challenge)
+                    let challenge_id = U32Indeterminate;
+                    circuit_builder.input(input_value) * circuit_builder.challenge(challenge_id)
                 }
                 _ => unreachable!(),
             };
@@ -1027,10 +1022,10 @@ mod constraint_circuit_tests {
     }
 
     // Make a deep copy of a Multicircuit and return it as a ConstraintCircuitMonad
-    fn deep_copy_inner<T: TableChallenges, II: InputIndicator>(
-        val: &ConstraintCircuit<T, II>,
-        builder: &mut ConstraintCircuitBuilder<T, II>,
-    ) -> ConstraintCircuitMonad<T, II> {
+    fn deep_copy_inner<II: InputIndicator>(
+        val: &ConstraintCircuit<II>,
+        builder: &mut ConstraintCircuitBuilder<II>,
+    ) -> ConstraintCircuitMonad<II> {
         match &val.expression {
             BinaryOperation(op, lhs, rhs) => {
                 let lhs_ref = deep_copy_inner(&lhs.as_ref().borrow(), builder);
@@ -1044,9 +1039,7 @@ mod constraint_circuit_tests {
         }
     }
 
-    fn deep_copy<T: TableChallenges, II: InputIndicator>(
-        val: &ConstraintCircuit<T, II>,
-    ) -> ConstraintCircuitMonad<T, II> {
+    fn deep_copy<II: InputIndicator>(val: &ConstraintCircuit<II>) -> ConstraintCircuitMonad<II> {
         let mut builder = ConstraintCircuitBuilder::new();
         deep_copy_inner(val, &mut builder)
     }
@@ -1115,10 +1108,8 @@ mod constraint_circuit_tests {
 
     #[test]
     fn circuit_equality_check_and_constant_folding_test() {
-        let circuit_builder: ConstraintCircuitBuilder<
-            ProcessorTableChallenges,
-            DualRowIndicator<5, 3>,
-        > = ConstraintCircuitBuilder::new();
+        let circuit_builder: ConstraintCircuitBuilder<DualRowIndicator<5, 3>> =
+            ConstraintCircuitBuilder::new();
         let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
         let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
         let four = circuit_builder.x_constant(4.into());
@@ -1306,9 +1297,9 @@ mod constraint_circuit_tests {
         }
     }
 
-    fn constant_folding_of_table_constraints_test<T: TableChallenges, II: InputIndicator>(
-        mut constraints: Vec<ConstraintCircuit<T, II>>,
-        challenges: T,
+    fn constant_folding_of_table_constraints_test<II: InputIndicator>(
+        mut constraints: Vec<ConstraintCircuit<II>>,
+        challenges: &Challenges,
         table_name: &str,
     ) {
         ConstraintCircuit::assert_has_unique_ids(&mut constraints);
@@ -1332,7 +1323,7 @@ mod constraint_circuit_tests {
         );
 
         // apply challenges and verify that subtree no longer contains randomness
-        ConstraintCircuit::apply_challenges(&mut constraints, &challenges);
+        ConstraintCircuit::apply_challenges(&mut constraints, challenges);
         assert!(
             constraints
                 .iter()
@@ -1354,56 +1345,36 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_processor_table_test() {
-        let challenges = AllChallenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(&[], &[]);
         let constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
-        constant_folding_of_table_constraints_test(
-            constraint_circuits,
-            challenges.processor_table_challenges,
-            "processor",
-        );
+        constant_folding_of_table_constraints_test(constraint_circuits, &challenges, "processor");
     }
 
     #[test]
     fn constant_folding_program_table_test() {
-        let challenges = AllChallenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(&[], &[]);
         let constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
-        constant_folding_of_table_constraints_test(
-            constraint_circuits,
-            challenges.program_table_challenges,
-            "program",
-        );
+        constant_folding_of_table_constraints_test(constraint_circuits, &challenges, "program");
     }
 
     #[test]
     fn constant_folding_jump_stack_table_test() {
-        let challenges = AllChallenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(&[], &[]);
         let constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
-        constant_folding_of_table_constraints_test(
-            constraint_circuits,
-            challenges.jump_stack_table_challenges,
-            "jump stack",
-        );
+        constant_folding_of_table_constraints_test(constraint_circuits, &challenges, "jump stack");
     }
 
     #[test]
     fn constant_folding_op_stack_table_test() {
-        let challenges = AllChallenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(&[], &[]);
         let constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
-        constant_folding_of_table_constraints_test(
-            constraint_circuits,
-            challenges.op_stack_table_challenges,
-            "op stack",
-        );
+        constant_folding_of_table_constraints_test(constraint_circuits, &challenges, "op stack");
     }
 
     #[test]
     fn constant_folding_ram_stack_table_test() {
-        let challenges = AllChallenges::placeholder(&[], &[]);
+        let challenges = Challenges::placeholder(&[], &[]);
         let constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
-        constant_folding_of_table_constraints_test(
-            constraint_circuits,
-            challenges.ram_table_challenges,
-            "ram",
-        );
+        constant_folding_of_table_constraints_test(constraint_circuits, &challenges, "ram");
     }
 }

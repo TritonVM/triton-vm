@@ -6,9 +6,7 @@ use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use num_traits::One;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
+use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
@@ -21,9 +19,8 @@ use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use triton_opcodes::instruction::Instruction;
-
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId::*;
+use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
@@ -34,7 +31,6 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
-use crate::table::hash_table::HashTableChallengeId::*;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::BaseTableColumn;
@@ -46,10 +42,6 @@ use crate::table::table_column::HashExtTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
-
-pub const HASH_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
-pub const HASH_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 2;
-pub const HASH_TABLE_NUM_EXTENSION_CHALLENGES: usize = HashTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;
@@ -65,12 +57,8 @@ pub struct HashTable {}
 pub struct ExtHashTable {}
 
 impl ExtHashTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            HashTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c| circuit_builder.b_constant(c);
@@ -108,7 +96,7 @@ impl ExtHashTable {
             HashStateWeight8,
             HashStateWeight9,
         ];
-        let compressed_row: ConstraintCircuitMonad<_, _> = state_weights
+        let compressed_row: ConstraintCircuitMonad<_> = state_weights
             .into_iter()
             .zip_eq(state.into_iter())
             .map(|(weight, state)| challenge(weight) * base_row(state))
@@ -123,7 +111,7 @@ impl ExtHashTable {
         // If the round number is 0, the running evaluation is the default initial.
         // If the current instruction is AbsorbInit, the running evaluation is the default initial.
         // Else, the first update has been applied to the running evaluation.
-        let from_processor_indeterminate = challenge(HashInputEvalIndeterminate);
+        let from_processor_indeterminate = challenge(HashInputIndeterminate);
         let running_evaluation_hash_input_is_default_initial =
             running_evaluation_hash_input.clone() - running_evaluation_initial.clone();
         let running_evaluation_hash_input_has_accumulated_first_row = running_evaluation_hash_input
@@ -140,12 +128,12 @@ impl ExtHashTable {
             running_evaluation_hash_digest - running_evaluation_initial.clone();
 
         // Evaluation Argument “Sponge”
-        let sponge_indeterminate = challenge(SpongeEvalIndeterminate);
+        let sponge_indeterminate = challenge(SpongeIndeterminate);
         let running_evaluation_sponge_is_default_initial =
             running_evaluation_sponge.clone() - running_evaluation_initial.clone();
         let running_evaluation_sponge_has_accumulated_first_row = running_evaluation_sponge
             - running_evaluation_initial * sponge_indeterminate
-            - challenge(CIWeight) * constant(Instruction::AbsorbInit.opcode_b())
+            - challenge(HashCIWeight) * constant(Instruction::AbsorbInit.opcode_b())
             - compressed_row;
         let running_evaluation_sponge_absorb_is_initialized_correctly = ci_is_hash
             * running_evaluation_sponge_has_accumulated_first_row
@@ -163,10 +151,10 @@ impl ExtHashTable {
     }
 
     fn round_number_deselector<II: InputIndicator>(
-        circuit_builder: &ConstraintCircuitBuilder<HashTableChallenges, II>,
-        round_number_circuit_node: &ConstraintCircuitMonad<HashTableChallenges, II>,
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        round_number_circuit_node: &ConstraintCircuitMonad<II>,
         round_number_to_deselect: usize,
-    ) -> ConstraintCircuitMonad<HashTableChallenges, II> {
+    ) -> ConstraintCircuitMonad<II> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         (0..=NUM_ROUNDS + 1)
             .filter(|&r| r != round_number_to_deselect)
@@ -174,12 +162,8 @@ impl ExtHashTable {
             .fold(constant(1), |a, b| a * b)
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            HashTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
@@ -242,9 +226,8 @@ impl ExtHashTable {
             .collect()
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<HashTableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
-    > {
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
@@ -268,9 +251,9 @@ impl ExtHashTable {
             circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
         };
 
-        let hash_input_eval_indeterminate = challenge(HashInputEvalIndeterminate);
-        let hash_digest_eval_indeterminate = challenge(HashDigestEvalIndeterminate);
-        let sponge_indeterminate = challenge(SpongeEvalIndeterminate);
+        let hash_input_eval_indeterminate = challenge(HashInputIndeterminate);
+        let hash_digest_eval_indeterminate = challenge(HashDigestIndeterminate);
+        let sponge_indeterminate = challenge(SpongeIndeterminate);
 
         let round_number = current_base_row(ROUNDNUMBER);
         let ci = current_base_row(CI);
@@ -404,7 +387,7 @@ impl ExtHashTable {
             .map(|i| {
                 (0..STATE_SIZE)
                     .map(|j| b_constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
-                    .sum::<ConstraintCircuitMonad<_, _>>()
+                    .sum::<ConstraintCircuitMonad<_>>()
             })
             .collect_vec();
 
@@ -425,7 +408,7 @@ impl ExtHashTable {
             .map(|i| {
                 (0..STATE_SIZE)
                     .map(|j| b_constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
-                    .sum::<ConstraintCircuitMonad<_, _>>()
+                    .sum::<ConstraintCircuitMonad<_>>()
             })
             .collect_vec();
 
@@ -546,7 +529,7 @@ impl ExtHashTable {
         let running_evaluation_sponge_has_accumulated_next_row = running_evaluation_sponge_next
             .clone()
             - sponge_indeterminate.clone() * running_evaluation_sponge.clone()
-            - challenge(CIWeight) * ci_next.clone()
+            - challenge(HashCIWeight) * ci_next.clone()
             - compressed_row_next;
         let if_round_no_next_1_and_ci_next_absorb_init_or_squeeze_then_running_eval_sponge_updates =
             round_number_next_is_not_1.clone()
@@ -554,7 +537,7 @@ impl ExtHashTable {
                 * (ci_next.clone() - opcode_absorb.clone())
                 * running_evaluation_sponge_has_accumulated_next_row;
 
-        let compressed_difference_of_rows: ConstraintCircuitMonad<_, _> = state_weights[..RATE]
+        let compressed_difference_of_rows: ConstraintCircuitMonad<_> = state_weights[..RATE]
             .iter()
             .zip_eq(difference_of_state_registers[..RATE].iter())
             .map(|(weight, state_difference)| weight.clone() * state_difference.clone())
@@ -562,7 +545,7 @@ impl ExtHashTable {
         let running_evaluation_sponge_absorb_has_accumulated_difference_of_rows =
             running_evaluation_sponge_next.clone()
                 - sponge_indeterminate * running_evaluation_sponge.clone()
-                - challenge(CIWeight) * ci_next.clone()
+                - challenge(HashCIWeight) * ci_next.clone()
                 - compressed_difference_of_rows;
         let if_round_no_next_is_1_and_ci_next_is_absorb_then_sponge_absorb_eval_is_updated =
             round_number_next_is_not_1
@@ -609,12 +592,8 @@ impl ExtHashTable {
         .collect()
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            HashTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         // no more constraints
         vec![]
     }
@@ -645,11 +624,17 @@ impl HashTable {
     pub fn extend(
         base_table: ArrayView2<BFieldElement>,
         mut ext_table: ArrayViewMut2<XFieldElement>,
-        challenges: &HashTableChallenges,
+        challenges: &Challenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+
+        let ci_weight = challenges.get_challenge(HashCIWeight);
+        let hash_digest_eval_indeterminate = challenges.get_challenge(HashDigestIndeterminate);
+        let hash_input_eval_indeterminate = challenges.get_challenge(HashInputIndeterminate);
+        let sponge_eval_indeterminate = challenges.get_challenge(SpongeIndeterminate);
+
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
         let mut sponge_running_evaluation = EvalArg::default_initial();
@@ -669,16 +654,16 @@ impl HashTable {
             ]
         };
         let state_weights = [
-            challenges.hash_state_weight0,
-            challenges.hash_state_weight1,
-            challenges.hash_state_weight2,
-            challenges.hash_state_weight3,
-            challenges.hash_state_weight4,
-            challenges.hash_state_weight5,
-            challenges.hash_state_weight6,
-            challenges.hash_state_weight7,
-            challenges.hash_state_weight8,
-            challenges.hash_state_weight9,
+            challenges.get_challenge(HashStateWeight0),
+            challenges.get_challenge(HashStateWeight1),
+            challenges.get_challenge(HashStateWeight2),
+            challenges.get_challenge(HashStateWeight3),
+            challenges.get_challenge(HashStateWeight4),
+            challenges.get_challenge(HashStateWeight5),
+            challenges.get_challenge(HashStateWeight6),
+            challenges.get_challenge(HashStateWeight7),
+            challenges.get_challenge(HashStateWeight8),
+            challenges.get_challenge(HashStateWeight9),
         ];
 
         let opcode_hash = Instruction::Hash.opcode_b();
@@ -703,7 +688,7 @@ impl HashTable {
                     .map(|(&state, &weight)| weight * state)
                     .sum();
                 hash_digest_running_evaluation = hash_digest_running_evaluation
-                    * challenges.hash_digest_eval_indeterminate
+                    * hash_digest_eval_indeterminate
                     + compressed_hash_digest;
             }
 
@@ -735,7 +720,7 @@ impl HashTable {
                 match current_instruction {
                     ci if ci == opcode_hash => {
                         hash_input_running_evaluation = hash_input_running_evaluation
-                            * challenges.hash_input_eval_indeterminate
+                            * hash_input_eval_indeterminate
                             + compressed_row_hash_input_and_sponge_operations;
                     }
                     ci if ci == opcode_absorb_init
@@ -743,8 +728,8 @@ impl HashTable {
                         || ci == opcode_squeeze =>
                     {
                         sponge_running_evaluation = sponge_running_evaluation
-                            * challenges.sponge_eval_indeterminate
-                            + challenges.ci_weight * ci
+                            * sponge_eval_indeterminate
+                            + ci_weight * ci
                             + compressed_row_hash_input_and_sponge_operations;
                     }
                     _ => panic!("Opcode must be of `hash`, `absorb_init`, `absorb`, or `squeeze`."),
@@ -759,95 +744,6 @@ impl HashTable {
             extension_row[SpongeRunningEvaluation.ext_table_index()] = sponge_running_evaluation;
 
             previous_row = current_row;
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum HashTableChallengeId {
-    HashInputEvalIndeterminate,
-    HashDigestEvalIndeterminate,
-    SpongeEvalIndeterminate,
-
-    CIWeight,
-    HashStateWeight0,
-    HashStateWeight1,
-    HashStateWeight2,
-    HashStateWeight3,
-    HashStateWeight4,
-    HashStateWeight5,
-    HashStateWeight6,
-    HashStateWeight7,
-    HashStateWeight8,
-    HashStateWeight9,
-    HashStateWeight10,
-    HashStateWeight11,
-    HashStateWeight12,
-    HashStateWeight13,
-    HashStateWeight14,
-    HashStateWeight15,
-}
-
-impl From<HashTableChallengeId> for usize {
-    fn from(val: HashTableChallengeId) -> Self {
-        val as usize
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct HashTableChallenges {
-    /// The weight that combines two consecutive rows in the
-    /// permutation/evaluation column of the hash table.
-    pub hash_input_eval_indeterminate: XFieldElement,
-    pub hash_digest_eval_indeterminate: XFieldElement,
-    pub sponge_eval_indeterminate: XFieldElement,
-
-    /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub ci_weight: XFieldElement,
-    pub hash_state_weight0: XFieldElement,
-    pub hash_state_weight1: XFieldElement,
-    pub hash_state_weight2: XFieldElement,
-    pub hash_state_weight3: XFieldElement,
-    pub hash_state_weight4: XFieldElement,
-    pub hash_state_weight5: XFieldElement,
-    pub hash_state_weight6: XFieldElement,
-    pub hash_state_weight7: XFieldElement,
-    pub hash_state_weight8: XFieldElement,
-    pub hash_state_weight9: XFieldElement,
-    pub hash_state_weight10: XFieldElement,
-    pub hash_state_weight11: XFieldElement,
-    pub hash_state_weight12: XFieldElement,
-    pub hash_state_weight13: XFieldElement,
-    pub hash_state_weight14: XFieldElement,
-    pub hash_state_weight15: XFieldElement,
-}
-
-impl TableChallenges for HashTableChallenges {
-    type Id = HashTableChallengeId;
-
-    #[inline]
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
-        match id {
-            HashInputEvalIndeterminate => self.hash_input_eval_indeterminate,
-            HashDigestEvalIndeterminate => self.hash_digest_eval_indeterminate,
-            SpongeEvalIndeterminate => self.sponge_eval_indeterminate,
-            CIWeight => self.ci_weight,
-            HashStateWeight0 => self.hash_state_weight0,
-            HashStateWeight1 => self.hash_state_weight1,
-            HashStateWeight2 => self.hash_state_weight2,
-            HashStateWeight3 => self.hash_state_weight3,
-            HashStateWeight4 => self.hash_state_weight4,
-            HashStateWeight5 => self.hash_state_weight5,
-            HashStateWeight6 => self.hash_state_weight6,
-            HashStateWeight7 => self.hash_state_weight7,
-            HashStateWeight8 => self.hash_state_weight8,
-            HashStateWeight9 => self.hash_state_weight9,
-            HashStateWeight10 => self.hash_state_weight10,
-            HashStateWeight11 => self.hash_state_weight11,
-            HashStateWeight12 => self.hash_state_weight12,
-            HashStateWeight13 => self.hash_state_weight13,
-            HashStateWeight14 => self.hash_state_weight14,
-            HashStateWeight15 => self.hash_state_weight15,
         }
     }
 }

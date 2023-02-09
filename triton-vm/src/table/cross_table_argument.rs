@@ -1,26 +1,19 @@
-use itertools::Itertools;
 use std::ops::Add;
 use std::ops::Mul;
 
+use itertools::Itertools;
 use ndarray::ArrayView1;
 use num_traits::One;
 use num_traits::Zero;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use CrossTableChallengeId::*;
-
-use crate::table::challenges::AllChallenges;
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId::*;
+use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
-use crate::table::processor_table::PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS;
-use crate::table::processor_table::PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
@@ -29,15 +22,6 @@ use crate::table::table_column::ProcessorExtTableColumn;
 use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn;
-
-pub const NUM_PUBLIC_EVAL_ARGS: usize = 2; // for public input and output
-pub const NUM_PRIVATE_EVAL_ARGS: usize =
-    PROCESSOR_TABLE_NUM_EVALUATION_ARGUMENTS - NUM_PUBLIC_EVAL_ARGS;
-pub const NUM_PRIVATE_PERM_ARGS: usize = PROCESSOR_TABLE_NUM_PERMUTATION_ARGUMENTS;
-pub const NUM_LOOKUP_ARGS: usize = 2;
-pub const NUM_CROSS_TABLE_ARGS: usize =
-    NUM_PRIVATE_PERM_ARGS + NUM_PRIVATE_EVAL_ARGS + NUM_LOOKUP_ARGS;
-pub const NUM_CROSS_TABLE_WEIGHTS: usize = NUM_CROSS_TABLE_ARGS + NUM_PUBLIC_EVAL_ARGS;
 
 pub trait CrossTableArg {
     fn default_initial() -> XFieldElement
@@ -140,76 +124,11 @@ impl LookupArg {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct GrandCrossTableArg {}
 
-#[derive(Clone, Debug)]
-pub struct CrossTableChallenges {
-    pub input_terminal: XFieldElement,
-    pub output_terminal: XFieldElement,
-
-    pub processor_to_program_weight: XFieldElement,
-    pub processor_to_op_stack_weight: XFieldElement,
-    pub processor_to_ram_weight: XFieldElement,
-    pub processor_to_jump_stack_weight: XFieldElement,
-    pub hash_input_weight: XFieldElement,
-    pub hash_digest_weight: XFieldElement,
-    pub sponge_weight: XFieldElement,
-    pub processor_to_u32_weight: XFieldElement,
-    pub clock_jump_difference_lookup_weight: XFieldElement,
-    pub input_to_processor_weight: XFieldElement,
-    pub processor_to_output_weight: XFieldElement,
-}
-
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum CrossTableChallengeId {
-    InputTerminal,
-    OutputTerminal,
-
-    ProcessorToProgramWeight,
-    ProcessorToOpStackWeight,
-    ProcessorToRamWeight,
-    ProcessorToJumpStackWeight,
-    HashInputWeight,
-    HashDigestWeight,
-    SpongeWeight,
-    ProcessorToU32Weight,
-    ClockJumpDifferenceLookupWeight,
-    InputToProcessorWeight,
-    ProcessorToOutputWeight,
-}
-
-impl From<CrossTableChallengeId> for usize {
-    fn from(val: CrossTableChallengeId) -> Self {
-        val as usize
-    }
-}
-
-impl TableChallenges for CrossTableChallenges {
-    type Id = CrossTableChallengeId;
-
-    #[inline]
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
-        match id {
-            InputTerminal => self.input_terminal,
-            OutputTerminal => self.output_terminal,
-            ProcessorToProgramWeight => self.processor_to_program_weight,
-            ProcessorToOpStackWeight => self.processor_to_op_stack_weight,
-            ProcessorToRamWeight => self.processor_to_ram_weight,
-            ProcessorToJumpStackWeight => self.processor_to_jump_stack_weight,
-            HashInputWeight => self.hash_input_weight,
-            HashDigestWeight => self.hash_digest_weight,
-            SpongeWeight => self.sponge_weight,
-            ProcessorToU32Weight => self.processor_to_u32_weight,
-            ClockJumpDifferenceLookupWeight => self.clock_jump_difference_lookup_weight,
-            InputToProcessorWeight => self.input_to_processor_weight,
-            ProcessorToOutputWeight => self.processor_to_output_weight,
-        }
-    }
-}
-
 impl Evaluable for GrandCrossTableArg {
     fn evaluate_initial_constraints(
         _base_row: ArrayView1<BFieldElement>,
         _ext_row: ArrayView1<XFieldElement>,
-        _challenges: &AllChallenges,
+        _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
         vec![]
     }
@@ -217,7 +136,7 @@ impl Evaluable for GrandCrossTableArg {
     fn evaluate_consistency_constraints(
         _base_row: ArrayView1<BFieldElement>,
         _ext_row: ArrayView1<XFieldElement>,
-        _challenges: &AllChallenges,
+        _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
         vec![]
     }
@@ -227,7 +146,7 @@ impl Evaluable for GrandCrossTableArg {
         _current_ext_row: ArrayView1<XFieldElement>,
         _next_base_row: ArrayView1<BFieldElement>,
         _next_ext_row: ArrayView1<XFieldElement>,
-        _challenges: &AllChallenges,
+        _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
         vec![]
     }
@@ -235,15 +154,13 @@ impl Evaluable for GrandCrossTableArg {
     fn evaluate_terminal_constraints(
         _base_row: ArrayView1<BFieldElement>,
         ext_row: ArrayView1<XFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) -> Vec<XFieldElement> {
-        let challenges = &challenges.cross_table_challenges;
-
-        let input_to_processor = challenges.get_challenge(InputTerminal)
+        let input_to_processor = challenges.get_challenge(StandardInputTerminal)
             - ext_row[ProcessorExtTableColumn::InputTableEvalArg.master_ext_table_index()];
         let processor_to_output = ext_row
             [ProcessorExtTableColumn::OutputTableEvalArg.master_ext_table_index()]
-            - challenges.get_challenge(OutputTerminal);
+            - challenges.get_challenge(StandardOutputTerminal);
 
         let instruction_lookup = ext_row
             [ProcessorExtTableColumn::InstructionLookupClientLogDerivative

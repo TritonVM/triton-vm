@@ -10,18 +10,14 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
 use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use RamTableChallengeId::*;
-
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId::*;
+use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -43,10 +39,6 @@ use crate::table::table_column::RamBaseTableColumn::*;
 use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::RamExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
-
-pub const RAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 1;
-pub const RAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 0;
-pub const RAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = RamTableChallengeId::COUNT;
 
 pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
@@ -240,17 +232,28 @@ impl RamTable {
     pub fn extend(
         base_table: ArrayView2<BFieldElement>,
         mut ext_table: ArrayViewMut2<XFieldElement>,
-        challenges: &RamTableChallenges,
+        challenges: &Challenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+
+        let clk_weight = challenges.get_challenge(RamClkWeight);
+        let ramp_weight = challenges.get_challenge(RamRampWeight);
+        let ramv_weight = challenges.get_challenge(RamRamvWeight);
+        let previous_instruction_weight = challenges.get_challenge(RamPreviousInstructionWeight);
+        let processor_perm_indeterminate = challenges.get_challenge(RamIndeterminate);
+        let bezout_relation_indeterminate =
+            challenges.get_challenge(RamTableBezoutRelationIndeterminate);
+        let clock_jump_difference_lookup_indeterminate =
+            challenges.get_challenge(ClockJumpDifferenceLookupIndeterminate);
+
         let mut running_product_for_perm_arg = PermArg::default_initial();
         let mut clock_jump_diff_lookup_log_derivative = LookupArg::default_initial();
 
         // initialize columns establishing Bézout relation
         let mut running_product_of_ramp =
-            challenges.bezout_relation_indeterminate - base_table.row(0)[RAMP.base_table_index()];
+            bezout_relation_indeterminate - base_table.row(0)[RAMP.base_table_index()];
         let mut formal_derivative = XFieldElement::one();
         let mut bezout_coefficient_0 =
             base_table.row(0)[BezoutCoefficientPolynomialCoefficient0.base_table_index()].lift();
@@ -272,31 +275,31 @@ impl RamTable {
                         current_row[BezoutCoefficientPolynomialCoefficient0.base_table_index()];
                     let bcpc1 =
                         current_row[BezoutCoefficientPolynomialCoefficient1.base_table_index()];
-                    let bezout_challenge = challenges.bezout_relation_indeterminate;
 
-                    formal_derivative =
-                        (bezout_challenge - ramp) * formal_derivative + running_product_of_ramp;
-                    running_product_of_ramp *= bezout_challenge - ramp;
-                    bezout_coefficient_0 = bezout_coefficient_0 * bezout_challenge + bcpc0;
-                    bezout_coefficient_1 = bezout_coefficient_1 * bezout_challenge + bcpc1;
+                    formal_derivative = (bezout_relation_indeterminate - ramp) * formal_derivative
+                        + running_product_of_ramp;
+                    running_product_of_ramp *= bezout_relation_indeterminate - ramp;
+                    bezout_coefficient_0 =
+                        bezout_coefficient_0 * bezout_relation_indeterminate + bcpc0;
+                    bezout_coefficient_1 =
+                        bezout_coefficient_1 * bezout_relation_indeterminate + bcpc1;
                 } else {
                     // prove that clock jump is directed forward
                     let clock_jump_difference =
                         current_row[CLK.base_table_index()] - prev_row[CLK.base_table_index()];
-                    clock_jump_diff_lookup_log_derivative += (challenges
-                        .clock_jump_difference_lookup_indeterminate
-                        - clock_jump_difference)
-                        .inverse();
+                    clock_jump_diff_lookup_log_derivative +=
+                        (clock_jump_difference_lookup_indeterminate - clock_jump_difference)
+                            .inverse();
                 }
             }
 
             // permutation argument to Processor Table
-            let compressed_row_for_permutation_argument = clk * challenges.clk_weight
-                + ramp * challenges.ramp_weight
-                + ramv * challenges.ramv_weight
-                + previous_instruction * challenges.previous_instruction_weight;
+            let compressed_row_for_permutation_argument = clk * clk_weight
+                + ramp * ramp_weight
+                + ramv * ramv_weight
+                + previous_instruction * previous_instruction_weight;
             running_product_for_perm_arg *=
-                challenges.processor_perm_indeterminate - compressed_row_for_permutation_argument;
+                processor_perm_indeterminate - compressed_row_for_permutation_argument;
 
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[RunningProductPermArg.ext_table_index()] = running_product_for_perm_arg;
@@ -312,19 +315,13 @@ impl RamTable {
 }
 
 impl ExtRamTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            RamTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
-        use RamTableChallengeId::*;
-
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
-        let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
-        let rppa_challenge = circuit_builder.challenge(ProcessorPermIndeterminate);
+        let bezout_challenge = circuit_builder.challenge(RamTableBezoutRelationIndeterminate);
+        let rppa_challenge = circuit_builder.challenge(RamIndeterminate);
 
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
         let ramp = circuit_builder.input(BaseRow(RAMP.master_base_table_index()));
@@ -359,10 +356,10 @@ impl ExtRamTable {
         let clock_jump_diff_log_derivative_is_initialized_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 
-        let clk_weight = circuit_builder.challenge(ClkWeight);
-        let ramp_weight = circuit_builder.challenge(RampWeight);
-        let ramv_weight = circuit_builder.challenge(RamvWeight);
-        let previous_instruction_weight = circuit_builder.challenge(PreviousInstructionWeight);
+        let clk_weight = circuit_builder.challenge(RamClkWeight);
+        let ramp_weight = circuit_builder.challenge(RamRampWeight);
+        let ramv_weight = circuit_builder.challenge(RamRamvWeight);
+        let previous_instruction_weight = circuit_builder.challenge(RamPreviousInstructionWeight);
         let compressed_row_for_permutation_argument = clk * clk_weight
             + ramp * ramp_weight
             + ramv * ramv_weight
@@ -384,28 +381,23 @@ impl ExtRamTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            RamTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<RamTableChallenges, DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>,
-    > {
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
 
-        let bezout_challenge = circuit_builder.challenge(BezoutRelationIndeterminate);
-        let rppa_challenge = circuit_builder.challenge(ProcessorPermIndeterminate);
-        let clk_weight = circuit_builder.challenge(ClkWeight);
-        let ramp_weight = circuit_builder.challenge(RampWeight);
-        let ramv_weight = circuit_builder.challenge(RamvWeight);
-        let previous_instruction_weight = circuit_builder.challenge(PreviousInstructionWeight);
+        let bezout_challenge = circuit_builder.challenge(RamTableBezoutRelationIndeterminate);
+        let rppa_challenge = circuit_builder.challenge(RamIndeterminate);
+        let clk_weight = circuit_builder.challenge(RamClkWeight);
+        let ramp_weight = circuit_builder.challenge(RamRampWeight);
+        let ramv_weight = circuit_builder.challenge(RamRamvWeight);
+        let previous_instruction_weight = circuit_builder.challenge(RamPreviousInstructionWeight);
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
         let ramp = circuit_builder.input(CurrentBaseRow(RAMP.master_base_table_index()));
@@ -540,12 +532,8 @@ impl ExtRamTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            RamTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
@@ -557,59 +545,5 @@ impl ExtRamTable {
         let bezout_relation_holds = bc0 * rp + bc1 * fd - one;
 
         vec![bezout_relation_holds.consume()]
-    }
-}
-
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum RamTableChallengeId {
-    BezoutRelationIndeterminate,
-    ProcessorPermIndeterminate,
-    ClkWeight,
-    RamvWeight,
-    RampWeight,
-    PreviousInstructionWeight,
-    ClockJumpDifferenceLookupIndeterminate,
-}
-
-impl From<RamTableChallengeId> for usize {
-    fn from(val: RamTableChallengeId) -> Self {
-        val as usize
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RamTableChallenges {
-    /// The point in which the Bézout relation establishing contiguous memory regions is queried.
-    pub bezout_relation_indeterminate: XFieldElement,
-
-    /// Point of evaluation for the row set equality argument between RAM and Processor Tables
-    pub processor_perm_indeterminate: XFieldElement,
-
-    /// Weights for condensing part of a row into a single column. (Related to processor table.)
-    pub clk_weight: XFieldElement,
-    pub ramp_weight: XFieldElement,
-    pub ramv_weight: XFieldElement,
-    pub previous_instruction_weight: XFieldElement,
-
-    /// Indeterminate for the logarithmic derivative of the clock jump difference's Lookup Argument.
-    pub clock_jump_difference_lookup_indeterminate: XFieldElement,
-}
-
-impl TableChallenges for RamTableChallenges {
-    type Id = RamTableChallengeId;
-
-    #[inline]
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
-        match id {
-            BezoutRelationIndeterminate => self.bezout_relation_indeterminate,
-            ProcessorPermIndeterminate => self.processor_perm_indeterminate,
-            ClkWeight => self.clk_weight,
-            RamvWeight => self.ramv_weight,
-            RampWeight => self.ramp_weight,
-            PreviousInstructionWeight => self.previous_instruction_weight,
-            ClockJumpDifferenceLookupIndeterminate => {
-                self.clock_jump_difference_lookup_indeterminate
-            }
-        }
     }
 }

@@ -5,16 +5,12 @@ use ndarray::ArrayViewMut2;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use ProgramTableChallengeId::*;
-
-use crate::table::challenges::TableChallenges;
+use crate::table::challenges::ChallengeId::*;
+use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -35,10 +31,6 @@ use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::ProgramExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const PROGRAM_TABLE_NUM_PERMUTATION_ARGUMENTS: usize = 0;
-pub const PROGRAM_TABLE_NUM_EVALUATION_ARGUMENTS: usize = 1;
-pub const PROGRAM_TABLE_NUM_EXTENSION_CHALLENGES: usize = ProgramTableChallengeId::COUNT;
-
 pub const BASE_WIDTH: usize = ProgramBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = ProgramExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -50,12 +42,8 @@ pub struct ProgramTable {}
 pub struct ExtProgramTable {}
 
 impl ExtProgramTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            ProgramTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_initial_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         let address = circuit_builder.input(BaseRow(Address.master_base_table_index()));
@@ -75,12 +63,8 @@ impl ExtProgramTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            ProgramTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_consistency_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
@@ -90,12 +74,8 @@ impl ExtProgramTable {
         vec![is_padding_is_bit.consume()]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            ProgramTableChallenges,
-            DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_transition_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
         let address = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
@@ -121,9 +101,9 @@ impl ExtProgramTable {
             is_padding.clone() * (is_padding_next - is_padding.clone());
 
         let log_derivative_remains = log_derivative_next.clone() - log_derivative.clone();
-        let compressed_row = circuit_builder.challenge(AddressWeight) * address
-            + circuit_builder.challenge(InstructionWeight) * instruction
-            + circuit_builder.challenge(NextInstructionWeight) * instruction_next;
+        let compressed_row = circuit_builder.challenge(ProgramAddressWeight) * address
+            + circuit_builder.challenge(ProgramInstructionWeight) * instruction
+            + circuit_builder.challenge(ProgramNextInstructionWeight) * instruction_next;
 
         let indeterminate = circuit_builder.challenge(InstructionLookupIndeterminate);
 
@@ -143,12 +123,8 @@ impl ExtProgramTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<
-        ConstraintCircuit<
-            ProgramTableChallenges,
-            SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
-        >,
-    > {
+    pub fn ext_terminal_constraints_as_circuits(
+    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
         // no further constraints
         vec![]
     }
@@ -193,11 +169,18 @@ impl ProgramTable {
     pub fn extend(
         base_table: ArrayView2<BFieldElement>,
         mut ext_table: ArrayViewMut2<XFieldElement>,
-        challenges: &ProgramTableChallenges,
+        challenges: &Challenges,
     ) {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+
+        let address_weight = challenges.get_challenge(ProgramAddressWeight);
+        let instruction_weight = challenges.get_challenge(ProgramInstructionWeight);
+        let next_instruction_weight = challenges.get_challenge(ProgramNextInstructionWeight);
+        let instruction_lookup_indeterminate =
+            challenges.get_challenge(InstructionLookupIndeterminate);
+
         let mut instruction_lookup_log_derivative = LookupArg::default_initial();
 
         for (idx, window) in base_table.windows([2, BASE_WIDTH]).into_iter().enumerate() {
@@ -218,10 +201,11 @@ impl ProgramTable {
                 let address = row[Address.base_table_index()];
                 let instruction = row[Instruction.base_table_index()];
                 let next_instruction = next_row[Instruction.base_table_index()];
-                let compressed_row_for_instruction_lookup = address * challenges.address_weight
-                    + instruction * challenges.instruction_weight
-                    + next_instruction * challenges.next_instruction_weight;
-                instruction_lookup_log_derivative += (challenges.instruction_lookup_indeterminate
+
+                let compressed_row_for_instruction_lookup = address * address_weight
+                    + instruction * instruction_weight
+                    + next_instruction * next_instruction_weight;
+                instruction_lookup_log_derivative += (instruction_lookup_indeterminate
                     - compressed_row_for_instruction_lookup)
                     .inverse()
                     * lookup_multiplicity;
@@ -236,44 +220,4 @@ impl ProgramTable {
         last_row[InstructionLookupServerLogDerivative.ext_table_index()] =
             instruction_lookup_log_derivative;
     }
-}
-
-#[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
-pub enum ProgramTableChallengeId {
-    InstructionLookupIndeterminate,
-    AddressWeight,
-    InstructionWeight,
-    NextInstructionWeight,
-}
-
-impl From<ProgramTableChallengeId> for usize {
-    fn from(val: ProgramTableChallengeId) -> Self {
-        val as usize
-    }
-}
-
-impl TableChallenges for ProgramTableChallenges {
-    type Id = ProgramTableChallengeId;
-
-    #[inline]
-    fn get_challenge(&self, id: Self::Id) -> XFieldElement {
-        match id {
-            InstructionLookupIndeterminate => self.instruction_lookup_indeterminate,
-            AddressWeight => self.address_weight,
-            InstructionWeight => self.instruction_weight,
-            NextInstructionWeight => self.next_instruction_weight,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ProgramTableChallenges {
-    /// The weight that combines two consecutive rows in the
-    /// permutation/evaluation column of the program table.
-    pub instruction_lookup_indeterminate: XFieldElement,
-
-    /// Weights for condensing part of a row into a single column. (Related to program table.)
-    pub address_weight: XFieldElement,
-    pub instruction_weight: XFieldElement,
-    pub next_instruction_weight: XFieldElement,
 }

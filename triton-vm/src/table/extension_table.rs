@@ -12,7 +12,7 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::arithmetic_domain::ArithmeticDomain;
-use crate::table::challenges::AllChallenges;
+use crate::table::challenges::Challenges;
 
 const ERROR_MESSAGE_GENERATE_CONSTRAINTS: &str =
     "Constraints must be in place. Run: `cargo run --bin constraint-evaluation-generator`";
@@ -25,7 +25,7 @@ pub trait Evaluable {
     fn evaluate_initial_constraints(
         _base_row: ArrayView1<BFieldElement>,
         _ext_row: ArrayView1<XFieldElement>,
-        _challenges: &AllChallenges,
+        _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
         panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
     }
@@ -35,7 +35,7 @@ pub trait Evaluable {
     fn evaluate_consistency_constraints(
         _base_row: ArrayView1<BFieldElement>,
         _ext_row: ArrayView1<XFieldElement>,
-        _challenges: &AllChallenges,
+        _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
         panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
     }
@@ -47,7 +47,7 @@ pub trait Evaluable {
         _current_ext_row: ArrayView1<XFieldElement>,
         _next_base_row: ArrayView1<BFieldElement>,
         _next_ext_row: ArrayView1<XFieldElement>,
-        _challenges: &AllChallenges,
+        _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
         panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
     }
@@ -57,7 +57,7 @@ pub trait Evaluable {
     fn evaluate_terminal_constraints(
         _base_row: ArrayView1<BFieldElement>,
         _ext_row: ArrayView1<XFieldElement>,
-        _challenges: &AllChallenges,
+        _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
         panic!("{ERROR_MESSAGE_GENERATE_CONSTRAINTS}")
     }
@@ -143,7 +143,7 @@ pub trait Quotientable: Evaluable {
         master_ext_table: ArrayView2<XFieldElement>,
         quot_table: &mut ArrayViewMut2<XFieldElement>,
         zerofier_inverse: ArrayView1<BFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
@@ -169,7 +169,7 @@ pub trait Quotientable: Evaluable {
         master_ext_table: ArrayView2<XFieldElement>,
         quot_table: &mut ArrayViewMut2<XFieldElement>,
         zerofier_inverse: ArrayView1<BFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
@@ -195,7 +195,7 @@ pub trait Quotientable: Evaluable {
         master_ext_table: ArrayView2<XFieldElement>,
         quot_table: &mut ArrayViewMut2<XFieldElement>,
         zerofier_inverse: ArrayView1<BFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
         trace_domain: ArithmeticDomain,
         quotient_domain: ArithmeticDomain,
     ) {
@@ -234,7 +234,7 @@ pub trait Quotientable: Evaluable {
         master_ext_table: ArrayView2<XFieldElement>,
         quot_table: &mut ArrayViewMut2<XFieldElement>,
         zerofier_inverse: ArrayView1<BFieldElement>,
-        challenges: &AllChallenges,
+        challenges: &Challenges,
     ) {
         debug_assert_eq!(zerofier_inverse.len(), master_base_table.nrows());
         debug_assert_eq!(zerofier_inverse.len(), master_ext_table.nrows());
