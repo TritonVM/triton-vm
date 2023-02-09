@@ -333,22 +333,22 @@ Additionally, it defines the following transition constraints.
 
 ## Instruction `read_mem`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `unary_operation`.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `grow_stack`.
 Additionally, it defines the following transition constraints.
 
 ### Description
 
-1. The RAM pointer is overwritten with stack element `st1`.
+1. The RAM pointer is overwritten with stack element `st0`.
 1. The top of the stack is overwritten with the RAM value.
 
 ### Polynomials
 
-1. `ramp' - st1`
+1. `ramp' - st0`
 1. `st0' - ramv`
 
 ## Instruction `write_mem`
 
-This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `keep_stack`.
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1` and `shrink_stack`.
 Additionally, it defines the following transition constraints.
 
 ### Description

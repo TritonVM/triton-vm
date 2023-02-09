@@ -58,18 +58,18 @@ the value `a` was supplied as a secret input.
 | Instruction | Opcode | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                             |
 |:------------|-------:|:------------|:------------|:-----------|:-----------|:----------------------------------------------------------------------------------------|
 | `read_mem`  |     40 | `_ p a`     | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and overwrites the top of the OpStack with `v`. |
-| `write_mem` |     48 | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
+| `write_mem` |     26 | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
 
 ## Hashing
 
 | Instruction      | Opcode | old OpStack     | new OpStack                   | Description                                                                                             |
 |:-----------------|-------:|:----------------|:------------------------------|:--------------------------------------------------------------------------------------------------------|
-| `hash`           |     56 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
-| `divine_sibling` |     64 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
-| `assert_vector`  |     72 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
-| `absorb_init`    |     80 | `_jihgfedcba`   | `_jihgfedcba`                 | Resets the Sponge's state and absorbs the stack's ten top-most elements.                                |
-| `absorb`         |     88 | `_jihgfedcba`   | `_jihgfedcba`                 | Absorbs the stack's ten top-most elements into the Sponge state.                                        |
-| `squeeze`        |     96 | `_jihgfedcba`   | `_zyxwvutsrq`                 | Squeezes the Sponge, overwriting the stack's ten top-most elements                                      |
+| `hash`           |     48 | `_jihgfedcba`   | `_yxwvu00000`                 | Overwrites the stack's 10 top-most elements with their hash digest (length 5) and 5 zeros.              |
+| `divine_sibling` |     56 | `_ i*****edcba` | e.g., `_ (i div 2)edcbazyxwv` | Helps traversing a Merkle tree during authentication path verification. See extended description below. |
+| `assert_vector`  |     64 | `_`             | `_`                           | Assert equality of `st(i)` to `st(i+5)` for `0 <= i < 4`. Crashes the VM if any pair is unequal.        |
+| `absorb_init`    |     72 | `_jihgfedcba`   | `_jihgfedcba`                 | Resets the Sponge's state and absorbs the stack's ten top-most elements.                                |
+| `absorb`         |     80 | `_jihgfedcba`   | `_jihgfedcba`                 | Absorbs the stack's ten top-most elements into the Sponge state.                                        |
+| `squeeze`        |     88 | `_jihgfedcba`   | `_zyxwvutsrq`                 | Squeezes the Sponge, overwriting the stack's ten top-most elements                                      |
 
 The instruction `hash` works as follows.
 The stack's 10 top-most elements (`jihgfedcba`) are reversed and concatenated with six zeros, resulting in `abcdefghij000000`.
@@ -101,10 +101,10 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction | Opcode | old OpStack | new OpStack  | Description                                                                                                                |
 |:------------|-------:|:------------|:-------------|:---------------------------------------------------------------------------------------------------------------------------|
-| `add`       |     26 | `_ b a`     | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
-| `mul`       |     34 | `_ b a`     | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
-| `invert`    |    104 | `_ a`       | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
-| `eq`        |     42 | `_ b a`     | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
+| `add`       |     34 | `_ b a`     | `_ c`        | Computes the sum (`c`) of the top two elements of the stack (`b` and `a`) over the field.                                  |
+| `mul`       |     42 | `_ b a`     | `_ c`        | Computes the product (`c`) of the top two elements of the stack (`b` and `a`) over the field.                              |
+| `invert`    |     96 | `_ a`       | `_ b`        | Computes the multiplicative inverse (over the field) of the top of the stack. Crashes the VM if the top of the stack is 0. |
+| `eq`        |     50 | `_ b a`     | `_ (a == b)` | Tests the top two stack elements for equality.                                                                             |
 
 ## Bitwise Arithmetic on Stack
 
@@ -122,14 +122,14 @@ Triton VM cannot know the number of elements that will be absorbed.
 
 | Instruction | Opcode | old OpStack     | new OpStack     | Description                                                                                                                                                  |
 |:------------|-------:|:----------------|:----------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `xxadd`     |    112 | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.       |
-| `xxmul`     |    120 | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result. |
-| `xinvert`   |    128 | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                          |
-| `xbmul`     |     50 | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.           |
+| `xxadd`     |    104 | `_ z y x b c a` | `_ z y x w v u` | Adds the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result.       |
+| `xxmul`     |    112 | `_ z y x b c a` | `_ z y x w v u` | Multiplies the two extension field elements encoded by field elements `z y x` and `b c a`, overwriting the top-most extension field element with the result. |
+| `xinvert`   |    120 | `_ z y x`       | `_ w v u`       | Inverts the extension field element encoded by field elements `z y x` in-place. Crashes the VM if the extension field element is 0.                          |
+| `xbmul`     |     58 | `_ z y x a`     | `_ w v u`       | Scalar multiplication of the extension field element encoded by field elements `z y x` with field element `a`. Overwrites `z y x` with the result.           |
 
 ## Input/Output
 
 | Instruction | Opcode | old OpStack | new OpStack | Description                                                             |
 |:------------|-------:|:------------|:------------|:------------------------------------------------------------------------|
-| `read_io`   |    136 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
-| `write_io`  |     58 | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |
+| `read_io`   |    128 | `_`         | `_ a`       | Reads a B-Field element from standard input and pushes it to the stack. |
+| `write_io`  |     66 | `_ a`       | `_`         | Pops `a` from the stack and writes it to standard output.               |

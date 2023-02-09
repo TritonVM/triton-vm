@@ -986,9 +986,16 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     pub fn print_ram_table_example_for_specification() {
-        let program = "push 5 push 6 write_mem pop pop push 15 push 16 write_mem pop pop push 5
-        push 0 read_mem pop pop push 15 push 0 read_mem pop pop push 5 push 7 write_mem pop pop
-        push 15 push 0 read_mem push 5 push 0 read_mem halt";
+        let program = "
+        push  5 push  6 write_mem pop
+        push 15 push 16 write_mem pop
+        push  5 read_mem pop pop
+        push 15 read_mem pop pop
+        push  5 push  7 write_mem pop
+        push 15 read_mem
+        push  5 read_mem
+        halt
+        ";
         let (_, master_base_table, _) = parse_simulate_pad(program, vec![], vec![]);
 
         println!("Processor Table:");

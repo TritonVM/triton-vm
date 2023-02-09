@@ -149,7 +149,18 @@ impl<'pgm> VMState<'pgm> {
         // if current instruction shrinks the stack
         if matches!(
             current_instruction,
-            Pop | Skiz | Assert | WriteIo | Add | Mul | Eq | XbMul | Lt | And | Xor | Pow
+            Pop | Skiz
+                | Assert
+                | WriteMem
+                | WriteIo
+                | Add
+                | Mul
+                | Eq
+                | XbMul
+                | Lt
+                | And
+                | Xor
+                | Pow
         ) {
             hvs[3] = (self.op_stack.osp() - BFieldElement::new(16)).inverse_or_zero();
         }
@@ -291,9 +302,8 @@ impl<'pgm> VMState<'pgm> {
             }
 
             ReadMem => {
-                let ramp = self.op_stack.safe_peek(ST1);
+                let ramp = self.op_stack.safe_peek(ST0);
                 let ramv = self.memory_get(&ramp);
-                self.op_stack.pop()?;
                 self.op_stack.push(ramv);
                 self.ramp = ramp.value();
                 self.instruction_pointer += 1;
@@ -301,7 +311,7 @@ impl<'pgm> VMState<'pgm> {
 
             WriteMem => {
                 let ramp = self.op_stack.safe_peek(ST1);
-                let ramv = self.op_stack.safe_peek(ST0);
+                let ramv = self.op_stack.pop()?;
                 self.ramp = ramp.value();
                 self.ram.insert(ramp, ramv);
                 self.instruction_pointer += 1;
@@ -830,7 +840,7 @@ pub fn simulate(
 ) {
     let mut aet = AlgebraicExecutionTrace::new(program.clone());
     let mut state = VMState::new(program);
-    assert_eq!(program.len(), aet.instruction_multiplicities.len());
+    assert_eq!(program.len_bwords(), aet.instruction_multiplicities.len());
 
     let mut stdout = vec![];
     while !state.halting {
@@ -937,7 +947,7 @@ pub struct AlgebraicExecutionTrace {
 
 impl AlgebraicExecutionTrace {
     pub fn new(program: Program) -> Self {
-        let instruction_multiplicities = vec![0_u32; program.len()];
+        let instruction_multiplicities = vec![0_u32; program.len_bwords()];
         Self {
             program,
             instruction_multiplicities,
@@ -1193,7 +1203,7 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_write_mem_read_mem() -> SourceCodeAndInput {
-        SourceCodeAndInput::without_input("push 2 push 1 write_mem pop push 0 read_mem assert halt")
+        SourceCodeAndInput::without_input("push 2 push 1 write_mem push 0 pop read_mem assert halt")
     }
 
     pub fn test_program_for_hash() -> SourceCodeAndInput {
@@ -1641,14 +1651,14 @@ pub mod triton_vm_tests {
         // - Other addresses are written to before read.
         for memory_address in memory_addresses.iter().take(num_memory_accesses / 4) {
             source_code.push_str(&format!(
-                "push {memory_address} push 0 read_mem push 0 eq assert pop "
+                "push {memory_address} read_mem push 0 eq assert pop "
             ));
         }
 
         // Write everything to RAM.
         for (memory_address, memory_value) in memory_addresses.iter().zip_eq(memory_values.iter()) {
             source_code.push_str(&format!(
-                "push {memory_address} push {memory_value} write_mem pop pop "
+                "push {memory_address} push {memory_value} write_mem pop "
             ));
         }
 
@@ -1662,7 +1672,7 @@ pub mod triton_vm_tests {
             let memory_address = memory_addresses[idx];
             let memory_value = memory_values[idx];
             source_code.push_str(&format!(
-                "push {memory_address} push 0 read_mem push {memory_value} eq assert pop "
+                "push {memory_address} read_mem push {memory_value} eq assert pop "
             ));
         }
 
@@ -1677,7 +1687,7 @@ pub mod triton_vm_tests {
             let new_memory_value = rng.gen();
             memory_values[writing_permutation[idx]] = new_memory_value;
             source_code.push_str(&format!(
-                "push {memory_address} push {new_memory_value} write_mem pop pop "
+                "push {memory_address} push {new_memory_value} write_mem pop "
             ));
         }
 
@@ -1692,7 +1702,7 @@ pub mod triton_vm_tests {
             let memory_address = memory_addresses[idx];
             let memory_value = memory_values[idx];
             source_code.push_str(&format!(
-                "push {memory_address} push 0 read_mem push {memory_value} eq assert pop "
+                "push {memory_address} read_mem push {memory_value} eq assert pop "
             ));
         }
 
@@ -2028,13 +2038,13 @@ pub mod triton_vm_tests {
     #[test]
     fn run_tvm_basic_ram_read_write_test() {
         let basic_ram_read_write_code = "
-            push  5 push  6 write_mem pop pop 
-            push 15 push 16 write_mem pop pop 
-            push  5 push  0 read_mem  pop pop 
-            push 15 push  0 read_mem  pop pop 
-            push  5 push  7 write_mem pop pop 
-            push 15 push  0 read_mem 
-            push  5 push  0 read_mem 
+            push  5 push  6 write_mem pop
+            push 15 push 16 write_mem pop
+            push  5         read_mem  pop pop
+            push 15         read_mem  pop pop
+            push  5 push  7 write_mem pop
+            push 15         read_mem
+            push  5         read_mem
             halt
             ";
         let program = Program::from_code(basic_ram_read_write_code).unwrap();
@@ -2059,10 +2069,21 @@ pub mod triton_vm_tests {
     #[test]
     fn run_tvm_edgy_ram_writes_test() {
         let edgy_ram_writes_code = "
-            write_mem                          // this should write 0 to address 0
-            push 5 swap2 push 3 swap2 pop pop  // stack is now of length 16 again
-            write_mem                          // this should write 3 to address 5
-            swap2 read_mem                     // stack's top should now be 3, 5, 3, 0, 0, …
+                        //       ┌ stack cannot shrink beyond this point
+                        //       ↓
+                        // _ 0 0 |
+            push 0      // _ 0 0 | 0
+            write_mem   // _ 0 0 |
+            push 5      // _ 0 0 | 5
+            swap1       // _ 0 5 | 0
+            push 3      // _ 0 5 | 0 3
+            swap1       // _ 0 5 | 3 0
+            pop         // _ 0 5 | 3
+            write_mem   // _ 0 5 |
+            read_mem    // _ 0 5 | 3
+            swap2       // _ 3 5 | 0
+            pop         // _ 3 5 |
+            read_mem    // _ 3 5 | 3
             halt
         ";
         let program = Program::from_code(edgy_ram_writes_code).unwrap();
@@ -2137,7 +2158,7 @@ pub mod triton_vm_tests {
         "read_io ",                                 // number of authentication paths to test
         "",                                         // stack: [num]
         "mt_ap_verify: ",                           // proper program starts here
-        "push 0 swap1 write_mem pop pop ",          // store number of APs at RAM address 0
+        "push 0 swap1 write_mem pop ",              // store number of APs at RAM address 0
         "",                                         // stack: []
         "read_io read_io read_io read_io read_io ", // read Merkle root
         "",                                         // stack: [r4 r3 r2 r1 r0]
@@ -2146,22 +2167,22 @@ pub mod triton_vm_tests {
         "",                                         // stack: []
         "halt ",                                    // done – should be “return”
         "",
-        "",                               // subroutine: check AP one at a time
-        "",                               // stack before: [* r4 r3 r2 r1 r0]
-        "",                               // stack after: [* r4 r3 r2 r1 r0]
-        "check_aps: ",                    // start function description:
-        "push 0 push 0 read_mem dup0 ",   // get number of APs left to check
-        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
-        "push 0 eq ",                     // see if there are authentication paths left
-        "",                               // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
-        "skiz return ",                   // return if no authentication paths left
-        "push -1 add write_mem pop pop ", // decrease number of authentication paths left to check
-        "",                               // stack: [* r4 r3 r2 r1 r0]
-        "call get_idx_and_hash_leaf ",    //
-        "",                               // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
-        "call traverse_tree ",            //
-        "",                               // stack: [* r4 r3 r2 r1 r0 idx>>2 - - - - - - - - - -]
-        "call assert_tree_top ",          //
+        "",                            // subroutine: check AP one at a time
+        "",                            // stack before: [* r4 r3 r2 r1 r0]
+        "",                            // stack after: [* r4 r3 r2 r1 r0]
+        "check_aps: ",                 // start function description:
+        "push 0 read_mem dup0 ",       // get number of APs left to check
+        "",                            // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
+        "push 0 eq ",                  // see if there are authentication paths left
+        "",                            // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
+        "skiz return ",                // return if no authentication paths left
+        "push -1 add write_mem pop ",  // decrease number of authentication paths left to check
+        "",                            // stack: [* r4 r3 r2 r1 r0]
+        "call get_idx_and_hash_leaf ", //
+        "",                            // stack: [* r4 r3 r2 r1 r0 idx d4 d3 d2 d1 d0 0 0 0 0 0]
+        "call traverse_tree ",         //
+        "",                            // stack: [* r4 r3 r2 r1 r0 idx>>2 - - - - - - - - - -]
+        "call assert_tree_top ",       //
         // stack: [* r4 r3 r2 r1 r0]
         "recurse ", // check next AP
         "",

@@ -228,17 +228,17 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Assert => 18,
             Halt => 0,
             ReadMem => 40,
-            WriteMem => 48,
-            Hash => 56,
-            DivineSibling => 64,
-            AssertVector => 72,
-            AbsorbInit => 80,
-            Absorb => 88,
-            Squeeze => 96,
-            Add => 26,
-            Mul => 34,
-            Invert => 104,
-            Eq => 42,
+            WriteMem => 26,
+            Hash => 48,
+            DivineSibling => 56,
+            AssertVector => 64,
+            AbsorbInit => 72,
+            Absorb => 80,
+            Squeeze => 88,
+            Add => 34,
+            Mul => 42,
+            Invert => 96,
+            Eq => 50,
             Split => 4,
             Lt => 12,
             And => 20,
@@ -246,12 +246,12 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             Log2Floor => 36,
             Pow => 44,
             Div => 52,
-            XxAdd => 112,
-            XxMul => 120,
-            XInvert => 128,
-            XbMul => 50,
-            ReadIo => 136,
-            WriteIo => 58,
+            XxAdd => 104,
+            XxMul => 112,
+            XInvert => 120,
+            XbMul => 58,
+            ReadIo => 128,
+            WriteIo => 66,
         }
     }
 
@@ -353,7 +353,7 @@ impl TryFrom<u32> for Instruction {
         {
             Ok(instruction)
         } else {
-            bail!("No instruction with opcode {} exists.", opcode)
+            bail!("No instruction with opcode {opcode} exists.")
         }
     }
 }

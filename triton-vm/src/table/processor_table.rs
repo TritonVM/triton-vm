@@ -2008,14 +2008,14 @@ impl DualRowConstraints {
             DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>,
         >,
     > {
-        // the RAM pointer is overwritten with st1
-        let update_ramp = self.ramp_next() - self.st1();
+        // the RAM pointer is overwritten with st0
+        let update_ramp = self.ramp_next() - self.st0();
 
         // The top of the stack is overwritten with the RAM value.
         let st0_becomes_ramv = self.st0_next() - self.ramv_next();
 
         let specific_constraints = vec![update_ramp, st0_becomes_ramv];
-        [specific_constraints, self.step_1(), self.unop()].concat()
+        [specific_constraints, self.step_1(), self.grow_stack()].concat()
     }
 
     pub fn instruction_write_mem(
@@ -2033,7 +2033,7 @@ impl DualRowConstraints {
         let ramv_becomes_st0 = self.ramv_next() - self.st0();
 
         let specific_constraints = vec![update_ramp, ramv_becomes_st0];
-        [specific_constraints, self.step_1(), self.keep_stack()].concat()
+        [specific_constraints, self.step_1(), self.shrink_stack()].concat()
     }
 
     /// Two Evaluation Arguments with the Hash Table guarantee correct transition.
@@ -4817,6 +4817,34 @@ mod constraint_polynomial_tests {
             &test_rows,
             &[IP, JSP, JSO, JSD],
             &[IP, JSP, JSO, JSD],
+        );
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_read_mem_test() {
+        let test_rows = [get_test_row_from_source_code(
+            "push 5 push 3 write_mem read_mem halt",
+            3,
+        )];
+        test_constraints_for_rows_with_debug_info(
+            ReadMem,
+            &test_rows,
+            &[ST0, ST1, RAMP, RAMV],
+            &[ST0, ST1, RAMP, RAMV],
+        );
+    }
+
+    #[test]
+    fn transition_constraints_for_instruction_write_mem_test() {
+        let test_rows = [get_test_row_from_source_code(
+            "push 5 push 3 write_mem read_mem halt",
+            2,
+        )];
+        test_constraints_for_rows_with_debug_info(
+            WriteMem,
+            &test_rows,
+            &[ST0, ST1, RAMP, RAMV],
+            &[ST0, ST1, RAMP, RAMV],
         );
     }
 

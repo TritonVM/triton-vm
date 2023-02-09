@@ -62,72 +62,58 @@ Processor Table:
 |   0 | -         | push      | 5    |   0 |   0 |   0 |   0 |    0 |    0 |
 |   1 | push      | push      | 6    |   5 |   0 |   0 |   0 |    0 |    0 |
 |   2 | push      | write_mem | pop  |   6 |   5 |   0 |   0 |    0 |    0 |
-|   3 | write_mem | pop       | pop  |   6 |   5 |   0 |   0 |    5 |    6 |
-|   4 | pop       | pop       | push |   5 |   0 |   0 |   0 |    5 |    6 |
-|   5 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    6 |
-|   6 | push      | push      | 16   |  15 |   0 |   0 |   0 |    5 |    6 |
-|   7 | push      | write_mem | pop  |  16 |  15 |   0 |   0 |    5 |    6 |
-|   8 | write_mem | pop       | pop  |  16 |  15 |   0 |   0 |   15 |   16 |
-|   9 | pop       | pop       | push |  15 |   0 |   0 |   0 |   15 |   16 |
-|  10 | pop       | push      | 5    |   0 |   0 |   0 |   0 |   15 |   16 |
-|  11 | push      | push      | 0    |   5 |   0 |   0 |   0 |   15 |   16 |
-|  12 | push      | read_mem  | pop  |   0 |   5 |   0 |   0 |   15 |   16 |
-|  13 | read_mem  | pop       | pop  |   6 |   5 |   0 |   0 |    5 |    6 |
-|  14 | pop       | pop       | push |   5 |   0 |   0 |   0 |    5 |    6 |
-|  15 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    6 |
-|  16 | push      | push      | 0    |  15 |   0 |   0 |   0 |    5 |    6 |
-|  17 | push      | read_mem  | pop  |   0 |  15 |   0 |   0 |    5 |    6 |
-|  18 | read_mem  | pop       | pop  |  16 |  15 |   0 |   0 |   15 |   16 |
-|  19 | pop       | pop       | push |  15 |   0 |   0 |   0 |   15 |   16 |
-|  20 | pop       | push      | 5    |   0 |   0 |   0 |   0 |   15 |   16 |
-|  21 | push      | push      | 7    |   5 |   0 |   0 |   0 |   15 |   16 |
-|  22 | push      | write_mem | pop  |   7 |   5 |   0 |   0 |   15 |   16 |
-|  23 | write_mem | pop       | pop  |   7 |   5 |   0 |   0 |    5 |    7 |
-|  24 | pop       | pop       | push |   5 |   0 |   0 |   0 |    5 |    7 |
-|  25 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    7 |
-|  26 | push      | push      | 0    |  15 |   0 |   0 |   0 |    5 |    7 |
-|  27 | push      | read_mem  | push |   0 |  15 |   0 |   0 |    5 |    7 |
-|  28 | read_mem  | push      | 5    |  16 |  15 |   0 |   0 |   15 |   16 |
-|  29 | push      | push      | 0    |   5 |  16 |  15 |   0 |   15 |   16 |
-|  30 | push      | read_mem  | halt |   0 |   5 |  16 |  15 |   15 |   16 |
-|  31 | read_mem  | halt      | halt |   7 |   5 |  16 |  15 |    5 |    7 |
+|   3 | write_mem | pop       | push |   5 |   0 |   0 |   0 |    5 |    6 |
+|   4 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    6 |
+|   5 | push      | push      | 16   |  15 |   0 |   0 |   0 |    5 |    6 |
+|   6 | push      | write_mem | pop  |  16 |  15 |   0 |   0 |    5 |    6 |
+|   7 | write_mem | pop       | push |  15 |   0 |   0 |   0 |   15 |   16 |
+|   8 | pop       | push      | 5    |   0 |   0 |   0 |   0 |   15 |   16 |
+|   9 | push      | read_mem  | pop  |   5 |   0 |   0 |   0 |   15 |   16 |
+|  10 | read_mem  | pop       | pop  |   6 |   5 |   0 |   0 |    5 |    6 |
+|  11 | pop       | pop       | push |   5 |   0 |   0 |   0 |    5 |    6 |
+|  12 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    6 |
+|  13 | push      | read_mem  | pop  |  15 |   0 |   0 |   0 |    5 |    6 |
+|  14 | read_mem  | pop       | pop  |  16 |  15 |   0 |   0 |   15 |   16 |
+|  15 | pop       | pop       | push |  15 |   0 |   0 |   0 |   15 |   16 |
+|  16 | pop       | push      | 5    |   0 |   0 |   0 |   0 |   15 |   16 |
+|  17 | push      | push      | 7    |   5 |   0 |   0 |   0 |   15 |   16 |
+|  18 | push      | write_mem | pop  |   7 |   5 |   0 |   0 |   15 |   16 |
+|  19 | write_mem | pop       | push |   5 |   0 |   0 |   0 |    5 |    7 |
+|  20 | pop       | push      | 15   |   0 |   0 |   0 |   0 |    5 |    7 |
+|  21 | push      | read_mem  | push |  15 |   0 |   0 |   0 |    5 |    7 |
+|  22 | read_mem  | push      | 5    |  16 |  15 |   0 |   0 |   15 |   16 |
+|  23 | push      | read_mem  | halt |   5 |  16 |  15 |   0 |   15 |   16 |
+|  24 | read_mem  | halt      | halt |   7 |   5 |  16 |  15 |    5 |    7 |
 
 RAM Table:
 
-| clk | pi        | ramp | ramv |        iord |
-|----:|:----------|-----:|-----:|------------:|
-|   3 | write_mem |    5 |    6 |           0 |
-|   4 | pop       |    5 |    6 |           0 |
-|   5 | pop       |    5 |    6 |           0 |
-|   6 | push      |    5 |    6 |           0 |
-|   7 | push      |    5 |    6 |           0 |
-|  13 | read_mem  |    5 |    6 |           0 |
-|  14 | pop       |    5 |    6 |           0 |
-|  15 | pop       |    5 |    6 |           0 |
-|  16 | push      |    5 |    6 |           0 |
-|  17 | push      |    5 |    6 |           0 |
-|  23 | write_mem |    5 |    7 |           0 |
-|  24 | pop       |    5 |    7 |           0 |
-|  25 | pop       |    5 |    7 |           0 |
-|  26 | push      |    5 |    7 |           0 |
-|  27 | push      |    5 |    7 |           0 |
-|  31 | read_mem  |    5 |    7 | -5${}^{-1}$ |
-|   0 | -         |    0 |    0 |           0 |
-|   1 | push      |    0 |    0 |           0 |
-|   2 | push      |    0 |    0 | 15${}^{-1}$ |
-|   8 | write_mem |   15 |   16 |           0 |
-|   9 | pop       |   15 |   16 |           0 |
-|  10 | pop       |   15 |   16 |           0 |
-|  11 | push      |   15 |   16 |           0 |
-|  12 | push      |   15 |   16 |           0 |
-|  18 | read_mem  |   15 |   16 |           0 |
-|  19 | pop       |   15 |   16 |           0 |
-|  20 | pop       |   15 |   16 |           0 |
-|  21 | push      |   15 |   16 |           0 |
-|  22 | push      |   15 |   16 |           0 |
-|  28 | read_mem  |   15 |   16 |           0 |
-|  29 | push      |   15 |   16 |           0 |
-|  30 | push      |   15 |   16 |           0 |
+| clk | pi        | ramp | ramv |         iord |
+|----:|:----------|-----:|-----:|-------------:|
+|   7 | write_mem |   15 |   16 |            0 |
+|   8 | pop       |   15 |   16 |            0 |
+|   9 | push      |   15 |   16 |            0 |
+|  14 | read_mem  |   15 |   16 |            0 |
+|  15 | pop       |   15 |   16 |            0 |
+|  16 | pop       |   15 |   16 |            0 |
+|  17 | push      |   15 |   16 |            0 |
+|  18 | push      |   15 |   16 |            0 |
+|  22 | read_mem  |   15 |   16 |            0 |
+|  23 | push      |   15 |   16 | -10${}^{-1}$ |
+|   3 | write_mem |    5 |    6 |            0 |
+|   4 | pop       |    5 |    6 |            0 |
+|   5 | push      |    5 |    6 |            0 |
+|   6 | push      |    5 |    6 |            0 |
+|  10 | read_mem  |    5 |    6 |            0 |
+|  11 | pop       |    5 |    6 |            0 |
+|  12 | pop       |    5 |    6 |            0 |
+|  13 | push      |    5 |    6 |            0 |
+|  19 | write_mem |    5 |    7 |            0 |
+|  20 | pop       |    5 |    7 |            0 |
+|  21 | push      |    5 |    7 |            0 |
+|  24 | read_mem  |    5 |    7 |  -5${}^{-1}$ |
+|   0 | -         |    0 |    0 |            0 |
+|   1 | push      |    0 |    0 |            0 |
+|   2 | push      |    0 |    0 |            0 |
 
 ## Padding
 

@@ -51,7 +51,7 @@ def in_bucket(instruction_bucket, instruction):
     if instruction_bucket == InstructionBucket.HasArg:
         return instruction in [Instruction.Push, Instruction.Dup, Instruction.Swap, Instruction.Call]
     if instruction_bucket == InstructionBucket.ShrinkStack:
-        return instruction in [Instruction.Pop, Instruction.Skiz, Instruction.Assert, Instruction.WriteIo,
+        return instruction in [Instruction.Pop, Instruction.Skiz, Instruction.Assert, Instruction.WriteMem, Instruction.WriteIo,
                                Instruction.Add, Instruction.Mul, Instruction.Eq, Instruction.XbMul]
     if instruction_bucket == InstructionBucket.U32:
         return instruction in [Instruction.Lt, Instruction.And, Instruction.Xor, Instruction.Log2Floor,
