@@ -77,3 +77,7 @@ harness = false
 [[bench]]
 name = "verify_halt"
 harness = false
+
+[[bench]]
+name = "sponge_hashing"
+harness = false

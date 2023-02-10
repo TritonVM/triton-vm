@@ -2,14 +2,16 @@ use std::error::Error;
 use std::fmt::Display;
 
 use anyhow::Result;
-use twenty_first::shared_math::rescue_prime_digest::Digest;
-use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::other::{is_power_of_two, roundup_nearest_multiple};
+use twenty_first::shared_math::x_field_element::{XFieldElement, EXTENSION_DEGREE};
+use twenty_first::util_types::algebraic_hasher::{AlgebraicHasher, RATE};
 
 use crate::bfield_codec::BFieldCodec;
 use crate::proof::Proof;
 use crate::proof_item::MayBeUncast;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofStream<Item, H>
 where
     Item: Clone + BFieldCodec + MayBeUncast,
@@ -133,31 +135,66 @@ where
         Ok(item.clone())
     }
 
-    // TODO: Provide challenge by squeezing instead.
-    pub fn prover_fiat_shamir(&self) -> Digest {
-        let mut transcript = vec![];
-        for item in self.items.iter() {
-            transcript.append(&mut item.encode());
-        }
-        H::hash_varlen(&transcript)
+    // // TODO: Provide challenge by squeezing instead.
+    // pub fn prover_fiat_shamir(&self) -> Digest {
+    //     let mut transcript = vec![];
+    //     for item in self.items.iter() {
+    //         transcript.append(&mut item.encode());
+    //     }
+    //     H::hash_varlen(&transcript)
+    // }
+
+    // // TODO: Provide challenge by squeezing instead.
+    // pub fn verifier_fiat_shamir(&self) -> Digest {
+    //     let mut transcript = vec![];
+    //     for item in self.items[0..self.items_index].iter() {
+    //         transcript.append(&mut item.uncast());
+    //     }
+    //     H::hash_varlen(&transcript)
+    // }
+
+    /// Given a sponge state and an `upper_bound` that is a power of two,
+    /// produce `num_indices` uniform random numbers (sample indices) in
+    /// the interval `[0; upper_bound)`.
+    ///
+    /// - `state`: A `Self::SpongeState`
+    /// - `upper_bound`: The (non-inclusive) upper bound (a power of two)
+    /// - `num_indices`: The number of sample indices
+    pub fn sample_indices(
+        state: &mut H::SpongeState,
+        upper_bound: usize,
+        num_indices: usize,
+    ) -> Vec<usize> {
+        assert!(is_power_of_two(upper_bound));
+        assert!(upper_bound <= BFieldElement::MAX as usize);
+        let num_squeezes = roundup_nearest_multiple(num_indices, RATE) / RATE;
+        (0..num_squeezes)
+            .flat_map(|_| H::squeeze(state))
+            .take(num_indices)
+            .map(|elem| elem.value() as usize % upper_bound)
+            .collect()
     }
 
-    // TODO: Provide challenge by squeezing instead.
-    pub fn verifier_fiat_shamir(&self) -> Digest {
-        let mut transcript = vec![];
-        for item in self.items[0..self.items_index].iter() {
-            transcript.append(&mut item.uncast());
-        }
-        H::hash_varlen(&transcript)
+    pub fn sample_weights(state: &mut H::SpongeState, num_weights: usize) -> Vec<XFieldElement> {
+        let num_squeezes = roundup_nearest_multiple(num_weights * EXTENSION_DEGREE, RATE) / RATE;
+        (0..num_squeezes)
+            .map(|_| H::squeeze(state))
+            .flat_map(|elems| {
+                vec![
+                    XFieldElement::new([elems[0], elems[1], elems[2]]),
+                    XFieldElement::new([elems[3], elems[4], elems[5]]),
+                    XFieldElement::new([elems[6], elems[7], elems[8]]),
+                    // spill 1 element, elems[9], per squeeze
+                ]
+            })
+            .collect()
     }
 }
 
 #[cfg(test)]
 mod proof_stream_typed_tests {
     use itertools::Itertools;
-    use num_traits::One;
     use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -261,85 +298,47 @@ mod proof_stream_typed_tests {
     }
 
     #[test]
-    fn prover_verifier_fiat_shamir_test() {
-        type H = RescuePrimeRegular;
-        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
-        let mut proof_stream = ProofStream::<TestItem, H>::new(sponge_state);
-        let ps: &mut ProofStream<TestItem, H> = &mut proof_stream;
-
-        let digest_1 = H::hash(&BFieldElement::one());
-        ps.enqueue(&TestItem::ManyB(digest_1.values().to_vec()));
-        let _ = ps.dequeue();
-
-        assert_eq!(
-            ps.prover_fiat_shamir(),
-            ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() must be equivalent \
-            when the entire stream is read"
-        );
-
-        let digest_2 = H::hash(&BFieldElement::one());
-        ps.enqueue(&TestItem::ManyB(digest_2.values().to_vec()));
-
-        assert_ne!(
-            ps.prover_fiat_shamir(),
-            ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() must be different \
-            when the stream isn't fully read"
-        );
-
-        let _ = ps.dequeue();
-
-        assert_eq!(
-            ps.prover_fiat_shamir(),
-            ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() must be equivalent \
-            when the entire stream is read again",
-        );
-    }
-
-    #[test]
     fn test_serialize_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
-        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let sponge_state = H::init();
         let mut proof_stream = ProofStream::<TestItem, H>::new(sponge_state);
         let manyb1: Vec<BFieldElement> = random_elements(10);
         let manyx: Vec<XFieldElement> = random_elements(13);
         let manyb2: Vec<BFieldElement> = random_elements(11);
 
-        let fs1 = proof_stream.prover_fiat_shamir();
+        let fs1 = proof_stream.sponge_state.state.clone();
         proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()));
-        let fs2 = proof_stream.prover_fiat_shamir();
+        let fs2 = proof_stream.sponge_state.state.clone();
         proof_stream.enqueue(&TestItem::ManyX(manyx.clone()));
-        let fs3 = proof_stream.prover_fiat_shamir();
+        let fs3 = proof_stream.sponge_state.state.clone();
         proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()));
-        let fs4 = proof_stream.prover_fiat_shamir();
+        let fs4 = proof_stream.sponge_state.state.clone();
 
         let proof = proof_stream.to_proof();
 
-        let another_sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let another_sponge_state = H::init();
         let mut proof_stream = ProofStream::<TestItem, H>::from_proof(&proof, another_sponge_state)
             .expect("invalid parsing of proof");
 
-        let fs1_ = proof_stream.verifier_fiat_shamir();
+        let fs1_ = proof_stream.sponge_state.state.clone();
         match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
             TestItem::ManyB(manyb1_) => assert_eq!(manyb1, manyb1_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
         };
-        let fs2_ = proof_stream.verifier_fiat_shamir();
+        let fs2_ = proof_stream.sponge_state.state.clone();
         match proof_stream.dequeue().expect("can't dequeue item").as_xs() {
             TestItem::ManyB(_) => panic!(),
             TestItem::ManyX(manyx_) => assert_eq!(manyx, manyx_),
             TestItem::Uncast(_) => panic!(),
         };
-        let fs3_ = proof_stream.verifier_fiat_shamir();
+        let fs3_ = proof_stream.sponge_state.state.clone();
         match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
             TestItem::ManyB(manyb2_) => assert_eq!(manyb2, manyb2_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
         };
-        let fs4_ = proof_stream.verifier_fiat_shamir();
+        let fs4_ = proof_stream.sponge_state.state.clone();
 
         assert_eq!(fs1, fs1_);
         assert_eq!(fs2, fs2_);
@@ -363,7 +362,7 @@ mod proof_stream_typed_tests {
             .collect_vec();
         let fri_response = FriResponse(fri_response_content);
 
-        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let sponge_state = H::init();
         let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
 

@@ -311,7 +311,6 @@ mod proof_item_typed_tests {
     use itertools::Itertools;
     use rand::thread_rng;
     use rand::RngCore;
-    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -373,7 +372,7 @@ mod proof_item_typed_tests {
     #[test]
     fn test_serialize_stark_proof_with_fiat_shamir() {
         type H = RescuePrimeRegular;
-        let sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let sponge_state = H::init();
         let mut proof_stream = ProofStream::<ProofItem, H>::new(sponge_state);
         let map = (0..7).into_iter().map(|_| random_digest()).collect_vec();
         let auth_struct = (0..8)
@@ -397,27 +396,27 @@ mod proof_item_typed_tests {
         let fri_response = random_fri_response();
 
         let mut fs = vec![];
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state.clone());
         proof_stream.enqueue(&ProofItem::AuthenticationPath(map.clone()));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state.clone());
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
             auth_struct.clone(),
         ));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state.clone());
         proof_stream.enqueue(&ProofItem::MerkleRoot(root));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state.clone());
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state.clone());
 
         let proof = proof_stream.to_proof();
 
-        let another_sponge_state = H::absorb_init(&[BFIELD_ZERO; 10]);
+        let another_sponge_state = H::init();
         let mut proof_stream_ =
             ProofStream::<ProofItem, H>::from_proof(&proof, another_sponge_state)
                 .expect("invalid parsing of proof");
 
         let mut fs_ = vec![];
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state.clone());
 
         let map_ = proof_stream_
             .dequeue()
@@ -425,7 +424,7 @@ mod proof_item_typed_tests {
             .as_authentication_path()
             .expect("cannot parse dequeued item");
         assert_eq!(map, map_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state.clone());
 
         let auth_struct_ = proof_stream_
             .dequeue()
@@ -433,7 +432,7 @@ mod proof_item_typed_tests {
             .as_compressed_authentication_paths()
             .expect("cannot parse dequeued item");
         assert_eq!(auth_struct, auth_struct_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state.clone());
 
         let root_ = proof_stream_
             .dequeue()
@@ -441,7 +440,7 @@ mod proof_item_typed_tests {
             .as_merkle_root()
             .expect("cannot parse dequeued item");
         assert_eq!(root, root_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state.clone());
 
         let fri_response_ = proof_stream_
             .dequeue()
@@ -449,7 +448,7 @@ mod proof_item_typed_tests {
             .as_fri_response()
             .expect("cannot parse dequeued item");
         assert_eq!(fri_response, fri_response_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state.clone());
 
         assert_eq!(fs, fs_);
     }

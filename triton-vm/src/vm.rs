@@ -1319,7 +1319,7 @@ pub mod triton_vm_tests {
 
         let sponge_input =
             [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9].map(BFieldElement::new);
-        let mut sponge_state = RescuePrimeRegular::absorb_init(&sponge_input);
+        let mut sponge_state = RescuePrimeRegular::init();
         let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
         RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
         RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);

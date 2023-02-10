@@ -20,7 +20,6 @@ use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::other::roundup_npo2;
@@ -176,13 +175,12 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir");
         let padded_height = BFieldElement::new(master_base_table.padded_height as u64);
-        // TODO: Don't init sponge with zeros.
-        let sponge_state = StarkHasher::absorb_init(&[BFIELD_ZERO; 10]);
+        let sponge_state = StarkHasher::init();
         let mut proof_stream = StarkProofStream::new(sponge_state);
 
         proof_stream.enqueue(&ProofItem::PaddedHeight(padded_height));
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
-        let extension_weights = StarkHasher::sample_weights(
+        let extension_weights = ProofStream::sample_weights(
             &mut proof_stream.sponge_state,
             AllChallenges::TOTAL_CHALLENGES,
         );
@@ -250,7 +248,7 @@ impl Stark {
         let num_non_lin_combi_weights =
             2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
         let non_lin_combi_weights =
-            StarkHasher::sample_weights(&mut proof_stream.sponge_state, num_non_lin_combi_weights);
+            ProofStream::sample_weights(&mut proof_stream.sponge_state, num_non_lin_combi_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "nonlinear combination");
@@ -292,7 +290,7 @@ impl Stark {
         // Get indices of master table rows to prove nonlinear combination
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         // let indices_seed = proof_stream.prover_fiat_shamir();
-        let revealed_current_row_indices = StarkHasher::sample_indices(
+        let revealed_current_row_indices = ProofStream::sample_indices(
             &mut proof_stream.sponge_state,
             self.fri.domain.length,
             self.parameters.num_non_linear_codeword_checks,
@@ -523,8 +521,7 @@ impl Stark {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<bool> {
         prof_start!(maybe_profiler, "deserialize");
-        // TODO: Don't init sponge with zeros.
-        let sponge_state = StarkHasher::absorb_init(&[BFIELD_ZERO; 10]);
+        let sponge_state = StarkHasher::init();
         let mut proof_stream = StarkProofStream::from_proof(&proof, sponge_state)?;
         prof_stop!(maybe_profiler, "deserialize");
 
@@ -536,7 +533,7 @@ impl Stark {
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
 
         // let extension_challenge_seed = proof_stream.verifier_fiat_shamir();
-        let extension_challenge_weights = StarkHasher::sample_weights(
+        let extension_challenge_weights = ProofStream::sample_weights(
             &mut proof_stream.sponge_state,
             AllChallenges::TOTAL_CHALLENGES,
         );
@@ -558,7 +555,7 @@ impl Stark {
         // let non_lin_combi_weights_seed = proof_stream.verifier_fiat_shamir();
         let num_non_lin_combi_weights =
             2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
-        let non_lin_combi_weights = Array1::from(StarkHasher::sample_weights(
+        let non_lin_combi_weights = Array1::from(ProofStream::sample_weights(
             &mut proof_stream.sponge_state,
             num_non_lin_combi_weights,
         ));
@@ -567,7 +564,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
         // let indices_seed = proof_stream.verifier_fiat_shamir();
-        let revealed_current_row_indices = StarkHasher::sample_indices(
+        let revealed_current_row_indices = ProofStream::sample_indices(
             &mut proof_stream.sponge_state,
             self.fri.domain.length,
             self.parameters.num_non_linear_codeword_checks,
