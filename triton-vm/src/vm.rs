@@ -1044,6 +1044,7 @@ pub mod triton_vm_tests {
     use rand::Rng;
     use rand::RngCore;
 
+    use crate::error::InstructionError;
     use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
@@ -2425,5 +2426,20 @@ pub mod triton_vm_tests {
         let (trace, _out, err) = run(&program, vec![], vec![]);
         assert!(err.is_none(), "Reading from uninitialized memory address");
         assert_eq!(2, trace.len());
+    }
+
+    #[test]
+    fn program_without_halt_test() {
+        let program = Program::from_code("nop").unwrap();
+        let (_trace, _out, err) = run(&program, vec![], vec![]);
+        let Some(err) = err else {
+            panic!("Program without halt must fail.");
+        };
+        let Ok(err) = err.downcast::<InstructionError>() else {
+            panic!("Program without halt must fail with InstructionError.");
+        };
+        let InstructionPointerOverflow(_) = err else {
+            panic!("Program without halt must fail with InstructionPointerOverflow.");
+        };
     }
 }
