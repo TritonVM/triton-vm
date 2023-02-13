@@ -48,7 +48,7 @@ impl CrossTableArg for PermArg {
     /// Compute the product for a permutation argument as specified by `initial`, `challenge`,
     /// and `symbols`. This amounts to evaluating polynomial
     ///  `f(x) = initial · Π_i (x - symbols[i])`
-    /// at point `challenge`, i.e., returns `f(challenge)`.
+    /// at point `challenge`, _i.e._, returns `f(challenge)`.
     fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,
@@ -72,7 +72,7 @@ impl CrossTableArg for EvalArg {
     /// Compute the evaluation for an evaluation argument as specified by `initial`, `challenge`,
     /// and `symbols`. This amounts to evaluating polynomial
     /// `f(x) = initial·x^n + Σ_i symbols[n-i]·x^i`
-    /// at point `challenge`, i.e., returns `f(challenge)`.
+    /// at point `challenge`, _i.e._, returns `f(challenge)`.
     fn compute_terminal(
         symbols: &[BFieldElement],
         initial: XFieldElement,

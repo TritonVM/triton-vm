@@ -26,7 +26,7 @@ pub type Instruction = AnInstruction<BFieldElement>;
 pub enum LabelledInstruction {
     /// Instructions belong to the ISA:
     ///
-    /// https://triton-vm.org/spec/isa.html
+    /// <https://triton-vm.org/spec/isa.html>
     Instruction(AnInstruction<String>),
 
     /// Labels look like "`<name>:`" and are translated into absolute addresses.

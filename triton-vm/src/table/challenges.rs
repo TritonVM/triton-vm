@@ -1,5 +1,8 @@
-//! Challenges are needed for the cross-table arguments, _i.e._, Permutation Arguments, Evaluation
-//! Arguments, and Lookup Arguments, as well as for the RAM Table's Contiguity Argument.
+//! Challenges are needed for the [cross-table arguments](CrossTableArg), _i.e._,
+//! [Permutation Arguments](crate::table::cross_table_argument::PermArg),
+//! [Evaluation Arguments](crate::table::cross_table_argument::EvalArg), and
+//! [Lookup Arguments](crate::table::cross_table_argument::LookupArg),
+//! as well as for the RAM Table's Contiguity Argument.
 //!
 //! There are three types of challenges:
 //! - **Weights**. Weights are used to non-linearly combine multiple elements into one element. The
@@ -31,7 +34,7 @@ use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
 
 /// A `ChallengeId` is a unique, symbolic identifier for a challenge used in Triton VM. The
-/// `ChallengeId` enum works in tandem with the struct `Challenges`, which can be
+/// `ChallengeId` enum works in tandem with the struct [`Challenges`], which can be
 /// instantiated to hold actual challenges that can be indexed by some `ChallengeId`.
 ///
 /// Since almost all challenges relate to the Processor Table in some form, the words “Processor
@@ -39,15 +42,17 @@ use crate::table::cross_table_argument::EvalArg;
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ChallengeId {
-    /// The indeterminate for the Evaluation Argument with standard input.
+    /// The indeterminate for the [Evaluation Argument](EvalArg) with standard input.
     StandardInputIndeterminate,
 
-    /// The indeterminate for the Evaluation Argument with standard output.
+    /// The indeterminate for the [Evaluation Argument](EvalArg) with standard output.
     StandardOutputIndeterminate,
 
-    /// The indeterminate for the instruction Lookup Argument between the Processor Table and the
-    /// Program Table guaranteeing that the instructions and their arguments are copied
-    /// correctly.
+    /// The indeterminate for the instruction
+    /// [Lookup Argument](crate::table::cross_table_argument::LookupArg)
+    /// between the [Processor Table](crate::table::processor_table) and the
+    /// [Program Table](crate::table::program_table) guaranteeing that the instructions and their
+    /// arguments are copied correctly.
     InstructionLookupIndeterminate,
 
     HashInputIndeterminate,
@@ -148,8 +153,8 @@ impl ChallengeId {
 }
 
 /// The `Challenges` struct holds the challenges used in Triton VM. The concrete challenges are
-/// known only at runtime. The challenges are indexed using enum `ChallengeId`. The `Challenges`
-/// struct is essentially a thin wrapper around an array of `XFieldElement`s, providing
+/// known only at runtime. The challenges are indexed using enum [`ChallengeId`]. The `Challenges`
+/// struct is essentially a thin wrapper around an array of [`XFieldElement`]s, providing
 /// convenience methods.
 pub struct Challenges {
     pub challenges: [XFieldElement; Self::count()],
