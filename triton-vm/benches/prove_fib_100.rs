@@ -2,14 +2,14 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-
-use triton_opcodes::program::Program;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
+
+use triton_opcodes::program::Program;
 use triton_vm::proof::Claim;
-use triton_vm::shared_tests::FIBONACCI_VIT;
+use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::stark::Stark;
 use triton_vm::table::master_table::MasterBaseTable;
 use triton_vm::vm::simulate;
@@ -25,7 +25,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
     let mut report: Report = Report::placeholder();
 
     // stark object
-    let program = match Program::from_code(FIBONACCI_VIT) {
+    let program = match Program::from_code(FIBONACCI_SEQUENCE) {
         Err(e) => panic!("Cannot compile source code into program: {e}"),
         Ok(p) => p,
     };

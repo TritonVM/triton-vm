@@ -167,66 +167,35 @@ pub fn save_proof(filename: &str, proof: Proof) -> Result<()> {
     Ok(())
 }
 
-pub const FIBONACCI_VIT: &str = "
-         push 0
-         push 1
-         read_io
-         dup0
-         dup0
-         dup0
-         mul
-         eq
-         skiz
-         call bar
-         call foo
-    foo: call bob
-         swap1
-         push -1
-         add
-         dup0
-         skiz
-         recurse
-         call baz
-    bar: dup0
-         push 0
-         eq
-         skiz
-         pop
-    baz: pop
-         write_io
-         halt
-    bob: dup2
-         dup2
-         add
-         return
-    ";
-
-pub const FIB_SHOOTOUT: &str = "
-    // Initialize stack: _ 0 1 i
+pub const FIBONACCI_SEQUENCE: &str = "
+    // initialize stack: ⊥ 0 1 i
     push 0
     push 1
-    divine
+    read_io
 
+    // is any looping necessary?
+    dup0
+    skiz
     call fib-loop
-    write_io  // After loop, this is 0
-    write_io  // After loop, this is fib(i)
+
+    // pop zero, write result
+    pop
+    write_io
     halt
 
+    // before: ⊥ 0 1 i
+    // after:  ⊥ fib(i-1) fib(i) 0
     fib-loop:
-        dup0 skiz call fib-step
-        dup0 skiz recurse
-        return
-
-    // Before: _ a b i
-    // After: _ b (a+b) (i-1)
-    fib-step:
-        push -1
-        add
-        swap2
-        dup1
-        add
-        swap1
-        swap2
+        push -1   // ⊥ a b j -1
+        add       // ⊥ a b (j-1)
+        swap2     // ⊥ (j-1) b a
+        dup1      // ⊥ (j-1) b a b
+        add       // ⊥ (j-1) b (a+b)
+        swap1     // ⊥ (j-1) (a+b) b
+        swap2     // ⊥ b (a+b) (j-1)
+        dup0      // ⊥ b (a+b) (j-1) (j-1)
+        skiz      // ⊥ b (a+b) (j-1)
+        recurse
         return
     ";
 
@@ -254,34 +223,3 @@ pub const MANY_U32_INSTRUCTIONS: &str = "
         push 2 swap1 div return
     is_u32:
         split pop push 0 eq return";
-
-pub const FIB_FIXED_7_LT: &str = "
-    push 0
-    push 1
-    push 7
-    push 2
-    dup1
-    lt
-    skiz
-    call 29
-    call 16
-16: call 38
-    swap1
-    push -1
-    add
-    dup0
-    skiz
-    recurse
-    call 36
-29: dup0
-    push 0
-    eq
-    skiz
-    pop
-36: pop
-    halt
-38: dup2
-    dup2
-    add
-    return
-";

@@ -1542,7 +1542,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_table_constraints_evaluate_to_zero_on_fibonacci_test() {
         let source_code_and_input = SourceCodeAndInput {
-            source_code: FIBONACCI_VIT.to_string(),
+            source_code: FIBONACCI_SEQUENCE.to_string(),
             input: vec![BFieldElement::new(100)],
             secret_input: vec![],
         };
@@ -1913,7 +1913,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn prove_verify_fibonacci_100_test() {
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
-        let source_code = FIBONACCI_VIT;
+        let source_code = FIBONACCI_SEQUENCE;
         let stdin = vec![100_u64.into()];
         let secret_in = vec![];
 
@@ -1942,23 +1942,18 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn prove_verify_fib_shootout_test() {
-        let cases = [(7, 21)];
+        let code = FIBONACCI_SEQUENCE;
 
-        let code = FIB_SHOOTOUT;
-
-        for (n, expected) in cases {
-            let stdin = vec![];
-            let secret_in = vec![BFieldElement::new(n)];
+        for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
+            let stdin = vec![BFieldElement::new(fib_seq_idx)];
+            let secret_in = vec![];
             let (stark, proof) = parse_simulate_prove(code, stdin, secret_in, &mut None);
             match stark.verify(proof, &mut None) {
                 Ok(result) => assert!(result, "The Verifier disagrees!"),
                 Err(err) => panic!("The Verifier is unhappy! {err}"),
             }
 
-            assert_eq!(
-                vec![BFieldElement::zero(), BFieldElement::new(expected)],
-                stark.claim.output
-            );
+            assert_eq!(vec![BFieldElement::new(fib_seq_val)], stark.claim.output);
         }
     }
 
@@ -1995,7 +1990,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     #[ignore = "stress test"]
     fn prove_fib_successively_larger() {
-        let source_code = FIBONACCI_VIT;
+        let source_code = FIBONACCI_SEQUENCE;
 
         for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
             let mut profiler = Some(TritonProfiler::new(&format!(

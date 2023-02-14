@@ -13,13 +13,6 @@ use ndarray::Ix2;
 use ndarray::OwnedRepr;
 use num_traits::One;
 use num_traits::Zero;
-
-use triton_opcodes::instruction::AnInstruction::*;
-use triton_opcodes::instruction::Instruction;
-use triton_opcodes::ord_n::Ord16;
-use triton_opcodes::ord_n::Ord16::*;
-use triton_opcodes::ord_n::Ord8;
-use triton_opcodes::program::Program;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::other::log_2_floor;
@@ -33,6 +26,13 @@ use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
+
+use triton_opcodes::instruction::AnInstruction::*;
+use triton_opcodes::instruction::Instruction;
+use triton_opcodes::ord_n::Ord16;
+use triton_opcodes::ord_n::Ord16::*;
+use triton_opcodes::ord_n::Ord8;
+use triton_opcodes::program::Program;
 
 use crate::error::vm_err;
 use crate::error::vm_fail;
@@ -1043,8 +1043,6 @@ pub mod triton_vm_tests {
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
-
-    use crate::error::InstructionError;
     use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
@@ -1056,9 +1054,10 @@ pub mod triton_vm_tests {
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
+    use crate::error::InstructionError;
     use crate::op_stack::OP_STACK_REG_COUNT;
     use crate::shared_tests::SourceCodeAndInput;
-    use crate::shared_tests::{FIBONACCI_VIT, FIB_FIXED_7_LT};
+    use crate::shared_tests::FIBONACCI_SEQUENCE;
     use crate::stark::Maker;
     use crate::table::processor_table::ProcessorTraceRow;
     use crate::vm::run;
@@ -2375,8 +2374,8 @@ pub mod triton_vm_tests {
     }
 
     #[test]
-    fn run_tvm_fibonacci_vit_tvm() {
-        let code = FIBONACCI_VIT;
+    fn run_tvm_fibonacci_tvm() {
+        let code = FIBONACCI_SEQUENCE;
         let program = Program::from_code(code).unwrap();
         let (_trace, out, err) = run(&program, vec![7_u64.into()], vec![]);
         if let Some(e) = err {
@@ -2384,15 +2383,6 @@ pub mod triton_vm_tests {
         }
 
         assert_eq!(Some(&BFieldElement::new(21)), out.get(0));
-    }
-
-    #[test]
-    fn run_tvm_fibonacci_lt_test() {
-        let code = FIB_FIXED_7_LT;
-        let program = Program::from_code(code).unwrap();
-        let (trace, _out, _err) = run(&program, vec![], vec![]);
-        let last_state = trace.last().unwrap();
-        assert_eq!(BFieldElement::new(21), last_state.op_stack.st(ST0));
     }
 
     #[test]
