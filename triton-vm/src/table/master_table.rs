@@ -35,6 +35,8 @@ use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
+use triton_opcodes::instruction::Instruction;
+
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::StarkHasher;
 use crate::table::challenges::Challenges;
@@ -335,10 +337,14 @@ impl MasterBaseTable {
     pub fn u32_table_length(aet: &AlgebraicExecutionTrace) -> usize {
         aet.u32_entries
             .iter()
-            .map(|(_, lhs, rhs)| max(lhs.value(), rhs.value()))
-            .map(|bigger_value| match bigger_value == 0 {
+            .map(|(instruction, lhs, rhs)| match instruction {
+                // for instruction `pow`, the left-hand side doesn't change between rows
+                Instruction::Pow => rhs.value(),
+                _ => max(lhs.value(), rhs.value()),
+            })
+            .map(|relevant_entry| match relevant_entry == 0 {
                 true => 1,
-                false => 2 + log_2_floor(bigger_value as u128) as usize,
+                false => 2 + log_2_floor(relevant_entry as u128) as usize,
             })
             .sum()
     }

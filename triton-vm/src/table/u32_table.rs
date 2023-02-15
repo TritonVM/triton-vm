@@ -1,6 +1,5 @@
 use std::ops::Mul;
 
-use itertools::Itertools;
 use ndarray::parallel::prelude::*;
 use ndarray::s;
 use ndarray::Array1;
@@ -11,10 +10,12 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use triton_opcodes::instruction::Instruction;
 
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
@@ -23,6 +24,7 @@ use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
+use crate::table::constraint_circuit::InputIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
@@ -44,6 +46,30 @@ pub struct U32Table {}
 pub struct ExtU32Table {}
 
 impl ExtU32Table {
+    fn instruction_deselector<II: InputIndicator>(
+        instruction_to_select: Instruction,
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        current_instruction: &ConstraintCircuitMonad<II>,
+    ) -> ConstraintCircuitMonad<II> {
+        [
+            Instruction::Split,
+            Instruction::Lt,
+            Instruction::And,
+            Instruction::Xor,
+            Instruction::Log2Floor,
+            Instruction::Pow,
+        ]
+        .into_iter()
+        .filter(|&instruction| instruction != instruction_to_select)
+        .map(|instruction| {
+            current_instruction.clone() - circuit_builder.b_constant(instruction.opcode_b())
+        })
+        .fold(
+            circuit_builder.b_constant(BFIELD_ONE),
+            ConstraintCircuitMonad::mul,
+        )
+    }
+
     pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
@@ -53,46 +79,9 @@ impl ExtU32Table {
         let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
         let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
         let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
+        let result = circuit_builder.input(BaseRow(Result.master_base_table_index()));
 
         let rp = circuit_builder.input(ExtRow(ProcessorPermArg.master_ext_table_index()));
-
-        let normalized_instruction_deselector = |instruction_to_select: Instruction| {
-            let instructions_to_deselect = [
-                Instruction::Split,
-                Instruction::Lt,
-                Instruction::And,
-                Instruction::Xor,
-                Instruction::Log2Floor,
-                Instruction::Pow,
-            ]
-            .into_iter()
-            .filter(|&instruction| instruction != instruction_to_select)
-            .collect_vec();
-
-            let deselector = instructions_to_deselect
-                .iter()
-                .map(|&instruction| ci.clone() - circuit_builder.b_constant(instruction.opcode_b()))
-                .fold(one.clone(), ConstraintCircuitMonad::mul);
-            let normalizing_factor = instructions_to_deselect
-                .iter()
-                .fold(BFieldElement::one(), |acc, instr| {
-                    acc * (instruction_to_select.opcode_b() - instr.opcode_b())
-                })
-                .inverse();
-            circuit_builder.b_constant(normalizing_factor) * deselector
-        };
-
-        let result = normalized_instruction_deselector(Instruction::Lt)
-            * circuit_builder.input(BaseRow(LT.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::And)
-                * circuit_builder.input(BaseRow(AND.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::Xor)
-                * circuit_builder.input(BaseRow(XOR.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::Log2Floor)
-                * circuit_builder.input(BaseRow(Log2Floor.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::Pow)
-                * circuit_builder.input(BaseRow(Pow.master_base_table_index()));
-        //  + normalized_instruction_deselector(Instruction::Split) * 0, which is superfluous
 
         let initial_factor = challenge(U32Indeterminate)
             - challenge(U32LhsWeight) * lhs
@@ -106,17 +95,18 @@ impl ExtU32Table {
         let if_copy_flag_is_0_then_rp_is_default_initial =
             (one - copy_flag) * (default_initial - rp);
 
-        [
-            if_copy_flag_is_0_then_rp_is_default_initial,
-            if_copy_flag_is_1_then_rp_has_accumulated_first_row,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        let running_product_starts_correctly = if_copy_flag_is_0_then_rp_is_default_initial
+            + if_copy_flag_is_1_then_rp_has_accumulated_first_row;
+
+        [running_product_starts_correctly]
+            .map(|circuit| circuit.consume())
+            .to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
+        let two = circuit_builder.b_constant(2_u32.into());
 
         let copy_flag = circuit_builder.input(BaseRow(CopyFlag.master_base_table_index()));
         let bits = circuit_builder.input(BaseRow(Bits.master_base_table_index()));
@@ -124,15 +114,14 @@ impl ExtU32Table {
             circuit_builder.input(BaseRow(BitsMinus33Inv.master_base_table_index()));
         let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
         let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
-        let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
-        let lt = circuit_builder.input(BaseRow(LT.master_base_table_index()));
-        let and = circuit_builder.input(BaseRow(AND.master_base_table_index()));
-        let xor = circuit_builder.input(BaseRow(XOR.master_base_table_index()));
-        let log2floor = circuit_builder.input(BaseRow(Log2Floor.master_base_table_index()));
-        let lhs_copy = circuit_builder.input(BaseRow(LhsCopy.master_base_table_index()));
-        let pow = circuit_builder.input(BaseRow(Pow.master_base_table_index()));
         let lhs_inv = circuit_builder.input(BaseRow(LhsInv.master_base_table_index()));
+        let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
         let rhs_inv = circuit_builder.input(BaseRow(RhsInv.master_base_table_index()));
+        let result = circuit_builder.input(BaseRow(Result.master_base_table_index()));
+
+        let instruction_deselector = |instruction_to_select| {
+            Self::instruction_deselector(instruction_to_select, &circuit_builder, &ci)
+        };
 
         let copy_flag_is_bit = copy_flag.clone() * (one.clone() - copy_flag.clone());
         let copy_flag_is_0_or_bits_is_0 = copy_flag.clone() * bits.clone();
@@ -146,24 +135,38 @@ impl ExtU32Table {
             rhs_inv.clone() * (one.clone() - rhs.clone() * rhs_inv.clone());
         let rhs_is_0_or_rhs_inverse_is_the_inverse_of_rhs =
             rhs.clone() * (one.clone() - rhs.clone() * rhs_inv.clone());
-        let copy_flag_is_0_or_lhs_copy_is_lhs = copy_flag.clone() * (lhs_copy - lhs.clone());
-        let padding_row = (one.clone() - copy_flag.clone())
+        let result_is_initialized_correctly_for_lt_with_copy_flag_0 =
+            instruction_deselector(Instruction::Lt)
+                * (copy_flag.clone() - one.clone())
+                * (one.clone() - lhs.clone() * lhs_inv.clone())
+                * (one.clone() - rhs.clone() * rhs_inv.clone())
+                * (result.clone() - two);
+        let result_is_initialized_correctly_for_lt_with_copy_flag_1 =
+            instruction_deselector(Instruction::Lt)
+                * copy_flag.clone()
+                * (one.clone() - lhs.clone() * lhs_inv.clone())
+                * (one.clone() - rhs.clone() * rhs_inv.clone())
+                * result.clone();
+        let result_is_initialized_correctly_for_and = instruction_deselector(Instruction::And)
             * (one.clone() - lhs.clone() * lhs_inv.clone())
-            * (one.clone() - rhs * rhs_inv);
-        let padding_row_or_lt_is_2 =
-            padding_row.clone() * (lt - circuit_builder.b_constant(BFieldElement::new(2)));
-        let padding_row_or_and_is_0 = padding_row.clone() * and;
-        let padding_row_or_xor_is_0 = padding_row.clone() * xor;
-        let padding_row_or_pow_is_1 = padding_row * (one.clone() - pow);
-        let copy_flag_is_0_or_lhs_is_not_0_or_ci_is_not_log2floor = copy_flag
+            * (one.clone() - rhs.clone() * rhs_inv.clone())
+            * result.clone();
+        let result_is_initialized_correctly_for_xor = instruction_deselector(Instruction::Xor)
             * (one.clone() - lhs.clone() * lhs_inv.clone())
-            * (ci.clone() - circuit_builder.b_constant(Instruction::Split.opcode_b()))
-            * (ci.clone() - circuit_builder.b_constant(Instruction::Lt.opcode_b()))
-            * (ci.clone() - circuit_builder.b_constant(Instruction::And.opcode_b()))
-            * (ci.clone() - circuit_builder.b_constant(Instruction::Xor.opcode_b()))
-            * (ci - circuit_builder.b_constant(Instruction::Pow.opcode_b()));
-        let lhs_is_not_zero_or_log2floor_is_negative_1 =
-            (one.clone() - lhs * lhs_inv) * (log2floor + one);
+            * (one.clone() - rhs.clone() * rhs_inv.clone())
+            * result.clone();
+        let result_is_initialized_correctly_for_pow = instruction_deselector(Instruction::Pow)
+            * (one.clone() - rhs.clone() * rhs_inv)
+            * (result.clone() - one.clone());
+        let if_current_instruction_is_log_2_floor_then_rhs_is_0 =
+            instruction_deselector(Instruction::Log2Floor) * rhs;
+        let result_is_initialized_correctly_for_log_2_floor =
+            instruction_deselector(Instruction::Log2Floor)
+                * (copy_flag.clone() - one.clone())
+                * (one.clone() - lhs.clone() * lhs_inv.clone())
+                * (result + one.clone());
+        let if_log_2_floor_on_0_then_vm_crashes =
+            instruction_deselector(Instruction::Log2Floor) * copy_flag * (one - lhs * lhs_inv);
 
         [
             copy_flag_is_bit,
@@ -173,13 +176,14 @@ impl ExtU32Table {
             lhs_is_0_or_lhs_inverse_is_the_inverse_of_lhs,
             rhs_inv_is_0_or_the_inverse_of_rhs,
             rhs_is_0_or_rhs_inverse_is_the_inverse_of_rhs,
-            copy_flag_is_0_or_lhs_copy_is_lhs,
-            padding_row_or_lt_is_2,
-            padding_row_or_and_is_0,
-            padding_row_or_xor_is_0,
-            padding_row_or_pow_is_1,
-            copy_flag_is_0_or_lhs_is_not_0_or_ci_is_not_log2floor,
-            lhs_is_not_zero_or_log2floor_is_negative_1,
+            result_is_initialized_correctly_for_lt_with_copy_flag_0,
+            result_is_initialized_correctly_for_lt_with_copy_flag_1,
+            result_is_initialized_correctly_for_and,
+            result_is_initialized_correctly_for_xor,
+            result_is_initialized_correctly_for_pow,
+            if_current_instruction_is_log_2_floor_then_rhs_is_0,
+            result_is_initialized_correctly_for_log_2_floor,
+            if_log_2_floor_on_0_then_vm_crashes,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -196,12 +200,7 @@ impl ExtU32Table {
         let ci = circuit_builder.input(CurrentBaseRow(CI.master_base_table_index()));
         let lhs = circuit_builder.input(CurrentBaseRow(LHS.master_base_table_index()));
         let rhs = circuit_builder.input(CurrentBaseRow(RHS.master_base_table_index()));
-        let lt = circuit_builder.input(CurrentBaseRow(LT.master_base_table_index()));
-        let and = circuit_builder.input(CurrentBaseRow(AND.master_base_table_index()));
-        let xor = circuit_builder.input(CurrentBaseRow(XOR.master_base_table_index()));
-        let log2floor = circuit_builder.input(CurrentBaseRow(Log2Floor.master_base_table_index()));
-        let lhs_copy = circuit_builder.input(CurrentBaseRow(LhsCopy.master_base_table_index()));
-        let pow = circuit_builder.input(CurrentBaseRow(Pow.master_base_table_index()));
+        let result = circuit_builder.input(CurrentBaseRow(Result.master_base_table_index()));
         let rp = circuit_builder.input(CurrentExtRow(ProcessorPermArg.master_ext_table_index()));
 
         let copy_flag_next = circuit_builder.input(NextBaseRow(CopyFlag.master_base_table_index()));
@@ -209,140 +208,139 @@ impl ExtU32Table {
         let ci_next = circuit_builder.input(NextBaseRow(CI.master_base_table_index()));
         let lhs_next = circuit_builder.input(NextBaseRow(LHS.master_base_table_index()));
         let rhs_next = circuit_builder.input(NextBaseRow(RHS.master_base_table_index()));
-        let lt_next = circuit_builder.input(NextBaseRow(LT.master_base_table_index()));
-        let and_next = circuit_builder.input(NextBaseRow(AND.master_base_table_index()));
-        let xor_next = circuit_builder.input(NextBaseRow(XOR.master_base_table_index()));
-        let log2floor_next =
-            circuit_builder.input(NextBaseRow(Log2Floor.master_base_table_index()));
-        let lhs_copy_next = circuit_builder.input(NextBaseRow(LhsCopy.master_base_table_index()));
-        let pow_next = circuit_builder.input(NextBaseRow(Pow.master_base_table_index()));
+        let result_next = circuit_builder.input(NextBaseRow(Result.master_base_table_index()));
         let lhs_inv_next = circuit_builder.input(NextBaseRow(LhsInv.master_base_table_index()));
         let rp_next = circuit_builder.input(NextExtRow(ProcessorPermArg.master_ext_table_index()));
 
-        let normalized_instruction_deselector = |instruction_to_select: Instruction| {
-            let instructions_to_deselect = [
-                Instruction::Split,
-                Instruction::Lt,
-                Instruction::And,
-                Instruction::Xor,
-                Instruction::Log2Floor,
-                Instruction::Pow,
-            ]
-            .into_iter()
-            .filter(|&instruction| instruction != instruction_to_select)
-            .collect_vec();
-
-            let deselector = instructions_to_deselect
-                .iter()
-                .map(|&instruction| {
-                    ci_next.clone() - circuit_builder.b_constant(instruction.opcode_b())
-                })
-                .fold(one.clone(), ConstraintCircuitMonad::mul);
-            let normalizing_factor = instructions_to_deselect
-                .iter()
-                .fold(BFieldElement::one(), |acc, instr| {
-                    acc * (instruction_to_select.opcode_b() - instr.opcode_b())
-                })
-                .inverse();
-            circuit_builder.b_constant(normalizing_factor) * deselector
+        let instruction_deselector = |instruction_to_select: Instruction| {
+            Self::instruction_deselector(instruction_to_select, &circuit_builder, &ci_next)
         };
 
-        let result_next = normalized_instruction_deselector(Instruction::Lt)
-            * circuit_builder.input(NextBaseRow(LT.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::And)
-                * circuit_builder.input(NextBaseRow(AND.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::Xor)
-                * circuit_builder.input(NextBaseRow(XOR.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::Log2Floor)
-                * circuit_builder.input(NextBaseRow(Log2Floor.master_base_table_index()))
-            + normalized_instruction_deselector(Instruction::Pow)
-                * circuit_builder.input(NextBaseRow(Pow.master_base_table_index()));
-        //  + normalized_instruction_deselector(Instruction::Split) * 0, which is superfluous
+        // helpful aliases
+        let ci_is_pow = ci.clone() - circuit_builder.b_constant(Instruction::Pow.opcode_b());
+        let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
+        let rhs_lsb = rhs.clone() - two.clone() * rhs_next.clone();
 
-        let if_copy_flag_next_is_1_then_lhs_is_0 = copy_flag_next.clone() * lhs.clone();
+        // general constraints
+        let if_copy_flag_next_is_1_then_lhs_is_0_or_ci_is_pow =
+            copy_flag_next.clone() * lhs.clone() * ci_is_pow.clone();
         let if_copy_flag_next_is_1_then_rhs_is_0 = copy_flag_next.clone() * rhs.clone();
         let if_copy_flag_next_is_0_then_ci_stays =
             (copy_flag_next.clone() - one.clone()) * (ci_next.clone() - ci);
-        let if_copy_flag_next_is_0_then_lhs_copy_stays =
-            (copy_flag_next.clone() - one.clone()) * (lhs_copy_next - lhs_copy.clone());
-        let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_bits_increases_by_1 =
+        let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_and_ci_not_pow_then_bits_increases_by_1 =
             (copy_flag_next.clone() - one.clone())
                 * lhs.clone()
+                * ci_is_pow.clone()
                 * (bits_next.clone() - bits.clone() - one.clone());
         let if_copy_flag_next_is_0_and_rhs_next_is_nonzero_then_bits_increases_by_1 =
-            (copy_flag_next.clone() - one.clone())
-                * rhs.clone()
-                * (bits_next - bits.clone() - one.clone());
-        let lhs_lsb = lhs.clone() - two.clone() * lhs_next.clone();
-        let rhs_lsb = rhs - two.clone() * rhs_next.clone();
-        let if_copy_flag_next_is_0_then_lhs_lsb_is_a_bit = (copy_flag_next.clone() - one.clone())
+            (copy_flag_next.clone() - one.clone()) * rhs * (bits_next - bits.clone() - one.clone());
+        let if_copy_flag_next_is_0_and_ci_not_pow_then_lhs_lsb_is_a_bit = (copy_flag_next.clone()
+            - one.clone())
+            * ci_is_pow
             * lhs_lsb.clone()
             * (lhs_lsb.clone() - one.clone());
         let if_copy_flag_next_is_0_then_rhs_lsb_is_a_bit = (copy_flag_next.clone() - one.clone())
             * rhs_lsb.clone()
             * (rhs_lsb.clone() - one.clone());
-        let if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0 = (copy_flag_next.clone()
-            - one.clone())
-            * (lt_next.clone() - one.clone())
-            * (lt_next.clone() - two.clone())
-            * lt.clone();
-        let if_copy_flag_next_is_0_and_lt_next_is_1_then_lt_is_1 = (copy_flag_next.clone()
-            - one.clone())
-            * lt_next.clone()
-            * (lt_next.clone() - two.clone())
-            * (lt.clone() - one.clone());
-        let if_copy_flag_next_is_0_and_lt_next_is_2_and_lt_known_then_lt_is_1 =
+
+        // instruction lt
+        let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_0_then_result_is_0 =
             (copy_flag_next.clone() - one.clone())
-                * lt_next.clone()
-                * (lt_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Lt)
+                * (result_next.clone() - one.clone())
+                * (result_next.clone() - two.clone())
+                * result.clone();
+        let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_1_then_result_is_1 =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Lt)
+                * result_next.clone()
+                * (result_next.clone() - two.clone())
+                * (result.clone() - one.clone());
+        let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_2_and_lt_is_0_then_result_is_0 =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Lt)
+                * result_next.clone()
+                * (result_next.clone() - one.clone())
                 * (lhs_lsb.clone() - one.clone())
                 * rhs_lsb.clone()
-                * (lt.clone() - one.clone());
-        let if_copy_flag_next_is_0_and_lt_next_is_2_and_gte_known_then_lt_is_0 =
+                * (result.clone() - one.clone());
+        let if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_2_and_lt_is_1_then_result_is_1 =
             (copy_flag_next.clone() - one.clone())
-                * lt_next.clone()
-                * (lt_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Lt)
+                * result_next.clone()
+                * (result_next.clone() - one.clone())
                 * lhs_lsb.clone()
                 * (rhs_lsb.clone() - one.clone())
-                * lt.clone();
-        let lt_result_unclear = (copy_flag_next.clone() - one.clone())
-            * lt_next.clone()
-            * (lt_next - one.clone())
-            * (one.clone()
-                - lhs_lsb.clone()
-                - rhs_lsb.clone()
-                - two.clone() * lhs_lsb.clone() * rhs_lsb.clone());
-        let if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_then_lt_is_2 = lt_result_unclear
-            .clone()
-            * (copy_flag.clone() - one.clone())
-            * (lt.clone() - two.clone());
-        let if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_in_top_row_then_lt_is_0 =
-            lt_result_unclear * copy_flag * lt;
-        let if_copy_flag_next_is_0_then_and_updates_correctly = (copy_flag_next.clone()
-            - one.clone())
-            * (and - two.clone() * and_next - lhs_lsb.clone() * rhs_lsb.clone());
-        let if_copy_flag_next_is_0_then_xor_updates_correctly = (copy_flag_next.clone()
-            - one.clone())
-            * (xor - two.clone() * xor_next - lhs_lsb.clone() - rhs_lsb.clone()
-                + two * lhs_lsb * rhs_lsb.clone());
-        let if_copy_flag_next_is_0_and_lhs_next_is_0_and_lhs_is_nonzero_then_log2floor_is_bits =
+                * result.clone();
+        let if_copy_flag_next_is_0_and_ci_is_lt_and_result_still_not_known_then_result_is_2 =
             (copy_flag_next.clone() - one.clone())
-                * (one.clone() - lhs_next.clone() * lhs_inv_next)
-                * lhs
-                * (log2floor.clone() - bits);
-        let if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_log2floor_stays =
+                * instruction_deselector(Instruction::Lt)
+                * result_next.clone()
+                * (result_next.clone() - one.clone())
+                * (one.clone() - lhs_lsb.clone() - rhs_lsb.clone()
+                    + two.clone() * lhs_lsb.clone() * rhs_lsb.clone())
+                * (copy_flag.clone() - one.clone())
+                * (result.clone() - two.clone());
+        let if_copy_flag_next_is_0_and_ci_is_lt_and_copy_flag_dictates_result_then_result_is_0 =
             (copy_flag_next.clone() - one.clone())
-                * lhs_next.clone()
-                * (log2floor_next - log2floor);
-        let if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares = (copy_flag_next.clone()
-            - one.clone())
-            * (rhs_lsb.clone() - one.clone())
-            * (pow.clone() - pow_next.clone() * pow_next.clone());
-        let if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares_times_lhs_copy =
-            (copy_flag_next.clone() - one.clone())
-                * rhs_lsb
-                * (pow - pow_next.clone() * pow_next * lhs_copy);
+                * instruction_deselector(Instruction::Lt)
+                * result_next.clone()
+                * (result_next.clone() - one.clone())
+                * (one.clone() - lhs_lsb.clone() - rhs_lsb.clone()
+                    + two.clone() * lhs_lsb.clone() * rhs_lsb.clone())
+                * copy_flag
+                * result.clone();
 
+        // instruction and
+        let if_copy_flag_next_is_0_and_ci_is_and_then_results_updates_correctly =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::And)
+                * (result.clone()
+                    - two.clone() * result_next.clone()
+                    - lhs_lsb.clone() * rhs_lsb.clone());
+
+        // instruction xor
+        let if_copy_flag_next_is_0_and_ci_is_xor_then_results_updates_correctly =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Xor)
+                * (result.clone()
+                    - two.clone() * result_next.clone()
+                    - lhs_lsb.clone()
+                    - rhs_lsb.clone()
+                    + two * lhs_lsb * rhs_lsb.clone());
+
+        // instruction log_2_floor
+        let if_copy_flag_next_is_0_and_ci_is_log_2_floor_lhs_next_0_for_first_time_then_set_result =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Log2Floor)
+                * (one.clone() - lhs_next.clone() * lhs_inv_next)
+                * lhs.clone()
+                * (result.clone() - bits);
+        let if_copy_flag_next_is_0_and_ci_is_log_2_floor_and_lhs_next_not_0_then_copy_result =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Log2Floor)
+                * lhs_next.clone()
+                * (result_next.clone() - result.clone());
+
+        // instruction pow
+        let if_copy_flag_next_is_0_and_ci_is_pow_then_lhs_remains_unchanged =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Pow)
+                * (lhs_next.clone() - lhs.clone());
+
+        let if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_0_then_result_squares =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Pow)
+                * (rhs_lsb.clone() - one.clone())
+                * (result.clone() - result_next.clone() * result_next.clone());
+
+        let if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_1_then_result_squares_and_mults =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::Pow)
+                * rhs_lsb
+                * (result - result_next.clone() * result_next.clone() * lhs);
+
+        // running product with Processor Table
         let if_copy_flag_next_is_0_then_running_product_stays =
             (copy_flag_next.clone() - one) * (rp_next.clone() - rp.clone());
 
@@ -354,26 +352,26 @@ impl ExtU32Table {
             copy_flag_next * (rp_next - rp * (challenge(U32Indeterminate) - compressed_row_next));
 
         [
-            if_copy_flag_next_is_1_then_lhs_is_0,
+            if_copy_flag_next_is_1_then_lhs_is_0_or_ci_is_pow,
             if_copy_flag_next_is_1_then_rhs_is_0,
             if_copy_flag_next_is_0_then_ci_stays,
-            if_copy_flag_next_is_0_then_lhs_copy_stays,
-            if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_bits_increases_by_1,
+            if_copy_flag_next_is_0_and_lhs_next_is_nonzero_and_ci_not_pow_then_bits_increases_by_1,
             if_copy_flag_next_is_0_and_rhs_next_is_nonzero_then_bits_increases_by_1,
-            if_copy_flag_next_is_0_then_lhs_lsb_is_a_bit,
+            if_copy_flag_next_is_0_and_ci_not_pow_then_lhs_lsb_is_a_bit,
             if_copy_flag_next_is_0_then_rhs_lsb_is_a_bit,
-            if_copy_flag_next_is_0_and_lt_next_is_0_then_lt_is_0,
-            if_copy_flag_next_is_0_and_lt_next_is_1_then_lt_is_1,
-            if_copy_flag_next_is_0_and_lt_next_is_2_and_lt_known_then_lt_is_1,
-            if_copy_flag_next_is_0_and_lt_next_is_2_and_gte_known_then_lt_is_0,
-            if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_then_lt_is_2,
-            if_copy_flag_next_is_0_and_lt_next_is_2_and_lsbs_equal_in_top_row_then_lt_is_0,
-            if_copy_flag_next_is_0_then_and_updates_correctly,
-            if_copy_flag_next_is_0_then_xor_updates_correctly,
-            if_copy_flag_next_is_0_and_lhs_next_is_0_and_lhs_is_nonzero_then_log2floor_is_bits,
-            if_copy_flag_next_is_0_and_lhs_next_is_nonzero_then_log2floor_stays,
-            if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares,
-            if_copy_flag_next_is_0_and_rhs_lsb_is_0_then_pow_squares_times_lhs_copy,
+            if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_0_then_result_is_0,
+            if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_1_then_result_is_1,
+            if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_2_and_lt_is_0_then_result_is_0,
+            if_copy_flag_next_is_0_and_ci_is_lt_and_result_next_is_2_and_lt_is_1_then_result_is_1,
+            if_copy_flag_next_is_0_and_ci_is_lt_and_result_still_not_known_then_result_is_2,
+            if_copy_flag_next_is_0_and_ci_is_lt_and_copy_flag_dictates_result_then_result_is_0,
+            if_copy_flag_next_is_0_and_ci_is_and_then_results_updates_correctly,
+            if_copy_flag_next_is_0_and_ci_is_xor_then_results_updates_correctly,
+            if_copy_flag_next_is_0_and_ci_is_log_2_floor_lhs_next_0_for_first_time_then_set_result,
+            if_copy_flag_next_is_0_and_ci_is_log_2_floor_and_lhs_next_not_0_then_copy_result,
+            if_copy_flag_next_is_0_and_ci_is_pow_then_lhs_remains_unchanged,
+            if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_0_then_result_squares,
+            if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_1_then_result_squares_and_mults,
             if_copy_flag_next_is_0_then_running_product_stays,
             if_copy_flag_next_is_1_then_running_product_absorbs_next_row,
         ]
@@ -384,10 +382,17 @@ impl ExtU32Table {
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
+        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
         let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
         let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
 
-        [lhs, rhs].map(|circuit| circuit.consume()).to_vec()
+        let lhs_is_0_or_ci_is_pow =
+            lhs * (ci - circuit_builder.b_constant(Instruction::Pow.opcode_b()));
+        let rhs_is_0 = rhs;
+
+        [lhs_is_0_or_ci_is_pow, rhs_is_0]
+            .map(|circuit| circuit.consume())
+            .to_vec()
     }
 }
 
@@ -402,7 +407,6 @@ impl U32Table {
             first_row[[0, CI.base_table_index()]] = instruction.opcode_b();
             first_row[[0, LHS.base_table_index()]] = lhs;
             first_row[[0, RHS.base_table_index()]] = rhs;
-            first_row[[0, LhsCopy.base_table_index()]] = lhs;
             let u32_section = Self::u32_section_next_row(first_row);
 
             let next_section_end = next_section_start + u32_section.nrows();
@@ -420,14 +424,27 @@ impl U32Table {
         let thirty_three = BFieldElement::new(33);
 
         let row_idx = section.nrows() - 1;
-        if section[[row_idx, LHS.base_table_index()]].is_zero()
+
+        let current_instruction: Instruction = section[[row_idx, CI.base_table_index()]]
+            .value()
+            .try_into()
+            .expect("Unknown instruction");
+
+        if (section[[row_idx, LHS.base_table_index()]].is_zero()
+            || current_instruction == Instruction::Pow)
             && section[[row_idx, RHS.base_table_index()]].is_zero()
         {
-            section[[row_idx, LT.base_table_index()]] = two;
-            section[[row_idx, AND.base_table_index()]] = zero;
-            section[[row_idx, XOR.base_table_index()]] = zero;
-            section[[row_idx, Log2Floor.base_table_index()]] = -one;
-            section[[row_idx, Pow.base_table_index()]] = one;
+            section[[row_idx, Result.base_table_index()]] = match current_instruction {
+                Instruction::Split => zero,
+                Instruction::Lt => two,
+                Instruction::And => zero,
+                Instruction::Xor => zero,
+                Instruction::Log2Floor => -one,
+                Instruction::Pow => one,
+                _ => panic!("Must be u32 instruction, not {current_instruction}."),
+            };
+            section[[row_idx, LhsInv.base_table_index()]] =
+                section[[row_idx, LHS.base_table_index()]].inverse_or_zero();
             return section;
         }
 
@@ -438,8 +455,10 @@ impl U32Table {
         next_row[Bits.base_table_index()] += one;
         next_row[BitsMinus33Inv.base_table_index()] =
             (next_row[Bits.base_table_index()] - thirty_three).inverse();
-        next_row[LHS.base_table_index()] =
-            (section[[row_idx, LHS.base_table_index()]] - lhs_lsb) / two;
+        next_row[LHS.base_table_index()] = match current_instruction == Instruction::Pow {
+            true => section[[row_idx, LHS.base_table_index()]],
+            false => (section[[row_idx, LHS.base_table_index()]] - lhs_lsb) / two,
+        };
         next_row[RHS.base_table_index()] =
             (section[[row_idx, RHS.base_table_index()]] - rhs_lsb) / two;
 
@@ -450,45 +469,48 @@ impl U32Table {
         row[LhsInv.base_table_index()] = row[LHS.base_table_index()].inverse_or_zero();
         row[RhsInv.base_table_index()] = row[RHS.base_table_index()].inverse_or_zero();
 
-        row[LT.base_table_index()] = if next_row[LT.base_table_index()].is_zero() {
-            zero
-        } else if next_row[LT.base_table_index()].is_one() {
-            one
-        } else {
-            // LT == 2
-            if lhs_lsb.is_zero() && rhs_lsb.is_one() {
-                one
-            } else if lhs_lsb.is_one() && rhs_lsb.is_zero() {
-                zero
-            } else {
-                // lhs_lsb == rhs_lsb
-                if row[CopyFlag.base_table_index()].is_zero() {
-                    two
+        let next_row_result = next_row[Result.base_table_index()];
+        row[Result.base_table_index()] = match current_instruction {
+            Instruction::Split => next_row_result,
+            Instruction::Lt => {
+                if next_row_result.is_zero() || next_row_result.is_one() {
+                    // if result is known, keep it
+                    next_row_result
                 } else {
-                    zero
+                    // Result == 2, i.e., result unknown so far
+                    if lhs_lsb.is_zero() && rhs_lsb.is_one() {
+                        one
+                    } else if lhs_lsb.is_one() && rhs_lsb.is_zero() {
+                        zero
+                    } else {
+                        // lhs_lsb == rhs_lsb
+                        if row[CopyFlag.base_table_index()].is_one() {
+                            // LHS == RHS, i.e., LHS is not less than RHS
+                            zero
+                        } else {
+                            // result still unknown
+                            two
+                        }
+                    }
                 }
             }
-        };
-
-        row[AND.base_table_index()] = two * next_row[AND.base_table_index()] + lhs_lsb * rhs_lsb;
-        row[XOR.base_table_index()] =
-            two * next_row[XOR.base_table_index()] + lhs_lsb + rhs_lsb - two * lhs_lsb * rhs_lsb;
-
-        row[Log2Floor.base_table_index()] = if row[LHS.base_table_index()].is_zero() {
-            -one
-        } else if !next_row[LHS.base_table_index()].is_zero() {
-            next_row[Log2Floor.base_table_index()]
-        } else {
-            // next_row[LHS.base_table_index()].is_zero() && !row[LHS.base_table_index()].is_zero()
-            row[Bits.base_table_index()]
-        };
-
-        row[Pow.base_table_index()] = if rhs_lsb.is_zero() {
-            next_row[Pow.base_table_index()] * next_row[Pow.base_table_index()]
-        } else {
-            next_row[Pow.base_table_index()]
-                * next_row[Pow.base_table_index()]
-                * row[LhsCopy.base_table_index()]
+            Instruction::And => two * next_row_result + lhs_lsb * rhs_lsb,
+            Instruction::Xor => two * next_row_result + lhs_lsb + rhs_lsb - two * lhs_lsb * rhs_lsb,
+            Instruction::Log2Floor => {
+                if row[LHS.base_table_index()].is_zero() {
+                    -one
+                } else if !next_row[LHS.base_table_index()].is_zero() {
+                    next_row_result
+                } else {
+                    // LHS != 0 && LHS' == 0
+                    row[Bits.base_table_index()]
+                }
+            }
+            Instruction::Pow => match rhs_lsb.is_zero() {
+                true => next_row_result * next_row_result,
+                false => next_row_result * next_row_result * row[LHS.base_table_index()],
+            },
+            _ => panic!("Must be u32 instruction, not {current_instruction}."),
         };
 
         section
@@ -496,15 +518,15 @@ impl U32Table {
 
     pub fn pad_trace(u32_table: &mut ArrayViewMut2<BFieldElement>, u32_table_len: usize) {
         let mut padding_row = Array1::zeros([BASE_WIDTH]);
+        padding_row[[CI.base_table_index()]] = Instruction::Split.opcode_b();
         padding_row[[BitsMinus33Inv.base_table_index()]] = (-BFieldElement::new(33)).inverse();
-        padding_row[[LT.base_table_index()]] = BFieldElement::new(2);
-        padding_row[[Log2Floor.base_table_index()]] = -BFieldElement::one();
-        padding_row[[Pow.base_table_index()]] = BFieldElement::one();
 
         if u32_table_len > 0 {
             let last_row = u32_table.row(u32_table_len - 1);
             padding_row[[CI.base_table_index()]] = last_row[CI.base_table_index()];
-            padding_row[[LhsCopy.base_table_index()]] = last_row[LhsCopy.base_table_index()];
+            padding_row[[LHS.base_table_index()]] = last_row[LHS.base_table_index()];
+            padding_row[[LhsInv.base_table_index()]] = last_row[LhsInv.base_table_index()];
+            padding_row[[Result.base_table_index()]] = last_row[Result.base_table_index()];
         }
 
         u32_table
@@ -533,24 +555,10 @@ impl U32Table {
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
             if current_row[CopyFlag.base_table_index()].is_one() {
-                let current_instruction = current_row[CI.base_table_index()]
-                    .value()
-                    .try_into()
-                    .expect("Unknown instruction");
-                let result = match current_instruction {
-                    Instruction::Split => BFieldElement::zero(),
-                    Instruction::Lt => current_row[LT.base_table_index()],
-                    Instruction::And => current_row[AND.base_table_index()],
-                    Instruction::Xor => current_row[XOR.base_table_index()],
-                    Instruction::Log2Floor => current_row[Log2Floor.base_table_index()],
-                    Instruction::Pow => current_row[Pow.base_table_index()],
-                    ci => panic!("Instruction in U32 Table must be a u32 instruction. Got {ci}"),
-                };
-
                 let compressed_row = ci_weight * current_row[CI.base_table_index()]
                     + lhs_weight * current_row[LHS.base_table_index()]
                     + rhs_weight * current_row[RHS.base_table_index()]
-                    + result_weight * result;
+                    + result_weight * current_row[Result.base_table_index()];
                 running_product *= processor_perm_indeterminate - compressed_row;
             }
 

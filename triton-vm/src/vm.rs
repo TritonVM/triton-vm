@@ -491,16 +491,12 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Pow => {
-                let lhs = self.op_stack.pop_u32()?;
+                let lhs = self.op_stack.pop()?;
                 let rhs = self.op_stack.pop_u32()?;
-                let pow = BFieldElement::new(lhs as u64).mod_pow(rhs as u64);
+                let pow = lhs.mod_pow(rhs as u64);
                 self.op_stack.push(pow);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (
-                    Instruction::Pow,
-                    BFieldElement::new(lhs as u64),
-                    BFieldElement::new(rhs as u64),
-                );
+                let u32_table_entry = (Instruction::Pow, lhs, BFieldElement::new(rhs as u64));
                 vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
             }
 
@@ -1049,6 +1045,7 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::rescue_prime_digest::Digest;
     use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
     use twenty_first::shared_math::traits::FiniteField;
+    use twenty_first::shared_math::traits::ModPowU32;
     use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
     use twenty_first::util_types::algebraic_hasher::SpongeHasher;
     use twenty_first::util_types::merkle_tree::MerkleTree;
@@ -1566,6 +1563,7 @@ pub mod triton_vm_tests {
 
     pub fn test_program_for_pow() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
+            // push <exponent: u32> push <base: BFE> pow push <result: BFE> eq assert
             "push  0 push 0 pow push    1 eq assert \
              push  0 push 1 pow push    1 eq assert \
              push  0 push 2 pow push    1 eq assert \
@@ -1576,22 +1574,31 @@ pub mod triton_vm_tests {
              push 10 push 2 pow push 1024 eq assert \
              push  3 push 3 pow push   27 eq assert \
              push  3 push 5 pow push  125 eq assert \
-             push  9 push 7 pow push 40353607 eq assert halt",
+             push  9 push 7 pow push 40353607 eq assert \
+             push 3040597274 push 05218640216028681988 pow push 11160453713534536216 eq assert \
+             push 2378067562 push 13711477740065654150 pow push 06848017529532358230 eq assert \
+             push  129856251 push 00218966585049330803 pow push 08283208434666229347 eq assert \
+             push 1657936293 push 04999758396092641065 pow push 11426020017566937356 eq assert \
+             push 3474149688 push 05702231339458623568 pow push 02862889945380025510 eq assert \
+             push 2243935791 push 09059335263701504667 pow push 04293137302922963369 eq assert \
+             push 1783029319 push 00037306102533222534 pow push 10002149917806048099 eq assert \
+             push 3608140376 push 17716542154416103060 pow push 11885601801443303960 eq assert \
+             push 1220084884 push 07207865095616988291 pow push 05544378138345942897 eq assert \
+             push 3539668245 push 13491612301110950186 pow push 02612675697712040250 eq assert \
+             halt",
         )
     }
 
     pub fn property_based_test_program_for_pow() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
 
-        let base_0 = rng.next_u32();
-        let max_exponent = (32_f64 * f64::ln(2_f64) / f64::ln(base_0 as f64)).floor() as u32;
-        let exp_0 = rng.gen_range(0..max_exponent);
-        let result_0 = base_0.pow(exp_0);
+        let base_0: BFieldElement = rng.gen();
+        let exp_0 = rng.next_u32();
+        let result_0 = base_0.mod_pow_u32(exp_0);
 
-        let base_1 = rng.next_u32();
-        let max_exponent = (32_f64 * f64::ln(2_f64) / f64::ln(base_1 as f64)).floor() as u32;
-        let exp_1 = rng.gen_range(0..max_exponent);
-        let result_1 = base_0.pow(exp_1);
+        let base_1: BFieldElement = rng.gen();
+        let exp_1 = rng.next_u32();
+        let result_1 = base_1.mod_pow_u32(exp_1);
 
         let source_code = format!(
             "push {exp_0} push {base_0} pow read_io eq assert \
@@ -1599,7 +1606,7 @@ pub mod triton_vm_tests {
         );
         SourceCodeAndInput {
             source_code,
-            input: vec![result_0.into(), result_1.into()],
+            input: vec![result_0, result_1],
             secret_input: vec![],
         }
     }

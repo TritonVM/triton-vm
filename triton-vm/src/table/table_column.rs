@@ -270,38 +270,17 @@ pub enum U32BaseTableColumn {
     /// Left-hand side of the operation.
     LHS,
 
-    /// Right-hand side of the operation.
-    RHS,
-
-    /// The result (or intermediate result) of LHS < RHS.
-    /// Can take on the values 0, 1, or 2, where
-    /// - 0 means LHS >= RHS,
-    /// - 1 means LHS < RHS, and
-    /// - 2 means the result is unknown in the current row.
-    /// The value 2 can never occur in the first row of a section, _i.e._, when `CopyFlag` is 1.
-    LT,
-
-    /// The result (or intermediate result) of LHS & RHS, _i.e._, bitwise and.
-    AND,
-
-    /// The result (or intermediate result) of LHS ^ RHS, _i.e._, bitwise xor.
-    XOR,
-
-    /// The floor of log₂(LHS), _i.e._, the number of bits in LHS minus 1.
-    Log2Floor,
-
-    /// A copy of LHS in the first row in the current, independent section, _i.e._, when `CopyFlag`
-    /// was last 1. Needed for the computation of `Pow`.
-    LhsCopy,
-
-    /// The result (or intermediate result) of LHS ** RHS, _i.e._, LHS to the power of RHS.
-    Pow,
-
     /// The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to 0.
     LhsInv,
 
+    /// Right-hand side of the operation.
+    RHS,
+
     /// The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to 0.
     RhsInv,
+
+    /// The result (or intermediate result) of the instruction requested by the processor.
+    Result,
 }
 
 #[repr(usize)]
