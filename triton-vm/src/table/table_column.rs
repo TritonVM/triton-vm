@@ -107,7 +107,8 @@ pub enum ProcessorExtTableColumn {
     /// elements from the hash coprocessor, depending on the executed instruction.
     SpongeEvalArg,
 
-    U32TablePermArg,
+    /// The (running sum of the) logarithmic derivative for the Lookup Argument with the U32 Table.
+    U32LookupClientLogDerivative,
 
     /// The (running sum of the) logarithmic derivative for the clock jump difference Lookup
     /// Argument with the memory-like tables.
@@ -281,12 +282,18 @@ pub enum U32BaseTableColumn {
 
     /// The result (or intermediate result) of the instruction requested by the processor.
     Result,
+
+    /// The number of times the processor has executed the current instruction with the same
+    /// arguments.
+    LookupMultiplicity,
 }
 
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum U32ExtTableColumn {
-    ProcessorPermArg,
+    /// The (running sum of the) logarithmic derivative for the Lookup Argument with the
+    /// Processor Table.
+    LookupServerLogDerivative,
 }
 
 // --------------------------------------------------------------------

@@ -18,7 +18,7 @@ The Processor Table has the following extension columns, corresponding to [Evalu
 1. `RunningEvaluationHashInput` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the input to the hash function from the processor to the hash coprocessor.
 1. `RunningEvaluationHashDigest` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the hash digest from the hash coprocessor to the processor.
 1. `RunningEvaluationSponge` for the Evaluation Argument with the [Hash Table](hash-table.md) for copying the 10 next to-be-absorbed elements from the processor to the hash coprocessor or the 10 next squeezed elements from the hash coprocessor to the processor, depending on the instruction.
-1. `RunningProductU32Table` for the Permutation Argument with the [U32 Table](u32-table.md).
+1. `U32LookupClientLogDerivative` for the Lookup Argument with the [U32 Table](u32-table.md).
 1. `ClockJumpDifferenceLookupServerLogDerivative` for the Lookup Argument of clock jump differences with the [OpStack Table](operational-stack-table.md), the [RAM Table](random-access-memory-table.md), and the [JumpStack Table](jump-stack-table.md).
 
 ## Padding
@@ -89,7 +89,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
 1. `RunningEvaluationHashInput` has absorbed the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪 if the current instruction is `hash`. Otherwise, it is 1.
 1. `RunningEvaluationHashDigest` is 1.
 1. `RunningEvaluationSponge` is 1.
-1. `RunningProductU32Table` is 1.
+1. `U32LookupClientLogDerivative` is 0.
 1. `ClockJumpDifferenceLookupServerLogDerivative` is 0.
 
 ### Initial Constraints as Polynomials
@@ -130,7 +130,7 @@ However, in order to verify the correctness of `RunningEvaluationHashDigest`, th
     `+ hash_deselector·(RunningEvaluationHashInput - 🚪 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`
 1. `RunningEvaluationHashDigest - 1`
 1. `RunningEvaluationSponge - 1`
-1. `RunningProductU32Table - 1`
+1. `U32LookupClientLogDerivative`
 1. `ClockJumpDifferenceLookupServerLogDerivative`
 
 ## Consistency Constraints
@@ -178,13 +178,13 @@ The following additional constraints also apply to every pair of rows.
 1. If the current instruction in the next row is `hash`, the running evaluation “Hash Input” absorbs the next row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪. Otherwise, it remains unchanged.
 1. If the current instruction is `hash`, the running evaluation “Hash Digest” absorbs the next row with respect to challenges 🧄₀ through 🧄₄ and indeterminate 🪟. Otherwise, it remains unchanged.
 1. If the current instruction is `absorb_init`, `absorb`, or `squeeze`, then the running evaluation “Sponge” absorbs the current instruction and the next row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽. Otherwise, it remains unchanged.
-1.  1. If the current instruction is `split`, then the running product with the U32 Table absorbs `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
-    1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the running product with the U32 Table absorbs `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
-    1. If the current instruction is `log_2_floor`, then the running product with the U32 Table absorbs `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
-    1. If the current instruction is `div`, then the running product with the U32 Table absorbs both
+1.  1. If the current instruction is `split`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `st1` in the next row and `ci` in the current row with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
+    1. If the current instruction is `lt`, `and`, `xor`, or `pow`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0`, `st1`, and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
+    1. If the current instruction is `log_2_floor`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
+    1. If the current instruction is `div`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates both
         1. `st0` in the next row and `st1` in the current row as well as the constants `opcode(lt)` and `1` with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
         1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
-    1. Else, _i.e._, if the current instruction is not a u32 instruction, the running product with the U32 Table remains unchanged.
+    1. Else, _i.e._, if the current instruction is not a u32 instruction, the logarithmic derivative for the Lookup Argument with the U32 Table remains unchanged.
 1. The running sum for the logarithmic derivative of the clock jump difference lookup argument accumulates the next row's `clk` with the appropriate multiplicity `cjd_mul` with respect to indeterminate 🪞.
 
 ### Transition Constraints as Polynomials
@@ -208,14 +208,18 @@ The following additional constraints also apply to every pair of rows.
 1. `(ci - opcode(absorb_init))·(ci - opcode(absorb)·(ci - opcode(squeeze))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
     `+ (absorb_init_deselector + absorb_deselector + squeeze_deselector)`<br />
     `·(RunningEvaluationSponge' - 🧽·RunningEvaluationSponge - 🧅·ci - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`
-1.  1. `split_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1' - 🥑·ci))`
-    1. `+ lt_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
-    1. `+ and_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
-    1. `+ xor_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
-    1. `+ pow_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0'))`
-    1. `+ log_2_floor_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0'))`
-    1. `+ div_deselector·(RunningProductU32Table' - RunningProductU32Table·(🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕)·(🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split)))`
-    1. `+ (1 - ib2)·(RunningProductU32Table' - RunningProductU32Table)`
+1.  1. `split_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0' - 🌰·st1' - 🥑·ci) - 1)`
+    1. `+ lt_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
+    1. `+ and_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
+    1. `+ xor_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
+    1. `+ pow_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🌰·st1 - 🥑·ci - 🥕·st0') - 1)`
+    1. `+ log_2_floor_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0') - 1)`
+    1. `+ div_deselector·(`<br />
+    &emsp;&emsp;`(U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕·1)·(🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split))`<br />
+    &emsp;&emsp;`- (🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕·1)`<br />
+    &emsp;&emsp;`- (🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split))`<br />
+    &emsp;`)`
+    1. `+ (1 - ib2)·(U32LookupClientLogDerivative' - U32LookupClientLogDerivative)`
 1. `(ClockJumpDifferenceLookupServerLogDerivative' - ClockJumpDifferenceLookupServerLogDerivative)`<br />
     `·(🪞 - clk') - cjd_mul'`
 

@@ -28,7 +28,7 @@ use crate::table::constraint_circuit::InputIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
-use crate::table::cross_table_argument::PermArg;
+use crate::table::cross_table_argument::LookupArg;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::U32BaseTableColumn;
@@ -80,25 +80,29 @@ impl ExtU32Table {
         let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
         let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
         let result = circuit_builder.input(BaseRow(Result.master_base_table_index()));
+        let lookup_multiplicity =
+            circuit_builder.input(BaseRow(LookupMultiplicity.master_base_table_index()));
 
-        let rp = circuit_builder.input(ExtRow(ProcessorPermArg.master_ext_table_index()));
+        let running_sum_log_derivative =
+            circuit_builder.input(ExtRow(LookupServerLogDerivative.master_ext_table_index()));
 
-        let initial_factor = challenge(U32Indeterminate)
-            - challenge(U32LhsWeight) * lhs
-            - challenge(U32RhsWeight) * rhs
-            - challenge(U32CiWeight) * ci
-            - challenge(U32ResultWeight) * result;
-        let if_copy_flag_is_1_then_rp_has_accumulated_first_row =
-            copy_flag.clone() * (rp.clone() - initial_factor);
+        let compressed_row = challenge(U32LhsWeight) * lhs
+            + challenge(U32RhsWeight) * rhs
+            + challenge(U32CiWeight) * ci
+            + challenge(U32ResultWeight) * result;
+        let if_copy_flag_is_1_then_log_derivative_has_accumulated_first_row = copy_flag.clone()
+            * (running_sum_log_derivative.clone() * (challenge(U32Indeterminate) - compressed_row)
+                - lookup_multiplicity);
 
-        let default_initial = circuit_builder.x_constant(PermArg::default_initial());
-        let if_copy_flag_is_0_then_rp_is_default_initial =
-            (one - copy_flag) * (default_initial - rp);
+        let default_initial = circuit_builder.x_constant(LookupArg::default_initial());
+        let if_copy_flag_is_0_then_log_derivative_is_default_initial =
+            (copy_flag - one) * (running_sum_log_derivative - default_initial);
 
-        let running_product_starts_correctly = if_copy_flag_is_0_then_rp_is_default_initial
-            + if_copy_flag_is_1_then_rp_has_accumulated_first_row;
+        let running_sum_log_derivative_starts_correctly =
+            if_copy_flag_is_0_then_log_derivative_is_default_initial
+                + if_copy_flag_is_1_then_log_derivative_has_accumulated_first_row;
 
-        [running_product_starts_correctly]
+        [running_sum_log_derivative_starts_correctly]
             .map(|circuit| circuit.consume())
             .to_vec()
     }
@@ -118,6 +122,8 @@ impl ExtU32Table {
         let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
         let rhs_inv = circuit_builder.input(BaseRow(RhsInv.master_base_table_index()));
         let result = circuit_builder.input(BaseRow(Result.master_base_table_index()));
+        let lookup_multiplicity =
+            circuit_builder.input(BaseRow(LookupMultiplicity.master_base_table_index()));
 
         let instruction_deselector = |instruction_to_select| {
             Self::instruction_deselector(instruction_to_select, &circuit_builder, &ci)
@@ -165,8 +171,11 @@ impl ExtU32Table {
                 * (copy_flag.clone() - one.clone())
                 * (one.clone() - lhs.clone() * lhs_inv.clone())
                 * (result + one.clone());
-        let if_log_2_floor_on_0_then_vm_crashes =
-            instruction_deselector(Instruction::Log2Floor) * copy_flag * (one - lhs * lhs_inv);
+        let if_log_2_floor_on_0_then_vm_crashes = instruction_deselector(Instruction::Log2Floor)
+            * copy_flag.clone()
+            * (one.clone() - lhs * lhs_inv);
+        let if_copy_flag_is_0_then_lookup_multiplicity_is_0 =
+            (copy_flag - one) * lookup_multiplicity;
 
         [
             copy_flag_is_bit,
@@ -184,6 +193,7 @@ impl ExtU32Table {
             if_current_instruction_is_log_2_floor_then_rhs_is_0,
             result_is_initialized_correctly_for_log_2_floor,
             if_log_2_floor_on_0_then_vm_crashes,
+            if_copy_flag_is_0_then_lookup_multiplicity_is_0,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -201,7 +211,9 @@ impl ExtU32Table {
         let lhs = circuit_builder.input(CurrentBaseRow(LHS.master_base_table_index()));
         let rhs = circuit_builder.input(CurrentBaseRow(RHS.master_base_table_index()));
         let result = circuit_builder.input(CurrentBaseRow(Result.master_base_table_index()));
-        let rp = circuit_builder.input(CurrentExtRow(ProcessorPermArg.master_ext_table_index()));
+        let running_sum_log_derivative = circuit_builder.input(CurrentExtRow(
+            LookupServerLogDerivative.master_ext_table_index(),
+        ));
 
         let copy_flag_next = circuit_builder.input(NextBaseRow(CopyFlag.master_base_table_index()));
         let bits_next = circuit_builder.input(NextBaseRow(Bits.master_base_table_index()));
@@ -210,7 +222,11 @@ impl ExtU32Table {
         let rhs_next = circuit_builder.input(NextBaseRow(RHS.master_base_table_index()));
         let result_next = circuit_builder.input(NextBaseRow(Result.master_base_table_index()));
         let lhs_inv_next = circuit_builder.input(NextBaseRow(LhsInv.master_base_table_index()));
-        let rp_next = circuit_builder.input(NextExtRow(ProcessorPermArg.master_ext_table_index()));
+        let lookup_multiplicity_next =
+            circuit_builder.input(NextBaseRow(LookupMultiplicity.master_base_table_index()));
+        let running_sum_log_derivative_next = circuit_builder.input(NextExtRow(
+            LookupServerLogDerivative.master_ext_table_index(),
+        ));
 
         let instruction_deselector = |instruction_to_select: Instruction| {
             Self::instruction_deselector(instruction_to_select, &circuit_builder, &ci_next)
@@ -340,16 +356,20 @@ impl ExtU32Table {
                 * rhs_lsb
                 * (result - result_next.clone() * result_next.clone() * lhs);
 
-        // running product with Processor Table
-        let if_copy_flag_next_is_0_then_running_product_stays =
-            (copy_flag_next.clone() - one) * (rp_next.clone() - rp.clone());
+        // running sum for Lookup Argument with Processor Table
+        let if_copy_flag_next_is_0_then_running_sum_log_derivative_stays = (copy_flag_next.clone()
+            - one)
+            * (running_sum_log_derivative_next.clone() - running_sum_log_derivative.clone());
 
         let compressed_row_next = challenge(U32CiWeight) * ci_next
             + challenge(U32LhsWeight) * lhs_next
             + challenge(U32RhsWeight) * rhs_next
             + challenge(U32ResultWeight) * result_next;
-        let if_copy_flag_next_is_1_then_running_product_absorbs_next_row =
-            copy_flag_next * (rp_next - rp * (challenge(U32Indeterminate) - compressed_row_next));
+        let if_copy_flag_next_is_1_then_running_sum_log_derivative_accumulates_next_row =
+            copy_flag_next
+                * ((running_sum_log_derivative_next - running_sum_log_derivative)
+                    * (challenge(U32Indeterminate) - compressed_row_next)
+                    - lookup_multiplicity_next);
 
         [
             if_copy_flag_next_is_1_then_lhs_is_0_or_ci_is_pow,
@@ -372,8 +392,8 @@ impl ExtU32Table {
             if_copy_flag_next_is_0_and_ci_is_pow_then_lhs_remains_unchanged,
             if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_0_then_result_squares,
             if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_1_then_result_squares_and_mults,
-            if_copy_flag_next_is_0_then_running_product_stays,
-            if_copy_flag_next_is_1_then_running_product_absorbs_next_row,
+            if_copy_flag_next_is_0_then_running_sum_log_derivative_stays,
+            if_copy_flag_next_is_1_then_running_sum_log_derivative_accumulates_next_row,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -399,7 +419,7 @@ impl ExtU32Table {
 impl U32Table {
     pub fn fill_trace(u32_table: &mut ArrayViewMut2<BFieldElement>, aet: &AlgebraicExecutionTrace) {
         let mut next_section_start = 0;
-        for &(instruction, lhs, rhs) in aet.u32_entries.iter() {
+        for (&(instruction, lhs, rhs), &multiplicity) in aet.u32_entries.iter() {
             let mut first_row = Array2::zeros([1, BASE_WIDTH]);
             first_row[[0, CopyFlag.base_table_index()]] = BFieldElement::one();
             first_row[[0, Bits.base_table_index()]] = BFieldElement::zero();
@@ -407,6 +427,8 @@ impl U32Table {
             first_row[[0, CI.base_table_index()]] = instruction.opcode_b();
             first_row[[0, LHS.base_table_index()]] = lhs;
             first_row[[0, RHS.base_table_index()]] = rhs;
+            first_row[[0, LookupMultiplicity.base_table_index()]] =
+                BFieldElement::new(multiplicity);
             let u32_section = Self::u32_section_next_row(first_row);
 
             let next_section_end = next_section_start + u32_section.nrows();
@@ -461,6 +483,7 @@ impl U32Table {
         };
         next_row[RHS.base_table_index()] =
             (section[[row_idx, RHS.base_table_index()]] - rhs_lsb) / two;
+        next_row[LookupMultiplicity.base_table_index()] = zero;
 
         section.push_row(next_row.view()).unwrap();
         section = Self::u32_section_next_row(section);
@@ -549,21 +572,23 @@ impl U32Table {
         let lhs_weight = challenges.get_challenge(U32LhsWeight);
         let rhs_weight = challenges.get_challenge(U32RhsWeight);
         let result_weight = challenges.get_challenge(U32ResultWeight);
-        let processor_perm_indeterminate = challenges.get_challenge(U32Indeterminate);
+        let lookup_indeterminate = challenges.get_challenge(U32Indeterminate);
 
-        let mut running_product = PermArg::default_initial();
+        let mut running_sum_log_derivative = LookupArg::default_initial();
         for row_idx in 0..base_table.nrows() {
             let current_row = base_table.row(row_idx);
             if current_row[CopyFlag.base_table_index()].is_one() {
+                let lookup_multiplicity = current_row[LookupMultiplicity.base_table_index()];
                 let compressed_row = ci_weight * current_row[CI.base_table_index()]
                     + lhs_weight * current_row[LHS.base_table_index()]
                     + rhs_weight * current_row[RHS.base_table_index()]
                     + result_weight * current_row[Result.base_table_index()];
-                running_product *= processor_perm_indeterminate - compressed_row;
+                running_sum_log_derivative +=
+                    lookup_multiplicity * (lookup_indeterminate - compressed_row).inverse();
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
-            extension_row[ProcessorPermArg.ext_table_index()] = running_product;
+            extension_row[LookupServerLogDerivative.ext_table_index()] = running_sum_log_derivative;
         }
     }
 }

@@ -153,7 +153,7 @@ impl ProcessorTable {
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
         let mut sponge_running_evaluation = EvalArg::default_initial();
-        let mut u32_table_running_product = PermArg::default_initial();
+        let mut u32_table_running_sum_log_derivative = LookupArg::default_initial();
         let mut clock_jump_diff_lookup_op_stack_log_derivative = LookupArg::default_initial();
 
         let mut previous_row: Option<ArrayView1<BFieldElement>> = None;
@@ -291,44 +291,55 @@ impl ProcessorTable {
             if let Some(prev_row) = previous_row {
                 let previously_current_instruction = prev_row[CI.base_table_index()];
                 if previously_current_instruction == Instruction::Split.opcode_b() {
-                    u32_table_running_product *= challenges.get_challenge(U32Indeterminate)
-                        - current_row[ST0.base_table_index()]
-                            * challenges.get_challenge(U32LhsWeight)
-                        - current_row[ST1.base_table_index()]
+                    let compressed_row = current_row[ST0.base_table_index()]
+                        * challenges.get_challenge(U32LhsWeight)
+                        + current_row[ST1.base_table_index()]
                             * challenges.get_challenge(U32RhsWeight)
-                        - prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight);
+                        + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight);
+                    u32_table_running_sum_log_derivative +=
+                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
                 }
                 if previously_current_instruction == Instruction::Lt.opcode_b()
                     || previously_current_instruction == Instruction::And.opcode_b()
                     || previously_current_instruction == Instruction::Xor.opcode_b()
                     || previously_current_instruction == Instruction::Pow.opcode_b()
                 {
-                    u32_table_running_product *= challenges.get_challenge(U32Indeterminate)
-                        - prev_row[ST0.base_table_index()] * challenges.get_challenge(U32LhsWeight)
-                        - prev_row[ST1.base_table_index()] * challenges.get_challenge(U32RhsWeight)
-                        - prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
-                        - current_row[ST0.base_table_index()]
+                    let compressed_row = prev_row[ST0.base_table_index()]
+                        * challenges.get_challenge(U32LhsWeight)
+                        + prev_row[ST1.base_table_index()] * challenges.get_challenge(U32RhsWeight)
+                        + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
+                        + current_row[ST0.base_table_index()]
                             * challenges.get_challenge(U32ResultWeight);
+                    u32_table_running_sum_log_derivative +=
+                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
                 }
                 if previously_current_instruction == Instruction::Log2Floor.opcode_b() {
-                    u32_table_running_product *= challenges.get_challenge(U32Indeterminate)
-                        - prev_row[ST0.base_table_index()] * challenges.get_challenge(U32LhsWeight)
-                        - prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
-                        - current_row[ST0.base_table_index()]
+                    let compressed_row = prev_row[ST0.base_table_index()]
+                        * challenges.get_challenge(U32LhsWeight)
+                        + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
+                        + current_row[ST0.base_table_index()]
                             * challenges.get_challenge(U32ResultWeight);
+                    u32_table_running_sum_log_derivative +=
+                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
                 }
                 if previously_current_instruction == Instruction::Div.opcode_b() {
-                    u32_table_running_product *= challenges.get_challenge(U32Indeterminate)
-                        - current_row[ST0.base_table_index()]
-                            * challenges.get_challenge(U32LhsWeight)
-                        - prev_row[ST1.base_table_index()] * challenges.get_challenge(U32RhsWeight)
-                        - Instruction::Lt.opcode_b() * challenges.get_challenge(U32CiWeight)
-                        - BFieldElement::one() * challenges.get_challenge(U32ResultWeight);
-                    u32_table_running_product *= challenges.get_challenge(U32Indeterminate)
-                        - prev_row[ST0.base_table_index()] * challenges.get_challenge(U32LhsWeight)
-                        - current_row[ST1.base_table_index()]
+                    let compressed_row_for_lt_check = current_row[ST0.base_table_index()]
+                        * challenges.get_challenge(U32LhsWeight)
+                        + prev_row[ST1.base_table_index()] * challenges.get_challenge(U32RhsWeight)
+                        + Instruction::Lt.opcode_b() * challenges.get_challenge(U32CiWeight)
+                        + BFieldElement::one() * challenges.get_challenge(U32ResultWeight);
+                    let compressed_row_for_range_check = prev_row[ST0.base_table_index()]
+                        * challenges.get_challenge(U32LhsWeight)
+                        + current_row[ST1.base_table_index()]
                             * challenges.get_challenge(U32RhsWeight)
-                        - Instruction::Split.opcode_b() * challenges.get_challenge(U32CiWeight);
+                        + Instruction::Split.opcode_b() * challenges.get_challenge(U32CiWeight);
+                    u32_table_running_sum_log_derivative +=
+                        (challenges.get_challenge(U32Indeterminate) - compressed_row_for_lt_check)
+                            .inverse();
+                    u32_table_running_sum_log_derivative += (challenges
+                        .get_challenge(U32Indeterminate)
+                        - compressed_row_for_range_check)
+                        .inverse();
                 }
             }
 
@@ -350,7 +361,8 @@ impl ProcessorTable {
             extension_row[HashInputEvalArg.ext_table_index()] = hash_input_running_evaluation;
             extension_row[HashDigestEvalArg.ext_table_index()] = hash_digest_running_evaluation;
             extension_row[SpongeEvalArg.ext_table_index()] = sponge_running_evaluation;
-            extension_row[U32TablePermArg.ext_table_index()] = u32_table_running_product;
+            extension_row[U32LookupClientLogDerivative.ext_table_index()] =
+                u32_table_running_sum_log_derivative;
             extension_row[ClockJumpDifferenceLookupServerLogDerivative.ext_table_index()] =
                 clock_jump_diff_lookup_op_stack_log_derivative;
             previous_row = Some(current_row);
@@ -581,8 +593,9 @@ impl ExtProcessorTable {
             factory.running_evaluation_sponge() - constant_x(EvalArg::default_initial());
 
         // u32 table
-        let running_product_for_u32_table_is_initialized_correctly =
-            factory.running_product_u32_table() - constant_x(PermArg::default_initial());
+        let running_sum_log_derivative_for_u32_table_is_initialized_correctly = factory
+            .u32_table_running_sum_log_derivative()
+            - constant_x(LookupArg::default_initial());
 
         [
             clk_is_0,
@@ -621,7 +634,7 @@ impl ExtProcessorTable {
             running_evaluation_hash_input_is_initialized_correctly,
             running_evaluation_hash_digest_is_initialized_correctly,
             running_evaluation_sponge_absorb_is_initialized_correctly,
-            running_product_for_u32_table_is_initialized_correctly,
+            running_sum_log_derivative_for_u32_table_is_initialized_correctly,
         ]
         .map(|circuit| circuit.consume())
         .to_vec()
@@ -1010,8 +1023,10 @@ impl SingleRowConstraints {
     pub fn running_evaluation_sponge(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
         self.ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_product_u32_table(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
+    pub fn u32_table_running_sum_log_derivative(
+        &self,
+    ) -> ConstraintCircuitMonad<SingleRowIndicator> {
+        self.ext_row_variables[U32LookupClientLogDerivative.master_ext_table_index()].clone()
     }
 }
 
@@ -2041,8 +2056,9 @@ impl DualRowConstraints {
     pub fn running_evaluation_sponge(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
         self.current_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_product_u32_table(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
+    pub fn u32_table_running_sum_log_derivative(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
+        self.current_ext_row_variables[U32LookupClientLogDerivative.master_ext_table_index()]
+            .clone()
     }
 
     // Property: All polynomial variables that contain '_next' have the same
@@ -2239,8 +2255,10 @@ impl DualRowConstraints {
     pub fn running_evaluation_sponge_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
         self.next_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
     }
-    pub fn running_product_u32_table_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[U32TablePermArg.master_ext_table_index()].clone()
+    pub fn u32_table_running_sum_log_derivative_next(
+        &self,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        self.next_ext_row_variables[U32LookupClientLogDerivative.master_ext_table_index()].clone()
     }
 
     pub fn decompose_arg(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
@@ -2716,15 +2734,15 @@ impl DualRowConstraints {
         let split_deselector =
             InstructionDeselectors::instruction_deselector(self, Instruction::Split);
         let lt_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Lt);
-        let and_delector = InstructionDeselectors::instruction_deselector(self, Instruction::And);
+        let and_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::And);
         let xor_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Xor);
         let pow_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Pow);
         let log_2_floor_deselector =
             InstructionDeselectors::instruction_deselector(self, Instruction::Log2Floor);
         let div_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Div);
 
-        let rp = self.running_product_u32_table();
-        let rp_next = self.running_product_u32_table_next();
+        let running_sum = self.u32_table_running_sum_log_derivative();
+        let running_sum_next = self.u32_table_running_sum_log_derivative_next();
 
         let split_factor = indeterminate.clone()
             - lhs_weight.clone() * self.st0_next()
@@ -2749,16 +2767,28 @@ impl DualRowConstraints {
             - rhs_weight * self.st1_next()
             - ci_weight * self.constant_b(Instruction::Split.opcode_b());
 
-        let split_summand = split_deselector * (rp_next.clone() - rp.clone() * split_factor);
-        let lt_summand = lt_deselector * (rp_next.clone() - rp.clone() * binop_factor.clone());
-        let and_summand = and_delector * (rp_next.clone() - rp.clone() * binop_factor.clone());
-        let xor_summand = xor_deselector * (rp_next.clone() - rp.clone() * binop_factor.clone());
-        let pow_summand = pow_deselector * (rp_next.clone() - rp.clone() * binop_factor);
-        let log_2_floor_summand =
-            log_2_floor_deselector * (rp_next.clone() - rp.clone() * unop_factor);
+        let split_summand = split_deselector
+            * ((running_sum_next.clone() - running_sum.clone()) * split_factor - self.one());
+        let lt_summand = lt_deselector
+            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor.clone()
+                - self.one());
+        let and_summand = and_deselector
+            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor.clone()
+                - self.one());
+        let xor_summand = xor_deselector
+            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor.clone()
+                - self.one());
+        let pow_summand = pow_deselector
+            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor - self.one());
+        let log_2_floor_summand = log_2_floor_deselector
+            * ((running_sum_next.clone() - running_sum.clone()) * unop_factor - self.one());
         let div_summand = div_deselector
-            * (rp_next.clone() - rp.clone() * div_factor_for_lt * div_factor_for_range_check);
-        let no_update_summand = (self.one() - self.ib2()) * (rp_next - rp);
+            * ((running_sum_next.clone() - running_sum.clone())
+                * div_factor_for_lt.clone()
+                * div_factor_for_range_check.clone()
+                - div_factor_for_lt
+                - div_factor_for_range_check);
+        let no_update_summand = (self.one() - self.ib2()) * (running_sum_next - running_sum);
 
         split_summand
             + lt_summand
@@ -3083,7 +3113,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
         row(f, "hash_input_ea", HashInputEvalArg)?;
         row(f, "hash_digest_ea", HashDigestEvalArg)?;
         row(f, "sponge_absorb_ea", SpongeEvalArg)?;
-        row(f, "u32_table_ea", U32TablePermArg)?;
+        row(f, "u32_table_pa", U32LookupClientLogDerivative)?;
         write!(
             f,
             "     ╰───────────────────────────────────────────────────────\

@@ -14,17 +14,18 @@ Hence, the result of the instruction can be transferred into the processor withi
 
 ## Base Columns
 
-| name             | description                                                                                   |
-|:-----------------|:----------------------------------------------------------------------------------------------|
-| `CopyFlag`       | The row to be copied between processor and u32 coprocessor. Marks the beginning of a section. |
-| `CI`             | Current instruction, the instruction the processor is currently executing.                    |
-| `Bits`           | The number of bits that LHS and RHS have already been shifted by.                             |
-| `BitsMinus33Inv` | The inverse-or-zero of the difference between 33 and `Bits`.                                  |
-| `LHS`            | Left-hand side of the operation. Usually corresponds to the processor's `st0`.                |
-| `LhsInv`         | The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to 0.                    |
-| `RHS`            | Right-hand side of the operation. Usually corresponds to the processor's `st1`.               |
-| `RhsInv`         | The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to 0.                    |
-| `Result`         | The result (or intermediate result) of the instruction requested by the processor.            |
+| name                 | description                                                                                     |
+|:---------------------|:------------------------------------------------------------------------------------------------|
+| `CopyFlag`           | The row to be copied between processor and u32 coprocessor. Marks the beginning of a section.   |
+| `CI`                 | Current instruction, the instruction the processor is currently executing.                      |
+| `Bits`               | The number of bits that LHS and RHS have already been shifted by.                               |
+| `BitsMinus33Inv`     | The inverse-or-zero of the difference between 33 and `Bits`.                                    |
+| `LHS`                | Left-hand side of the operation. Usually corresponds to the processor's `st0`.                  |
+| `LhsInv`             | The inverse-or-zero of LHS. Needed to check whether `LHS` is unequal to 0.                      |
+| `RHS`                | Right-hand side of the operation. Usually corresponds to the processor's `st1`.                 |
+| `RhsInv`             | The inverse-or-zero of RHS. Needed to check whether `RHS` is unequal to 0.                      |
+| `Result`             | The result (or intermediate result) of the instruction requested by the processor.              |
+| `LookupMultiplicity` | The number of times the processor has executed the current instruction with the same arguments. |
 
 An example U32 Table follows.
 Some columns are omitted for presentation reasons.
@@ -98,8 +99,8 @@ It is impossible to create a valid proof of correct execution of Triton VM if `B
 
 ## Extension Columns
 
-The U32 Table has 1 extension column, `RunningProductProcessor`.
-It corresponds to the Permutation Argument with the [Processor Table](processor-table.md), establishing that whenever the processor executes a u32 instruction, the following holds:
+The U32 Table has 1 extension column, `U32LookupServerLogDerivative`.
+It corresponds to the [Lookup Argument](lookup-argument.md) with the [Processor Table](processor-table.md), establishing that whenever the processor executes a u32 instruction, the following holds:
 
 - the processor's requested left-hand side is copied into `LHS`,
 - the processor's requested right-hand side is copied into `RHS`,
@@ -123,13 +124,13 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ## Initial Constraints
 
-1. If the `CopyFlag` is 0, then `RunningProductProcessor` is 1.
-Otherwise, the `RunningProductProcessor` has absorbed the first row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
+1. If the `CopyFlag` is 0, then `U32LookupServerLogDerivative` is 0.
+Otherwise, the `U32LookupServerLogDerivative` has accumulated the first row with multiplicity `LookupMultiplicity` and with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
 
 ### Initial Constraints as Polynomials
 
-1. `(CopyFlag - 1)·(RunningProductProcessor - 1)`<br />
-    `+ CopyFlag·(RunningProductProcessor - (🧷 - 🥜·LHS - 🌰·RHS - 🥑·CI - 🥕·Result))`
+1. `(CopyFlag - 1)·U32LookupServerLogDerivative`<br />
+    `+ CopyFlag·(U32LookupServerLogDerivative·(🧷 - 🥜·LHS - 🌰·RHS - 🥑·CI - 🥕·Result) - LookupMultiplicity)`
 
 ## Consistency Constraints
 
@@ -148,6 +149,7 @@ Otherwise, the `RunningProductProcessor` has absorbed the first row with respect
 1. If the current instruction is `log_2_floor`, then `RHS` is 0.
 1. If `CopyFlag` is 0 and the current instruction is `log_2_floor` and `LHS` is 0, then `Result` is -1.
 1. If `CopyFlag` is 1 and the current instruction is `log_2_floor` and `LHS` is 0, the VM crashes.
+1. If `CopyFlag` is 0, then `LookupMultiplicity` is 0.
 
 Written in Disjunctive Normal Form, the same constraints can be expressed as:
 
@@ -166,6 +168,7 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `RHS` is 0.
 1. `CopyFlag` is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `LHS` is not 0 or `Result` is -1.
 1. `CopyFlag` is 0 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `LHS` is not 0.
+1. `CopyFlag` is 1 or `LookupMultiplicity` is 0.
 
 ### Consistency Constraints as Polynomials
 
@@ -184,6 +187,7 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·RHS`
 1. `(CopyFlag - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(1 - LHS·LhsInv)·(Result + 1)`
 1. `CopyFlag·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(1 - LHS·LhsInv)`
+1. `(CopyFlag - 1)·LookupMultiplicity`
 
 ## Transition Constraints
 
@@ -211,8 +215,8 @@ These aliases, _i.e._, `LhsLsb` := `LHS - 2·LHS'` and `RhsLsb` := `RHS - 2·RHS
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `pow`, then `LHS` remains unchanged.
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `pow` and `RhsLsb` in the current row is 0, then `Result` in the current row is `Result` in the next row squared.
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `pow` and `RhsLsb` in the current row is 1, then `Result` in the current row is `Result` in the next row squared times `LHS` in the current row.
-1. If the `CopyFlag` in the next row is 0, then `RunningProductProcessor` in the next row is `RunningProductProcessor` in the current row.
-1. If the `CopyFlag` in the next row is 1, then `RunningProductProcessor` in the next row has absorbed the next row with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
+1. If the `CopyFlag` in the next row is 0, then `U32LookupServerLogDerivative` in the next row is `U32LookupServerLogDerivative` in the current row.
+1. If the `CopyFlag` in the next row is 1, then `U32LookupServerLogDerivative` in the next row has accumulated the next row with multiplicity `LookupMultiplicity` and with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
 
 Written in Disjunctive Normal Form, the same constraints can be expressed as:
 
@@ -236,8 +240,8 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `log_2_floor` or `LHS`' is `LHS`.
 1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `log_2_floor` or `RhsLsb` is 1 or `Result` is `Result`' times `Result`'.
 1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `log_2_floor` or `RhsLsb` is 0 or `Result` is `Result`' times `Result`' times `LHS`.
-1. `CopyFlag`' is 1 or `RunningProductProcessor`' is `RunningProductProcessor`.
-1. `CopyFlag`' is 0 or `RunningProductProcessor`' is `RunningProductProcessor` times `(🧷 - 🥜·LHS' - 🌰·RHS' - 🥑·CI' - 🥕·Result')`.
+1. `CopyFlag`' is 1 or `U32LookupServerLogDerivative`' is `U32LookupServerLogDerivative`.
+1. `CopyFlag`' is 0 or the difference of `U32LookupServerLogDerivative`' and `U32LookupServerLogDerivative` times `(🧷 - 🥜·LHS' - 🌰·RHS' - 🥑·CI' - 🥕·Result')` is `LookupMultiplicity`'.
 
 ### Transition Constraints as Polynomials
 
@@ -261,8 +265,8 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(log_2_floor))·(LHS' - LHS)`
 1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(log_2_floor))·(RhsLsb - 1)·(Result - Result'·Result')`
 1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(log_2_floor))·(RhsLsb - 0)·(Result - Result'·Result'·LHS)`
-1. `(CopyFlag' - 1)·(RunningProductProcessor' - RunningProductProcessor)`
-1. `(CopyFlag' - 0)·(RunningProductProcessor' - RunningProductProcessor·(🧷 - 🥜·LHS - 🌰·RHS - 🥑·CI - 🥕·Result))`
+1. `(CopyFlag' - 1)·(U32LookupServerLogDerivative' - U32LookupServerLogDerivative)`
+1. `(CopyFlag' - 0)·((U32LookupServerLogDerivative' - U32LookupServerLogDerivative)·(🧷 - 🥜·LHS - 🌰·RHS - 🥑·CI - 🥕·Result) - LookupMultiplicity')`
 
 ## Terminal Constraints
 

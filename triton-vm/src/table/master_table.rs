@@ -336,7 +336,8 @@ impl MasterBaseTable {
 
     pub fn u32_table_length(aet: &AlgebraicExecutionTrace) -> usize {
         aet.u32_entries
-            .iter()
+            .keys()
+            .into_iter()
             .map(|(instruction, lhs, rhs)| match instruction {
                 // for instruction `pow`, the left-hand side doesn't change between rows
                 Instruction::Pow => rhs.value(),

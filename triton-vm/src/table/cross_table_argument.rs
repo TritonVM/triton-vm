@@ -185,8 +185,8 @@ impl Evaluable for GrandCrossTableArg {
         let sponge = ext_row[ProcessorExtTableColumn::SpongeEvalArg.master_ext_table_index()]
             - ext_row[HashExtTableColumn::SpongeRunningEvaluation.master_ext_table_index()];
         let processor_to_u32 = ext_row
-            [ProcessorExtTableColumn::U32TablePermArg.master_ext_table_index()]
-            - ext_row[U32ExtTableColumn::ProcessorPermArg.master_ext_table_index()];
+            [ProcessorExtTableColumn::U32LookupClientLogDerivative.master_ext_table_index()]
+            - ext_row[U32ExtTableColumn::LookupServerLogDerivative.master_ext_table_index()];
         let clock_jump_difference_lookup = ext_row
             [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivative
                 .master_ext_table_index()]

@@ -862,8 +862,13 @@ pub fn simulate(
             Some(VMOutput::XlixTrace(instruction, xlix_trace)) => {
                 aet.append_sponge_trace(instruction, *xlix_trace)
             }
-            Some(VMOutput::U32TableEntries(mut entries)) => {
-                aet.u32_entries.append(&mut entries);
+            Some(VMOutput::U32TableEntries(u32_entries)) => {
+                for u32_entry in u32_entries {
+                    aet.u32_entries
+                        .entry(u32_entry)
+                        .and_modify(|multiplicity| *multiplicity += 1)
+                        .or_insert(1);
+                }
             }
             Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
             None => (),
@@ -937,8 +942,9 @@ pub struct AlgebraicExecutionTrace {
     pub sponge_trace: Array2<BFieldElement>,
 
     /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
-    /// alongside the u32 instruction that was executed at the time.
-    pub u32_entries: Vec<(Instruction, BFieldElement, BFieldElement)>,
+    /// alongside the u32 instruction that was executed at the time. Additionally, it records how
+    /// often the instruction was executed with these arguments.
+    pub u32_entries: HashMap<(Instruction, BFieldElement, BFieldElement), u64>,
 }
 
 impl AlgebraicExecutionTrace {
@@ -950,7 +956,7 @@ impl AlgebraicExecutionTrace {
             processor_trace: Array2::default([0, processor_table::BASE_WIDTH]),
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
-            u32_entries: vec![],
+            u32_entries: HashMap::new(),
         }
     }
 
