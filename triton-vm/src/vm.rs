@@ -43,11 +43,11 @@ use crate::table::hash_table;
 use crate::table::hash_table::NUM_ROUND_CONSTANTS;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
-use crate::table::table_column::BaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::CI;
 use crate::table::table_column::HashBaseTableColumn::CONSTANT0A;
 use crate::table::table_column::HashBaseTableColumn::ROUNDNUMBER;
 use crate::table::table_column::HashBaseTableColumn::STATE0;
+use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 
 /// The number of helper variable registers

@@ -1,6 +1,5 @@
-//! Enums that convert table column names into `usize` indices
-//!
-//! Allows addressing columns by name rather than their hard-to-remember index.
+//! Enums that convert table column names into `usize` indices. Allows addressing columns by name
+//! rather than their hard-to-remember index.
 
 use std::hash::Hash;
 
@@ -313,121 +312,25 @@ pub enum U32ExtTableColumn {
 
 // --------------------------------------------------------------------
 
-pub trait BaseTableColumn {
+/// A trait for the columns of the master base table. This trait is implemented for all enums
+/// relating to the base tables. This trait provides two methods:
+/// - one to get the index of the column in the ”local“ base table, _i.e., not the master base
+/// table, and
+/// - one to get the index of the column in the master base table.
+pub trait MasterBaseTableColumn {
+    /// The index of the column in the ”local“ base table, _i.e., not the master base table.
     fn base_table_index(&self) -> usize;
-}
 
-impl BaseTableColumn for ProgramBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl BaseTableColumn for ProcessorBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl BaseTableColumn for OpStackBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl BaseTableColumn for RamBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl BaseTableColumn for JumpStackBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl BaseTableColumn for HashBaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl BaseTableColumn for U32BaseTableColumn {
-    #[inline]
-    fn base_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-// --------------------------------------------------------------------
-
-pub trait ExtTableColumn {
-    fn ext_table_index(&self) -> usize;
-}
-
-impl ExtTableColumn for ProgramExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl ExtTableColumn for ProcessorExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl ExtTableColumn for OpStackExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl ExtTableColumn for RamExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl ExtTableColumn for JumpStackExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl ExtTableColumn for HashExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-impl ExtTableColumn for U32ExtTableColumn {
-    #[inline]
-    fn ext_table_index(&self) -> usize {
-        (*self) as usize
-    }
-}
-
-// --------------------------------------------------------------------
-
-pub trait MasterBaseTableColumn: BaseTableColumn {
+    /// The index of the column in the master base table.
     fn master_base_table_index(&self) -> usize;
 }
 
 impl MasterBaseTableColumn for ProgramBaseTableColumn {
+    #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_base_table_index(&self) -> usize {
         PROGRAM_TABLE_START + self.base_table_index()
@@ -436,12 +339,22 @@ impl MasterBaseTableColumn for ProgramBaseTableColumn {
 
 impl MasterBaseTableColumn for ProcessorBaseTableColumn {
     #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
     fn master_base_table_index(&self) -> usize {
         PROCESSOR_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for OpStackBaseTableColumn {
+    #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_base_table_index(&self) -> usize {
         OP_STACK_TABLE_START + self.base_table_index()
@@ -450,12 +363,22 @@ impl MasterBaseTableColumn for OpStackBaseTableColumn {
 
 impl MasterBaseTableColumn for RamBaseTableColumn {
     #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
     fn master_base_table_index(&self) -> usize {
         RAM_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for JumpStackBaseTableColumn {
+    #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_base_table_index(&self) -> usize {
         JUMP_STACK_TABLE_START + self.base_table_index()
@@ -464,12 +387,22 @@ impl MasterBaseTableColumn for JumpStackBaseTableColumn {
 
 impl MasterBaseTableColumn for HashBaseTableColumn {
     #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
     fn master_base_table_index(&self) -> usize {
         HASH_TABLE_START + self.base_table_index()
     }
 }
 
 impl MasterBaseTableColumn for U32BaseTableColumn {
+    #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_base_table_index(&self) -> usize {
         U32_TABLE_START + self.base_table_index()
@@ -478,11 +411,26 @@ impl MasterBaseTableColumn for U32BaseTableColumn {
 
 // --------------------------------------------------------------------
 
-pub trait MasterExtTableColumn: ExtTableColumn {
+/// A trait for the columns in the master extension table. This trait is implemented for all enums
+/// relating to the extension tables. The trait provides two methods:
+/// - one to get the index of the column in the “local” extension table, _i.e._, not the master
+/// extension table, and
+/// - one to get the index of the column in the master extension table.
+pub trait MasterExtTableColumn {
+    /// The index of the column in the “local” extension table, _i.e._, not the master extension
+    /// table.
+    fn ext_table_index(&self) -> usize;
+
+    /// The index of the column in the master extension table.
     fn master_ext_table_index(&self) -> usize;
 }
 
 impl MasterExtTableColumn for ProgramExtTableColumn {
+    #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_PROGRAM_TABLE_START + self.ext_table_index()
@@ -491,12 +439,22 @@ impl MasterExtTableColumn for ProgramExtTableColumn {
 
 impl MasterExtTableColumn for ProcessorExtTableColumn {
     #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_PROCESSOR_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for OpStackExtTableColumn {
+    #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_OP_STACK_TABLE_START + self.ext_table_index()
@@ -505,12 +463,22 @@ impl MasterExtTableColumn for OpStackExtTableColumn {
 
 impl MasterExtTableColumn for RamExtTableColumn {
     #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_RAM_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for JumpStackExtTableColumn {
+    #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_JUMP_STACK_TABLE_START + self.ext_table_index()
@@ -519,12 +487,22 @@ impl MasterExtTableColumn for JumpStackExtTableColumn {
 
 impl MasterExtTableColumn for HashExtTableColumn {
     #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_HASH_TABLE_START + self.ext_table_index()
     }
 }
 
 impl MasterExtTableColumn for U32ExtTableColumn {
+    #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
     #[inline]
     fn master_ext_table_index(&self) -> usize {
         EXT_U32_TABLE_START + self.ext_table_index()

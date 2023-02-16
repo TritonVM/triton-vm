@@ -893,9 +893,8 @@ pub(crate) mod triton_stark_tests {
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
-    use crate::table::table_column::BaseTableColumn;
-    use crate::table::table_column::ExtTableColumn;
     use crate::table::table_column::MasterBaseTableColumn;
+    use crate::table::table_column::MasterExtTableColumn;
     use crate::table::table_column::ProcessorBaseTableColumn;
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;

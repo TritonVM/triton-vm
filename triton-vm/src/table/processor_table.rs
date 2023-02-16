@@ -37,8 +37,6 @@ use crate::table::cross_table_argument::LookupArg;
 use crate::table::cross_table_argument::PermArg;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
-use crate::table::table_column::BaseTableColumn;
-use crate::table::table_column::ExtTableColumn;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
