@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.24">
-<info created="D:20200729150742" modified="D:20230205185934"/>
+<info created="D:20200729150742" modified="D:20230216140604"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -386,11 +386,11 @@ h
 8 0 0 -8 160 92 152 92 a
 </path>
 <text layer="table_names" matrix="1 0 0 1 144 -16" transformations="translations" pos="96 128" stroke="black" type="label" width="15.11" height="6.531" depth="0" halign="center" valign="baseline">u32</text>
-<path layer="perm_args" stroke="darkblue" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="fpointed/small">
+<path layer="lookup_args" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="fpointed/small">
 216 124 m
 228 116 l
 </path>
-<text matrix="-1 0 0 1 240 -16" transformations="translations" pos="96 128" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
+<text layer="perm_args" matrix="-1 0 0 1 240 -16" transformations="translations" pos="96 128" stroke="black" type="label" width="18.901" height="6.919" depth="0" halign="center" valign="baseline">hash</text>
 <path layer="lookup_args" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="pointed/small">
 190.5 100 m
 149 100 l

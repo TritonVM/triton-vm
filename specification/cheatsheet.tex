@@ -87,14 +87,14 @@
     \rowcolors{2}{row2}{row1}
 \begin{tabular}{llllllllllllllllllllllll}
     \toprule
-    Table     & \multicolumn{5}{l}{Base Columns}                                                 &              &              &                     &              &                     &              &                         &              &       &                               &              &               &              &       &                   &               &               &                   \\ \midrule
-    Program   & \multicolumn{3}{l}{Address}            &                           & \multicolumn{3}{l}{Instruction}           & \multicolumn{4}{l}{LookupMultiplicity}                                  & \multicolumn{3}{l}{IsPadding}                  &                               &              &               &              &       &                   &               &               &                   \\
-    Processor & \texttt{CLK} & IsPadding & \texttt{IP} & \texttt{PI}               & \texttt{CI} & \texttt{NIA} & \texttt{IB0} & \dots               & \texttt{IB7} & \texttt{JSP}        & \texttt{JSO} & \texttt{JSD}            & \texttt{ST0} & \dots & \texttt{ST15}                 & \texttt{OSP} & \texttt{OSV}  & \texttt{HV0} & \dots & \texttt{HV3}      & \texttt{RAMP} & \texttt{RAMV} & \texttt{cjd\_mul} \\
-    OpStack   & \texttt{CLK} &           &             &                           &             &              &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)}           &                         &              &       &                               & \texttt{OSP} & \texttt{OSV}  &              &       &                   &               &               &                   \\
-    RAM       & \texttt{CLK} &           &             & \texttt{PI}               &             &              & \multicolumn{2}{l}{\texttt{bcpc0}} & \multicolumn{2}{l}{\texttt{bcpc1}} &              &                         &              &       &                               &              &               & \multicolumn{3}{l}{\texttt{RAMP}DiffInv} & \texttt{RAMP} & \texttt{RAMV} &                   \\
-    JumpStack & \texttt{CLK} &           &             &                           & \texttt{CI} &              &              &                     &              & \texttt{JSP}        & \texttt{JSO} & \texttt{JSD}            &              &       &                               &              &               &              &       &                   &               &               &                   \\
-    Hash      & \multicolumn{4}{l}{RoundNumber}                                    & \texttt{CI} &              &              &                     &              &                     &              &                         & \texttt{ST0} & \dots & \texttt{ST15}                 &     \multicolumn{3}{r}{\texttt{CONSTANT0A}} & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          &                   \\
-    U32       & \texttt{CF}  & \multicolumn{3}{l}{\texttt{Bits\quad Bits-33\_inv}} & \texttt{CI} & \texttt{LHS} & \texttt{RHS} & \texttt{LT}         & \texttt{AND} & \texttt{XOR}        & \multicolumn{2}{l}{\texttt{Log2Floor}} & \texttt{Pow} & \multicolumn{2}{l}{\texttt{LHS\_inv}} & \multicolumn{2}{l}{RHS\_inv} &              &       &                   &               &               &                   \\ \bottomrule
+    Table     & \multicolumn{5}{l}{Base Columns}                                                 &              &              &                      &              &                     &               &              &                      &       &               &              &              &              &       &                   &               &               &                   \\ \midrule
+    Program   & \multicolumn{3}{l}{Address}            &                           & \multicolumn{3}{l}{Instruction}           & \multicolumn{4}{l}{LookupMultiplicity}                                    & \multicolumn{3}{l}{IsPadding}               &               &              &              &              &       &                   &               &               &                   \\
+    Processor & \texttt{CLK} & IsPadding & \texttt{IP} & \texttt{PI}               & \texttt{CI} & \texttt{NIA} & \texttt{IB0} & \dots                & \texttt{IB7} & \texttt{JSP}        & \texttt{JSO}  & \texttt{JSD} & \texttt{ST0}         & \dots & \texttt{ST15} & \texttt{OSP} & \texttt{OSV} & \texttt{HV0} & \dots & \texttt{HV3}      & \texttt{RAMP} & \texttt{RAMV} & \texttt{cjd\_mul} \\
+    OpStack   & \texttt{CLK} &           &             &                           &             &              &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)}             &              &                      &       &               & \texttt{OSP} & \texttt{OSV} &              &       &                   &               &               &                   \\
+    RAM       & \texttt{CLK} &           &             & \texttt{PI}               &             &              & \multicolumn{2}{l}{\texttt{bcpc0}}  & \multicolumn{2}{l}{\texttt{bcpc1}} &               &              &                      &       &               &              &              & \multicolumn{3}{l}{\texttt{RAMP}DiffInv} & \texttt{RAMP} & \texttt{RAMV} &                   \\
+    JumpStack & \texttt{CLK} &           &             &                           & \texttt{CI} &              &              &                      &              & \texttt{JSP}        & \texttt{JSO}  & \texttt{JSD} &                      &       &               &              &              &              &       &                   &               &               &                   \\
+    Hash      & \multicolumn{4}{l}{RoundNumber}                                    & \texttt{CI} &              &              &                      &              &                     &               &              & \texttt{ST0}         & \dots & \texttt{ST15} &    \multicolumn{3}{r}{\texttt{CONSTANT0A}} & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          &                   \\
+    U32       & \texttt{CF}  & \multicolumn{3}{l}{\texttt{Bits\quad Bits-33\_inv}} & \texttt{CI} & \texttt{LHS} & \multicolumn{2}{l}{\texttt{LhsInv}} & \texttt{RHS} & \multicolumn{2}{l}{\texttt{RhsInv}} & \multicolumn{2}{l}{\texttt{Result}} & \multicolumn{5}{l}{\texttt{LookupMultiplicity}}                    &       &                   &               &               &                   \\ \bottomrule
 \end{tabular}
 } %end scalebox
 \begin{tikzpicture}[remember picture, overlay]
@@ -123,8 +123,8 @@
         RAM         &    7 &   6 &     13 \\
         JumpStack   &    5 &   2 &      7 \\
         Hash        &   50 &   3 &     53 \\
-        U32         &   14 &   1 &     15 \\ \bottomrule\bottomrule
-        $\sum$      &  126 &  26 &    152
+        U32         &   10 &   1 &     11 \\ \bottomrule\bottomrule
+        $\sum$      &  122 &  26 &    148
     \end{tabular}
 \end{minipage}%
 \hfill%
@@ -153,9 +153,9 @@
         Ram         &    8 &      &    12 &    1 &     21 \\
         JumpStack   &    6 &      &     6 &      &     12 \\
         Hash        &    5 &   40 &    26 &      &     71 \\
-        U32         &    2 &   14 &    22 &    2 &     40 \\
+        U32         &    1 &   14 &    21 &    2 &     38 \\
         Cross-Table &      &      &       &    1 &      1 \\ \bottomrule\bottomrule
-        $\sum$      &   65 &   66 &   146 &    5 &    282
+        $\sum$      &   64 &   66 &   145 &    5 &    280
     \end{tabular}
 \end{minipage}
 
