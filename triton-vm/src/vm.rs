@@ -466,8 +466,11 @@ impl<'pgm> VMState<'pgm> {
                 let xor = BFieldElement::new((lhs ^ rhs) as u64);
                 self.op_stack.push(xor);
                 self.instruction_pointer += 1;
+                // Triton VM uses the following equality to compute the results of both the `and`
+                // and `xor` instruction using the u32 coprocessor's `and` capability:
+                // a ^ b = a + b - 2 · (a & b)
                 let u32_table_entry = (
-                    Instruction::Xor,
+                    Instruction::And,
                     BFieldElement::new(lhs as u64),
                     BFieldElement::new(rhs as u64),
                 );

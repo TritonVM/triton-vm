@@ -34,12 +34,6 @@ For clearer illustration of the mechanics, the columns marked “$_2$” are pre
 
 | CopyFlag$_2$ | CI          | Bits$_{10}$ | LHS$_2$    | RHS$_2$   | Result$_2$ | Result$_{10}$ |
 |-------------:|:------------|------------:|:-----------|:----------|-----------:|--------------:|
-|            1 | xor         |           0 | 1100**0**  | 1101**0** |  0001**0** |             2 |
-|            0 | xor         |           1 | 110**0**   | 110**1**  |   000**1** |             1 |
-|            0 | xor         |           2 | 11**0**    | 11**0**   |    00**0** |             0 |
-|            0 | xor         |           3 | 1**1**     | 1**1**    |     0**0** |             0 |
-|            0 | xor         |           4 | **1**      | **1**     |      **0** |             0 |
-|            0 | xor         |           5 | **0**      | **0**     |      **0** |             0 |
 |            1 | and         |           0 | 1100**0**  | 1101**0** |  1100**0** |            24 |
 |            0 | and         |           1 | 110**0**   | 110**1**  |   110**0** |            12 |
 |            0 | and         |           2 | 11**0**    | 11**0**   |    11**0** |             6 |
@@ -69,10 +63,17 @@ For most instructions, the current least significant bit of both `LHS` and `RHS`
 This eliminated bit is used to successively build the required result in the `Result` column.
 For instruction `pow`, only the least significant bit `RHS` is eliminated, while `LHS` remains unchanged throughout the section.
 
-There are 6 instructions the U32 Table is “aware” of: `split`, `lt`, `and`, `xor`, `log_2_floor`, and `pow`.
+There are 5 instructions the U32 Table is “aware” of: `split`, `lt`, `and`, `log_2_floor`, and `pow`.
 The instruction `split` uses the U32 Table for range checking only.
 Concretely, the U32 Table ensures that the instruction `split`'s resulting “high bits” and “low bits” each fit in a u32.
-Since the processor does not expect any result from instruction `split`, the `Result` must be 0 else the Permutation Argument fails.
+Since the processor does not expect any result from instruction `split`, the `Result` must be 0 else the Lookup Argument fails.
+Similarly, for instruction `log_2_floor`, the processor always sets the `RHS` to 0.
+
+For instruction `xor`, the processor requests the computation of the two arguments' `and` and converts the result using the following equality:
+
+$$a \texttt{ xor } b = a + b - 2 \cdot (a \texttt{ and } b)$$
+
+Credit for this trick goes, to the best of our knowledge, to [Daniel Lubarov](https://github.com/dlubarov).
 
 For the remaining u32 instruction `div`, the processor triggers the creation of two sections in the U32 Table:
 
@@ -144,9 +145,7 @@ Otherwise, the `U32LookupServerLogDerivative` has accumulated the first row with
 1. If `CopyFlag` is 0 and the current instruction is `lt` and `LHS` is 0 and `RHS` is 0, then `Result` is 2.
 1. If `CopyFlag` is 1 and the current instruction is `lt` and `LHS` is 0 and `RHS` is 0, then `Result` is 0.
 1. If the current instruction is `and` and `LHS` is 0 and `RHS` is 0, then `Result` is 0.
-1. If the current instruction is `xor` and `LHS` is 0 and `RHS` is 0, then `Result` is 0.
 1. If the current instruction is `pow` and `RHS` is 0, then `Result` is 1.
-1. If the current instruction is `log_2_floor`, then `RHS` is 0.
 1. If `CopyFlag` is 0 and the current instruction is `log_2_floor` and `LHS` is 0, then `Result` is -1.
 1. If `CopyFlag` is 1 and the current instruction is `log_2_floor` and `LHS` is 0, the VM crashes.
 1. If `CopyFlag` is 0, then `LookupMultiplicity` is 0.
@@ -160,14 +159,12 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `Lhs` is 0 or `LhsInv` is the inverse of `LHS`.
 1. `RhsInv` is 0 or the inverse of `RHS`.
 1. `Rhs` is 0 or `RhsInv` is the inverse of `RHS`.
-1. `CopyFlag` is 1 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or `LHS` is not 0 or `RHS` is not 0 or `Result` is 2.
-1. `CopyFlag` is 0 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or `LHS` is not 0 or `RHS` is not 0 or `Result` is 0.
-1. `CI` is the opcode of `split`, `lt`, `xor`, `pow`, or `log_2_floor` or `LHS` is not 0 or `RHS` is not 0 or `Result` is 0.
-1. `CI` is the opcode of `split`, `lt`, `and`, `pow`, or `log_2_floor` or `LHS` is not 0 or `RHS` is not 0 or `Result` is 0.
-1. `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `log_2_floor` or `RHS` is not 0 or `Result` is 1.
-1. `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `RHS` is 0.
-1. `CopyFlag` is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `LHS` is not 0 or `Result` is -1.
-1. `CopyFlag` is 0 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `LHS` is not 0.
+1. `CopyFlag` is 1 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or `LHS` is not 0 or `RHS` is not 0 or `Result` is 2.
+1. `CopyFlag` is 0 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or `LHS` is not 0 or `RHS` is not 0 or `Result` is 0.
+1. `CI` is the opcode of `split`, `lt`, `pow`, or `log_2_floor` or `LHS` is not 0 or `RHS` is not 0 or `Result` is 0.
+1. `CI` is the opcode of `split`, `lt`, `and`, or `log_2_floor` or `RHS` is not 0 or `Result` is 1.
+1. `CopyFlag` is 1 or `CI` is the opcode of `split`, `lt`, `and`, or `pow` or `LHS` is not 0 or `Result` is -1.
+1. `CopyFlag` is 0 or `CI` is the opcode of `split`, `lt`, `and`, or `pow` or `LHS` is not 0.
 1. `CopyFlag` is 1 or `LookupMultiplicity` is 0.
 
 ### Consistency Constraints as Polynomials
@@ -179,14 +176,12 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `LHS·(1 - LHS·LhsInv)`
 1. `RhsInv·(1 - RHS·RhsInv)`
 1. `RHS·(1 - RHS·RhsInv)`
-1. `(CopyFlag - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·(Result - 2)`
-1. `(CopyFlag - 0)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·(Result - 0)`
-1. `(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·Result`
-1. `(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·Result`
-1. `(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(log_2_floor))·(1 - RHS·RhsInv)·(Result - 1)`
-1. `(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·RHS`
-1. `(CopyFlag - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(1 - LHS·LhsInv)·(Result + 1)`
-1. `CopyFlag·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(1 - LHS·LhsInv)`
+1. `(CopyFlag - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·(Result - 2)`
+1. `(CopyFlag - 0)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·(Result - 0)`
+1. `(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(1 - LHS·LhsInv)·(1 - RHS·RhsInv)·Result`
+1. `(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(log_2_floor))·(1 - RHS·RhsInv)·(Result - 1)`
+1. `(CopyFlag - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(pow))·(1 - LHS·LhsInv)·(Result + 1)`
+1. `CopyFlag·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(pow))·(1 - LHS·LhsInv)`
 1. `(CopyFlag - 1)·LookupMultiplicity`
 
 ## Transition Constraints
@@ -209,7 +204,6 @@ These aliases, _i.e._, `LhsLsb` := `LHS - 2·LHS'` and `RhsLsb` := `RHS - 2·RHS
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `lt` and `Result` in the next row is 2 and `LhsLsb` is `RhsLsb` and the `CopyFlag` in the current row is 0, then `Result` in the current row is 2.
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `lt` and `Result` in the next row is 2 and `LhsLsb` is `RhsLsb` and the `CopyFlag` in the current row is 1, then `Result` in the current row is 0.
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `and`, then `Result` in the current row is twice `Result` in the next row plus the product of `LhsLsb` and `RhsLsb`.
-1. If the `CopyFlag` in the next row is 0 and the current instruction is `xor`, then `Result` in the current row is twice `Result` in the next row plus `LhsLsb` plus `RhsLsb` minus twice the product of `LhsLsb` and `RhsLsb`.
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `log_2_floor` and `LHS` in the next row is 0 and `LHS` in the current row is not 0, then `Result` in the current row is `Bits`.
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `log_2_floor` and `LHS` in the next row is not 0, then `Result` in the current row is `Result` in the next row.
 1. If the `CopyFlag` in the next row is 0 and the current instruction is `pow`, then `LHS` remains unchanged.
@@ -227,19 +221,18 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `CopyFlag`' is 1 or `RHS` is 0 or `Bits`' is `Bits` + 1.
 1. `CopyFlag`' is 1 or `CI` is the opcode of `pow` or `LhsLsb` is 0 or `LhsLsb` is 1.
 1. `CopyFlag`' is 1 or `RhsLsb` is 0 or `RhsLsb` is 1.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or (`Result`' is 1 or 2) or `Result` is 0.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or (`Result`' is 0 or 2) or `Result` is 1.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is 1 or `RhsLsb` is 0 or `Result` is 1.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is 0 or `RhsLsb` is 1 or `Result` is 0.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is unequal to `RhsLsb` or `CopyFlag` is 1 or `Result` is 2.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `xor`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is unequal to `RhsLsb` or `CopyFlag` is 0 or `Result` is 0.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `xor`, `pow`, or `log_2_floor` or `Result` is twice `Result`' plus the product of `LhsLsb` and `RhsLsb`.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `pow`, or `log_2_floor` or `Result` is twice `Result`' plus `LhsLsb` plus `RhsLsb` minus twice the product of `LhsLsb` and `RhsLsb`.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `LHS`' is not 0 or `LHS` is 0 or `Result` is `Bits`.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `pow` or `LHS`' is 0 or `Result` is `Result`'.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `log_2_floor` or `LHS`' is `LHS`.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `log_2_floor` or `RhsLsb` is 1 or `Result` is `Result`' times `Result`'.
-1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, `xor`, or `log_2_floor` or `RhsLsb` is 0 or `Result` is `Result`' times `Result`' times `LHS`.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or (`Result`' is 1 or 2) or `Result` is 0.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or (`Result`' is 0 or 2) or `Result` is 1.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is 1 or `RhsLsb` is 0 or `Result` is 1.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is 0 or `RhsLsb` is 1 or `Result` is 0.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is unequal to `RhsLsb` or `CopyFlag` is 1 or `Result` is 2.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `and`, `pow`, or `log_2_floor` or (`Result`' is 0 or 1) or `LhsLsb` is unequal to `RhsLsb` or `CopyFlag` is 0 or `Result` is 0.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `pow`, or `log_2_floor` or `Result` is twice `Result`' plus the product of `LhsLsb` and `RhsLsb`.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, or `pow` or `LHS`' is not 0 or `LHS` is 0 or `Result` is `Bits`.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, or `pow` or `LHS`' is 0 or `Result` is `Result`'.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, or `log_2_floor` or `LHS`' is `LHS`.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, or `log_2_floor` or `RhsLsb` is 1 or `Result` is `Result`' times `Result`'.
+1. `CopyFlag`' is 1 or `CI` is the opcode of `split`, `lt`, `and`, or `log_2_floor` or `RhsLsb` is 0 or `Result` is `Result`' times `Result`' times `LHS`.
 1. `CopyFlag`' is 1 or `U32LookupServerLogDerivative`' is `U32LookupServerLogDerivative`.
 1. `CopyFlag`' is 0 or the difference of `U32LookupServerLogDerivative`' and `U32LookupServerLogDerivative` times `(🧷 - 🥜·LHS' - 🌰·RHS' - 🥑·CI' - 🥕·Result')` is `LookupMultiplicity`'.
 
@@ -252,19 +245,18 @@ Written in Disjunctive Normal Form, the same constraints can be expressed as:
 1. `(CopyFlag' - 1)·RHS·(Bits' - Bits - 1)`
 1. `(CopyFlag' - 1)·(CI - opcode(pow))·LhsLsb·(LhsLsb - 1)`
 1. `(CopyFlag' - 1)·RhsLsb·(RhsLsb - 1)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 1)·(Result' - 2)·(Result - 0)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 2)·(Result - 1)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(LhsLsb - 1)·(RhsLsb - 0)·(Result - 1)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(LhsLsb - 0)·(RhsLsb - 1)·(Result - 0)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(1 - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)·(CopyFlag - 1)·(Result - 2)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(1 - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)·(CopyFlag - 0)·(Result - 0)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(xor))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result - 2·Result' - LhsLsb·RhsLsb)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result - 2·Result' - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·(1 - LHS'·LhsInv')·LHS·(Result - Bits)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(pow))·LHS'·(Result' - Result)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(log_2_floor))·(LHS' - LHS)`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(log_2_floor))·(RhsLsb - 1)·(Result - Result'·Result')`
-1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(xor))·(CI - opcode(log_2_floor))·(RhsLsb - 0)·(Result - Result'·Result'·LHS)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 1)·(Result' - 2)·(Result - 0)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 2)·(Result - 1)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(LhsLsb - 1)·(RhsLsb - 0)·(Result - 1)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(LhsLsb - 0)·(RhsLsb - 1)·(Result - 0)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(1 - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)·(CopyFlag - 1)·(Result - 2)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(and))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result' - 0)·(Result' - 1)·(1 - LhsLsb - RhsLsb + 2·LhsLsb·RhsLsb)·(CopyFlag - 0)·(Result - 0)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(pow))·(CI - opcode(log_2_floor))·(Result - 2·Result' - LhsLsb·RhsLsb)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(pow))·(1 - LHS'·LhsInv')·LHS·(Result - Bits)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(pow))·LHS'·(Result' - Result)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(log_2_floor))·(LHS' - LHS)`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(log_2_floor))·(RhsLsb - 1)·(Result - Result'·Result')`
+1. `(CopyFlag' - 1)·(CI - opcode(split))·(CI - opcode(lt))·(CI - opcode(and))·(CI - opcode(log_2_floor))·(RhsLsb - 0)·(Result - Result'·Result'·LHS)`
 1. `(CopyFlag' - 1)·(U32LookupServerLogDerivative' - U32LookupServerLogDerivative)`
 1. `(CopyFlag' - 0)·((U32LookupServerLogDerivative' - U32LookupServerLogDerivative)·(🧷 - 🥜·LHS - 🌰·RHS - 🥑·CI - 🥕·Result) - LookupMultiplicity')`
 

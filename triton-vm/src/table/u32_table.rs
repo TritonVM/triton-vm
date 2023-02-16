@@ -55,7 +55,6 @@ impl ExtU32Table {
             Instruction::Split,
             Instruction::Lt,
             Instruction::And,
-            Instruction::Xor,
             Instruction::Log2Floor,
             Instruction::Pow,
         ]
@@ -157,15 +156,9 @@ impl ExtU32Table {
             * (one.clone() - lhs.clone() * lhs_inv.clone())
             * (one.clone() - rhs.clone() * rhs_inv.clone())
             * result.clone();
-        let result_is_initialized_correctly_for_xor = instruction_deselector(Instruction::Xor)
-            * (one.clone() - lhs.clone() * lhs_inv.clone())
-            * (one.clone() - rhs.clone() * rhs_inv.clone())
-            * result.clone();
         let result_is_initialized_correctly_for_pow = instruction_deselector(Instruction::Pow)
-            * (one.clone() - rhs.clone() * rhs_inv)
+            * (one.clone() - rhs * rhs_inv)
             * (result.clone() - one.clone());
-        let if_current_instruction_is_log_2_floor_then_rhs_is_0 =
-            instruction_deselector(Instruction::Log2Floor) * rhs;
         let result_is_initialized_correctly_for_log_2_floor =
             instruction_deselector(Instruction::Log2Floor)
                 * (copy_flag.clone() - one.clone())
@@ -188,9 +181,7 @@ impl ExtU32Table {
             result_is_initialized_correctly_for_lt_with_copy_flag_0,
             result_is_initialized_correctly_for_lt_with_copy_flag_1,
             result_is_initialized_correctly_for_and,
-            result_is_initialized_correctly_for_xor,
             result_is_initialized_correctly_for_pow,
-            if_current_instruction_is_log_2_floor_then_rhs_is_0,
             result_is_initialized_correctly_for_log_2_floor,
             if_log_2_floor_on_0_then_vm_crashes,
             if_copy_flag_is_0_then_lookup_multiplicity_is_0,
@@ -311,19 +302,7 @@ impl ExtU32Table {
         let if_copy_flag_next_is_0_and_ci_is_and_then_results_updates_correctly =
             (copy_flag_next.clone() - one.clone())
                 * instruction_deselector(Instruction::And)
-                * (result.clone()
-                    - two.clone() * result_next.clone()
-                    - lhs_lsb.clone() * rhs_lsb.clone());
-
-        // instruction xor
-        let if_copy_flag_next_is_0_and_ci_is_xor_then_results_updates_correctly =
-            (copy_flag_next.clone() - one.clone())
-                * instruction_deselector(Instruction::Xor)
-                * (result.clone()
-                    - two.clone() * result_next.clone()
-                    - lhs_lsb.clone()
-                    - rhs_lsb.clone()
-                    + two * lhs_lsb * rhs_lsb.clone());
+                * (result.clone() - two * result_next.clone() - lhs_lsb * rhs_lsb.clone());
 
         // instruction log_2_floor
         let if_copy_flag_next_is_0_and_ci_is_log_2_floor_lhs_next_0_for_first_time_then_set_result =
@@ -386,7 +365,6 @@ impl ExtU32Table {
             if_copy_flag_next_is_0_and_ci_is_lt_and_result_still_not_known_then_result_is_2,
             if_copy_flag_next_is_0_and_ci_is_lt_and_copy_flag_dictates_result_then_result_is_0,
             if_copy_flag_next_is_0_and_ci_is_and_then_results_updates_correctly,
-            if_copy_flag_next_is_0_and_ci_is_xor_then_results_updates_correctly,
             if_copy_flag_next_is_0_and_ci_is_log_2_floor_lhs_next_0_for_first_time_then_set_result,
             if_copy_flag_next_is_0_and_ci_is_log_2_floor_and_lhs_next_not_0_then_copy_result,
             if_copy_flag_next_is_0_and_ci_is_pow_then_lhs_remains_unchanged,
@@ -460,7 +438,6 @@ impl U32Table {
                 Instruction::Split => zero,
                 Instruction::Lt => two,
                 Instruction::And => zero,
-                Instruction::Xor => zero,
                 Instruction::Log2Floor => -one,
                 Instruction::Pow => one,
                 _ => panic!("Must be u32 instruction, not {current_instruction}."),
@@ -518,7 +495,6 @@ impl U32Table {
                 }
             }
             Instruction::And => two * next_row_result + lhs_lsb * rhs_lsb,
-            Instruction::Xor => two * next_row_result + lhs_lsb + rhs_lsb - two * lhs_lsb * rhs_lsb,
             Instruction::Log2Floor => {
                 if row[LHS.base_table_index()].is_zero() {
                     -one

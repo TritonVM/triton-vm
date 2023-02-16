@@ -301,7 +301,6 @@ impl ProcessorTable {
                 }
                 if previously_current_instruction == Instruction::Lt.opcode_b()
                     || previously_current_instruction == Instruction::And.opcode_b()
-                    || previously_current_instruction == Instruction::Xor.opcode_b()
                     || previously_current_instruction == Instruction::Pow.opcode_b()
                 {
                     let compressed_row = prev_row[ST0.base_table_index()]
@@ -309,6 +308,24 @@ impl ProcessorTable {
                         + prev_row[ST1.base_table_index()] * challenges.get_challenge(U32RhsWeight)
                         + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
                         + current_row[ST0.base_table_index()]
+                            * challenges.get_challenge(U32ResultWeight);
+                    u32_table_running_sum_log_derivative +=
+                        (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
+                }
+                if previously_current_instruction == Instruction::Xor.opcode_b() {
+                    // Triton VM uses the following equality to compute the results of both the
+                    // `and` and `xor` instruction using the u32 coprocessor's `and` capability:
+                    //     a ^ b = a + b - 2 · (a & b)
+                    // <=> a & b = (a + b - a ^ b) / 2
+                    let st0_prev = prev_row[ST0.base_table_index()];
+                    let st1_prev = prev_row[ST1.base_table_index()];
+                    let st0 = current_row[ST0.base_table_index()];
+                    let from_xor_in_processor_to_and_in_u32_coprocessor =
+                        (st0_prev + st1_prev - st0) / BFieldElement::new(2);
+                    let compressed_row = st0_prev * challenges.get_challenge(U32LhsWeight)
+                        + st1_prev * challenges.get_challenge(U32RhsWeight)
+                        + Instruction::And.opcode_b() * challenges.get_challenge(U32CiWeight)
+                        + from_xor_in_processor_to_and_in_u32_coprocessor
                             * challenges.get_challenge(U32ResultWeight);
                     u32_table_running_sum_log_derivative +=
                         (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
@@ -2725,6 +2742,11 @@ impl DualRowConstraints {
     pub fn running_product_to_u32_table_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let opcode_of_and = self.circuit_builder.b_constant(Instruction::And.opcode_b());
+        let two_inverse = self
+            .circuit_builder
+            .b_constant(BFieldElement::new(2).inverse());
+
         let indeterminate = self.circuit_builder.challenge(U32Indeterminate);
         let lhs_weight = self.circuit_builder.challenge(U32LhsWeight);
         let rhs_weight = self.circuit_builder.challenge(U32RhsWeight);
@@ -2753,6 +2775,11 @@ impl DualRowConstraints {
             - rhs_weight.clone() * self.st1()
             - ci_weight.clone() * self.ci()
             - result_weight.clone() * self.st0_next();
+        let xor_factor = indeterminate.clone()
+            - lhs_weight.clone() * self.st0()
+            - rhs_weight.clone() * self.st1()
+            - ci_weight.clone() * opcode_of_and
+            - result_weight.clone() * (self.st0() + self.st1() - self.st0_next()) * two_inverse;
         let unop_factor = indeterminate.clone()
             - lhs_weight.clone() * self.st0()
             - ci_weight.clone() * self.ci()
@@ -2776,8 +2803,7 @@ impl DualRowConstraints {
             * ((running_sum_next.clone() - running_sum.clone()) * binop_factor.clone()
                 - self.one());
         let xor_summand = xor_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor.clone()
-                - self.one());
+            * ((running_sum_next.clone() - running_sum.clone()) * xor_factor - self.one());
         let pow_summand = pow_deselector
             * ((running_sum_next.clone() - running_sum.clone()) * binop_factor - self.one());
         let log_2_floor_summand = log_2_floor_deselector
