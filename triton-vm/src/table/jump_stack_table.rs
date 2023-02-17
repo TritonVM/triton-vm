@@ -26,8 +26,6 @@ use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::LookupArg;
 use crate::table::cross_table_argument::PermArg;
-use crate::table::master_table::NUM_BASE_COLUMNS;
-use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::JumpStackBaseTableColumn;
 use crate::table::table_column::JumpStackBaseTableColumn::*;
 use crate::table::table_column::JumpStackExtTableColumn;
@@ -48,8 +46,7 @@ pub struct JumpStackTable {}
 pub struct ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
@@ -83,14 +80,12 @@ impl ExtJumpStackTable {
         .to_vec()
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
@@ -188,8 +183,7 @@ impl ExtJumpStackTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         vec![]
     }
 }

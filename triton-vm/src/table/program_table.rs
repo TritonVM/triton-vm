@@ -19,8 +19,6 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::LookupArg;
-use crate::table::master_table::NUM_BASE_COLUMNS;
-use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn;
@@ -40,8 +38,7 @@ pub struct ProgramTable {}
 pub struct ExtProgramTable {}
 
 impl ExtProgramTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
 
         let address = circuit_builder.input(BaseRow(Address.master_base_table_index()));
@@ -61,8 +58,7 @@ impl ExtProgramTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1_u32.into());
 
@@ -72,8 +68,7 @@ impl ExtProgramTable {
         vec![is_padding_is_bit.consume()]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(1u32.into());
         let address = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
@@ -121,8 +116,7 @@ impl ExtProgramTable {
         .to_vec()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }

@@ -31,8 +31,6 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
-use crate::table::master_table::NUM_BASE_COLUMNS;
-use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::HashExtTableColumn;
@@ -55,8 +53,7 @@ pub struct HashTable {}
 pub struct ExtHashTable {}
 
 impl ExtHashTable {
-    pub fn ext_initial_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c| circuit_builder.b_constant(c);
@@ -160,8 +157,7 @@ impl ExtHashTable {
             .fold(constant(1), |a, b| a * b)
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
@@ -224,8 +220,7 @@ impl ExtHashTable {
             .collect()
     }
 
-    pub fn ext_transition_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<DualRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
@@ -590,8 +585,7 @@ impl ExtHashTable {
         .collect()
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
-    ) -> Vec<ConstraintCircuit<SingleRowIndicator<NUM_BASE_COLUMNS, NUM_EXT_COLUMNS>>> {
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         // no more constraints
         vec![]
     }

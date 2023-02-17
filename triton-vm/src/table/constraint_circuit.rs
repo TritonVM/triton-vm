@@ -78,14 +78,12 @@ pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display
 /// The position of a variable in a constraint polynomial that operates on a single row of the
 /// execution trace.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum SingleRowIndicator<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> {
+pub enum SingleRowIndicator {
     BaseRow(usize),
     ExtRow(usize),
 }
 
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
-    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
-{
+impl Display for SingleRowIndicator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use SingleRowIndicator::*;
         let input_indicator: String = match self {
@@ -97,9 +95,7 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
     }
 }
 
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
-    for SingleRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
-{
+impl InputIndicator for SingleRowIndicator {
     fn is_base_table_row(&self) -> bool {
         use SingleRowIndicator::*;
         matches!(self, BaseRow(_))
@@ -137,16 +133,14 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicat
 /// The position of a variable in a constraint polynomial that operates on two rows (current and
 /// next) of the execution trace.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
-pub enum DualRowIndicator<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> {
+pub enum DualRowIndicator {
     CurrentBaseRow(usize),
     CurrentExtRow(usize),
     NextBaseRow(usize),
     NextExtRow(usize),
 }
 
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
-    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
-{
+impl Display for DualRowIndicator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use DualRowIndicator::*;
         let input_indicator: String = match self {
@@ -160,9 +154,7 @@ impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> Display
     }
 }
 
-impl<const BASE_COLUMN_COUNT: usize, const EXT_COLUMN_COUNT: usize> InputIndicator
-    for DualRowIndicator<BASE_COLUMN_COUNT, EXT_COLUMN_COUNT>
-{
+impl InputIndicator for DualRowIndicator {
     fn is_base_table_row(&self) -> bool {
         use DualRowIndicator::*;
         matches!(self, CurrentBaseRow(_) | NextBaseRow(_))
@@ -981,8 +973,8 @@ mod constraint_circuit_tests {
     }
 
     fn random_circuit_builder() -> (
-        ConstraintCircuitMonad<DualRowIndicator<50, 40>>,
-        ConstraintCircuitBuilder<DualRowIndicator<50, 40>>,
+        ConstraintCircuitMonad<DualRowIndicator>,
+        ConstraintCircuitBuilder<DualRowIndicator>,
     ) {
         let mut rng = thread_rng();
         let num_base_columns = 50;
@@ -1125,7 +1117,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn circuit_equality_check_and_constant_folding_test() {
-        let circuit_builder: ConstraintCircuitBuilder<DualRowIndicator<5, 3>> =
+        let circuit_builder: ConstraintCircuitBuilder<DualRowIndicator> =
             ConstraintCircuitBuilder::new();
         let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
         let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
