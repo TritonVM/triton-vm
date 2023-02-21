@@ -223,3 +223,238 @@ pub const MANY_U32_INSTRUCTIONS: &str = "
         push 2 swap1 div return
     is_u32:
         split pop push 0 eq return";
+
+pub const VERIFY_SUDOKU: &str = "
+    call initialize_primes
+    call read_sudoku
+    call initialize_flag
+    call write_sudoku_and_check_rows
+    call check_columns
+    call check_squares
+    push 0
+    read_mem
+    assert
+    halt
+
+    // For mapping legal Sudoku digits to distinct primes. Helps with checking consistency of
+    // rows, columns, and boxes.
+    initialize_primes:
+        push 1 push  2 write_mem pop
+        push 2 push  3 write_mem pop
+        push 3 push  5 write_mem pop
+        push 4 push  7 write_mem pop
+        push 5 push 11 write_mem pop
+        push 6 push 13 write_mem pop
+        push 7 push 17 write_mem pop
+        push 8 push 19 write_mem pop
+        push 9 push 23 write_mem pop
+        return
+
+    read_sudoku:
+        call read9
+        call read9
+        call read9
+        call read9
+        call read9
+        call read9
+        call read9
+        call read9
+        call read9
+        return
+
+    read9:
+        call read1
+        call read1
+        call read1
+        call read1
+        call read1
+        call read1
+        call read1
+        call read1
+        call read1
+        return
+
+    // Applies the mapping from legal Sudoku digits to distinct primes.
+    read1:                            // _
+        read_io                       // _ d
+        read_mem                      // _ d p
+        swap1                         // _ p d
+        pop                           // _ p
+        return
+
+    initialize_flag:
+        push 0
+        push 1
+        write_mem
+        pop
+        return
+
+    write_sudoku_and_check_rows:      // row0 row1 row2 row3 row4 row5 row6 row7 row8
+        push 9                        // row0 row1 row2 row3 row4 row5 row6 row7 row8 9
+        call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 row6 row7 18
+        call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 row6 27
+        call write_and_check_one_row  // row0 row1 row2 row3 row4 row5 36
+        call write_and_check_one_row  // row0 row1 row2 row3 row4 45
+        call write_and_check_one_row  // row0 row1 row2 row3 54
+        call write_and_check_one_row  // row0 row1 row2 63
+        call write_and_check_one_row  // row0 row1 72
+        call write_and_check_one_row  // row0 81
+        call write_and_check_one_row  // 90
+        pop                           // ⊥
+        return
+
+    write_and_check_one_row:          // s0 s1 s2 s3 s4 s5 s6 s7 s8 mem_addr
+        push 1                        // s0 s1 s2 s3 s4 s5 s6 s7 s8 mem_addr 1
+        call multiply_and_write       // s0 s1 s2 s3 s4 s5 s6 s7 (mem_addr+1) s8
+        call multiply_and_write       // s0 s1 s2 s3 s4 s5 s6 (mem_addr+2) (s8·s7)
+        call multiply_and_write       // s0 s1 s2 s3 s4 s5 (mem_addr+3) (s8·s7·s6)
+        call multiply_and_write       // s0 s1 s2 s3 s4 (mem_addr+4) (s8·s7·s6·s5)
+        call multiply_and_write       // s0 s1 s2 s3 (mem_addr+5) (s8·s7·s6·s5·s4)
+        call multiply_and_write       // s0 s1 s2 (mem_addr+6) (s8·s7·s6·s5·s4·s3)
+        call multiply_and_write       // s0 s1 (mem_addr+7) (s8·s7·s6·s5·s4·s3·s2)
+        call multiply_and_write       // s0 (mem_addr+8) (s8·s7·s6·s5·s4·s3·s2·s1)
+        call multiply_and_write       // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0)
+        push 223092870                // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0) 223092870
+        eq                            // (mem_addr+9) (s8·s7·s6·s5·s4·s3·s2·s1·s0==223092870)
+        skiz                          // (mem_addr+9)
+        return
+        push 0                        // (mem_addr+9) 0
+        push 0                        // (mem_addr+9) 0 0
+        write_mem                     // (mem_addr+9) 0
+        pop                           // (mem_addr+9)
+        return
+
+    multiply_and_write:               // s mem_addr acc
+        dup2                          // s mem_addr acc s 
+        mul                           // s mem_addr (acc·s)
+        swap1                         // s (acc·s) mem_addr
+        push 1                        // s (acc·s) mem_addr 1
+        add                           // s (acc·s) (mem_addr+1)
+        swap1                         // s (mem_addr+1) (acc·s)
+        swap2                         // (acc·s) (mem_addr+1) s
+        write_mem                     // (acc·s) (mem_addr+1)
+        swap1                         // (mem_addr+1) (acc·s)
+        return
+
+    check_columns:
+        push 1
+        call check_one_column
+        push 2
+        call check_one_column
+        push 3
+        call check_one_column
+        push 4
+        call check_one_column
+        push 5
+        call check_one_column
+        push 6
+        call check_one_column
+        push 7
+        call check_one_column
+        push 8
+        call check_one_column
+        push 9
+        call check_one_column
+        return
+
+    check_one_column:
+        call get_column_element
+        call get_column_element
+        call get_column_element
+        call get_column_element
+        call get_column_element
+        call get_column_element
+        call get_column_element
+        call get_column_element
+        call get_column_element
+        pop
+        call check_9_numbers
+        return
+
+    get_column_element:
+        push 9
+        add
+        read_mem
+        swap1
+        return
+
+    check_squares:
+        push 10
+        call check_one_square
+        push 13
+        call check_one_square
+        push 16
+        call check_one_square
+        push 37
+        call check_one_square
+        push 40
+        call check_one_square
+        push 43
+        call check_one_square
+        push 64
+        call check_one_square
+        push 67
+        call check_one_square
+        push 70
+        call check_one_square
+        return
+
+    check_one_square:
+        read_mem
+        swap1
+        push 1
+        add
+        read_mem
+        swap1
+        push 1
+        add
+        read_mem
+        swap1
+        push 7
+        add
+        read_mem
+        swap1
+        push 1
+        add
+        read_mem
+        swap1
+        push 1
+        add
+        read_mem
+        swap1
+        push 7
+        add
+        read_mem
+        swap1
+        push 1
+        add
+        read_mem
+        swap1
+        push 1
+        add
+        read_mem
+        swap1
+        pop
+        call check_9_numbers
+        return
+
+    check_9_numbers:
+        mul
+        mul
+        mul
+        mul
+        mul
+        mul
+        mul
+        mul
+        // 223092870 = 2·3·5·7·11·13·17·19·23
+        push 223092870
+        eq
+        skiz
+        return
+        push 0
+        push 0
+        write_mem
+        pop
+        return
+    ";

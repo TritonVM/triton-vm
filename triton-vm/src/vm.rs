@@ -1064,6 +1064,7 @@ pub mod triton_vm_tests {
     use crate::op_stack::OP_STACK_REG_COUNT;
     use crate::shared_tests::SourceCodeAndInput;
     use crate::shared_tests::FIBONACCI_SEQUENCE;
+    use crate::shared_tests::VERIFY_SUDOKU;
     use crate::stark::Maker;
     use crate::table::processor_table::ProcessorTraceRow;
     use crate::vm::run;
@@ -2447,5 +2448,66 @@ pub mod triton_vm_tests {
         let InstructionPointerOverflow(_) = err else {
             panic!("Program without halt must fail with InstructionPointerOverflow.");
         };
+    }
+
+    #[test]
+    fn verify_sudoku_test() {
+        let program = Program::from_code(VERIFY_SUDOKU).unwrap();
+        let stdin = [
+            8, 5, 9, /**/ 7, 6, 1, /**/ 4, 2, 3, //
+            4, 2, 6, /**/ 8, 5, 3, /**/ 7, 9, 1, //
+            7, 1, 3, /**/ 9, 2, 4, /**/ 8, 5, 6, //
+            /*************************************/
+            9, 6, 1, /**/ 5, 3, 7, /**/ 2, 8, 4, //
+            2, 8, 7, /**/ 4, 1, 9, /**/ 6, 3, 5, //
+            3, 4, 5, /**/ 2, 8, 6, /**/ 1, 7, 9, //
+            /*************************************/
+            5, 3, 4, /**/ 6, 7, 8, /**/ 9, 1, 2, //
+            6, 7, 2, /**/ 1, 9, 5, /**/ 3, 4, 8, //
+            1, 9, 8, /**/ 3, 4, 2, /**/ 5, 6, 7, //
+        ]
+        .map(BFieldElement::new)
+        .to_vec();
+        let secret_in = vec![];
+        let (trace, _stdout, err) = run(&program, stdin, secret_in);
+
+        if let Some(e) = err {
+            for state in trace.iter().rev().take(10).rev() {
+                println!("{state}");
+            }
+            panic!("The VM encountered an error: {e}");
+        }
+
+        // rows and columns adhere to Sudoku rules, boxes do not
+        let bad_stdin = [
+            1, 2, 3, /**/ 4, 5, 7, /**/ 8, 9, 6, //
+            4, 3, 1, /**/ 5, 2, 9, /**/ 6, 7, 8, //
+            2, 7, 9, /**/ 6, 1, 3, /**/ 5, 8, 4, //
+            /*************************************/
+            7, 6, 5, /**/ 3, 4, 8, /**/ 9, 2, 1, //
+            5, 1, 4, /**/ 9, 8, 6, /**/ 7, 3, 2, //
+            6, 8, 2, /**/ 7, 9, 4, /**/ 1, 5, 3, //
+            /*************************************/
+            3, 5, 6, /**/ 8, 7, 2, /**/ 4, 1, 9, //
+            9, 4, 8, /**/ 1, 3, 5, /**/ 2, 6, 7, //
+            8, 9, 7, /**/ 2, 6, 1, /**/ 3, 4, 5, //
+        ]
+        .map(BFieldElement::new)
+        .to_vec();
+        let secret_in = vec![];
+        let (_trace, _stdout, err) = run(&program, bad_stdin, secret_in);
+        let Some(err) = err else {
+            panic!("Sudoku verifier must fail on bad Sudoku.");
+        };
+        let Ok(err) = err.downcast::<InstructionError>() else {
+            panic!("Sudoku verifier must fail with InstructionError on bad Sudoku.");
+        };
+        let AssertionFailed(ip, _, _) = err else {
+            panic!("Sudoku verifier must fail with AssertionFailed on bad Sudoku.");
+        };
+        assert_eq!(
+            15, ip,
+            "Sudoku verifier must fail on line 15 on bad Sudoku."
+        );
     }
 }
