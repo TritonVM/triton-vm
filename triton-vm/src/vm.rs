@@ -948,6 +948,10 @@ pub struct AlgebraicExecutionTrace {
     /// alongside the u32 instruction that was executed at the time. Additionally, it records how
     /// often the instruction was executed with these arguments.
     pub u32_entries: HashMap<(Instruction, BFieldElement, BFieldElement), u64>,
+
+    pub cascade_table_lookup_multiplicities: HashMap<BFieldElement, u64>,
+
+    pub lookup_table_lookup_multiplicities: [u64; 1 << 16],
 }
 
 impl AlgebraicExecutionTrace {
