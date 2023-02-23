@@ -809,11 +809,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
     pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
-    // TODO: replace the two below fields with the builder struct which contains
-    // the same data.
-    pub all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<II>>>>,
-    pub id_counter_ref: Rc<RefCell<usize>>,
-    // pub builder: Rc<RefCell<ConstraintCircuitBuilder<II>>>,
+    pub builder: ConstraintCircuitBuilder<II>,
 }
 
 impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
@@ -824,11 +820,11 @@ impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
             .field("id", &self.circuit)
             .field(
                 "all_nodes length: ",
-                &self.all_nodes.as_ref().borrow().len(),
+                &self.builder.all_nodes.as_ref().borrow().len(),
             )
             .field(
                 "id_counter_ref value: ",
-                &self.id_counter_ref.as_ref().borrow(),
+                &self.builder.id_counter.as_ref().borrow(),
             )
             .finish()
     }
@@ -859,7 +855,7 @@ fn binop<II: InputIndicator>(
     rhs: ConstraintCircuitMonad<II>,
 ) -> ConstraintCircuitMonad<II> {
     // Get ID for the new node
-    let new_index = lhs.id_counter_ref.as_ref().borrow().to_owned();
+    let new_index = lhs.builder.id_counter.as_ref().borrow().to_owned();
     let lhs = Rc::new(RefCell::new(lhs));
     let rhs = Rc::new(RefCell::new(rhs));
 
@@ -873,21 +869,21 @@ fn binop<II: InputIndicator>(
             ),
             id: new_index,
         })),
-        id_counter_ref: Rc::clone(&lhs.as_ref().borrow().id_counter_ref),
-        all_nodes: Rc::clone(&lhs.as_ref().borrow().all_nodes),
+        builder: lhs.as_ref().borrow().builder.clone(),
     };
 
     // check if node already exists
     let contained = lhs
         .as_ref()
         .borrow()
+        .builder
         .all_nodes
         .as_ref()
         .borrow()
         .contains(&new_node);
     if contained {
         let ret0 = &lhs.as_ref().borrow();
-        let ret1 = ret0.all_nodes.as_ref().borrow();
+        let ret1 = ret0.builder.all_nodes.as_ref().borrow();
         let ret2 = &(*ret1.get(&new_node).as_ref().unwrap()).clone();
         return ret2.to_owned();
     }
@@ -906,31 +902,37 @@ fn binop<II: InputIndicator>(
                 ),
                 id: new_index,
             })),
-            id_counter_ref: Rc::clone(&lhs.as_ref().borrow().id_counter_ref),
-            all_nodes: Rc::clone(&lhs.as_ref().borrow().all_nodes),
+            builder: lhs.as_ref().borrow().builder.clone(),
         };
 
         // check if node already exists
         let inverted_contained = lhs
             .as_ref()
             .borrow()
+            .builder
             .all_nodes
             .as_ref()
             .borrow()
             .contains(&new_node_inverted);
         if inverted_contained {
             let ret0 = &lhs.as_ref().borrow();
-            let ret1 = ret0.all_nodes.as_ref().borrow();
+            let ret1 = ret0.builder.all_nodes.as_ref().borrow();
             let ret2 = &(*ret1.get(&new_node_inverted).as_ref().unwrap()).clone();
             return ret2.to_owned();
         }
     }
 
     // Increment counter index
-    *lhs.as_ref().borrow().id_counter_ref.as_ref().borrow_mut() = new_index + 1;
+    *lhs.as_ref()
+        .borrow()
+        .builder
+        .id_counter
+        .as_ref()
+        .borrow_mut() = new_index + 1;
 
     // Store new node in HashSet
     let inserted_value_was_new = new_node
+        .builder
         .all_nodes
         .as_ref()
         .borrow_mut()
@@ -981,6 +983,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
     pub fn max_id(&self) -> usize {
         let max_from_hash_map = self
+            .builder
             .all_nodes
             .as_ref()
             .borrow()
@@ -989,51 +992,13 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .max()
             .unwrap();
 
-        let id_ref_value = *self.id_counter_ref.borrow();
+        let id_ref_value = *self.builder.id_counter.borrow();
         assert_eq!(id_ref_value - 1, max_from_hash_map);
         max_from_hash_map
     }
 
-    fn make_leaf(&self, expression: CircuitExpression<II>) -> Self {
-        let new_id = self.id_counter_ref.as_ref().borrow().to_owned();
-        let new_node = ConstraintCircuitMonad {
-            circuit: Rc::new(RefCell::new(ConstraintCircuit {
-                visited_counter: 0usize,
-                expression: expression.clone(),
-                id: new_id,
-            })),
-            id_counter_ref: Rc::clone(&self.id_counter_ref),
-            all_nodes: Rc::clone(&self.all_nodes),
-        };
-
-        // Check if node already exists, return the existing one if it does
-        // let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
-        let contained = self.all_nodes.borrow().contains(&new_node);
-        if contained {
-            println!("PMD-BBB");
-            let ret0 = &self.all_nodes.as_ref().borrow();
-            let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
-            return ret1.to_owned();
-        }
-
-        let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
-        if expression == compare_with {
-            let count = self.all_nodes.as_ref().borrow().len();
-            println!("len: {count}; Monad: Was one");
-        }
-
-        // If node did not already exist, increment counter and insert node into hash set
-        *self.id_counter_ref.as_ref().borrow_mut() = new_id + 1;
-        self.all_nodes
-            .as_ref()
-            .borrow_mut()
-            .insert(new_node.clone());
-
-        new_node
-    }
-
     fn replace_references(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
-        for node in self.all_nodes.as_ref().borrow().clone().into_iter() {
+        for node in self.builder.all_nodes.as_ref().borrow().clone().into_iter() {
             if node.circuit.as_ref().borrow().id == old_id {
                 continue;
             }
@@ -1081,7 +1046,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
                     // 0 * a = a * 0 = 0
                     if lhs.borrow().is_zero() || rhs.borrow().is_zero() {
-                        return Some(self.make_leaf(BConstant(BFieldElement::zero())).circuit);
+                        return Some(
+                            self.builder
+                                .make_leaf(BConstant(BFieldElement::zero()))
+                                .circuit,
+                        );
                     }
                 }
 
@@ -1090,13 +1059,19 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     if let XConstant(rhs_xfe) = rhs.borrow().expression {
                         return match binop {
                             BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_xfe + rhs_xfe)).consume(),
+                                self.builder
+                                    .make_leaf(XConstant(lhs_xfe + rhs_xfe))
+                                    .consume(),
                             ))),
                             BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_xfe - rhs_xfe)).consume(),
+                                self.builder
+                                    .make_leaf(XConstant(lhs_xfe - rhs_xfe))
+                                    .consume(),
                             ))),
                             BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_xfe * rhs_xfe)).consume(),
+                                self.builder
+                                    .make_leaf(XConstant(lhs_xfe * rhs_xfe))
+                                    .consume(),
                             ))),
                         };
                     }
@@ -1104,15 +1079,19 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     if let BConstant(rhs_bfe) = rhs.borrow().expression {
                         return match binop {
                             BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_xfe + rhs_bfe.lift()))
+                                self.builder
+                                    .make_leaf(XConstant(lhs_xfe + rhs_bfe.lift()))
                                     .consume(),
                             ))),
                             BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_xfe - rhs_bfe.lift()))
+                                self.builder
+                                    .make_leaf(XConstant(lhs_xfe - rhs_bfe.lift()))
                                     .consume(),
                             ))),
                             BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_xfe * rhs_bfe)).consume(),
+                                self.builder
+                                    .make_leaf(XConstant(lhs_xfe * rhs_bfe))
+                                    .consume(),
                             ))),
                         };
                     }
@@ -1122,15 +1101,19 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     if let XConstant(rhs_xfe) = rhs.borrow().expression {
                         return match binop {
                             BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe))
+                                self.builder
+                                    .make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe))
                                     .consume(),
                             ))),
                             BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe))
+                                self.builder
+                                    .make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe))
                                     .consume(),
                             ))),
                             BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.make_leaf(XConstant(rhs_xfe * lhs_bfe)).consume(),
+                                self.builder
+                                    .make_leaf(XConstant(rhs_xfe * lhs_bfe))
+                                    .consume(),
                             ))),
                         };
                     }
@@ -1138,13 +1121,19 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     if let BConstant(rhs_bfe) = rhs.borrow().expression {
                         return match binop {
                             BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.make_leaf(BConstant(lhs_bfe + rhs_bfe)).consume(),
+                                self.builder
+                                    .make_leaf(BConstant(lhs_bfe + rhs_bfe))
+                                    .consume(),
                             ))),
                             BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.make_leaf(BConstant(lhs_bfe - rhs_bfe)).consume(),
+                                self.builder
+                                    .make_leaf(BConstant(lhs_bfe - rhs_bfe))
+                                    .consume(),
                             ))),
                             BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.make_leaf(BConstant(lhs_bfe * lhs_bfe)).consume(),
+                                self.builder
+                                    .make_leaf(BConstant(lhs_bfe * lhs_bfe))
+                                    .consume(),
                             ))),
                         };
                     }
@@ -1171,14 +1160,12 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         if let BinaryOperation(_, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
             let mut lhs_as_monadic_value = ConstraintCircuitMonad {
                 circuit: lhs.clone(),
-                id_counter_ref: Rc::clone(&self.id_counter_ref),
-                all_nodes: Rc::clone(&self.all_nodes),
+                builder: self.builder.clone(),
             };
             change_tracker |= lhs_as_monadic_value.constant_fold_inner();
             let mut rhs_as_monadic_value = ConstraintCircuitMonad {
                 circuit: rhs.clone(),
-                id_counter_ref: Rc::clone(&self.id_counter_ref),
-                all_nodes: Rc::clone(&self.all_nodes),
+                builder: self.builder.clone(),
             };
             change_tracker |= rhs_as_monadic_value.constant_fold_inner();
         }
@@ -1188,17 +1175,17 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         if equivalent_circuit.is_some() {
             println!("folding");
             // Check if equivalent circuit already exists
-            let new_id = *self.id_counter_ref.as_ref().borrow();
+            let new_id = *self.builder.id_counter.as_ref().borrow();
             let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
             let mut a = equivalent_circuit.as_ref().borrow_mut();
             (*a).id = new_id;
             drop(a);
             let equivalent_as_monadic_value = ConstraintCircuitMonad {
                 circuit: equivalent_circuit.clone(),
-                id_counter_ref: Rc::clone(&self.id_counter_ref),
-                all_nodes: Rc::clone(&self.all_nodes),
+                builder: self.builder.clone(),
             };
             match self
+                .builder
                 .all_nodes
                 .as_ref()
                 .borrow()
@@ -1217,9 +1204,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             }
 
             // I guess we also need to update the `all_nodes` here
-            *self.id_counter_ref.as_ref().borrow_mut() = new_id + 1;
-            self.all_nodes.as_ref().borrow_mut().remove(self);
-            self.all_nodes
+            *self.builder.id_counter.as_ref().borrow_mut() = new_id + 1;
+            self.builder.all_nodes.as_ref().borrow_mut().remove(self);
+            self.builder
+                .all_nodes
                 .as_ref()
                 .borrow_mut()
                 .insert(equivalent_as_monadic_value.clone());
@@ -1228,7 +1216,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
             let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
             if equivalent_circuit.borrow().expression == compare_with {
-                let count = self.all_nodes.as_ref().borrow().len();
+                let count = self.builder.all_nodes.as_ref().borrow().len();
                 println!("len: {count}; Constant folding: Was one");
             }
         }
@@ -1304,25 +1292,24 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
                 expression: expression.clone(),
                 id: new_id,
             })),
-            id_counter_ref: Rc::clone(&self.id_counter),
-            all_nodes: Rc::clone(&self.all_nodes),
+            builder: self.clone(),
         };
 
         // Check if node already exists, return the existing one if it does
         let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
         if contained {
-            let count = self.all_nodes.as_ref().borrow().len();
+            // let count = self.all_nodes.as_ref().borrow().len();
             // println!("len: {count}; Builder: contained: {}", new_node);
             let ret0 = &self.all_nodes.as_ref().borrow();
             let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
             return ret1.to_owned();
         }
 
-        let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
-        if expression == compare_with {
-            let count = self.all_nodes.as_ref().borrow().len();
-            println!("len: {count}; Builder: Was one");
-        }
+        // let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
+        // if expression == compare_with {
+        //     let count = self.all_nodes.as_ref().borrow().len();
+        //     println!("len: {count}; Builder: Was one");
+        // }
 
         // If node did not already exist, increment counter and insert node into hash set
         *self.id_counter.as_ref().borrow_mut() = new_id + 1;
