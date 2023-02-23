@@ -1174,14 +1174,18 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         let equivalent_circuit = self.find_equivalent_expression();
 
         if equivalent_circuit.is_some() {
-            println!("folding");
-            // Check if equivalent circuit already exists
-            let new_id = *self.builder.id_counter.as_ref().borrow();
             let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
             let equivalent_as_monadic_value = ConstraintCircuitMonad {
                 circuit: equivalent_circuit.clone(),
                 builder: self.builder.clone(),
             };
+            println!("folding");
+            println!("self expression: {self}");
+            println!("equivalent expression: {equivalent_as_monadic_value}");
+            // Check if equivalent circuit already exists
+            let new_id = equivalent_circuit.as_ref().borrow().id;
+            let self_id = self.circuit.borrow().id;
+
             match self
                 .builder
                 .all_nodes
@@ -1194,34 +1198,46 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     // must be replaced with the old value.
                     // Everything pointing to this node must no longer point to this node
                     let old_id = val.circuit.as_ref().borrow().id;
-                    println!("new_id = {new_id}, old_id = {old_id}");
-                    println!("self expression: {self}");
-                    println!("equivalent expression: {equivalent_as_monadic_value}");
-                    self.replace_references(old_id, val.circuit.clone());
+                    println!("new_id = {new_id}, old_id = {old_id}, self_id = {self_id}");
+                    if old_id != self_id {
+                        self.replace_references(self_id, val.circuit.clone());
+                        // self.builder
+                        //     .all_nodes
+                        //     .as_ref()
+                        //     .borrow_mut()
+                        //     .remove(&equivalent_as_monadic_value);
+                    }
+
+                    println!("before: {self}");
+                    *self.circuit.borrow_mut() = equivalent_circuit.clone();
+                    println!("after: {self}");
                     // panic!("");
                 }
-                None => (),
+                None => {
+                    // I guess we also need to update the `all_nodes` here
+                    // panic!("hi");
+                    // *self.builder.id_counter.as_ref().borrow_mut() = new_id + 1;
+                    // self.builder.all_nodes.as_ref().borrow_mut().remove(self);
+                    // self.builder
+                    //     .all_nodes
+                    //     .as_ref()
+                    //     .borrow_mut()
+                    //     .insert(equivalent_as_monadic_value.clone());
+
+                    println!("before: {self}");
+                    *self.circuit.borrow_mut() = equivalent_circuit.clone();
+                    println!("after: {self}");
+                }
             }
 
-            // I guess we also need to update the `all_nodes` here
-            *self.builder.id_counter.as_ref().borrow_mut() = new_id + 1;
-            self.builder.all_nodes.as_ref().borrow_mut().remove(self);
-            self.builder
-                .all_nodes
-                .as_ref()
-                .borrow_mut()
-                .insert(equivalent_as_monadic_value.clone());
-
-            *self.circuit.borrow_mut() = equivalent_circuit.clone();
-
-            let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
-            if equivalent_circuit.borrow().expression == compare_with {
-                let count = self.builder.all_nodes.as_ref().borrow().len();
-                println!("len: {count}; Constant folding: Was one");
-            }
+            // let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
+            // if equivalent_circuit.borrow().expression == compare_with {
+            //     let count = self.builder.all_nodes.as_ref().borrow().len();
+            //     println!("len: {count}; Constant folding: Was one");
+            // }
         }
 
-        change_tracker |= equivalent_circuit.is_some();
+        change_tracker = change_tracker || equivalent_circuit.is_some();
 
         change_tracker
     }
