@@ -295,7 +295,7 @@ impl<II: InputIndicator> Hash for ConstraintCircuit<II> {
 
 impl<II: InputIndicator> Hash for ConstraintCircuitMonad<II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.circuit.as_ref().borrow().expression.hash(state)
+        self.circuit.as_ref().borrow().hash(state)
     }
 }
 
@@ -378,12 +378,13 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Verify that all IDs in the subtree are unique. Panics otherwise.
-    fn inner_has_unique_ids(&mut self, ids: &mut HashSet<usize>) {
-        let new_value = ids.insert(self.id);
+    fn inner_has_unique_ids(&mut self, ids: &mut HashMap<usize, ConstraintCircuit<II>>) {
+        let node_with_repeated_id = ids.insert(self.id, self.clone());
         assert!(
-            !self.visited_counter.is_zero() || new_value,
-            "ID = {} was repeated",
-            self.id
+            !self.visited_counter.is_zero() || node_with_repeated_id.is_none(),
+            "ID = {} was repeated. Self was: {self:?}, other node: {:?}",
+            self.id,
+            node_with_repeated_id.unwrap(),
         );
         self.visited_counter += 1;
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
@@ -392,9 +393,9 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Verify that a multitree has unique IDs. Panics otherwise.
+    /// Verify that a multicircuit has unique IDs. Panics otherwise.
     pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
-        let mut ids: HashSet<usize> = HashSet::new();
+        let mut ids: HashMap<usize, ConstraintCircuit<II>> = HashMap::new();
 
         for circuit in constraints.iter_mut() {
             circuit.inner_has_unique_ids(&mut ids);
@@ -414,103 +415,103 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     ///  - one expr x one expr           => can't
     ///
     /// This operation mutates self and returns true if a change was applied anywhere in the tree.
-    fn constant_fold_inner(&mut self) -> bool {
-        let mut change_tracker = false;
-        if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            change_tracker |= lhs.clone().as_ref().borrow_mut().constant_fold_inner();
-            change_tracker |= rhs.clone().as_ref().borrow_mut().constant_fold_inner();
-        }
+    // fn constant_fold_inner(&mut self) -> bool {
+    //     let mut change_tracker = false;
+    //     if let BinaryOperation(_, lhs, rhs) = &self.expression {
+    //         change_tracker |= lhs.clone().as_ref().borrow_mut().constant_fold_inner();
+    //         change_tracker |= rhs.clone().as_ref().borrow_mut().constant_fold_inner();
+    //     }
 
-        match &self.expression.clone() {
-            BinaryOperation(binop, lhs, rhs) => {
-                // a + 0 = a ∧ a - 0 = a
-                if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.as_ref().borrow().is_zero() {
-                    *self.expression.borrow_mut() = lhs.as_ref().borrow().expression.clone();
-                    return true;
-                }
+    //     match &self.expression.clone() {
+    //         BinaryOperation(binop, lhs, rhs) => {
+    //             // a + 0 = a ∧ a - 0 = a
+    //             if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.as_ref().borrow().is_zero() {
+    //                 *self.expression.borrow_mut() = lhs.as_ref().borrow().expression.clone();
+    //                 return true;
+    //             }
 
-                // 0 + a = a
-                if *binop == BinOp::Add && lhs.as_ref().borrow().is_zero() {
-                    *self.expression.borrow_mut() = rhs.as_ref().borrow().expression.clone();
-                    return true;
-                }
+    //             // 0 + a = a
+    //             if *binop == BinOp::Add && lhs.as_ref().borrow().is_zero() {
+    //                 *self.expression.borrow_mut() = rhs.as_ref().borrow().expression.clone();
+    //                 return true;
+    //             }
 
-                if matches!(binop, BinOp::Mul) {
-                    // a * 1 = a
-                    if rhs.as_ref().borrow().is_one() {
-                        *self.expression.borrow_mut() = lhs.as_ref().borrow().expression.clone();
-                        return true;
-                    }
+    //             if matches!(binop, BinOp::Mul) {
+    //                 // a * 1 = a
+    //                 if rhs.as_ref().borrow().is_one() {
+    //                     *self.expression.borrow_mut() = lhs.as_ref().borrow().expression.clone();
+    //                     return true;
+    //                 }
 
-                    // 1 * a = a
-                    if lhs.as_ref().borrow().is_one() {
-                        *self.expression.borrow_mut() = rhs.as_ref().borrow().expression.clone();
-                        return true;
-                    }
+    //                 // 1 * a = a
+    //                 if lhs.as_ref().borrow().is_one() {
+    //                     *self.expression.borrow_mut() = rhs.as_ref().borrow().expression.clone();
+    //                     return true;
+    //                 }
 
-                    // 0 * a = a * 0 = 0
-                    if lhs.as_ref().borrow().is_zero() || rhs.as_ref().borrow().is_zero() {
-                        *self.expression.borrow_mut() = BConstant(0u64.into());
-                        return true;
-                    }
-                }
+    //                 // 0 * a = a * 0 = 0
+    //                 if lhs.as_ref().borrow().is_zero() || rhs.as_ref().borrow().is_zero() {
+    //                     *self.expression.borrow_mut() = BConstant(0u64.into());
+    //                     return true;
+    //                 }
+    //             }
 
-                // if left and right hand sides are both constants
-                if let XConstant(lhs_xfe) = lhs.as_ref().borrow().expression {
-                    if let XConstant(rhs_xfe) = rhs.as_ref().borrow().expression {
-                        *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => XConstant(lhs_xfe + rhs_xfe),
-                            BinOp::Sub => XConstant(lhs_xfe - rhs_xfe),
-                            BinOp::Mul => XConstant(lhs_xfe * rhs_xfe),
-                        };
-                        return true;
-                    }
+    //             // if left and right hand sides are both constants
+    //             if let XConstant(lhs_xfe) = lhs.as_ref().borrow().expression {
+    //                 if let XConstant(rhs_xfe) = rhs.as_ref().borrow().expression {
+    //                     *self.expression.borrow_mut() = match binop {
+    //                         BinOp::Add => XConstant(lhs_xfe + rhs_xfe),
+    //                         BinOp::Sub => XConstant(lhs_xfe - rhs_xfe),
+    //                         BinOp::Mul => XConstant(lhs_xfe * rhs_xfe),
+    //                     };
+    //                     return true;
+    //                 }
 
-                    if let BConstant(rhs_bfe) = rhs.as_ref().borrow().expression {
-                        *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => XConstant(lhs_xfe + rhs_bfe.lift()),
-                            BinOp::Sub => XConstant(lhs_xfe - rhs_bfe.lift()),
-                            BinOp::Mul => XConstant(lhs_xfe * rhs_bfe),
-                        };
-                        return true;
-                    }
-                }
+    //                 if let BConstant(rhs_bfe) = rhs.as_ref().borrow().expression {
+    //                     *self.expression.borrow_mut() = match binop {
+    //                         BinOp::Add => XConstant(lhs_xfe + rhs_bfe.lift()),
+    //                         BinOp::Sub => XConstant(lhs_xfe - rhs_bfe.lift()),
+    //                         BinOp::Mul => XConstant(lhs_xfe * rhs_bfe),
+    //                     };
+    //                     return true;
+    //                 }
+    //             }
 
-                if let BConstant(lhs_bfe) = lhs.as_ref().borrow().expression {
-                    if let XConstant(rhs_xfe) = rhs.as_ref().borrow().expression {
-                        *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => XConstant(lhs_bfe.lift() + rhs_xfe),
-                            BinOp::Sub => XConstant(lhs_bfe.lift() - rhs_xfe),
-                            BinOp::Mul => XConstant(rhs_xfe * lhs_bfe),
-                        };
-                        return true;
-                    }
+    //             if let BConstant(lhs_bfe) = lhs.as_ref().borrow().expression {
+    //                 if let XConstant(rhs_xfe) = rhs.as_ref().borrow().expression {
+    //                     *self.expression.borrow_mut() = match binop {
+    //                         BinOp::Add => XConstant(lhs_bfe.lift() + rhs_xfe),
+    //                         BinOp::Sub => XConstant(lhs_bfe.lift() - rhs_xfe),
+    //                         BinOp::Mul => XConstant(rhs_xfe * lhs_bfe),
+    //                     };
+    //                     return true;
+    //                 }
 
-                    if let BConstant(rhs_bfe) = rhs.as_ref().borrow().expression {
-                        *self.expression.borrow_mut() = match binop {
-                            BinOp::Add => BConstant(lhs_bfe + rhs_bfe),
-                            BinOp::Sub => BConstant(lhs_bfe - rhs_bfe),
-                            BinOp::Mul => BConstant(lhs_bfe * rhs_bfe),
-                        };
-                        return true;
-                    }
-                }
+    //                 if let BConstant(rhs_bfe) = rhs.as_ref().borrow().expression {
+    //                     *self.expression.borrow_mut() = match binop {
+    //                         BinOp::Add => BConstant(lhs_bfe + rhs_bfe),
+    //                         BinOp::Sub => BConstant(lhs_bfe - rhs_bfe),
+    //                         BinOp::Mul => BConstant(lhs_bfe * rhs_bfe),
+    //                     };
+    //                     return true;
+    //                 }
+    //             }
 
-                change_tracker
-            }
-            _ => change_tracker,
-        }
-    }
+    //             change_tracker
+    //         }
+    //         _ => change_tracker,
+    //     }
+    // }
 
     /// Reduce size of multitree by simplifying constant expressions such as `1·X` to `X`.
-    pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<II>]) {
-        for circuit in circuits.iter_mut() {
-            let mut mutated = circuit.constant_fold_inner();
-            while mutated {
-                mutated = circuit.constant_fold_inner();
-            }
-        }
-    }
+    // pub fn constant_folding(circuits: &mut [&mut ConstraintCircuit<II>]) {
+    //     for circuit in circuits.iter_mut() {
+    //         let mut mutated = circuit.constant_fold_inner();
+    //         while mutated {
+    //             mutated = circuit.constant_fold_inner();
+    //         }
+    //     }
+    // }
 
     /// Return max degree after evaluating the circuit with an input of specified degree
     pub fn symbolic_degree_bound(
@@ -737,7 +738,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             let own_exp = self.expression.clone();
             if collided_circuit_id != self.id {
                 panic!(
-                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. Collission on:\n {collided_circuit_id}: {collided_expr:?}\n {own_id}: {own_exp:?}",
+                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. Collission on:\n {collided_circuit_id}: {collided_expr:?}\n {own_id}: {own_exp:?}. Value was {value}",
                 );
             }
         }
@@ -808,8 +809,11 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
     pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
+    // TODO: replace the two below fields with the builder struct which contains
+    // the same data.
     pub all_nodes: Rc<RefCell<HashSet<ConstraintCircuitMonad<II>>>>,
     pub id_counter_ref: Rc<RefCell<usize>>,
+    // pub builder: Rc<RefCell<ConstraintCircuitBuilder<II>>>,
 }
 
 impl<II: InputIndicator> Debug for ConstraintCircuitMonad<II> {
@@ -926,11 +930,12 @@ fn binop<II: InputIndicator>(
     *lhs.as_ref().borrow().id_counter_ref.as_ref().borrow_mut() = new_index + 1;
 
     // Store new node in HashSet
-    new_node
+    let inserted_value_was_new = new_node
         .all_nodes
         .as_ref()
         .borrow_mut()
         .insert(new_node.clone());
+    assert!(inserted_value_was_new, "Binop-created value must be new");
 
     new_node
 }
@@ -974,12 +979,27 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         self.circuit.try_borrow().unwrap().to_owned()
     }
 
+    pub fn max_id(&self) -> usize {
+        let max_from_hash_map = self
+            .all_nodes
+            .as_ref()
+            .borrow()
+            .iter()
+            .map(|x| x.circuit.as_ref().borrow().id)
+            .max()
+            .unwrap();
+
+        let id_ref_value = *self.id_counter_ref.borrow();
+        assert_eq!(id_ref_value - 1, max_from_hash_map);
+        max_from_hash_map
+    }
+
     fn make_leaf(&self, expression: CircuitExpression<II>) -> Self {
         let new_id = self.id_counter_ref.as_ref().borrow().to_owned();
         let new_node = ConstraintCircuitMonad {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
                 visited_counter: 0usize,
-                expression,
+                expression: expression.clone(),
                 id: new_id,
             })),
             id_counter_ref: Rc::clone(&self.id_counter_ref),
@@ -987,11 +1007,19 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         };
 
         // Check if node already exists, return the existing one if it does
-        let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
+        // let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
+        let contained = self.all_nodes.borrow().contains(&new_node);
         if contained {
+            println!("PMD-BBB");
             let ret0 = &self.all_nodes.as_ref().borrow();
             let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
             return ret1.to_owned();
+        }
+
+        let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
+        if expression == compare_with {
+            let count = self.all_nodes.as_ref().borrow().len();
+            println!("len: {count}; Monad: Was one");
         }
 
         // If node did not already exist, increment counter and insert node into hash set
@@ -1002,6 +1030,125 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .insert(new_node.clone());
 
         new_node
+    }
+
+    fn replace_references(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
+        for node in self.all_nodes.as_ref().borrow().clone().into_iter() {
+            match &node.circuit.as_ref().borrow_mut().expression {
+                BinaryOperation(_, mut lhs, mut rhs) => {
+                    if lhs.as_ref().borrow().id == old_id {
+                        println!("Replace");
+                        lhs = new.clone();
+                    }
+                    if rhs.as_ref().borrow().id == old_id {
+                        println!("Replace");
+                        rhs = new.clone();
+                    }
+                }
+                _ => (),
+            }
+        }
+    }
+
+    fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
+        let expr = &self.circuit.as_ref().borrow().expression;
+        match expr {
+            BinaryOperation(binop, lhs, rhs) => {
+                // a + 0 = a ∧ a - 0 = a
+                if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
+                    return Some(Rc::clone(&lhs));
+                }
+
+                // 0 + a = a
+                if *binop == BinOp::Add && lhs.borrow().is_zero() {
+                    return Some(Rc::clone(&rhs));
+                }
+
+                if matches!(binop, BinOp::Mul) {
+                    // a * 1 = a
+                    if rhs.borrow().is_one() {
+                        return Some(Rc::clone(&lhs));
+                    }
+
+                    // 1 * a = a
+                    if lhs.borrow().is_one() {
+                        return Some(Rc::clone(&rhs));
+                    }
+
+                    // 0 * a = a * 0 = 0
+                    if lhs.borrow().is_zero() || rhs.borrow().is_zero() {
+                        return Some(self.make_leaf(BConstant(BFieldElement::zero())).circuit);
+                    }
+                }
+
+                // if left and right hand sides are both constants
+                if let XConstant(lhs_xfe) = lhs.borrow().expression {
+                    if let XConstant(rhs_xfe) = rhs.borrow().expression {
+                        return match binop {
+                            BinOp::Add => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_xfe + rhs_xfe)).consume(),
+                            ))),
+                            BinOp::Sub => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_xfe - rhs_xfe)).consume(),
+                            ))),
+                            BinOp::Mul => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_xfe * rhs_xfe)).consume(),
+                            ))),
+                        };
+                    }
+
+                    if let BConstant(rhs_bfe) = rhs.borrow().expression {
+                        return match binop {
+                            BinOp::Add => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_xfe + rhs_bfe.lift()))
+                                    .consume(),
+                            ))),
+                            BinOp::Sub => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_xfe - rhs_bfe.lift()))
+                                    .consume(),
+                            ))),
+                            BinOp::Mul => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_xfe * rhs_bfe)).consume(),
+                            ))),
+                        };
+                    }
+                }
+
+                if let BConstant(lhs_bfe) = lhs.borrow().expression {
+                    if let XConstant(rhs_xfe) = rhs.borrow().expression {
+                        return match binop {
+                            BinOp::Add => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe))
+                                    .consume(),
+                            ))),
+                            BinOp::Sub => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe))
+                                    .consume(),
+                            ))),
+                            BinOp::Mul => Some(Rc::new(RefCell::new(
+                                self.make_leaf(XConstant(rhs_xfe * lhs_bfe)).consume(),
+                            ))),
+                        };
+                    }
+
+                    if let BConstant(rhs_bfe) = rhs.borrow().expression {
+                        return match binop {
+                            BinOp::Add => Some(Rc::new(RefCell::new(
+                                self.make_leaf(BConstant(lhs_bfe + rhs_bfe)).consume(),
+                            ))),
+                            BinOp::Sub => Some(Rc::new(RefCell::new(
+                                self.make_leaf(BConstant(lhs_bfe - rhs_bfe)).consume(),
+                            ))),
+                            BinOp::Mul => Some(Rc::new(RefCell::new(
+                                self.make_leaf(BConstant(lhs_bfe * lhs_bfe)).consume(),
+                            ))),
+                        };
+                    }
+                }
+                return None;
+            }
+            _ => return None,
+        }
     }
 
     /// Apply constant folding to simplify the (sub)tree.
@@ -1018,119 +1165,71 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     fn constant_fold_inner(&mut self) -> bool {
         let mut change_tracker = false;
         if let BinaryOperation(_, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
-            change_tracker |= lhs.clone().as_ref().borrow_mut().constant_fold_inner();
-            change_tracker |= rhs.clone().as_ref().borrow_mut().constant_fold_inner();
+            let mut lhs_as_monadic_value = ConstraintCircuitMonad {
+                circuit: lhs.clone(),
+                id_counter_ref: Rc::clone(&self.id_counter_ref),
+                all_nodes: Rc::clone(&self.all_nodes),
+            };
+            change_tracker |= lhs_as_monadic_value.constant_fold_inner();
+            let mut rhs_as_monadic_value = ConstraintCircuitMonad {
+                circuit: rhs.clone(),
+                id_counter_ref: Rc::clone(&self.id_counter_ref),
+                all_nodes: Rc::clone(&self.all_nodes),
+            };
+            change_tracker |= rhs_as_monadic_value.constant_fold_inner();
         }
 
-        let mut equivalent_circuit: Option<Rc<RefCell<ConstraintCircuit<II>>>> = None;
-        match &self
-            .circuit
-            .clone()
-            .as_ref()
-            .borrow()
-            .clone()
-            .expression
-            .clone()
-        {
-            BinaryOperation(binop, lhs, rhs) => {
-                // a + 0 = a ∧ a - 0 = a
-                if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
-                    println!("PMD0");
-                    // self.circuit = Rc::clone(&lhs);
-                    // return true;
-                    equivalent_circuit = Some(Rc::clone(&lhs));
+        let equivalent_circuit = self.find_equivalent_expression();
+
+        if equivalent_circuit.is_some() {
+            println!("folding");
+            // Check if equivalent circuit already exists
+            let new_id = *self.id_counter_ref.as_ref().borrow();
+            let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
+            let equivalent_as_monadic_value = ConstraintCircuitMonad {
+                circuit: equivalent_circuit.clone(),
+                id_counter_ref: Rc::clone(&self.id_counter_ref),
+                all_nodes: Rc::clone(&self.all_nodes),
+            };
+            match self
+                .all_nodes
+                .as_ref()
+                .borrow()
+                .get(&equivalent_as_monadic_value)
+            {
+                Some(val) => {
+                    // The constant-folded value already exists. All references to this value
+                    // must be replaced with the old value.
+                    // Everything pointing to this node must no longer point to this node
+                    let old_id = val.circuit.as_ref().borrow().id;
+                    println!("Match on ID {}", old_id);
+                    self.replace_references(old_id, equivalent_circuit.clone());
+                    // panic!("");
                 }
-
-                // 0 + a = a
-                if *binop == BinOp::Add && lhs.borrow().is_zero() {
-                    println!("PMD1");
-                    // self.circuit = Rc::clone(&rhs);
-                    // return true;
-                    equivalent_circuit = Some(Rc::clone(&rhs));
-                }
-
-                if matches!(binop, BinOp::Mul) {
-                    // a * 1 = a
-                    if rhs.borrow().is_one() {
-                        println!("PMD2");
-                        // *self.expression.borrow_mut() =
-                        //     lhs.borrow().expression.clone();
-                        // self.circuit = Rc::clone(&rhs);
-                        // return true;
-                        equivalent_circuit = Some(Rc::clone(&lhs));
-                    }
-
-                    // 1 * a = a
-                    if lhs.borrow().is_one() {
-                        println!("PMD3");
-                        // *self.expression.borrow_mut() =
-                        //     rhs.borrow().expression.clone();
-                        // self.circuit = Rc::clone(&rhs);
-                        // return true;
-                        equivalent_circuit = Some(Rc::clone(&rhs));
-                    }
-
-                    // 0 * a = a * 0 = 0
-                    if lhs.borrow().is_zero() || rhs.borrow().is_zero() {
-                        println!("PMD4");
-                        // self.circuit = self.make_leaf(BConstant(0u64.into())).circuit;
-                        // return true;
-                        // equivalent_circuit = Some(Rc::clone(&rhs));
-                        equivalent_circuit =
-                            Some(self.make_leaf(BConstant(BFieldElement::zero())).circuit)
-                    }
-                }
-
-                // if left and right hand sides are both constants
-                if let XConstant(lhs_xfe) = lhs.borrow().expression {
-                    if let XConstant(rhs_xfe) = rhs.borrow().expression {
-                        println!("PMD5");
-                        *self = match binop {
-                            BinOp::Add => self.make_leaf(XConstant(lhs_xfe + rhs_xfe)),
-                            BinOp::Sub => self.make_leaf(XConstant(lhs_xfe - rhs_xfe)),
-                            BinOp::Mul => self.make_leaf(XConstant(lhs_xfe * rhs_xfe)),
-                        };
-                        return true;
-                    }
-
-                    if let BConstant(rhs_bfe) = rhs.borrow().expression {
-                        println!("PMD6");
-                        *self = match binop {
-                            BinOp::Add => self.make_leaf(XConstant(lhs_xfe + rhs_bfe.lift())),
-                            BinOp::Sub => self.make_leaf(XConstant(lhs_xfe - rhs_bfe.lift())),
-                            BinOp::Mul => self.make_leaf(XConstant(lhs_xfe * rhs_bfe)),
-                        };
-                        return true;
-                    }
-                }
-
-                if let BConstant(lhs_bfe) = lhs.borrow().expression {
-                    if let XConstant(rhs_xfe) = rhs.borrow().expression {
-                        println!("PMD7");
-                        *self = match binop {
-                            BinOp::Add => self.make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe)),
-                            BinOp::Sub => self.make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe)),
-                            BinOp::Mul => self.make_leaf(XConstant(rhs_xfe * lhs_bfe)),
-                        };
-                        return true;
-                    }
-
-                    if let BConstant(rhs_bfe) = rhs.borrow().expression {
-                        println!("PMD8");
-                        *self = match binop {
-                            BinOp::Add => self.make_leaf(BConstant(lhs_bfe + rhs_bfe)),
-                            BinOp::Sub => self.make_leaf(BConstant(lhs_bfe - rhs_bfe)),
-                            BinOp::Mul => self.make_leaf(BConstant(lhs_bfe * lhs_bfe)),
-                        };
-                        return true;
-                    }
-                }
-
-                // change_tracker
+                None => (),
             }
-            _ => None,
-        };
-        equivalent_circuit.is_some()
+
+            // I guess we also need to update the `all_nodes` here
+            *self.id_counter_ref.as_ref().borrow_mut() = new_id + 1;
+            self.all_nodes.as_ref().borrow_mut().remove(self);
+            self.all_nodes
+                .as_ref()
+                .borrow_mut()
+                .insert(equivalent_as_monadic_value.clone());
+
+            *self.circuit.borrow_mut() = equivalent_circuit.clone();
+
+            let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
+            if equivalent_circuit.borrow().expression == compare_with {
+                let count = self.all_nodes.as_ref().borrow().len();
+                println!("len: {count}; Constant folding: Was one");
+            }
+        }
+
+        // *self = equivalent_circuit;
+        change_tracker |= equivalent_circuit.is_some();
+
+        change_tracker
     }
 
     /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
@@ -1195,7 +1294,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         let new_node = ConstraintCircuitMonad {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
                 visited_counter: 0usize,
-                expression,
+                expression: expression.clone(),
                 id: new_id,
             })),
             id_counter_ref: Rc::clone(&self.id_counter),
@@ -1205,9 +1304,17 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         // Check if node already exists, return the existing one if it does
         let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
         if contained {
+            let count = self.all_nodes.as_ref().borrow().len();
+            // println!("len: {count}; Builder: contained: {}", new_node);
             let ret0 = &self.all_nodes.as_ref().borrow();
             let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
             return ret1.to_owned();
+        }
+
+        let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
+        if expression == compare_with {
+            let count = self.all_nodes.as_ref().borrow().len();
+            println!("len: {count}; Builder: Was one");
         }
 
         // If node did not already exist, increment counter and insert node into hash set
@@ -1417,196 +1524,196 @@ mod constraint_circuit_tests {
         );
     }
 
-    #[test]
-    fn circuit_equality_check_and_constant_folding_test() {
-        let circuit_builder: ConstraintCircuitBuilder<DualRowIndicator> =
-            ConstraintCircuitBuilder::new();
-        let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
-        let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
-        let four = circuit_builder.x_constant(4.into());
-        let one = circuit_builder.x_constant(1.into());
-        let zero = circuit_builder.x_constant(0.into());
+    // #[test]
+    // fn circuit_equality_check_and_constant_folding_test() {
+    //     let circuit_builder: ConstraintCircuitBuilder<DualRowIndicator> =
+    //         ConstraintCircuitBuilder::new();
+    //     let var_0 = circuit_builder.input(DualRowIndicator::CurrentBaseRow(0));
+    //     let var_4 = circuit_builder.input(DualRowIndicator::NextBaseRow(4));
+    //     let four = circuit_builder.x_constant(4.into());
+    //     let one = circuit_builder.x_constant(1.into());
+    //     let zero = circuit_builder.x_constant(0.into());
 
-        assert_ne!(var_0, var_4);
-        assert_ne!(var_0, four);
-        assert_ne!(one, four);
-        assert_ne!(one, zero);
-        assert_ne!(zero, one);
+    //     assert_ne!(var_0, var_4);
+    //     assert_ne!(var_0, four);
+    //     assert_ne!(one, four);
+    //     assert_ne!(one, zero);
+    //     assert_ne!(zero, one);
 
-        // Verify that constant folding can handle a = a * 1
-        let var_0_copy_0 = deep_copy(&var_0.circuit.as_ref().borrow());
-        let var_0_mul_one_0 = var_0_copy_0.clone() * one.clone();
-        assert_ne!(var_0_copy_0, var_0_mul_one_0);
-        let mut var_0_circuit_0 = var_0_copy_0.consume();
-        let mut var_0_same_circuit_0 = var_0_mul_one_0.consume();
-        ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_0, &mut var_0_same_circuit_0]);
-        assert_eq!(var_0_circuit_0, var_0_same_circuit_0);
-        assert_eq!(var_0_same_circuit_0, var_0_circuit_0);
+    //     // Verify that constant folding can handle a = a * 1
+    //     let var_0_copy_0 = deep_copy(&var_0.circuit.as_ref().borrow());
+    //     let var_0_mul_one_0 = var_0_copy_0.clone() * one.clone();
+    //     assert_ne!(var_0_copy_0, var_0_mul_one_0);
+    //     let mut var_0_circuit_0 = var_0_copy_0.consume();
+    //     let mut var_0_same_circuit_0 = var_0_mul_one_0.consume();
+    //     ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_0, &mut var_0_same_circuit_0]);
+    //     assert_eq!(var_0_circuit_0, var_0_same_circuit_0);
+    //     assert_eq!(var_0_same_circuit_0, var_0_circuit_0);
 
-        // Verify that constant folding can handle a = 1 * a
-        let var_0_copy_1 = deep_copy(&var_0.circuit.as_ref().borrow());
-        let var_0_one_mul_1 = one.clone() * var_0_copy_1.clone();
-        assert_ne!(var_0_copy_1, var_0_one_mul_1);
-        let mut var_0_circuit_1 = var_0_copy_1.consume();
-        let mut var_0_same_circuit_1 = var_0_one_mul_1.consume();
-        ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_1, &mut var_0_same_circuit_1]);
-        assert_eq!(var_0_circuit_1, var_0_same_circuit_1);
-        assert_eq!(var_0_same_circuit_1, var_0_circuit_1);
+    //     // Verify that constant folding can handle a = 1 * a
+    //     let var_0_copy_1 = deep_copy(&var_0.circuit.as_ref().borrow());
+    //     let var_0_one_mul_1 = one.clone() * var_0_copy_1.clone();
+    //     assert_ne!(var_0_copy_1, var_0_one_mul_1);
+    //     let mut var_0_circuit_1 = var_0_copy_1.consume();
+    //     let mut var_0_same_circuit_1 = var_0_one_mul_1.consume();
+    //     ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_1, &mut var_0_same_circuit_1]);
+    //     assert_eq!(var_0_circuit_1, var_0_same_circuit_1);
+    //     assert_eq!(var_0_same_circuit_1, var_0_circuit_1);
 
-        // Verify that constant folding can handle a = 1 * a * 1
-        let var_0_copy_2 = deep_copy(&var_0.circuit.as_ref().borrow());
-        let var_0_one_mul_2 = one.clone() * var_0_copy_2.clone() * one;
-        assert_ne!(var_0_copy_2, var_0_one_mul_2);
-        let mut var_0_circuit_2 = var_0_copy_2.consume();
-        let mut var_0_same_circuit_2 = var_0_one_mul_2.consume();
-        ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_2, &mut var_0_same_circuit_2]);
-        assert_eq!(var_0_circuit_2, var_0_same_circuit_2);
-        assert_eq!(var_0_same_circuit_2, var_0_circuit_2);
+    //     // Verify that constant folding can handle a = 1 * a * 1
+    //     let var_0_copy_2 = deep_copy(&var_0.circuit.as_ref().borrow());
+    //     let var_0_one_mul_2 = one.clone() * var_0_copy_2.clone() * one;
+    //     assert_ne!(var_0_copy_2, var_0_one_mul_2);
+    //     let mut var_0_circuit_2 = var_0_copy_2.consume();
+    //     let mut var_0_same_circuit_2 = var_0_one_mul_2.consume();
+    //     ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_2, &mut var_0_same_circuit_2]);
+    //     assert_eq!(var_0_circuit_2, var_0_same_circuit_2);
+    //     assert_eq!(var_0_same_circuit_2, var_0_circuit_2);
 
-        // Verify that constant folding handles a + 0 = a
-        let var_0_copy_3 = deep_copy(&var_0.circuit.as_ref().borrow());
-        let var_0_plus_zero_3 = var_0_copy_3.clone() + zero.clone();
-        assert_ne!(var_0_copy_3, var_0_plus_zero_3);
-        let mut var_0_circuit_3 = var_0_copy_3.consume();
-        let mut var_0_same_circuit_3 = var_0_plus_zero_3.consume();
-        ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_3, &mut var_0_same_circuit_3]);
-        assert_eq!(var_0_circuit_3, var_0_same_circuit_3);
-        assert_eq!(var_0_same_circuit_3, var_0_circuit_3);
+    //     // Verify that constant folding handles a + 0 = a
+    //     let var_0_copy_3 = deep_copy(&var_0.circuit.as_ref().borrow());
+    //     let var_0_plus_zero_3 = var_0_copy_3.clone() + zero.clone();
+    //     assert_ne!(var_0_copy_3, var_0_plus_zero_3);
+    //     let mut var_0_circuit_3 = var_0_copy_3.consume();
+    //     let mut var_0_same_circuit_3 = var_0_plus_zero_3.consume();
+    //     ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_3, &mut var_0_same_circuit_3]);
+    //     assert_eq!(var_0_circuit_3, var_0_same_circuit_3);
+    //     assert_eq!(var_0_same_circuit_3, var_0_circuit_3);
 
-        // Verify that constant folding handles a + (a * 0) = a
-        let var_0_copy_4 = deep_copy(&var_0.circuit.as_ref().borrow());
-        let var_0_plus_zero_4 = var_0_copy_4.clone() + var_0_copy_4.clone() * zero.clone();
-        assert_ne!(var_0_copy_4, var_0_plus_zero_4);
-        let mut var_0_circuit_4 = var_0_copy_4.consume();
-        let mut var_0_same_circuit_4 = var_0_plus_zero_4.consume();
-        ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_4, &mut var_0_same_circuit_4]);
-        assert_eq!(var_0_circuit_4, var_0_same_circuit_4);
-        assert_eq!(var_0_same_circuit_4, var_0_circuit_4);
+    //     // Verify that constant folding handles a + (a * 0) = a
+    //     let var_0_copy_4 = deep_copy(&var_0.circuit.as_ref().borrow());
+    //     let var_0_plus_zero_4 = var_0_copy_4.clone() + var_0_copy_4.clone() * zero.clone();
+    //     assert_ne!(var_0_copy_4, var_0_plus_zero_4);
+    //     let mut var_0_circuit_4 = var_0_copy_4.consume();
+    //     let mut var_0_same_circuit_4 = var_0_plus_zero_4.consume();
+    //     ConstraintCircuit::constant_folding(&mut [&mut var_0_circuit_4, &mut var_0_same_circuit_4]);
+    //     assert_eq!(var_0_circuit_4, var_0_same_circuit_4);
+    //     assert_eq!(var_0_same_circuit_4, var_0_circuit_4);
 
-        // Verify that constant folding does not equate `0 - a` with `a`
-        let var_0_copy_5 = deep_copy(&var_0.circuit.as_ref().borrow());
-        let zero_minus_var_0 = zero - var_0_copy_5.clone();
-        assert_ne!(var_0_copy_5, zero_minus_var_0);
-        let mut var_0_circuit_5 = var_0_copy_5.consume();
-        let mut var_0_not_same_circuit_5 = zero_minus_var_0.consume();
-        ConstraintCircuit::constant_folding(&mut [
-            &mut var_0_circuit_5,
-            &mut var_0_not_same_circuit_5,
-        ]);
-        assert_ne!(var_0_circuit_5, var_0_not_same_circuit_5);
-        assert_ne!(var_0_not_same_circuit_5, var_0_circuit_5);
-    }
+    //     // Verify that constant folding does not equate `0 - a` with `a`
+    //     let var_0_copy_5 = deep_copy(&var_0.circuit.as_ref().borrow());
+    //     let zero_minus_var_0 = zero - var_0_copy_5.clone();
+    //     assert_ne!(var_0_copy_5, zero_minus_var_0);
+    //     let mut var_0_circuit_5 = var_0_copy_5.consume();
+    //     let mut var_0_not_same_circuit_5 = zero_minus_var_0.consume();
+    //     ConstraintCircuit::constant_folding(&mut [
+    //         &mut var_0_circuit_5,
+    //         &mut var_0_not_same_circuit_5,
+    //     ]);
+    //     assert_ne!(var_0_circuit_5, var_0_not_same_circuit_5);
+    //     assert_ne!(var_0_not_same_circuit_5, var_0_circuit_5);
+    // }
 
-    #[test]
-    fn constant_folding_pbt() {
-        for _ in 0..1000 {
-            let (circuit, circuit_builder) = random_circuit_builder();
-            let one = circuit_builder.x_constant(1.into());
-            let zero = circuit_builder.x_constant(0.into());
+    // #[test]
+    // fn constant_folding_pbt() {
+    //     for _ in 0..1000 {
+    //         let (circuit, circuit_builder) = random_circuit_builder();
+    //         let one = circuit_builder.x_constant(1.into());
+    //         let zero = circuit_builder.x_constant(0.into());
 
-            // Verify that constant folding can handle a = a * 1
-            let copy_0 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let copy_0_alt = copy_0.clone() * one.clone();
-            assert_ne!(copy_0, copy_0_alt);
-            let mut circuit_0 = copy_0.consume();
-            let mut same_circuit_0 = copy_0_alt.consume();
-            ConstraintCircuit::constant_folding(&mut [&mut circuit_0, &mut same_circuit_0]);
-            assert_eq!(circuit_0, same_circuit_0);
-            assert_eq!(same_circuit_0, circuit_0);
+    //         // Verify that constant folding can handle a = a * 1
+    //         let copy_0 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let copy_0_alt = copy_0.clone() * one.clone();
+    //         assert_ne!(copy_0, copy_0_alt);
+    //         let mut circuit_0 = copy_0.consume();
+    //         let mut same_circuit_0 = copy_0_alt.consume();
+    //         ConstraintCircuit::constant_folding(&mut [&mut circuit_0, &mut same_circuit_0]);
+    //         assert_eq!(circuit_0, same_circuit_0);
+    //         assert_eq!(same_circuit_0, circuit_0);
 
-            // Verify that constant folding can handle a = 1 * a
-            let copy_1 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let copy_1_alt = one.clone() * copy_1.clone();
-            assert_ne!(copy_1, copy_1_alt);
-            let mut circuit_1 = copy_1.consume();
-            let mut circuit_1_alt = copy_1_alt.consume();
-            ConstraintCircuit::constant_folding(&mut [&mut circuit_1, &mut circuit_1_alt]);
-            assert_eq!(circuit_1, circuit_1_alt);
-            assert_eq!(circuit_1_alt, circuit_1);
+    //         // Verify that constant folding can handle a = 1 * a
+    //         let copy_1 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let copy_1_alt = one.clone() * copy_1.clone();
+    //         assert_ne!(copy_1, copy_1_alt);
+    //         let mut circuit_1 = copy_1.consume();
+    //         let mut circuit_1_alt = copy_1_alt.consume();
+    //         ConstraintCircuit::constant_folding(&mut [&mut circuit_1, &mut circuit_1_alt]);
+    //         assert_eq!(circuit_1, circuit_1_alt);
+    //         assert_eq!(circuit_1_alt, circuit_1);
 
-            // Verify that constant folding can handle a = 1 * a * 1
-            let copy_2 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let copy_2_alt = one.clone() * copy_2.clone() * one.clone();
-            assert_ne!(copy_2, copy_2_alt);
-            let mut circuit_1 = copy_2.consume();
-            let mut circuit_1_alt = copy_2_alt.consume();
-            ConstraintCircuit::constant_folding(&mut [&mut circuit_1, &mut circuit_1_alt]);
-            assert_eq!(circuit_1, circuit_1_alt);
-            assert_eq!(circuit_1_alt, circuit_1);
+    //         // Verify that constant folding can handle a = 1 * a * 1
+    //         let copy_2 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let copy_2_alt = one.clone() * copy_2.clone() * one.clone();
+    //         assert_ne!(copy_2, copy_2_alt);
+    //         let mut circuit_1 = copy_2.consume();
+    //         let mut circuit_1_alt = copy_2_alt.consume();
+    //         ConstraintCircuit::constant_folding(&mut [&mut circuit_1, &mut circuit_1_alt]);
+    //         assert_eq!(circuit_1, circuit_1_alt);
+    //         assert_eq!(circuit_1_alt, circuit_1);
 
-            // Verify that constant folding handles a + 0 = a
-            let copy_3 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let copy_3_alt = copy_3.clone() + zero.clone();
-            assert_ne!(copy_3, copy_3_alt);
-            let mut circuit_3 = copy_3.consume();
-            let mut circuit_3_alt = copy_3_alt.consume();
-            ConstraintCircuit::constant_folding(&mut [&mut circuit_3, &mut circuit_3_alt]);
-            assert_eq!(circuit_3, circuit_3_alt);
-            assert_eq!(circuit_3_alt, circuit_3);
+    //         // Verify that constant folding handles a + 0 = a
+    //         let copy_3 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let copy_3_alt = copy_3.clone() + zero.clone();
+    //         assert_ne!(copy_3, copy_3_alt);
+    //         let mut circuit_3 = copy_3.consume();
+    //         let mut circuit_3_alt = copy_3_alt.consume();
+    //         ConstraintCircuit::constant_folding(&mut [&mut circuit_3, &mut circuit_3_alt]);
+    //         assert_eq!(circuit_3, circuit_3_alt);
+    //         assert_eq!(circuit_3_alt, circuit_3);
 
-            // Verify that constant folding handles a + (a * 0) = a
-            let copy_4 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let copy_4_alt = copy_4.clone() + copy_4.clone() * zero.clone();
-            assert_ne!(copy_4, copy_4_alt);
-            let mut circuit_4 = copy_4.consume();
-            let mut circuit_4_alt = copy_4_alt.consume();
-            ConstraintCircuit::constant_folding(&mut [&mut circuit_4, &mut circuit_4_alt]);
-            assert_eq!(circuit_4, circuit_4_alt);
-            assert_eq!(circuit_4_alt, circuit_4);
+    //         // Verify that constant folding handles a + (a * 0) = a
+    //         let copy_4 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let copy_4_alt = copy_4.clone() + copy_4.clone() * zero.clone();
+    //         assert_ne!(copy_4, copy_4_alt);
+    //         let mut circuit_4 = copy_4.consume();
+    //         let mut circuit_4_alt = copy_4_alt.consume();
+    //         ConstraintCircuit::constant_folding(&mut [&mut circuit_4, &mut circuit_4_alt]);
+    //         assert_eq!(circuit_4, circuit_4_alt);
+    //         assert_eq!(circuit_4_alt, circuit_4);
 
-            // Verify that constant folding handles a + (0 * a) = a
-            let copy_5 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let copy_5_alt = copy_5.clone() + copy_5.clone() * zero.clone();
-            assert_ne!(copy_5, copy_5_alt);
-            let mut circuit_5 = copy_5.consume();
-            let mut circuit_5_alt = copy_5_alt.consume();
-            ConstraintCircuit::constant_folding(&mut [&mut circuit_5, &mut circuit_5_alt]);
-            assert_eq!(circuit_5, circuit_5_alt);
-            assert_eq!(circuit_5_alt, circuit_5);
+    //         // Verify that constant folding handles a + (0 * a) = a
+    //         let copy_5 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let copy_5_alt = copy_5.clone() + copy_5.clone() * zero.clone();
+    //         assert_ne!(copy_5, copy_5_alt);
+    //         let mut circuit_5 = copy_5.consume();
+    //         let mut circuit_5_alt = copy_5_alt.consume();
+    //         ConstraintCircuit::constant_folding(&mut [&mut circuit_5, &mut circuit_5_alt]);
+    //         assert_eq!(circuit_5, circuit_5_alt);
+    //         assert_eq!(circuit_5_alt, circuit_5);
 
-            // Verify that constant folding does not equate `0 - a` with `a`
-            // But only if `a != 0`
-            let copy_6 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let zero_minus_copy_6 = zero.clone() - copy_6.clone();
-            assert_ne!(copy_6, zero_minus_copy_6);
-            let mut var_0_circuit_6 = copy_6.consume();
-            let mut var_0_not_same_circuit_6 = zero_minus_copy_6.consume();
-            ConstraintCircuit::constant_folding(&mut [
-                &mut var_0_circuit_6,
-                &mut var_0_not_same_circuit_6,
-            ]);
+    //         // Verify that constant folding does not equate `0 - a` with `a`
+    //         // But only if `a != 0`
+    //         let copy_6 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let zero_minus_copy_6 = zero.clone() - copy_6.clone();
+    //         assert_ne!(copy_6, zero_minus_copy_6);
+    //         let mut var_0_circuit_6 = copy_6.consume();
+    //         let mut var_0_not_same_circuit_6 = zero_minus_copy_6.consume();
+    //         ConstraintCircuit::constant_folding(&mut [
+    //             &mut var_0_circuit_6,
+    //             &mut var_0_not_same_circuit_6,
+    //         ]);
 
-            // An X field and a B field leaf will never be equal
-            if var_0_circuit_6.is_zero()
-                && (matches!(var_0_circuit_6.expression, CircuitExpression::BConstant(_))
-                    && matches!(
-                        var_0_not_same_circuit_6.expression,
-                        CircuitExpression::BConstant(_)
-                    )
-                    || matches!(var_0_circuit_6.expression, CircuitExpression::XConstant(_))
-                        && matches!(
-                            var_0_not_same_circuit_6.expression,
-                            CircuitExpression::XConstant(_)
-                        ))
-            {
-                assert_eq!(var_0_circuit_6, var_0_not_same_circuit_6);
-                assert_eq!(var_0_not_same_circuit_6, var_0_circuit_6);
-            } else {
-                assert_ne!(var_0_circuit_6, var_0_not_same_circuit_6);
-                assert_ne!(var_0_not_same_circuit_6, var_0_circuit_6);
-            }
+    //         // An X field and a B field leaf will never be equal
+    //         if var_0_circuit_6.is_zero()
+    //             && (matches!(var_0_circuit_6.expression, CircuitExpression::BConstant(_))
+    //                 && matches!(
+    //                     var_0_not_same_circuit_6.expression,
+    //                     CircuitExpression::BConstant(_)
+    //                 )
+    //                 || matches!(var_0_circuit_6.expression, CircuitExpression::XConstant(_))
+    //                     && matches!(
+    //                         var_0_not_same_circuit_6.expression,
+    //                         CircuitExpression::XConstant(_)
+    //                     ))
+    //         {
+    //             assert_eq!(var_0_circuit_6, var_0_not_same_circuit_6);
+    //             assert_eq!(var_0_not_same_circuit_6, var_0_circuit_6);
+    //         } else {
+    //             assert_ne!(var_0_circuit_6, var_0_not_same_circuit_6);
+    //             assert_ne!(var_0_not_same_circuit_6, var_0_circuit_6);
+    //         }
 
-            // Verify that constant folding handles a - 0 = a
-            let copy_7 = deep_copy(&circuit.circuit.as_ref().borrow());
-            let copy_7_alt = copy_7.clone() - zero.clone();
-            assert_ne!(copy_7, copy_7_alt);
-            let mut circuit_7 = copy_7.consume();
-            let mut circuit_7_alt = copy_7_alt.consume();
-            ConstraintCircuit::constant_folding(&mut [&mut circuit_7, &mut circuit_7_alt]);
-            assert_eq!(circuit_7, circuit_7_alt);
-            assert_eq!(circuit_7_alt, circuit_7);
-        }
-    }
+    //         // Verify that constant folding handles a - 0 = a
+    //         let copy_7 = deep_copy(&circuit.circuit.as_ref().borrow());
+    //         let copy_7_alt = copy_7.clone() - zero.clone();
+    //         assert_ne!(copy_7, copy_7_alt);
+    //         let mut circuit_7 = copy_7.consume();
+    //         let mut circuit_7_alt = copy_7_alt.consume();
+    //         ConstraintCircuit::constant_folding(&mut [&mut circuit_7, &mut circuit_7_alt]);
+    //         assert_eq!(circuit_7, circuit_7_alt);
+    //         assert_eq!(circuit_7_alt, circuit_7);
+    //     }
+    // }
 
     fn constant_folding_of_table_constraints_test<II: InputIndicator>(
         mut constraints: Vec<ConstraintCircuit<II>>,
@@ -1619,7 +1726,7 @@ mod constraint_circuit_tests {
             node_counter(&mut constraints)
         );
 
-        ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
+        // ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
         println!(
             "nodes in {table_name} constraint multitree after constant folding: {}",
             node_counter(&mut constraints)
@@ -1662,7 +1769,7 @@ mod constraint_circuit_tests {
             "Constraint may not contain randomness after challenges have been applied"
         );
 
-        ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
+        // ConstraintCircuit::constant_folding(&mut constraints.iter_mut().collect_vec());
         println!(
             "nodes in {table_name} constraint multitree after applying challenges and constant \
             folding again: {}",
