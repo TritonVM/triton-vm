@@ -1034,15 +1034,19 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
     fn replace_references(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
         for node in self.all_nodes.as_ref().borrow().clone().into_iter() {
-            match &node.circuit.as_ref().borrow_mut().expression {
-                BinaryOperation(_, mut lhs, mut rhs) => {
+            if node.circuit.as_ref().borrow().id == old_id {
+                continue;
+            }
+
+            match node.circuit.as_ref().borrow_mut().expression {
+                BinaryOperation(_, ref mut lhs, ref mut rhs) => {
                     if lhs.as_ref().borrow().id == old_id {
                         println!("Replace");
-                        lhs = new.clone();
+                        *lhs = new.clone();
                     }
                     if rhs.as_ref().borrow().id == old_id {
                         println!("Replace");
-                        rhs = new.clone();
+                        *rhs = new.clone();
                     }
                 }
                 _ => (),
@@ -1186,6 +1190,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             // Check if equivalent circuit already exists
             let new_id = *self.id_counter_ref.as_ref().borrow();
             let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
+            let mut a = equivalent_circuit.as_ref().borrow_mut();
+            (*a).id = new_id;
+            drop(a);
             let equivalent_as_monadic_value = ConstraintCircuitMonad {
                 circuit: equivalent_circuit.clone(),
                 id_counter_ref: Rc::clone(&self.id_counter_ref),
@@ -1203,7 +1210,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     // Everything pointing to this node must no longer point to this node
                     let old_id = val.circuit.as_ref().borrow().id;
                     println!("Match on ID {}", old_id);
-                    self.replace_references(old_id, equivalent_circuit.clone());
+                    self.replace_references(old_id, val.circuit.clone());
                     // panic!("");
                 }
                 None => (),
