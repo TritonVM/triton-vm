@@ -1016,6 +1016,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             change_tracker |= rhs.clone().as_ref().borrow_mut().constant_fold_inner();
         }
 
+        let mut equivalent_circuit: Option<Rc<RefCell<ConstraintCircuit<II>>>> = None;
         match &self
             .circuit
             .clone()
@@ -1029,15 +1030,17 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 // a + 0 = a ∧ a - 0 = a
                 if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
                     println!("PMD0");
-                    self.circuit = Rc::clone(&lhs);
-                    return true;
+                    // self.circuit = Rc::clone(&lhs);
+                    // return true;
+                    equivalent_circuit = Some(Rc::clone(&lhs));
                 }
 
                 // 0 + a = a
                 if *binop == BinOp::Add && lhs.borrow().is_zero() {
                     println!("PMD1");
-                    self.circuit = Rc::clone(&rhs);
-                    return true;
+                    // self.circuit = Rc::clone(&rhs);
+                    // return true;
+                    equivalent_circuit = Some(Rc::clone(&rhs));
                 }
 
                 if matches!(binop, BinOp::Mul) {
@@ -1046,8 +1049,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                         println!("PMD2");
                         // *self.expression.borrow_mut() =
                         //     lhs.borrow().expression.clone();
-                        self.circuit = Rc::clone(&rhs);
-                        return true;
+                        // self.circuit = Rc::clone(&rhs);
+                        // return true;
+                        equivalent_circuit = Some(Rc::clone(&lhs));
                     }
 
                     // 1 * a = a
@@ -1055,15 +1059,19 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                         println!("PMD3");
                         // *self.expression.borrow_mut() =
                         //     rhs.borrow().expression.clone();
-                        self.circuit = Rc::clone(&rhs);
-                        return true;
+                        // self.circuit = Rc::clone(&rhs);
+                        // return true;
+                        equivalent_circuit = Some(Rc::clone(&rhs));
                     }
 
                     // 0 * a = a * 0 = 0
                     if lhs.borrow().is_zero() || rhs.borrow().is_zero() {
                         println!("PMD4");
-                        self.circuit = self.make_leaf(BConstant(0u64.into())).circuit;
-                        return true;
+                        // self.circuit = self.make_leaf(BConstant(0u64.into())).circuit;
+                        // return true;
+                        // equivalent_circuit = Some(Rc::clone(&rhs));
+                        equivalent_circuit =
+                            Some(self.make_leaf(BConstant(BFieldElement::zero())).circuit)
                     }
                 }
 
@@ -1112,10 +1120,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     }
                 }
 
-                change_tracker
+                // change_tracker
             }
-            _ => change_tracker,
-        }
+            _ => None,
+        };
+        equivalent_circuit.is_some()
     }
 
     /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`

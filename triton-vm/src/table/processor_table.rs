@@ -1856,15 +1856,15 @@ impl DualRowConstraints {
     }
 
     pub fn zero(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.zero.to_owned()
+        self.zero.clone()
     }
 
     pub fn one(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.one.to_owned()
+        self.one.clone()
     }
 
     pub fn two(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.two.to_owned()
+        self.two.clone()
     }
 
     pub fn constant(&self, constant: u32) -> ConstraintCircuitMonad<DualRowIndicator> {
