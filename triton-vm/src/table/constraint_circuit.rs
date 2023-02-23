@@ -1157,7 +1157,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// applied anywhere in the tree.
     fn constant_fold_inner(&mut self) -> bool {
         let mut change_tracker = false;
-        if let BinaryOperation(_, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
+        let self_expr = self.circuit.as_ref().borrow().expression.clone();
+        if let BinaryOperation(_, lhs, rhs) = &self_expr {
             let mut lhs_as_monadic_value = ConstraintCircuitMonad {
                 circuit: lhs.clone(),
                 builder: self.builder.clone(),
@@ -1177,9 +1178,6 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             // Check if equivalent circuit already exists
             let new_id = *self.builder.id_counter.as_ref().borrow();
             let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
-            let mut a = equivalent_circuit.as_ref().borrow_mut();
-            (*a).id = new_id;
-            drop(a);
             let equivalent_as_monadic_value = ConstraintCircuitMonad {
                 circuit: equivalent_circuit.clone(),
                 builder: self.builder.clone(),
@@ -1196,7 +1194,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     // must be replaced with the old value.
                     // Everything pointing to this node must no longer point to this node
                     let old_id = val.circuit.as_ref().borrow().id;
-                    println!("Match on ID {}", old_id);
+                    println!("new_id = {new_id}, old_id = {old_id}");
+                    println!("self expression: {self}");
+                    println!("equivalent expression: {equivalent_as_monadic_value}");
                     self.replace_references(old_id, val.circuit.clone());
                     // panic!("");
                 }
@@ -1221,7 +1221,6 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             }
         }
 
-        // *self = equivalent_circuit;
         change_tracker |= equivalent_circuit.is_some();
 
         change_tracker
