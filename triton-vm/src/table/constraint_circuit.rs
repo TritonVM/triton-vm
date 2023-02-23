@@ -252,6 +252,41 @@ impl<II: InputIndicator> Hash for CircuitExpression<II> {
     }
 }
 
+impl<II: InputIndicator> PartialEq for CircuitExpression<II> {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            XConstant(self_xfe) => match other {
+                XConstant(other_xfe) => self_xfe == other_xfe,
+                _ => false,
+            },
+            BConstant(self_bfe) => match other {
+                BConstant(other_bfe) => self_bfe == other_bfe,
+                _ => false,
+            },
+            Input(self_input) => match other {
+                Input(other_input) => self_input == other_input,
+                _ => false,
+            },
+            Challenge(self_challenge_id) => match other {
+                Challenge(other_challenge_id) => self_challenge_id == other_challenge_id,
+                _ => false,
+            },
+            BinaryOperation(binop_self, lhs_self, rhs_self) => {
+                match other {
+                    BinaryOperation(binop_other, lhs_other, rhs_other) => {
+                        // a = b `op0` c,
+                        // d = e `op1` f =>
+                        // a = d <= op0 == op1 && b == e && c ==f
+                        binop_self == binop_other && lhs_self == lhs_other && rhs_self == rhs_other
+                    }
+
+                    _ => false,
+                }
+            }
+        }
+    }
+}
+
 impl<II: InputIndicator> Hash for ConstraintCircuit<II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.expression.hash(state)
@@ -279,36 +314,7 @@ impl<II: InputIndicator> PartialEq for ConstraintCircuit<II> {
     /// simplify or reduce neutral terms or products. So this comparison will return false for
     /// `a == a + 0`. It will also return false for `XFieldElement(7) == BFieldElement(7)`
     fn eq(&self, other: &Self) -> bool {
-        match &self.expression {
-            XConstant(self_xfe) => match &other.expression {
-                XConstant(other_xfe) => self_xfe == other_xfe,
-                _ => false,
-            },
-            BConstant(self_bfe) => match &other.expression {
-                BConstant(other_bfe) => self_bfe == other_bfe,
-                _ => false,
-            },
-            Input(self_input) => match &other.expression {
-                Input(other_input) => self_input == other_input,
-                _ => false,
-            },
-            Challenge(self_challenge_id) => match &other.expression {
-                Challenge(other_challenge_id) => self_challenge_id == other_challenge_id,
-                _ => false,
-            },
-            BinaryOperation(binop_self, lhs_self, rhs_self) => {
-                match &other.expression {
-                    BinaryOperation(binop_other, lhs_other, rhs_other) => {
-                        // a = b `op0` c,
-                        // d = e `op1` f =>
-                        // a = d <= op0 == op1 && b == e && c ==f
-                        binop_self == binop_other && lhs_self == lhs_other && rhs_self == rhs_other
-                    }
-
-                    _ => false,
-                }
-            }
-        }
+        self.expression == other.expression
     }
 }
 
