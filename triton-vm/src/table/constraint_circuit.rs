@@ -652,8 +652,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     pub fn assert_all_evaluate_different(
         constraints: &[Self],
         challenges: &Challenges,
-        base_input: &[BFieldElement],
-        ext_input: &[XFieldElement],
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
     ) {
         let mut evaluated_values: HashMap<XFieldElement, (usize, CircuitExpression<II>)> =
             HashMap::default();
@@ -661,8 +661,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             Self::evaluate_and_store_and_assert_unique(
                 constraint,
                 challenges,
-                base_input,
-                ext_input,
+                base_table,
+                ext_table,
                 &mut evaluated_values,
             );
         }
@@ -672,8 +672,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     fn evaluate_and_store_and_assert_unique(
         &self,
         challenges: &Challenges,
-        base_input: &[BFieldElement],
-        ext_input: &[XFieldElement],
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
         evaluated_values: &mut HashMap<XFieldElement, (usize, CircuitExpression<II>)>,
     ) -> XFieldElement {
         // assert_eq!(
@@ -695,24 +695,25 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
                 bfe.lift()
             }
             Input(s) => {
-                if s.is_base_table_row() {
-                    base_input[s.base_row_index()].lift()
-                } else {
-                    ext_input[s.ext_row_index()]
-                }
+                s.evaluate(base_table, ext_table)
+                // if s.is_base_table_row() {
+                //     base_input[s.base_row_index()].lift()
+                // } else {
+                //     ext_input[s.ext_row_index()]
+                // }
             }
             Challenge(cid) => challenges.get_challenge(*cid),
             BinaryOperation(binop, lhs, rhs) => {
                 let lhs = lhs.as_ref().borrow().evaluate_and_store_and_assert_unique(
                     challenges,
-                    base_input,
-                    ext_input,
+                    base_table,
+                    ext_table,
                     evaluated_values,
                 );
                 let rhs = rhs.as_ref().borrow().evaluate_and_store_and_assert_unique(
                     challenges,
-                    base_input,
-                    ext_input,
+                    base_table,
+                    ext_table,
                     evaluated_values,
                 );
                 match binop {
@@ -1211,6 +1212,8 @@ mod constraint_circuit_tests {
     use std::hash::Hasher;
 
     use itertools::Itertools;
+    use ndarray::Array2;
+    use rand::random;
     use rand::thread_rng;
     use rand::RngCore;
     use twenty_first::shared_math::other::random_elements;
@@ -1611,13 +1614,21 @@ mod constraint_circuit_tests {
         // Verify that all nodes evaluate to a unique value when given a randomized input.
         // If this is not the case two nodes that are not equal evaluate to the same value.
         // let input: Vec<XFieldElement> = random_elements(constraints[0].var_count);
-        let base_input: Vec<BFieldElement> = random_elements(master_table::NUM_BASE_COLUMNS);
-        let ext_input: Vec<XFieldElement> = random_elements(master_table::NUM_EXT_COLUMNS);
+        // let base_input: Vec<BFieldElement> = random_elements(master_table::NUM_BASE_COLUMNS);
+        // let ext_input: Vec<XFieldElement> = random_elements(master_table::NUM_EXT_COLUMNS);
+        let base_table = Array2::from_shape_simple_fn(
+            [2, master_table::NUM_BASE_COLUMNS],
+            random::<BFieldElement>,
+        );
+        let ext_table = Array2::from_shape_simple_fn(
+            [2, master_table::NUM_EXT_COLUMNS],
+            random::<XFieldElement>,
+        );
         ConstraintCircuit::assert_all_evaluate_different(
             &constraints,
             &challenges,
-            &base_input,
-            &ext_input,
+            base_table.view(),
+            ext_table.view(),
         );
 
         assert!(
