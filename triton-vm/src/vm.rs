@@ -23,6 +23,8 @@ use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
 use twenty_first::shared_math::rescue_prime_regular::RATE;
 use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
 use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
+use twenty_first::shared_math::tip5;
+use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
@@ -949,9 +951,11 @@ pub struct AlgebraicExecutionTrace {
     /// often the instruction was executed with these arguments.
     pub u32_entries: HashMap<(Instruction, BFieldElement, BFieldElement), u64>,
 
-    pub cascade_table_lookup_multiplicities: HashMap<BFieldElement, u64>,
+    /// Records how often each entry in the cascade table was looked up.
+    pub cascade_table_lookup_multiplicities: HashMap<u16, u64>,
 
-    pub lookup_table_lookup_multiplicities: [u64; 1 << 16],
+    /// Records how often each entry in the lookup table was looked up.
+    pub lookup_table_lookup_multiplicities: [u64; 1 << 8],
 }
 
 impl AlgebraicExecutionTrace {
@@ -964,11 +968,17 @@ impl AlgebraicExecutionTrace {
             hash_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             sponge_trace: Array2::default([0, hash_table::BASE_WIDTH]),
             u32_entries: HashMap::new(),
+            cascade_table_lookup_multiplicities: HashMap::new(),
+            lookup_table_lookup_multiplicities: [0; 1 << 8],
         }
     }
 
-    pub fn append_hash_trace(&mut self, xlix_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1]) {
-        let mut hash_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
+    pub fn append_hash_trace(
+        &mut self,
+        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+    ) {
+        self.increase_lookup_multiplicities(hash_permutation_trace);
+        let mut hash_trace_addendum = Self::add_round_number_and_constants(hash_permutation_trace);
         hash_trace_addendum
             .slice_mut(s![.., CI.base_table_index()])
             .fill(Instruction::Hash.opcode_b());
@@ -980,19 +990,45 @@ impl AlgebraicExecutionTrace {
     pub fn append_sponge_trace(
         &mut self,
         instruction: Instruction,
-        xlix_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
     ) {
         assert!(matches!(
             instruction,
             Instruction::AbsorbInit | Instruction::Absorb | Instruction::Squeeze
         ));
-        let mut sponge_trace_addendum = Self::add_round_number_and_constants(xlix_trace);
+        self.increase_lookup_multiplicities(hash_permutation_trace);
+        let mut sponge_trace_addendum =
+            Self::add_round_number_and_constants(hash_permutation_trace);
         sponge_trace_addendum
             .slice_mut(s![.., CI.base_table_index()])
             .fill(instruction.opcode_b());
         self.sponge_trace
             .append(Axis(0), sponge_trace_addendum.view())
             .expect("shapes must be identical");
+    }
+
+    /// Given a trace of the hash function's permutation, determines how often each entry in the
+    /// - cascade table was looked up, and
+    /// - lookup table was looked up
+    /// and increases the multiplicities accordingly
+    fn increase_lookup_multiplicities(
+        &mut self,
+        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+    ) {
+        for row in hash_permutation_trace.iter().rev().skip(1) {
+            for state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
+                for limb in state_element.raw_u16s() {
+                    let limb_lo = limb & 0xff;
+                    let limb_hi = (limb >> 8) & 0xff;
+                    self.lookup_table_lookup_multiplicities[limb_lo as usize] += 1;
+                    self.lookup_table_lookup_multiplicities[limb_hi as usize] += 1;
+                    self.cascade_table_lookup_multiplicities
+                        .entry(limb)
+                        .and_modify(|e| *e += 1)
+                        .or_insert(1);
+                }
+            }
+        }
     }
 
     /// Given an XLIX trace, this function adds
