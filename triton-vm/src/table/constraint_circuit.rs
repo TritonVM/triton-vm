@@ -1464,7 +1464,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_pbt() {
-        for _ in 0..10 {
+        for _ in 0..1000 {
             let (circuit, circuit_builder) = random_circuit_builder();
             let one = circuit_builder.x_constant(1.into());
             let zero = circuit_builder.x_constant(0.into());
@@ -1576,30 +1576,40 @@ mod constraint_circuit_tests {
             let copy_6 = deep_copy(&circuit.circuit.as_ref().borrow());
             let zero_minus_copy_6 = zero.clone() - copy_6.clone();
             assert_ne!(copy_6, zero_minus_copy_6);
-            let mut circuits = [copy_6.clone(), zero_minus_copy_6.clone()];
+            let mut circuits = [copy_6, zero_minus_copy_6];
             ConstraintCircuitMonad::constant_folding(&mut circuits);
+            let copy_6_is_zero = circuits[0].circuit.as_ref().borrow().is_zero();
+            let copy_6_expr = circuits[0].circuit.as_ref().borrow().expression.clone();
+            let zero_minus_copy_6_expr = circuits[1].circuit.as_ref().borrow().expression.clone();
 
             // An X field and a B field leaf will never be equal
-            if copy_6.circuit.as_ref().borrow().is_zero()
-                && (matches!(
-                    copy_6.circuit.as_ref().borrow().expression,
-                    CircuitExpression::BConstant(_)
-                ) && matches!(
-                    zero_minus_copy_6.circuit.as_ref().borrow().expression,
-                    CircuitExpression::BConstant(_)
-                ) || matches!(
-                    copy_6.circuit.as_ref().borrow().expression,
-                    CircuitExpression::XConstant(_)
-                ) && matches!(
-                    zero_minus_copy_6.circuit.as_ref().borrow().expression,
-                    CircuitExpression::XConstant(_)
-                ))
+            if copy_6_is_zero
+                && (matches!(copy_6_expr, CircuitExpression::BConstant(_))
+                    && matches!(zero_minus_copy_6_expr, CircuitExpression::BConstant(_))
+                    || matches!(copy_6_expr, CircuitExpression::XConstant(_))
+                        && matches!(zero_minus_copy_6_expr, CircuitExpression::XConstant(_)))
             {
-                assert_eq!(copy_6, zero_minus_copy_6);
-                assert_eq!(zero_minus_copy_6, copy_6);
+                assert_eq!(
+                    circuits[0], circuits[1],
+                    "{} != {}",
+                    circuits[0], circuits[1]
+                );
+                assert_eq!(
+                    circuits[1], circuits[0],
+                    "{} != {}",
+                    circuits[1], circuits[0]
+                );
             } else {
-                assert_ne!(copy_6, zero_minus_copy_6);
-                assert_ne!(zero_minus_copy_6, copy_6);
+                assert_ne!(
+                    circuits[0], circuits[1],
+                    "{} == {}",
+                    circuits[0], circuits[1]
+                );
+                assert_ne!(
+                    circuits[1], circuits[0],
+                    "{} == {}",
+                    circuits[1], circuits[0]
+                );
             }
 
             // Verify that constant folding handles a - 0 = a
