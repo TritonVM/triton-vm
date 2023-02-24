@@ -51,18 +51,6 @@ impl Display for BinOp {
     }
 }
 
-/// Data structure for uniquely identifying each node
-// #[derive(Debug, Clone, Hash, PartialEq)]
-// pub struct CircuitId(usize);
-
-// impl Eq for CircuitId {}
-
-// impl Display for CircuitId {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "{}", self.0)
-//     }
-// }
-
 /// Describes the position of a variable in a constraint polynomial in the row layout applicable
 /// for a certain kind of constraint polynomial.
 ///
@@ -673,8 +661,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         base_table: ArrayView2<BFieldElement>,
         ext_table: ArrayView2<XFieldElement>,
     ) {
-        let mut evaluated_values: HashMap<XFieldElement, (usize, CircuitExpression<II>)> =
-            HashMap::default();
+        let mut evaluated_values = HashMap::default();
         for constraint in constraints.iter() {
             Self::evaluate_and_store_and_assert_unique(
                 constraint,
@@ -692,7 +679,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         challenges: &Challenges,
         base_table: ArrayView2<BFieldElement>,
         ext_table: ArrayView2<XFieldElement>,
-        evaluated_values: &mut HashMap<XFieldElement, (usize, CircuitExpression<II>)>,
+        evaluated_values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
     ) -> XFieldElement {
         // assert_eq!(
         //     self.var_count,
@@ -743,13 +730,15 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         };
 
         let self_evaluated_is_unique =
-            evaluated_values.insert(value, (self.id.to_owned(), self.expression.clone()));
-        if let Some((collided_circuit_id, collided_expr)) = self_evaluated_is_unique {
+            evaluated_values.insert(value, (self.id.to_owned(), self.clone()));
+        if let Some((collided_circuit_id, collided_circuit)) = self_evaluated_is_unique {
             let own_id = self.id.to_owned();
-            let own_exp = self.expression.clone();
             if collided_circuit_id != self.id {
                 panic!(
-                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. Collission on:\n {collided_circuit_id}: {collided_expr:?}\n {own_id}: {own_exp:?}. Value was {value}",
+                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. \
+                    Collission on:\n \
+                    {collided_circuit_id}: {collided_circuit}\n {own_id}: {self}. \
+                    Value was {value}",
                 );
             }
         }
@@ -1197,40 +1186,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
             let id_of_node_to_be_deleted = self.circuit.borrow().id;
 
-            // todo debug debug
-            let id_of_equivalent_node = equivalent_circuit.as_ref().borrow().id;
-            println!(
-                "id_of_equivalent_node = {id_of_equivalent_node}, \
-                id_of_node_to_be_deleted = {id_of_node_to_be_deleted}"
-            );
-            println!(
-                "node with id {id_of_node_to_be_deleted}: {}",
-                self.builder
-                    .get_node_by_id(id_of_node_to_be_deleted)
-                    .unwrap()
-            );
-            println!(
-                "node with id {id_of_equivalent_node}: {}",
-                self.builder.get_node_by_id(id_of_equivalent_node).unwrap()
-            );
-            // todo ^^^ debug debug
-
-            assert!(
-                self.builder
-                    .all_nodes
-                    .as_ref()
-                    .borrow()
-                    .contains(&equivalent_as_monadic_value),
-                "Equivalent circuit does not exist in all nodes. \
-                Circuit expression being looked for: {}. \
-                Length of all nodes: {}",
-                equivalent_as_monadic_value,
-                self.builder.all_nodes.as_ref().borrow().len(),
-            );
-
             self.replace_references(id_of_node_to_be_deleted, equivalent_circuit);
             let was_removed = self.builder.all_nodes.as_ref().borrow_mut().remove(&self);
-            assert!(was_removed, "Node to be removed was not found in all nodes");
         }
 
         (change_tracker, equivalent_circuit)
