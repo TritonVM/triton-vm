@@ -134,15 +134,16 @@ impl ExtHashTable {
             * running_evaluation_sponge_has_accumulated_first_row
             + ci_is_absorb_init * running_evaluation_sponge_is_default_initial;
 
-        [
+        let mut constraints = [
             round_number_is_0_or_1,
             current_instruction_is_absorb_init_or_hash,
             running_evaluation_hash_input_is_initialized_correctly,
             running_evaluation_hash_digest_is_default_initial,
             running_evaluation_sponge_absorb_is_initialized_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     fn round_number_deselector<II: InputIndicator>(
@@ -179,7 +180,7 @@ impl ExtHashTable {
             Self::round_number_deselector(&circuit_builder, &round_number, 0);
         let round_number_is_not_1 =
             Self::round_number_deselector(&circuit_builder, &round_number, 1);
-        let mut consistency_constraint_circuits = vec![
+        let mut constraints = vec![
             round_number_is_not_0 * ci_is_hash.clone(),
             round_number_is_not_1.clone()
                 * ci_is_absorb_init
@@ -211,10 +212,11 @@ impl ExtHashTable {
                             - circuit_builder.b_constant(ROUND_CONSTANTS[round_constant_idx]))
                 })
                 .sum();
-            consistency_constraint_circuits.push(round_constant_constraint_circuit);
+            constraints.push(round_constant_constraint_circuit);
         }
 
-        consistency_constraint_circuits
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints
             .into_iter()
             .map(|circuit| circuit.consume())
             .collect()
@@ -562,7 +564,7 @@ impl ExtHashTable {
                 + if_round_no_next_is_not_1_then_running_evaluation_sponge_absorb_remains
                 + if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains;
 
-        [
+        let mut constraints = [
             vec![
                 round_number_is_1_through_9_or_round_number_next_is_0,
                 round_number_is_0_through_8_or_round_number_next_is_0_or_1,
@@ -579,10 +581,13 @@ impl ExtHashTable {
                 running_evaluation_sponge_absorb_is_updated_correctly,
             ],
         ]
-        .concat()
-        .into_iter()
-        .map(|circuit| circuit.consume())
-        .collect()
+        .concat();
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints
+            .into_iter()
+            .map(|circuit| circuit.consume())
+            .collect()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {

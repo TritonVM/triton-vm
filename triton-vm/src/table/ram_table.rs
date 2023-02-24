@@ -36,6 +36,8 @@ use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::RamExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
+use super::constraint_circuit::ConstraintCircuitMonad;
+
 pub const BASE_WIDTH: usize = RamBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = RamExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -362,7 +364,7 @@ impl ExtRamTable {
         let running_product_permutation_argument_is_initialized_correctly =
             rppa - (rppa_challenge - compressed_row_for_permutation_argument);
 
-        [
+        let mut constraints = [
             ramv_is_0_or_was_written_to,
             bezout_coefficient_polynomial_coefficient_0_is_0,
             bezout_coefficient_0_is_0,
@@ -371,9 +373,10 @@ impl ExtRamTable {
             formal_derivative_is_1,
             running_product_permutation_argument_is_initialized_correctly,
             clock_jump_diff_log_derivative_is_initialized_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -507,7 +510,7 @@ impl ExtRamTable {
         let log_derivative_updates_correctly =
             (one - ramp_changes) * log_derivative_accumulates + ramp_diff * log_derivative_remains;
 
-        [
+        let mut constraints = [
             iord_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_diff_is_0_or_iord_is_inverse_of_ramp_diff,
             ramp_changes_or_write_mem_or_ramv_stays,
@@ -520,9 +523,10 @@ impl ExtRamTable {
             bezout_coefficient_1_is_constructed_correctly,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -536,6 +540,8 @@ impl ExtRamTable {
 
         let bezout_relation_holds = bc0 * rp + bc1 * fd - one;
 
-        vec![bezout_relation_holds.consume()]
+        let mut constraints = [bezout_relation_holds];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }

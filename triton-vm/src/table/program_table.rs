@@ -27,6 +27,8 @@ use crate::table::table_column::ProgramExtTableColumn;
 use crate::table::table_column::ProgramExtTableColumn::*;
 use crate::vm::AlgebraicExecutionTrace;
 
+use super::constraint_circuit::ConstraintCircuitMonad;
+
 pub const BASE_WIDTH: usize = ProgramBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = ProgramExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -52,10 +54,13 @@ impl ExtProgramTable {
             instruction_lookup_log_derivative
                 - circuit_builder.x_constant(LookupArg::default_initial());
 
-        vec![
-            first_address_is_zero.consume(),
-            instruction_lookup_log_derivative_is_initialized_correctly.consume(),
-        ]
+        let mut constraints = [
+            first_address_is_zero,
+            instruction_lookup_log_derivative_is_initialized_correctly,
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -65,7 +70,9 @@ impl ExtProgramTable {
         let is_padding = circuit_builder.input(BaseRow(IsPadding.master_base_table_index()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
-        vec![is_padding_is_bit.consume()]
+        let mut constraints = [is_padding_is_bit];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
@@ -107,13 +114,13 @@ impl ExtProgramTable {
             * log_derivative_updates
             + is_padding * log_derivative_remains;
 
-        [
+        let mut constraints = [
             address_increases_by_one,
             is_padding_is_0_or_remains_unchanged,
             log_derivative_updates_if_and_only_if_not_a_padding_row,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {

@@ -35,6 +35,8 @@ use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
 
+use super::constraint_circuit::ConstraintCircuitMonad;
+
 pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = JumpStackExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -68,16 +70,18 @@ impl ExtJumpStackTable {
         let clock_jump_diff_log_derivative_starts_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 
-        [
+        let mut constraints = [
             clk,
             jsp,
             jso,
             jsd,
             rppa_starts_correctly,
             clock_jump_diff_log_derivative_starts_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -171,16 +175,17 @@ impl ExtJumpStackTable {
             * log_derivative_accumulates
             + (jsp_next - jsp) * log_derivative_remains;
 
-        [
+        let mut constraints = [
             jsp_inc_or_stays,
             jsp_inc_or_jso_stays_or_ci_is_ret,
             jsp_inc_or_jsd_stays_or_ci_ret,
             jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {

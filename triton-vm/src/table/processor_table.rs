@@ -614,7 +614,7 @@ impl ExtProcessorTable {
             .u32_table_running_sum_log_derivative()
             - constant_x(LookupArg::default_initial());
 
-        [
+        let mut constraints = [
             clk_is_0,
             ip_is_0,
             jsp_is_0,
@@ -652,9 +652,10 @@ impl ExtProcessorTable {
             running_evaluation_hash_digest_is_initialized_correctly,
             running_evaluation_sponge_absorb_is_initialized_correctly,
             running_sum_log_derivative_for_u32_table_is_initialized_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -691,7 +692,7 @@ impl ExtProcessorTable {
             * (factory.clk() - factory.one())
             * factory.clock_jump_difference_lookup_multiplicity();
 
-        [
+        let mut constraints = [
             ib0_is_bit,
             ib1_is_bit,
             ib2_is_bit,
@@ -703,9 +704,10 @@ impl ExtProcessorTable {
             is_padding_is_bit,
             ci_corresponds_to_ib0_thru_ib7,
             clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
@@ -810,7 +812,10 @@ impl ExtProcessorTable {
         // In the last row, current instruction register ci is 0, corresponding to instruction halt.
         let last_ci_is_halt = factory.ci();
 
-        vec![last_ci_is_halt.consume()]
+        let mut constraints = [last_ci_is_halt];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }
 

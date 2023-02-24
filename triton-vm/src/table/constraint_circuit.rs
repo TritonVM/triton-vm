@@ -1168,12 +1168,14 @@ mod constraint_circuit_tests {
 
     use crate::table::challenges::ChallengeId::U32Indeterminate;
     use crate::table::challenges::Challenges;
+    use crate::table::hash_table::ExtHashTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::master_table;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
+    use crate::table::u32_table::ExtU32Table;
 
     use super::*;
 
@@ -1666,42 +1668,98 @@ mod constraint_circuit_tests {
         );
 
         println!("nodes in {table_name}: {}", node_counter(&mut constraints));
-        let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap();
+        let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
         println!("Max degree constraint for {table_name} table: {circuit_degree}");
     }
 
     #[test]
     fn constant_folding_processor_table_test() {
         let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtProcessorTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "processor initial");
+        let constraint_circuits = ExtProcessorTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "processor consistency");
         let constraint_circuits = ExtProcessorTable::ext_transition_constraints_as_circuits();
-        table_constraints_prop(constraint_circuits, &challenges, "processor");
+        table_constraints_prop(constraint_circuits, &challenges, "processor transition");
+        let constraint_circuits = ExtProcessorTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "processor terminal");
     }
 
     #[test]
     fn constant_folding_program_table_test() {
         let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtProgramTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "program initial");
+        let constraint_circuits = ExtProgramTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "program consistency");
         let constraint_circuits = ExtProgramTable::ext_transition_constraints_as_circuits();
-        table_constraints_prop(constraint_circuits, &challenges, "program");
+        table_constraints_prop(constraint_circuits, &challenges, "program transition");
+        let constraint_circuits = ExtProgramTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "program terminal");
     }
 
     #[test]
     fn constant_folding_jump_stack_table_test() {
         let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtJumpStackTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "jump stack initial");
+        let constraint_circuits = ExtJumpStackTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "jump stack consistency");
         let constraint_circuits = ExtJumpStackTable::ext_transition_constraints_as_circuits();
-        table_constraints_prop(constraint_circuits, &challenges, "jump stack");
+        table_constraints_prop(constraint_circuits, &challenges, "jump stack transition");
+        let constraint_circuits = ExtJumpStackTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "jump stack terminal");
     }
 
     #[test]
     fn constant_folding_op_stack_table_test() {
         let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtOpStackTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "op stack initial");
+        let constraint_circuits = ExtOpStackTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "op stack consistency");
         let constraint_circuits = ExtOpStackTable::ext_transition_constraints_as_circuits();
-        table_constraints_prop(constraint_circuits, &challenges, "op stack");
+        table_constraints_prop(constraint_circuits, &challenges, "op stack transition");
+        let constraint_circuits = ExtOpStackTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "op stack terminal");
     }
 
     #[test]
-    fn constant_folding_ram_stack_table_test() {
+    fn constant_folding_ram_table_test() {
         let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtRamTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "ram initial");
+        let constraint_circuits = ExtRamTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "ram consistency");
         let constraint_circuits = ExtRamTable::ext_transition_constraints_as_circuits();
-        table_constraints_prop(constraint_circuits, &challenges, "ram");
+        table_constraints_prop(constraint_circuits, &challenges, "ram transition");
+        let constraint_circuits = ExtRamTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "ram terminal");
+    }
+
+    #[test]
+    fn constant_folding_hash_table_test() {
+        let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtHashTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "hash initial");
+        let constraint_circuits = ExtHashTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "hash consistency");
+        let constraint_circuits = ExtHashTable::ext_transition_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "hash transition");
+        let constraint_circuits = ExtHashTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "hash terminal");
+    }
+
+    #[test]
+    fn constant_folding_u32_table_test() {
+        let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtU32Table::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "u32 initial");
+        let constraint_circuits = ExtU32Table::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "u32 consistency");
+        let constraint_circuits = ExtU32Table::ext_transition_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "u32 transition");
+        let constraint_circuits = ExtU32Table::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "u32 terminal");
     }
 }

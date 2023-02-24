@@ -33,6 +33,8 @@ use crate::table::table_column::OpStackExtTableColumn::*;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
 
+use super::constraint_circuit::ConstraintCircuitMonad;
+
 pub const BASE_WIDTH: usize = OpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = OpStackExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -72,15 +74,15 @@ impl ExtOpStackTable {
         let clock_jump_diff_log_derivative_is_initialized_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 
-        [
+        let mut constraints = [
             clk_is_0,
             osv_is_0,
             osp_is_16,
             rppa_starts_correctly,
             clock_jump_diff_log_derivative_is_initialized_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -154,14 +156,15 @@ impl ExtOpStackTable {
             * log_derivative_accumulates
             + (osp_next - osp) * log_derivative_remains;
 
-        [
+        let mut constraints = [
             osp_increases_by_1_or_does_not_change,
             osp_increases_by_1_or_osv_does_not_change_or_shrink_stack,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
