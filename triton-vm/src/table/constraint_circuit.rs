@@ -1277,6 +1277,15 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         }
     }
 
+    pub fn get_node_by_id(&self, id: usize) -> Option<ConstraintCircuitMonad<II>> {
+        for node in self.all_nodes.as_ref().borrow().iter() {
+            if node.circuit.as_ref().borrow().id == id {
+                return Some(node.clone());
+            }
+        }
+        None
+    }
+
     /// Create constant leaf node.
     pub fn x_constant(&self, xfe: XFieldElement) -> ConstraintCircuitMonad<II> {
         let expression = XConstant(xfe);
