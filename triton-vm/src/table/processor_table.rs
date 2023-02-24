@@ -802,25 +802,10 @@ impl ExtProcessorTable {
         transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
         ConstraintCircuitMonad::constant_folding(&mut transition_constraints);
-
-        let mut built_transition_constraints = transition_constraints
+        transition_constraints
             .into_iter()
             .map(|tc_ref| tc_ref.consume())
-            .collect_vec();
-        // ConstraintCircuit::constant_folding(
-        //     &mut built_transition_constraints.iter_mut().collect_vec(),
-        // );
-        // println!("len: {}", built_transition_constraints.len());
-        // let ret = built_transition_constraints
-        //     [3 * (built_transition_constraints.len() / 16)..built_transition_constraints.len() / 4]
-        //     .to_vec();
-        // println!(
-        //     "{:?}",
-        //     3 * (built_transition_constraints.len() / 16)..built_transition_constraints.len() / 4
-        // );
-        // ret
-
-        built_transition_constraints
+            .collect_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
