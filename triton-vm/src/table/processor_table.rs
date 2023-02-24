@@ -756,21 +756,17 @@ impl ExtProcessorTable {
             &mut factory,
             all_instruction_transition_constraints,
         );
-        let max_id = transition_constraints[0].max_id();
-        println!("tc len: {}. Max id: {max_id}", transition_constraints.len());
 
         // if next row is padding row: disable transition constraints, enable padding constraints
         transition_constraints = Self::combine_transition_constraints_with_padding_constraints(
             &factory,
             transition_constraints,
         );
-        println!("tc len: {}", transition_constraints.len());
 
         // constraints common to all instructions
         transition_constraints.insert(0, factory.clk_always_increases_by_one());
         transition_constraints.insert(1, factory.is_padding_is_zero_or_does_not_change());
         transition_constraints.insert(2, factory.previous_instruction_is_copied_correctly());
-        println!("tc len: {}", transition_constraints.len());
 
         // constraints related to clock jump difference Lookup Argument
         let clock_jump_difference_lookup_indeterminate = factory
@@ -2896,11 +2892,6 @@ impl InstructionDeselectors {
             factory.ib6(),
             factory.ib7(),
         ];
-        let max_id = instruction_bucket_polynomials[0].max_id();
-        println!(
-            "instruction_deselector len: {}. Max id: {max_id}",
-            instruction_bucket_polynomials.len()
-        );
 
         Self::instruction_deselector_common_functionality(
             &factory.circuit_builder,

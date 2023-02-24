@@ -974,146 +974,140 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 continue;
             }
 
-            match node.circuit.as_ref().borrow_mut().expression {
-                BinaryOperation(_, ref mut lhs, ref mut rhs) => {
-                    if lhs.as_ref().borrow().id == old_id {
-                        // println!("Replace");
-                        *lhs = new.clone();
-                    }
-                    if rhs.as_ref().borrow().id == old_id {
-                        // println!("Replace");
-                        *rhs = new.clone();
-                    }
+            if let BinaryOperation(_, ref mut lhs, ref mut rhs) =
+                node.circuit.as_ref().borrow_mut().expression
+            {
+                if lhs.as_ref().borrow().id == old_id {
+                    *lhs = new.clone();
                 }
-                _ => (),
+                if rhs.as_ref().borrow().id == old_id {
+                    *rhs = new.clone();
+                }
             }
         }
     }
 
     fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
-        let expr = &self.circuit.as_ref().borrow().expression;
-        match expr {
-            BinaryOperation(binop, lhs, rhs) => {
-                // a + 0 = a ∧ a - 0 = a
-                if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
-                    return Some(Rc::clone(&lhs));
-                }
-
-                // 0 + a = a
-                if *binop == BinOp::Add && lhs.borrow().is_zero() {
-                    return Some(Rc::clone(&rhs));
-                }
-
-                if matches!(binop, BinOp::Mul) {
-                    // a * 1 = a
-                    if rhs.borrow().is_one() {
-                        return Some(Rc::clone(&lhs));
-                    }
-
-                    // 1 * a = a
-                    if lhs.borrow().is_one() {
-                        return Some(Rc::clone(&rhs));
-                    }
-
-                    // 0 * a = 0
-                    if lhs.borrow().is_zero() {
-                        return Some(Rc::clone(&lhs));
-                    }
-
-                    // a * 0 = 0
-                    if rhs.borrow().is_zero() {
-                        return Some(Rc::clone(&rhs));
-                    }
-                }
-
-                // if left and right hand sides are both constants
-                if let XConstant(lhs_xfe) = lhs.borrow().expression {
-                    if let XConstant(rhs_xfe) = rhs.borrow().expression {
-                        return match binop {
-                            BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_xfe + rhs_xfe))
-                                    .consume(),
-                            ))),
-                            BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_xfe - rhs_xfe))
-                                    .consume(),
-                            ))),
-                            BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_xfe * rhs_xfe))
-                                    .consume(),
-                            ))),
-                        };
-                    }
-
-                    if let BConstant(rhs_bfe) = rhs.borrow().expression {
-                        return match binop {
-                            BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_xfe + rhs_bfe.lift()))
-                                    .consume(),
-                            ))),
-                            BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_xfe - rhs_bfe.lift()))
-                                    .consume(),
-                            ))),
-                            BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_xfe * rhs_bfe))
-                                    .consume(),
-                            ))),
-                        };
-                    }
-                }
-
-                if let BConstant(lhs_bfe) = lhs.borrow().expression {
-                    if let XConstant(rhs_xfe) = rhs.borrow().expression {
-                        return match binop {
-                            BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe))
-                                    .consume(),
-                            ))),
-                            BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe))
-                                    .consume(),
-                            ))),
-                            BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(XConstant(rhs_xfe * lhs_bfe))
-                                    .consume(),
-                            ))),
-                        };
-                    }
-
-                    if let BConstant(rhs_bfe) = rhs.borrow().expression {
-                        return match binop {
-                            BinOp::Add => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(BConstant(lhs_bfe + rhs_bfe))
-                                    .consume(),
-                            ))),
-                            BinOp::Sub => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(BConstant(lhs_bfe - rhs_bfe))
-                                    .consume(),
-                            ))),
-                            BinOp::Mul => Some(Rc::new(RefCell::new(
-                                self.builder
-                                    .make_leaf(BConstant(lhs_bfe * lhs_bfe))
-                                    .consume(),
-                            ))),
-                        };
-                    }
-                }
-                return None;
+        if let BinaryOperation(binop, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
+            // a + 0 = a ∧ a - 0 = a
+            if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
+                return Some(Rc::clone(lhs));
             }
-            _ => return None,
+
+            // 0 + a = a
+            if *binop == BinOp::Add && lhs.borrow().is_zero() {
+                return Some(Rc::clone(rhs));
+            }
+
+            if matches!(binop, BinOp::Mul) {
+                // a * 1 = a
+                if rhs.borrow().is_one() {
+                    return Some(Rc::clone(lhs));
+                }
+
+                // 1 * a = a
+                if lhs.borrow().is_one() {
+                    return Some(Rc::clone(rhs));
+                }
+
+                // 0 * a = 0
+                if lhs.borrow().is_zero() {
+                    return Some(Rc::clone(lhs));
+                }
+
+                // a * 0 = 0
+                if rhs.borrow().is_zero() {
+                    return Some(Rc::clone(rhs));
+                }
+            }
+
+            // if left and right hand sides are both constants
+            if let XConstant(lhs_xfe) = lhs.borrow().expression {
+                if let XConstant(rhs_xfe) = rhs.borrow().expression {
+                    return match binop {
+                        BinOp::Add => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_xfe + rhs_xfe))
+                                .consume(),
+                        ))),
+                        BinOp::Sub => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_xfe - rhs_xfe))
+                                .consume(),
+                        ))),
+                        BinOp::Mul => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_xfe * rhs_xfe))
+                                .consume(),
+                        ))),
+                    };
+                }
+
+                if let BConstant(rhs_bfe) = rhs.borrow().expression {
+                    return match binop {
+                        BinOp::Add => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_xfe + rhs_bfe.lift()))
+                                .consume(),
+                        ))),
+                        BinOp::Sub => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_xfe - rhs_bfe.lift()))
+                                .consume(),
+                        ))),
+                        BinOp::Mul => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_xfe * rhs_bfe))
+                                .consume(),
+                        ))),
+                    };
+                }
+            }
+
+            if let BConstant(lhs_bfe) = lhs.borrow().expression {
+                if let XConstant(rhs_xfe) = rhs.borrow().expression {
+                    return match binop {
+                        BinOp::Add => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe))
+                                .consume(),
+                        ))),
+                        BinOp::Sub => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe))
+                                .consume(),
+                        ))),
+                        BinOp::Mul => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(XConstant(rhs_xfe * lhs_bfe))
+                                .consume(),
+                        ))),
+                    };
+                }
+
+                if let BConstant(rhs_bfe) = rhs.borrow().expression {
+                    return match binop {
+                        BinOp::Add => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(BConstant(lhs_bfe + rhs_bfe))
+                                .consume(),
+                        ))),
+                        BinOp::Sub => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(BConstant(lhs_bfe - rhs_bfe))
+                                .consume(),
+                        ))),
+                        BinOp::Mul => Some(Rc::new(RefCell::new(
+                            self.builder
+                                .make_leaf(BConstant(lhs_bfe * lhs_bfe))
+                                .consume(),
+                        ))),
+                    };
+                }
+            }
+            return None;
         }
+        None
     }
 
     /// Apply constant folding to simplify the (sub)tree.
@@ -1152,7 +1146,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
             let id_of_node_to_be_deleted = self.circuit.borrow().id;
             self.replace_references(id_of_node_to_be_deleted, equivalent_circuit);
-            self.builder.all_nodes.as_ref().borrow_mut().remove(&self);
+            self.builder.all_nodes.as_ref().borrow_mut().remove(self);
         }
 
         (change_tracker, equivalent_circuit)
@@ -1236,7 +1230,7 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         let new_node = ConstraintCircuitMonad {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
                 visited_counter: 0usize,
-                expression: expression.clone(),
+                expression,
                 id: new_id,
             })),
             builder: self.clone(),
@@ -1245,18 +1239,10 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         // Check if node already exists, return the existing one if it does
         let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
         if contained {
-            // let count = self.all_nodes.as_ref().borrow().len();
-            // println!("len: {count}; Builder: contained: {}", new_node);
             let ret0 = &self.all_nodes.as_ref().borrow();
             let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
             return ret1.to_owned();
         }
-
-        // let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
-        // if expression == compare_with {
-        //     let count = self.all_nodes.as_ref().borrow().len();
-        //     println!("len: {count}; Builder: Was one");
-        // }
 
         // If node did not already exist, increment counter and insert node into hash set
         *self.id_counter.as_ref().borrow_mut() = new_id + 1;
