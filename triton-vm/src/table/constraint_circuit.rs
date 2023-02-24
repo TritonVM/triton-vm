@@ -1055,13 +1055,14 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                         return Some(Rc::clone(&rhs));
                     }
 
-                    // 0 * a = a * 0 = 0
-                    if lhs.borrow().is_zero() || rhs.borrow().is_zero() {
-                        return Some(
-                            self.builder
-                                .make_leaf(BConstant(BFieldElement::zero()))
-                                .circuit,
-                        );
+                    // 0 * a = 0
+                    if lhs.borrow().is_zero() {
+                        return Some(Rc::clone(&lhs));
+                    }
+
+                    // a * 0 = 0
+                    if rhs.borrow().is_zero() {
+                        return Some(Rc::clone(&rhs));
                     }
                 }
 
