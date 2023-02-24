@@ -804,8 +804,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 }
 
-/// The inner type used in the [`ConstraintCircuitBuilder`] to build a circuit. Provides
-/// convenience methods, for example by allowing to use `+` and `*` to add and multiply.
+/// Constraint expressions, with context needed to ensure that
+/// two equal nodes are not added to the multicircuit.
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
     pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
@@ -1006,11 +1006,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             match node.circuit.as_ref().borrow_mut().expression {
                 BinaryOperation(_, ref mut lhs, ref mut rhs) => {
                     if lhs.as_ref().borrow().id == old_id {
-                        println!("Replace");
+                        // println!("Replace");
                         *lhs = new.clone();
                     }
                     if rhs.as_ref().borrow().id == old_id {
-                        println!("Replace");
+                        // println!("Replace");
                         *rhs = new.clone();
                     }
                 }
@@ -1179,56 +1179,69 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 circuit: equivalent_circuit.clone(),
                 builder: self.builder.clone(),
             };
-            println!("folding");
-            println!("self expression: {self}");
-            println!("equivalent expression: {equivalent_as_monadic_value}");
+            // println!("folding");
+            // println!("self expression: {self}");
+            // println!("equivalent expression: {equivalent_as_monadic_value}");
             // Check if equivalent circuit already exists
-            let new_id = equivalent_circuit.as_ref().borrow().id;
-            let self_id = self.circuit.borrow().id;
+            let id_of_equivalent_node = equivalent_circuit.as_ref().borrow().id;
+            let id_of_node_to_be_deleted = self.circuit.borrow().id;
 
-            match self
-                .builder
-                .all_nodes
-                .as_ref()
-                .borrow()
-                .get(&equivalent_as_monadic_value)
-            {
-                Some(val) => {
-                    // The constant-folded value already exists. All references to this value
-                    // must be replaced with the old value.
-                    // Everything pointing to this node must no longer point to this node
-                    let old_id = val.circuit.as_ref().borrow().id;
-                    println!("new_id = {new_id}, old_id = {old_id}, self_id = {self_id}");
-                    if old_id != self_id {
-                        self.replace_references(self_id, val.circuit.clone());
-                        // self.builder
-                        //     .all_nodes
-                        //     .as_ref()
-                        //     .borrow_mut()
-                        //     .remove(&equivalent_as_monadic_value);
-                    }
+            self.replace_references(id_of_node_to_be_deleted, equivalent_circuit.clone());
+            // println!("id_of_equivalent_node = {id_of_equivalent_node}, id_of_node_to_be_deleted = {id_of_node_to_be_deleted}");
+            // println!("{self} was simplified to {equivalent_as_monadic_value}");
+            // panic!();
 
-                    println!("before: {self}");
-                    *self.circuit.borrow_mut() = equivalent_circuit.clone();
-                    println!("after: {self}");
-                    // panic!("");
-                }
-                None => {
-                    // I guess we also need to update the `all_nodes` here
-                    // panic!("hi");
-                    // *self.builder.id_counter.as_ref().borrow_mut() = new_id + 1;
-                    // self.builder.all_nodes.as_ref().borrow_mut().remove(self);
-                    // self.builder
-                    //     .all_nodes
-                    //     .as_ref()
-                    //     .borrow_mut()
-                    //     .insert(equivalent_as_monadic_value.clone());
+            // if self.builder.all_nodes.as_ref().borrow().contains(&equivalent_as_monadic_value) {
 
-                    println!("before: {self}");
-                    *self.circuit.borrow_mut() = equivalent_circuit.clone();
-                    println!("after: {self}");
-                }
-            }
+            // } else {
+
+            // }
+            // match self
+            //     .builder
+            //     .all_nodes
+            //     .as_ref()
+            //     .borrow()
+            //     .get(&equivalent_as_monadic_value)
+            // {
+            //     Some(val) => {
+            //         println!("id_of_equivalent_node = {id_of_equivalent_node}, id_of_node_to_be_deleted = {id_of_node_to_be_deleted}");
+            //         println!("{self} was simplified to {equivalent_as_monadic_value}");
+            //         assert_eq!(val, equivalent_as_monadic_value);
+            //         self.replace_references(id_of_node_to_be_deleted, equivalent_circuit.clone());
+            //         // The constant-folded value already exists. All references to this value
+            //         // must be replaced with the old value.
+            //         // Everything pointing to this node must no longer point to this node
+            //         // let old_id = val.circuit.as_ref().borrow().id;
+            //         // if old_id != id_of_node_to_be_deleted {
+            //         // self.replace_references(id_of_node_to_be_deleted, val.circuit.clone());
+            //         // self.builder
+            //         //     .all_nodes
+            //         //     .as_ref()
+            //         //     .borrow_mut()
+            //         //     .remove(&equivalent_as_monadic_value);
+            //         // }
+
+            //         // println!("before: {self}");
+            //         // *self.circuit.borrow_mut() = equivalent_circuit.clone();
+            //         // println!("after: {self}");
+            //         // panic!("");
+            //     }
+            //     None => {
+            //         // I guess we also need to update the `all_nodes` here
+            //         panic!("hi");
+            //         // *self.builder.id_counter.as_ref().borrow_mut() = new_id + 1;
+            //         // self.builder.all_nodes.as_ref().borrow_mut().remove(self);
+            //         // self.builder
+            //         //     .all_nodes
+            //         //     .as_ref()
+            //         //     .borrow_mut()
+            //         //     .insert(equivalent_as_monadic_value.clone());
+
+            //         // println!("before: {self}");
+            //         // *self.circuit.borrow_mut() = equivalent_circuit.clone();
+            //         // println!("after: {self}");
+            //     }
+            // }
 
             // let compare_with: CircuitExpression<II> = BConstant(BFieldElement::one());
             // if equivalent_circuit.borrow().expression == compare_with {
@@ -1244,7 +1257,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
     /// Reduce size of multitree by simplifying constant expressions such as `1 * MPol(_,_)`
     pub fn constant_folding(circuits: &mut [ConstraintCircuitMonad<II>]) {
-        for circuit in circuits.iter_mut() {
+        for (i, circuit) in circuits.iter_mut().enumerate() {
+            println!("constant folding on circuit {i}");
             let mut mutated = circuit.constant_fold_inner();
             while mutated {
                 mutated = circuit.constant_fold_inner();
