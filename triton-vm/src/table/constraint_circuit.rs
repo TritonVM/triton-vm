@@ -1118,7 +1118,14 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
         self.make_leaf(expression)
     }
 
-    fn make_leaf(&self, expression: CircuitExpression<II>) -> ConstraintCircuitMonad<II> {
+    fn make_leaf(&self, mut expression: CircuitExpression<II>) -> ConstraintCircuitMonad<II> {
+        // Don't generate an X field leaf if it can be expressed as a B field leaf
+        if let XConstant(xfe) = expression {
+            if let Some(bfe) = xfe.unlift() {
+                expression = BConstant(bfe);
+            }
+        }
+
         let new_id = self.id_counter.as_ref().borrow().to_owned();
         let new_node = ConstraintCircuitMonad {
             circuit: Rc::new(RefCell::new(ConstraintCircuit {
