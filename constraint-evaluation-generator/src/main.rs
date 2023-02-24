@@ -445,7 +445,7 @@ fn is_bfield_element<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> boo
     match &circuit.expression {
         CircuitExpression::XConstant(_) => false,
         CircuitExpression::BConstant(_) => true,
-        CircuitExpression::Input(indicator) => indicator.is_base_table_row(),
+        CircuitExpression::Input(indicator) => indicator.is_base_table_column(),
         CircuitExpression::Challenge(_) => false,
         CircuitExpression::BinaryOperation(_, lhs, rhs) => {
             is_bfield_element(&lhs.as_ref().borrow()) && is_bfield_element(&rhs.as_ref().borrow())

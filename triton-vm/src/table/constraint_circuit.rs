@@ -64,10 +64,10 @@ impl Display for BinOp {
 /// Having `Clone + Copy + Hash + PartialEq + Eq` helps putting `InputIndicator`s into containers.
 pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display {
     /// `true` iff `self` refers to a column in the base table.
-    fn is_base_table_row(&self) -> bool;
+    fn is_base_table_column(&self) -> bool;
 
-    fn base_row_index(&self) -> usize;
-    fn ext_row_index(&self) -> usize;
+    fn base_col_index(&self) -> usize;
+    fn ext_col_index(&self) -> usize;
 
     fn evaluate(
         &self,
@@ -98,12 +98,12 @@ impl Display for SingleRowIndicator {
 }
 
 impl InputIndicator for SingleRowIndicator {
-    fn is_base_table_row(&self) -> bool {
+    fn is_base_table_column(&self) -> bool {
         use SingleRowIndicator::*;
         matches!(self, BaseRow(_))
     }
 
-    fn base_row_index(&self) -> usize {
+    fn base_col_index(&self) -> usize {
         use SingleRowIndicator::*;
         match self {
             BaseRow(i) => *i,
@@ -111,7 +111,7 @@ impl InputIndicator for SingleRowIndicator {
         }
     }
 
-    fn ext_row_index(&self) -> usize {
+    fn ext_col_index(&self) -> usize {
         use SingleRowIndicator::*;
         match self {
             BaseRow(_) => panic!("not an ext row"),
@@ -157,12 +157,12 @@ impl Display for DualRowIndicator {
 }
 
 impl InputIndicator for DualRowIndicator {
-    fn is_base_table_row(&self) -> bool {
+    fn is_base_table_column(&self) -> bool {
         use DualRowIndicator::*;
         matches!(self, CurrentBaseRow(_) | NextBaseRow(_))
     }
 
-    fn base_row_index(&self) -> usize {
+    fn base_col_index(&self) -> usize {
         use DualRowIndicator::*;
         match self {
             CurrentBaseRow(i) | NextBaseRow(i) => *i,
@@ -170,7 +170,7 @@ impl InputIndicator for DualRowIndicator {
         }
     }
 
-    fn ext_row_index(&self) -> usize {
+    fn ext_col_index(&self) -> usize {
         use DualRowIndicator::*;
         match self {
             CurrentBaseRow(_) | NextBaseRow(_) => panic!("not an ext row"),
@@ -538,9 +538,9 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
                     }
                 }
             }
-            Input(input) => match input.is_base_table_row() {
-                true => max_base_degrees[input.base_row_index()],
-                false => max_ext_degrees[input.ext_row_index()],
+            Input(input) => match input.is_base_table_column() {
+                true => max_base_degrees[input.base_col_index()],
+                false => max_ext_degrees[input.ext_col_index()],
             },
             XConstant(xfe) => {
                 if xfe.is_zero() {
