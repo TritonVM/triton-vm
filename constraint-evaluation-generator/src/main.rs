@@ -280,9 +280,6 @@ fn turn_circuits_into_degree_bounds_string<II: InputIndicator>(
 fn turn_circuits_into_string<II: InputIndicator>(
     constraint_circuits: &mut [ConstraintCircuit<II>],
 ) -> String {
-    // Delete redundant nodes
-    // ConstraintCircuit::constant_folding(&mut constraint_circuits.iter_mut().collect_vec());
-
     // Assert that all node IDs are unique (sanity check)
     ConstraintCircuit::assert_has_unique_ids(constraint_circuits);
 
