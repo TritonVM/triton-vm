@@ -237,13 +237,24 @@ pub enum CircuitExpression<II: InputIndicator> {
 impl<II: InputIndicator> Hash for CircuitExpression<II> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            BConstant(bfe) => bfe.hash(state),
-            XConstant(xfe) => xfe.hash(state),
-            Input(index) => index.hash(state),
+            BConstant(bfe) => {
+                "bfe".hash(state);
+                bfe.hash(state);
+            }
+            XConstant(xfe) => {
+                "xfe".hash(state);
+                xfe.hash(state);
+            }
+            Input(index) => {
+                "input".hash(state);
+                index.hash(state);
+            }
             Challenge(table_challenge_id) => {
+                "challenge".hash(state);
                 table_challenge_id.hash(state);
             }
             BinaryOperation(binop, lhs, rhs) => {
+                "binop".hash(state);
                 binop.hash(state);
                 lhs.as_ref().borrow().hash(state);
                 rhs.as_ref().borrow().hash(state);
