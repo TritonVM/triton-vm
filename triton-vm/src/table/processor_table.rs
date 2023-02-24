@@ -1308,11 +1308,11 @@ impl DualRowConstraints {
         // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
         // (`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
         // (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
-        let ip_case_1 = (self.ip_next() - (self.ip() + self.one())) * self.st0();
-        let ip_case_2 = (self.ip_next() - (self.ip() + self.two()))
+        let ip_case_1 = (self.ip_next() - self.ip() - self.one()) * self.st0();
+        let ip_case_2 = (self.ip_next() - self.ip() - self.two())
             * (self.st0() * self.hv2() - self.one())
             * (self.hv0() - self.one());
-        let ip_case_3 = (self.ip_next() - (self.ip() + self.constant(3)))
+        let ip_case_3 = (self.ip_next() - self.ip() - self.constant(3))
             * (self.st0() * self.hv2() - self.one())
             * self.hv0();
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
@@ -1333,7 +1333,7 @@ impl DualRowConstraints {
         let jsp_incr_1 = self.jsp_next() - (self.jsp() + self.one());
 
         // The jump's origin jso is set to the current instruction pointer ip plus 2.
-        let jso_becomes_ip_plus_2 = self.jso_next() - (self.ip() + self.two());
+        let jso_becomes_ip_plus_2 = self.jso_next() - self.ip() - self.two();
 
         // The jump's destination jsd is set to the instruction's argument.
         let jsd_becomes_nia = self.jsd_next() - self.nia();
