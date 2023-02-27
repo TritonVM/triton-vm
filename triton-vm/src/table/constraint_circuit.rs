@@ -76,9 +76,8 @@ pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display
     ) -> XFieldElement;
 }
 
-/// A `SingleRowIndicator<COLUMN_COUNT>` describes the position of a variable in
-/// a constraint polynomial that operates on a single execution trace table at a
-/// time.
+/// The position of a variable in a constraint polynomial that operates on a single row of the
+/// execution trace.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum SingleRowIndicator {
     BaseRow(usize),
@@ -668,8 +667,8 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 }
 
-/// Constraint expressions, with context needed to ensure that
-/// two equal nodes are not added to the multicircuit.
+/// Constraint expressions, with context needed to ensure that two equal nodes are not added to
+/// the multicircuit.
 #[derive(Clone)]
 pub struct ConstraintCircuitMonad<II: InputIndicator> {
     pub circuit: Rc<RefCell<ConstraintCircuit<II>>>,
