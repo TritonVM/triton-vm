@@ -423,8 +423,8 @@ impl ExtProcessorTable {
             .map(|tc_polys_for_instr| tc_polys_for_instr.len())
             .max()
             .unwrap();
-        let zero_poly = DualRowConstraints::default().zero();
 
+        let zero_poly = factory.zero();
         let all_tc_polys_for_all_instructions_transposed = (0..max_number_of_constraints)
             .map(|idx| {
                 all_tc_polys_for_all_instructions
@@ -614,7 +614,7 @@ impl ExtProcessorTable {
             .u32_table_running_sum_log_derivative()
             - constant_x(LookupArg::default_initial());
 
-        [
+        let mut constraints = [
             clk_is_0,
             ip_is_0,
             jsp_is_0,
@@ -652,9 +652,10 @@ impl ExtProcessorTable {
             running_evaluation_hash_digest_is_initialized_correctly,
             running_evaluation_sponge_absorb_is_initialized_correctly,
             running_sum_log_derivative_for_u32_table_is_initialized_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -691,7 +692,7 @@ impl ExtProcessorTable {
             * (factory.clk() - factory.one())
             * factory.clock_jump_difference_lookup_multiplicity();
 
-        [
+        let mut constraints = [
             ib0_is_bit,
             ib1_is_bit,
             ib2_is_bit,
@@ -703,9 +704,10 @@ impl ExtProcessorTable {
             is_padding_is_bit,
             ci_corresponds_to_ib0_thru_ib7,
             clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
@@ -797,14 +799,11 @@ impl ExtProcessorTable {
         transition_constraints.push(factory.running_evaluation_sponge_updates_correctly());
         transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
 
-        let mut built_transition_constraints = transition_constraints
+        ConstraintCircuitMonad::constant_folding(&mut transition_constraints);
+        transition_constraints
             .into_iter()
             .map(|tc_ref| tc_ref.consume())
-            .collect_vec();
-        ConstraintCircuit::constant_folding(
-            &mut built_transition_constraints.iter_mut().collect_vec(),
-        );
-        built_transition_constraints
+            .collect_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -813,7 +812,10 @@ impl ExtProcessorTable {
         // In the last row, current instruction register ci is 0, corresponding to instruction halt.
         let last_ci_is_halt = factory.ci();
 
-        vec![last_ci_is_halt.consume()]
+        let mut constraints = [last_ci_is_halt];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }
 
@@ -1292,11 +1294,11 @@ impl DualRowConstraints {
         // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
         // (`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
         // (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
-        let ip_case_1 = (self.ip_next() - (self.ip() + self.one())) * self.st0();
-        let ip_case_2 = (self.ip_next() - (self.ip() + self.two()))
+        let ip_case_1 = (self.ip_next() - self.ip() - self.one()) * self.st0();
+        let ip_case_2 = (self.ip_next() - self.ip() - self.two())
             * (self.st0() * self.hv2() - self.one())
             * (self.hv0() - self.one());
-        let ip_case_3 = (self.ip_next() - (self.ip() + self.constant(3)))
+        let ip_case_3 = (self.ip_next() - self.ip() - self.constant(3))
             * (self.st0() * self.hv2() - self.one())
             * self.hv0();
         let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
@@ -1317,7 +1319,7 @@ impl DualRowConstraints {
         let jsp_incr_1 = self.jsp_next() - (self.jsp() + self.one());
 
         // The jump's origin jso is set to the current instruction pointer ip plus 2.
-        let jso_becomes_ip_plus_2 = self.jso_next() - (self.ip() + self.two());
+        let jso_becomes_ip_plus_2 = self.jso_next() - self.ip() - self.two();
 
         // The jump's destination jsd is set to the instruction's argument.
         let jsd_becomes_nia = self.jsd_next() - self.nia();
@@ -1854,15 +1856,15 @@ impl DualRowConstraints {
     }
 
     pub fn zero(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.zero.to_owned()
+        self.zero.clone()
     }
 
     pub fn one(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.one.to_owned()
+        self.one.clone()
     }
 
     pub fn two(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.two.to_owned()
+        self.two.clone()
     }
 
     pub fn constant(&self, constant: u32) -> ConstraintCircuitMonad<DualRowIndicator> {

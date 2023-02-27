@@ -101,9 +101,9 @@ impl ExtU32Table {
             if_copy_flag_is_0_then_log_derivative_is_default_initial
                 + if_copy_flag_is_1_then_log_derivative_has_accumulated_first_row;
 
-        [running_sum_log_derivative_starts_correctly]
-            .map(|circuit| circuit.consume())
-            .to_vec()
+        let mut constraints = [running_sum_log_derivative_starts_correctly];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -170,7 +170,7 @@ impl ExtU32Table {
         let if_copy_flag_is_0_then_lookup_multiplicity_is_0 =
             (copy_flag - one) * lookup_multiplicity;
 
-        [
+        let mut constraints = [
             copy_flag_is_bit,
             copy_flag_is_0_or_bits_is_0,
             bits_minus_33_inv_is_inverse_of_bits_minus_33,
@@ -185,9 +185,9 @@ impl ExtU32Table {
             result_is_initialized_correctly_for_log_2_floor,
             if_log_2_floor_on_0_then_vm_crashes,
             if_copy_flag_is_0_then_lookup_multiplicity_is_0,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
@@ -350,7 +350,7 @@ impl ExtU32Table {
                     * (challenge(U32Indeterminate) - compressed_row_next)
                     - lookup_multiplicity_next);
 
-        [
+        let mut constraints = [
             if_copy_flag_next_is_1_then_lhs_is_0_or_ci_is_pow,
             if_copy_flag_next_is_1_then_rhs_is_0,
             if_copy_flag_next_is_0_then_ci_stays,
@@ -372,9 +372,9 @@ impl ExtU32Table {
             if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_1_then_result_squares_and_mults,
             if_copy_flag_next_is_0_then_running_sum_log_derivative_stays,
             if_copy_flag_next_is_1_then_running_sum_log_derivative_accumulates_next_row,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -388,9 +388,9 @@ impl ExtU32Table {
             lhs * (ci - circuit_builder.b_constant(Instruction::Pow.opcode_b()));
         let rhs_is_0 = rhs;
 
-        [lhs_is_0_or_ci_is_pow, rhs_is_0]
-            .map(|circuit| circuit.consume())
-            .to_vec()
+        let mut constraints = [lhs_is_0_or_ci_is_pow, rhs_is_0];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }
 

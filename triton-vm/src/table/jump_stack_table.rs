@@ -35,6 +35,8 @@ use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
 
+use super::constraint_circuit::ConstraintCircuitMonad;
+
 pub const BASE_WIDTH: usize = JumpStackBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = JumpStackExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -68,16 +70,18 @@ impl ExtJumpStackTable {
         let clock_jump_diff_log_derivative_starts_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 
-        [
+        let mut constraints = [
             clk,
             jsp,
             jso,
             jsd,
             rppa_starts_correctly,
             clock_jump_diff_log_derivative_starts_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -118,13 +122,13 @@ impl ExtJumpStackTable {
         // 1. The jump stack pointer jsp increases by 1
         //      or the jump stack pointer jsp does not change
         let jsp_inc_or_stays =
-            (jsp_next.clone() - (jsp.clone() + one.clone())) * (jsp_next.clone() - jsp.clone());
+            (jsp_next.clone() - jsp.clone() - one.clone()) * (jsp_next.clone() - jsp.clone());
 
         // 2. The jump stack pointer jsp increases by 1
         //      or current instruction ci is return
         //      or the jump stack origin jso does not change
         let jsp_inc_by_one_or_ci_is_return =
-            (jsp_next.clone() - (jsp.clone() + one.clone())) * (ci.clone() - return_opcode.clone());
+            (jsp_next.clone() - jsp.clone() - one.clone()) * (ci.clone() - return_opcode.clone());
         let jsp_inc_or_jso_stays_or_ci_is_ret =
             jsp_inc_by_one_or_ci_is_return.clone() * (jso_next.clone() - jso);
 
@@ -138,11 +142,11 @@ impl ExtJumpStackTable {
         //      or the cycle count clk increases by 1
         //      or current instruction ci is call
         //      or current instruction ci is return
-        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret = (jsp_next.clone()
-            - (jsp.clone() + one.clone()))
-            * (clk_next.clone() - (clk.clone() + one.clone()))
-            * (ci.clone() - call_opcode)
-            * (ci - return_opcode);
+        let jsp_inc_or_clk_inc_or_ci_call_or_ci_ret =
+            (jsp_next.clone() - jsp.clone() - one.clone())
+                * (clk_next.clone() - clk.clone() - one.clone())
+                * (ci.clone() - call_opcode)
+                * (ci - return_opcode);
 
         // The running product for the permutation argument `rppa` accumulates one row in each
         // row, relative to weights `a`, `b`, `c`, `d`, `e`, and indeterminate `α`.
@@ -171,16 +175,17 @@ impl ExtJumpStackTable {
             * log_derivative_accumulates
             + (jsp_next - jsp) * log_derivative_remains;
 
-        [
+        let mut constraints = [
             jsp_inc_or_stays,
             jsp_inc_or_jso_stays_or_ci_is_ret,
             jsp_inc_or_jsd_stays_or_ci_ret,
             jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
