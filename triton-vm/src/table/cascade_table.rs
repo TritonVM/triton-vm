@@ -4,6 +4,7 @@ use ndarray::ArrayViewMut2;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
+use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::Challenges;
@@ -43,6 +44,15 @@ impl CascadeTable {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+    }
+
+    pub fn lookup_16_bit_limb(to_look_up: u16) -> BFieldElement {
+        let to_look_up_lo = (to_look_up & 0xff) as usize;
+        let to_look_up_hi = ((to_look_up >> 8) & 0xff) as usize;
+        let looked_up_lo = tip5::LOOKUP_TABLE[to_look_up_lo] as u64;
+        let looked_up_hi = tip5::LOOKUP_TABLE[to_look_up_hi] as u64;
+        let looked_up = (looked_up_hi << 8) | looked_up_lo;
+        BFieldElement::from_raw_u64(looked_up)
     }
 }
 

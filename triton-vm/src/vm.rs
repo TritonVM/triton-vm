@@ -7,24 +7,16 @@ use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
-use ndarray::ArrayBase;
 use ndarray::Axis;
-use ndarray::Ix2;
-use ndarray::OwnedRepr;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
-use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
-use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegularState;
-use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
-use twenty_first::shared_math::rescue_prime_regular::RATE;
-use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
-use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
+use twenty_first::shared_math::tip5::Tip5State;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
@@ -41,14 +33,12 @@ use crate::error::vm_fail;
 use crate::error::InstructionError::InstructionPointerOverflow;
 use crate::error::InstructionError::*;
 use crate::op_stack::OpStack;
+use crate::table::cascade_table::CascadeTable;
 use crate::table::hash_table;
 use crate::table::hash_table::NUM_ROUND_CONSTANTS;
 use crate::table::processor_table;
 use crate::table::processor_table::ProcessorTraceRow;
-use crate::table::table_column::HashBaseTableColumn::CI;
-use crate::table::table_column::HashBaseTableColumn::CONSTANT0A;
-use crate::table::table_column::HashBaseTableColumn::ROUNDNUMBER;
-use crate::table::table_column::HashBaseTableColumn::STATE0;
+use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
 
@@ -89,7 +79,7 @@ pub struct VMState<'pgm> {
     /// absorbing.
     /// Note that this is the _full_ state, including capacity. The capacity should never be
     /// exposed outside of the VM.
-    pub sponge_state: [BFieldElement; STATE_SIZE],
+    pub sponge_state: [BFieldElement; tip5::STATE_SIZE],
 
     // Bookkeeping
     /// Indicates whether the terminating instruction `halt` has been executed.
@@ -103,10 +93,10 @@ pub enum VMOutput {
 
     /// Trace of the state registers for hash coprocessor table when executing instruction `hash`
     /// or any of the Sponge instructions `absorb_init`, `absorb`, `squeeze`.
-    /// One row per round in the XLIX permutation.
-    XlixTrace(
+    /// One row per round in the Tip5 permutation.
+    Tip5Trace(
         Instruction,
-        Box<[[BFieldElement; STATE_SIZE]; 1 + NUM_ROUNDS]>,
+        Box<[[BFieldElement; tip5::STATE_SIZE]; 1 + tip5::NUM_ROUNDS]>,
     ),
 
     /// Executed u32 instruction as well as its left-hand side and right-hand side
@@ -320,11 +310,11 @@ impl<'pgm> VMState<'pgm> {
             }
 
             Hash => {
-                let to_hash = self.op_stack.pop_n::<{ 2 * DIGEST_LENGTH }>()?;
-                let mut hash_input = RescuePrimeRegularState::new(Domain::FixedLength).state;
-                hash_input[..2 * DIGEST_LENGTH].copy_from_slice(&to_hash);
-                let xlix_trace = RescuePrimeRegular::trace(hash_input);
-                let hash_output = &xlix_trace[xlix_trace.len() - 1][0..DIGEST_LENGTH];
+                let to_hash = self.op_stack.pop_n::<{ tip5::RATE }>()?;
+                let mut hash_input = Tip5State::new(Domain::FixedLength);
+                hash_input.state[..tip5::RATE].copy_from_slice(&to_hash);
+                let tip5_trace = Tip5::trace(&mut hash_input);
+                let hash_output = &tip5_trace[tip5_trace.len() - 1][0..DIGEST_LENGTH];
 
                 for i in (0..DIGEST_LENGTH).rev() {
                     self.op_stack.push(hash_output[i]);
@@ -333,45 +323,49 @@ impl<'pgm> VMState<'pgm> {
                     self.op_stack.push(BFieldElement::zero());
                 }
 
-                vm_output = Some(VMOutput::XlixTrace(Hash, Box::new(xlix_trace)));
+                vm_output = Some(VMOutput::Tip5Trace(Hash, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
             AbsorbInit | Absorb => {
                 // fetch top elements but don't alter the stack
-                let to_absorb = self.op_stack.pop_n::<{ RATE }>()?;
-                for i in (0..RATE).rev() {
+                let to_absorb = self.op_stack.pop_n::<{ tip5::RATE }>()?;
+                for i in (0..tip5::RATE).rev() {
                     self.op_stack.push(to_absorb[i]);
                 }
 
                 if self.current_instruction()? == AbsorbInit {
-                    self.sponge_state = RescuePrimeRegularState::new(Domain::VariableLength).state;
+                    self.sponge_state = Tip5State::new(Domain::VariableLength).state;
                 }
-                self.sponge_state[..RATE]
+                self.sponge_state[..tip5::RATE]
                     .iter_mut()
                     .zip_eq(to_absorb.iter())
                     .for_each(|(sponge_state_element, &to_absorb_element)| {
                         *sponge_state_element += to_absorb_element;
                     });
-                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
-                self.sponge_state = xlix_trace.last().unwrap().to_owned();
+                let tip5_trace = Tip5::trace(&mut Tip5State {
+                    state: self.sponge_state,
+                });
+                self.sponge_state = tip5_trace.last().unwrap().to_owned();
 
-                vm_output = Some(VMOutput::XlixTrace(
+                vm_output = Some(VMOutput::Tip5Trace(
                     self.current_instruction()?,
-                    Box::new(xlix_trace),
+                    Box::new(tip5_trace),
                 ));
                 self.instruction_pointer += 1;
             }
 
             Squeeze => {
-                let _ = self.op_stack.pop_n::<{ RATE }>()?;
-                for i in (0..RATE).rev() {
+                let _ = self.op_stack.pop_n::<{ tip5::RATE }>()?;
+                for i in (0..tip5::RATE).rev() {
                     self.op_stack.push(self.sponge_state[i]);
                 }
-                let xlix_trace = RescuePrimeRegular::trace(self.sponge_state);
-                self.sponge_state = xlix_trace.last().unwrap().to_owned();
+                let tip5_trace = Tip5::trace(&mut Tip5State {
+                    state: self.sponge_state,
+                });
+                self.sponge_state = tip5_trace.last().unwrap().to_owned();
 
-                vm_output = Some(VMOutput::XlixTrace(Squeeze, Box::new(xlix_trace)));
+                vm_output = Some(VMOutput::Tip5Trace(Squeeze, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
@@ -861,11 +855,11 @@ pub fn simulate(
             Ok(vm_output) => vm_output,
         };
         match vm_output {
-            Some(VMOutput::XlixTrace(Instruction::Hash, xlix_trace)) => {
-                aet.append_hash_trace(*xlix_trace)
+            Some(VMOutput::Tip5Trace(Instruction::Hash, tip5_trace)) => {
+                aet.append_hash_trace(*tip5_trace)
             }
-            Some(VMOutput::XlixTrace(instruction, xlix_trace)) => {
-                aet.append_sponge_trace(instruction, *xlix_trace)
+            Some(VMOutput::Tip5Trace(instruction, tip5_trace)) => {
+                aet.append_sponge_trace(instruction, *tip5_trace)
             }
             Some(VMOutput::U32TableEntries(u32_entries)) => {
                 for u32_entry in u32_entries {
@@ -938,12 +932,12 @@ pub struct AlgebraicExecutionTrace {
     /// Records the state of the processor after each instruction.
     pub processor_trace: Array2<BFieldElement>,
 
-    /// For the `hash` instruction, the hash trace records the internal state of the XLIX
+    /// For the `hash` instruction, the hash trace records the internal state of the Tip5
     /// permutation for each round.
     pub hash_trace: Array2<BFieldElement>,
 
     /// For the Sponge instructions, i.e., `absorb_init`, `absorb`, and `squeeze`, the Sponge
-    /// trace records the internal state of the XLIX permutation for each round.
+    /// trace records the internal state of the Tip5 permutation for each round.
     pub sponge_trace: Array2<BFieldElement>,
 
     /// The u32 entries hold all pairs of BFieldElements that were written to the U32 Table,
@@ -975,10 +969,10 @@ impl AlgebraicExecutionTrace {
 
     pub fn append_hash_trace(
         &mut self,
-        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
     ) {
         self.increase_lookup_multiplicities(hash_permutation_trace);
-        let mut hash_trace_addendum = Self::add_round_number_and_constants(hash_permutation_trace);
+        let mut hash_trace_addendum = Self::convert_to_hash_table_rows(hash_permutation_trace);
         hash_trace_addendum
             .slice_mut(s![.., CI.base_table_index()])
             .fill(Instruction::Hash.opcode_b());
@@ -990,15 +984,14 @@ impl AlgebraicExecutionTrace {
     pub fn append_sponge_trace(
         &mut self,
         instruction: Instruction,
-        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
     ) {
         assert!(matches!(
             instruction,
             Instruction::AbsorbInit | Instruction::Absorb | Instruction::Squeeze
         ));
         self.increase_lookup_multiplicities(hash_permutation_trace);
-        let mut sponge_trace_addendum =
-            Self::add_round_number_and_constants(hash_permutation_trace);
+        let mut sponge_trace_addendum = Self::convert_to_hash_table_rows(hash_permutation_trace);
         sponge_trace_addendum
             .slice_mut(s![.., CI.base_table_index()])
             .fill(instruction.opcode_b());
@@ -1013,7 +1006,7 @@ impl AlgebraicExecutionTrace {
     /// and increases the multiplicities accordingly
     fn increase_lookup_multiplicities(
         &mut self,
-        hash_permutation_trace: [[BFieldElement; STATE_SIZE]; NUM_ROUNDS + 1],
+        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
     ) {
         for row in hash_permutation_trace.iter().rev().skip(1) {
             for state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
@@ -1031,47 +1024,147 @@ impl AlgebraicExecutionTrace {
         }
     }
 
-    /// Given an XLIX trace, this function adds
+    /// Given a trace of the Tip5 permutation, construct a trace corresponding to the columns of
+    /// the Hash Table. This includes
     ///
-    /// 1. the round number, and
-    /// 2. the relevant round constants
+    /// - adding the round number
+    /// - adding the round constants,
+    /// - decomposing the first [`tip5::NUM_SPLIT_AND_LOOKUP`] (== 4) state elements into their
+    ///     constituent limbs,
+    /// - setting the inverse-or-zero for proving correct limb decomposition, and
+    /// - adding the looked-up value for each limb.
     ///
-    /// to each row. The result has the same width as the Hash Table. The current instruction is not
-    /// set.
-    fn add_round_number_and_constants(
-        xlix_trace: [[BFieldElement; 16]; 9],
-    ) -> ArrayBase<OwnedRepr<BFieldElement>, Ix2> {
-        let mut hash_trace_addendum = Array2::default([NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
-        for (row_idx, mut row) in hash_trace_addendum.rows_mut().into_iter().enumerate() {
-            let round_number = row_idx + 1;
-            let trace_row = xlix_trace[row_idx];
-            let round_constants = Self::rescue_xlix_round_constants_by_round_number(round_number);
-            row[ROUNDNUMBER.base_table_index()] = BFieldElement::from(row_idx as u64 + 1);
-            for st_idx in 0..STATE_SIZE {
-                row[STATE0.base_table_index() + st_idx] = trace_row[st_idx];
-            }
-            for rc_idx in 0..NUM_ROUND_CONSTANTS {
-                row[CONSTANT0A.base_table_index() + rc_idx] = round_constants[rc_idx];
-            }
+    /// The current instruction is not set.
+    fn convert_to_hash_table_rows(
+        hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
+    ) -> Array2<BFieldElement> {
+        let mut hash_trace_addendum = Array2::zeros([tip5::NUM_ROUNDS + 1, hash_table::BASE_WIDTH]);
+        for (round_number, mut row) in hash_trace_addendum.rows_mut().into_iter().enumerate() {
+            let trace_row = hash_permutation_trace[round_number];
+            row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
+
+            let st_0_raw_limbs = trace_row[0].raw_u16s();
+            let st_0_look_in_split =
+                st_0_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            row[State0HighestLkIn.base_table_index()] = st_0_look_in_split[0];
+            row[State0MidHighLkIn.base_table_index()] = st_0_look_in_split[1];
+            row[State0MidLowLkIn.base_table_index()] = st_0_look_in_split[2];
+            row[State0LowestLkIn.base_table_index()] = st_0_look_in_split[3];
+
+            let st_0_look_out_split = st_0_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            row[State0HighestLkOut.base_table_index()] = st_0_look_out_split[0];
+            row[State0MidHighLkOut.base_table_index()] = st_0_look_out_split[1];
+            row[State0MidLowLkOut.base_table_index()] = st_0_look_out_split[2];
+            row[State0LowestLkOut.base_table_index()] = st_0_look_out_split[3];
+
+            let st_1_raw_limbs = trace_row[1].raw_u16s();
+            let st_1_look_in_split =
+                st_1_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            row[State1HighestLkIn.base_table_index()] = st_1_look_in_split[0];
+            row[State1MidHighLkIn.base_table_index()] = st_1_look_in_split[1];
+            row[State1MidLowLkIn.base_table_index()] = st_1_look_in_split[2];
+            row[State1LowestLkIn.base_table_index()] = st_1_look_in_split[3];
+
+            let st_1_look_out_split = st_1_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            row[State1HighestLkOut.base_table_index()] = st_1_look_out_split[0];
+            row[State1MidHighLkOut.base_table_index()] = st_1_look_out_split[1];
+            row[State1MidLowLkOut.base_table_index()] = st_1_look_out_split[2];
+            row[State1LowestLkOut.base_table_index()] = st_1_look_out_split[3];
+
+            let st_2_raw_limbs = trace_row[2].raw_u16s();
+            let st_2_look_in_split =
+                st_2_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            row[State2HighestLkIn.base_table_index()] = st_2_look_in_split[0];
+            row[State2MidHighLkIn.base_table_index()] = st_2_look_in_split[1];
+            row[State2MidLowLkIn.base_table_index()] = st_2_look_in_split[2];
+            row[State2LowestLkIn.base_table_index()] = st_2_look_in_split[3];
+
+            let st_2_look_out_split = st_2_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            row[State2HighestLkOut.base_table_index()] = st_2_look_out_split[0];
+            row[State2MidHighLkOut.base_table_index()] = st_2_look_out_split[1];
+            row[State2MidLowLkOut.base_table_index()] = st_2_look_out_split[2];
+            row[State2LowestLkOut.base_table_index()] = st_2_look_out_split[3];
+
+            let st_3_raw_limbs = trace_row[3].raw_u16s();
+            let st_3_look_in_split =
+                st_3_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            row[State3HighestLkIn.base_table_index()] = st_3_look_in_split[0];
+            row[State3MidHighLkIn.base_table_index()] = st_3_look_in_split[1];
+            row[State3MidLowLkIn.base_table_index()] = st_3_look_in_split[2];
+            row[State3LowestLkIn.base_table_index()] = st_3_look_in_split[3];
+
+            let st_3_look_out_split = st_3_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            row[State3HighestLkOut.base_table_index()] = st_3_look_out_split[0];
+            row[State3MidHighLkOut.base_table_index()] = st_3_look_out_split[1];
+            row[State3MidLowLkOut.base_table_index()] = st_3_look_out_split[2];
+            row[State3LowestLkOut.base_table_index()] = st_3_look_out_split[3];
+
+            row[State4.base_table_index()] = trace_row[4];
+            row[State5.base_table_index()] = trace_row[5];
+            row[State6.base_table_index()] = trace_row[6];
+            row[State7.base_table_index()] = trace_row[7];
+            row[State8.base_table_index()] = trace_row[8];
+            row[State9.base_table_index()] = trace_row[9];
+            row[State10.base_table_index()] = trace_row[10];
+            row[State11.base_table_index()] = trace_row[11];
+            row[State12.base_table_index()] = trace_row[12];
+            row[State13.base_table_index()] = trace_row[13];
+            row[State14.base_table_index()] = trace_row[14];
+            row[State15.base_table_index()] = trace_row[15];
+
+            row[State0Inv.base_table_index()] =
+                Self::inverse_or_zero_of_highest_2_limbs(trace_row[0]);
+            row[State1Inv.base_table_index()] =
+                Self::inverse_or_zero_of_highest_2_limbs(trace_row[1]);
+            row[State2Inv.base_table_index()] =
+                Self::inverse_or_zero_of_highest_2_limbs(trace_row[2]);
+            row[State3Inv.base_table_index()] =
+                Self::inverse_or_zero_of_highest_2_limbs(trace_row[3]);
+
+            let round_constants = Self::tip5_round_constants_by_round_number(round_number);
+            row[Constant0.base_table_index()] = round_constants[0];
+            row[Constant1.base_table_index()] = round_constants[1];
+            row[Constant2.base_table_index()] = round_constants[2];
+            row[Constant3.base_table_index()] = round_constants[3];
+            row[Constant4.base_table_index()] = round_constants[4];
+            row[Constant5.base_table_index()] = round_constants[5];
+            row[Constant6.base_table_index()] = round_constants[6];
+            row[Constant7.base_table_index()] = round_constants[7];
+            row[Constant8.base_table_index()] = round_constants[8];
+            row[Constant9.base_table_index()] = round_constants[9];
+            row[Constant10.base_table_index()] = round_constants[10];
+            row[Constant11.base_table_index()] = round_constants[11];
+            row[Constant12.base_table_index()] = round_constants[12];
+            row[Constant13.base_table_index()] = round_constants[13];
+            row[Constant14.base_table_index()] = round_constants[14];
+            row[Constant15.base_table_index()] = round_constants[15];
         }
         hash_trace_addendum
     }
 
-    /// The 2·STATE_SIZE (= NUM_ROUND_CONSTANTS) round constants for round `round_number`.
-    /// Of note:
-    /// - Round index 0 indicates a padding row – all constants are zero.
-    /// - Round index 9 indicates an output row – all constants are zero.
-    pub fn rescue_xlix_round_constants_by_round_number(
+    /// The round constants for round `round_number` if it is a valid round number in the Tip5
+    /// permutation, and the zero vector otherwise.
+    fn tip5_round_constants_by_round_number(
         round_number: usize,
     ) -> [BFieldElement; NUM_ROUND_CONSTANTS] {
         match round_number {
-            i if i == 0 || i == NUM_ROUNDS + 1 => [BFIELD_ZERO; NUM_ROUND_CONSTANTS],
-            i if i <= NUM_ROUNDS => ROUND_CONSTANTS
-                [NUM_ROUND_CONSTANTS * (i - 1)..NUM_ROUND_CONSTANTS * i]
+            i if i < tip5::NUM_ROUNDS => tip5::ROUND_CONSTANTS
+                [NUM_ROUND_CONSTANTS * i..NUM_ROUND_CONSTANTS * (i + 1)]
                 .try_into()
                 .unwrap(),
-            _ => panic!("Round with number {round_number} does not have round constants."),
+            _ => [BFIELD_ZERO; NUM_ROUND_CONSTANTS],
         }
+    }
+
+    /// The inverse-or-zero of (`mid_high` + (`highest` << 16) - (1 << 32) + 1) where `highest`
+    /// is the most significant limb of the given `state_element`, and `mid_high` the second-most
+    /// significant limb.
+    fn inverse_or_zero_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
+        let limbs = state_element.raw_u16s().map(|limb| limb as u64);
+        let highest = limbs[0];
+        let mid_high = limbs[1];
+        let to_invert = mid_high + (highest << 16) - (1 << 32) + 1;
+        BFieldElement::from_raw_u64(to_invert).inverse_or_zero()
     }
 }
 

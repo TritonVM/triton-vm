@@ -43,7 +43,7 @@ pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE * 2;
+pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
 pub const TOTAL_NUM_CONSTANTS: usize = NUM_ROUND_CONSTANTS * NUM_ROUNDS;
 
 #[derive(Debug, Clone)]
@@ -68,7 +68,7 @@ impl ExtHashTable {
 
         let running_evaluation_initial = circuit_builder.x_constant(EvalArg::default_initial());
 
-        let round_number = base_row(ROUNDNUMBER);
+        let round_number = base_row(RoundNumber);
         let ci = base_row(CI);
         let running_evaluation_hash_input = ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest = ext_row(HashDigestRunningEvaluation);
@@ -478,8 +478,8 @@ impl ExtHashTable {
             * (ci_next.clone() - opcode_squeeze.clone());
         let running_evaluation_hash_input_remains =
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
-        let xlix_input = state_next[0..2 * DIGEST_LENGTH].to_owned();
-        let compressed_row_from_processor = xlix_input
+        let tip5_input = state_next[0..2 * DIGEST_LENGTH].to_owned();
+        let compressed_row_from_processor = tip5_input
             .into_iter()
             .zip_eq(state_weights[0..2 * DIGEST_LENGTH].iter())
             .map(|(state, weight)| weight.clone() * state)
