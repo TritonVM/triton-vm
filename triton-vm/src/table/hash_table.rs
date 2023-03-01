@@ -807,6 +807,9 @@ impl HashTable {
         hash_table
             .slice_mut(s![hash_table_length.., CI.base_table_index()])
             .fill(Instruction::Hash.opcode_b());
+        hash_table
+            .slice_mut(s![hash_table_length.., RoundNumber.base_table_index()])
+            .fill(-BFIELD_ONE);
     }
 
     pub fn extend(
