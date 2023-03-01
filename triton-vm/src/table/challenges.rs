@@ -123,6 +123,19 @@ pub enum ChallengeId {
     HashStateWeight14,
     HashStateWeight15,
 
+    /// The indeterminate for the Lookup Argument between the Cascade Table and the Lookup Table.
+    CascadeLookupIndeterminate,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `*LkIn` in the Cascade Table, and
+    /// - `LookIn` in the Lookup Table.
+    LookupTableInputWeight,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `*LkOut` in the Cascade Table, and
+    /// - `LookOut` in the Lookup Table.
+    LookupTableOutputWeight,
+
     /// The indeterminate for the public Evaluation Argument establishing correctness of the
     /// Lookup Table.
     LookupTablePublicIndeterminate,

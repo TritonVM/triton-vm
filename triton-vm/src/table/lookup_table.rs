@@ -2,19 +2,29 @@ use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::tip5;
+use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::table::challenges::ChallengeId::CascadeLookupIndeterminate;
+use crate::table::challenges::ChallengeId::LookupTableInputWeight;
+use crate::table::challenges::ChallengeId::LookupTableOutputWeight;
+use crate::table::challenges::ChallengeId::LookupTablePublicIndeterminate;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::cross_table_argument::CrossTableArg;
+use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::LookupArg;
 use crate::table::table_column::LookupBaseTableColumn;
 use crate::table::table_column::LookupBaseTableColumn::*;
 use crate::table::table_column::LookupExtTableColumn;
+use crate::table::table_column::LookupExtTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::vm::AlgebraicExecutionTrace;
 
@@ -69,6 +79,38 @@ impl LookupTable {
         assert_eq!(BASE_WIDTH, base_table.ncols());
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
+
+        let look_in_weight = challenges.get_challenge(LookupTableInputWeight);
+        let look_out_weight = challenges.get_challenge(LookupTableOutputWeight);
+        let cascade_indeterminate = challenges.get_challenge(CascadeLookupIndeterminate);
+        let public_indeterminate = challenges.get_challenge(LookupTablePublicIndeterminate);
+
+        let mut cascade_table_running_sum_log_derivative = LookupArg::default_initial();
+        let mut public_running_evaluation = EvalArg::default_initial();
+
+        for row_idx in 0..base_table.nrows() {
+            let base_row = base_table.row(row_idx);
+
+            let lookup_input = base_row[LookIn.base_table_index()];
+            let lookup_output = base_row[LookOut.base_table_index()];
+            let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
+            let is_padding = base_row[IsPadding.base_table_index()];
+
+            if is_padding.is_zero() {
+                let compressed_row =
+                    lookup_input * look_in_weight + lookup_output * look_out_weight;
+                cascade_table_running_sum_log_derivative +=
+                    (cascade_indeterminate - compressed_row).inverse() * lookup_multiplicity;
+
+                public_running_evaluation =
+                    public_running_evaluation * public_indeterminate + lookup_output;
+            }
+
+            let mut ext_row = ext_table.row_mut(row_idx);
+            ext_row[CascadeTableServerLogDerivative.ext_table_index()] =
+                cascade_table_running_sum_log_derivative;
+            ext_row[PublicEvaluationArgument.ext_table_index()] = public_running_evaluation;
+        }
     }
 }
 
