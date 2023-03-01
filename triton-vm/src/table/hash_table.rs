@@ -133,23 +133,22 @@ impl ExtHashTable {
         let current_instruction_is_absorb_init_or_hash =
             ci_is_absorb_init.clone() * ci_is_hash.clone();
 
-        // todo >>> here <<<
-
         // Evaluation Argument “hash input”
-        // If the round number is 0, the running evaluation is the default initial.
+        // If the round number is -1, the running evaluation is the default initial.
         // If the current instruction is AbsorbInit, the running evaluation is the default initial.
         // Else, the first update has been applied to the running evaluation.
-        let from_processor_indeterminate = challenge(HashInputIndeterminate);
+        let hash_input_indeterminate = challenge(HashInputIndeterminate);
         let running_evaluation_hash_input_is_default_initial =
             running_evaluation_hash_input.clone() - running_evaluation_initial.clone();
         let running_evaluation_hash_input_has_accumulated_first_row = running_evaluation_hash_input
-            - running_evaluation_initial.clone() * from_processor_indeterminate
+            - running_evaluation_initial.clone() * hash_input_indeterminate
             - compressed_row.clone();
-        let running_evaluation_hash_input_is_initialized_correctly = round_number.clone()
+        let running_evaluation_hash_input_is_initialized_correctly = (round_number.clone()
+            + one.clone())
             * ci_is_absorb_init.clone()
             * running_evaluation_hash_input_has_accumulated_first_row
             + ci_is_hash.clone() * running_evaluation_hash_input_is_default_initial.clone()
-            + (one - round_number) * running_evaluation_hash_input_is_default_initial;
+            + round_number * running_evaluation_hash_input_is_default_initial;
 
         // Evaluation Argument “hash digest”
         let running_evaluation_hash_digest_is_default_initial =
@@ -883,7 +882,7 @@ impl HashTable {
             let current_row = base_table.row(row_idx);
             let current_instruction = current_row[CI.base_table_index()];
 
-            if current_row[ROUNDNUMBER.base_table_index()].value() == NUM_ROUNDS as u64 + 1
+            if current_row[RoundNumber.base_table_index()].value() == NUM_ROUNDS as u64 + 1
                 && current_instruction == opcode_hash
             {
                 // add compressed digest to running evaluation “hash digest”
@@ -899,7 +898,7 @@ impl HashTable {
             }
 
             // all remaining Evaluation Arguments only get updated if the round number is 1
-            if current_row[ROUNDNUMBER.base_table_index()].is_one() {
+            if current_row[RoundNumber.base_table_index()].is_one() {
                 let elements_for_hash_input_and_sponge_operations = match current_instruction {
                     op if op == opcode_hash || op == opcode_absorb_init || op == opcode_squeeze => {
                         rate_registers(current_row)
