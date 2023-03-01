@@ -183,6 +183,11 @@ impl ExtHashTable {
         round_number_circuit_node: &ConstraintCircuitMonad<II>,
         round_number_to_deselect: isize,
     ) -> ConstraintCircuitMonad<II> {
+        assert!(
+            -1 <= round_number_to_deselect && round_number_to_deselect <= NUM_ROUNDS as isize,
+            "Round number to deselect must be in the range [-1, {NUM_ROUNDS}] \
+            but got {round_number_to_deselect}."
+        );
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         (-1..=NUM_ROUNDS as isize)
             .filter(|&r| r != round_number_to_deselect)
@@ -193,15 +198,18 @@ impl ExtHashTable {
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let base_row = |column_id: HashBaseTableColumn| {
+            circuit_builder.input(BaseRow(column_id.master_base_table_index()))
+        };
 
-        let round_number = circuit_builder.input(BaseRow(RoundNumber.master_base_table_index()));
-        let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
-        let state10 = circuit_builder.input(BaseRow(State10.master_base_table_index()));
-        let state11 = circuit_builder.input(BaseRow(State11.master_base_table_index()));
-        let state12 = circuit_builder.input(BaseRow(State12.master_base_table_index()));
-        let state13 = circuit_builder.input(BaseRow(State13.master_base_table_index()));
-        let state14 = circuit_builder.input(BaseRow(State14.master_base_table_index()));
-        let state15 = circuit_builder.input(BaseRow(State15.master_base_table_index()));
+        let round_number = base_row(RoundNumber);
+        let ci = base_row(CI);
+        let state10 = base_row(State10);
+        let state11 = base_row(State11);
+        let state12 = base_row(State12);
+        let state13 = base_row(State13);
+        let state14 = base_row(State14);
+        let state15 = base_row(State15);
 
         let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
         let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
@@ -268,8 +276,7 @@ impl ExtHashTable {
         for round_constant_column_idx in 0..NUM_ROUND_CONSTANTS {
             let round_constant_column =
                 Self::round_constant_column_by_index(round_constant_column_idx);
-            let round_constant_column_circuit =
-                circuit_builder.input(BaseRow(round_constant_column.master_base_table_index()));
+            let round_constant_column_circuit = base_row(round_constant_column);
             let mut round_constant_constraint_circuit = constant(0);
             for round_idx in 0..NUM_ROUNDS {
                 let round_constant_idx_for_current_row =
@@ -321,7 +328,6 @@ impl ExtHashTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
-        let b_constant = |c| circuit_builder.b_constant(c);
 
         let opcode_hash = constant(Instruction::Hash.opcode() as u64);
         let opcode_absorb_init = constant(Instruction::AbsorbInit.opcode() as u64);
@@ -378,7 +384,7 @@ impl ExtHashTable {
             + current_base_row(State3MidLowLkIn) * two_pow_16.clone()
             + current_base_row(State3LowestLkIn);
 
-        let state = [
+        let state_current = [
             state_0,
             state_1,
             state_2,
@@ -420,33 +426,26 @@ impl ExtHashTable {
         ]
         .map(challenge);
 
-        // todo >>> here <<<<
-
         // round numbers evolve as
         // 0 -> 1 -> 2 -> 3 -> 4 -> 5, and
         // 5 -> -1 or 5 -> 0, and
         // -1 -> -1
 
-        let round_number_is_not_0 =
-            Self::round_number_deselector(&circuit_builder, &round_number, 0);
-        let round_number_is_not_9 =
-            Self::round_number_deselector(&circuit_builder, &round_number, 9);
+        let round_number_is_not_neg_1 =
+            Self::round_number_deselector(&circuit_builder, &round_number, -1);
+        let round_number_is_not_5 =
+            Self::round_number_deselector(&circuit_builder, &round_number, 5);
 
-        // if round number is 0, then next round number is 0
-        // DNF: rn in {1, ..., 9} ∨ rn* = 0
-        let round_number_is_1_through_9_or_round_number_next_is_0 =
-            round_number_is_not_0 * round_number_next.clone();
+        let round_number_is_0_through_5_or_round_number_next_is_neg_1 =
+            round_number_is_not_neg_1 * (round_number_next.clone() + constant(1));
 
-        // if round number is 9, then next round number is 0 or 1
-        // DNF: rn =/= 9 ∨ rn* = 0 ∨ rn* = 1
-        let round_number_is_0_through_8_or_round_number_next_is_0_or_1 = round_number_is_not_9
-            * (constant(1) - round_number_next.clone())
-            * round_number_next.clone();
+        let round_number_is_neg_1_through_4_or_round_number_next_is_0_or_neg_1 =
+            round_number_is_not_5
+                * round_number_next.clone()
+                * (round_number_next.clone() + constant(1));
 
-        // if round number is in {1, ..., 8} then next round number is +1
-        // DNF: (rn == 0 ∨ rn == 9) ∨ rn* = rn + 1
-        let round_number_is_0_or_9_or_increments_by_one = round_number.clone()
-            * (constant(NUM_ROUNDS as u64 + 1) - round_number.clone())
+        let round_number_is_neg_1_or_5_or_increments_by_one = (round_number.clone() + constant(1))
+            * (round_number.clone() - constant(NUM_ROUNDS as u64))
             * (round_number_next.clone() - round_number.clone() - constant(1));
 
         let if_ci_is_hash_then_ci_doesnt_change = (ci.clone() - opcode_absorb_init.clone())
@@ -454,13 +453,13 @@ impl ExtHashTable {
             * (ci.clone() - opcode_squeeze.clone())
             * (ci_next.clone() - opcode_hash.clone());
 
-        let if_round_number_is_not_9_then_ci_doesnt_change =
-            (round_number.clone() - constant(NUM_ROUNDS as u64 + 1)) * (ci_next.clone() - ci);
+        let if_round_number_is_not_5_then_ci_doesnt_change =
+            (round_number.clone() - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
 
-        // copy capacity between rounds with index 9 and 1 if instruction is “absorb”
-        let round_number_next_is_not_1 =
-            Self::round_number_deselector(&circuit_builder, &round_number_next, 1);
-        let round_number_next_is_1 = round_number_next.clone() - constant(1);
+        // copy capacity between rounds with index 5 and 0 if instruction is “absorb”
+        let round_number_next_is_not_0 =
+            Self::round_number_deselector(&circuit_builder, &round_number_next, 0);
+        let round_number_next_is_0 = round_number_next.clone();
 
         let difference_of_capacity_registers = state_current[RATE..]
             .iter()
@@ -472,14 +471,14 @@ impl ExtHashTable {
             .zip_eq(difference_of_capacity_registers)
             .map(|(weight, state_difference)| weight.clone() * state_difference)
             .sum();
-        let if_round_number_next_is_1_and_ci_next_is_absorb_then_capacity_doesnt_change =
-            round_number_next_is_not_1.clone()
+        let if_round_number_next_is_0_and_ci_next_is_absorb_then_capacity_doesnt_change =
+            round_number_next_is_not_0.clone()
                 * (ci_next.clone() - opcode_hash.clone())
                 * (ci_next.clone() - opcode_absorb_init.clone())
                 * (ci_next.clone() - opcode_squeeze.clone())
                 * randomized_sum_of_capacity_differences;
 
-        // copy entire state between rounds with index 9 and 1 if instruction is “squeeze”
+        // copy entire state between rounds with index 5 and 0 if instruction is “squeeze”
         let difference_of_state_registers = state_current
             .iter()
             .zip_eq(state_next.iter())
@@ -490,8 +489,8 @@ impl ExtHashTable {
             .zip_eq(difference_of_state_registers.iter())
             .map(|(weight, state_difference)| weight.clone() * state_difference.clone())
             .sum();
-        let if_round_number_next_is_1_and_ci_next_is_squeeze_then_state_doesnt_change =
-            round_number_next_is_not_1.clone()
+        let if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change =
+            round_number_next_is_not_0.clone()
                 * (ci_next.clone() - opcode_hash.clone())
                 * (ci_next.clone() - opcode_absorb_init.clone())
                 * (ci_next.clone() - opcode_absorb.clone())
@@ -499,47 +498,52 @@ impl ExtHashTable {
 
         // Evaluation Arguments
 
-        // If (and only if) the next row number is 1, update running evaluation “hash input.”
+        // If (and only if) the row number in the next row is 0 and the current instruction in
+        // the next row is corresponds to `hash`, update running evaluation “hash input.”
         let ci_next_is_not_hash = (ci_next.clone() - opcode_absorb_init.clone())
             * (ci_next.clone() - opcode_absorb.clone())
             * (ci_next.clone() - opcode_squeeze.clone());
         let running_evaluation_hash_input_remains =
             running_evaluation_hash_input_next.clone() - running_evaluation_hash_input.clone();
-        let tip5_input = state_next[0..2 * DIGEST_LENGTH].to_owned();
+        let tip5_input = state_next[..RATE].to_owned();
         let compressed_row_from_processor = tip5_input
             .into_iter()
-            .zip_eq(state_weights[0..2 * DIGEST_LENGTH].iter())
+            .zip_eq(state_weights[..RATE].iter())
             .map(|(state, weight)| weight.clone() * state)
             .sum();
 
         let running_evaluation_hash_input_updates = running_evaluation_hash_input_next
             - hash_input_eval_indeterminate * running_evaluation_hash_input
             - compressed_row_from_processor;
-        let running_evaluation_hash_input_is_updated_correctly = round_number_next_is_not_1.clone()
+        let running_evaluation_hash_input_is_updated_correctly = round_number_next_is_not_0.clone()
             * ci_next_is_not_hash.clone()
             * running_evaluation_hash_input_updates
-            + round_number_next_is_1.clone() * running_evaluation_hash_input_remains.clone()
+            + round_number_next_is_0.clone() * running_evaluation_hash_input_remains.clone()
             + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_input_remains;
 
-        // If (and only if) the next row number is 9, update running evaluation “hash digest.”
-        let round_number_next_is_9 = round_number_next.clone() - constant(NUM_ROUNDS as u64 + 1);
-        let round_number_next_is_not_9 =
-            Self::round_number_deselector(&circuit_builder, &round_number_next, NUM_ROUNDS + 1);
+        // If (and only if) the row number in the next row is 5 and the current instruction in
+        // the next row corresponds to `hash`, update running evaluation “hash digest.”
+        let round_number_next_is_5 = round_number_next.clone() - constant(NUM_ROUNDS as u64);
+        let round_number_next_is_not_5 = Self::round_number_deselector(
+            &circuit_builder,
+            &round_number_next,
+            NUM_ROUNDS as isize,
+        );
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
-        let hash_digest = state_next[0..DIGEST_LENGTH].to_owned();
+        let hash_digest = state_next[..DIGEST_LENGTH].to_owned();
         let compressed_row_hash_digest = hash_digest
             .into_iter()
-            .zip_eq(state_weights[0..DIGEST_LENGTH].iter())
+            .zip_eq(state_weights[..DIGEST_LENGTH].iter())
             .map(|(state, weight)| weight.clone() * state)
             .sum();
         let running_evaluation_hash_digest_updates = running_evaluation_hash_digest_next
             - hash_digest_eval_indeterminate * running_evaluation_hash_digest
             - compressed_row_hash_digest;
-        let running_evaluation_hash_digest_is_updated_correctly = round_number_next_is_not_9
+        let running_evaluation_hash_digest_is_updated_correctly = round_number_next_is_not_5
             * ci_next_is_not_hash
             * running_evaluation_hash_digest_updates
-            + round_number_next_is_9 * running_evaluation_hash_digest_remains.clone()
+            + round_number_next_is_5 * running_evaluation_hash_digest_remains.clone()
             + (ci_next.clone() - opcode_hash.clone()) * running_evaluation_hash_digest_remains;
 
         // The running evaluation for “Sponge” updates correctly.
@@ -553,59 +557,40 @@ impl ExtHashTable {
             - sponge_indeterminate.clone() * running_evaluation_sponge.clone()
             - challenge(HashCIWeight) * ci_next.clone()
             - compressed_row_next;
-        let if_round_no_next_1_and_ci_next_absorb_init_or_squeeze_then_running_eval_sponge_updates =
-            round_number_next_is_not_1.clone()
+        let if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates =
+            round_number_next_is_not_0.clone()
                 * (ci_next.clone() - opcode_hash.clone())
-                * (ci_next.clone() - opcode_absorb.clone())
                 * running_evaluation_sponge_has_accumulated_next_row;
-
-        let compressed_difference_of_rows: ConstraintCircuitMonad<_> = state_weights[..RATE]
-            .iter()
-            .zip_eq(difference_of_state_registers[..RATE].iter())
-            .map(|(weight, state_difference)| weight.clone() * state_difference.clone())
-            .sum();
-        let running_evaluation_sponge_absorb_has_accumulated_difference_of_rows =
-            running_evaluation_sponge_next.clone()
-                - sponge_indeterminate * running_evaluation_sponge.clone()
-                - challenge(HashCIWeight) * ci_next.clone()
-                - compressed_difference_of_rows;
-        let if_round_no_next_is_1_and_ci_next_is_absorb_then_sponge_absorb_eval_is_updated =
-            round_number_next_is_not_1
-                * (ci_next.clone() - opcode_hash)
-                * (ci_next.clone() - opcode_absorb_init.clone())
-                * (ci_next.clone() - opcode_squeeze.clone())
-                * running_evaluation_sponge_absorb_has_accumulated_difference_of_rows;
 
         let running_evaluation_sponge_absorb_remains =
             running_evaluation_sponge_next - running_evaluation_sponge;
-        let if_round_no_next_is_not_1_then_running_evaluation_sponge_absorb_remains =
-            round_number_next_is_1 * running_evaluation_sponge_absorb_remains.clone();
+        let if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains =
+            round_number_next_is_0 * running_evaluation_sponge_absorb_remains.clone();
         let if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains =
             (ci_next.clone() - opcode_absorb_init)
                 * (ci_next.clone() - opcode_absorb)
                 * (ci_next - opcode_squeeze)
                 * running_evaluation_sponge_absorb_remains;
-        let running_evaluation_sponge_absorb_is_updated_correctly =
-            if_round_no_next_1_and_ci_next_absorb_init_or_squeeze_then_running_eval_sponge_updates
-                + if_round_no_next_is_1_and_ci_next_is_absorb_then_sponge_absorb_eval_is_updated
-                + if_round_no_next_is_not_1_then_running_evaluation_sponge_absorb_remains
+        let running_evaluation_sponge_is_updated_correctly =
+            if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates
+                + if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains
                 + if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains;
 
         let mut constraints = [
             vec![
-                round_number_is_1_through_9_or_round_number_next_is_0,
-                round_number_is_0_through_8_or_round_number_next_is_0_or_1,
-                round_number_is_0_or_9_or_increments_by_one,
+                round_number_is_0_through_5_or_round_number_next_is_neg_1,
+                round_number_is_neg_1_through_4_or_round_number_next_is_0_or_neg_1,
+                round_number_is_neg_1_or_5_or_increments_by_one,
                 if_ci_is_hash_then_ci_doesnt_change,
-                if_round_number_is_not_9_then_ci_doesnt_change,
+                if_round_number_is_not_5_then_ci_doesnt_change,
             ],
             hash_function_round_correctly_performs_update.to_vec(),
             vec![
-                if_round_number_next_is_1_and_ci_next_is_absorb_then_capacity_doesnt_change,
-                if_round_number_next_is_1_and_ci_next_is_squeeze_then_state_doesnt_change,
+                if_round_number_next_is_0_and_ci_next_is_absorb_then_capacity_doesnt_change,
+                if_round_number_next_is_0_and_ci_next_is_squeeze_then_state_doesnt_change,
                 running_evaluation_hash_input_is_updated_correctly,
                 running_evaluation_hash_digest_is_updated_correctly,
-                running_evaluation_sponge_absorb_is_updated_correctly,
+                running_evaluation_sponge_is_updated_correctly,
             ],
         ]
         .concat();
