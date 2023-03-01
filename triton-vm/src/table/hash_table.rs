@@ -861,18 +861,15 @@ impl HashTable {
         let opcode_absorb = Instruction::Absorb.opcode_b();
         let opcode_squeeze = Instruction::Squeeze.opcode_b();
 
-        let previous_row = Array1::zeros([BASE_WIDTH]);
-        let mut previous_row = previous_row.view();
         for row_idx in 0..base_table.nrows() {
-            let current_row = base_table.row(row_idx);
-            let current_instruction = current_row[CI.base_table_index()];
+            let row = base_table.row(row_idx);
+            let current_instruction = row[CI.base_table_index()];
 
-            if current_row[RoundNumber.base_table_index()].value() == NUM_ROUNDS as u64
+            if row[RoundNumber.base_table_index()].value() == NUM_ROUNDS as u64
                 && current_instruction == opcode_hash
             {
                 // add compressed digest to running evaluation “hash digest”
-                let compressed_hash_digest: XFieldElement = rate_registers(current_row)
-                    [..DIGEST_LENGTH]
+                let compressed_hash_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
                     .zip_eq(state_weights[..DIGEST_LENGTH].iter())
                     .map(|(&state, &weight)| weight * state)
@@ -883,10 +880,10 @@ impl HashTable {
             }
 
             // all remaining Evaluation Arguments only get updated if the round number is 0
-            if current_row[RoundNumber.base_table_index()].is_zero() {
+            if row[RoundNumber.base_table_index()].is_zero() {
                 let compressed_row: XFieldElement = state_weights
                     .iter()
-                    .zip_eq(rate_registers(current_row).iter())
+                    .zip_eq(rate_registers(row).iter())
                     .map(|(&weight, &element)| weight * element)
                     .sum();
 
@@ -915,8 +912,6 @@ impl HashTable {
             extension_row[HashDigestRunningEvaluation.ext_table_index()] =
                 hash_digest_running_evaluation;
             extension_row[SpongeRunningEvaluation.ext_table_index()] = sponge_running_evaluation;
-
-            previous_row = current_row;
         }
     }
 }
