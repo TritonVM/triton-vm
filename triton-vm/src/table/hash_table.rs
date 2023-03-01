@@ -4,7 +4,7 @@ use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
-use num_traits::One;
+use num_traits::Zero;
 use strum::EnumCount;
 use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -867,7 +867,7 @@ impl HashTable {
             let current_row = base_table.row(row_idx);
             let current_instruction = current_row[CI.base_table_index()];
 
-            if current_row[RoundNumber.base_table_index()].value() == NUM_ROUNDS as u64 + 1
+            if current_row[RoundNumber.base_table_index()].value() == NUM_ROUNDS as u64
                 && current_instruction == opcode_hash
             {
                 // add compressed digest to running evaluation “hash digest”
@@ -882,28 +882,11 @@ impl HashTable {
                     + compressed_hash_digest;
             }
 
-            // all remaining Evaluation Arguments only get updated if the round number is 1
-            if current_row[RoundNumber.base_table_index()].is_one() {
-                let elements_for_hash_input_and_sponge_operations = match current_instruction {
-                    op if op == opcode_hash || op == opcode_absorb_init || op == opcode_squeeze => {
-                        rate_registers(current_row)
-                    }
-                    op if op == opcode_absorb => {
-                        let rate_previous_row = rate_registers(previous_row);
-                        let rate_current_row = rate_registers(current_row);
-                        rate_current_row
-                            .iter()
-                            .zip_eq(rate_previous_row.iter())
-                            .map(|(&current_state, &previous_state)| current_state - previous_state)
-                            .collect_vec()
-                            .try_into()
-                            .unwrap()
-                    }
-                    _ => panic!("Opcode must be of `hash`, `absorb_init`, `absorb`, or `squeeze`."),
-                };
-                let compressed_row_hash_input_and_sponge_operations: XFieldElement = state_weights
+            // all remaining Evaluation Arguments only get updated if the round number is 0
+            if current_row[RoundNumber.base_table_index()].is_zero() {
+                let compressed_row: XFieldElement = state_weights
                     .iter()
-                    .zip_eq(elements_for_hash_input_and_sponge_operations.iter())
+                    .zip_eq(rate_registers(current_row).iter())
                     .map(|(&weight, &element)| weight * element)
                     .sum();
 
@@ -911,7 +894,7 @@ impl HashTable {
                     ci if ci == opcode_hash => {
                         hash_input_running_evaluation = hash_input_running_evaluation
                             * hash_input_eval_indeterminate
-                            + compressed_row_hash_input_and_sponge_operations;
+                            + compressed_row;
                     }
                     ci if ci == opcode_absorb_init
                         || ci == opcode_absorb
@@ -920,7 +903,7 @@ impl HashTable {
                         sponge_running_evaluation = sponge_running_evaluation
                             * sponge_eval_indeterminate
                             + ci_weight * ci
-                            + compressed_row_hash_input_and_sponge_operations;
+                            + compressed_row;
                     }
                     _ => panic!("Opcode must be of `hash`, `absorb_init`, `absorb`, or `squeeze`."),
                 }
