@@ -13,10 +13,10 @@ use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::other::log_2_floor;
-use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::tip5::Tip5State;
+use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::Domain;
@@ -1184,8 +1184,8 @@ pub mod triton_vm_tests {
     use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
-    use twenty_first::shared_math::rescue_prime_digest::Digest;
-    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::tip5::Digest;
+    use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::traits::FiniteField;
     use twenty_first::shared_math::traits::ModPowU32;
     use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
@@ -1353,7 +1353,7 @@ pub mod triton_vm_tests {
         hash_input[0] = BFieldElement::new(3);
         hash_input[1] = BFieldElement::new(2);
         hash_input[2] = BFieldElement::new(1);
-        let digest = RescuePrimeRegular::hash_10(&hash_input);
+        let digest = Tip5::hash_10(&hash_input);
         SourceCodeAndInput {
             source_code: source_code.to_string(),
             input: vec![digest.to_vec()[0]],
@@ -1469,15 +1469,16 @@ pub mod triton_vm_tests {
 
         let sponge_input =
             [st0, st1, st2, st3, st4, st5, st6, st7, st8, st9].map(BFieldElement::new);
-        let mut sponge_state = RescuePrimeRegular::init();
-        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_input);
-        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
-        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
-        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
-        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
-        RescuePrimeRegular::absorb(&mut sponge_state, &sponge_output);
-        RescuePrimeRegular::squeeze(&mut sponge_state);
-        let sponge_output = RescuePrimeRegular::squeeze(&mut sponge_state);
+
+        let mut sponge = Tip5::init();
+        Tip5::absorb(&mut sponge, &sponge_input);
+        let sponge_output = Tip5::squeeze(&mut sponge);
+        Tip5::absorb(&mut sponge, &sponge_output);
+        Tip5::absorb(&mut sponge, &sponge_output);
+        let sponge_output = Tip5::squeeze(&mut sponge);
+        Tip5::absorb(&mut sponge, &sponge_output);
+        Tip5::squeeze(&mut sponge);
+        let sponge_output = Tip5::squeeze(&mut sponge);
 
         let source_code = format!(
             "
@@ -2124,7 +2125,7 @@ pub mod triton_vm_tests {
     fn tvm_op_stack_big_enough_test() {
         assert!(
             DIGEST_LENGTH <= OP_STACK_REG_COUNT,
-            "The OpStack must be large enough to hold a single Rescue-Prime digest"
+            "The OpStack must be large enough to hold a single digest"
         );
     }
 
@@ -2371,7 +2372,7 @@ pub mod triton_vm_tests {
     #[test]
     fn run_tvm_mt_ap_verify_test() {
         // generate merkle tree
-        type H = RescuePrimeRegular;
+        type H = Tip5;
 
         const NUM_LEAFS: usize = 64;
         let leafs: [Digest; NUM_LEAFS] = random_elements_array();
