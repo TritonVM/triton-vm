@@ -9,14 +9,13 @@ use strum::EnumCount;
 use triton_opcodes::instruction::Instruction;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
-use twenty_first::shared_math::rescue_prime_regular::ALPHA;
-use twenty_first::shared_math::rescue_prime_regular::MDS;
-use twenty_first::shared_math::rescue_prime_regular::MDS_INV;
-use twenty_first::shared_math::rescue_prime_regular::NUM_ROUNDS;
-use twenty_first::shared_math::rescue_prime_regular::RATE;
-use twenty_first::shared_math::rescue_prime_regular::ROUND_CONSTANTS;
-use twenty_first::shared_math::rescue_prime_regular::STATE_SIZE;
+use twenty_first::shared_math::tip5::DIGEST_LENGTH;
+use twenty_first::shared_math::tip5::MDS_MATRIX_FIRST_COLUMN;
+use twenty_first::shared_math::tip5::NUM_ROUNDS;
+use twenty_first::shared_math::tip5::NUM_SPLIT_AND_LOOKUP;
+use twenty_first::shared_math::tip5::RATE;
+use twenty_first::shared_math::tip5::ROUND_CONSTANTS;
+use twenty_first::shared_math::tip5::STATE_SIZE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId::*;
@@ -43,8 +42,8 @@ pub const BASE_WIDTH: usize = HashBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = HashExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
+pub const POWER_MAP_EXPONENT: u64 = 7;
 pub const NUM_ROUND_CONSTANTS: usize = STATE_SIZE;
-pub const TOTAL_NUM_CONSTANTS: usize = NUM_ROUND_CONSTANTS * NUM_ROUNDS;
 
 #[derive(Debug, Clone)]
 pub struct HashTable {}
@@ -74,11 +73,40 @@ impl ExtHashTable {
         let running_evaluation_hash_digest = ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge = ext_row(SpongeRunningEvaluation);
 
-        let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode_b());
-        let ci_is_absorb_init = ci - constant(Instruction::AbsorbInit.opcode_b());
+        let two_pow_16 = constant(BFieldElement::new(1_u64 << 16));
+        let two_pow_32 = constant(BFieldElement::new(1_u64 << 32));
+        let two_pow_48 = constant(BFieldElement::new(1_u64 << 48));
+
+        let state_0 = base_row(State0HighestLkIn) * two_pow_48.clone()
+            + base_row(State0MidHighLkIn) * two_pow_32.clone()
+            + base_row(State0MidLowLkIn) * two_pow_16.clone()
+            + base_row(State0LowestLkIn);
+        let state_1 = base_row(State1HighestLkIn) * two_pow_48.clone()
+            + base_row(State1MidHighLkIn) * two_pow_32.clone()
+            + base_row(State1MidLowLkIn) * two_pow_16.clone()
+            + base_row(State1LowestLkIn);
+        let state_2 = base_row(State2HighestLkIn) * two_pow_48.clone()
+            + base_row(State2MidHighLkIn) * two_pow_32.clone()
+            + base_row(State2MidLowLkIn) * two_pow_16.clone()
+            + base_row(State2LowestLkIn);
+        let state_3 = base_row(State3HighestLkIn) * two_pow_48.clone()
+            + base_row(State3MidHighLkIn) * two_pow_32.clone()
+            + base_row(State3MidLowLkIn) * two_pow_16.clone()
+            + base_row(State3LowestLkIn);
+
         let state = [
-            STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
+            state_0,
+            state_1,
+            state_2,
+            state_3,
+            base_row(State4),
+            base_row(State5),
+            base_row(State6),
+            base_row(State7),
+            base_row(State8),
+            base_row(State9),
         ];
+
         let state_weights = [
             HashStateWeight0,
             HashStateWeight1,
@@ -94,13 +122,18 @@ impl ExtHashTable {
         let compressed_row: ConstraintCircuitMonad<_> = state_weights
             .into_iter()
             .zip_eq(state.into_iter())
-            .map(|(weight, state)| challenge(weight) * base_row(state))
+            .map(|(weight, state)| challenge(weight) * state)
             .sum();
 
-        let round_number_is_0_or_1 = round_number.clone() * (round_number.clone() - one.clone());
+        let round_number_is_neg_1_or_0 =
+            (round_number.clone() + one.clone()) * round_number.clone();
 
+        let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode_b());
+        let ci_is_absorb_init = ci - constant(Instruction::AbsorbInit.opcode_b());
         let current_instruction_is_absorb_init_or_hash =
             ci_is_absorb_init.clone() * ci_is_hash.clone();
+
+        // todo >>> here <<<
 
         // Evaluation Argument “hash input”
         // If the round number is 0, the running evaluation is the default initial.
@@ -135,7 +168,7 @@ impl ExtHashTable {
             + ci_is_absorb_init * running_evaluation_sponge_is_default_initial;
 
         let mut constraints = [
-            round_number_is_0_or_1,
+            round_number_is_neg_1_or_0,
             current_instruction_is_absorb_init_or_hash,
             running_evaluation_hash_input_is_initialized_correctly,
             running_evaluation_hash_digest_is_default_initial,
@@ -149,10 +182,10 @@ impl ExtHashTable {
     fn round_number_deselector<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         round_number_circuit_node: &ConstraintCircuitMonad<II>,
-        round_number_to_deselect: usize,
+        round_number_to_deselect: isize,
     ) -> ConstraintCircuitMonad<II> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
-        (0..=NUM_ROUNDS + 1)
+        (-1..=NUM_ROUNDS as isize)
             .filter(|&r| r != round_number_to_deselect)
             .map(|r| round_number_circuit_node.clone() - constant(r as u64))
             .fold(constant(1), |a, b| a * b)
@@ -162,56 +195,97 @@ impl ExtHashTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
-        let round_number = circuit_builder.input(BaseRow(ROUNDNUMBER.master_base_table_index()));
+        let round_number = circuit_builder.input(BaseRow(RoundNumber.master_base_table_index()));
         let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
-        let state10 = circuit_builder.input(BaseRow(STATE10.master_base_table_index()));
-        let state11 = circuit_builder.input(BaseRow(STATE11.master_base_table_index()));
-        let state12 = circuit_builder.input(BaseRow(STATE12.master_base_table_index()));
-        let state13 = circuit_builder.input(BaseRow(STATE13.master_base_table_index()));
-        let state14 = circuit_builder.input(BaseRow(STATE14.master_base_table_index()));
-        let state15 = circuit_builder.input(BaseRow(STATE15.master_base_table_index()));
+        let state10 = circuit_builder.input(BaseRow(State10.master_base_table_index()));
+        let state11 = circuit_builder.input(BaseRow(State11.master_base_table_index()));
+        let state12 = circuit_builder.input(BaseRow(State12.master_base_table_index()));
+        let state13 = circuit_builder.input(BaseRow(State13.master_base_table_index()));
+        let state14 = circuit_builder.input(BaseRow(State14.master_base_table_index()));
+        let state15 = circuit_builder.input(BaseRow(State15.master_base_table_index()));
 
         let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode() as u64);
         let ci_is_absorb_init = ci.clone() - constant(Instruction::AbsorbInit.opcode() as u64);
         let ci_is_absorb = ci.clone() - constant(Instruction::Absorb.opcode() as u64);
         let ci_is_squeeze = ci - constant(Instruction::Squeeze.opcode() as u64);
 
+        let round_number_is_not_neg_1 =
+            Self::round_number_deselector(&circuit_builder, &round_number, -1);
         let round_number_is_not_0 =
             Self::round_number_deselector(&circuit_builder, &round_number, 0);
-        let round_number_is_not_1 =
-            Self::round_number_deselector(&circuit_builder, &round_number, 1);
+
+        let if_padding_row_then_ci_is_hash = round_number_is_not_neg_1 * ci_is_hash.clone();
+
+        let if_ci_is_hash_and_round_no_is_0_then_ = round_number_is_not_0.clone()
+            * ci_is_absorb_init
+            * ci_is_absorb.clone()
+            * ci_is_squeeze.clone();
+        let if_ci_is_hash_and_round_no_is_0_then_state_10_is_1 =
+            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state10.clone() - constant(1));
+        let if_ci_is_hash_and_round_no_is_0_then_state_11_is_1 =
+            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state11.clone() - constant(1));
+        let if_ci_is_hash_and_round_no_is_0_then_state_12_is_1 =
+            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state12.clone() - constant(1));
+        let if_ci_is_hash_and_round_no_is_0_then_state_13_is_1 =
+            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state13.clone() - constant(1));
+        let if_ci_is_hash_and_round_no_is_0_then_state_14_is_1 =
+            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state14.clone() - constant(1));
+        let if_ci_is_hash_and_round_no_is_0_then_state_15_is_1 =
+            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state15.clone() - constant(1));
+
+        let if_ci_is_absorb_init_and_round_no_is_0_then_ = round_number_is_not_0.clone()
+            * ci_is_hash
+            * ci_is_absorb.clone()
+            * ci_is_squeeze.clone();
+        let if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0 =
+            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state10;
+        let if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0 =
+            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state11;
+        let if_ci_is_absorb_init_and_round_no_is_0_then_state_12_is_0 =
+            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state12;
+        let if_ci_is_absorb_init_and_round_no_is_0_then_state_13_is_0 =
+            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state13;
+        let if_ci_is_absorb_init_and_round_no_is_0_then_state_14_is_0 =
+            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state14;
+        let if_ci_is_absorb_init_and_round_no_is_0_then_state_15_is_0 =
+            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state15;
+
         let mut constraints = vec![
-            round_number_is_not_0 * ci_is_hash.clone(),
-            round_number_is_not_1.clone()
-                * ci_is_absorb_init
-                * ci_is_absorb.clone()
-                * ci_is_squeeze.clone()
-                * (state10.clone() - constant(1)),
-            round_number_is_not_1.clone()
-                * ci_is_hash
-                * ci_is_absorb.clone()
-                * ci_is_squeeze.clone()
-                * state10,
-            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state11,
-            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state12,
-            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state13,
-            round_number_is_not_1.clone() * ci_is_absorb.clone() * ci_is_squeeze.clone() * state14,
-            round_number_is_not_1 * ci_is_absorb * ci_is_squeeze * state15,
+            if_padding_row_then_ci_is_hash,
+            if_ci_is_hash_and_round_no_is_0_then_state_10_is_1,
+            if_ci_is_hash_and_round_no_is_0_then_state_11_is_1,
+            if_ci_is_hash_and_round_no_is_0_then_state_12_is_1,
+            if_ci_is_hash_and_round_no_is_0_then_state_13_is_1,
+            if_ci_is_hash_and_round_no_is_0_then_state_14_is_1,
+            if_ci_is_hash_and_round_no_is_0_then_state_15_is_1,
+            if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0,
+            if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0,
+            if_ci_is_absorb_init_and_round_no_is_0_then_state_12_is_0,
+            if_ci_is_absorb_init_and_round_no_is_0_then_state_13_is_0,
+            if_ci_is_absorb_init_and_round_no_is_0_then_state_14_is_0,
+            if_ci_is_absorb_init_and_round_no_is_0_then_state_15_is_0,
         ];
 
-        let round_constant_offset = CONSTANT0A.master_base_table_index();
-        for round_constant_col_index in 0..NUM_ROUND_CONSTANTS {
-            let round_constant_input =
-                circuit_builder.input(BaseRow(round_constant_col_index + round_constant_offset));
-            let round_constant_constraint_circuit = (1..=NUM_ROUNDS)
-                .map(|i| {
-                    let round_constant_idx =
-                        NUM_ROUND_CONSTANTS * (i - 1) + round_constant_col_index;
-                    Self::round_number_deselector(&circuit_builder, &round_number, i)
-                        * (round_constant_input.clone()
-                            - circuit_builder.b_constant(ROUND_CONSTANTS[round_constant_idx]))
-                })
-                .sum();
+        for round_constant_column_idx in 0..NUM_ROUND_CONSTANTS {
+            let round_constant_column =
+                Self::round_constant_column_by_index(round_constant_column_idx);
+            let round_constant_column_circuit =
+                circuit_builder.input(BaseRow(round_constant_column.master_base_table_index()));
+            let mut round_constant_constraint_circuit = constant(0);
+            for round_idx in 0..NUM_ROUNDS {
+                let round_constant_idx_for_current_row =
+                    NUM_ROUND_CONSTANTS * round_idx + round_constant_column_idx;
+                let round_constant_for_current_row =
+                    circuit_builder.b_constant(ROUND_CONSTANTS[round_constant_idx_for_current_row]);
+                let round_deselector_circuit = Self::round_number_deselector(
+                    &circuit_builder,
+                    &round_number,
+                    round_idx as isize,
+                );
+                round_constant_constraint_circuit = round_constant_constraint_circuit
+                    + round_deselector_circuit
+                        * (round_constant_column_circuit.clone() - round_constant_for_current_row);
+            }
             constraints.push(round_constant_constraint_circuit);
         }
 
@@ -220,6 +294,28 @@ impl ExtHashTable {
             .into_iter()
             .map(|circuit| circuit.consume())
             .collect()
+    }
+
+    fn round_constant_column_by_index(index: usize) -> HashBaseTableColumn {
+        match index {
+            0 => Constant0,
+            1 => Constant1,
+            2 => Constant2,
+            3 => Constant3,
+            4 => Constant4,
+            5 => Constant5,
+            6 => Constant6,
+            7 => Constant7,
+            8 => Constant8,
+            9 => Constant9,
+            10 => Constant10,
+            11 => Constant11,
+            12 => Constant12,
+            13 => Constant13,
+            14 => Constant14,
+            15 => Constant15,
+            _ => panic!("invalid constant column index"),
+        }
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
@@ -250,24 +346,60 @@ impl ExtHashTable {
         let hash_digest_eval_indeterminate = challenge(HashDigestIndeterminate);
         let sponge_indeterminate = challenge(SpongeIndeterminate);
 
-        let round_number = current_base_row(ROUNDNUMBER);
+        let round_number = current_base_row(RoundNumber);
         let ci = current_base_row(CI);
         let running_evaluation_hash_input = current_ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest = current_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge = current_ext_row(SpongeRunningEvaluation);
 
-        let round_number_next = next_base_row(ROUNDNUMBER);
+        let round_number_next = next_base_row(RoundNumber);
         let ci_next = next_base_row(CI);
         let running_evaluation_hash_input_next = next_ext_row(HashInputRunningEvaluation);
         let running_evaluation_hash_digest_next = next_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
 
-        let state: [_; STATE_SIZE] = [
-            STATE0, STATE1, STATE2, STATE3, STATE4, STATE5, STATE6, STATE7, STATE8, STATE9,
-            STATE10, STATE11, STATE12, STATE13, STATE14, STATE15,
+        let two_pow_16 = constant(1 << 16);
+        let two_pow_32 = constant(1 << 32);
+        let two_pow_48 = constant(1 << 48);
+
+        let state_0 = current_base_row(State0HighestLkIn) * two_pow_48.clone()
+            + current_base_row(State0MidHighLkIn) * two_pow_32.clone()
+            + current_base_row(State0MidLowLkIn) * two_pow_16.clone()
+            + current_base_row(State0LowestLkIn);
+        let state_1 = current_base_row(State1HighestLkIn) * two_pow_48.clone()
+            + current_base_row(State1MidHighLkIn) * two_pow_32.clone()
+            + current_base_row(State1MidLowLkIn) * two_pow_16.clone()
+            + current_base_row(State1LowestLkIn);
+        let state_2 = current_base_row(State2HighestLkIn) * two_pow_48.clone()
+            + current_base_row(State2MidHighLkIn) * two_pow_32.clone()
+            + current_base_row(State2MidLowLkIn) * two_pow_16.clone()
+            + current_base_row(State2LowestLkIn);
+        let state_3 = current_base_row(State3HighestLkIn) * two_pow_48.clone()
+            + current_base_row(State3MidHighLkIn) * two_pow_32.clone()
+            + current_base_row(State3MidLowLkIn) * two_pow_16.clone()
+            + current_base_row(State3LowestLkIn);
+
+        let state = [
+            state_0,
+            state_1,
+            state_2,
+            state_3,
+            current_base_row(State4),
+            current_base_row(State5),
+            current_base_row(State6),
+            current_base_row(State7),
+            current_base_row(State8),
+            current_base_row(State9),
+            current_base_row(State10),
+            current_base_row(State11),
+            current_base_row(State12),
+            current_base_row(State13),
+            current_base_row(State14),
+            current_base_row(State15),
         ];
-        let state_current = state.map(current_base_row);
-        let state_next = state.map(next_base_row);
+
+        let (state_next, hash_function_round_correctly_performs_update) =
+            Self::tip5_constraints_as_circuits(&circuit_builder);
 
         let state_weights = [
             HashStateWeight0,
@@ -289,11 +421,12 @@ impl ExtHashTable {
         ]
         .map(challenge);
 
-        // round number
+        // todo >>> here <<<<
+
         // round numbers evolve as
-        // 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9, and
-        // 9 -> 1 or 9 -> 0, and
-        // 0 -> 0
+        // 0 -> 1 -> 2 -> 3 -> 4 -> 5, and
+        // 5 -> -1 or 5 -> 0, and
+        // -1 -> -1
 
         let round_number_is_not_0 =
             Self::round_number_deselector(&circuit_builder, &round_number, 0);
@@ -324,111 +457,6 @@ impl ExtHashTable {
 
         let if_round_number_is_not_9_then_ci_doesnt_change =
             (round_number.clone() - constant(NUM_ROUNDS as u64 + 1)) * (ci_next.clone() - ci);
-
-        // Rescue-XLIX
-
-        let round_constants_a: [_; STATE_SIZE] = [
-            CONSTANT0A,
-            CONSTANT1A,
-            CONSTANT2A,
-            CONSTANT3A,
-            CONSTANT4A,
-            CONSTANT5A,
-            CONSTANT6A,
-            CONSTANT7A,
-            CONSTANT8A,
-            CONSTANT9A,
-            CONSTANT10A,
-            CONSTANT11A,
-            CONSTANT12A,
-            CONSTANT13A,
-            CONSTANT14A,
-            CONSTANT15A,
-        ]
-        .map(current_base_row);
-        let round_constants_b: [_; STATE_SIZE] = [
-            CONSTANT0B,
-            CONSTANT1B,
-            CONSTANT2B,
-            CONSTANT3B,
-            CONSTANT4B,
-            CONSTANT5B,
-            CONSTANT6B,
-            CONSTANT7B,
-            CONSTANT8B,
-            CONSTANT9B,
-            CONSTANT10B,
-            CONSTANT11B,
-            CONSTANT12B,
-            CONSTANT13B,
-            CONSTANT14B,
-            CONSTANT15B,
-        ]
-        .map(current_base_row);
-
-        // left-hand-side, starting at current round and going forward
-
-        let after_sbox = {
-            let mut exponentiation_accumulator = state_current.to_vec();
-            for _ in 1..ALPHA {
-                for i in 0..exponentiation_accumulator.len() {
-                    exponentiation_accumulator[i] =
-                        exponentiation_accumulator[i].clone() * state_current[i].clone();
-                }
-            }
-            exponentiation_accumulator
-        };
-        let after_mds = (0..STATE_SIZE)
-            .map(|i| {
-                (0..STATE_SIZE)
-                    .map(|j| b_constant(MDS[i * STATE_SIZE + j]) * after_sbox[j].clone())
-                    .sum::<ConstraintCircuitMonad<_>>()
-            })
-            .collect_vec();
-
-        let after_constants = after_mds
-            .into_iter()
-            .zip_eq(round_constants_a)
-            .map(|(st, rndc)| st + rndc)
-            .collect_vec();
-
-        // right hand side; move backwards
-        let before_constants = state_next
-            .clone()
-            .into_iter()
-            .zip_eq(round_constants_b)
-            .map(|(st, rndc)| st - rndc)
-            .collect_vec();
-        let before_mds = (0..STATE_SIZE)
-            .map(|i| {
-                (0..STATE_SIZE)
-                    .map(|j| b_constant(MDS_INV[i * STATE_SIZE + j]) * before_constants[j].clone())
-                    .sum::<ConstraintCircuitMonad<_>>()
-            })
-            .collect_vec();
-
-        let before_sbox = {
-            let mut exponentiation_accumulator = before_mds.clone();
-            for _ in 1..ALPHA {
-                for i in 0..exponentiation_accumulator.len() {
-                    exponentiation_accumulator[i] =
-                        exponentiation_accumulator[i].clone() * before_mds[i].clone();
-                }
-            }
-            exponentiation_accumulator
-        };
-
-        // Equate left hand side to right hand side. Ignore if padding row or after final round.
-
-        let hash_function_round_correctly_performs_update = after_constants
-            .into_iter()
-            .zip_eq(before_sbox.into_iter())
-            .map(|(lhs, rhs)| {
-                round_number.clone()
-                    * (round_number.clone() - constant(NUM_ROUNDS as u64 + 1))
-                    * (lhs - rhs)
-            })
-            .collect_vec();
 
         // copy capacity between rounds with index 9 and 1 if instruction is “absorb”
         let round_number_next_is_not_1 =
@@ -572,7 +600,7 @@ impl ExtHashTable {
                 if_ci_is_hash_then_ci_doesnt_change,
                 if_round_number_is_not_9_then_ci_doesnt_change,
             ],
-            hash_function_round_correctly_performs_update,
+            hash_function_round_correctly_performs_update.to_vec(),
             vec![
                 if_round_number_next_is_1_and_ci_next_is_absorb_then_capacity_doesnt_change,
                 if_round_number_next_is_1_and_ci_next_is_squeeze_then_state_doesnt_change,
@@ -590,6 +618,160 @@ impl ExtHashTable {
             .collect()
     }
 
+    fn tip5_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> (
+        [ConstraintCircuitMonad<DualRowIndicator>; STATE_SIZE],
+        [ConstraintCircuitMonad<DualRowIndicator>; STATE_SIZE],
+    ) {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let b_constant = |c| circuit_builder.b_constant(c);
+        let current_base_row = |column_idx: HashBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
+        };
+        let next_base_row = |column_idx: HashBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+        };
+
+        let two_pow_16 = constant(1 << 16);
+        let two_pow_32 = constant(1 << 32);
+        let two_pow_48 = constant(1 << 48);
+
+        let state_0_after_lookup = current_base_row(State0HighestLkOut) * two_pow_48.clone()
+            + current_base_row(State0MidHighLkOut) * two_pow_32.clone()
+            + current_base_row(State0MidLowLkOut) * two_pow_16.clone()
+            + current_base_row(State0LowestLkOut);
+        let state_1_after_lookup = current_base_row(State1HighestLkOut) * two_pow_48.clone()
+            + current_base_row(State1MidHighLkOut) * two_pow_32.clone()
+            + current_base_row(State1MidLowLkOut) * two_pow_16.clone()
+            + current_base_row(State1LowestLkOut);
+        let state_2_after_lookup = current_base_row(State2HighestLkOut) * two_pow_48.clone()
+            + current_base_row(State2MidHighLkOut) * two_pow_32.clone()
+            + current_base_row(State2MidLowLkOut) * two_pow_16.clone()
+            + current_base_row(State2LowestLkOut);
+        let state_3_after_lookup = current_base_row(State3HighestLkOut) * two_pow_48.clone()
+            + current_base_row(State3MidHighLkOut) * two_pow_32.clone()
+            + current_base_row(State3MidLowLkOut) * two_pow_16.clone()
+            + current_base_row(State3LowestLkOut);
+
+        let state_part_before_power_map: [_; STATE_SIZE - NUM_SPLIT_AND_LOOKUP] = [
+            State4, State5, State6, State7, State8, State9, State10, State11, State12, State13,
+            State14, State15,
+        ]
+        .map(current_base_row);
+
+        let state_part_after_power_map = {
+            let mut exponentiation_accumulator = state_part_before_power_map.clone();
+            for _ in 1..POWER_MAP_EXPONENT {
+                for (i, state) in exponentiation_accumulator.iter_mut().enumerate() {
+                    *state = state.clone() * state_part_before_power_map[i].clone();
+                }
+            }
+            exponentiation_accumulator
+        };
+
+        let state_after_s_box_application = [
+            state_0_after_lookup,
+            state_1_after_lookup,
+            state_2_after_lookup,
+            state_3_after_lookup,
+            state_part_after_power_map[0].clone(),
+            state_part_after_power_map[1].clone(),
+            state_part_after_power_map[2].clone(),
+            state_part_after_power_map[3].clone(),
+            state_part_after_power_map[4].clone(),
+            state_part_after_power_map[5].clone(),
+            state_part_after_power_map[6].clone(),
+            state_part_after_power_map[7].clone(),
+            state_part_after_power_map[8].clone(),
+            state_part_after_power_map[9].clone(),
+            state_part_after_power_map[10].clone(),
+            state_part_after_power_map[11].clone(),
+        ];
+
+        let state_after_matrix_multiplication: [_; STATE_SIZE] = {
+            let mut result_vec = Vec::with_capacity(STATE_SIZE);
+            for row_idx in 0..STATE_SIZE {
+                let mut current_accumulator = constant(0);
+                for col_idx in 0..STATE_SIZE {
+                    let mds_matrix_entry =
+                        b_constant(HashTable::mds_matrix_entry(row_idx, col_idx));
+                    let state_entry = state_after_s_box_application[col_idx].clone();
+                    current_accumulator = current_accumulator + mds_matrix_entry * state_entry;
+                }
+                result_vec.push(current_accumulator);
+            }
+            result_vec.try_into().unwrap()
+        };
+
+        let round_constants: [_; STATE_SIZE] = [
+            Constant0, Constant1, Constant2, Constant3, Constant4, Constant5, Constant6, Constant7,
+            Constant8, Constant9, Constant10, Constant11, Constant12, Constant13, Constant14,
+            Constant15,
+        ]
+        .map(current_base_row);
+
+        let state_after_round_constant_addition: [_; STATE_SIZE] =
+            state_after_matrix_multiplication
+                .into_iter()
+                .zip_eq(round_constants)
+                .map(|(st, rndc)| st + rndc)
+                .collect_vec()
+                .try_into()
+                .unwrap();
+
+        let state_0_next = next_base_row(State0HighestLkIn) * two_pow_48.clone()
+            + next_base_row(State0MidHighLkIn) * two_pow_32.clone()
+            + next_base_row(State0MidLowLkIn) * two_pow_16.clone()
+            + next_base_row(State0LowestLkIn);
+        let state_1_next = next_base_row(State1HighestLkIn) * two_pow_48.clone()
+            + next_base_row(State1MidHighLkIn) * two_pow_32.clone()
+            + next_base_row(State1MidLowLkIn) * two_pow_16.clone()
+            + next_base_row(State1LowestLkIn);
+        let state_2_next = next_base_row(State2HighestLkIn) * two_pow_48.clone()
+            + next_base_row(State2MidHighLkIn) * two_pow_32.clone()
+            + next_base_row(State2MidLowLkIn) * two_pow_16.clone()
+            + next_base_row(State2LowestLkIn);
+        let state_3_next = next_base_row(State3HighestLkIn) * two_pow_48
+            + next_base_row(State3MidHighLkIn) * two_pow_32
+            + next_base_row(State3MidLowLkIn) * two_pow_16
+            + next_base_row(State3LowestLkIn);
+
+        let state_next = [
+            state_0_next,
+            state_1_next,
+            state_2_next,
+            state_3_next,
+            next_base_row(State4),
+            next_base_row(State5),
+            next_base_row(State6),
+            next_base_row(State7),
+            next_base_row(State8),
+            next_base_row(State9),
+            next_base_row(State10),
+            next_base_row(State11),
+            next_base_row(State12),
+            next_base_row(State13),
+            next_base_row(State14),
+            next_base_row(State15),
+        ];
+
+        let round_number = current_base_row(RoundNumber);
+        let hash_function_round_correctly_performs_update = state_after_round_constant_addition
+            .into_iter()
+            .zip_eq(state_next.clone().into_iter())
+            .map(|(state_element, state_element_next)| {
+                (round_number.clone() + constant(1))
+                    * (round_number.clone() - constant(NUM_ROUNDS as u64))
+                    * (state_element - state_element_next)
+            })
+            .collect_vec()
+            .try_into()
+            .unwrap();
+
+        (state_next, hash_function_round_correctly_performs_update)
+    }
+
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         // no more constraints
         vec![]
@@ -597,6 +779,15 @@ impl ExtHashTable {
 }
 
 impl HashTable {
+    /// Get the MDS matrix's entry in row `row_idx` and column `col_idx`.
+    pub const fn mds_matrix_entry(row_idx: usize, col_idx: usize) -> BFieldElement {
+        assert!(row_idx < STATE_SIZE);
+        assert!(col_idx < STATE_SIZE);
+        let index_in_matrix_defining_column = (row_idx - col_idx) % STATE_SIZE;
+        let mds_matrix_entry = MDS_MATRIX_FIRST_COLUMN[index_in_matrix_defining_column];
+        BFieldElement::new(mds_matrix_entry as u64)
+    }
+
     pub fn fill_trace(
         hash_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
@@ -636,18 +827,33 @@ impl HashTable {
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
         let mut sponge_running_evaluation = EvalArg::default_initial();
 
+        let two_pow_16 = BFieldElement::from(1_u64 << 16);
+        let two_pow_32 = BFieldElement::from(1_u64 << 32);
+        let two_pow_48 = BFieldElement::from(1_u64 << 48);
         let rate_registers = |row: ArrayView1<BFieldElement>| {
             [
-                row[STATE0.base_table_index()],
-                row[STATE1.base_table_index()],
-                row[STATE2.base_table_index()],
-                row[STATE3.base_table_index()],
-                row[STATE4.base_table_index()],
-                row[STATE5.base_table_index()],
-                row[STATE6.base_table_index()],
-                row[STATE7.base_table_index()],
-                row[STATE8.base_table_index()],
-                row[STATE9.base_table_index()],
+                row[State0HighestLkIn.base_table_index()] * two_pow_48
+                    + row[State0MidHighLkIn.base_table_index()] * two_pow_32
+                    + row[State0MidLowLkIn.base_table_index()] * two_pow_16
+                    + row[State0LowestLkIn.base_table_index()],
+                row[State1HighestLkIn.base_table_index()] * two_pow_48
+                    + row[State1MidHighLkIn.base_table_index()] * two_pow_32
+                    + row[State1MidLowLkIn.base_table_index()] * two_pow_16
+                    + row[State1LowestLkIn.base_table_index()],
+                row[State2HighestLkIn.base_table_index()] * two_pow_48
+                    + row[State2MidHighLkIn.base_table_index()] * two_pow_32
+                    + row[State2MidLowLkIn.base_table_index()] * two_pow_16
+                    + row[State2LowestLkIn.base_table_index()],
+                row[State3HighestLkIn.base_table_index()] * two_pow_48
+                    + row[State3MidHighLkIn.base_table_index()] * two_pow_32
+                    + row[State3MidLowLkIn.base_table_index()] * two_pow_16
+                    + row[State3LowestLkIn.base_table_index()],
+                row[State4.base_table_index()],
+                row[State5.base_table_index()],
+                row[State6.base_table_index()],
+                row[State7.base_table_index()],
+                row[State8.base_table_index()],
+                row[State9.base_table_index()],
             ]
         };
         let state_weights = [
