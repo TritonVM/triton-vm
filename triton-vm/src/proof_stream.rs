@@ -1,20 +1,26 @@
 use std::error::Error;
 use std::fmt::Display;
-use std::marker::PhantomData;
 
 use anyhow::Result;
-use twenty_first::shared_math::rescue_prime_digest::Digest;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+use twenty_first::shared_math::other::is_power_of_two;
+use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::bfield_codec::BFieldCodec;
 use crate::proof::Proof;
 use crate::proof_item::MayBeUncast;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct ProofStream<Item: Clone + BFieldCodec + MayBeUncast, H: AlgebraicHasher> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProofStream<Item, H>
+where
+    Item: Clone + BFieldCodec + MayBeUncast,
+    H: AlgebraicHasher,
+{
     pub items: Vec<Item>,
-    items_index: usize,
-    _hasher: PhantomData<H>,
+    pub items_index: usize,
+    pub sponge_state: H::SpongeState,
 }
 
 #[derive(Debug, Clone)]
@@ -44,19 +50,12 @@ where
     Item: Clone + BFieldCodec + MayBeUncast,
     H: AlgebraicHasher,
 {
-    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         ProofStream {
             items: vec![],
             items_index: 0,
-            _hasher: PhantomData,
+            sponge_state: H::init(),
         }
-    }
-
-    /// Reset the counter counting how many items were read. For testing purposes, so
-    /// we don't have to re-run tests needlessly.
-    pub fn reset_for_verifier(&mut self) {
-        self.items_index = 0;
     }
 
     pub fn is_empty(&self) -> bool {
@@ -68,11 +67,11 @@ where
     }
 
     pub fn transcript_length(&self) -> usize {
-        self.to_proof().0.len()
+        let Proof(b_field_elements) = self.to_proof();
+        b_field_elements.len()
     }
 
-    /// Convert the proof stream (or its transcript really) into a
-    /// Proof.
+    /// Convert the proof stream, _i.e._, the transcript, into a Proof.
     pub fn to_proof(&self) -> Proof {
         let mut bfes = vec![];
         for item in self.items.iter() {
@@ -109,12 +108,26 @@ where
         Ok(ProofStream {
             items,
             items_index: 0,
-            _hasher: PhantomData,
+            sponge_state: H::init(),
         })
+    }
+
+    fn encode_and_zero_pad_item(item: &Item) -> Vec<BFieldElement> {
+        let encoding = item.encode();
+        let last_chunk_len = encoding.len() % H::RATE;
+        let num_padding_zeros = match last_chunk_len {
+            0 => 0,
+            _ => H::RATE - last_chunk_len,
+        };
+        [encoding, vec![BFIELD_ZERO; num_padding_zeros]].concat()
     }
 
     /// Send a proof item as prover to verifier.
     pub fn enqueue(&mut self, item: &Item) {
+        H::absorb_repeatedly(
+            &mut self.sponge_state,
+            Self::encode_and_zero_pad_item(item).iter(),
+        );
         self.items.push(item.clone());
     }
 
@@ -124,37 +137,57 @@ where
             .items
             .get(self.items_index)
             .ok_or_else(|| ProofStreamError::new("Could not dequeue, queue empty"))?;
-
+        H::absorb_repeatedly(
+            &mut self.sponge_state,
+            Self::encode_and_zero_pad_item(item).iter(),
+        );
         self.items_index += 1;
         Ok(item.clone())
     }
 
-    pub fn prover_fiat_shamir(&self) -> Digest {
-        let mut transcript = vec![];
-        for item in self.items.iter() {
-            transcript.append(&mut item.encode());
-        }
-        H::hash_slice(&transcript)
+    /// Given an `upper_bound` that is a power of 2, produce `num_indices` uniform random numbers
+    /// in the interval `[0; upper_bound)`.
+    ///
+    /// - `upper_bound`: The (non-inclusive) upper bound. Must be a power of two.
+    /// - `num_indices`: The number of indices to sample
+    pub fn sample_indices(&mut self, upper_bound: usize, num_indices: usize) -> Vec<usize> {
+        assert!(is_power_of_two(upper_bound));
+        assert!(upper_bound <= BFieldElement::MAX as usize);
+        H::sample_indices(&mut self.sponge_state, upper_bound as u32, num_indices)
+            .into_iter()
+            .map(|i| i as usize)
+            .collect()
     }
 
-    pub fn verifier_fiat_shamir(&self) -> Digest {
-        let mut transcript = vec![];
-        for item in self.items[0..self.items_index].iter() {
-            transcript.append(&mut item.uncast());
-        }
-        H::hash_slice(&transcript)
+    /// A thin wrapper around [`H::sample_scalars`].
+    pub fn sample_scalars(&mut self, num_scalars: usize) -> Vec<XFieldElement> {
+        H::sample_scalars(&mut self.sponge_state, num_scalars)
+    }
+}
+
+impl<Item, H> Default for ProofStream<Item, H>
+where
+    Item: Clone + BFieldCodec + MayBeUncast,
+    H: AlgebraicHasher,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod proof_stream_typed_tests {
     use itertools::Itertools;
-    use num_traits::One;
-
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other::random_elements;
-    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
+    use twenty_first::util_types::merkle_tree::CpuParallel;
+    use twenty_first::util_types::merkle_tree::MerkleTree;
+    use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
+
+    use crate::proof_item::FriResponse;
+    use crate::proof_item::ProofItem;
 
     use super::*;
 
@@ -247,85 +280,87 @@ mod proof_stream_typed_tests {
         }
     }
 
-    // Property: prover_fiat_shamir() is equivalent to verifier_fiat_shamir() when the entire stream has been read.
-    #[test]
-    fn prover_verifier_fiat_shamir_test() {
-        type H = RescuePrimeRegular;
-        let mut proof_stream = ProofStream::<TestItem, H>::new();
-        let ps: &mut ProofStream<TestItem, H> = &mut proof_stream;
-
-        let digest_1 = H::hash(&BFieldElement::one());
-        ps.enqueue(&TestItem::ManyB(digest_1.values().to_vec()));
-        let _ = ps.dequeue();
-
-        assert_eq!(
-            ps.prover_fiat_shamir(),
-            ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() are equivalent when the entire stream is read"
-        );
-
-        let digest_2 = H::hash(&BFieldElement::one());
-        ps.enqueue(&TestItem::ManyB(digest_2.values().to_vec()));
-
-        assert_ne!(
-            ps.prover_fiat_shamir(),
-            ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() are different when the stream isn't fully read"
-        );
-
-        let _ = ps.dequeue();
-
-        assert_eq!(
-            ps.prover_fiat_shamir(),
-            ps.verifier_fiat_shamir(),
-            "prover_fiat_shamir() and verifier_fiat_shamir() are equivalent when the entire stream is read again",
-        );
-    }
-
     #[test]
     fn test_serialize_proof_with_fiat_shamir() {
-        type H = RescuePrimeRegular;
-        let mut proof_stream = ProofStream::<TestItem, H>::new();
+        type H = Tip5;
+        let mut proof_stream: ProofStream<_, H> = ProofStream::new();
         let manyb1: Vec<BFieldElement> = random_elements(10);
         let manyx: Vec<XFieldElement> = random_elements(13);
         let manyb2: Vec<BFieldElement> = random_elements(11);
 
-        let fs1 = proof_stream.prover_fiat_shamir();
+        let fs1 = proof_stream.sponge_state.state;
         proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()));
-        let fs2 = proof_stream.prover_fiat_shamir();
+        let fs2 = proof_stream.sponge_state.state;
         proof_stream.enqueue(&TestItem::ManyX(manyx.clone()));
-        let fs3 = proof_stream.prover_fiat_shamir();
+        let fs3 = proof_stream.sponge_state.state;
         proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()));
-        let fs4 = proof_stream.prover_fiat_shamir();
+        let fs4 = proof_stream.sponge_state.state;
 
         let proof = proof_stream.to_proof();
 
-        let mut proof_stream =
-            ProofStream::<TestItem, H>::from_proof(&proof).expect("invalid parsing of proof");
+        let mut proof_stream: ProofStream<TestItem, H> =
+            ProofStream::from_proof(&proof).expect("invalid parsing of proof");
 
-        let fs1_ = proof_stream.verifier_fiat_shamir();
+        let fs1_ = proof_stream.sponge_state.state;
         match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
             TestItem::ManyB(manyb1_) => assert_eq!(manyb1, manyb1_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
         };
-        let fs2_ = proof_stream.verifier_fiat_shamir();
+        let fs2_ = proof_stream.sponge_state.state;
         match proof_stream.dequeue().expect("can't dequeue item").as_xs() {
             TestItem::ManyB(_) => panic!(),
             TestItem::ManyX(manyx_) => assert_eq!(manyx, manyx_),
             TestItem::Uncast(_) => panic!(),
         };
-        let fs3_ = proof_stream.verifier_fiat_shamir();
+        let fs3_ = proof_stream.sponge_state.state;
         match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
             TestItem::ManyB(manyb2_) => assert_eq!(manyb2, manyb2_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
         };
-        let fs4_ = proof_stream.verifier_fiat_shamir();
+        let fs4_ = proof_stream.sponge_state.state;
 
         assert_eq!(fs1, fs1_);
         assert_eq!(fs2, fs2_);
         assert_eq!(fs3, fs3_);
         assert_eq!(fs4, fs4_);
+    }
+
+    #[test]
+    fn enqueue_dequeue_verify_partial_authentication_structure() {
+        type H = Tip5;
+
+        let leaf_values: Vec<XFieldElement> = random_elements(256);
+        let leaf_digests = leaf_values.iter().map(H::hash).collect_vec();
+        let merkle_tree: MerkleTree<H, _> = CpuParallel::from_digests(&leaf_digests);
+        let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
+        let authentication_structure = merkle_tree.get_authentication_structure(&indices_to_check);
+        let fri_response_content = authentication_structure
+            .iter()
+            .zip_eq(indices_to_check.iter())
+            .map(|(path, &idx)| (path.to_owned(), leaf_values[idx]))
+            .collect_vec();
+        let fri_response = FriResponse(fri_response_content);
+
+        let mut proof_stream = ProofStream::<ProofItem, H>::new();
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response));
+
+        // TODO: Also check that deserializing from Proof works here.
+
+        let maybe_same_fri_response = proof_stream.dequeue().unwrap().as_fri_response().unwrap();
+        let FriResponse(dequeued_paths_and_leafs) = maybe_same_fri_response;
+        let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
+        let maybe_same_leaf_digests = leaf_values.iter().map(H::hash).collect_vec();
+        let path_digest_pairs = paths
+            .into_iter()
+            .zip_eq(maybe_same_leaf_digests)
+            .collect_vec();
+        assert_eq!(indices_to_check.len(), path_digest_pairs.len());
+        MerkleTree::<H, CpuParallel>::verify_authentication_structure(
+            merkle_tree.get_root(),
+            &indices_to_check,
+            &path_digest_pairs,
+        );
     }
 }

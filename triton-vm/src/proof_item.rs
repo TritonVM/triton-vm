@@ -1,7 +1,8 @@
+use anyhow::bail;
 use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::rescue_prime_digest::Digest;
-use twenty_first::shared_math::rescue_prime_digest::DIGEST_LENGTH;
+use twenty_first::shared_math::tip5::Digest;
+use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
@@ -11,6 +12,10 @@ use crate::bfield_codec::BFieldCodec;
 
 type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 
+/// A `FriResponse` is a vector of partial authentication paths and `XFieldElements`. The
+/// `XFieldElements` are the values of the leaves of the Merkle tree. They correspond to the
+/// queried index of the FRI codeword (of that round). The corresponding partial authentication
+/// paths are the paths from the queried leaf to the root of the Merkle tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FriResponse(pub Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>);
 
@@ -23,9 +28,9 @@ impl BFieldCodec for FriResponse {
             let len = match str.get(index) {
                 Some(bfe) => bfe.value() as usize,
                 None => {
-                    return Err(anyhow::Error::new(ProofStreamError::new(
+                    bail!(ProofStreamError::new(
                         "invalid index counting in decode for FriResponse",
-                    )));
+                    ));
                 }
             };
             index += 1;
@@ -34,9 +39,9 @@ impl BFieldCodec for FriResponse {
             let mask = match str.get(index) {
                 Some(bfe) => bfe.value() as u32,
                 None => {
-                    return Err(anyhow::Error::new(ProofStreamError::new(
+                    bail!(ProofStreamError::new(
                         "invalid mask decoding in decode for FriResponse",
-                    )));
+                    ));
                 }
             };
             index += 1;
@@ -50,9 +55,9 @@ impl BFieldCodec for FriResponse {
                     pap.push(Some(*Digest::decode(digest)?));
                     index += DIGEST_LENGTH;
                 } else {
-                    return Err(anyhow::Error::new(ProofStreamError::new(
+                    bail!(ProofStreamError::new(
                         "length mismatch in decoding FRI response",
-                    )));
+                    ));
                 }
             }
 
@@ -60,9 +65,9 @@ impl BFieldCodec for FriResponse {
             let xfe = match str.get(index..(index + EXTENSION_DEGREE)) {
                 Some(substr) => *XFieldElement::decode(substr)?,
                 None => {
-                    return Err(anyhow::Error::new(ProofStreamError::new(
+                    bail!(ProofStreamError::new(
                         "could not decode XFieldElement in decode for FriResponse",
-                    )));
+                    ));
                 }
             };
             index += EXTENSION_DEGREE;
@@ -145,13 +150,13 @@ where
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
             Self::Uncast(str) => match AuthenticationStructure::<Digest>::decode(str) {
                 Ok(boxed_auth_struct) => Ok(*boxed_auth_struct),
-                Err(e) => Err(anyhow::Error::new(ProofStreamError::new(&format!(
+                Err(e) => bail!(ProofStreamError::new(&format!(
                     "cast to authentication structure failed: {e}"
-                )))),
+                ))),
             },
-            other => Err(anyhow::Error::new(ProofStreamError::new(&format!(
+            other => bail!(ProofStreamError::new(&format!(
                 "expected compressed authentication paths, but got something else: {other:?}",
-            )))),
+            ))),
         }
     }
 
@@ -160,13 +165,11 @@ where
             Self::MasterBaseTableRows(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<BFieldElement>>::decode(str) {
                 Ok(base_element_vectors) => Ok(*base_element_vectors),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to base element vectors failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to base element vectors failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected master base table rows, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -175,13 +178,13 @@ where
             Self::MasterExtTableRows(xss) => Ok(xss.to_owned()),
             Self::Uncast(str) => match Vec::<Vec<XFieldElement>>::decode(str) {
                 Ok(ext_element_vectors) => Ok(*ext_element_vectors),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
+                Err(_) => bail!(ProofStreamError::new(
                     "cast to extension field element vectors failed",
-                ))),
+                )),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected master extension table rows, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -190,13 +193,11 @@ where
             Self::MerkleRoot(bs) => Ok(*bs),
             Self::Uncast(str) => match Digest::decode(str) {
                 Ok(merkle_root) => Ok(*merkle_root),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to Merkle root failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to Merkle root failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected merkle root, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -205,13 +206,11 @@ where
             Self::AuthenticationPath(bss) => Ok(bss.to_owned()),
             Self::Uncast(str) => match Vec::<Digest>::decode(str) {
                 Ok(authentication_path) => Ok(*authentication_path),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to authentication path failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to authentication path failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected authentication path, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -220,13 +219,13 @@ where
             Self::RevealedCombinationElements(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
                 Ok(revealed_combination_elements) => Ok(*revealed_combination_elements),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
+                Err(_) => bail!(ProofStreamError::new(
                     "cast to revealed combination elements failed",
-                ))),
+                )),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected revealed combination elements, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -235,13 +234,11 @@ where
             Self::FriCodeword(xs) => Ok(xs.to_owned()),
             Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
                 Ok(fri_codeword) => Ok(*fri_codeword),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to FRI codeword failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to FRI codeword failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected FRI codeword, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -250,13 +247,11 @@ where
             Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
             Self::Uncast(str) => match FriResponse::decode(str) {
                 Ok(fri_proof) => Ok(*fri_proof),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to FRI proof failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to FRI proof failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected FRI proof, but got something else",
-            ))),
+            )),
         }
     }
 
@@ -265,13 +260,11 @@ where
             Self::PaddedHeight(padded_height) => Ok(padded_height.to_owned()),
             Self::Uncast(str) => match BFieldElement::decode(str) {
                 Ok(padded_height) => Ok(*padded_height),
-                Err(_) => Err(anyhow::Error::new(ProofStreamError::new(
-                    "cast to padded heights failed",
-                ))),
+                Err(_) => bail!(ProofStreamError::new("cast to padded heights failed",)),
             },
-            _ => Err(anyhow::Error::new(ProofStreamError::new(
+            _ => bail!(ProofStreamError::new(
                 "expected padded table height, but got something else",
-            ))),
+            )),
         }
     }
 }
@@ -283,12 +276,12 @@ impl BFieldCodec for ProofItem {
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
         if let Some(len) = str.get(0) {
             if len.value() as usize + 1 != str.len() {
-                Err(anyhow::Error::new(ProofStreamError::new("length mismatch")))
+                bail!(ProofStreamError::new("length mismatch"))
             } else {
                 Ok(Box::new(Self::Uncast(str[1..].to_vec())))
             }
         } else {
-            Err(anyhow::Error::new(ProofStreamError::new("empty buffer")))
+            bail!(ProofStreamError::new("empty buffer"))
         }
     }
 
@@ -319,7 +312,7 @@ mod proof_item_typed_tests {
     use rand::thread_rng;
     use rand::RngCore;
     use twenty_first::shared_math::other::random_elements;
-    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
@@ -377,8 +370,8 @@ mod proof_item_typed_tests {
 
     #[test]
     fn test_serialize_stark_proof_with_fiat_shamir() {
-        type H = RescuePrimeRegular;
-        let mut proof_stream = ProofStream::<ProofItem, H>::new();
+        type H = Tip5;
+        let mut proof_stream: ProofStream<_, H> = ProofStream::new();
         let map = (0..7).into_iter().map(|_| random_digest()).collect_vec();
         let auth_struct = (0..8)
             .into_iter()
@@ -401,17 +394,17 @@ mod proof_item_typed_tests {
         let fri_response = random_fri_response();
 
         let mut fs = vec![];
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::AuthenticationPath(map.clone()));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
             auth_struct.clone(),
         ));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::MerkleRoot(root));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
-        fs.push(proof_stream.prover_fiat_shamir());
+        fs.push(proof_stream.sponge_state.state);
 
         let proof = proof_stream.to_proof();
 
@@ -419,7 +412,7 @@ mod proof_item_typed_tests {
             ProofStream::<ProofItem, H>::from_proof(&proof).expect("invalid parsing of proof");
 
         let mut fs_ = vec![];
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state);
 
         let map_ = proof_stream_
             .dequeue()
@@ -427,7 +420,7 @@ mod proof_item_typed_tests {
             .as_authentication_path()
             .expect("cannot parse dequeued item");
         assert_eq!(map, map_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state);
 
         let auth_struct_ = proof_stream_
             .dequeue()
@@ -435,7 +428,7 @@ mod proof_item_typed_tests {
             .as_compressed_authentication_paths()
             .expect("cannot parse dequeued item");
         assert_eq!(auth_struct, auth_struct_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state);
 
         let root_ = proof_stream_
             .dequeue()
@@ -443,7 +436,7 @@ mod proof_item_typed_tests {
             .as_merkle_root()
             .expect("cannot parse dequeued item");
         assert_eq!(root, root_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state);
 
         let fri_response_ = proof_stream_
             .dequeue()
@@ -451,7 +444,7 @@ mod proof_item_typed_tests {
             .as_fri_response()
             .expect("cannot parse dequeued item");
         assert_eq!(fri_response, fri_response_);
-        fs_.push(proof_stream_.verifier_fiat_shamir());
+        fs_.push(proof_stream_.sponge_state.state);
 
         assert_eq!(fs, fs_);
     }

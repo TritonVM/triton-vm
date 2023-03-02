@@ -2,28 +2,29 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
+use anyhow::bail;
 use anyhow::Result;
 use itertools::Itertools;
 use num_traits::One;
 use rayon::iter::*;
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::ntt::intt;
 use twenty_first::shared_math::other::log_2_ceil;
 use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::rescue_prime_digest::Digest;
+use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::traits::CyclicGroupGenerator;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::algebraic_hasher::Hashable;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
+
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::proof_item::FriResponse;
@@ -42,8 +43,6 @@ impl fmt::Display for FriValidationError {
 #[derive(PartialEq, Eq, Debug)]
 pub enum FriValidationError {
     BadMerkleAuthenticationPath,
-    BadSizedProof,
-    NonPostiveRoundCount,
     MismatchingLastCodeword,
     LastIterationTooHighDegree,
     BadMerkleRootForFirstCodeword,
@@ -89,7 +88,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         let value_ap_pairs: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = merkle_tree
             .get_authentication_structure(indices)
             .into_iter()
-            .zip(indices.iter())
+            .zip_eq(indices.iter())
             .map(|(ap, i)| (ap, codeword[*i]))
             .collect_vec();
         proof_stream.enqueue(&ProofItem::FriResponse(FriResponse(value_ap_pairs)))
@@ -104,24 +103,20 @@ impl<H: AlgebraicHasher> Fri<H> {
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) -> Result<Vec<XFieldElement>> {
         let fri_response = proof_stream.dequeue()?.as_fri_response()?;
-        let dequeued_paths_and_leafs = fri_response.0;
-        let paths = dequeued_paths_and_leafs.clone().into_iter().map(|(p, _)| p);
-        let values: Vec<XFieldElement> = dequeued_paths_and_leafs
-            .into_iter()
-            .map(|(_, v)| v)
-            .collect();
-        let digests: Vec<Digest> = values.par_iter().map(H::hash).collect();
-        let path_digest_pairs = paths.into_iter().zip(digests).collect_vec();
+        let FriResponse(dequeued_paths_and_leafs) = fri_response;
+        let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
+        let leaf_digests: Vec<_> = leaf_values.par_iter().map(H::hash).collect();
+        let path_digest_pairs = paths.into_iter().zip_eq(leaf_digests).collect_vec();
+        debug_assert_eq!(indices.len(), path_digest_pairs.len());
+
         if MerkleTree::<H, Maker>::verify_authentication_structure(
             root,
             indices,
             &path_digest_pairs,
         ) {
-            Ok(values)
+            Ok(leaf_values)
         } else {
-            Err(anyhow::Error::new(
-                FriValidationError::BadMerkleAuthenticationPath,
-            ))
+            bail!(FriValidationError::BadMerkleAuthenticationPath)
         }
     }
 
@@ -142,15 +137,16 @@ impl<H: AlgebraicHasher> Fri<H> {
             self.commit(codeword, proof_stream)?.into_iter().unzip();
 
         // Fiat-Shamir to get indices
-        let top_level_indices: Vec<usize> = self.sample_indices(&proof_stream.prover_fiat_shamir());
+        let top_level_indices =
+            proof_stream.sample_indices(self.domain.length, self.colinearity_checks_count);
 
         // query phase
         // query step 0: enqueue authentication paths for all points `A` into proof stream
-        let initial_a_indices: Vec<usize> = top_level_indices.clone();
+        let initial_a_indices = top_level_indices.clone();
         Self::enqueue_auth_pairs(&initial_a_indices, codeword, &merkle_trees[0], proof_stream);
         // query step 1: loop over FRI rounds, enqueue authentication paths for all points `B`
         let mut current_domain_len = self.domain.length;
-        let mut b_indices: Vec<usize> = initial_a_indices;
+        let mut b_indices = initial_a_indices;
         // the last codeword is transmitted to the verifier in the clear. Thus, no co-linearity
         // check is needed for the last codeword and we only have to look at the interval given here
         for r in 0..merkle_trees.len() - 1 {
@@ -204,10 +200,9 @@ impl<H: AlgebraicHasher> Fri<H> {
             let n = codeword_local.len();
 
             // Get challenge
-            let challenge_digest = proof_stream.prover_fiat_shamir();
-            let alpha: XFieldElement = XFieldElement::sample(&challenge_digest);
+            let alpha = proof_stream.sample_scalars(1)[0];
 
-            let x_offset: Vec<XFieldElement> = subgroup_generator
+            let x_offset: Vec<_> = subgroup_generator
                 .get_cyclic_group_elements(None)
                 .into_par_iter()
                 .map(|x| (x * offset).lift())
@@ -248,58 +243,6 @@ impl<H: AlgebraicHasher> Fri<H> {
         Ok(values_and_merkle_trees)
     }
 
-    // Return the c-indices for the 1st round of FRI
-    fn sample_indices(&self, seed: &Digest) -> Vec<usize> {
-        // This algorithm starts with the inner-most indices to pick up
-        // to `last_codeword_length` indices from the codeword in the last round.
-        // It then calculates the indices in the subsequent rounds by choosing
-        // between the two possible next indices in the next round until we get
-        // the c-indices for the first round.
-        let num_rounds = self.num_rounds().0;
-        let last_codeword_length = self.domain.length >> num_rounds;
-        assert!(
-            self.colinearity_checks_count <= last_codeword_length,
-            "Requested number of indices must not exceed length of last codeword"
-        );
-
-        let mut last_indices: Vec<usize> = vec![];
-        let mut remaining_last_round_exponents: Vec<usize> = (0..last_codeword_length).collect();
-        let mut counter = 0usize;
-        for _ in 0..self.colinearity_checks_count {
-            let mut seed_local = seed.to_sequence();
-            seed_local.append(&mut counter.to_sequence());
-            let digest: Digest = H::hash_slice(&seed_local);
-            let index: usize =
-                H::sample_index_not_power_of_two(&digest, remaining_last_round_exponents.len());
-            last_indices.push(remaining_last_round_exponents.remove(index));
-            counter += 1;
-        }
-
-        // Use last indices to derive first c-indices
-        let mut indices = last_indices;
-        for i in 1..num_rounds {
-            let codeword_length = last_codeword_length << i;
-
-            indices = indices
-                .into_par_iter()
-                .zip((counter..counter + self.colinearity_checks_count).into_par_iter())
-                .map(|(index, _count)| {
-                    let mut seed_local = seed.to_sequence();
-                    seed_local.append(&mut counter.to_sequence());
-                    let digest: Digest = H::hash_slice(&seed_local);
-                    let reduce_modulo: bool = H::sample_index(&digest, 2) == 0;
-                    if reduce_modulo {
-                        index + codeword_length / 2
-                    } else {
-                        index
-                    }
-                })
-                .collect();
-        }
-
-        indices
-    }
-
     pub fn verify(
         &self,
         proof_stream: &mut ProofStream<ProofItem, H>,
@@ -310,15 +253,13 @@ impl<H: AlgebraicHasher> Fri<H> {
         let (num_rounds, degree_of_last_round) = self.num_rounds();
         let num_rounds = num_rounds as usize;
 
-        // Extract all roots and calculate alpha, the challenges
-        let mut roots: Vec<Digest> = vec![];
-        let mut alphas: Vec<XFieldElement> = vec![];
+        // Extract all roots and calculate alpha based on Fiat-Shamir challenge
+        let mut roots = vec![];
+        let mut alphas = vec![];
 
-        let first_root: Digest = proof_stream.dequeue()?.as_merkle_root()?;
-        if first_root != *first_codeword_mt_root {
-            return Err(anyhow::Error::new(
-                FriValidationError::BadMerkleRootForFirstCodeword,
-            ));
+        let first_root = proof_stream.dequeue()?.as_merkle_root()?;
+        if &first_root != first_codeword_mt_root {
+            bail!(FriValidationError::BadMerkleRootForFirstCodeword);
         }
 
         roots.push(first_root);
@@ -327,11 +268,10 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_start!(maybe_profiler, "roots and alpha");
         for _round in 0..num_rounds {
             // Get a challenge from the proof stream
-            let challenge = proof_stream.verifier_fiat_shamir();
-            let alpha: XFieldElement = XFieldElement::sample(&challenge);
+            let alpha = proof_stream.sample_scalars(1)[0];
             alphas.push(alpha);
 
-            let root: Digest = proof_stream.dequeue()?.as_merkle_root()?;
+            let root = proof_stream.dequeue()?.as_merkle_root()?;
             roots.push(root);
         }
         prof_stop!(maybe_profiler, "roots and alpha");
@@ -345,9 +285,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         let last_codeword_mt: MerkleTree<H, Maker> = Maker::from_digests(&codeword_digests);
         let last_root = roots.last().unwrap();
         if *last_root != last_codeword_mt.get_root() {
-            return Err(anyhow::Error::new(
-                FriValidationError::BadMerkleRootForLastCodeword,
-            ));
+            bail!(FriValidationError::BadMerkleRootForLastCodeword);
         }
         prof_stop!(maybe_profiler, "last codeword matches root");
 
@@ -377,9 +315,7 @@ impl<H: AlgebraicHasher> Fri<H> {
                 "last_poly_degree is {last_poly_degree}, \
                  degree_of_last_round is {degree_of_last_round}",
             );
-            return Err(anyhow::Error::new(
-                FriValidationError::LastIterationTooHighDegree,
-            ));
+            bail!(FriValidationError::LastIterationTooHighDegree);
         }
         prof_stop!(maybe_profiler, "last codeword has low degree");
 
@@ -387,8 +323,10 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_start!(maybe_profiler, "query phase");
         // query step 0: get "A" indices and verify set membership of corresponding values.
         prof_start!(maybe_profiler, "sample indices");
-        let mut a_indices: Vec<usize> = self.sample_indices(&proof_stream.verifier_fiat_shamir());
+        let mut a_indices =
+            proof_stream.sample_indices(self.domain.length, self.colinearity_checks_count);
         prof_stop!(maybe_profiler, "sample indices");
+
         prof_start!(maybe_profiler, "dequeue and authenticate");
         let mut a_values = Self::dequeue_and_authenticate(&a_indices, roots[0], proof_stream)?;
         prof_stop!(maybe_profiler, "dequeue and authenticate");
@@ -454,9 +392,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_start!(maybe_profiler, "compare last codeword");
         a_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
         if (0..self.colinearity_checks_count).any(|i| last_codeword[a_indices[i]] != a_values[i]) {
-            return Err(anyhow::Error::new(
-                FriValidationError::MismatchingLastCodeword,
-            ));
+            bail!(FriValidationError::MismatchingLastCodeword);
         }
         prof_stop!(maybe_profiler, "compare last codeword");
         Ok(())
@@ -494,43 +430,65 @@ impl<H: AlgebraicHasher> Fri<H> {
 mod triton_xfri_tests {
     use itertools::Itertools;
     use num_traits::Zero;
-    use rand::thread_rng;
-    use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFieldElement;
-    use twenty_first::shared_math::rescue_prime_regular::RescuePrimeRegular;
+    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::shared_math::tip5::Tip5;
+    use twenty_first::shared_math::tip5::RATE;
     use twenty_first::shared_math::traits::CyclicGroupGenerator;
     use twenty_first::shared_math::traits::ModPowU32;
     use twenty_first::shared_math::x_field_element::XFieldElement;
     use twenty_first::test_shared::corrupt_digest;
-    use twenty_first::utils::has_unique_elements;
+    use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
     use super::*;
 
     #[test]
     fn sample_indices_test() {
-        type H = RescuePrimeRegular;
-        let mut rng = thread_rng();
+        type H = Tip5;
 
-        let subgroup_order = 16;
+        let subgroup_order = 1 << 20;
         let expansion_factor = 4;
         let colinearity_checks = 16;
-        let fri: Fri<H> =
-            get_x_field_fri_test_object::<H>(subgroup_order, expansion_factor, colinearity_checks);
-        let indices = fri.sample_indices(&H::hash(&BFieldElement::new(rng.next_u64())));
+        // todo: Figure out by how much to oversample for the given parameters.
+        let oversampling_summand = 10;
+
+        let random_bfield_elements: [BFieldElement; RATE] =
+            random_elements(RATE).try_into().unwrap();
+        let mut sponge_state = H::init();
+        H::absorb(&mut sponge_state, &random_bfield_elements);
+
+        let num_indices_to_sample = colinearity_checks + oversampling_summand;
+        let fri = get_x_field_fri_test_object::<H>(
+            subgroup_order,
+            expansion_factor,
+            num_indices_to_sample,
+        );
+        let mut indices = H::sample_indices(
+            &mut sponge_state,
+            fri.domain.length as u32,
+            fri.colinearity_checks_count,
+        );
+        indices.sort_unstable();
+        indices.dedup();
+        let num_unique_indices = indices.len();
+
         assert!(
-            has_unique_elements(indices.iter()),
-            "Picked indices must be unique"
+            num_unique_indices >= colinearity_checks,
+            "Too few unique indices: only got {num_unique_indices} uniques \
+            (expecting at least {colinearity_checks} uniques) \
+            after sampling {num_indices_to_sample} indices \
+            from a domain of length {}.",
+            fri.domain.length,
         );
     }
 
     #[test]
     fn get_rounds_count_test() {
-        type Hasher = RescuePrimeRegular;
+        type Hasher = Tip5;
 
         let subgroup_order = 512;
         let expansion_factor = 4;
-        let mut fri: Fri<Hasher> =
-            get_x_field_fri_test_object::<Hasher>(subgroup_order, expansion_factor, 2);
+        let mut fri = get_x_field_fri_test_object::<Hasher>(subgroup_order, expansion_factor, 2);
 
         assert_eq!((7, 0), fri.num_rounds());
         fri.colinearity_checks_count = 8;
@@ -588,17 +546,22 @@ mod triton_xfri_tests {
 
     #[test]
     fn fri_on_x_field_test() {
-        type Hasher = RescuePrimeRegular;
+        type H = Tip5;
 
         let subgroup_order = 1024;
         let expansion_factor = 4;
         let colinearity_check_count = 6;
-        let fri: Fri<Hasher> =
+        let fri: Fri<H> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+        let mut proof_stream = ProofStream::new();
+
+        // corresponds to the linear polynomial `x`
         let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
 
         let (_, merkle_root_of_round_0) = fri.prove(&subgroup, &mut proof_stream).unwrap();
+
+        // reset sponge state to start verification
+        proof_stream.sponge_state = H::init();
         let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         if let Err(e) = verdict {
             panic!("Found error: {e}");
@@ -607,14 +570,14 @@ mod triton_xfri_tests {
 
     #[test]
     fn prove_and_verify_low_degree_of_twice_cubing_plus_one() {
-        type Hasher = RescuePrimeRegular;
+        type H = Tip5;
 
         let subgroup_order = 1024;
         let expansion_factor = 4;
         let colinearity_check_count = 6;
-        let fri: Fri<Hasher> =
+        let fri: Fri<H> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+        let mut proof_stream = ProofStream::new();
 
         let zero = XFieldElement::zero();
         let one = XFieldElement::one();
@@ -623,6 +586,9 @@ mod triton_xfri_tests {
         let codeword = fri.domain.evaluate(&poly);
 
         let (_, merkle_root_of_round_0) = fri.prove(&codeword, &mut proof_stream).unwrap();
+
+        // reset sponge state to start verification
+        proof_stream.sponge_state = H::init();
         let verdict = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         if let Err(e) = verdict {
             panic!("Found error: {e}");
@@ -631,12 +597,12 @@ mod triton_xfri_tests {
 
     #[test]
     fn fri_x_field_limit_test() {
-        type Hasher = RescuePrimeRegular;
+        type H = Tip5;
 
         let subgroup_order = 128;
         let expansion_factor = 4;
         let colinearity_check_count = 6;
-        let fri: Fri<Hasher> =
+        let fri: Fri<H> =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
         let subgroup = fri.domain.generator.lift().get_cyclic_group_elements(None);
 
@@ -644,23 +610,25 @@ mod triton_xfri_tests {
         for n in [1, 5, 20, 30, 31] {
             points = subgroup.clone().iter().map(|p| p.mod_pow_u32(n)).collect();
 
-            // TODO: Test elsewhere that proof_stream can be re-used for multiple .prove().
-            let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+            let mut proof_stream = ProofStream::new();
             let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
 
+            // reset sponge state to start verification
+            proof_stream.sponge_state = H::init();
             let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
             if verify_result.is_err() {
-                println!(
+                panic!(
                     "There are {} points, |<128>^{n}| = {}, and verify_result = {verify_result:?}",
                     points.len(),
                     points.iter().unique().count(),
                 );
             }
 
-            assert!(verify_result.is_ok());
+            // Reset proof stream's read items
+            proof_stream.sponge_state = H::init();
+            proof_stream.items_index = 0;
 
             // Manipulate Merkle root of 0 and verify failure with expected error message
-            proof_stream.reset_for_verifier();
             let bad_root_digest = corrupt_digest(&merkle_root_of_round_0);
             let bad_verify_result = fri.verify(&mut proof_stream, &bad_root_digest, &mut None);
             assert!(bad_verify_result.is_err());
@@ -673,7 +641,7 @@ mod triton_xfri_tests {
         // Negative test with too high degree
         let too_high = subgroup_order as u32 / expansion_factor as u32;
         points = subgroup.iter().map(|p| p.mod_pow_u32(too_high)).collect();
-        let mut proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+        let mut proof_stream = ProofStream::new();
         let (_, merkle_root_of_round_0) = fri.prove(&points, &mut proof_stream).unwrap();
         let verify_result = fri.verify(&mut proof_stream, &merkle_root_of_round_0, &mut None);
         assert!(verify_result.is_err());
@@ -696,14 +664,15 @@ mod triton_xfri_tests {
 
     #[test]
     fn test_fri_deserialization() {
-        type Hasher = RescuePrimeRegular;
+        type H = Tip5;
 
         let subgroup_order = 64;
         let expansion_factor = 4;
         let colinearity_check_count = 2;
-        let fri: Fri<Hasher> =
+        let fri =
             get_x_field_fri_test_object(subgroup_order, expansion_factor, colinearity_check_count);
-        let mut prover_proof_stream: ProofStream<ProofItem, Hasher> = ProofStream::new();
+
+        let mut prover_proof_stream = ProofStream::new();
 
         let zero = XFieldElement::zero();
         let one = XFieldElement::one();
@@ -715,22 +684,33 @@ mod triton_xfri_tests {
 
         let proof = prover_proof_stream.to_proof();
 
-        let mut verifier_proof_stream: ProofStream<ProofItem, Hasher> =
+        let mut verifier_proof_stream: ProofStream<ProofItem, H> =
             ProofStream::from_proof(&proof).unwrap();
 
-        for (left, right) in prover_proof_stream
+        assert_eq!(prover_proof_stream.len(), verifier_proof_stream.len());
+        for (prover_item, verifier_item) in prover_proof_stream
             .items
             .iter()
             .zip_eq(verifier_proof_stream.items.iter())
         {
-            if let ProofItem::MerkleRoot(left_root) = left {
-                assert_eq!(*left_root, right.as_merkle_root().unwrap());
-            } else if let ProofItem::FriResponse(left_response) = left {
-                assert_eq!(*left_response, right.as_fri_response().unwrap());
-            } else if let ProofItem::FriCodeword(left_codeword) = left {
-                assert_eq!(*left_codeword, right.as_fri_codeword().unwrap());
-            } else {
-                panic!("did not recognize FRI proof item");
+            use ProofItem::*;
+            match prover_item {
+                MerkleRoot(prover_root) => {
+                    assert_eq!(*prover_root, verifier_item.as_merkle_root().unwrap())
+                }
+                FriResponse(prover_response) => {
+                    assert_eq!(*prover_response, verifier_item.as_fri_response().unwrap())
+                }
+                FriCodeword(prover_codeword) => {
+                    assert_eq!(*prover_codeword, verifier_item.as_fri_codeword().unwrap())
+                }
+                _ => {
+                    panic!(
+                        "Did not recognize FRI proof items.\n\
+                         Prover item:   {prover_item:?}\n\
+                         Verifier item: {verifier_item:?}"
+                    )
+                }
             }
         }
 
