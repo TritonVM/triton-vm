@@ -1,6 +1,5 @@
 use itertools::Itertools;
 use ndarray::s;
-use ndarray::Array1;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
@@ -89,9 +88,9 @@ impl ExtHashTable {
             + base_row(State2MidHighLkIn) * two_pow_32.clone()
             + base_row(State2MidLowLkIn) * two_pow_16.clone()
             + base_row(State2LowestLkIn);
-        let state_3 = base_row(State3HighestLkIn) * two_pow_48.clone()
-            + base_row(State3MidHighLkIn) * two_pow_32.clone()
-            + base_row(State3MidLowLkIn) * two_pow_16.clone()
+        let state_3 = base_row(State3HighestLkIn) * two_pow_48
+            + base_row(State3MidHighLkIn) * two_pow_32
+            + base_row(State3MidLowLkIn) * two_pow_16
             + base_row(State3LowestLkIn);
 
         let state = [
@@ -143,8 +142,7 @@ impl ExtHashTable {
         let running_evaluation_hash_input_has_accumulated_first_row = running_evaluation_hash_input
             - running_evaluation_initial.clone() * hash_input_indeterminate
             - compressed_row.clone();
-        let running_evaluation_hash_input_is_initialized_correctly = (round_number.clone()
-            + one.clone())
+        let running_evaluation_hash_input_is_initialized_correctly = (round_number.clone() + one)
             * ci_is_absorb_init.clone()
             * running_evaluation_hash_input_has_accumulated_first_row
             + ci_is_hash.clone() * running_evaluation_hash_input_is_default_initial.clone()
@@ -238,12 +236,10 @@ impl ExtHashTable {
         let if_ci_is_hash_and_round_no_is_0_then_state_14_is_1 =
             if_ci_is_hash_and_round_no_is_0_then_.clone() * (state14.clone() - constant(1));
         let if_ci_is_hash_and_round_no_is_0_then_state_15_is_1 =
-            if_ci_is_hash_and_round_no_is_0_then_.clone() * (state15.clone() - constant(1));
+            if_ci_is_hash_and_round_no_is_0_then_ * (state15.clone() - constant(1));
 
-        let if_ci_is_absorb_init_and_round_no_is_0_then_ = round_number_is_not_0.clone()
-            * ci_is_hash
-            * ci_is_absorb.clone()
-            * ci_is_squeeze.clone();
+        let if_ci_is_absorb_init_and_round_no_is_0_then_ =
+            round_number_is_not_0 * ci_is_hash * ci_is_absorb * ci_is_squeeze;
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_10_is_0 =
             if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state10;
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_11_is_0 =
@@ -255,7 +251,7 @@ impl ExtHashTable {
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_14_is_0 =
             if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state14;
         let if_ci_is_absorb_init_and_round_no_is_0_then_state_15_is_0 =
-            if_ci_is_absorb_init_and_round_no_is_0_then_.clone() * state15;
+            if_ci_is_absorb_init_and_round_no_is_0_then_ * state15;
 
         let mut constraints = vec![
             if_padding_row_then_ci_is_hash,
@@ -379,9 +375,9 @@ impl ExtHashTable {
             + current_base_row(State2MidHighLkIn) * two_pow_32.clone()
             + current_base_row(State2MidLowLkIn) * two_pow_16.clone()
             + current_base_row(State2LowestLkIn);
-        let state_3 = current_base_row(State3HighestLkIn) * two_pow_48.clone()
-            + current_base_row(State3MidHighLkIn) * two_pow_32.clone()
-            + current_base_row(State3MidLowLkIn) * two_pow_16.clone()
+        let state_3 = current_base_row(State3HighestLkIn) * two_pow_48
+            + current_base_row(State3MidHighLkIn) * two_pow_32
+            + current_base_row(State3MidLowLkIn) * two_pow_16
             + current_base_row(State3LowestLkIn);
 
         let state_current = [
@@ -454,7 +450,7 @@ impl ExtHashTable {
             * (ci_next.clone() - opcode_hash.clone());
 
         let if_round_number_is_not_5_then_ci_doesnt_change =
-            (round_number.clone() - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
+            (round_number - constant(NUM_ROUNDS as u64)) * (ci_next.clone() - ci);
 
         // copy capacity between rounds with index 5 and 0 if instruction is “absorb”
         let round_number_next_is_not_0 =
@@ -554,12 +550,12 @@ impl ExtHashTable {
             .sum();
         let running_evaluation_sponge_has_accumulated_next_row = running_evaluation_sponge_next
             .clone()
-            - sponge_indeterminate.clone() * running_evaluation_sponge.clone()
+            - sponge_indeterminate * running_evaluation_sponge.clone()
             - challenge(HashCIWeight) * ci_next.clone()
             - compressed_row_next;
         let if_round_no_next_0_and_ci_next_is_spongy_then_running_eval_sponge_updates =
-            round_number_next_is_not_0.clone()
-                * (ci_next.clone() - opcode_hash.clone())
+            round_number_next_is_not_0
+                * (ci_next.clone() - opcode_hash)
                 * running_evaluation_sponge_has_accumulated_next_row;
 
         let running_evaluation_sponge_absorb_remains =
@@ -673,6 +669,7 @@ impl ExtHashTable {
             state_part_after_power_map[11].clone(),
         ];
 
+        #[allow(clippy::needless_range_loop)]
         let state_after_matrix_multiplication: [_; STATE_SIZE] = {
             let mut result_vec = Vec::with_capacity(STATE_SIZE);
             for row_idx in 0..STATE_SIZE {
