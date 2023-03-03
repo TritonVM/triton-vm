@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -112,21 +113,22 @@ where
         })
     }
 
-    fn encode_and_zero_pad_item(item: &Item) -> Vec<BFieldElement> {
+    fn encode_and_pad_item(item: &Item) -> Vec<BFieldElement> {
         let encoding = item.encode();
-        let last_chunk_len = encoding.len() % H::RATE;
+        let encoding_append_one = [encoding, vec![BFIELD_ONE]].concat();
+        let last_chunk_len = encoding_append_one.len() % H::RATE;
         let num_padding_zeros = match last_chunk_len {
             0 => 0,
             _ => H::RATE - last_chunk_len,
         };
-        [encoding, vec![BFIELD_ZERO; num_padding_zeros]].concat()
+        [encoding_append_one, vec![BFIELD_ZERO; num_padding_zeros]].concat()
     }
 
     /// Send a proof item as prover to verifier.
     pub fn enqueue(&mut self, item: &Item) {
         H::absorb_repeatedly(
             &mut self.sponge_state,
-            Self::encode_and_zero_pad_item(item).iter(),
+            Self::encode_and_pad_item(item).iter(),
         );
         self.items.push(item.clone());
     }
@@ -139,7 +141,7 @@ where
             .ok_or_else(|| ProofStreamError::new("Could not dequeue, queue empty"))?;
         H::absorb_repeatedly(
             &mut self.sponge_state,
-            Self::encode_and_zero_pad_item(item).iter(),
+            Self::encode_and_pad_item(item).iter(),
         );
         self.items_index += 1;
         Ok(item.clone())
