@@ -1613,7 +1613,7 @@ pub fn constraint_type_and_index_and_table_name(
     let transition_section_end = transition_section_start + num_all_transition_quotients();
     let terminal_section_start = transition_section_end;
     let terminal_section_end = terminal_section_start + num_all_terminal_quotients();
-
+    assert_eq!(num_all_table_quotients(), terminal_section_end);
     match constraint_idx {
         idx if initial_section_start <= idx && idx < initial_section_end => {
             let section_idx = idx - initial_section_start;
@@ -1656,7 +1656,11 @@ pub fn initial_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &
     let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_initial_quotients();
     let hash_start = jump_stack_end;
     let hash_end = hash_start + ExtHashTable::num_initial_quotients();
-    let u32_start = hash_end;
+    let cascade_start = hash_end;
+    let cascade_end = cascade_start + ExtCascadeTable::num_initial_quotients();
+    let lookup_start = cascade_end;
+    let lookup_end = lookup_start + ExtLookupTable::num_initial_quotients();
+    let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_initial_quotients();
     assert_eq!(num_all_initial_quotients(), u32_end);
     match constraint_idx {
@@ -1666,6 +1670,8 @@ pub fn initial_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &
         i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
         i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
         i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+        i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
+        i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
         _ => (0, "Unknown"),
     }
@@ -1688,7 +1694,11 @@ pub fn consistency_constraint_table_idx_and_name(constraint_idx: usize) -> (usiz
     let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_consistency_quotients();
     let hash_start = jump_stack_end;
     let hash_end = hash_start + ExtHashTable::num_consistency_quotients();
-    let u32_start = hash_end;
+    let cascade_start = hash_end;
+    let cascade_end = cascade_start + ExtCascadeTable::num_consistency_quotients();
+    let lookup_start = cascade_end;
+    let lookup_end = lookup_start + ExtLookupTable::num_consistency_quotients();
+    let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_consistency_quotients();
     assert_eq!(num_all_consistency_quotients(), u32_end);
     match constraint_idx {
@@ -1698,6 +1708,8 @@ pub fn consistency_constraint_table_idx_and_name(constraint_idx: usize) -> (usiz
         i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
         i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
         i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+        i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
+        i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
         _ => (0, "Unknown"),
     }
@@ -1720,7 +1732,11 @@ pub fn transition_constraint_table_idx_and_name(constraint_idx: usize) -> (usize
     let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_transition_quotients();
     let hash_start = jump_stack_end;
     let hash_end = hash_start + ExtHashTable::num_transition_quotients();
-    let u32_start = hash_end;
+    let cascade_start = hash_end;
+    let cascade_end = cascade_start + ExtCascadeTable::num_transition_quotients();
+    let lookup_start = cascade_end;
+    let lookup_end = lookup_start + ExtLookupTable::num_transition_quotients();
+    let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_transition_quotients();
     assert_eq!(num_all_transition_quotients(), u32_end);
     match constraint_idx {
@@ -1730,6 +1746,8 @@ pub fn transition_constraint_table_idx_and_name(constraint_idx: usize) -> (usize
         i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
         i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
         i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+        i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
+        i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
         _ => (0, "Unknown"),
     }
@@ -1752,7 +1770,11 @@ pub fn terminal_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, 
     let jump_stack_end = jump_stack_start + ExtJumpStackTable::num_terminal_quotients();
     let hash_start = jump_stack_end;
     let hash_end = hash_start + ExtHashTable::num_terminal_quotients();
-    let u32_start = hash_end;
+    let cascade_start = hash_end;
+    let cascade_end = cascade_start + ExtCascadeTable::num_terminal_quotients();
+    let lookup_start = cascade_end;
+    let lookup_end = lookup_start + ExtLookupTable::num_terminal_quotients();
+    let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_terminal_quotients();
     let cross_table_start = u32_end;
     let cross_table_end = cross_table_start + GrandCrossTableArg::num_terminal_quotients();
@@ -1764,6 +1786,8 @@ pub fn terminal_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, 
         i if ram_start <= i && i < ram_end => (i - ram_start, "Ram"),
         i if jump_stack_start <= i && i < jump_stack_end => (i - jump_stack_start, "JumpStack"),
         i if hash_start <= i && i < hash_end => (i - hash_start, "Hash"),
+        i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
+        i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
         i if cross_table_start <= i && i < cross_table_end => {
             (i - cross_table_start, "GrandCrossTableArgument")
