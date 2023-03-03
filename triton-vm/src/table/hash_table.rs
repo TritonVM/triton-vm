@@ -764,7 +764,7 @@ impl HashTable {
     pub const fn mds_matrix_entry(row_idx: usize, col_idx: usize) -> BFieldElement {
         assert!(row_idx < STATE_SIZE);
         assert!(col_idx < STATE_SIZE);
-        let index_in_matrix_defining_column = (row_idx - col_idx) % STATE_SIZE;
+        let index_in_matrix_defining_column = (STATE_SIZE + row_idx - col_idx) % STATE_SIZE;
         let mds_matrix_entry = MDS_MATRIX_FIRST_COLUMN[index_in_matrix_defining_column];
         BFieldElement::new(mds_matrix_entry as u64)
     }
