@@ -884,22 +884,20 @@ impl HashTable {
                     .map(|(&weight, &element)| weight * element)
                     .sum();
 
-                match current_instruction {
-                    ci if ci == opcode_hash => {
-                        hash_input_running_evaluation = hash_input_running_evaluation
-                            * hash_input_eval_indeterminate
-                            + compressed_row;
-                    }
-                    ci if ci == opcode_absorb_init
-                        || ci == opcode_absorb
-                        || ci == opcode_squeeze =>
-                    {
-                        sponge_running_evaluation = sponge_running_evaluation
-                            * sponge_eval_indeterminate
-                            + ci_weight * ci
-                            + compressed_row;
-                    }
-                    _ => panic!("Opcode must be of `hash`, `absorb_init`, `absorb`, or `squeeze`."),
+                if current_instruction == opcode_hash {
+                    hash_input_running_evaluation = hash_input_running_evaluation
+                        * hash_input_eval_indeterminate
+                        + compressed_row;
+                }
+
+                if current_instruction == opcode_absorb_init
+                    || current_instruction == opcode_absorb
+                    || current_instruction == opcode_squeeze
+                {
+                    sponge_running_evaluation = sponge_running_evaluation
+                        * sponge_eval_indeterminate
+                        + ci_weight * current_instruction
+                        + compressed_row;
                 }
             }
 
