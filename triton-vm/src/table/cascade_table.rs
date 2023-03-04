@@ -1,14 +1,13 @@
-use ndarray::s;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::table_column::CascadeBaseTableColumn;
@@ -58,18 +57,26 @@ impl CascadeTable {
 
 impl ExtCascadeTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        vec![]
+        let mut constraints = [];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        vec![]
+        let mut constraints = [];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        vec![]
+        let mut constraints = [];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        vec![]
+        let mut constraints = [];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }

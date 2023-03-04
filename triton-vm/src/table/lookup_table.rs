@@ -18,6 +18,7 @@ use crate::table::challenges::ChallengeId::LookupTablePublicIndeterminate;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
@@ -154,14 +155,14 @@ impl ExtLookupTable {
         let cascade_table_server_log_derivative = ext_row(CascadeTableServerLogDerivative);
         let public_evaluation_argument = ext_row(PublicEvaluationArgument);
 
-        let lookup_input_is_0 = lookup_input.clone();
+        let lookup_input_is_0 = lookup_input;
 
         // Lookup Argument with Cascade Table
+        // note: `lookup_input` is known to be 0 and thus doesn't appear in the compressed row
         let lookup_argument_default_initial =
             circuit_builder.x_constant(LookupArg::default_initial());
         let cascade_table_indeterminate = challenge(CascadeLookupIndeterminate);
-        let compressed_row = lookup_input * challenge(LookupTableInputWeight)
-            + lookup_output.clone() * challenge(LookupTableOutputWeight);
+        let compressed_row = lookup_output.clone() * challenge(LookupTableOutputWeight);
         let cascade_table_log_derivative_is_initialized_correctly =
             (cascade_table_server_log_derivative - lookup_argument_default_initial)
                 * (cascade_table_indeterminate - compressed_row)
@@ -174,13 +175,13 @@ impl ExtLookupTable {
             - eval_argument_default_initial * public_indeterminate
             - lookup_output;
 
-        [
+        let mut constraints = [
             lookup_input_is_0,
             cascade_table_log_derivative_is_initialized_correctly,
             public_evaluation_argument_is_initialized_correctly,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -209,13 +210,13 @@ impl ExtLookupTable {
         let if_lookup_input_is_256_then_multiplicity_is_0 =
             two_pow_8_minus_lookup_input_times_inv_is_1 * lookup_multiplicity;
 
-        [
+        let mut constraints = [
             two_pow_8_minus_lookup_input_times_inv_is_1_or_lookup_input_is_two_pow_8,
             two_pow_8_minus_lookup_input_times_inv_is_1_or_inv_is_zero,
             if_lookup_input_is_256_then_multiplicity_is_0,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
@@ -295,13 +296,13 @@ impl ExtLookupTable {
             lookup_input_next_is_equal_to_256 * public_evaluation_argument_updates
                 + lookup_input_next_is_unequal_to_256 * public_evaluation_argument_remains;
 
-        [
+        let mut constraints = [
             lookup_input_increments_if_and_only_if_less_than_256,
             cascade_table_log_derivative_updates_if_and_only_if_next_row_is_not_padding_row,
             public_evaluation_argument_updates_if_and_only_if_next_row_is_not_padding_row,
-        ]
-        .map(|circuit| circuit.consume())
-        .to_vec()
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
@@ -314,8 +315,8 @@ impl ExtLookupTable {
         let lookup_input_is_255_or_256 =
             (lookup_input.clone() - twofiftyfive) * (lookup_input - twofiftysix);
 
-        [lookup_input_is_255_or_256]
-            .map(|circuit| circuit.consume())
-            .to_vec()
+        let mut constraints = [lookup_input_is_255_or_256];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }
