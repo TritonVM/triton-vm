@@ -1046,58 +1046,58 @@ impl AlgebraicExecutionTrace {
             let st_0_raw_limbs = trace_row[0].raw_u16s();
             let st_0_look_in_split =
                 st_0_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
-            row[State0HighestLkIn.base_table_index()] = st_0_look_in_split[0];
-            row[State0MidHighLkIn.base_table_index()] = st_0_look_in_split[1];
-            row[State0MidLowLkIn.base_table_index()] = st_0_look_in_split[2];
-            row[State0LowestLkIn.base_table_index()] = st_0_look_in_split[3];
+            row[State0LowestLkIn.base_table_index()] = st_0_look_in_split[0];
+            row[State0MidLowLkIn.base_table_index()] = st_0_look_in_split[1];
+            row[State0MidHighLkIn.base_table_index()] = st_0_look_in_split[2];
+            row[State0HighestLkIn.base_table_index()] = st_0_look_in_split[3];
 
             let st_0_look_out_split = st_0_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State0HighestLkOut.base_table_index()] = st_0_look_out_split[0];
-            row[State0MidHighLkOut.base_table_index()] = st_0_look_out_split[1];
-            row[State0MidLowLkOut.base_table_index()] = st_0_look_out_split[2];
-            row[State0LowestLkOut.base_table_index()] = st_0_look_out_split[3];
+            row[State0LowestLkOut.base_table_index()] = st_0_look_out_split[0];
+            row[State0MidLowLkOut.base_table_index()] = st_0_look_out_split[1];
+            row[State0MidHighLkOut.base_table_index()] = st_0_look_out_split[2];
+            row[State0HighestLkOut.base_table_index()] = st_0_look_out_split[3];
 
             let st_1_raw_limbs = trace_row[1].raw_u16s();
             let st_1_look_in_split =
                 st_1_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
-            row[State1HighestLkIn.base_table_index()] = st_1_look_in_split[0];
-            row[State1MidHighLkIn.base_table_index()] = st_1_look_in_split[1];
-            row[State1MidLowLkIn.base_table_index()] = st_1_look_in_split[2];
-            row[State1LowestLkIn.base_table_index()] = st_1_look_in_split[3];
+            row[State1LowestLkIn.base_table_index()] = st_1_look_in_split[0];
+            row[State1MidLowLkIn.base_table_index()] = st_1_look_in_split[1];
+            row[State1MidHighLkIn.base_table_index()] = st_1_look_in_split[2];
+            row[State1HighestLkIn.base_table_index()] = st_1_look_in_split[3];
 
             let st_1_look_out_split = st_1_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State1HighestLkOut.base_table_index()] = st_1_look_out_split[0];
-            row[State1MidHighLkOut.base_table_index()] = st_1_look_out_split[1];
-            row[State1MidLowLkOut.base_table_index()] = st_1_look_out_split[2];
-            row[State1LowestLkOut.base_table_index()] = st_1_look_out_split[3];
+            row[State1LowestLkOut.base_table_index()] = st_1_look_out_split[0];
+            row[State1MidLowLkOut.base_table_index()] = st_1_look_out_split[1];
+            row[State1MidHighLkOut.base_table_index()] = st_1_look_out_split[2];
+            row[State1HighestLkOut.base_table_index()] = st_1_look_out_split[3];
 
             let st_2_raw_limbs = trace_row[2].raw_u16s();
             let st_2_look_in_split =
                 st_2_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
-            row[State2HighestLkIn.base_table_index()] = st_2_look_in_split[0];
-            row[State2MidHighLkIn.base_table_index()] = st_2_look_in_split[1];
-            row[State2MidLowLkIn.base_table_index()] = st_2_look_in_split[2];
-            row[State2LowestLkIn.base_table_index()] = st_2_look_in_split[3];
+            row[State2LowestLkIn.base_table_index()] = st_2_look_in_split[0];
+            row[State2MidLowLkIn.base_table_index()] = st_2_look_in_split[1];
+            row[State2MidHighLkIn.base_table_index()] = st_2_look_in_split[2];
+            row[State2HighestLkIn.base_table_index()] = st_2_look_in_split[3];
 
             let st_2_look_out_split = st_2_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State2HighestLkOut.base_table_index()] = st_2_look_out_split[0];
-            row[State2MidHighLkOut.base_table_index()] = st_2_look_out_split[1];
-            row[State2MidLowLkOut.base_table_index()] = st_2_look_out_split[2];
-            row[State2LowestLkOut.base_table_index()] = st_2_look_out_split[3];
+            row[State2LowestLkOut.base_table_index()] = st_2_look_out_split[0];
+            row[State2MidLowLkOut.base_table_index()] = st_2_look_out_split[1];
+            row[State2MidHighLkOut.base_table_index()] = st_2_look_out_split[2];
+            row[State2HighestLkOut.base_table_index()] = st_2_look_out_split[3];
 
             let st_3_raw_limbs = trace_row[3].raw_u16s();
             let st_3_look_in_split =
                 st_3_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
-            row[State3HighestLkIn.base_table_index()] = st_3_look_in_split[0];
-            row[State3MidHighLkIn.base_table_index()] = st_3_look_in_split[1];
-            row[State3MidLowLkIn.base_table_index()] = st_3_look_in_split[2];
-            row[State3LowestLkIn.base_table_index()] = st_3_look_in_split[3];
+            row[State3LowestLkIn.base_table_index()] = st_3_look_in_split[0];
+            row[State3MidLowLkIn.base_table_index()] = st_3_look_in_split[1];
+            row[State3MidHighLkIn.base_table_index()] = st_3_look_in_split[2];
+            row[State3HighestLkIn.base_table_index()] = st_3_look_in_split[3];
 
             let st_3_look_out_split = st_3_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
-            row[State3HighestLkOut.base_table_index()] = st_3_look_out_split[0];
-            row[State3MidHighLkOut.base_table_index()] = st_3_look_out_split[1];
-            row[State3MidLowLkOut.base_table_index()] = st_3_look_out_split[2];
-            row[State3LowestLkOut.base_table_index()] = st_3_look_out_split[3];
+            row[State3LowestLkOut.base_table_index()] = st_3_look_out_split[0];
+            row[State3MidLowLkOut.base_table_index()] = st_3_look_out_split[1];
+            row[State3MidHighLkOut.base_table_index()] = st_3_look_out_split[2];
+            row[State3HighestLkOut.base_table_index()] = st_3_look_out_split[3];
 
             row[State4.base_table_index()] = trace_row[4];
             row[State5.base_table_index()] = trace_row[5];
@@ -1161,8 +1161,8 @@ impl AlgebraicExecutionTrace {
     /// significant limb.
     fn inverse_or_zero_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
         let limbs = state_element.raw_u16s().map(|limb| limb as u64);
-        let highest = limbs[0];
-        let mid_high = limbs[1];
+        let highest = limbs[3];
+        let mid_high = limbs[2];
         let to_invert = mid_high + (highest << 16) - (1 << 32) + 1;
         BFieldElement::from_raw_u64(to_invert).inverse_or_zero()
     }
