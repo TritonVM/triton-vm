@@ -186,11 +186,16 @@ impl ExtHashTable {
             "Round number to deselect must be in the range [-1, {NUM_ROUNDS}] \
             but got {round_number_to_deselect}."
         );
+        // Because BFieldElements cannot be built from signed integers, we special-case -1.
         let constant = |c: u64| circuit_builder.b_constant(c.into());
-        (-1..=NUM_ROUNDS as isize)
+        let factor_for_neg_1 = match round_number_to_deselect == -1 {
+            true => constant(1),
+            false => round_number_circuit_node.clone() + constant(1),
+        };
+        (0..=NUM_ROUNDS as isize)
             .filter(|&r| r != round_number_to_deselect)
             .map(|r| round_number_circuit_node.clone() - constant(r as u64))
-            .fold(constant(1), |a, b| a * b)
+            .fold(factor_for_neg_1, |a, b| a * b)
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
