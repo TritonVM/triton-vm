@@ -2,10 +2,10 @@ use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
+use num_traits::Zero;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
-use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -117,9 +117,9 @@ impl LookupTable {
             let lookup_input = base_row[LookIn.base_table_index()];
             let lookup_output = base_row[LookOut.base_table_index()];
             let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
-            let is_padding = base_row[InverseOf2Pow8MinusLookIn.base_table_index()] == BFIELD_ZERO;
+            let is_padding = base_row[InverseOf2Pow8MinusLookIn.base_table_index()].is_zero();
 
-            if is_padding {
+            if !is_padding {
                 let compressed_row =
                     lookup_input * look_in_weight + lookup_output * look_out_weight;
                 cascade_table_running_sum_log_derivative +=
