@@ -337,12 +337,7 @@ impl<'pgm> VMState<'pgm> {
                 if self.current_instruction()? == AbsorbInit {
                     self.sponge_state = Tip5State::new(Domain::VariableLength).state;
                 }
-                self.sponge_state[..tip5::RATE]
-                    .iter_mut()
-                    .zip_eq(to_absorb.iter())
-                    .for_each(|(sponge_state_element, &to_absorb_element)| {
-                        *sponge_state_element += to_absorb_element;
-                    });
+                self.sponge_state[..tip5::RATE].copy_from_slice(&to_absorb);
                 let tip5_trace = Tip5::trace(&mut Tip5State {
                     state: self.sponge_state,
                 });
