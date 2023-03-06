@@ -1551,9 +1551,9 @@ pub fn evaluate_all_terminal_constraints(
         ExtRamTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtJumpStackTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtHashTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
-        ExtU32Table::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtCascadeTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtLookupTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtU32Table::evaluate_terminal_constraints(base_row, ext_row, challenges),
         GrandCrossTableArg::evaluate_terminal_constraints(base_row, ext_row, challenges),
     ]
     .concat()
