@@ -279,7 +279,7 @@ impl ExtHashTable {
             - one.clone()
             - base_row(State2HighestLkIn) * two_pow_16.clone()
             - base_row(State2MidHighLkIn);
-        let state_3_hi_limbs_minus_2_pow_32 = two_pow_32.clone()
+        let state_3_hi_limbs_minus_2_pow_32 = two_pow_32
             - one.clone()
             - base_row(State3HighestLkIn) * two_pow_16.clone()
             - base_row(State3MidHighLkIn);
