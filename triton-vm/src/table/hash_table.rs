@@ -34,6 +34,7 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
+use crate::table::cross_table_argument::LookupArg;
 use crate::table::table_column::HashBaseTableColumn;
 use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::HashExtTableColumn;
@@ -1059,10 +1060,27 @@ impl HashTable {
         let hash_digest_eval_indeterminate = challenges.get_challenge(HashDigestIndeterminate);
         let hash_input_eval_indeterminate = challenges.get_challenge(HashInputIndeterminate);
         let sponge_eval_indeterminate = challenges.get_challenge(SpongeIndeterminate);
+        let cascade_indeterminate = challenges.get_challenge(HashCascadeLookupIndeterminate);
 
         let mut hash_input_running_evaluation = EvalArg::default_initial();
         let mut hash_digest_running_evaluation = EvalArg::default_initial();
         let mut sponge_running_evaluation = EvalArg::default_initial();
+        let mut cascade_state_0_highest_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_0_mid_high_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_0_mid_low_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_0_lowest_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_1_highest_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_1_mid_high_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_1_mid_low_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_1_lowest_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_2_highest_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_2_mid_high_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_2_mid_low_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_2_lowest_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_3_highest_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_3_mid_high_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_3_mid_low_log_derivative = LookupArg::default_initial();
+        let mut cascade_state_3_lowest_log_derivative = LookupArg::default_initial();
 
         let two_pow_16 = BFieldElement::from(1_u64 << 16);
         let two_pow_32 = BFieldElement::from(1_u64 << 32);
@@ -1106,6 +1124,9 @@ impl HashTable {
             challenges.get_challenge(HashStateWeight9),
         ];
 
+        let cascade_look_in_weight = challenges.get_challenge(HashCascadeLookInWeight);
+        let cascade_look_out_weight = challenges.get_challenge(HashCascadeLookOutWeight);
+
         let opcode_hash = Instruction::Hash.opcode_b();
         let opcode_absorb_init = Instruction::AbsorbInit.opcode_b();
         let opcode_absorb = Instruction::Absorb.opcode_b();
@@ -1114,10 +1135,9 @@ impl HashTable {
         for row_idx in 0..base_table.nrows() {
             let row = base_table.row(row_idx);
             let current_instruction = row[CI.base_table_index()];
+            let round_number = row[RoundNumber.base_table_index()];
 
-            if row[RoundNumber.base_table_index()].value() == NUM_ROUNDS as u64
-                && current_instruction == opcode_hash
-            {
+            if round_number.value() == NUM_ROUNDS as u64 && current_instruction == opcode_hash {
                 // add compressed digest to running evaluation “hash digest”
                 let compressed_hash_digest: XFieldElement = rate_registers(row)[..DIGEST_LENGTH]
                     .iter()
@@ -1129,8 +1149,7 @@ impl HashTable {
                     + compressed_hash_digest;
             }
 
-            // all remaining Evaluation Arguments only get updated if the round number is 0
-            if row[RoundNumber.base_table_index()].is_zero() {
+            if round_number.is_zero() {
                 let compressed_row: XFieldElement = state_weights
                     .iter()
                     .zip_eq(rate_registers(row).iter())
@@ -1154,12 +1173,111 @@ impl HashTable {
                 }
             }
 
+            if (0..NUM_ROUNDS as u64).contains(&round_number.value()) {
+                cascade_state_0_highest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State0HighestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State0HighestLkOut.base_table_index()])
+                .inverse();
+                cascade_state_0_mid_high_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State0MidHighLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State0MidHighLkOut.base_table_index()])
+                .inverse();
+                cascade_state_0_mid_low_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State0MidLowLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State0MidLowLkOut.base_table_index()])
+                .inverse();
+                cascade_state_0_lowest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State0LowestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State0LowestLkOut.base_table_index()])
+                .inverse();
+                cascade_state_1_highest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State1HighestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State1HighestLkOut.base_table_index()])
+                .inverse();
+                cascade_state_1_mid_high_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State1MidHighLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State1MidHighLkOut.base_table_index()])
+                .inverse();
+                cascade_state_1_mid_low_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State1MidLowLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State1MidLowLkOut.base_table_index()])
+                .inverse();
+                cascade_state_1_lowest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State1LowestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State1LowestLkOut.base_table_index()])
+                .inverse();
+                cascade_state_2_highest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State2HighestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State2HighestLkOut.base_table_index()])
+                .inverse();
+                cascade_state_2_mid_high_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State2MidHighLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State2MidHighLkOut.base_table_index()])
+                .inverse();
+                cascade_state_2_mid_low_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State2MidLowLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State2MidLowLkOut.base_table_index()])
+                .inverse();
+                cascade_state_2_lowest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State2LowestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State2LowestLkOut.base_table_index()])
+                .inverse();
+                cascade_state_3_highest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State3HighestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State3HighestLkOut.base_table_index()])
+                .inverse();
+                cascade_state_3_mid_high_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State3MidHighLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State3MidHighLkOut.base_table_index()])
+                .inverse();
+                cascade_state_3_mid_low_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State3MidLowLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State3MidLowLkOut.base_table_index()])
+                .inverse();
+                cascade_state_3_lowest_log_derivative += (cascade_indeterminate
+                    - cascade_look_in_weight * row[State3LowestLkIn.base_table_index()]
+                    - cascade_look_out_weight * row[State3LowestLkOut.base_table_index()])
+                .inverse();
+            }
+
             let mut extension_row = ext_table.row_mut(row_idx);
             extension_row[HashInputRunningEvaluation.ext_table_index()] =
                 hash_input_running_evaluation;
             extension_row[HashDigestRunningEvaluation.ext_table_index()] =
                 hash_digest_running_evaluation;
             extension_row[SpongeRunningEvaluation.ext_table_index()] = sponge_running_evaluation;
+            extension_row[CascadeState0HighestClientLogDerivative.ext_table_index()] =
+                cascade_state_0_highest_log_derivative;
+            extension_row[CascadeState0MidHighClientLogDerivative.ext_table_index()] =
+                cascade_state_0_mid_high_log_derivative;
+            extension_row[CascadeState0MidLowClientLogDerivative.ext_table_index()] =
+                cascade_state_0_mid_low_log_derivative;
+            extension_row[CascadeState0LowestClientLogDerivative.ext_table_index()] =
+                cascade_state_0_lowest_log_derivative;
+            extension_row[CascadeState1HighestClientLogDerivative.ext_table_index()] =
+                cascade_state_1_highest_log_derivative;
+            extension_row[CascadeState1MidHighClientLogDerivative.ext_table_index()] =
+                cascade_state_1_mid_high_log_derivative;
+            extension_row[CascadeState1MidLowClientLogDerivative.ext_table_index()] =
+                cascade_state_1_mid_low_log_derivative;
+            extension_row[CascadeState1LowestClientLogDerivative.ext_table_index()] =
+                cascade_state_1_lowest_log_derivative;
+            extension_row[CascadeState2HighestClientLogDerivative.ext_table_index()] =
+                cascade_state_2_highest_log_derivative;
+            extension_row[CascadeState2MidHighClientLogDerivative.ext_table_index()] =
+                cascade_state_2_mid_high_log_derivative;
+            extension_row[CascadeState2MidLowClientLogDerivative.ext_table_index()] =
+                cascade_state_2_mid_low_log_derivative;
+            extension_row[CascadeState2LowestClientLogDerivative.ext_table_index()] =
+                cascade_state_2_lowest_log_derivative;
+            extension_row[CascadeState3HighestClientLogDerivative.ext_table_index()] =
+                cascade_state_3_highest_log_derivative;
+            extension_row[CascadeState3MidHighClientLogDerivative.ext_table_index()] =
+                cascade_state_3_mid_high_log_derivative;
+            extension_row[CascadeState3MidLowClientLogDerivative.ext_table_index()] =
+                cascade_state_3_mid_low_log_derivative;
+            extension_row[CascadeState3LowestClientLogDerivative.ext_table_index()] =
+                cascade_state_3_lowest_log_derivative;
         }
     }
 }

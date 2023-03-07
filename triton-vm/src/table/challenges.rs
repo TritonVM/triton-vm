@@ -123,16 +123,29 @@ pub enum ChallengeId {
     HashStateWeight14,
     HashStateWeight15,
 
+    /// The indeterminate for the Lookup Argument between the Hash Table and the Cascade Table.
+    HashCascadeLookupIndeterminate,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `*LkIn` in the Hash Table, and
+    /// - `2^16·LookInHi + LookInLo` in the Cascade Table.
+    HashCascadeLookInWeight,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `*LkOut` in the Hash Table, and
+    /// - `2^16·LookOutHi + LookOutLo` in the Cascade Table.
+    HashCascadeLookOutWeight,
+
     /// The indeterminate for the Lookup Argument between the Cascade Table and the Lookup Table.
     CascadeLookupIndeterminate,
 
     /// A weight for non-linearly combining multiple elements. Applies to
-    /// - `*LkIn` in the Cascade Table, and
+    /// - `LkIn*` in the Cascade Table, and
     /// - `LookIn` in the Lookup Table.
     LookupTableInputWeight,
 
     /// A weight for non-linearly combining multiple elements. Applies to
-    /// - `*LkOut` in the Cascade Table, and
+    /// - `LkOut*` in the Cascade Table, and
     /// - `LookOut` in the Lookup Table.
     LookupTableOutputWeight,
 
@@ -154,6 +167,7 @@ pub enum ChallengeId {
     HashInputWeight,
     HashDigestWeight,
     SpongeWeight,
+    HashToCascadeWeight,
     CascadeToLookupWeight,
     ProcessorToU32Weight,
     ClockJumpDifferenceLookupWeight,

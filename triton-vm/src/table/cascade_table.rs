@@ -71,17 +71,34 @@ impl CascadeTable {
         assert_eq!(EXT_WIDTH, ext_table.ncols());
         assert_eq!(base_table.nrows(), ext_table.nrows());
 
+        let mut hash_table_log_derivative = LookupArg::default_initial();
         let mut lookup_table_log_derivative = LookupArg::default_initial();
 
+        let two_pow_8 = BFieldElement::new(1 << 8);
+
+        let hash_indeterminate = challenges.get_challenge(HashCascadeLookupIndeterminate);
+        let hash_input_weight = challenges.get_challenge(HashCascadeLookInWeight);
+        let hash_output_weight = challenges.get_challenge(HashCascadeLookOutWeight);
+
+        let lookup_indeterminate = challenges.get_challenge(CascadeLookupIndeterminate);
         let lookup_input_weight = challenges.get_challenge(LookupTableInputWeight);
         let lookup_output_weight = challenges.get_challenge(LookupTableOutputWeight);
-        let lookup_indeterminate = challenges.get_challenge(CascadeLookupIndeterminate);
 
         for row_idx in 0..base_table.nrows() {
             let base_row = base_table.row(row_idx);
             let is_padding = base_row[IsPadding.base_table_index()].is_one();
 
             if !is_padding {
+                let look_in = two_pow_8 * base_row[LookInHi.base_table_index()]
+                    + base_row[LookInLo.base_table_index()];
+                let look_out = two_pow_8 * base_row[LookOutHi.base_table_index()]
+                    + base_row[LookOutLo.base_table_index()];
+                let compressed_row_hash =
+                    hash_input_weight * look_in + hash_output_weight * look_out;
+                let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
+                hash_table_log_derivative +=
+                    (hash_indeterminate - compressed_row_hash).inverse() * lookup_multiplicity;
+
                 let compressed_row_lo = lookup_input_weight * base_row[LookInLo.base_table_index()]
                     + lookup_output_weight * base_row[LookOutLo.base_table_index()];
                 let compressed_row_hi = lookup_input_weight * base_row[LookInHi.base_table_index()]
@@ -91,6 +108,8 @@ impl CascadeTable {
             }
 
             let mut extension_row = ext_table.row_mut(row_idx);
+            extension_row[HashTableServerLogDerivative.ext_table_index()] =
+                hash_table_log_derivative;
             extension_row[LookupTableClientLogDerivative.ext_table_index()] =
                 lookup_table_log_derivative;
         }

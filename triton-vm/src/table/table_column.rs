@@ -267,6 +267,26 @@ pub enum HashExtTableColumn {
     HashDigestRunningEvaluation,
 
     SpongeRunningEvaluation,
+
+    CascadeState0HighestClientLogDerivative,
+    CascadeState0MidHighClientLogDerivative,
+    CascadeState0MidLowClientLogDerivative,
+    CascadeState0LowestClientLogDerivative,
+
+    CascadeState1HighestClientLogDerivative,
+    CascadeState1MidHighClientLogDerivative,
+    CascadeState1MidLowClientLogDerivative,
+    CascadeState1LowestClientLogDerivative,
+
+    CascadeState2HighestClientLogDerivative,
+    CascadeState2MidHighClientLogDerivative,
+    CascadeState2MidLowClientLogDerivative,
+    CascadeState2LowestClientLogDerivative,
+
+    CascadeState3HighestClientLogDerivative,
+    CascadeState3MidHighClientLogDerivative,
+    CascadeState3MidLowClientLogDerivative,
+    CascadeState3LowestClientLogDerivative,
 }
 
 // -------- Cascade Table --------
