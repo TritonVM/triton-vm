@@ -9,12 +9,15 @@ use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::LookupArg;
 use crate::table::table_column::CascadeBaseTableColumn;
@@ -132,26 +135,97 @@ impl CascadeTable {
 
 impl ExtCascadeTable {
     pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let mut constraints = [];
+        let circuit_builder = ConstraintCircuitBuilder::new();
+
+        let base_row = |col_id: CascadeBaseTableColumn| {
+            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
+        };
+        let ext_row = |col_id: CascadeExtTableColumn| {
+            circuit_builder.input(ExtRow(col_id.master_ext_table_index()))
+        };
+        let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
+
+        let one = circuit_builder.b_constant(BFIELD_ONE);
+        let two = circuit_builder.b_constant(BFieldElement::new(2));
+        let two_pow_8 = circuit_builder.b_constant(BFieldElement::new(1 << 8));
+        let lookup_arg_default_initial = circuit_builder.x_constant(LookupArg::default_initial());
+
+        let is_padding = base_row(IsPadding);
+        let look_in_hi = base_row(LookInHi);
+        let look_in_lo = base_row(LookInLo);
+        let look_out_hi = base_row(LookOutHi);
+        let look_out_lo = base_row(LookOutLo);
+        let lookup_multiplicity = base_row(LookupMultiplicity);
+        let hash_table_server_log_derivative = ext_row(HashTableServerLogDerivative);
+        let lookup_table_client_log_derivative = ext_row(LookupTableClientLogDerivative);
+
+        let hash_indeterminate = challenge(HashCascadeLookupIndeterminate);
+        let hash_input_weight = challenge(HashCascadeLookInWeight);
+        let hash_output_weight = challenge(HashCascadeLookOutWeight);
+
+        let lookup_indeterminate = challenge(CascadeLookupIndeterminate);
+        let lookup_input_weight = challenge(LookupTableInputWeight);
+        let lookup_output_weight = challenge(LookupTableOutputWeight);
+
+        // Lookup Argument with Hash Table
+        let compressed_row_hash = hash_input_weight
+            * (two_pow_8.clone() * look_in_hi.clone() + look_in_lo.clone())
+            + hash_output_weight * (two_pow_8 * look_out_hi.clone() + look_out_lo.clone());
+        let hash_table_log_derivative_is_default_initial =
+            hash_table_server_log_derivative.clone() - lookup_arg_default_initial.clone();
+        let hash_table_log_derivative_has_accumulated_first_row = (hash_table_server_log_derivative
+            - lookup_arg_default_initial.clone())
+            * (hash_indeterminate - compressed_row_hash)
+            - lookup_multiplicity;
+        let hash_table_log_derivative_is_initialized_correctly = (one.clone() - is_padding.clone())
+            * hash_table_log_derivative_has_accumulated_first_row
+            + is_padding.clone() * hash_table_log_derivative_is_default_initial;
+
+        // Lookup Argument with Lookup Table
+        let compressed_row_lo =
+            lookup_input_weight.clone() * look_in_lo + lookup_output_weight.clone() * look_out_lo;
+        let compressed_row_hi =
+            lookup_input_weight * look_in_hi + lookup_output_weight * look_out_hi;
+        let lookup_table_log_derivative_is_default_initial =
+            lookup_table_client_log_derivative.clone() - lookup_arg_default_initial.clone();
+        let lookup_table_log_derivative_has_accumulated_first_row =
+            (lookup_table_client_log_derivative - lookup_arg_default_initial)
+                * (lookup_indeterminate.clone() - compressed_row_lo.clone())
+                * (lookup_indeterminate.clone() - compressed_row_hi.clone())
+                - two * lookup_indeterminate
+                + compressed_row_lo
+                + compressed_row_hi;
+        let lookup_table_log_derivative_is_initialized_correctly = (one - is_padding.clone())
+            * lookup_table_log_derivative_has_accumulated_first_row
+            + is_padding * lookup_table_log_derivative_is_default_initial;
+
+        let mut constraints = [
+            hash_table_log_derivative_is_initialized_correctly,
+            lookup_table_log_derivative_is_initialized_correctly,
+        ];
         ConstraintCircuitMonad::constant_folding(&mut constraints);
         constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        // todo:
+        //  - IsPadding is bit
         let mut constraints = [];
         ConstraintCircuitMonad::constant_folding(&mut constraints);
         constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
+        // todo:
+        //  - if IsPadding is 1, then IsPadding' is 1
+        //  - HashTableServerLogDerivative
+        //  - LookupTableClientLogDerivative
         let mut constraints = [];
         ConstraintCircuitMonad::constant_folding(&mut constraints);
         constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let mut constraints = [];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![]
     }
 }
