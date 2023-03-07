@@ -274,6 +274,9 @@ pub enum HashExtTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum CascadeBaseTableColumn {
+    /// Indicator for padding rows.
+    IsPadding,
+
     /// The more significant bits of the lookup input.
     LookInHi,
 
@@ -294,10 +297,11 @@ pub enum CascadeBaseTableColumn {
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum CascadeExtTableColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Hash Table.
-    /// In every row, the sum accumulates `LookupMultiplicity / Combo` where `Combo` is the
-    /// verifier-weighted combination of
-    /// - `LookInHi · 2^32 + LookInLo`, and
-    /// - `LookOutHi · 2^32 + LookOutLo`.
+    /// In every row, the sum accumulates `LookupMultiplicity / (X - Combo)` where `X` is a
+    /// verifier-supplied challenge and `Combo` is the weighted sum of
+    /// - `LookInHi · 2^16 + LookInLo`, and
+    /// - `LookOutHi · 2^16 + LookOutLo`
+    /// with weights supplied by the verifier.
     HashTableServerLogDerivative,
 
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Lookup
