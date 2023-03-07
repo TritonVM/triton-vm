@@ -154,6 +154,7 @@ pub enum ChallengeId {
     HashInputWeight,
     HashDigestWeight,
     SpongeWeight,
+    CascadeToLookupWeight,
     ProcessorToU32Weight,
     ClockJumpDifferenceLookupWeight,
 
