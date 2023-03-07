@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry::*;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fmt::Display;
@@ -1001,17 +1002,21 @@ impl AlgebraicExecutionTrace {
         &mut self,
         hash_permutation_trace: [[BFieldElement; tip5::STATE_SIZE]; tip5::NUM_ROUNDS + 1],
     ) {
+        // The last row in the trace is the permutation's result, meaning that no lookups are
+        // performed on it. Therefore, we skip it.
         for row in hash_permutation_trace.iter().rev().skip(1) {
             for state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
                 for limb in state_element.raw_u16s() {
-                    let limb_lo = limb & 0xff;
-                    let limb_hi = (limb >> 8) & 0xff;
-                    self.lookup_table_lookup_multiplicities[limb_lo as usize] += 1;
-                    self.lookup_table_lookup_multiplicities[limb_hi as usize] += 1;
-                    self.cascade_table_lookup_multiplicities
-                        .entry(limb)
-                        .and_modify(|e| *e += 1)
-                        .or_insert(1);
+                    match self.cascade_table_lookup_multiplicities.entry(limb) {
+                        Occupied(mut cascade_table_entry) => *cascade_table_entry.get_mut() += 1,
+                        Vacant(cascade_table_entry) => {
+                            cascade_table_entry.insert(1);
+                            let limb_lo = limb & 0xff;
+                            let limb_hi = (limb >> 8) & 0xff;
+                            self.lookup_table_lookup_multiplicities[limb_lo as usize] += 1;
+                            self.lookup_table_lookup_multiplicities[limb_hi as usize] += 1;
+                        }
+                    }
                 }
             }
         }
