@@ -2,7 +2,7 @@ use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView2;
 use ndarray::ArrayViewMut2;
-use num_traits::Zero;
+use num_traits::One;
 use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
@@ -50,31 +50,18 @@ impl LookupTable {
         assert!(lookup_table.nrows() >= 1 << 8);
 
         // Lookup Table input
-        let lookup_input = Array1::from_iter((0_u64..1 << 8).map(BFieldElement::new));
+        let lookup_input = Array1::from_iter((0_u64..1 << 8).map(BFieldElement::from_raw_u64));
         let lookup_input_column =
             lookup_table.slice_mut(s![..1_usize << 8, LookIn.base_table_index()]);
         lookup_input.move_into(lookup_input_column);
 
         // Lookup Table output
         let lookup_output = Array1::from_iter(
-            (0..1 << 8).map(|i| BFieldElement::new(tip5::LOOKUP_TABLE[i] as u64)),
+            (0..1 << 8).map(|i| BFieldElement::from_raw_u64(tip5::LOOKUP_TABLE[i] as u64)),
         );
         let lookup_output_column =
             lookup_table.slice_mut(s![..1_usize << 8, LookOut.base_table_index()]);
         lookup_output.move_into(lookup_output_column);
-
-        // Inverse of 2^8 - Lookup Table input
-        let inverse_of_2_pow_8_minus_lookup_input = Array1::from_iter(
-            (1_u64..(1 << 8) + 1)
-                .map(|a| BFieldElement::new(a).inverse())
-                .rev(),
-        );
-        let inverse_of_2_pow_8_minus_lookup_input_column = lookup_table.slice_mut(s![
-            ..1_usize << 8,
-            InverseOf2Pow8MinusLookIn.base_table_index()
-        ]);
-        inverse_of_2_pow_8_minus_lookup_input
-            .move_into(inverse_of_2_pow_8_minus_lookup_input_column);
 
         // Lookup Table multiplicities
         let lookup_multiplicities = Array1::from_iter(
@@ -90,8 +77,8 @@ impl LookupTable {
         // The Lookup Table is always fully populated.
         let lookup_table_length: usize = 1 << 8;
         lookup_table
-            .slice_mut(s![lookup_table_length.., LookIn.base_table_index()])
-            .fill(BFieldElement::new(1 << 8));
+            .slice_mut(s![lookup_table_length.., IsPadding.base_table_index()])
+            .fill(BFIELD_ONE);
     }
 
     pub fn extend(
@@ -117,7 +104,7 @@ impl LookupTable {
             let lookup_input = base_row[LookIn.base_table_index()];
             let lookup_output = base_row[LookOut.base_table_index()];
             let lookup_multiplicity = base_row[LookupMultiplicity.base_table_index()];
-            let is_padding = base_row[InverseOf2Pow8MinusLookIn.base_table_index()].is_zero();
+            let is_padding = base_row[IsPadding.base_table_index()].is_one();
 
             if !is_padding {
                 let compressed_row =
@@ -185,44 +172,13 @@ impl ExtLookupTable {
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
-        let one = circuit_builder.b_constant(BFIELD_ONE);
-        let two_pow_8 = circuit_builder.b_constant(BFieldElement::new(1 << 8));
-
-        let base_row = |col_id: LookupBaseTableColumn| {
-            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
-        };
-
-        let lookup_input = base_row(LookIn);
-        let inverse_of_2_pow_8_minus_lookup_input = base_row(InverseOf2Pow8MinusLookIn);
-        let lookup_multiplicity = base_row(LookupMultiplicity);
-
-        let two_pow_8_minus_lookup_input = two_pow_8 - lookup_input;
-        let two_pow_8_minus_lookup_input_times_inv_is_1 = two_pow_8_minus_lookup_input.clone()
-            * inverse_of_2_pow_8_minus_lookup_input.clone()
-            - one;
-        let two_pow_8_minus_lookup_input_times_inv_is_1_or_lookup_input_is_two_pow_8 =
-            two_pow_8_minus_lookup_input_times_inv_is_1.clone() * two_pow_8_minus_lookup_input;
-        let two_pow_8_minus_lookup_input_times_inv_is_1_or_inv_is_zero =
-            two_pow_8_minus_lookup_input_times_inv_is_1.clone()
-                * inverse_of_2_pow_8_minus_lookup_input;
-        let if_lookup_input_is_256_then_multiplicity_is_0 =
-            two_pow_8_minus_lookup_input_times_inv_is_1 * lookup_multiplicity;
-
-        let mut constraints = [
-            two_pow_8_minus_lookup_input_times_inv_is_1_or_lookup_input_is_two_pow_8,
-            two_pow_8_minus_lookup_input_times_inv_is_1_or_inv_is_zero,
-            if_lookup_input_is_256_then_multiplicity_is_0,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![]
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(BFIELD_ONE);
-        let twofiftysix = circuit_builder.b_constant(BFieldElement::new(1 << 8));
+        let one_montgomery = circuit_builder.b_constant(BFieldElement::from_raw_u64(1));
 
         let current_base_row = |col_id: LookupBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col_id.master_base_table_index()))
@@ -239,36 +195,26 @@ impl ExtLookupTable {
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
         let lookup_input = current_base_row(LookIn);
-        let inverse_of_2_pow_8_minus_lookup_input = current_base_row(InverseOf2Pow8MinusLookIn);
         let cascade_table_server_log_derivative = current_ext_row(CascadeTableServerLogDerivative);
         let public_evaluation_argument = current_ext_row(PublicEvaluationArgument);
 
         let lookup_input_next = next_base_row(LookIn);
         let lookup_output_next = next_base_row(LookOut);
         let lookup_multiplicity_next = next_base_row(LookupMultiplicity);
-        let inverse_of_2_pow_8_minus_lookup_input_next = next_base_row(InverseOf2Pow8MinusLookIn);
+        let is_padding_next = next_base_row(IsPadding);
         let cascade_table_server_log_derivative_next =
             next_ext_row(CascadeTableServerLogDerivative);
         let public_evaluation_argument_next = next_ext_row(PublicEvaluationArgument);
 
-        // Lookup Table's input increments by 1 if and only if it is less than 256.
-        let lookup_input_is_unequal_to_256 = (twofiftysix.clone() - lookup_input.clone())
-            * inverse_of_2_pow_8_minus_lookup_input
-            - one.clone();
-        let if_lookup_input_is_equal_to_256_then_lookup_input_next_is_256 =
-            lookup_input_is_unequal_to_256 * (lookup_input_next.clone() - twofiftysix.clone());
-        let if_lookup_input_is_unequal_to_256_then_lookup_input_next_increments_by_1 =
-            (lookup_input.clone() - twofiftysix.clone())
-                * (lookup_input_next.clone() - lookup_input - one.clone());
-        let lookup_input_increments_if_and_only_if_less_than_256 =
-            if_lookup_input_is_equal_to_256_then_lookup_input_next_is_256
-                + if_lookup_input_is_unequal_to_256_then_lookup_input_next_increments_by_1;
-
-        // helper variables to determine whether the next row is a padding row
-        let lookup_input_next_is_unequal_to_256 = (twofiftysix.clone() - lookup_input_next.clone())
-            * inverse_of_2_pow_8_minus_lookup_input_next
-            - one;
-        let lookup_input_next_is_equal_to_256 = twofiftysix - lookup_input_next.clone();
+        // Lookup Table's input increments by 1 if and only if the next row is not a padding row
+        let if_next_row_is_padding_row_then_lookup_input_next_is_0 =
+            is_padding_next.clone() * lookup_input_next.clone();
+        let if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1 = (one.clone()
+            - is_padding_next.clone())
+            * (lookup_input_next.clone() - lookup_input - one_montgomery);
+        let lookup_input_increments_if_and_only_if_next_row_is_not_padding_row =
+            if_next_row_is_padding_row_then_lookup_input_next_is_0
+                + if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1;
 
         // Lookup Argument with Cascade Table
         let cascade_table_indeterminate = challenge(CascadeLookupIndeterminate);
@@ -281,9 +227,8 @@ impl ExtLookupTable {
             * (cascade_table_indeterminate - compressed_row)
             - lookup_multiplicity_next;
         let cascade_table_log_derivative_updates_if_and_only_if_next_row_is_not_padding_row =
-            lookup_input_next_is_equal_to_256.clone() * cascade_table_log_derivative_updates
-                + lookup_input_next_is_unequal_to_256.clone()
-                    * cascade_table_log_derivative_remains;
+            (one.clone() - is_padding_next.clone()) * cascade_table_log_derivative_updates
+                + is_padding_next.clone() * cascade_table_log_derivative_remains;
 
         // public Evaluation Argument
         let public_indeterminate = challenge(LookupTablePublicIndeterminate);
@@ -293,11 +238,11 @@ impl ExtLookupTable {
             - public_evaluation_argument * public_indeterminate
             - lookup_output_next;
         let public_evaluation_argument_updates_if_and_only_if_next_row_is_not_padding_row =
-            lookup_input_next_is_equal_to_256 * public_evaluation_argument_updates
-                + lookup_input_next_is_unequal_to_256 * public_evaluation_argument_remains;
+            (one - is_padding_next.clone()) * public_evaluation_argument_updates
+                + is_padding_next * public_evaluation_argument_remains;
 
         let mut constraints = [
-            lookup_input_increments_if_and_only_if_less_than_256,
+            lookup_input_increments_if_and_only_if_next_row_is_not_padding_row,
             cascade_table_log_derivative_updates_if_and_only_if_next_row_is_not_padding_row,
             public_evaluation_argument_updates_if_and_only_if_next_row_is_not_padding_row,
         ];
@@ -306,17 +251,6 @@ impl ExtLookupTable {
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        let twofiftyfive = circuit_builder.b_constant(BFieldElement::new(255));
-        let twofiftysix = circuit_builder.b_constant(BFieldElement::new(256));
-
-        let lookup_input = circuit_builder.input(BaseRow(LookIn.master_base_table_index()));
-
-        let lookup_input_is_255_or_256 =
-            (lookup_input.clone() - twofiftyfive) * (lookup_input - twofiftysix);
-
-        let mut constraints = [lookup_input_is_255_or_256];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![]
     }
 }

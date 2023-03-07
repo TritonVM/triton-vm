@@ -318,16 +318,14 @@ pub enum CascadeExtTableColumn {
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum LookupBaseTableColumn {
+    /// Indicator for padding rows.
+    IsPadding,
+
     /// The lookup input.
     LookIn,
 
     /// The lookup output.
     LookOut,
-
-    /// The inverse-or-zero of 2^8 minus the lookup input. Helps
-    /// - identifying padding rows, and
-    /// - enforcing that the padding section is started in the correct row.
-    InverseOf2Pow8MinusLookIn,
 
     /// The number of times the value is looked up.
     LookupMultiplicity,

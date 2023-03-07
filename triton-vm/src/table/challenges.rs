@@ -238,7 +238,7 @@ impl Challenges {
             challenges[StandardOutputIndeterminate.index()],
         );
         let lookup_terminal = EvalArg::compute_terminal(
-            &LOOKUP_TABLE.map(|i| BFieldElement::new(i as u64)),
+            &LOOKUP_TABLE.map(|i| BFieldElement::from_raw_u64(i as u64)),
             EvalArg::default_initial(),
             challenges[LookupTablePublicIndeterminate.index()],
         );
