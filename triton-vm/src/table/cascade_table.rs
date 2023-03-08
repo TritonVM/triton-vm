@@ -49,8 +49,8 @@ impl CascadeTable {
             let to_look_up_hi = ((to_look_up >> 8) & 0xff) as u8;
 
             let mut row = cascade_table.row_mut(row_idx);
-            row[LookInLo.base_table_index()] = BFieldElement::from_raw_u64(to_look_up_lo as u64);
-            row[LookInHi.base_table_index()] = BFieldElement::from_raw_u64(to_look_up_hi as u64);
+            row[LookInLo.base_table_index()] = BFieldElement::new(to_look_up_lo as u64);
+            row[LookInHi.base_table_index()] = BFieldElement::new(to_look_up_hi as u64);
             row[LookOutLo.base_table_index()] = Self::lookup_8_bit_limb(to_look_up_lo);
             row[LookOutHi.base_table_index()] = Self::lookup_8_bit_limb(to_look_up_hi);
             row[LookupMultiplicity.base_table_index()] = BFieldElement::new(multiplicity);
@@ -121,7 +121,7 @@ impl CascadeTable {
 
     fn lookup_8_bit_limb(to_look_up: u8) -> BFieldElement {
         let looked_up = tip5::LOOKUP_TABLE[to_look_up as usize] as u64;
-        BFieldElement::from_raw_u64(looked_up)
+        BFieldElement::new(looked_up)
     }
 
     pub fn lookup_16_bit_limb(to_look_up: u16) -> BFieldElement {

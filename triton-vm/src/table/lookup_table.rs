@@ -50,14 +50,14 @@ impl LookupTable {
         assert!(lookup_table.nrows() >= 1 << 8);
 
         // Lookup Table input
-        let lookup_input = Array1::from_iter((0_u64..1 << 8).map(BFieldElement::from_raw_u64));
+        let lookup_input = Array1::from_iter((0_u64..1 << 8).map(BFieldElement::new));
         let lookup_input_column =
             lookup_table.slice_mut(s![..1_usize << 8, LookIn.base_table_index()]);
         lookup_input.move_into(lookup_input_column);
 
         // Lookup Table output
         let lookup_output = Array1::from_iter(
-            (0..1 << 8).map(|i| BFieldElement::from_raw_u64(tip5::LOOKUP_TABLE[i] as u64)),
+            (0..1 << 8).map(|i| BFieldElement::new(tip5::LOOKUP_TABLE[i] as u64)),
         );
         let lookup_output_column =
             lookup_table.slice_mut(s![..1_usize << 8, LookOut.base_table_index()]);
@@ -178,7 +178,6 @@ impl ExtLookupTable {
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let one = circuit_builder.b_constant(BFIELD_ONE);
-        let one_montgomery = circuit_builder.b_constant(BFieldElement::from_raw_u64(1));
 
         let current_base_row = |col_id: LookupBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(col_id.master_base_table_index()))
@@ -217,7 +216,7 @@ impl ExtLookupTable {
             is_padding_next.clone() * lookup_input_next.clone();
         let if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1 = (one.clone()
             - is_padding_next.clone())
-            * (lookup_input_next.clone() - lookup_input - one_montgomery);
+            * (lookup_input_next.clone() - lookup_input - one.clone());
         let lookup_input_increments_if_and_only_if_next_row_is_not_padding_row =
             if_next_row_is_padding_row_then_lookup_input_next_is_0
                 + if_next_row_is_not_padding_row_then_lookup_input_next_increments_by_1;

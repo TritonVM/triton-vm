@@ -57,11 +57,35 @@ pub struct HashTable {}
 pub struct ExtHashTable {}
 
 impl ExtHashTable {
+    fn re_compose_16_bit_limbs<II: InputIndicator>(
+        circuit_builder: &ConstraintCircuitBuilder<II>,
+        highest: ConstraintCircuitMonad<II>,
+        mid_high: ConstraintCircuitMonad<II>,
+        mid_low: ConstraintCircuitMonad<II>,
+        lowest: ConstraintCircuitMonad<II>,
+    ) -> ConstraintCircuitMonad<II> {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+
+        // R is the field element congruent to 2^64 modulo p, accounting for native
+        // representation of field elements in Montgomery form.
+        // State elements are multiplied by R prior to decomposition into limbs.
+        // After re-composition from limbs, the result must be multiplied by R_inv.
+        // See `HashTable::base_field_element_16_bit_limbs` for some more details.
+        let capital_r = BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
+        let capital_r_inv = circuit_builder.b_constant(capital_r.inverse());
+
+        (highest * constant(1 << 48)
+            + mid_high * constant(1 << 32)
+            + mid_low * constant(1 << 16)
+            + lowest)
+            * capital_r_inv
+    }
+
     pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
-        let constant = |c| circuit_builder.b_constant(c);
-        let one = constant(BFIELD_ONE);
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let b_constant = |c| circuit_builder.b_constant(c);
 
         let base_row = |column: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column.master_base_table_index()))
@@ -78,26 +102,36 @@ impl ExtHashTable {
         let running_evaluation_hash_digest = ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge = ext_row(SpongeRunningEvaluation);
 
-        let two_pow_16 = constant(BFieldElement::new(1_u64 << 16));
-        let two_pow_32 = constant(BFieldElement::new(1_u64 << 32));
-        let two_pow_48 = constant(BFieldElement::new(1_u64 << 48));
+        let one = constant(1);
 
-        let state_0 = base_row(State0HighestLkIn) * two_pow_48.clone()
-            + base_row(State0MidHighLkIn) * two_pow_32.clone()
-            + base_row(State0MidLowLkIn) * two_pow_16.clone()
-            + base_row(State0LowestLkIn);
-        let state_1 = base_row(State1HighestLkIn) * two_pow_48.clone()
-            + base_row(State1MidHighLkIn) * two_pow_32.clone()
-            + base_row(State1MidLowLkIn) * two_pow_16.clone()
-            + base_row(State1LowestLkIn);
-        let state_2 = base_row(State2HighestLkIn) * two_pow_48.clone()
-            + base_row(State2MidHighLkIn) * two_pow_32.clone()
-            + base_row(State2MidLowLkIn) * two_pow_16.clone()
-            + base_row(State2LowestLkIn);
-        let state_3 = base_row(State3HighestLkIn) * two_pow_48
-            + base_row(State3MidHighLkIn) * two_pow_32
-            + base_row(State3MidLowLkIn) * two_pow_16
-            + base_row(State3LowestLkIn);
+        let state_0 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            base_row(State0HighestLkIn),
+            base_row(State0MidHighLkIn),
+            base_row(State0MidLowLkIn),
+            base_row(State0LowestLkIn),
+        );
+        let state_1 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            base_row(State1HighestLkIn),
+            base_row(State1MidHighLkIn),
+            base_row(State1MidLowLkIn),
+            base_row(State1LowestLkIn),
+        );
+        let state_2 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            base_row(State2HighestLkIn),
+            base_row(State2MidHighLkIn),
+            base_row(State2MidLowLkIn),
+            base_row(State2LowestLkIn),
+        );
+        let state_3 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            base_row(State3HighestLkIn),
+            base_row(State3MidHighLkIn),
+            base_row(State3MidLowLkIn),
+            base_row(State3LowestLkIn),
+        );
 
         let state = [
             state_0,
@@ -133,8 +167,8 @@ impl ExtHashTable {
         let round_number_is_neg_1_or_0 =
             (round_number.clone() + one.clone()) * round_number.clone();
 
-        let ci_is_hash = ci.clone() - constant(Instruction::Hash.opcode_b());
-        let ci_is_absorb_init = ci - constant(Instruction::AbsorbInit.opcode_b());
+        let ci_is_hash = ci.clone() - b_constant(Instruction::Hash.opcode_b());
+        let ci_is_absorb_init = ci - b_constant(Instruction::AbsorbInit.opcode_b());
         let current_instruction_is_absorb_init_or_hash =
             ci_is_absorb_init.clone() * ci_is_hash.clone();
 
@@ -164,7 +198,7 @@ impl ExtHashTable {
             running_evaluation_sponge.clone() - running_evaluation_initial.clone();
         let running_evaluation_sponge_has_accumulated_first_row = running_evaluation_sponge
             - running_evaluation_initial * sponge_indeterminate
-            - challenge(HashCIWeight) * constant(Instruction::AbsorbInit.opcode_b())
+            - challenge(HashCIWeight) * b_constant(Instruction::AbsorbInit.opcode_b())
             - compressed_row;
         let running_evaluation_sponge_absorb_is_initialized_correctly = ci_is_hash
             * running_evaluation_sponge_has_accumulated_first_row
@@ -418,11 +452,12 @@ impl ExtHashTable {
         let circuit_builder = ConstraintCircuitBuilder::new();
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let b_constant = |c| circuit_builder.b_constant(c);
 
-        let opcode_hash = constant(Instruction::Hash.opcode() as u64);
-        let opcode_absorb_init = constant(Instruction::AbsorbInit.opcode() as u64);
-        let opcode_absorb = constant(Instruction::Absorb.opcode() as u64);
-        let opcode_squeeze = constant(Instruction::Squeeze.opcode() as u64);
+        let opcode_hash = b_constant(Instruction::Hash.opcode_b());
+        let opcode_absorb_init = b_constant(Instruction::AbsorbInit.opcode_b());
+        let opcode_absorb = b_constant(Instruction::Absorb.opcode_b());
+        let opcode_squeeze = b_constant(Instruction::Squeeze.opcode_b());
 
         let current_base_row = |column_idx: HashBaseTableColumn| {
             circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
@@ -453,26 +488,34 @@ impl ExtHashTable {
         let running_evaluation_hash_digest_next = next_ext_row(HashDigestRunningEvaluation);
         let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
 
-        let two_pow_16 = constant(1 << 16);
-        let two_pow_32 = constant(1 << 32);
-        let two_pow_48 = constant(1 << 48);
-
-        let state_0 = current_base_row(State0HighestLkIn) * two_pow_48.clone()
-            + current_base_row(State0MidHighLkIn) * two_pow_32.clone()
-            + current_base_row(State0MidLowLkIn) * two_pow_16.clone()
-            + current_base_row(State0LowestLkIn);
-        let state_1 = current_base_row(State1HighestLkIn) * two_pow_48.clone()
-            + current_base_row(State1MidHighLkIn) * two_pow_32.clone()
-            + current_base_row(State1MidLowLkIn) * two_pow_16.clone()
-            + current_base_row(State1LowestLkIn);
-        let state_2 = current_base_row(State2HighestLkIn) * two_pow_48.clone()
-            + current_base_row(State2MidHighLkIn) * two_pow_32.clone()
-            + current_base_row(State2MidLowLkIn) * two_pow_16.clone()
-            + current_base_row(State2LowestLkIn);
-        let state_3 = current_base_row(State3HighestLkIn) * two_pow_48
-            + current_base_row(State3MidHighLkIn) * two_pow_32
-            + current_base_row(State3MidLowLkIn) * two_pow_16
-            + current_base_row(State3LowestLkIn);
+        let state_0 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            current_base_row(State0HighestLkIn),
+            current_base_row(State0MidHighLkIn),
+            current_base_row(State0MidLowLkIn),
+            current_base_row(State0LowestLkIn),
+        );
+        let state_1 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            current_base_row(State1HighestLkIn),
+            current_base_row(State1MidHighLkIn),
+            current_base_row(State1MidLowLkIn),
+            current_base_row(State1LowestLkIn),
+        );
+        let state_2 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            current_base_row(State2HighestLkIn),
+            current_base_row(State2MidHighLkIn),
+            current_base_row(State2MidLowLkIn),
+            current_base_row(State2LowestLkIn),
+        );
+        let state_3 = Self::re_compose_16_bit_limbs(
+            &circuit_builder,
+            current_base_row(State3HighestLkIn),
+            current_base_row(State3MidHighLkIn),
+            current_base_row(State3MidLowLkIn),
+            current_base_row(State3LowestLkIn),
+        );
 
         let state_current = [
             state_0,
@@ -708,26 +751,34 @@ impl ExtHashTable {
             circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
         };
 
-        let two_pow_16 = constant(1 << 16);
-        let two_pow_32 = constant(1 << 32);
-        let two_pow_48 = constant(1 << 48);
-
-        let state_0_after_lookup = current_base_row(State0HighestLkOut) * two_pow_48.clone()
-            + current_base_row(State0MidHighLkOut) * two_pow_32.clone()
-            + current_base_row(State0MidLowLkOut) * two_pow_16.clone()
-            + current_base_row(State0LowestLkOut);
-        let state_1_after_lookup = current_base_row(State1HighestLkOut) * two_pow_48.clone()
-            + current_base_row(State1MidHighLkOut) * two_pow_32.clone()
-            + current_base_row(State1MidLowLkOut) * two_pow_16.clone()
-            + current_base_row(State1LowestLkOut);
-        let state_2_after_lookup = current_base_row(State2HighestLkOut) * two_pow_48.clone()
-            + current_base_row(State2MidHighLkOut) * two_pow_32.clone()
-            + current_base_row(State2MidLowLkOut) * two_pow_16.clone()
-            + current_base_row(State2LowestLkOut);
-        let state_3_after_lookup = current_base_row(State3HighestLkOut) * two_pow_48.clone()
-            + current_base_row(State3MidHighLkOut) * two_pow_32.clone()
-            + current_base_row(State3MidLowLkOut) * two_pow_16.clone()
-            + current_base_row(State3LowestLkOut);
+        let state_0_after_lookup = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            current_base_row(State0HighestLkOut),
+            current_base_row(State0MidHighLkOut),
+            current_base_row(State0MidLowLkOut),
+            current_base_row(State0LowestLkOut),
+        );
+        let state_1_after_lookup = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            current_base_row(State1HighestLkOut),
+            current_base_row(State1MidHighLkOut),
+            current_base_row(State1MidLowLkOut),
+            current_base_row(State1LowestLkOut),
+        );
+        let state_2_after_lookup = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            current_base_row(State2HighestLkOut),
+            current_base_row(State2MidHighLkOut),
+            current_base_row(State2MidLowLkOut),
+            current_base_row(State2LowestLkOut),
+        );
+        let state_3_after_lookup = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            current_base_row(State3HighestLkOut),
+            current_base_row(State3MidHighLkOut),
+            current_base_row(State3MidLowLkOut),
+            current_base_row(State3LowestLkOut),
+        );
 
         let state_part_before_power_map: [_; STATE_SIZE - NUM_SPLIT_AND_LOOKUP] = [
             State4, State5, State6, State7, State8, State9, State10, State11, State12, State13,
@@ -796,22 +847,34 @@ impl ExtHashTable {
                 .try_into()
                 .unwrap();
 
-        let state_0_next = next_base_row(State0HighestLkIn) * two_pow_48.clone()
-            + next_base_row(State0MidHighLkIn) * two_pow_32.clone()
-            + next_base_row(State0MidLowLkIn) * two_pow_16.clone()
-            + next_base_row(State0LowestLkIn);
-        let state_1_next = next_base_row(State1HighestLkIn) * two_pow_48.clone()
-            + next_base_row(State1MidHighLkIn) * two_pow_32.clone()
-            + next_base_row(State1MidLowLkIn) * two_pow_16.clone()
-            + next_base_row(State1LowestLkIn);
-        let state_2_next = next_base_row(State2HighestLkIn) * two_pow_48.clone()
-            + next_base_row(State2MidHighLkIn) * two_pow_32.clone()
-            + next_base_row(State2MidLowLkIn) * two_pow_16.clone()
-            + next_base_row(State2LowestLkIn);
-        let state_3_next = next_base_row(State3HighestLkIn) * two_pow_48
-            + next_base_row(State3MidHighLkIn) * two_pow_32
-            + next_base_row(State3MidLowLkIn) * two_pow_16
-            + next_base_row(State3LowestLkIn);
+        let state_0_next = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            next_base_row(State0HighestLkIn),
+            next_base_row(State0MidHighLkIn),
+            next_base_row(State0MidLowLkIn),
+            next_base_row(State0LowestLkIn),
+        );
+        let state_1_next = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            next_base_row(State1HighestLkIn),
+            next_base_row(State1MidHighLkIn),
+            next_base_row(State1MidLowLkIn),
+            next_base_row(State1LowestLkIn),
+        );
+        let state_2_next = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            next_base_row(State2HighestLkIn),
+            next_base_row(State2MidHighLkIn),
+            next_base_row(State2MidLowLkIn),
+            next_base_row(State2LowestLkIn),
+        );
+        let state_3_next = Self::re_compose_16_bit_limbs(
+            circuit_builder,
+            next_base_row(State3HighestLkIn),
+            next_base_row(State3MidHighLkIn),
+            next_base_row(State3MidLowLkIn),
+            next_base_row(State3LowestLkIn),
+        );
 
         let state_next = [
             state_0_next,
@@ -1028,6 +1091,23 @@ impl HashTable {
         }
     }
 
+    /// Return the 16-bit chunks of the “un-Montgomery'd” representation, in little-endian chunk
+    /// order. This (basically) translates to the application of `σ(R·x)` for input `x`, which
+    /// are the first two steps in Tip5's split-and-lookup S-Box.
+    /// `R` is the Montgomery modulus, _i.e._, `R = 2^64 mod p`.
+    /// `σ` as described in the paper decomposes the 64-bit input into 8-bit limbs, whereas
+    /// this method decomposes into 16-bit limbs for arithmetization reasons; the 16-bit limbs
+    /// are split into 8-bit limbs in the Cascade Table.
+    /// For a more in-depth explanation of all the necessary steps in the split-and-lookup S-Box,
+    /// see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
+    ///
+    /// Note: this is distinct from the seemingly similar [`raw_u16s`](BFieldElement::raw_u16s).
+    pub fn base_field_element_into_16_bit_limbs(x: BFieldElement) -> [u16; 4] {
+        let capital_r = BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
+        let r_times_x = capital_r * x;
+        [0, 16, 32, 48].map(|shift| ((r_times_x.value() >> shift) & 0xffff) as u16)
+    }
+
     /// Given a trace of the Tip5 permutation, construct a trace corresponding to the columns of
     /// the Hash Table. This includes
     ///
@@ -1047,57 +1127,53 @@ impl HashTable {
             let trace_row = hash_permutation_trace[round_number];
             row[RoundNumber.base_table_index()] = BFieldElement::from(round_number as u64);
 
-            let st_0_raw_limbs = trace_row[0].raw_u16s();
-            let st_0_look_in_split =
-                st_0_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            let st_0_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[0]);
+            let st_0_look_in_split = st_0_limbs.map(|limb| BFieldElement::new(limb as u64));
             row[State0LowestLkIn.base_table_index()] = st_0_look_in_split[0];
             row[State0MidLowLkIn.base_table_index()] = st_0_look_in_split[1];
             row[State0MidHighLkIn.base_table_index()] = st_0_look_in_split[2];
             row[State0HighestLkIn.base_table_index()] = st_0_look_in_split[3];
 
-            let st_0_look_out_split = st_0_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            let st_0_look_out_split = st_0_limbs.map(CascadeTable::lookup_16_bit_limb);
             row[State0LowestLkOut.base_table_index()] = st_0_look_out_split[0];
             row[State0MidLowLkOut.base_table_index()] = st_0_look_out_split[1];
             row[State0MidHighLkOut.base_table_index()] = st_0_look_out_split[2];
             row[State0HighestLkOut.base_table_index()] = st_0_look_out_split[3];
 
-            let st_1_raw_limbs = trace_row[1].raw_u16s();
-            let st_1_look_in_split =
-                st_1_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            let st_1_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[1]);
+            let st_1_look_in_split = st_1_limbs.map(|limb| BFieldElement::new(limb as u64));
             row[State1LowestLkIn.base_table_index()] = st_1_look_in_split[0];
             row[State1MidLowLkIn.base_table_index()] = st_1_look_in_split[1];
             row[State1MidHighLkIn.base_table_index()] = st_1_look_in_split[2];
             row[State1HighestLkIn.base_table_index()] = st_1_look_in_split[3];
 
-            let st_1_look_out_split = st_1_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            let st_1_look_out_split = st_1_limbs.map(CascadeTable::lookup_16_bit_limb);
             row[State1LowestLkOut.base_table_index()] = st_1_look_out_split[0];
             row[State1MidLowLkOut.base_table_index()] = st_1_look_out_split[1];
             row[State1MidHighLkOut.base_table_index()] = st_1_look_out_split[2];
             row[State1HighestLkOut.base_table_index()] = st_1_look_out_split[3];
 
-            let st_2_raw_limbs = trace_row[2].raw_u16s();
-            let st_2_look_in_split =
-                st_2_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            let st_2_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[2]);
+            let st_2_look_in_split = st_2_limbs.map(|limb| BFieldElement::new(limb as u64));
             row[State2LowestLkIn.base_table_index()] = st_2_look_in_split[0];
             row[State2MidLowLkIn.base_table_index()] = st_2_look_in_split[1];
             row[State2MidHighLkIn.base_table_index()] = st_2_look_in_split[2];
             row[State2HighestLkIn.base_table_index()] = st_2_look_in_split[3];
 
-            let st_2_look_out_split = st_2_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            let st_2_look_out_split = st_2_limbs.map(CascadeTable::lookup_16_bit_limb);
             row[State2LowestLkOut.base_table_index()] = st_2_look_out_split[0];
             row[State2MidLowLkOut.base_table_index()] = st_2_look_out_split[1];
             row[State2MidHighLkOut.base_table_index()] = st_2_look_out_split[2];
             row[State2HighestLkOut.base_table_index()] = st_2_look_out_split[3];
 
-            let st_3_raw_limbs = trace_row[3].raw_u16s();
-            let st_3_look_in_split =
-                st_3_raw_limbs.map(|limb| BFieldElement::from_raw_u64(limb as u64));
+            let st_3_limbs = Self::base_field_element_into_16_bit_limbs(trace_row[3]);
+            let st_3_look_in_split = st_3_limbs.map(|limb| BFieldElement::new(limb as u64));
             row[State3LowestLkIn.base_table_index()] = st_3_look_in_split[0];
             row[State3MidLowLkIn.base_table_index()] = st_3_look_in_split[1];
             row[State3MidHighLkIn.base_table_index()] = st_3_look_in_split[2];
             row[State3HighestLkIn.base_table_index()] = st_3_look_in_split[3];
 
-            let st_3_look_out_split = st_3_raw_limbs.map(CascadeTable::lookup_16_bit_limb);
+            let st_3_look_out_split = st_3_limbs.map(CascadeTable::lookup_16_bit_limb);
             row[State3LowestLkOut.base_table_index()] = st_3_look_out_split[0];
             row[State3MidLowLkOut.base_table_index()] = st_3_look_out_split[1];
             row[State3MidHighLkOut.base_table_index()] = st_3_look_out_split[2];
@@ -1150,10 +1226,10 @@ impl HashTable {
     /// is the most significant limb of the given `state_element`, and `mid_high` the second-most
     /// significant limb.
     fn inverse_or_zero_of_highest_2_limbs(state_element: BFieldElement) -> BFieldElement {
-        let limbs = state_element.raw_u16s();
-        let highest = limbs[3];
-        let mid_high = limbs[2];
-        let high_limbs = BFieldElement::from_raw_u16s(&[mid_high, highest, 0, 0]);
+        let limbs = Self::base_field_element_into_16_bit_limbs(state_element);
+        let highest = limbs[3] as u64;
+        let mid_high = limbs[2] as u64;
+        let high_limbs = BFieldElement::new((highest << 16) + mid_high);
         let two_pow_32_minus_1 = BFieldElement::new((1 << 32) - 1);
         let to_invert = two_pow_32_minus_1 - high_limbs;
         to_invert.inverse_or_zero()
@@ -1236,24 +1312,60 @@ impl HashTable {
         let two_pow_16 = BFieldElement::from(1_u64 << 16);
         let two_pow_32 = BFieldElement::from(1_u64 << 32);
         let two_pow_48 = BFieldElement::from(1_u64 << 48);
+
+        // Before decomposition into limbs, the state element is multiplied by R (capital_r).
+        // After re-composition, we need to divide by R to get the original state element.
+        // See `Self::base_field_element_16_bit_limbs` for more details.
+        let capital_r = BFieldElement::new(((1_u128 << 64) % BFieldElement::P as u128) as u64);
+        let capital_r_inv = capital_r.inverse();
+
+        let re_compose_state_element =
+            |row: ArrayView1<BFieldElement>,
+             highest: HashBaseTableColumn,
+             mid_high: HashBaseTableColumn,
+             mid_low: HashBaseTableColumn,
+             lowest: HashBaseTableColumn| {
+                (row[highest.base_table_index()] * two_pow_48
+                    + row[mid_high.base_table_index()] * two_pow_32
+                    + row[mid_low.base_table_index()] * two_pow_16
+                    + row[lowest.base_table_index()])
+                    * capital_r_inv
+            };
+
         let rate_registers = |row: ArrayView1<BFieldElement>| {
+            let state_0 = re_compose_state_element(
+                row,
+                State0HighestLkIn,
+                State0MidHighLkIn,
+                State0MidLowLkIn,
+                State0LowestLkIn,
+            );
+            let state_1 = re_compose_state_element(
+                row,
+                State1HighestLkIn,
+                State1MidHighLkIn,
+                State1MidLowLkIn,
+                State1LowestLkIn,
+            );
+            let state_2 = re_compose_state_element(
+                row,
+                State2HighestLkIn,
+                State2MidHighLkIn,
+                State2MidLowLkIn,
+                State2LowestLkIn,
+            );
+            let state_3 = re_compose_state_element(
+                row,
+                State3HighestLkIn,
+                State3MidHighLkIn,
+                State3MidLowLkIn,
+                State3LowestLkIn,
+            );
             [
-                row[State0HighestLkIn.base_table_index()] * two_pow_48
-                    + row[State0MidHighLkIn.base_table_index()] * two_pow_32
-                    + row[State0MidLowLkIn.base_table_index()] * two_pow_16
-                    + row[State0LowestLkIn.base_table_index()],
-                row[State1HighestLkIn.base_table_index()] * two_pow_48
-                    + row[State1MidHighLkIn.base_table_index()] * two_pow_32
-                    + row[State1MidLowLkIn.base_table_index()] * two_pow_16
-                    + row[State1LowestLkIn.base_table_index()],
-                row[State2HighestLkIn.base_table_index()] * two_pow_48
-                    + row[State2MidHighLkIn.base_table_index()] * two_pow_32
-                    + row[State2MidLowLkIn.base_table_index()] * two_pow_16
-                    + row[State2LowestLkIn.base_table_index()],
-                row[State3HighestLkIn.base_table_index()] * two_pow_48
-                    + row[State3MidHighLkIn.base_table_index()] * two_pow_32
-                    + row[State3MidLowLkIn.base_table_index()] * two_pow_16
-                    + row[State3LowestLkIn.base_table_index()],
+                state_0,
+                state_1,
+                state_2,
+                state_3,
                 row[State4.base_table_index()],
                 row[State5.base_table_index()],
                 row[State6.base_table_index()],
@@ -1262,6 +1374,7 @@ impl HashTable {
                 row[State9.base_table_index()],
             ]
         };
+
         let state_weights = [
             challenges.get_challenge(HashStateWeight0),
             challenges.get_challenge(HashStateWeight1),

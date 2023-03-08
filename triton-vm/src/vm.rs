@@ -1005,8 +1005,8 @@ impl AlgebraicExecutionTrace {
         // The last row in the trace is the permutation's result, meaning that no lookups are
         // performed on it. Therefore, we skip it.
         for row in hash_permutation_trace.iter().rev().skip(1) {
-            for state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
-                for limb in state_element.raw_u16s() {
+            for &state_element in row[0..tip5::NUM_SPLIT_AND_LOOKUP].iter() {
+                for limb in HashTable::base_field_element_into_16_bit_limbs(state_element) {
                     match self.cascade_table_lookup_multiplicities.entry(limb) {
                         Occupied(mut cascade_table_entry) => *cascade_table_entry.get_mut() += 1,
                         Vacant(cascade_table_entry) => {
