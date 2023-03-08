@@ -16,6 +16,7 @@ use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
@@ -224,11 +225,90 @@ impl ExtCascadeTable {
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        // todo:
-        //  - if IsPadding is 1, then IsPadding' is 1
-        //  - HashTableServerLogDerivative
-        //  - LookupTableClientLogDerivative
-        let mut constraints = [];
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let challenge = |c| circuit_builder.challenge(c);
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+
+        let current_base_row = |column_idx: CascadeBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(column_idx.master_base_table_index()))
+        };
+        let next_base_row = |column_idx: CascadeBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+        };
+        let current_ext_row = |column_idx: CascadeExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
+        };
+        let next_ext_row = |column_idx: CascadeExtTableColumn| {
+            circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
+        };
+
+        let one = constant(1);
+        let two = constant(2);
+        let two_pow_8 = constant(1 << 8);
+
+        let is_padding = current_base_row(IsPadding);
+        let hash_table_server_log_derivative = current_ext_row(HashTableServerLogDerivative);
+        let lookup_table_client_log_derivative = current_ext_row(LookupTableClientLogDerivative);
+
+        let is_padding_next = next_base_row(IsPadding);
+        let look_in_hi_next = next_base_row(LookInHi);
+        let look_in_lo_next = next_base_row(LookInLo);
+        let look_out_hi_next = next_base_row(LookOutHi);
+        let look_out_lo_next = next_base_row(LookOutLo);
+        let lookup_multiplicity_next = next_base_row(LookupMultiplicity);
+        let hash_table_server_log_derivative_next = next_ext_row(HashTableServerLogDerivative);
+        let lookup_table_client_log_derivative_next = next_ext_row(LookupTableClientLogDerivative);
+
+        let hash_indeterminate = challenge(HashCascadeLookupIndeterminate);
+        let hash_input_weight = challenge(HashCascadeLookInWeight);
+        let hash_output_weight = challenge(HashCascadeLookOutWeight);
+
+        let lookup_indeterminate = challenge(CascadeLookupIndeterminate);
+        let lookup_input_weight = challenge(LookupTableInputWeight);
+        let lookup_output_weight = challenge(LookupTableOutputWeight);
+
+        // Padding region is contiguous: if current row is padding, then next row is padding.
+        let if_current_row_is_padding_row_then_next_row_is_padding_row =
+            is_padding * (one.clone() - is_padding_next.clone());
+
+        // Lookup Argument with Hash Table
+        let compressed_next_row_hash = hash_input_weight
+            * (two_pow_8.clone() * look_in_hi_next.clone() + look_in_lo_next.clone())
+            + hash_output_weight
+                * (two_pow_8 * look_out_hi_next.clone() + look_out_lo_next.clone());
+        let hash_table_log_derivative_remains = hash_table_server_log_derivative_next.clone()
+            - hash_table_server_log_derivative.clone();
+        let hash_table_log_derivative_accumulates_next_row = (hash_table_server_log_derivative_next
+            - hash_table_server_log_derivative)
+            * (hash_indeterminate - compressed_next_row_hash)
+            - lookup_multiplicity_next;
+        let hash_table_log_derivative_updates_correctly = (one.clone() - is_padding_next.clone())
+            * hash_table_log_derivative_accumulates_next_row
+            + is_padding_next.clone() * hash_table_log_derivative_remains;
+
+        // Lookup Argument with Lookup Table
+        let compressed_row_lo_next = lookup_input_weight.clone() * look_in_lo_next
+            + lookup_output_weight.clone() * look_out_lo_next;
+        let compressed_row_hi_next =
+            lookup_input_weight * look_in_hi_next + lookup_output_weight * look_out_hi_next;
+        let lookup_table_log_derivative_remains = lookup_table_client_log_derivative_next.clone()
+            - lookup_table_client_log_derivative.clone();
+        let lookup_table_log_derivative_accumulates_next_row =
+            (lookup_table_client_log_derivative_next - lookup_table_client_log_derivative)
+                * (lookup_indeterminate.clone() - compressed_row_lo_next.clone())
+                * (lookup_indeterminate.clone() - compressed_row_hi_next.clone())
+                - two * lookup_indeterminate
+                + compressed_row_lo_next
+                + compressed_row_hi_next;
+        let lookup_table_log_derivative_updates_correctly = (one - is_padding_next.clone())
+            * lookup_table_log_derivative_accumulates_next_row
+            + is_padding_next * lookup_table_log_derivative_remains;
+
+        let mut constraints = [
+            if_current_row_is_padding_row_then_next_row_is_padding_row,
+            hash_table_log_derivative_updates_correctly,
+            lookup_table_log_derivative_updates_correctly,
+        ];
         ConstraintCircuitMonad::constant_folding(&mut constraints);
         constraints.map(|circuit| circuit.consume()).to_vec()
     }
