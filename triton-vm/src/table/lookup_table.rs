@@ -195,6 +195,7 @@ impl ExtLookupTable {
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
 
         let lookup_input = current_base_row(LookIn);
+        let is_padding = current_base_row(IsPadding);
         let cascade_table_server_log_derivative = current_ext_row(CascadeTableServerLogDerivative);
         let public_evaluation_argument = current_ext_row(PublicEvaluationArgument);
 
@@ -205,6 +206,11 @@ impl ExtLookupTable {
         let cascade_table_server_log_derivative_next =
             next_ext_row(CascadeTableServerLogDerivative);
         let public_evaluation_argument_next = next_ext_row(PublicEvaluationArgument);
+
+        // Padding section is contiguous: if the current row is a padding row, then the next row
+        // is also a padding row.
+        let if_current_row_is_padding_row_then_next_row_is_padding_row =
+            is_padding * (one.clone() - is_padding_next.clone());
 
         // Lookup Table's input increments by 1 if and only if the next row is not a padding row
         let if_next_row_is_padding_row_then_lookup_input_next_is_0 =
@@ -242,6 +248,7 @@ impl ExtLookupTable {
                 + is_padding_next * public_evaluation_argument_remains;
 
         let mut constraints = [
+            if_current_row_is_padding_row_then_next_row_is_padding_row,
             lookup_input_increments_if_and_only_if_next_row_is_not_padding_row,
             cascade_table_log_derivative_updates_if_and_only_if_next_row_is_not_padding_row,
             public_evaluation_argument_updates_if_and_only_if_next_row_is_not_padding_row,
