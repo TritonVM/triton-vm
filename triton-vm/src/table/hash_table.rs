@@ -682,6 +682,7 @@ impl ExtHashTable {
                 running_evaluation_hash_digest_is_updated_correctly,
                 running_evaluation_sponge_is_updated_correctly,
             ],
+            Self::all_cascade_log_derivative_update_circuits(&circuit_builder).to_vec(),
         ]
         .concat();
 
@@ -845,6 +846,156 @@ impl ExtHashTable {
             .unwrap();
 
         (state_next, hash_function_round_correctly_performs_update)
+    }
+
+    fn cascade_log_derivative_update_circuit(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        look_in_column: HashBaseTableColumn,
+        look_out_column: HashBaseTableColumn,
+        cascade_log_derivative_column: HashExtTableColumn,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let challenge = |c| circuit_builder.challenge(c);
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let next_base_row = |column_idx: HashBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(column_idx.master_base_table_index()))
+        };
+        let current_ext_row = |column_idx: HashExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(column_idx.master_ext_table_index()))
+        };
+        let next_ext_row = |column_idx: HashExtTableColumn| {
+            circuit_builder.input(NextExtRow(column_idx.master_ext_table_index()))
+        };
+
+        let cascade_indeterminate = challenge(HashCascadeLookupIndeterminate);
+        let look_in_weight = challenge(HashCascadeLookInWeight);
+        let look_out_weight = challenge(HashCascadeLookOutWeight);
+
+        let round_number_next = next_base_row(RoundNumber);
+        let cascade_log_derivative = current_ext_row(cascade_log_derivative_column);
+        let cascade_log_derivative_next = next_ext_row(cascade_log_derivative_column);
+
+        let compressed_row_state_0_highest_next = look_in_weight * next_base_row(look_in_column)
+            + look_out_weight * next_base_row(look_out_column);
+
+        let cascade_log_derivative_remains =
+            cascade_log_derivative_next.clone() - cascade_log_derivative.clone();
+        let cascade_log_derivative_updates = (cascade_log_derivative_next - cascade_log_derivative)
+            * (cascade_indeterminate - compressed_row_state_0_highest_next)
+            - constant(1);
+
+        let round_number_next_is_neg_1_or_5 = (round_number_next.clone() + constant(1))
+            * (round_number_next.clone() - constant(NUM_ROUNDS as u64));
+        let round_number_next_is_0_through_4 = round_number_next.clone()
+            * (round_number_next.clone() - constant(1))
+            * (round_number_next.clone() - constant(2))
+            * (round_number_next.clone() - constant(3))
+            * (round_number_next - constant(4));
+
+        round_number_next_is_neg_1_or_5 * cascade_log_derivative_updates
+            + round_number_next_is_0_through_4 * cascade_log_derivative_remains
+    }
+
+    fn all_cascade_log_derivative_update_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> [ConstraintCircuitMonad<DualRowIndicator>; 4 * NUM_SPLIT_AND_LOOKUP] {
+        [
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0HighestLkIn,
+                State0HighestLkOut,
+                CascadeState0HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0MidHighLkIn,
+                State0MidHighLkOut,
+                CascadeState0MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0MidLowLkIn,
+                State0MidLowLkOut,
+                CascadeState0MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State0LowestLkIn,
+                State0LowestLkOut,
+                CascadeState0LowestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1HighestLkIn,
+                State1HighestLkOut,
+                CascadeState1HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1MidHighLkIn,
+                State1MidHighLkOut,
+                CascadeState1MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1MidLowLkIn,
+                State1MidLowLkOut,
+                CascadeState1MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State1LowestLkIn,
+                State1LowestLkOut,
+                CascadeState1LowestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2HighestLkIn,
+                State2HighestLkOut,
+                CascadeState2HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2MidHighLkIn,
+                State2MidHighLkOut,
+                CascadeState2MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2MidLowLkIn,
+                State2MidLowLkOut,
+                CascadeState2MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State2LowestLkIn,
+                State2LowestLkOut,
+                CascadeState2LowestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3HighestLkIn,
+                State3HighestLkOut,
+                CascadeState3HighestClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3MidHighLkIn,
+                State3MidHighLkOut,
+                CascadeState3MidHighClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3MidLowLkIn,
+                State3MidLowLkOut,
+                CascadeState3MidLowClientLogDerivative,
+            ),
+            Self::cascade_log_derivative_update_circuit(
+                circuit_builder,
+                State3LowestLkIn,
+                State3LowestLkOut,
+                CascadeState3LowestClientLogDerivative,
+            ),
+        ]
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
