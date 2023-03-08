@@ -208,9 +208,17 @@ impl ExtCascadeTable {
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        // todo:
-        //  - IsPadding is bit
-        let mut constraints = [];
+        let circuit_builder = ConstraintCircuitBuilder::new();
+
+        let base_row = |col_id: CascadeBaseTableColumn| {
+            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
+        };
+
+        let one = circuit_builder.b_constant(BFIELD_ONE);
+        let is_padding = base_row(IsPadding);
+        let is_padding_is_0_or_1 = is_padding.clone() * (one - is_padding);
+
+        let mut constraints = [is_padding_is_0_or_1];
         ConstraintCircuitMonad::constant_folding(&mut constraints);
         constraints.map(|circuit| circuit.consume()).to_vec()
     }
