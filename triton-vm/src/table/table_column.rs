@@ -319,8 +319,8 @@ pub enum CascadeExtTableColumn {
     /// The (running sum of the) logarithmic derivative for the Lookup Argument with the Hash Table.
     /// In every row, the sum accumulates `LookupMultiplicity / (X - Combo)` where `X` is a
     /// verifier-supplied challenge and `Combo` is the weighted sum of
-    /// - `LookInHi · 2^16 + LookInLo`, and
-    /// - `LookOutHi · 2^16 + LookOutLo`
+    /// - `2^8·LookInHi + LookInLo`, and
+    /// - `2^8·LookOutHi + LookOutLo`
     /// with weights supplied by the verifier.
     HashTableServerLogDerivative,
 
