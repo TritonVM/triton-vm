@@ -338,12 +338,10 @@ mod proof_item_typed_tests {
     fn random_fri_response() -> FriResponse {
         FriResponse(
             (0..18)
-                .into_iter()
                 .map(|r| {
                     (
                         PartialAuthenticationPath(
                             (0..(20 - r))
-                                .into_iter()
                                 .map(|_| {
                                     if random_bool() {
                                         Some(random_digest())
@@ -372,13 +370,11 @@ mod proof_item_typed_tests {
     fn test_serialize_stark_proof_with_fiat_shamir() {
         type H = Tip5;
         let mut proof_stream: ProofStream<_, H> = ProofStream::new();
-        let map = (0..7).into_iter().map(|_| random_digest()).collect_vec();
+        let map = (0..7).map(|_| random_digest()).collect_vec();
         let auth_struct = (0..8)
-            .into_iter()
             .map(|_| {
                 PartialAuthenticationPath(
                     (0..11)
-                        .into_iter()
                         .map(|_| {
                             if random_bool() {
                                 Some(random_digest())

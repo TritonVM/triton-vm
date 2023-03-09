@@ -423,7 +423,6 @@ mod bfield_codec_tests {
     fn random_partial_authentication_path(len: usize) -> PartialAuthenticationPath<Digest> {
         PartialAuthenticationPath(
             (0..len)
-                .into_iter()
                 .map(|_| {
                     if random_bool() {
                         Some(random_digest())
@@ -469,10 +468,7 @@ mod bfield_codec_tests {
     fn test_encode_decode_random_vec_of_bfieldelement() {
         for _ in 1..=10 {
             let len = random_length(100);
-            let bfe_vec = (0..len)
-                .into_iter()
-                .map(|_| random_bfieldelement())
-                .collect_vec();
+            let bfe_vec = (0..len).map(|_| random_bfieldelement()).collect_vec();
             let str = bfe_vec.encode();
             let bfe_vec_ = *Vec::<BFieldElement>::decode(&str).unwrap();
             assert_eq!(bfe_vec, bfe_vec_);
@@ -483,10 +479,7 @@ mod bfield_codec_tests {
     fn test_encode_decode_random_vec_of_xfieldelement() {
         for _ in 1..=10 {
             let len = random_length(100);
-            let xfe_vec = (0..len)
-                .into_iter()
-                .map(|_| random_xfieldelement())
-                .collect_vec();
+            let xfe_vec = (0..len).map(|_| random_xfieldelement()).collect_vec();
             let str = xfe_vec.encode();
             let xfe_vec_ = *Vec::<XFieldElement>::decode(&str).unwrap();
             assert_eq!(xfe_vec, xfe_vec_);
@@ -497,7 +490,7 @@ mod bfield_codec_tests {
     fn test_encode_decode_random_vec_of_digest() {
         for _ in 1..=10 {
             let len = random_length(100);
-            let digest_vec = (0..len).into_iter().map(|_| random_digest()).collect_vec();
+            let digest_vec = (0..len).map(|_| random_digest()).collect_vec();
             let str = digest_vec.encode();
             let digest_vec_ = *Vec::<Digest>::decode(&str).unwrap();
             assert_eq!(digest_vec, digest_vec_);
@@ -509,13 +502,9 @@ mod bfield_codec_tests {
         for _ in 1..=10 {
             let len = random_length(10);
             let bfe_vec_vec = (0..len)
-                .into_iter()
                 .map(|_| {
                     let inner_len = random_length(20);
-                    (0..inner_len)
-                        .into_iter()
-                        .map(|_| random_bfieldelement())
-                        .collect_vec()
+                    (0..inner_len).map(|_| random_bfieldelement()).collect_vec()
                 })
                 .collect_vec();
             let str = bfe_vec_vec.encode();
@@ -529,13 +518,9 @@ mod bfield_codec_tests {
         for _ in 1..=10 {
             let len = random_length(10);
             let xfe_vec_vec = (0..len)
-                .into_iter()
                 .map(|_| {
                     let inner_len = random_length(20);
-                    (0..inner_len)
-                        .into_iter()
-                        .map(|_| random_xfieldelement())
-                        .collect_vec()
+                    (0..inner_len).map(|_| random_xfieldelement()).collect_vec()
                 })
                 .collect_vec();
             let str = xfe_vec_vec.encode();
@@ -559,10 +544,7 @@ mod bfield_codec_tests {
     fn test_decode_random_negative() {
         for _ in 1..=10000 {
             let len = random_length(100);
-            let str = (0..len)
-                .into_iter()
-                .map(|_| random_bfieldelement())
-                .collect_vec();
+            let str = (0..len).map(|_| random_bfieldelement()).collect_vec();
 
             // Some of the following cases can be triggered by false
             // positives. This should occur with probability roughly
