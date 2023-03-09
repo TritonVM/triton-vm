@@ -11,10 +11,7 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId;
-use crate::table::challenges::ChallengeId::CascadeLookupIndeterminate;
-use crate::table::challenges::ChallengeId::LookupTableInputWeight;
-use crate::table::challenges::ChallengeId::LookupTableOutputWeight;
-use crate::table::challenges::ChallengeId::LookupTablePublicIndeterminate;
+use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -172,7 +169,17 @@ impl ExtLookupTable {
     }
 
     pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        vec![]
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let base_row = |col_id: LookupBaseTableColumn| {
+            circuit_builder.input(BaseRow(col_id.master_base_table_index()))
+        };
+
+        let padding_is_0_or_1 = base_row(IsPadding) * (constant(1) - base_row(IsPadding));
+
+        let mut constraints = [padding_is_0_or_1];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 
     pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
@@ -257,6 +264,17 @@ impl ExtLookupTable {
     }
 
     pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        vec![]
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
+        let ext_row = |col_id: LookupExtTableColumn| {
+            circuit_builder.input(ExtRow(col_id.master_ext_table_index()))
+        };
+
+        let narrow_table_terminal_matches_user_supplied_terminal =
+            ext_row(PublicEvaluationArgument) - challenge(LookupTablePublicTerminal);
+
+        let mut constraints = [narrow_table_terminal_matches_user_supplied_terminal];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }

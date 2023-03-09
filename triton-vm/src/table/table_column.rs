@@ -360,7 +360,7 @@ pub enum LookupExtTableColumn {
     CascadeTableServerLogDerivative,
 
     /// The running sum for the public evaluation argument of the Lookup Table.
-    /// In every row, accumulates the verifier-weighted combination of `LookIn` and `LookOut`.
+    /// In every row, accumulates `LookOut`.
     PublicEvaluationArgument,
 }
 
