@@ -987,6 +987,7 @@ pub(crate) mod triton_stark_tests {
         ";
         let (_, master_base_table, _) = parse_simulate_pad(program, vec![], vec![]);
 
+        println!();
         println!("Processor Table:");
         println!(
             "| clk        | pi         | ci         | nia        | st0        \
@@ -1209,6 +1210,8 @@ pub(crate) mod triton_stark_tests {
             "ram table",
             "jump stack table",
             "hash table",
+            "cascade table",
+            "lookup table",
             "u32 table",
             "cross-table arg",
         ];
@@ -1219,6 +1222,8 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_initial_quotients(),
             ExtJumpStackTable::num_initial_quotients(),
             ExtHashTable::num_initial_quotients(),
+            ExtCascadeTable::num_initial_quotients(),
+            ExtLookupTable::num_initial_quotients(),
             ExtU32Table::num_initial_quotients(),
             GrandCrossTableArg::num_initial_quotients(),
         ];
@@ -1229,6 +1234,8 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_consistency_quotients(),
             ExtJumpStackTable::num_consistency_quotients(),
             ExtHashTable::num_consistency_quotients(),
+            ExtCascadeTable::num_consistency_quotients(),
+            ExtLookupTable::num_consistency_quotients(),
             ExtU32Table::num_consistency_quotients(),
             GrandCrossTableArg::num_consistency_quotients(),
         ];
@@ -1239,6 +1246,8 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_transition_quotients(),
             ExtJumpStackTable::num_transition_quotients(),
             ExtHashTable::num_transition_quotients(),
+            ExtCascadeTable::num_transition_quotients(),
+            ExtLookupTable::num_transition_quotients(),
             ExtU32Table::num_transition_quotients(),
             GrandCrossTableArg::num_transition_quotients(),
         ];
@@ -1249,6 +1258,8 @@ pub(crate) mod triton_stark_tests {
             ExtRamTable::num_terminal_quotients(),
             ExtJumpStackTable::num_terminal_quotients(),
             ExtHashTable::num_terminal_quotients(),
+            ExtCascadeTable::num_terminal_quotients(),
+            ExtLookupTable::num_terminal_quotients(),
             ExtU32Table::num_terminal_quotients(),
             GrandCrossTableArg::num_terminal_quotients(),
         ];
@@ -1259,6 +1270,7 @@ pub(crate) mod triton_stark_tests {
         let num_total_term: usize = all_term.iter().sum();
         let num_total = num_total_init + num_total_cons + num_total_trans + num_total_term;
 
+        println!();
         println!("| Table                |  Init |  Cons | Trans |  Term |   Sum |");
         println!("|:---------------------|------:|------:|------:|------:|------:|");
         for (name, num_init, num_cons, num_trans, num_term) in

@@ -1994,6 +1994,7 @@ mod master_table_tests {
     /// intended use: `cargo t print_all_table_widths -- --nocapture`
     #[test]
     fn print_all_table_widths() {
+        println!();
         println!("| table name         | #base cols | #ext cols | full width |");
         println!("|:-------------------|-----------:|----------:|-----------:|");
         println!(
@@ -2069,6 +2070,7 @@ mod master_table_tests {
     /// intended use: `cargo t print_all_master_table_indices -- --nocapture`
     #[test]
     fn print_all_master_table_indices() {
+        println!();
         println!("idx | table       | base column");
         println!("---:|:------------|:-----------");
         for column in ProgramBaseTableColumn::iter() {

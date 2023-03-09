@@ -3170,6 +3170,7 @@ mod constraint_polynomial_tests {
         let code = "push 2 push -1 add assert halt";
         let program = Program::from_code(code).unwrap();
         let (aet, _, _) = simulate_no_input(&program);
+        println!();
         for row in aet.processor_trace.rows() {
             println!("{}", ProcessorTraceRow { row });
         }
@@ -3715,6 +3716,7 @@ mod constraint_polynomial_tests {
             (WriteIo, factory.instruction_write_io()),
         ];
 
+        println!();
         println!("| Instruction     | #polys | max deg | Degrees");
         println!("|:----------------|-------:|--------:|:------------");
         for (instruction, constraints) in all_instructions_and_their_transition_constraints {
