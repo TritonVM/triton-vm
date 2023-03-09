@@ -38,8 +38,16 @@
 
 \begin{document}
 \pagestyle{empty}
+\hfill
+\begin{tikzpicture}[overlay]
+    \node[anchor=north east, inner sep=0] at (1,1.5) {
+        \includegraphics[keepaspectratio,width=0.4\textwidth]{src/img/triton-logo.pdf}
+    };
+    \node[anchor=north east, inner sep=0] at (1,0) {\texttt{\LARGE v0.18}};
+\end{tikzpicture}
+
 {
-\renewcommand{\arraystretch}{0.86}
+\renewcommand{\arraystretch}{0.84}
 \begin{tabular}{rllll}
     \texttt{  2} & $\ominus$     & \texttt{pop}                                       & \texttt{\_ st$_0$}                                                        & \texttt{\_}                                                                \\
     \texttt{  1} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{push + a}}       & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
@@ -53,16 +61,16 @@
     \texttt{ 32} & $\ovoid$      & \tcbox[colback=instr-jsp]{\texttt{recurse}}        & \texttt{\_}                                                               & \texttt{\_}                                                                \\
     \texttt{ 18} & $\ominus$     & \texttt{assert}                                    & \texttt{\_ st$_0$}                                                        & \texttt{\_}                                                                \\
     \texttt{  0} & $\ovoid$      & \texttt{halt}                                      & \texttt{\_}                                                               & \texttt{\_}                                                                \\
-    \texttt{ 40} & $\ominus$     & \tcbox[colback=instr-mem]{\texttt{read\_mem}}      & \texttt{\_ addr st$_0$}                                                   & \texttt{\_ addr val}                                                       \\
-    \texttt{ 26} & $\oplus$      & \tcbox[colback=instr-mem]{\texttt{write\_mem}}     & \texttt{\_ addr val}                                                      & \texttt{\_ addr val}                                                       \\
+    \texttt{ 40} & $\ominus$     & \tcbox[colback=instr-mem]{\texttt{read\_mem}}      & \texttt{\_ addr}                                                          & \texttt{\_ addr a}                                                         \\
+    \texttt{ 26} & $\oplus$      & \tcbox[colback=instr-mem]{\texttt{write\_mem}}     & \texttt{\_ addr a}                                                        & \texttt{\_ addr}                                                           \\
     \texttt{ 48} & $\ovoid^{10}$ & \texttt{hash}                                      & \texttt{\_ st$_9$ $\!\!\dots\!\!$ st$_0$}                                 & \texttt{\_ d$_4$ $\!\!\dots\!\!$ d$_0$ 0 $\!\!\dots\!\!$ 0}                \\
     \texttt{ 56} & $\ovoid^{11}$ & \texttt{divine\_sibling}                           & \texttt{\_ idx st$_9$ $\!\!\dots\!\!$ st$_5$ d$_4$ $\!\!\dots\!\!$ d$_0$} & \texttt{\_ idx>>1 r$_4$ $\!\!\dots\!\!$ r$_0$ l$_4$ $\!\!\dots\!\!$ l$_0$} \\
     \texttt{ 64} & $\ovoid$      & \texttt{assert\_vector}                            & \texttt{\_}                                                               & \texttt{\_}                                                                \\
     \texttt{ 72} & $\ovoid$      & \texttt{absorb\_init}                              & \texttt{\_}                                                               & \texttt{\_}                                                                \\
     \texttt{ 80} & $\ovoid$      & \texttt{absorb}                                    & \texttt{\_}                                                               & \texttt{\_}                                                                \\
     \texttt{ 88} & $\ovoid^{10}$ & \texttt{squeeze}                                   & \texttt{\_ st$_9$ $\dots$ st$_0$}                                         & \texttt{\_ sq$_9$ $\dots$ sq$_0$}                                          \\
-    \texttt{ 34} & $\ominus^1$   & \texttt{add}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ sum}                                                            \\
-    \texttt{ 42} & $\ominus^1$   & \texttt{mul}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ prod}                                                           \\
+    \texttt{ 34} & $\ominus^1$   & \texttt{add}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$+st$_1$)}                                                \\
+    \texttt{ 42} & $\ominus^1$   & \texttt{mul}                                       & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0\cdot$st$_1$)}                                            \\
     \texttt{ 96} & $\ovoid^1$    & \texttt{invert}                                    & \texttt{\_ st$_0$}                                                        & \texttt{\_ st$_0^{-1}$}                                                    \\
     \texttt{ 50} & $\ominus^1$   & \texttt{eq}                                        & \texttt{\_ st$_1$ st$_0$}                                                 & \texttt{\_ (st$_0$==st$_1$)}                                               \\
     \texttt{  4} & $\oplus^2$    & \tcbox[colback=instr-u32]{\texttt{split}}          & \texttt{\_ st$_0$}                                                        & \texttt{\_ hi lo}                                                          \\
@@ -77,71 +85,35 @@
     \texttt{120} & $\ovoid^3$    & \texttt{xinvert}                                   & \texttt{\_ x$_2$ x$_1$ x$_0$}                                             & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
     \texttt{ 58} & $\ominus^3$   & \texttt{xbmul}                                     & \texttt{\_ x$_2$ x$_1$ x$_0$ b}                                           & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
     \texttt{128} & $\oplus$      & \texttt{read\_io}                                  & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
-    \texttt{ 66} & $\ominus$     & \texttt{write\_io}                                 & \texttt{\_ st$_0$}                                                        & \texttt{\_}
+    \texttt{ 66} & $\ominus$     & \texttt{write\_io}                                 & \texttt{\_ a}                                                             & \texttt{\_}
 \end{tabular}
 }
 
 \newpage
-\hspace*{-2.5em}%
-\scalebox{0.71}{
-    \rowcolors{2}{row2}{row1}
-\begin{tabular}{llllllllllllllllllllllll}
-    \toprule
-    Table     & \multicolumn{5}{l}{Base Columns}                                                 &              &              &                      &              &                     &               &              &                      &       &               &              &              &              &       &                   &               &               &                   \\ \midrule
-    Program   & \multicolumn{3}{l}{Address}            &                           & \multicolumn{3}{l}{Instruction}           & \multicolumn{4}{l}{LookupMultiplicity}                                    & \multicolumn{3}{l}{IsPadding}               &               &              &              &              &       &                   &               &               &                   \\
-    Processor & \texttt{CLK} & IsPadding & \texttt{IP} & \texttt{PI}               & \texttt{CI} & \texttt{NIA} & \texttt{IB0} & \dots                & \texttt{IB7} & \texttt{JSP}        & \texttt{JSO}  & \texttt{JSD} & \texttt{ST0}         & \dots & \texttt{ST15} & \texttt{OSP} & \texttt{OSV} & \texttt{HV0} & \dots & \texttt{HV3}      & \texttt{RAMP} & \texttt{RAMV} & \texttt{cjd\_mul} \\
-    OpStack   & \texttt{CLK} &           &             &                           &             &              &              & \multicolumn{4}{l}{\texttt{IB1} ($\widehat{=}$ shrink stack)}             &              &                      &       &               & \texttt{OSP} & \texttt{OSV} &              &       &                   &               &               &                   \\
-    RAM       & \texttt{CLK} &           &             & \texttt{PI}               &             &              & \multicolumn{2}{l}{\texttt{bcpc0}}  & \multicolumn{2}{l}{\texttt{bcpc1}} &               &              &                      &       &               &              &              & \multicolumn{3}{l}{\texttt{RAMP}DiffInv} & \texttt{RAMP} & \texttt{RAMV} &                   \\
-    JumpStack & \texttt{CLK} &           &             &                           & \texttt{CI} &              &              &                      &              & \texttt{JSP}        & \texttt{JSO}  & \texttt{JSD} &                      &       &               &              &              &              &       &                   &               &               &                   \\
-    Hash      & \multicolumn{4}{l}{RoundNumber}                                    & \texttt{CI} &              &              &                      &              &                     &               &              & \texttt{ST0}         & \dots & \texttt{ST15} &    \multicolumn{3}{r}{\texttt{CONSTANT0A}} & \dots & \multicolumn{3}{l}{\texttt{CONSTANT15B}}          &                   \\
-    U32       & \texttt{CF}  & \multicolumn{3}{l}{\texttt{Bits\quad Bits-33\_inv}} & \texttt{CI} & \texttt{LHS} & \multicolumn{2}{l}{\texttt{LhsInv}} & \texttt{RHS} & \multicolumn{2}{l}{\texttt{RhsInv}} & \multicolumn{2}{l}{\texttt{Result}} & \multicolumn{5}{l}{\texttt{LookupMultiplicity}}                    &       &                   &               &               &                   \\ \bottomrule
-\end{tabular}
-} %end scalebox
-\begin{tikzpicture}[remember picture, overlay]
-    \node[anchor=south west,inner sep=0] at (4,-11) {\includegraphics[keepaspectratio,width=0.45\textwidth]{src/img/aet-relations.pdf}};
-\end{tikzpicture}
-\begin{minipage}[t][0.6\textheight][s]{0.3\textwidth}
-    \vfill
-    \rowcolors{2}{row2}{row1}
-    \begin{tabular}{rl}
-        \toprule
-        \#clk & instruction      \\ \midrule
-            2 & \texttt{neg}     \\
-            4 & \texttt{sub}     \\
-            7 & \texttt{is\_u32} \\
-            3 & \texttt{lsb}     \\ \bottomrule
-    \end{tabular}
-    \vspace*{3em}
-
+\ \\[2cm]
+\begin{center}
+\includegraphics[keepaspectratio,width=0.7\textwidth]{src/img/aet-relations.pdf}
+\end{center}
+\ \\[2cm]
+\begin{minipage}{0.5\textwidth}
     \rowcolors{2}{row2}{row1}
     \begin{tabular}{lrrr}
         \toprule
-                    & base & ext & $\sum$ \\ \midrule
-        Program     &    4 &   1 &      5 \\
-        Processor   &   42 &  11 &     53 \\
-        OpStack     &    4 &   2 &      6 \\
-        RAM         &    7 &   6 &     13 \\
-        JumpStack   &    5 &   2 &      7 \\
-        Hash        &   50 &   3 &     53 \\
-        U32         &   10 &   1 &     11 \\ \bottomrule\bottomrule
-        $\sum$      &  122 &  26 &    148
+                  & base & ext & $\sum$ \\ \midrule
+        Program   &    4 &   1 &      5 \\
+        Processor &   42 &  11 &     53 \\
+        OpStack   &    4 &   2 &      6 \\
+        RAM       &    7 &   6 &     13 \\
+        JumpStack &    5 &   2 &      7 \\
+        Hash      &   66 &  19 &     85 \\
+        Cascade   &    6 &   2 &      8 \\
+        Lookup    &    4 &   2 &      6 \\
+        U32       &   10 &   1 &     11 \\ \bottomrule
+        $\sum$    &  148 &  46 &    194 \\
+                  &      &     &
     \end{tabular}
 \end{minipage}%
-\hfill%
-\begin{minipage}[t][0.613\textheight][b]{0.5\textwidth}
-    \hfill
-    \rowcolors{3}{row1}{row2}
-    \begin{tabular}{lrr}
-        \multicolumn{3}{l}{$p = 18446744069414584321$}                           \\ \toprule
-        $i$ & $\mathbb{F}_p(\nicefrac{1}{i})$ & $-\mathbb{F}_p(\nicefrac{1}{i})$ \\ \midrule
-        2   &                   092\dots\!161 &                    922\dots\!160 \\
-        3   &                   122\dots\!881 &                    614\dots\!440 \\
-        4   &                   138\dots\!241 &                    461\dots\!080 \\
-        5   &                   147\dots\!457 &                    368\dots\!864 \\
-        6   &                   153\dots\!601 &                    307\dots\!720 \\ \bottomrule
-    \end{tabular}
-    \vspace*{3em}
-
+\begin{minipage}{0.5\textwidth}
     \hfill
     \rowcolors{2}{row2}{row1}
     \begin{tabular}{lrrrrr}
@@ -152,11 +124,12 @@
         OpStack     &    5 &      &     4 &      &      9 \\
         Ram         &    8 &      &    12 &    1 &     21 \\
         JumpStack   &    6 &      &     6 &      &     12 \\
-        Hash        &    5 &   40 &    26 &      &     71 \\
+        Hash        &   21 &   41 &    42 &      &    104 \\
+        Cascade     &    2 &    1 &     3 &      &      6 \\
+        Lookup      &    3 &    1 &     4 &    1 &      9 \\
         U32         &    1 &   14 &    21 &    2 &     38 \\
-        Cross-Table &      &      &       &    1 &      1 \\ \bottomrule\bottomrule
-        $\sum$      &   64 &   66 &   145 &    5 &    280
+        Cross-Table &      &      &       &    1 &      1 \\ \bottomrule
+        $\sum$      &   85 &   69 &   168 &    6 &    328
     \end{tabular}
 \end{minipage}
-
 \end{document}
