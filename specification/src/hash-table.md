@@ -30,6 +30,11 @@ The Hash Table first records all Sponge instructions in the order the processor 
 Then, the Hash Table records all `hash` instructions in the order the processor executed them.
 This allows the processor to execute `hash` instructions without affecting the Sponge's state.
 
+Note that `state0` through `state3`, corresponding to those states that are being split-and-looked-up in the Tip permutation, are not stored as a single field element.
+Instead, four limbs “highest”, “mid high”, “mid low”, and “lowest” are recorded in the Hash Table.
+This (basically) corresponds to storing the result of $\sigma(R \cdot \texttt{state_element})$, except that the limbs resulting from $\sigma$ are 16 bit wide, and hence, there are only 4 limbs;
+the split into 8-bit limbs happens in the [Cascade Table](cascade-table.md).
+
 ## Base Columns
 
 The Hash Table has 66 base columns:
@@ -52,13 +57,14 @@ The Hash Table has 19 extension columns:
 - `RunningEvaluationHashInput` for the Evaluation Argument for copying the input to the hash function from the processor to the hash coprocessor,
 - `RunningEvaluationHashDigest` for the Evaluation Argument for copying the hash digest from the hash coprocessor to the processor,
 - `RunningEvaluationSponge` for the Evaluation Argument for copying the 10 next to-be-absorbed elements from the processor to the hash coprocessor or the 10 next squeezed elements from the hash coprocessor to the processor, depending on the instruction,
-- 16 columns `state_i_*_LookupClientLogDerivative` (for `highest`, `midhigh`, `midlow`, and `lowest`) establishing correct lookup of the respective limbs in the [Cascade Table](cascade-table.md).
+- 16 columns `state_i_limb_LookupClientLogDerivative` (for `i` $\in \{0, \dots, 3\}$, `limb` $\in \{$`highest`, `midhigh`, `midlow`, `lowest` $\}$) establishing correct lookup of the respective limbs in the [Cascade Table](cascade-table.md).
 
 ## Padding
 
 Each padding row is the all-zero row with the exception of
-- `round_no`, which is -1, and
-- `CI`, which is the opcode of instruction `hash`.
+- `round_no`, which is -1,
+- `CI`, which is the opcode of instruction `hash`, and
+- `state_i_inv` for `i` $\in \{0, \dots, 3\}$, which is $(2^{32} - 1)^{-1}$.
 
 # Arithmetic Intermediate Representation
 
@@ -68,34 +74,43 @@ Both types of challenges are X-field elements, _i.e._, elements of $\mathbb{F}_{
 
 ## Initial Constraints
 
-1. The round number is 0 or 1.
+1. The round number is -1 or 0.
 1. The current instruction is `hash` or `absorb_init`.
-1. If the current instruction is `hash` and the round number is 1, then `RunningEvaluationHashInput` has accumulated the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
+1. If the current instruction is `hash` and the round number is 0, then `RunningEvaluationHashInput` has accumulated the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪.
     Otherwise, `RunningEvaluationHashInput` is 1.
 1. `RunningEvaluationHashDigest` is 1.
 1. If the current instruction is `absorb_init`, then `RunningEvaluationSponge` has accumulated the first row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽.
     Otherwise, `RunningEvaluationSponge` is 1.
+1. For `i` $\in \{0, \dots, 3\}$, `limb` $\in \{$`highest`, `midhigh`, `midlow`, `lowest` $\}$:<br />
+    If the round number is 0, then `state_i_limb_LookupClientLogDerivative` has accumulated `state_i_limb_lkin` and `state_i_limb_lkout` with respect to challenges 🍒, 🍓 and indeterminate 🧺.
+    Otherwise, `state_i_limb_LookupClientLogDerivative` is 0.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
-1. `round_no` is 0 or 1.
+1. `round_no` is -1 or 0.
 1. `CI` is the opcode of `hash` or of `absorb_init`.
-1. (`CI` is the opcode of `absorb_init` or `round_no` is 0 or `RunningEvaluationHashInput` has accumulated the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪)<br />
+1. (`CI` is the opcode of `absorb_init` or `round_no` is -1 or `RunningEvaluationHashInput` has accumulated the first row with respect to challenges 🧄₀ through 🧄₉ and indeterminate 🚪)<br />
     and (`CI` is the opcode of `hash` or `RunningEvaluationHashInput` is 1)<br />
-    and (`round_no` is 1 or `RunningEvaluationHashInput` is 1).
+    and (`round_no` is 0 or `RunningEvaluationHashInput` is 1).
 1. (`CI` is the opcode of `hash` or `RunningEvaluationSponge` has accumulated the first row with respect to challenges 🧅 and 🧄₀ through 🧄₉ and indeterminate 🧽)<br />
     and (`CI` is the opcode of `absorb_init` or `RunningEvaluationSponge` is 1).
+1. For `i` $\in \{0, \dots, 3\}$, `limb` $\in \{$`highest`, `midhigh`, `midlow`, `lowest` $\}$:<br />
+    (`round_no` is -1 or `state_i_limb_LookupClientLogDerivative` has accumulated the first row)<br />
+    and (`round_no` is 0 or `state_i_limb_LookupClientLogDerivative` is the default initial).
 
 ### Initial Constraints as Polynomials
 
-1. `round_no·(round_no - 1)`
+1. `(round_no + 1)·round_no`
 1. `(CI - opcode(hash))·(CI - opcode(absorb_init))`
-1. `(CI - opcode(absorb_init))·round_no·(RunningEvaluationHashInput - 🚪 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`<br />
+1. `(CI - opcode(absorb_init))·(round_no + 1)·(RunningEvaluationHashInput - 🚪 - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`<br />
     `+ (CI - opcode(hash))·(RunningEvaluationHashInput - 1)`<br />
-    `+ (round_no - 1)·(RunningEvaluationHashInput - 1)`
+    `+ round_no·(RunningEvaluationHashInput - 1)`
 1. `RunningEvaluationHashDigest - 1`
 1. `(CI - opcode(hash))·(RunningEvaluationSponge - 🧽 - 🧅·CI - 🧄₀·st0 - 🧄₁·st1 - 🧄₂·st2 - 🧄₃·st3 - 🧄₄·st4 - 🧄₅·st5 - 🧄₆·st6 - 🧄₇·st7 - 🧄₈·st8 - 🧄₉·st9)`<br />
     `+ (CI - opcode(absorb_init))·(RunningEvaluationSponge - 1)`
+1. For `i` $\in \{0, \dots, 3\}$, `limb` $\in \{$`highest`, `midhigh`, `midlow`, `lowest` $\}$:<br />
+    `(round_no + 1)·(state_i_limb_LookupClientLogDerivative·(🧺 - 🍒·state_i_limb_lkin - 🍓·state_i_limb_lkout) - 1)`<br />
+    `+ round_no·state_i_limb_LookupClientLogDerivative`
 
 ## Consistency Constraints
 
@@ -192,6 +207,9 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. If the round number is 2, the `state` registers adhere to the rules of applying round 2 of the Tip5 permutation.
 1. If the round number is 3, the `state` registers adhere to the rules of applying round 3 of the Tip5 permutation.
 1. If the round number is 4, the `state` registers adhere to the rules of applying round 4 of the Tip5 permutation.
+1. For `i` $\in \{0, \dots, 3\}$, `limb` $\in \{$`highest`, `midhigh`, `midlow`, `lowest` $\}$:<br />
+    If the next round number is 0, 1, 2, 3, or 4, then `state_i_limb_LookupClientLogDerivative` has accumulated `state_i_limb_lkin'` and `state_i_limb_lkout'` with respect to challenges 🍒, 🍓 and indeterminate 🧺.
+    Otherwise, `state_i_limb_LookupClientLogDerivative` remains unchanged.
 
 Written as Disjunctive Normal Form, the same constraints can be expressed as:
 
@@ -217,6 +235,9 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
 1. `round_no` is -1 or 0 or 1 or 3 or 4 or 5 or the `state` registers adhere to the rules of applying round 2 of the Tip5 permutation.
 1. `round_no` is -1 or 0 or 1 or 2 or 4 or 5 or the `state` registers adhere to the rules of applying round 3 of the Tip5 permutation.
 1. `round_no` is -1 or 0 or 1 or 2 or 3 or 5 or the `state` registers adhere to the rules of applying round 4 of the Tip5 permutation.
+1. For `i` $\in \{0, \dots, 3\}$, `limb` $\in \{$`highest`, `midhigh`, `midlow`, `lowest` $\}$:<br />
+    (`round_no'` is -1 or 5 or `state_i_limb_LookupClientLogDerivative` has accumulated the next row)<br />
+    and (`round_no` is 0 or 1 or 2 or 3 or 4 or `state_i_limb_LookupClientLogDerivative'` is `state_i_limb_LookupClientLogDerivative`).
 
 ### Transition Constraints as Polynomials
 
@@ -241,12 +262,14 @@ Written as Disjunctive Normal Form, the same constraints can be expressed as:
     `·(RunningEvaluationHashDigest' - 🪟·RunningEvaluationHashDigest - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4')`<br />
     `+ (round_no' - 5)·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`<br />
     `+ (CI' - opcode(hash))·(RunningEvaluationHashDigest' - RunningEvaluationHashDigest)`
-
 1.  1. `(round_no' + 1)·(round_no' - 1)·(round_no' - 2)·(round_no' - 3)·(round_no' - 4)·(round_no' - 5)`<br />
     `·(CI' - opcode(hash))`<br />
     `·(RunningEvaluationSponge' - 🧽·RunningEvaluationSponge - 🧅·CI' - 🧄₀·st0' - 🧄₁·st1' - 🧄₂·st2' - 🧄₃·st3' - 🧄₄·st4' - 🧄₅·st5' - 🧄₆·st6' - 🧄₇·st7' - 🧄₈·st8' - 🧄₉·st9')`<br />
     1. `+ (round_no' - 0)·(RunningEvaluationSponge' - RunningEvaluationSponge)`<br />
     1. `+ (CI' - opcode(absorb_init))·(CI' - opcode(absorb))·(CI' - opcode(squeeze))·(RunningEvaluationSponge' - RunningEvaluationSponge)`
+1. For `i` $\in \{0, \dots, 3\}$, `limb` $\in \{$`highest`, `midhigh`, `midlow`, `lowest` $\}$:<br />
+    `(round_no + 1)·(round_no - 5)·((state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)·(🧺 - 🍒·state_i_limb_lkin' - 🍓·state_i_limb_lkout') - 1)`<br />
+    `+ (round_no - 0)·(round_no - 1)·(round_no - 2)·(round_no - 3)·(round_no - 4)·(state_i_limb_LookupClientLogDerivative' - state_i_limb_LookupClientLogDerivative)`
 1. The remaining constraints are left as an exercise to the reader.
   For hints, see the [Tip5 paper](https://eprint.iacr.org/2023/107.pdf).
 
