@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt::Display;
 
+use anyhow::bail;
 use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
@@ -83,28 +84,22 @@ where
 
     /// Convert the proof into a proof stream for the verifier.
     pub fn from_proof(proof: &Proof) -> Result<Self> {
+        let proof_len = proof.0.len();
         let mut index = 0;
         let mut items = vec![];
         while index < proof.0.len() {
-            let len = proof.0[index].value() as usize;
-            if proof.0.len() < index + 1 + len {
-                return Err(ProofStreamError::new(&format!(
-                    "failed to decode proof; wrong length: have {} but expected {}",
-                    proof.0.len(),
-                    index + 1 + len
+            let next_item_len = proof.0[index].value() as usize;
+            let next_index = index + 1 + next_item_len;
+            if proof_len < next_index {
+                bail!(ProofStreamError::new(&format!(
+                    "failed to decode proof; wrong length: \
+                    have {proof_len} but expected {next_index}"
                 )));
             }
-            let str = &proof.0[index..(index + 1 + len)];
-            let maybe_item = Item::decode(str);
-            match maybe_item {
-                Ok(item) => {
-                    items.push(*item);
-                }
-                Err(e) => {
-                    return Err(e);
-                }
-            }
-            index += 1 + len;
+            let str = &proof.0[index..(next_index)];
+            let item = Item::decode(str)?;
+            items.push(*item);
+            index = next_index;
         }
         Ok(ProofStream {
             items,

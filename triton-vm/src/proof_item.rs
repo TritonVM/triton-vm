@@ -123,7 +123,7 @@ pub enum ProofItem {
 impl MayBeUncast for ProofItem {
     fn uncast(&self) -> Vec<BFieldElement> {
         if let Self::Uncast(vector) = self {
-            let mut str = vec![BFieldElement::new(vector.len().try_into().unwrap())];
+            let mut str = vec![BFieldElement::new(vector.len() as u64)];
             str.append(&mut vector.clone());
             str
         } else {
@@ -270,23 +270,22 @@ where
 }
 
 impl BFieldCodec for ProofItem {
-    /// Turn the given string of BFieldElements into a ProofItem.
-    /// The first element denotes the length of the encoding; make
-    /// sure it is correct!
+    /// Turn the given string of BFieldElements into a ProofItem. The first element denotes the
+    /// length of the encoding; make sure it is correct!
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
-        if let Some(len) = str.get(0) {
-            if len.value() as usize + 1 != str.len() {
-                bail!(ProofStreamError::new("length mismatch"))
-            } else {
-                Ok(Box::new(Self::Uncast(str[1..].to_vec())))
-            }
-        } else {
+        let Some(len) = str.get(0) else {
             bail!(ProofStreamError::new("empty buffer"))
+        };
+        if len.value() + 1 != str.len() as u64 {
+            bail!(ProofStreamError::new("length mismatch"))
         }
+
+        let raw_item = Self::Uncast(str[1..].to_vec());
+        Ok(Box::new(raw_item))
     }
 
-    /// Encode the ProofItem as a string of BFieldElements, with the
-    /// first element denoting the length of the rest.
+    /// Encode the ProofItem as a string of BFieldElements, with the first element denoting the
+    /// length of the rest.
     fn encode(&self) -> Vec<BFieldElement> {
         let mut tail = match self {
             ProofItem::CompressedAuthenticationPaths(something) => something.encode(),
@@ -300,7 +299,7 @@ impl BFieldCodec for ProofItem {
             ProofItem::PaddedHeight(something) => something.encode(),
             ProofItem::Uncast(something) => something.encode(),
         };
-        let head = BFieldElement::new(tail.len().try_into().unwrap());
+        let head = BFieldElement::new(tail.len() as u64);
         tail.insert(0, head);
         tail
     }
