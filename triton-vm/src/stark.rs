@@ -16,7 +16,6 @@ use num_traits::Zero;
 use rayon::prelude::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::traits::FiniteField;
@@ -58,24 +57,14 @@ pub struct StarkParameters {
 }
 
 impl StarkParameters {
-    pub fn new(security_level: usize, fri_expansion_factor: usize) -> Self {
+    pub fn new(security_level: usize, log2_of_fri_expansion_factor: usize) -> Self {
+        assert_ne!(
+            0, log2_of_fri_expansion_factor,
+            "FRI expansion factor must be greater than one."
+        );
+
         let num_randomizer_polynomials = 1; // over the XField
-
-        assert!(
-            is_power_of_two(fri_expansion_factor),
-            "FRI expansion factor must be a power of two, but got {fri_expansion_factor}."
-        );
-        assert!(
-            fri_expansion_factor > 1,
-            "FRI expansion factor must be greater than one, but got {fri_expansion_factor}."
-        );
-
-        let mut log2_of_fri_expansion_factor = 0;
-        while (1 << log2_of_fri_expansion_factor) < fri_expansion_factor {
-            log2_of_fri_expansion_factor += 1;
-        }
-        // post-condition: 2^(log2_of_fri_expansion_factor) == fri_expansion_factor
-
+        let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
         let num_colinearity_checks = security_level / log2_of_fri_expansion_factor;
         let num_trace_randomizers = num_colinearity_checks * 2;
         let num_non_linear_codeword_checks = security_level;
@@ -93,10 +82,10 @@ impl StarkParameters {
 
 impl Default for StarkParameters {
     fn default() -> Self {
-        let fri_expansion_factor = 4;
+        let log_2_of_fri_expansion_factor = 2;
         let security_level = 160;
 
-        Self::new(security_level, fri_expansion_factor)
+        Self::new(security_level, log_2_of_fri_expansion_factor)
     }
 }
 
