@@ -870,20 +870,6 @@ pub fn simulate(
     (aet, stdout, None)
 }
 
-/// Wrapper around `.simulate_with_input()` and thus also around
-/// `.simulate()` for convenience when neither explicit nor non-
-/// deterministic input is provided. Behavior is the same as that
-/// of `.simulate_with_input()`
-pub fn simulate_no_input(
-    program: &Program,
-) -> (
-    AlgebraicExecutionTrace,
-    Vec<BFieldElement>,
-    Option<anyhow::Error>,
-) {
-    simulate(program, vec![], vec![])
-}
-
 pub fn run(
     program: &Program,
     mut stdin: Vec<BFieldElement>,
@@ -1134,7 +1120,7 @@ pub mod triton_vm_tests {
 
         println!("{program}");
 
-        let (aet, _, err) = simulate_no_input(&program);
+        let (aet, _, err) = simulate(&program, vec![], vec![]);
 
         println!("{err:?}");
         for row in aet.processor_trace.rows() {

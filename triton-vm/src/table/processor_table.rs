@@ -3160,7 +3160,7 @@ mod constraint_polynomial_tests {
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::master_table::MasterTable;
     use crate::table::processor_table::ProcessorTraceRow;
-    use crate::vm::simulate_no_input;
+    use crate::vm::simulate;
 
     use super::*;
 
@@ -3169,7 +3169,7 @@ mod constraint_polynomial_tests {
     fn print_simple_processor_table_row_test() {
         let code = "push 2 push -1 add assert halt";
         let program = Program::from_code(code).unwrap();
-        let (aet, _, _) = simulate_no_input(&program);
+        let (aet, _, _) = simulate(&program, vec![], vec![]);
         println!();
         for row in aet.processor_trace.rows() {
             println!("{}", ProcessorTraceRow { row });

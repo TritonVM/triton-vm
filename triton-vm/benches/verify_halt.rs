@@ -15,7 +15,7 @@ use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkParameters;
 use triton_vm::table::master_table::MasterBaseTable;
-use triton_vm::vm::simulate_no_input;
+use triton_vm::vm::simulate;
 
 /// cargo criterion --bench verify_halt
 fn verify_halt(criterion: &mut Criterion) {
@@ -49,7 +49,7 @@ fn verify_halt(criterion: &mut Criterion) {
         let stark = Stark::new(claim, stark_parameters);
         (proof, stark)
     } else {
-        let (aet, output, err) = simulate_no_input(&program);
+        let (aet, output, err) = simulate(&program, vec![], vec![]);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {error}");
         }
