@@ -14,8 +14,10 @@ use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
+use crate::table::table_column::CascadeExtTableColumn;
 use crate::table::table_column::HashExtTableColumn;
 use crate::table::table_column::JumpStackExtTableColumn;
+use crate::table::table_column::LookupExtTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::OpStackExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn;
@@ -184,6 +186,44 @@ impl Evaluable for GrandCrossTableArg {
             - ext_row[ProcessorExtTableColumn::HashDigestEvalArg.master_ext_table_index()];
         let sponge = ext_row[ProcessorExtTableColumn::SpongeEvalArg.master_ext_table_index()]
             - ext_row[HashExtTableColumn::SpongeRunningEvaluation.master_ext_table_index()];
+        let hash_to_cascade = ext_row
+            [CascadeExtTableColumn::HashTableServerLogDerivative.master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState0HighestClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState0MidHighClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState0MidLowClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState0LowestClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState1HighestClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState1MidHighClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState1MidLowClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState1LowestClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState2HighestClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState2MidHighClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState2MidLowClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState2LowestClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState3HighestClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState3MidHighClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState3MidLowClientLogDerivative
+                .master_ext_table_index()]
+            - ext_row[HashExtTableColumn::CascadeState3LowestClientLogDerivative
+                .master_ext_table_index()];
+        let casade_to_lookup = ext_row
+            [CascadeExtTableColumn::LookupTableClientLogDerivative.master_ext_table_index()]
+            - ext_row
+                [LookupExtTableColumn::CascadeTableServerLogDerivative.master_ext_table_index()];
         let processor_to_u32 = ext_row
             [ProcessorExtTableColumn::U32LookupClientLogDerivative.master_ext_table_index()]
             - ext_row[U32ExtTableColumn::LookupServerLogDerivative.master_ext_table_index()];
@@ -207,6 +247,8 @@ impl Evaluable for GrandCrossTableArg {
             + challenges.get_challenge(HashInputWeight) * hash_input
             + challenges.get_challenge(HashDigestWeight) * hash_digest
             + challenges.get_challenge(SpongeWeight) * sponge
+            + challenges.get_challenge(HashToCascadeWeight) * hash_to_cascade
+            + challenges.get_challenge(CascadeToLookupWeight) * casade_to_lookup
             + challenges.get_challenge(ProcessorToU32Weight) * processor_to_u32
             + challenges.get_challenge(ClockJumpDifferenceLookupWeight)
                 * clock_jump_difference_lookup;

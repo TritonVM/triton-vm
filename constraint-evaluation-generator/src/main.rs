@@ -5,11 +5,13 @@ use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use triton_vm::table::cascade_table::ExtCascadeTable;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::hash_table::ExtHashTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
+use triton_vm::table::lookup_table::ExtLookupTable;
 use triton_vm::table::op_stack_table::ExtOpStackTable;
 use triton_vm::table::processor_table::ExtProcessorTable;
 use triton_vm::table::program_table::ExtProgramTable;
@@ -83,6 +85,28 @@ fn main() {
         &mut ExtHashTable::ext_consistency_constraints_as_circuits(),
         &mut ExtHashTable::ext_transition_constraints_as_circuits(),
         &mut ExtHashTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
+
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["cascade"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtCascadeTable::ext_initial_constraints_as_circuits(),
+        &mut ExtCascadeTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtCascadeTable::ext_transition_constraints_as_circuits(),
+        &mut ExtCascadeTable::ext_terminal_constraints_as_circuits(),
+    );
+    write(&table_name_snake, source_code);
+
+    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["lookup"]);
+    let source_code = gen(
+        &table_name_snake,
+        &table_name_camel,
+        &mut ExtLookupTable::ext_initial_constraints_as_circuits(),
+        &mut ExtLookupTable::ext_consistency_constraints_as_circuits(),
+        &mut ExtLookupTable::ext_transition_constraints_as_circuits(),
+        &mut ExtLookupTable::ext_terminal_constraints_as_circuits(),
     );
     write(&table_name_snake, source_code);
 

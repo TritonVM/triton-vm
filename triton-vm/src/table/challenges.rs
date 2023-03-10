@@ -27,6 +27,7 @@ use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::other::random_elements;
+use twenty_first::shared_math::tip5::LOOKUP_TABLE;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId::*;
@@ -122,6 +123,36 @@ pub enum ChallengeId {
     HashStateWeight14,
     HashStateWeight15,
 
+    /// The indeterminate for the Lookup Argument between the Hash Table and the Cascade Table.
+    HashCascadeLookupIndeterminate,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `*LkIn` in the Hash Table, and
+    /// - `2^16·LookInHi + LookInLo` in the Cascade Table.
+    HashCascadeLookInWeight,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `*LkOut` in the Hash Table, and
+    /// - `2^16·LookOutHi + LookOutLo` in the Cascade Table.
+    HashCascadeLookOutWeight,
+
+    /// The indeterminate for the Lookup Argument between the Cascade Table and the Lookup Table.
+    CascadeLookupIndeterminate,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `LkIn*` in the Cascade Table, and
+    /// - `LookIn` in the Lookup Table.
+    LookupTableInputWeight,
+
+    /// A weight for non-linearly combining multiple elements. Applies to
+    /// - `LkOut*` in the Cascade Table, and
+    /// - `LookOut` in the Lookup Table.
+    LookupTableOutputWeight,
+
+    /// The indeterminate for the public Evaluation Argument establishing correctness of the
+    /// Lookup Table.
+    LookupTablePublicIndeterminate,
+
     U32LhsWeight,
     U32RhsWeight,
     U32CiWeight,
@@ -136,6 +167,8 @@ pub enum ChallengeId {
     HashInputWeight,
     HashDigestWeight,
     SpongeWeight,
+    HashToCascadeWeight,
+    CascadeToLookupWeight,
     ProcessorToU32Weight,
     ClockJumpDifferenceLookupWeight,
 
@@ -144,6 +177,10 @@ pub enum ChallengeId {
 
     /// The terminal for the Evaluation Argument with standard output.
     StandardOutputTerminal,
+
+    /// The terminal for the Evaluation Argument establishing correctness of the
+    /// [Lookup Table](crate::table::lookup_table).
+    LookupTablePublicTerminal,
 }
 
 impl ChallengeId {
@@ -166,10 +203,18 @@ impl Challenges {
     }
 
     /// The number of weights to sample using the Fiat-Shamir heuristic. This number is lower
-    /// than the number of challenges: the input terminal and output terminal are not sampled but
-    /// computed from the public input and output.
+    /// than the number of challenges because several challenges are not sampled, but computed
+    /// from publicly known values and other, sampled challenges.
+    ///
+    /// Concretely:
+    /// - The [`StandardInputTerminal`] is computed from Triton VM's public input and the sampled
+    /// indeterminate [`StandardInputIndeterminate`].
+    /// - The [`StandardOutputTerminal`] is computed from Triton VM's public output and the sampled
+    /// indeterminate [`StandardOutputIndeterminate`].
+    /// - The [`LookupTablePublicTerminal`] is computed from the publicly known and constant
+    /// lookup table and the sampled indeterminate [`LookupTablePublicIndeterminate`].
     pub const fn num_challenges_to_sample() -> usize {
-        Self::count() - 2
+        Self::count() - 3
     }
 
     pub fn new(
@@ -186,9 +231,15 @@ impl Challenges {
         // the indeterminates.
         assert!(StandardInputIndeterminate.index() < StandardInputTerminal.index());
         assert!(StandardInputIndeterminate.index() < StandardOutputTerminal.index());
+        assert!(StandardInputIndeterminate.index() < LookupTablePublicTerminal.index());
 
         assert!(StandardOutputIndeterminate.index() < StandardInputTerminal.index());
         assert!(StandardOutputIndeterminate.index() < StandardOutputTerminal.index());
+        assert!(StandardOutputIndeterminate.index() < LookupTablePublicTerminal.index());
+
+        assert!(LookupTablePublicIndeterminate.index() < StandardInputTerminal.index());
+        assert!(LookupTablePublicIndeterminate.index() < StandardOutputTerminal.index());
+        assert!(LookupTablePublicIndeterminate.index() < LookupTablePublicTerminal.index());
 
         let input_terminal = EvalArg::compute_terminal(
             public_input,
@@ -200,9 +251,15 @@ impl Challenges {
             EvalArg::default_initial(),
             challenges[StandardOutputIndeterminate.index()],
         );
+        let lookup_terminal = EvalArg::compute_terminal(
+            &LOOKUP_TABLE.map(|i| BFieldElement::new(i as u64)),
+            EvalArg::default_initial(),
+            challenges[LookupTablePublicIndeterminate.index()],
+        );
 
         challenges.insert(StandardInputTerminal.index(), input_terminal);
         challenges.insert(StandardOutputTerminal.index(), output_terminal);
+        challenges.insert(LookupTablePublicTerminal.index(), lookup_terminal);
         assert_eq!(challenges.len(), Self::count());
         let challenges = challenges.try_into().unwrap();
 

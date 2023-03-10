@@ -11,7 +11,7 @@ In the nomenclature of this note, a trace is a special kind of table that tracks
 
 ## Algebraic Execution Tables
 
-There are 8 Arithmetic Execution Tables in TritonVM.
+There are 9 Arithmetic Execution Tables in TritonVM.
 Their relation is described by below figure.
 A a blue arrow indicates a [Permutation Argument](permutation-argument.md), a red arrow indicates an [Evaluation Argument](evaluation-argument.md), a purple arrow indicates a [Lookup Argument](lookup-argument.md), and the green arrow is the [Contiguity Argument](contiguity-of-memory-pointer-regions.md).
 
@@ -21,6 +21,7 @@ Public (but not secret!) input and output are given to the Verifier explicitly.
 As a consequence, neither the input nor the output symbols are recorded in a table.
 Correct use of public input (respectively, output) in the Processor is ensured through an Evaluation Argument.
 Given the list of input (or output) symbols, the verifier can compute the Evaluation Argument's terminal explicitly, and consequently compare it to the corresponding terminal in the Processor Table.
+The correctness of the [Lookup Table](lookup-table.md) is checked analogously.
 
 Despite the fact that neither public input nor output have a dedicated table, them having Evaluation Arguments with the Processor Table justifies their appearance in above figure.
 

@@ -14,6 +14,8 @@
     + [Random Access Memory Table](random-access-memory-table.md)
     + [Jump Stack Table](jump-stack-table.md)
     + [Hash Table](hash-table.md)
+    + [Cascade Table](cascade-table.md)
+    + [Lookup Table](lookup-table.md)
     + [U32 Table](u32-table.md)
 - [Table Linking](table-linking.md)
     + [Permutation Argument](permutation-argument.md)

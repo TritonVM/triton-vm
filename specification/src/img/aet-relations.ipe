@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!DOCTYPE ipe SYSTEM "ipe.dtd">
 <ipe version="70218" creator="Ipe 7.2.24">
-<info created="D:20200729150742" modified="D:20230216140604"/>
+<info created="D:20200729150742" modified="D:20230301184716"/>
 <preamble>\usepackage{lmodern}
 \renewcommand*\familydefault{\sfdefault}
 \usepackage[T1]{fontenc}</preamble>
@@ -322,8 +322,8 @@ h
 <layer name="bezout_args"/>
 <view layers="bg table_names eval_args perm_args lookup_args bezout_args" active="lookup_args"/>
 <path layer="bg" fill="white">
-120 172 m
-120 60 l
+72 172 m
+72 60 l
 272 60 l
 272 172 l
 h
@@ -436,6 +436,28 @@ h
 <path layer="lookup_args" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="pointed/small">
 194.5 92 m
 194.5 124 l
+</path>
+<text layer="table_names" matrix="-1 0 0 1 192 -16" transformations="translations" pos="96 128" stroke="black" type="label" width="31.825" height="6.919" depth="0" halign="center" valign="baseline">cascade</text>
+<text matrix="-1 0 0 1 192 -48" transformations="translations" pos="96 128" stroke="black" type="label" width="27.785" height="6.926" depth="1.93" halign="center" valign="baseline">lookup</text>
+<path layer="lookup_args" matrix="1 0 0 1 4 -4" stroke="darkmagenta" pen="1.6" cap="1" join="1">
+117.179 120 m
+122.97 120 l
+</path>
+<path matrix="1 0 0 1 4 -4" stroke="white" cap="1" join="1">
+117.179 120 m
+122.97 120 l
+</path>
+<path matrix="1 0 0 1 4 -4" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="fpointed/small">
+128 120 m
+112 120 l
+</path>
+<path stroke="white" cap="1" join="1">
+128.936 116 m
+119.212 116 l
+</path>
+<path matrix="-1 0 -0 -1 288 244" stroke="darkmagenta" pen="heavier" cap="1" join="1" arrow="fpointed/small" rarrow="pointed/small">
+192 138 m
+192 154 l
 </path>
 </page>
 </ipe>
