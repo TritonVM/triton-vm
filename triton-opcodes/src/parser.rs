@@ -417,13 +417,27 @@ fn stack_register(s: &str) -> ParseResult<Ord16> {
     Ok((s, stack_register))
 }
 
-/// Parse a label address
-///
-/// This is used in "`<label>:`" and in "`call <label>`".
+/// Parse a label address. This is used in "`<label>:`" and in "`call <label>`".
 fn label_addr(s_orig: &str) -> ParseResult<String> {
-    let (s, addr) = take_while1(is_label_char)(s_orig)?;
+    let (s, addr_part_0) = take_while1(is_label_start_char)(s_orig)?;
+    if addr_part_0.is_empty() {
+        // todo: this error is never shown to the user, since the `label` parser is wrapped in an
+        //  `alt`. With a custom error type, it is possible to have alt return the error of the
+        //  parser that went the farthest in the input data.
+        let failure_reason = "label must start with an alphabetic character or underscore";
+        return context(failure_reason, fail)(s_orig);
+    }
+    let (s, addr_part_1) = take_while(is_label_char)(s)?;
 
-    Ok((s, addr.to_string()))
+    Ok((s, format!("{}{}", addr_part_0, addr_part_1)))
+}
+
+fn is_label_start_char(c: char) -> bool {
+    c.is_alphabetic() || c == '_'
+}
+
+fn is_label_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-'
 }
 
 /// Parse 0 or more comments and/or whitespace.
@@ -460,10 +474,6 @@ fn whitespace1(s: &str) -> ParseResult<()> {
 
 fn is_linebreak(c: char) -> bool {
     c == '\r' || c == '\n'
-}
-
-fn is_label_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-'
 }
 
 /// `token0(tok)` will parse the string `tok` and munch 0 or more comment or whitespace.
@@ -526,8 +536,8 @@ mod parser_tests {
     fn parse_program_neg_prop(test_case: NegativeTestCase) {
         let result = parse(test_case.input);
         if result.is_ok() {
-            println!("parser input: {}", test_case.input);
-            println!("parser output: {:?}", result.unwrap());
+            eprintln!("parser input: {}", test_case.input);
+            eprintln!("parser output: {:?}", result.unwrap());
             panic!("parser should fail, but didn't: {}", test_case.message);
         }
 
@@ -537,7 +547,8 @@ mod parser_tests {
             .match_indices(test_case.expected_error)
             .count();
         if test_case.expected_error_count != actual_error_count {
-            println!("{actual_error_message}");
+            eprintln!("Actual error message:");
+            eprintln!("{actual_error_message}");
             assert_eq!(
                 test_case.expected_error_count, actual_error_count,
                 "parser should report '{}' {} times: {}",
@@ -916,13 +927,38 @@ mod parser_tests {
         for size in 0..100 {
             let code = program_gen(size * 10);
 
-            let new_actual = super::parse(&code).map_err(|err| err.to_string());
+            let new_actual = parse(&code).map_err(|err| err.to_string());
 
-            // property: the new parser succeeds on all generated input programs.
             if new_actual.is_err() {
                 println!("The code:\n{code}\n\n");
                 panic!("{}", new_actual.unwrap_err());
             }
         }
+    }
+
+    #[test]
+    fn parse_program_label_must_start_with_alphabetic_character_or_underscore() {
+        parse_program_neg_prop(NegativeTestCase {
+            input: "1foo: call 1foo",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "labels cannot start with a digit",
+        });
+
+        parse_program_neg_prop(NegativeTestCase {
+            input: "-foo: call -foo",
+            expected_error: "expecting label, instruction or eof",
+            expected_error_count: 1,
+            message: "labels cannot start with a dash",
+        });
+
+        parse_program_prop(TestCase {
+            input: "_foo: call _foo",
+            expected: Program::new(&[
+                Label("_foo".to_string()),
+                Instruction(Call("_foo".to_string())),
+            ]),
+            message: "labels can start with an underscore",
+        });
     }
 }

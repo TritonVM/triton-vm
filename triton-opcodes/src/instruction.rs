@@ -407,7 +407,7 @@ fn convert_labels_helper(
     }
 }
 
-pub const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
+const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
     [
         Pop,
         Push(BFIELD_ZERO),
@@ -500,7 +500,6 @@ pub mod sample_programs {
 
 #[cfg(test)]
 mod instruction_tests {
-    use crate::instruction::ALL_INSTRUCTIONS;
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
@@ -508,11 +507,12 @@ mod instruction_tests {
     use strum::IntoEnumIterator;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
+    use crate::instruction::ALL_INSTRUCTIONS;
     use crate::ord_n::Ord8;
     use crate::program::Program;
 
-    use super::all_instructions_without_args;
-    use super::AnInstruction::{self, *};
+    use super::AnInstruction;
+    use super::AnInstruction::*;
 
     #[test]
     fn opcode_test() {
@@ -626,15 +626,15 @@ mod instruction_tests {
 
     #[test]
     fn instruction_to_opcode_to_instruction_is_consistent_test() {
-        for instr in all_instructions_without_args() {
+        for instr in ALL_INSTRUCTIONS {
             assert_eq!(instr, instr.opcode().try_into().unwrap());
         }
     }
 
     #[test]
     fn print_all_instructions_and_opcodes() {
-        for instr in all_instructions_without_args() {
-            println!("{:>3} {: <10}", instr.opcode(), format!("{instr}"));
+        for instr in ALL_INSTRUCTIONS {
+            println!("{:>3} {: <10}", instr.opcode(), format!("{}", instr.name()));
         }
     }
 }
