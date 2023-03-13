@@ -315,9 +315,9 @@ fn push_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 
 fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = tag("dup")(s)?;
+        let (s, _) = token1("dup")(s)?; // require space before argument
         let (s, stack_register) = stack_register(s)?;
-        let (s, _) = comment_or_whitespace1(s)?; // require space after instruction name
+        let (s, _) = comment_or_whitespace1(s)?;
 
         Ok((s, Dup(stack_register)))
     }
@@ -325,12 +325,12 @@ fn dup_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
 
 fn swap_instruction() -> impl Fn(&str) -> ParseResult<AnInstruction<String>> {
     move |s: &str| {
-        let (s, _) = tag("swap")(s)?;
+        let (s, _) = token1("swap")(s)?; // require space before argument
         let (s, stack_register) = stack_register(s)?;
-        let (s, _) = comment_or_whitespace1(s)?; // require space after instruction name
+        let (s, _) = comment_or_whitespace1(s)?;
 
         if stack_register == ST0 {
-            return cut(context("there is no swap0 instruction", fail))(s);
+            return cut(context("instruction `swap` cannot take argument `0`", fail))(s);
         }
 
         Ok((s, Swap(stack_register)))
@@ -475,7 +475,8 @@ fn token0<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     }
 }
 
-/// `token1(tok)` will parse the string `tok` and munch at least one comment and/or whitespace, or eof.
+/// `token1(tok)` will parse the string `tok` and munch at least one comment and/or whitespace,
+/// or eof.
 fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
     move |s: &'a str| {
         let (s, _) = tag(token)(s)?;
@@ -641,12 +642,12 @@ mod parser_tests {
 
             "dup" => {
                 let arg: usize = rng.gen_range(0..15);
-                vec![format!("dup{arg}")]
+                vec!["dup".to_string(), format!("{arg}")]
             }
 
             "swap" => {
                 let arg: usize = rng.gen_range(1..15);
-                vec![format!("swap{arg}")]
+                vec!["swap".to_string(), format!("{arg}")]
             }
 
             "skiz" => {
@@ -665,7 +666,8 @@ mod parser_tests {
     }
 
     // FIXME: Apply shrinking.
-    #[allow(unstable_name_collisions)] // reason = "Switch to standard library intersperse_with() when it's ported"
+    #[allow(unstable_name_collisions)]
+    // reason = "Switch to standard library intersperse_with() when it's ported"
     fn program_gen(size: usize) -> String {
         // Generate random program
         let mut labels = vec![];
@@ -761,17 +763,17 @@ mod parser_tests {
         });
 
         parse_program_neg_prop(NegativeTestCase {
-            input: "dup0dup0",
+            input: "dup 0dup 0",
             expected_error: "n/a",
             expected_error_count: 0,
-            message: "whitespace required between instructions (dup0)",
+            message: "whitespace required between instructions (dup 0)",
         });
 
         parse_program_neg_prop(NegativeTestCase {
-            input: "swap10swap10",
+            input: "swap 10swap 10",
             expected_error: "n/a",
             expected_error_count: 0,
-            message: "whitespace required between instructions (swap10)",
+            message: "whitespace required between instructions (swap 10)",
         });
 
         parse_program_neg_prop(NegativeTestCase {
@@ -869,24 +871,24 @@ mod parser_tests {
     #[test]
     fn parse_program_nonexistent_instructions_test() {
         parse_program_neg_prop(NegativeTestCase {
-            input: "swap0",
-            expected_error: "there is no swap0 instruction",
+            input: "swap 0",
+            expected_error: "instruction `swap` cannot take argument `0`",
             expected_error_count: 1,
-            message: "there is no swap0 instruction",
+            message: "instruction `swap` cannot take argument `0`",
         });
 
         parse_program_neg_prop(NegativeTestCase {
-            input: "swap16",
+            input: "swap 16",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
-            message: "there is no swap16 instruction",
+            message: "there is no swap 16 instruction",
         });
 
         parse_program_neg_prop(NegativeTestCase {
-            input: "dup16",
+            input: "dup 16",
             expected_error: "expecting label, instruction or eof",
             expected_error_count: 1,
-            message: "there is no dup16 instruction",
+            message: "there is no dup 16 instruction",
         });
     }
 

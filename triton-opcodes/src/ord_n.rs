@@ -141,6 +141,15 @@ impl TryFrom<u32> for Ord16 {
     }
 }
 
+impl TryFrom<u64> for Ord16 {
+    type Error = String;
+
+    fn try_from(n: u64) -> Result<Self, Self::Error> {
+        let n: u32 = n.try_into().unwrap();
+        n.try_into()
+    }
+}
+
 impl From<&Ord16> for u32 {
     fn from(n: &Ord16) -> Self {
         (*n).into()

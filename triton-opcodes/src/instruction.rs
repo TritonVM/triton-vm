@@ -308,7 +308,7 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
         match self {
             Push(arg) => write!(f, " {arg}"),
             Divine(Some(hint)) => write!(f, "_{}", format!("{hint}").to_ascii_lowercase()),
-            Dup(arg) | Swap(arg) => write!(f, "{arg}"),
+            Dup(arg) | Swap(arg) => write!(f, " {arg}"),
             Call(arg) => write!(f, " {arg}"),
             _ => Ok(()),
         }
@@ -480,10 +480,10 @@ pub mod sample_programs {
 
     pub const READ_X3_WRITE_X14: &str = "
         read_io read_io read_io
-        dup0 dup2 dup4
-        dup0 dup2 dup4
-        dup0 dup2 dup4
-        dup0 dup2
+        dup 0 dup 2 dup 4
+        dup 0 dup 2 dup 4
+        dup 0 dup 2 dup 4
+        dup 0 dup2
         write_io write_io write_io write_io
         write_io write_io write_io write_io
         write_io write_io write_io write_io

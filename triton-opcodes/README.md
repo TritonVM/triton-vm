@@ -12,10 +12,10 @@ The package `triton-opcodes` delivers the `Instruction` type and a parser from a
 // Before: _ a b
 // After: _ min(a, b) max(a, b)
 minmax:
-    dup1        // _ a b a
-    dup1        // _ a b a b
-    lt          // _ a b (b < a)
-    skiz swap1  // _ min(a, b) max(a, b)
+    dup 1        // _ a b a
+    dup 1        // _ a b a b
+    lt           // _ a b (b < a)
+    skiz swap 1  // _ min(a, b) max(a, b)
     return
 ```
 

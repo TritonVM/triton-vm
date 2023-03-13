@@ -1,7 +1,8 @@
 use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use super::instruction::{AnInstruction::*, LabelledInstruction, LabelledInstruction::*};
-use crate::ord_n::Ord16::*;
+use super::instruction::AnInstruction::*;
+use super::instruction::LabelledInstruction;
+use super::instruction::LabelledInstruction::*;
 
 // OpStack manipulation
 pub fn pop() -> LabelledInstruction {
@@ -16,130 +17,16 @@ pub fn divine() -> LabelledInstruction {
     Instruction(Divine(None))
 }
 
-pub fn dup0() -> LabelledInstruction {
-    Instruction(Dup(ST0))
+pub fn dup(st: u64) -> LabelledInstruction {
+    Instruction(Dup(st.try_into().unwrap()))
 }
 
-pub fn dup1() -> LabelledInstruction {
-    Instruction(Dup(ST1))
-}
-
-pub fn dup2() -> LabelledInstruction {
-    Instruction(Dup(ST2))
-}
-
-pub fn dup3() -> LabelledInstruction {
-    Instruction(Dup(ST3))
-}
-
-pub fn dup4() -> LabelledInstruction {
-    Instruction(Dup(ST4))
-}
-
-pub fn dup5() -> LabelledInstruction {
-    Instruction(Dup(ST5))
-}
-
-pub fn dup6() -> LabelledInstruction {
-    Instruction(Dup(ST6))
-}
-
-pub fn dup7() -> LabelledInstruction {
-    Instruction(Dup(ST7))
-}
-
-pub fn dup8() -> LabelledInstruction {
-    Instruction(Dup(ST8))
-}
-
-pub fn dup9() -> LabelledInstruction {
-    Instruction(Dup(ST9))
-}
-
-pub fn dup10() -> LabelledInstruction {
-    Instruction(Dup(ST10))
-}
-
-pub fn dup11() -> LabelledInstruction {
-    Instruction(Dup(ST11))
-}
-
-pub fn dup12() -> LabelledInstruction {
-    Instruction(Dup(ST12))
-}
-
-pub fn dup13() -> LabelledInstruction {
-    Instruction(Dup(ST13))
-}
-
-pub fn dup14() -> LabelledInstruction {
-    Instruction(Dup(ST14))
-}
-
-pub fn dup15() -> LabelledInstruction {
-    Instruction(Dup(ST15))
-}
-
-// There is no swap0().
-
-pub fn swap1() -> LabelledInstruction {
-    Instruction(Swap(ST1))
-}
-
-pub fn swap2() -> LabelledInstruction {
-    Instruction(Swap(ST2))
-}
-
-pub fn swap3() -> LabelledInstruction {
-    Instruction(Swap(ST3))
-}
-
-pub fn swap4() -> LabelledInstruction {
-    Instruction(Swap(ST4))
-}
-
-pub fn swap5() -> LabelledInstruction {
-    Instruction(Swap(ST5))
-}
-
-pub fn swap6() -> LabelledInstruction {
-    Instruction(Swap(ST6))
-}
-
-pub fn swap7() -> LabelledInstruction {
-    Instruction(Swap(ST7))
-}
-
-pub fn swap8() -> LabelledInstruction {
-    Instruction(Swap(ST8))
-}
-
-pub fn swap9() -> LabelledInstruction {
-    Instruction(Swap(ST9))
-}
-
-pub fn swap10() -> LabelledInstruction {
-    Instruction(Swap(ST10))
-}
-
-pub fn swap11() -> LabelledInstruction {
-    Instruction(Swap(ST11))
-}
-
-pub fn swap12() -> LabelledInstruction {
-    Instruction(Swap(ST12))
-}
-
-pub fn swap13() -> LabelledInstruction {
-    Instruction(Swap(ST13))
-}
-
-pub fn swap14() -> LabelledInstruction {
-    Instruction(Swap(ST14))
-}
-
-pub fn swap15() -> LabelledInstruction {
-    Instruction(Swap(ST15))
+pub fn swap(st: u64) -> LabelledInstruction {
+    assert_ne!(
+        0, st,
+        "Instruction `swap` cannot be used on stack register 0."
+    );
+    Instruction(Swap(st.try_into().unwrap()))
 }
 
 // Control flow
