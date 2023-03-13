@@ -2,8 +2,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::error::Error;
 
-use twenty_first::shared_math::b_field_element::BFieldElement;
-
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
@@ -22,11 +20,12 @@ use nom::multi::many0;
 use nom::multi::many1;
 use nom::Finish;
 use nom::IResult;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 
-use crate::instruction::is_instruction_name;
 use crate::instruction::AnInstruction;
 use crate::instruction::AnInstruction::*;
 use crate::instruction::LabelledInstruction;
+use crate::instruction::ALL_INSTRUCTION_NAMES;
 use crate::ord_n::Ord16;
 use crate::ord_n::Ord16::*;
 
@@ -290,6 +289,10 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     ))(s)
 }
 
+fn is_instruction_name(s: &str) -> bool {
+    ALL_INSTRUCTION_NAMES.contains(&s)
+}
+
 fn instruction<'a>(
     name: &'a str,
     instruction: AnInstruction<String>,
@@ -484,10 +487,10 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 #[cfg(test)]
 mod parser_tests {
     use itertools::Itertools;
-
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
     use rand::Rng;
+
     use LabelledInstruction::*;
 
     use crate::program::Program;

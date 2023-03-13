@@ -9,8 +9,8 @@ use strum::IntoEnumIterator;
 use strum_macros::Display as DisplayMacro;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
-
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 
 use AnInstruction::*;
 
@@ -20,6 +20,8 @@ use crate::ord_n::Ord8;
 
 /// An `Instruction` has `call` addresses encoded as absolute integers.
 pub type Instruction = AnInstruction<BFieldElement>;
+pub const ALL_INSTRUCTIONS: [Instruction; Instruction::COUNT] = all_instructions_without_args();
+pub const ALL_INSTRUCTION_NAMES: [&str; Instruction::COUNT] = all_instruction_names();
 
 /// A `LabelledInstruction` has `call` addresses encoded as label names.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -33,7 +35,7 @@ pub enum LabelledInstruction {
     Label(String),
 }
 
-impl std::fmt::Display for LabelledInstruction {
+impl Display for LabelledInstruction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LabelledInstruction::Instruction(instr) => write!(f, "{instr}"),
@@ -45,11 +47,9 @@ impl std::fmt::Display for LabelledInstruction {
 #[derive(Debug, DisplayMacro, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
 pub enum DivinationHint {}
 
-/// A Triton VM instruction
-///
-/// The ISA is defined at:
-///
-/// https://triton-vm.org/spec/isa.html
+/// A Triton VM instruction. See the
+/// [Instruction Set Architecture](https://triton-vm.org/spec/isa.html)
+/// for more details.
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro, EnumIter)]
@@ -106,66 +106,6 @@ pub enum AnInstruction<Dest: PartialEq + Default> {
     // Read/write
     ReadIo,
     WriteIo,
-}
-
-impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            // OpStack manipulation
-            Pop => write!(f, "pop"),
-            Push(arg) => write!(f, "push {arg}"),
-            Divine(Some(hint)) => write!(f, "divine_{}", format!("{hint}").to_ascii_lowercase()),
-            Divine(None) => write!(f, "divine"),
-            Dup(arg) => write!(f, "dup{arg}"),
-            Swap(arg) => write!(f, "swap{arg}"),
-
-            // Control flow
-            Nop => write!(f, "nop"),
-            Skiz => write!(f, "skiz"),
-            Call(arg) => write!(f, "call {arg}"),
-            Return => write!(f, "return"),
-            Recurse => write!(f, "recurse"),
-            Assert => write!(f, "assert"),
-            Halt => write!(f, "halt"),
-
-            // Memory access
-            ReadMem => write!(f, "read_mem"),
-            WriteMem => write!(f, "write_mem"),
-
-            // Hashing-related
-            Hash => write!(f, "hash"),
-            DivineSibling => write!(f, "divine_sibling"),
-            AssertVector => write!(f, "assert_vector"),
-            AbsorbInit => write!(f, "absorb_init"),
-            Absorb => write!(f, "absorb"),
-            Squeeze => write!(f, "squeeze"),
-
-            // Base field arithmetic on stack
-            Add => write!(f, "add"),
-            Mul => write!(f, "mul"),
-            Invert => write!(f, "invert"),
-            Eq => write!(f, "eq"),
-
-            // Bitwise arithmetic on stack
-            Split => write!(f, "split"),
-            Lt => write!(f, "lt"),
-            And => write!(f, "and"),
-            Xor => write!(f, "xor"),
-            Log2Floor => write!(f, "log_2_floor"),
-            Pow => write!(f, "pow"),
-            Div => write!(f, "div"),
-
-            // Extension field arithmetic on stack
-            XxAdd => write!(f, "xxadd"),
-            XxMul => write!(f, "xxmul"),
-            XInvert => write!(f, "xinvert"),
-            XbMul => write!(f, "xbmul"),
-
-            // Read/write
-            ReadIo => write!(f, "read_io"),
-            WriteIo => write!(f, "write_io"),
-        }
-    }
 }
 
 impl<Dest: PartialEq + Default> AnInstruction<Dest> {
@@ -255,14 +195,46 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
         }
     }
 
-    /// Returns whether a given instruction modifies the op-stack.
-    ///
-    /// A modification involves any amount of pushing and/or popping.
-    pub fn is_op_stack_instruction(&self) -> bool {
-        !matches!(
-            self,
-            Nop | Call(_) | Return | Recurse | Halt | Hash | AssertVector
-        )
+    const fn name(&self) -> &'static str {
+        match self {
+            Pop => "pop",
+            Push(_) => "push",
+            Divine(_) => "divine",
+            Dup(_) => "dup",
+            Swap(_) => "swap",
+            Nop => "nop",
+            Skiz => "skiz",
+            Call(_) => "call",
+            Return => "return",
+            Recurse => "recurse",
+            Assert => "assert",
+            Halt => "halt",
+            ReadMem => "read_mem",
+            WriteMem => "write_mem",
+            Hash => "hash",
+            DivineSibling => "divine_sibling",
+            AssertVector => "assert_vector",
+            AbsorbInit => "absorb_init",
+            Absorb => "absorb",
+            Squeeze => "squeeze",
+            Add => "add",
+            Mul => "mul",
+            Invert => "invert",
+            Eq => "eq",
+            Split => "split",
+            Lt => "lt",
+            And => "and",
+            Xor => "xor",
+            Log2Floor => "log_2_floor",
+            Pow => "pow",
+            Div => "div",
+            XxAdd => "xxadd",
+            XxMul => "xxmul",
+            XInvert => "xinvert",
+            XbMul => "xbmul",
+            ReadIo => "read_io",
+            WriteIo => "write_io",
+        }
     }
 
     pub fn opcode_b(&self) -> BFieldElement {
@@ -270,10 +242,9 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
     }
 
     pub fn size(&self) -> usize {
-        if matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)) {
-            2
-        } else {
-            1
+        match matches!(self, Push(_) | Dup(_) | Swap(_) | Call(_)) {
+            true => 2,
+            false => 1,
         }
     }
 
@@ -327,6 +298,19 @@ impl<Dest: PartialEq + Default> AnInstruction<Dest> {
             XbMul => XbMul,
             ReadIo => ReadIo,
             WriteIo => WriteIo,
+        }
+    }
+}
+
+impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name())?;
+        match self {
+            Push(arg) => write!(f, " {arg}"),
+            Divine(Some(hint)) => write!(f, "_{}", format!("{hint}").to_ascii_lowercase()),
+            Dup(arg) | Swap(arg) => write!(f, "{arg}"),
+            Call(arg) => write!(f, " {arg}"),
+            _ => Ok(()),
         }
     }
 }
@@ -423,44 +407,16 @@ fn convert_labels_helper(
     }
 }
 
-pub fn is_instruction_name(s: &str) -> bool {
-    match s {
-        // OpStack manipulation
-        "pop" | "push" | "divine" => true,
-        "dup0" | "dup1" | "dup2" | "dup3" | "dup4" | "dup5" | "dup6" | "dup7" | "dup8" | "dup9"
-        | "dup10" | "dup11" | "dup12" | "dup13" | "dup14" | "dup15" => true,
-        "swap1" | "swap2" | "swap3" | "swap4" | "swap5" | "swap6" | "swap7" | "swap8" | "swap9"
-        | "swap10" | "swap11" | "swap12" | "swap13" | "swap14" | "swap15" => true,
-
-        // Control flow
-        "nop" | "skiz" | "call" | "return" | "recurse" | "assert" | "halt" => true,
-
-        // Memory access
-        "read_mem" | "write_mem" => true,
-
-        // Hashing-related instructions
-        "hash" | "divine_sibling" | "assert_vector" => true,
-
-        // Arithmetic on stack instructions
-        "add" | "mul" | "invert" | "split" | "eq" | "xxadd" | "xxmul" | "xinvert" | "xbmul" => true,
-
-        // Read/write
-        "read_io" | "write_io" => true,
-
-        _ => false,
-    }
-}
-
-pub fn all_instructions_without_args() -> Vec<Instruction> {
-    let all_instructions: [_; Instruction::COUNT] = [
+pub const fn all_instructions_without_args() -> [AnInstruction<BFieldElement>; Instruction::COUNT] {
+    [
         Pop,
-        Push(Default::default()),
+        Push(BFIELD_ZERO),
         Divine(None),
-        Dup(Default::default()),
-        Swap(Default::default()),
+        Dup(ST0),
+        Swap(ST0),
         Nop,
         Skiz,
-        Call(Default::default()),
+        Call(BFIELD_ZERO),
         Return,
         Recurse,
         Assert,
@@ -490,76 +446,17 @@ pub fn all_instructions_without_args() -> Vec<Instruction> {
         XbMul,
         ReadIo,
         WriteIo,
-    ];
-    all_instructions.to_vec()
+    ]
 }
 
-pub fn all_labelled_instructions_with_args() -> Vec<LabelledInstruction> {
-    vec![
-        Pop,
-        Push(BFieldElement::new(42)),
-        Divine(None),
-        Dup(ST0),
-        Dup(ST1),
-        Dup(ST2),
-        Dup(ST3),
-        Dup(ST4),
-        Dup(ST5),
-        Dup(ST6),
-        Dup(ST7),
-        Dup(ST8),
-        Dup(ST9),
-        Dup(ST10),
-        Dup(ST11),
-        Dup(ST12),
-        Dup(ST13),
-        Dup(ST14),
-        Dup(ST15),
-        Swap(ST1),
-        Swap(ST2),
-        Swap(ST3),
-        Swap(ST4),
-        Swap(ST5),
-        Swap(ST6),
-        Swap(ST7),
-        Swap(ST8),
-        Swap(ST9),
-        Swap(ST10),
-        Swap(ST11),
-        Swap(ST12),
-        Swap(ST13),
-        Swap(ST14),
-        Swap(ST15),
-        Nop,
-        Skiz,
-        Call("foo".to_string()),
-        Return,
-        Recurse,
-        Assert,
-        Halt,
-        ReadMem,
-        WriteMem,
-        Hash,
-        DivineSibling,
-        AssertVector,
-        AbsorbInit,
-        Absorb,
-        Squeeze,
-        Add,
-        Mul,
-        Invert,
-        Split,
-        Eq,
-        XxAdd,
-        XxMul,
-        XInvert,
-        XbMul,
-        ReadIo,
-        WriteIo,
-    ]
-    .into_iter()
-    .map(LabelledInstruction::Instruction)
-    .collect()
+const fn all_instruction_names() -> [&'static str; Instruction::COUNT] {
+    let mut names = [""; Instruction::COUNT];
+    let mut i = 0;
+    while i < Instruction::COUNT {
+        names[i] = ALL_INSTRUCTIONS[i].name();
+        i += 1;
+    }
+    names
 }
 
 pub mod sample_programs {
@@ -599,97 +496,11 @@ pub mod sample_programs {
         hash
         halt
     ";
-
-    pub const ALL_INSTRUCTIONS: &str = "
-        pop
-        push 42
-        divine
-
-        dup0 dup1 dup2 dup3 dup4 dup5 dup6 dup7 dup8 dup9 dup10 dup11 dup12 dup13 dup14 dup15
-        swap1 swap2 swap3 swap4 swap5 swap6 swap7 swap8 swap9 swap10 swap11 swap12 swap13 swap14 swap15
-
-        nop
-        skiz
-        call foo
-
-        return recurse assert halt read_mem write_mem hash divine_sibling assert_vector
-        absorb_init absorb squeeze
-        add mul invert split eq xxadd xxmul xinvert xbmul
-
-        read_io write_io
-    ";
-
-    pub fn all_instructions_displayed() -> Vec<String> {
-        vec![
-            "pop",
-            "push 42",
-            "divine",
-            "dup0",
-            "dup1",
-            "dup2",
-            "dup3",
-            "dup4",
-            "dup5",
-            "dup6",
-            "dup7",
-            "dup8",
-            "dup9",
-            "dup10",
-            "dup11",
-            "dup12",
-            "dup13",
-            "dup14",
-            "dup15",
-            "swap1",
-            "swap2",
-            "swap3",
-            "swap4",
-            "swap5",
-            "swap6",
-            "swap7",
-            "swap8",
-            "swap9",
-            "swap10",
-            "swap11",
-            "swap12",
-            "swap13",
-            "swap14",
-            "swap15",
-            "nop",
-            "skiz",
-            "call foo",
-            "return",
-            "recurse",
-            "assert",
-            "halt",
-            "read_mem",
-            "write_mem",
-            "hash",
-            "divine_sibling",
-            "assert_vector",
-            "absorb_init",
-            "absorb",
-            "squeeze",
-            "add",
-            "mul",
-            "invert",
-            "split",
-            "eq",
-            "xxadd",
-            "xxmul",
-            "xinvert",
-            "xbmul",
-            "read_io",
-            "write_io",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect()
-    }
 }
 
 #[cfg(test)]
 mod instruction_tests {
+    use crate::instruction::ALL_INSTRUCTIONS;
     use itertools::Itertools;
     use num_traits::One;
     use num_traits::Zero;
@@ -801,7 +612,7 @@ mod instruction_tests {
     fn ib_registers_are_binary_test() {
         use Ord8::*;
 
-        for instruction in all_instructions_without_args() {
+        for instruction in ALL_INSTRUCTIONS {
             let all_ibs: [Ord8; Ord8::COUNT] = [IB0, IB1, IB2, IB3, IB4, IB5, IB6, IB7];
             for ib in all_ibs {
                 let ib_value = instruction.ib(ib);
