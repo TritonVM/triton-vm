@@ -184,6 +184,7 @@ The following additional constraints also apply to every pair of rows.
     1. If the current instruction is `div`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates both
         1. `st0` in the next row and `st1` in the current row as well as the constants `opcode(lt)` and `1` with respect to challenges 🥜, 🌰, 🥑, and 🥕, and indeterminate 🧷.
         1. `st0` in the current row and `st1` in the next row as well as `opcode(split)` with respect to challenges 🥜, 🌰, and 🥑, and indeterminate 🧷.
+    1. If the current instruction is `pop_count`, then the logarithmic derivative for the Lookup Argument with the U32 Table accumulates `st0` and `ci` in the current row and `st0` in the next row with respect to challenges 🥜, 🥑, and 🥕, and indeterminate 🧷.
     1. Else, _i.e._, if the current instruction is not a u32 instruction, the logarithmic derivative for the Lookup Argument with the U32 Table remains unchanged.
 1. The running sum for the logarithmic derivative of the clock jump difference lookup argument accumulates the next row's `clk` with the appropriate multiplicity `cjd_mul` with respect to indeterminate 🪞.
 
@@ -219,6 +220,7 @@ The following additional constraints also apply to every pair of rows.
     &emsp;&emsp;`- (🧷 - 🥜·st0' - 🌰·st1 - 🥑·opcode(lt) - 🥕·1)`<br />
     &emsp;&emsp;`- (🧷 - 🥜·st0 - 🌰·st1' - 🥑·opcode(split))`<br />
     &emsp;`)`
+    1. `+ pop_count_deselector·((U32LookupClientLogDerivative' - U32LookupClientLogDerivative)·(🧷 - 🥜·st0 - 🥑·ci - 🥕·st0') - 1)`
     1. `+ (1 - ib2)·(U32LookupClientLogDerivative' - U32LookupClientLogDerivative)`
 1. `(ClockJumpDifferenceLookupServerLogDerivative' - ClockJumpDifferenceLookupServerLogDerivative)`<br />
     `·(🪞 - clk') - cjd_mul'`

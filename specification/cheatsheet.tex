@@ -43,11 +43,11 @@
     \node[anchor=north east, inner sep=0] at (1,1.5) {
         \includegraphics[keepaspectratio,width=0.4\textwidth]{src/img/triton-logo.pdf}
     };
-    \node[anchor=north east, inner sep=0] at (1,0) {\texttt{\LARGE v0.18}};
+    \node[anchor=north east, inner sep=0] at (1,0) {\texttt{\LARGE v0.19}};
 \end{tikzpicture}
 
 {
-\renewcommand{\arraystretch}{0.84}
+\renewcommand{\arraystretch}{0.82}
 \begin{tabular}{rllll}
     \texttt{  2} & $\ominus$     & \texttt{pop}                                       & \texttt{\_ st$_0$}                                                        & \texttt{\_}                                                                \\
     \texttt{  1} & $\oplus$      & \tcbox[colback=instr-arg]{\texttt{push + a}}       & \texttt{\_}                                                               & \texttt{\_ a}                                                              \\
@@ -80,6 +80,7 @@
     \texttt{ 36} & $\ovoid^1$    & \tcbox[colback=instr-u32]{\texttt{log\_2\_floor}}  & \texttt{\_ st$_0$}                                                        & \texttt{\_ $\lfloor\log_2$(st$_0$)$\rfloor$}                               \\
     \texttt{ 44} & $\ominus^1$   & \tcbox[colback=instr-u32]{\texttt{pow}}            & \texttt{\_ e b}                                                           & \texttt{\_ b}$^\texttt{e}$                                                 \\
     \texttt{ 52} & $\ovoid^2$    & \tcbox[colback=instr-u32]{\texttt{div}}            & \texttt{\_ denom num}                                                     & \texttt{\_ quot rem}                                                       \\
+    \texttt{ 60} & $\ovoid^1$    & \tcbox[colback=instr-u32]{\texttt{pop\_count}}     & \texttt{\_ st$_0$}                                                        & \texttt{\_ w}                                                              \\
     \texttt{104} & $\ovoid^3$    & \texttt{xxadd}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
     \texttt{112} & $\ovoid^3$    & \texttt{xxmul}                                     & \texttt{\_ y$_2$ y$_1$ y$_0$ x$_2$ x$_1$ x$_0$}                           & \texttt{\_ y$_2$ y$_1$ y$_0$ z$_2$ z$_1$ z$_0$}                            \\
     \texttt{120} & $\ovoid^3$    & \texttt{xinvert}                                   & \texttt{\_ x$_2$ x$_1$ x$_0$}                                             & \texttt{\_ y$_2$ y$_1$ y$_0$}                                              \\
@@ -127,9 +128,9 @@
         Hash        &   21 &   41 &    42 &      &    104 \\
         Cascade     &    2 &    1 &     3 &      &      6 \\
         Lookup      &    3 &    1 &     4 &    1 &      9 \\
-        U32         &    1 &   14 &    21 &    2 &     38 \\
+        U32         &    1 &   15 &    22 &    2 &     40 \\
         Cross-Table &      &      &       &    1 &      1 \\ \bottomrule
-        $\sum$      &   85 &   69 &   168 &    6 &    328
+        $\sum$      &   85 &   70 &   169 &    6 &    330
     \end{tabular}
 \end{minipage}
 \end{document}

@@ -11,6 +11,7 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
 use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
@@ -39,6 +40,7 @@ use crate::table::processor_table::ProcessorTraceRow;
 use crate::table::table_column::HashBaseTableColumn::*;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
+use crate::vm::VMOutput::*;
 
 /// The number of helper variable registers
 pub const HV_REGISTER_COUNT: usize = 4;
@@ -321,7 +323,7 @@ impl<'pgm> VMState<'pgm> {
                     self.op_stack.push(BFieldElement::zero());
                 }
 
-                vm_output = Some(VMOutput::Tip5Trace(Hash, Box::new(tip5_trace)));
+                vm_output = Some(Tip5Trace(Hash, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
@@ -341,10 +343,7 @@ impl<'pgm> VMState<'pgm> {
                 });
                 self.sponge_state = tip5_trace.last().unwrap().to_owned();
 
-                vm_output = Some(VMOutput::Tip5Trace(
-                    self.current_instruction()?,
-                    Box::new(tip5_trace),
-                ));
+                vm_output = Some(Tip5Trace(self.current_instruction()?, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
@@ -358,7 +357,7 @@ impl<'pgm> VMState<'pgm> {
                 });
                 self.sponge_state = tip5_trace.last().unwrap().to_owned();
 
-                vm_output = Some(VMOutput::Tip5Trace(Squeeze, Box::new(tip5_trace)));
+                vm_output = Some(Tip5Trace(Squeeze, Box::new(tip5_trace)));
                 self.instruction_pointer += 1;
             }
 
@@ -417,8 +416,8 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(hi);
                 self.op_stack.push(lo);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::Split, lo, hi);
-                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
+                let u32_table_entry = (Split, lo, hi);
+                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Lt => {
@@ -427,12 +426,8 @@ impl<'pgm> VMState<'pgm> {
                 let lt = BFieldElement::new((lhs < rhs) as u64);
                 self.op_stack.push(lt);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (
-                    Instruction::Lt,
-                    BFieldElement::new(lhs as u64),
-                    BFieldElement::new(rhs as u64),
-                );
-                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
+                let u32_table_entry = (Lt, (lhs as u64).into(), (rhs as u64).into());
+                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             And => {
@@ -441,12 +436,8 @@ impl<'pgm> VMState<'pgm> {
                 let and = BFieldElement::new((lhs & rhs) as u64);
                 self.op_stack.push(and);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (
-                    Instruction::And,
-                    BFieldElement::new(lhs as u64),
-                    BFieldElement::new(rhs as u64),
-                );
-                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
+                let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
+                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Xor => {
@@ -458,12 +449,8 @@ impl<'pgm> VMState<'pgm> {
                 // Triton VM uses the following equality to compute the results of both the `and`
                 // and `xor` instruction using the u32 coprocessor's `and` capability:
                 // a ^ b = a + b - 2 · (a & b)
-                let u32_table_entry = (
-                    Instruction::And,
-                    BFieldElement::new(lhs as u64),
-                    BFieldElement::new(rhs as u64),
-                );
-                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
+                let u32_table_entry = (And, (lhs as u64).into(), (rhs as u64).into());
+                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Log2Floor => {
@@ -474,12 +461,8 @@ impl<'pgm> VMState<'pgm> {
                 let l2f = BFieldElement::new(log_2_floor(lhs as u128));
                 self.op_stack.push(l2f);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (
-                    Instruction::Log2Floor,
-                    BFieldElement::new(lhs as u64),
-                    BFieldElement::zero(),
-                );
-                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
+                let u32_table_entry = (Log2Floor, (lhs as u64).into(), BFIELD_ZERO);
+                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Pow => {
@@ -488,8 +471,8 @@ impl<'pgm> VMState<'pgm> {
                 let pow = lhs.mod_pow(rhs as u64);
                 self.op_stack.push(pow);
                 self.instruction_pointer += 1;
-                let u32_table_entry = (Instruction::Pow, lhs, BFieldElement::new(rhs as u64));
-                vm_output = Some(VMOutput::U32TableEntries(vec![u32_table_entry]));
+                let u32_table_entry = (Pow, lhs, (rhs as u64).into());
+                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             Div => {
@@ -503,13 +486,18 @@ impl<'pgm> VMState<'pgm> {
                 self.op_stack.push(quot);
                 self.op_stack.push(rem);
                 self.instruction_pointer += 1;
-                let u32_table_entry_0 = (Instruction::Lt, rem, BFieldElement::new(denom as u64));
-                let u32_table_entry_1 =
-                    (Instruction::Split, BFieldElement::new(numer as u64), quot);
-                vm_output = Some(VMOutput::U32TableEntries(vec![
-                    u32_table_entry_0,
-                    u32_table_entry_1,
-                ]));
+                let u32_table_entry_0 = (Lt, rem, (denom as u64).into());
+                let u32_table_entry_1 = (Split, (numer as u64).into(), quot);
+                vm_output = Some(U32TableEntries(vec![u32_table_entry_0, u32_table_entry_1]));
+            }
+
+            PopCount => {
+                let lhs = self.op_stack.pop_u32()?;
+                let pop_count = BFieldElement::new(lhs.count_ones() as u64);
+                self.op_stack.push(pop_count);
+                self.instruction_pointer += 1;
+                let u32_table_entry = (PopCount, (lhs as u64).into(), BFIELD_ZERO);
+                vm_output = Some(U32TableEntries(vec![u32_table_entry]));
             }
 
             XxAdd => {
@@ -543,7 +531,7 @@ impl<'pgm> VMState<'pgm> {
             }
 
             WriteIo => {
-                vm_output = Some(VMOutput::WriteOutputSymbol(self.op_stack.pop()?));
+                vm_output = Some(WriteOutputSymbol(self.op_stack.pop()?));
                 self.instruction_pointer += 1;
             }
 
@@ -851,13 +839,11 @@ pub fn simulate(
             Ok(vm_output) => vm_output,
         };
         match vm_output {
-            Some(VMOutput::Tip5Trace(Instruction::Hash, tip5_trace)) => {
-                aet.append_hash_trace(*tip5_trace)
-            }
-            Some(VMOutput::Tip5Trace(instruction, tip5_trace)) => {
+            Some(Tip5Trace(Hash, tip5_trace)) => aet.append_hash_trace(*tip5_trace),
+            Some(Tip5Trace(instruction, tip5_trace)) => {
                 aet.append_sponge_trace(instruction, *tip5_trace)
             }
-            Some(VMOutput::U32TableEntries(u32_entries)) => {
+            Some(U32TableEntries(u32_entries)) => {
                 for u32_entry in u32_entries {
                     aet.u32_entries
                         .entry(u32_entry)
@@ -865,7 +851,7 @@ pub fn simulate(
                         .or_insert(1);
                 }
             }
-            Some(VMOutput::WriteOutputSymbol(written_word)) => stdout.push(written_word),
+            Some(WriteOutputSymbol(written_word)) => stdout.push(written_word),
             None => (),
         }
     }
@@ -895,7 +881,7 @@ pub fn debug(
             Ok((next_state, vm_output)) => (next_state, vm_output),
         };
 
-        if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
+        if let Some(WriteOutputSymbol(written_word)) = vm_output {
             stdout.push(written_word);
         }
         current_state = next_state;
@@ -917,7 +903,7 @@ pub fn run(
 
     while !state.halting {
         let vm_output = state.step_mut(&mut stdin, &mut secret_in)?;
-        if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
+        if let Some(WriteOutputSymbol(written_word)) = vm_output {
             stdout.push(written_word);
         }
     }
@@ -1652,6 +1638,26 @@ pub mod triton_vm_tests {
         }
     }
 
+    pub fn test_program_for_starting_with_pop_count() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("pop_count dup 0 push 0 eq assert halt")
+    }
+
+    pub fn test_program_for_pop_count() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 10 pop_count push 2 eq assert halt")
+    }
+
+    pub fn property_based_test_program_for_pop_count() -> SourceCodeAndInput {
+        let mut rng = ThreadRng::default();
+        let st0 = rng.next_u32();
+        let pop_count = st0.count_ones();
+        let source_code = format!("push {st0} pop_count read_io eq assert halt",);
+        SourceCodeAndInput {
+            source_code,
+            input: vec![pop_count.into()],
+            secret_input: vec![],
+        }
+    }
+
     pub fn property_based_test_program_for_is_u32() -> SourceCodeAndInput {
         let mut rng = ThreadRng::default();
         let st0_u32 = rng.next_u32();
@@ -1827,6 +1833,8 @@ pub mod triton_vm_tests {
             test_program_for_log2floor(),
             test_program_for_pow(),
             test_program_for_div(),
+            test_program_for_starting_with_pop_count(),
+            test_program_for_pop_count(),
             test_program_for_xxadd(),
             test_program_for_xxmul(),
             test_program_for_xinvert(),
@@ -1847,6 +1855,7 @@ pub mod triton_vm_tests {
             property_based_test_program_for_log2floor(),
             property_based_test_program_for_pow(),
             property_based_test_program_for_div(),
+            property_based_test_program_for_pop_count(),
             property_based_test_program_for_is_u32(),
             property_based_test_program_for_random_ram_access(),
         ]

@@ -33,6 +33,7 @@ class Instruction(IntEnum):
     Log2Floor = auto()
     Pow = auto()
     Div = auto()
+    PopCount = auto()
     XxAdd = auto()
     XxMul = auto()
     XInvert = auto()
@@ -55,7 +56,7 @@ def in_bucket(instruction_bucket, instruction):
                                Instruction.Add, Instruction.Mul, Instruction.Eq, Instruction.XbMul]
     if instruction_bucket == InstructionBucket.U32:
         return instruction in [Instruction.Lt, Instruction.And, Instruction.Xor, Instruction.Log2Floor,
-                               Instruction.Pow, Instruction.Div, Instruction.Split]
+                               Instruction.Pow, Instruction.Div, Instruction.Split, Instruction.PopCount]
     return False
 
 def flag_set(instruction):

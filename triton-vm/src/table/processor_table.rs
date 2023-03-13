@@ -330,7 +330,9 @@ impl ProcessorTable {
                     u32_table_running_sum_log_derivative +=
                         (challenges.get_challenge(U32Indeterminate) - compressed_row).inverse();
                 }
-                if previously_current_instruction == Instruction::Log2Floor.opcode_b() {
+                if previously_current_instruction == Instruction::Log2Floor.opcode_b()
+                    || previously_current_instruction == Instruction::PopCount.opcode_b()
+                {
                     let compressed_row = prev_row[ST0.base_table_index()]
                         * challenges.get_challenge(U32LhsWeight)
                         + prev_row[CI.base_table_index()] * challenges.get_challenge(U32CiWeight)
@@ -746,6 +748,7 @@ impl ExtProcessorTable {
             (Log2Floor, factory.instruction_log_2_floor()),
             (Pow, factory.instruction_pow()),
             (Div, factory.instruction_div()),
+            (PopCount, factory.instruction_pop_count()),
             (XxAdd, factory.instruction_xxadd()),
             (XxMul, factory.instruction_xxmul()),
             (XInvert, factory.instruction_xinv()),
@@ -797,7 +800,7 @@ impl ExtProcessorTable {
         transition_constraints.push(factory.running_evaluation_hash_input_updates_correctly());
         transition_constraints.push(factory.running_evaluation_hash_digest_updates_correctly());
         transition_constraints.push(factory.running_evaluation_sponge_updates_correctly());
-        transition_constraints.push(factory.running_product_to_u32_table_updates_correctly());
+        transition_constraints.push(factory.log_derivative_with_u32_table_updates_correctly());
 
         ConstraintCircuitMonad::constant_folding(&mut transition_constraints);
         transition_constraints
@@ -1704,6 +1707,18 @@ impl DualRowConstraints {
             specific_constraints,
             self.step_1(),
             self.stack_remains_and_top_three_elements_unconstrained(),
+            self.keep_ram(),
+        ]
+        .concat()
+    }
+
+    pub fn instruction_pop_count(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        // no further constraints
+        let specific_constraints = vec![];
+        [
+            specific_constraints,
+            self.step_1(),
+            self.unop(),
             self.keep_ram(),
         ]
         .concat()
@@ -2741,7 +2756,7 @@ impl DualRowConstraints {
             + squeeze_deselector * running_evaluation_updates
     }
 
-    pub fn running_product_to_u32_table_updates_correctly(
+    pub fn log_derivative_with_u32_table_updates_correctly(
         &self,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
         let opcode_of_and = self.circuit_builder.b_constant(Instruction::And.opcode_b());
@@ -2764,6 +2779,8 @@ impl DualRowConstraints {
         let log_2_floor_deselector =
             InstructionDeselectors::instruction_deselector(self, Instruction::Log2Floor);
         let div_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Div);
+        let pop_count_deselector =
+            InstructionDeselectors::instruction_deselector(self, Instruction::PopCount);
 
         let running_sum = self.u32_table_running_sum_log_derivative();
         let running_sum_next = self.u32_table_running_sum_log_derivative_next();
@@ -2809,13 +2826,15 @@ impl DualRowConstraints {
         let pow_summand = pow_deselector
             * ((running_sum_next.clone() - running_sum.clone()) * binop_factor - self.one());
         let log_2_floor_summand = log_2_floor_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * unop_factor - self.one());
+            * ((running_sum_next.clone() - running_sum.clone()) * unop_factor.clone() - self.one());
         let div_summand = div_deselector
             * ((running_sum_next.clone() - running_sum.clone())
                 * div_factor_for_lt.clone()
                 * div_factor_for_range_check.clone()
                 - div_factor_for_lt
                 - div_factor_for_range_check);
+        let pop_count_summand = pop_count_deselector
+            * ((running_sum_next.clone() - running_sum.clone()) * unop_factor - self.one());
         let no_update_summand = (self.one() - self.ib2()) * (running_sum_next - running_sum);
 
         split_summand
@@ -2825,6 +2844,7 @@ impl DualRowConstraints {
             + pow_summand
             + log_2_floor_summand
             + div_summand
+            + pop_count_summand
             + no_update_summand
     }
 }
@@ -3222,6 +3242,7 @@ mod constraint_polynomial_tests {
             Log2Floor => tc.instruction_log_2_floor(),
             Pow => tc.instruction_pow(),
             Div => tc.instruction_div(),
+            PopCount => tc.instruction_pop_count(),
             XxAdd => tc.instruction_xxadd(),
             XxMul => tc.instruction_xxmul(),
             XInvert => tc.instruction_xinv(),
@@ -3721,6 +3742,7 @@ mod constraint_polynomial_tests {
             (Log2Floor, factory.instruction_log_2_floor()),
             (Pow, factory.instruction_pow()),
             (Div, factory.instruction_div()),
+            (PopCount, factory.instruction_pop_count()),
             (XxAdd, factory.instruction_xxadd()),
             (XxMul, factory.instruction_xxmul()),
             (XInvert, factory.instruction_xinv()),

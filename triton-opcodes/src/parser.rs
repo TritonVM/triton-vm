@@ -251,13 +251,14 @@ fn an_instruction(s: &str) -> ParseResult<AnInstruction<String>> {
     let log_2_floor = instruction("log_2_floor", Log2Floor);
     let pow = instruction("pow", Pow);
     let div = instruction("div", Div);
+    let pop_count = instruction("pop_count", PopCount);
     let xxadd = instruction("xxadd", XxAdd);
     let xxmul = instruction("xxmul", XxMul);
     let xinvert = instruction("xinvert", XInvert);
     let xbmul = instruction("xbmul", XbMul);
 
     let base_field_arithmetic_on_stack = alt((add, mul, invert, eq));
-    let bitwise_arithmetic_on_stack = alt((split, lt, and, xor, log_2_floor, pow, div));
+    let bitwise_arithmetic_on_stack = alt((split, lt, and, xor, log_2_floor, pow, div, pop_count));
     let extension_field_arithmetic_on_stack = alt((xxadd, xxmul, xinvert, xbmul));
     let arithmetic_on_stack = alt((
         base_field_arithmetic_on_stack,
@@ -591,50 +592,22 @@ mod parser_tests {
     }
 
     fn instruction_gen(labels: &mut Vec<String>) -> Vec<String> {
-        let mut rng = rand::thread_rng();
+        let mut rng = thread_rng();
 
-        // not included: push, dup*, swap*, skiz, call
-        let simple_instructions = [
-            "pop",
-            "divine",
-            "nop",
-            "return",
-            "assert",
-            "halt",
-            "read_mem",
-            "write_mem",
-            "hash",
-            "divine_sibling",
-            "assert_vector",
-            "absorb_init",
-            "absorb",
-            "squeeze",
-            "add",
-            "mul",
-            "invert",
-            "eq",
-            "split",
-            "lt",
-            "and",
-            "xor",
-            "log_2_floor",
-            "pow",
-            "div",
-            "xxadd",
-            "xxmul",
-            "xinvert",
-            "xbmul",
-            "read_io",
-            "write_io",
-        ];
+        let difficult_instructions = vec!["push", "dup", "swap", "skiz", "call"];
+        let simple_instructions = ALL_INSTRUCTION_NAMES
+            .into_iter()
+            .filter(|name| !difficult_instructions.contains(name))
+            .collect_vec();
 
-        // Test simple instructions, dup* and swap* less frequently.
-        let generators = ["simple", "push", "dup", "swap", "skiz", "call"];
-        let weights = [simple_instructions.len(), 2, 6, 6, 2, 10];
+        let generators = vec![vec!["simple"], difficult_instructions].concat();
+        // Test difficult instructions more frequently.
+        let weights = vec![simple_instructions.len(), 2, 6, 6, 2, 10];
+
         assert_eq!(
             generators.len(),
             weights.len(),
-            "all generators have weights"
+            "all generators must have weights"
         );
         let dist = WeightedIndex::new(&weights).expect("a weighted distribution of generators");
 

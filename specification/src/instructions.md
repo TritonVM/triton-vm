@@ -117,6 +117,7 @@ Triton VM cannot know the number of elements that will be absorbed.
 | `log_2_floor` |     36 | `_ a`       | `_ ⌊log₂(a)⌋` | The number of bits in `a` minus 1, _i.e._, $\lfloor\log_2\texttt{a}\rfloor$. Crashes the VM if `a` is 0 or not u32.                                                        |
 | `pow`         |     44 | `_ e b`     | `_ b**e`      | The top of the stack to the power of the stack's runner up. Crashes the VM if `a` or `b` is not u32. The result might be no u32 – care advised.                            |
 | `div`         |     52 | `_ d n`     | `_ q r`       | Division with remainder of numerator `n` by denominator `d`. Guarantees the properties `n == q·d + r` and `r < d`. Crashes the VM if `n` or `d` is not u32 or if `d` is 0. |
+| `pop_count`   |     60 | `_ a`       | `_ w`         | Computes the [hamming weight](https://en.wikipedia.org/wiki/Hamming_weight) or “population count” of `a`. Crashes the VM if `a` is not u32.                                |
 
 ## Extension Field Arithmetic on Stack
 

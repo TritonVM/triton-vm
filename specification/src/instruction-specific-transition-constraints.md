@@ -580,6 +580,12 @@ The following two properties are guaranteed by the [U32 Table](u32-table.md):
 1. `st0 - st1·st1' - st0'`
 1. `st2' - st2`
 
+## Instruction `pop_count`
+
+This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `unary_operation`, and `keep_ram`.
+Beyond that, this instruction has no transition constraints.
+Instead, correct transition is guaranteed by the [U32 Table](u32-table.md).
+
 ## Instruction `xxadd`
 
 This instruction uses all constraints defined by [instruction groups](instruction-groups.md) `step_1`, `stack_remains_and_top_3_unconstrained`, and `keep_ram`.

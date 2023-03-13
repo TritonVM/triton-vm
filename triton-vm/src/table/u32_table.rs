@@ -57,6 +57,7 @@ impl ExtU32Table {
             Instruction::And,
             Instruction::Log2Floor,
             Instruction::Pow,
+            Instruction::PopCount,
         ]
         .into_iter()
         .filter(|&instruction| instruction != instruction_to_select)
@@ -163,7 +164,11 @@ impl ExtU32Table {
             instruction_deselector(Instruction::Log2Floor)
                 * (copy_flag.clone() - one.clone())
                 * (one.clone() - lhs.clone() * lhs_inv.clone())
-                * (result + one.clone());
+                * (result.clone() + one.clone());
+        let result_is_initialized_correctly_for_pop_count =
+            instruction_deselector(Instruction::PopCount)
+                * (one.clone() - lhs.clone() * lhs_inv.clone())
+                * result;
         let if_log_2_floor_on_0_then_vm_crashes = instruction_deselector(Instruction::Log2Floor)
             * copy_flag.clone()
             * (one.clone() - lhs * lhs_inv);
@@ -183,6 +188,7 @@ impl ExtU32Table {
             result_is_initialized_correctly_for_and,
             result_is_initialized_correctly_for_pow,
             result_is_initialized_correctly_for_log_2_floor,
+            result_is_initialized_correctly_for_pop_count,
             if_log_2_floor_on_0_then_vm_crashes,
             if_copy_flag_is_0_then_lookup_multiplicity_is_0,
         ];
@@ -302,7 +308,7 @@ impl ExtU32Table {
         let if_copy_flag_next_is_0_and_ci_is_and_then_results_updates_correctly =
             (copy_flag_next.clone() - one.clone())
                 * instruction_deselector(Instruction::And)
-                * (result.clone() - two * result_next.clone() - lhs_lsb * rhs_lsb.clone());
+                * (result.clone() - two * result_next.clone() - lhs_lsb.clone() * rhs_lsb.clone());
 
         // instruction log_2_floor
         let if_copy_flag_next_is_0_and_ci_is_log_2_floor_lhs_next_0_for_first_time_then_set_result =
@@ -333,7 +339,12 @@ impl ExtU32Table {
             (copy_flag_next.clone() - one.clone())
                 * instruction_deselector(Instruction::Pow)
                 * rhs_lsb
-                * (result - result_next.clone() * result_next.clone() * lhs);
+                * (result.clone() - result_next.clone() * result_next.clone() * lhs);
+
+        let if_copy_flag_next_is_0_and_ci_is_pop_count_then_result_increases_by_lhs_lsb =
+            (copy_flag_next.clone() - one.clone())
+                * instruction_deselector(Instruction::PopCount)
+                * (result - result_next.clone() - lhs_lsb);
 
         // running sum for Lookup Argument with Processor Table
         let if_copy_flag_next_is_0_then_running_sum_log_derivative_stays = (copy_flag_next.clone()
@@ -370,6 +381,7 @@ impl ExtU32Table {
             if_copy_flag_next_is_0_and_ci_is_pow_then_lhs_remains_unchanged,
             if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_0_then_result_squares,
             if_copy_flag_next_is_0_and_ci_is_pow_and_rhs_lsb_is_1_then_result_squares_and_mults,
+            if_copy_flag_next_is_0_and_ci_is_pop_count_then_result_increases_by_lhs_lsb,
             if_copy_flag_next_is_0_then_running_sum_log_derivative_stays,
             if_copy_flag_next_is_1_then_running_sum_log_derivative_accumulates_next_row,
         ];
@@ -440,6 +452,7 @@ impl U32Table {
                 Instruction::And => zero,
                 Instruction::Log2Floor => -one,
                 Instruction::Pow => one,
+                Instruction::PopCount => zero,
                 _ => panic!("Must be u32 instruction, not {current_instruction}."),
             };
             section[[row_idx, LhsInv.base_table_index()]] =
@@ -509,6 +522,7 @@ impl U32Table {
                 true => next_row_result * next_row_result,
                 false => next_row_result * next_row_result * row[LHS.base_table_index()],
             },
+            Instruction::PopCount => next_row_result + lhs_lsb,
             _ => panic!("Must be u32 instruction, not {current_instruction}."),
         };
 
