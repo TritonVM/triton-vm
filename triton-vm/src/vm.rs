@@ -1056,26 +1056,26 @@ pub mod triton_vm_tests {
     pub const GCD_X_Y: &str = "
         read_io  // _ a
         read_io  // _ a b
-        dup1     // _ a b a
-        dup1     // _ a b a b
+        dup 1    // _ a b a
+        dup 1    // _ a b a b
         lt       // _ a b b<a
         skiz     // _ a b
-            swap1  // _ d n where n > d
+            swap 1   // _ d n where n > d
 
         // ---
         loop_cond:
-        dup1
+        dup 1
         push 0 
         eq 
         skiz 
             call terminate  // _ d n where d != 0
-        dup1   // _ d n d
-        dup1   // _ d n d n
+        dup 1  // _ d n d
+        dup 1  // _ d n d n
         div    // _ d n q r
-        swap2  // _ d r q n
+        swap 2 // _ d r q n
         pop    // _ d r q
         pop    // _ d r
-        swap1  // _ r d
+        swap 1 // _ r d
         call loop_cond
         // ---
         
@@ -1160,8 +1160,8 @@ pub mod triton_vm_tests {
     pub fn test_program_for_push_pop_dup_swap_nop() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 1 push 2 pop assert \
-            push 1 dup0 assert assert \
-            push 1 push 2 swap1 assert pop \
+            push 1 dup 0 assert assert \
+            push 1 push 2 swap 1 assert pop \
             nop nop nop halt",
         )
     }
@@ -1179,7 +1179,7 @@ pub mod triton_vm_tests {
     }
 
     pub fn test_program_for_call_recurse_return() -> SourceCodeAndInput {
-        let source_code = "push 2 call label halt label: push -1 add dup0 skiz recurse return";
+        let source_code = "push 2 call label halt label: push -1 add dup 0 skiz recurse return";
         SourceCodeAndInput::without_input(source_code)
     }
 
@@ -1351,7 +1351,7 @@ pub mod triton_vm_tests {
         SourceCodeAndInput::without_input(
             "push 2 push -1 add assert \
             push -1 push -1 mul assert \
-            push 3 dup0 invert mul assert \
+            push 3 dup 0 invert mul assert \
             halt",
         )
     }
@@ -1382,7 +1382,7 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
         let st0 = rng.next_u64() % BFieldElement::P;
 
-        let source_code = format!("push {st0} dup0 read_io eq assert dup0 divine eq assert halt");
+        let source_code = format!("push {st0} dup 0 read_io eq assert dup 0 divine eq assert halt");
         SourceCodeAndInput {
             source_code,
             input: vec![st0.into()],
@@ -1395,7 +1395,7 @@ pub mod triton_vm_tests {
             "
             push 3 call lsb assert assert halt
             lsb:
-                push 2 swap1 div return
+                push 2 swap 1 div return
             ",
         )
     }
@@ -1410,7 +1410,7 @@ pub mod triton_vm_tests {
             "
             push {st0} call lsb read_io eq assert read_io eq assert halt
             lsb:
-                push 2 swap1 div return
+                push 2 swap 1 div return
             "
         );
         SourceCodeAndInput {
@@ -1756,8 +1756,9 @@ pub mod triton_vm_tests {
 
     pub fn test_program_for_read_io_write_io() -> SourceCodeAndInput {
         SourceCodeAndInput {
-            source_code: "read_io assert read_io read_io dup1 dup1 add write_io mul write_io halt"
-                .to_string(),
+            source_code:
+                "read_io assert read_io read_io dup 1 dup 1 add write_io mul write_io halt"
+                    .to_string(),
             input: vec![1_u64.into(), 3_u64.into(), 14_u64.into()],
             secret_input: vec![],
         }
@@ -1828,7 +1829,7 @@ pub mod triton_vm_tests {
             read_io read_io read_io
             read_io read_io read_io
             xxadd
-            swap2
+            swap 2
             write_io write_io write_io
             halt
         ";
@@ -1862,7 +1863,7 @@ pub mod triton_vm_tests {
             read_io read_io read_io
             read_io read_io read_io
             xxmul
-            swap2
+            swap 2
             write_io write_io write_io
             halt
         ";
@@ -1891,13 +1892,13 @@ pub mod triton_vm_tests {
         ];
         let xinv_code = "
             read_io read_io read_io
-            dup2 dup2 dup2
-            dup2 dup2 dup2
+            dup 2 dup 2 dup 2
+            dup 2 dup 2 dup 2
             xinvert xxmul
-            swap2
+            swap 2
             write_io write_io write_io
             xinvert
-            swap2
+            swap 2
             write_io write_io write_io
             halt";
         let program = SourceCodeAndInput {
@@ -1931,7 +1932,7 @@ pub mod triton_vm_tests {
             read_io read_io read_io
             read_io
             xbmul
-            swap2
+            swap 2
             write_io write_io write_io
             halt";
         let program = SourceCodeAndInput {
@@ -1952,7 +1953,7 @@ pub mod triton_vm_tests {
             "
             push 7 push 19 call sub write_io halt
             sub:
-                swap1 push -1 mul add return
+                swap 1 push -1 mul add return
             ",
         )
         .run();
@@ -2068,13 +2069,13 @@ pub mod triton_vm_tests {
             push 0      // _ 0 0 | 0
             write_mem   // _ 0 0 |
             push 5      // _ 0 0 | 5
-            swap1       // _ 0 5 | 0
+            swap 1      // _ 0 5 | 0
             push 3      // _ 0 5 | 0 3
-            swap1       // _ 0 5 | 3 0
+            swap 1      // _ 0 5 | 3 0
             pop         // _ 0 5 | 3
             write_mem   // _ 0 5 |
             read_mem    // _ 0 5 | 3
-            swap2       // _ 3 5 | 0
+            swap 2      // _ 3 5 | 0
             pop         // _ 3 5 |
             read_mem    // _ 3 5 | 3
             halt
@@ -2113,15 +2114,15 @@ pub mod triton_vm_tests {
             halt                           // done - should be return
 
             sample_weights_loop:           // subroutine: loop until all weights are sampled
-              dup0 push 0 eq skiz return   // no weights left
+              dup 0 push 0 eq skiz return  // no weights left
               push -1 add                  // decrease number of weights to still sample
               push 0 push 0 push 0 push 0  // prepare for hashing
               push 0 push 0 push 0 push 0  // prepare for hashing
-              dup11 dup11 dup11 dup11      // prepare for hashing
+              dup 11 dup 11 dup 11 dup 11  // prepare for hashing
               hash                         // hash seed & countdown
-              swap13 swap10 pop            // re-organize stack
-              swap13 swap10 pop            // re-organize stack
-              swap13 swap10 swap7          // re-organize stack
+              swap 13 swap 10 pop          // re-organize stack
+              swap 13 swap 10 pop          // re-organize stack
+              swap 13 swap 10 swap 7       // re-organize stack
               pop pop pop pop pop pop pop  // remove unnecessary remnants of digest
               recurse                      // repeat
         ";
@@ -2151,7 +2152,7 @@ pub mod triton_vm_tests {
         "read_io ",                                 // number of authentication paths to test
         "",                                         // stack: [num]
         "mt_ap_verify: ",                           // proper program starts here
-        "push 0 swap1 write_mem pop ",              // store number of APs at RAM address 0
+        "push 0 swap 1 write_mem pop ",             // store number of APs at RAM address 0
         "",                                         // stack: []
         "read_io read_io read_io read_io read_io ", // read Merkle root
         "",                                         // stack: [r4 r3 r2 r1 r0]
@@ -2164,7 +2165,7 @@ pub mod triton_vm_tests {
         "",                            // stack before: [* r4 r3 r2 r1 r0]
         "",                            // stack after: [* r4 r3 r2 r1 r0]
         "check_aps: ",                 // start function description:
-        "push 0 read_mem dup0 ",       // get number of APs left to check
+        "push 0 read_mem dup 0 ",      // get number of APs left to check
         "",                            // stack: [* r4 r3 r2 r1 r0 0 num_left num_left]
         "push 0 eq ",                  // see if there are authentication paths left
         "",                            // stack: [* r4 r3 r2 r1 r0 0 num_left num_left==0]
@@ -2188,12 +2189,12 @@ pub mod triton_vm_tests {
         "push 0 push 0 push 0 push 0 push 0 ", // pad before fixed-length hash
         "hash return ",            // compute leaf's digest
         "",
-        "",                             // subroutine: go up tree
-        "",                             // stack before: [* idx - - - - - - - - - -]
-        "",                             // stack after: [* idx>>2 - - - - - - - - - -]
-        "traverse_tree: ",              // start function description:
-        "dup10 push 1 eq skiz return ", // break loop if node index is 1
-        "divine_sibling hash recurse ", // move up one level in the Merkle tree
+        "",                              // subroutine: go up tree
+        "",                              // stack before: [* idx - - - - - - - - - -]
+        "",                              // stack after: [* idx>>2 - - - - - - - - - -]
+        "traverse_tree: ",               // start function description:
+        "dup 10 push 1 eq skiz return ", // break loop if node index is 1
+        "divine_sibling hash recurse ",  // move up one level in the Merkle tree
         "",
         "",                     // subroutine: compare digests
         "",                     // stack before: [* r4 r3 r2 r1 r0 idx a b c d e - - - - -]
@@ -2201,7 +2202,7 @@ pub mod triton_vm_tests {
         "assert_tree_top: ",    // start function description:
         "pop pop pop pop pop ", // remove unnecessary “0”s from hashing
         "",                     // stack: [* r4 r3 r2 r1 r0 idx a b c d e]
-        "swap1 swap2 swap3 swap4 swap5 ",
+        "swap 1 swap 2 swap 3 swap 4 swap 5 ",
         "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e idx]
         "assert ",              //
         "",                     // stack: [* r4 r3 r2 r1 r0 a b c d e]
@@ -2304,14 +2305,14 @@ pub mod triton_vm_tests {
     fn run_tvm_get_colinear_y_test() {
         // see also: get_colinear_y in src/shared_math/polynomial.rs
         let get_colinear_y_code = "
-            read_io                       // p2_x
-            read_io read_io               // p1_y p1_x
-            read_io read_io               // p0_y p0_x
-            swap3 push -1 mul dup1 add    // dy = p0_y - p1_y
-            dup3 push -1 mul dup5 add mul // dy·(p2_x - p0_x)
-            dup3 dup3 push -1 mul add     // dx = p0_x - p1_x
-            invert mul add                // compute result
-            swap3 pop pop pop             // leave a clean stack
+            read_io                         // p2_x
+            read_io read_io                 // p1_y p1_x
+            read_io read_io                 // p0_y p0_x
+            swap 3 push -1 mul dup 1 add    // dy = p0_y - p1_y
+            dup 3 push -1 mul dup 5 add mul // dy·(p2_x - p0_x)
+            dup 3 dup 3 push -1 mul add     // dx = p0_x - p1_x
+            invert mul add                  // compute result
+            swap 3 pop pop pop              // leave a clean stack
             write_io halt
         ";
 
@@ -2339,11 +2340,11 @@ pub mod triton_vm_tests {
             call loop
             
             loop:
-                dup0
+                dup 0
                 write_io
                 push -1
                 add
-                dup0
+                dup 0
                 skiz
                   recurse
                 write_io
@@ -2398,7 +2399,7 @@ pub mod triton_vm_tests {
 
     #[test]
     fn run_tvm_swap_test() {
-        let code = "push 1 push 2 swap1 halt";
+        let code = "push 1 push 2 swap 1 halt";
         let program = Program::from_code(code).unwrap();
         let (_trace, _out, _err) = run(&program, vec![], vec![]);
     }

@@ -14,9 +14,9 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use triton_opcodes::instruction::all_instructions_without_args;
 use triton_opcodes::instruction::AnInstruction::*;
 use triton_opcodes::instruction::Instruction;
+use triton_opcodes::instruction::ALL_INSTRUCTIONS;
 use triton_opcodes::ord_n::Ord8;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
@@ -2954,9 +2954,9 @@ impl InstructionDeselectors {
     pub fn create(
         factory: &mut DualRowConstraints,
     ) -> HashMap<Instruction, ConstraintCircuitMonad<DualRowIndicator>> {
-        all_instructions_without_args()
-            .into_iter()
-            .map(|instrctn| (instrctn, Self::instruction_deselector(factory, instrctn)))
+        ALL_INSTRUCTIONS
+            .iter()
+            .map(|&instr| (instr, Self::instruction_deselector(factory, instr)))
             .collect()
     }
 }
@@ -3302,7 +3302,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_dup_test() {
-        let test_rows = [get_test_row_from_source_code("push 1 dup0 halt", 1)];
+        let test_rows = [get_test_row_from_source_code("push 1 dup 0 halt", 1)];
         test_constraints_for_rows_with_debug_info(
             Dup(Ord16::ST0),
             &test_rows,
@@ -3313,7 +3313,10 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn transition_constraints_for_instruction_swap_test() {
-        let test_rows = [get_test_row_from_source_code("push 1 push 2 swap1 halt", 2)];
+        let test_rows = [get_test_row_from_source_code(
+            "push 1 push 2 swap 1 halt",
+            2,
+        )];
         test_constraints_for_rows_with_debug_info(
             Swap(Ord16::ST0),
             &test_rows,
@@ -3363,7 +3366,7 @@ mod constraint_polynomial_tests {
     #[test]
     fn transition_constraints_for_instruction_recurse_test() {
         let test_rows = [get_test_row_from_source_code(
-            "push 2 call label halt label: push -1 add dup0 skiz recurse return ",
+            "push 2 call label halt label: push -1 add dup 0 skiz recurse return ",
             6,
         )];
         test_constraints_for_rows_with_debug_info(
@@ -3615,14 +3618,14 @@ mod constraint_polynomial_tests {
 
         // We need dummy challenges to evaluate.
         let dummy_challenges = Challenges::placeholder(&[], &[]);
-        for instruction in all_instructions_without_args() {
+        for instruction in ALL_INSTRUCTIONS {
             use ProcessorBaseTableColumn::*;
             let deselector = deselectors.get(instruction);
 
             println!("\n\nThe Deselector for instruction {instruction} is:\n{deselector}",);
 
             // Negative tests
-            for other_instruction in all_instructions_without_args()
+            for other_instruction in ALL_INSTRUCTIONS
                 .into_iter()
                 .filter(|other_instruction| *other_instruction != instruction)
             {

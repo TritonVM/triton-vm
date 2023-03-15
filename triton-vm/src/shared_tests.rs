@@ -174,7 +174,7 @@ pub const FIBONACCI_SEQUENCE: &str = "
     read_io
 
     // is any looping necessary?
-    dup0
+    dup 0
     skiz
     call fib-loop
 
@@ -188,12 +188,12 @@ pub const FIBONACCI_SEQUENCE: &str = "
     fib-loop:
         push -1   // ⊥ a b j -1
         add       // ⊥ a b (j-1)
-        swap2     // ⊥ (j-1) b a
-        dup1      // ⊥ (j-1) b a b
+        swap 2    // ⊥ (j-1) b a
+        dup 1     // ⊥ (j-1) b a b
         add       // ⊥ (j-1) b (a+b)
-        swap1     // ⊥ (j-1) (a+b) b
-        swap2     // ⊥ b (a+b) (j-1)
-        dup0      // ⊥ b (a+b) (j-1) (j-1)
+        swap 1    // ⊥ (j-1) (a+b) b
+        swap 2    // ⊥ b (a+b) (j-1)
+        dup 0     // ⊥ b (a+b) (j-1) (j-1)
         skiz      // ⊥ b (a+b) (j-1)
         recurse
         return
@@ -220,7 +220,7 @@ pub const MANY_U32_INSTRUCTIONS: &str = "
     push 14392 push 31589 div
     halt
     lsb:
-        push 2 swap1 div return
+        push 2 swap 1 div return
     is_u32:
         split pop push 0 eq return";
 
@@ -278,7 +278,7 @@ pub const VERIFY_SUDOKU: &str = "
     read1:                            // _
         read_io                       // _ d
         read_mem                      // _ d p
-        swap1                         // _ p d
+        swap 1                        // _ p d
         pop                           // _ p
         return
 
@@ -325,15 +325,15 @@ pub const VERIFY_SUDOKU: &str = "
         return
 
     multiply_and_write:               // s mem_addr acc
-        dup2                          // s mem_addr acc s 
+        dup 2                         // s mem_addr acc s 
         mul                           // s mem_addr (acc·s)
-        swap1                         // s (acc·s) mem_addr
+        swap 1                        // s (acc·s) mem_addr
         push 1                        // s (acc·s) mem_addr 1
         add                           // s (acc·s) (mem_addr+1)
-        swap1                         // s (mem_addr+1) (acc·s)
-        swap2                         // (acc·s) (mem_addr+1) s
+        swap 1                        // s (mem_addr+1) (acc·s)
+        swap 2                        // (acc·s) (mem_addr+1) s
         write_mem                     // (acc·s) (mem_addr+1)
-        swap1                         // (mem_addr+1) (acc·s)
+        swap 1                        // (mem_addr+1) (acc·s)
         return
 
     check_columns:
@@ -375,7 +375,7 @@ pub const VERIFY_SUDOKU: &str = "
         push 9
         add
         read_mem
-        swap1
+        swap 1
         return
 
     check_squares:
@@ -401,39 +401,39 @@ pub const VERIFY_SUDOKU: &str = "
 
     check_one_square:
         read_mem
-        swap1
+        swap 1
         push 1
         add
         read_mem
-        swap1
+        swap 1
         push 1
         add
         read_mem
-        swap1
+        swap 1
         push 7
         add
         read_mem
-        swap1
+        swap 1
         push 1
         add
         read_mem
-        swap1
+        swap 1
         push 1
         add
         read_mem
-        swap1
+        swap 1
         push 7
         add
         read_mem
-        swap1
+        swap 1
         push 1
         add
         read_mem
-        swap1
+        swap 1
         push 1
         add
         read_mem
-        swap1
+        swap 1
         pop
         call check_9_numbers
         return

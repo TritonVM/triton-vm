@@ -30,9 +30,9 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = "0.18"
-triton-opcodes = "0.18"
-triton-profiler = "0.18"
+twenty-first = "0.19"
+triton-opcodes = {path = "../triton-opcodes"}
+triton-profiler = {path = "../triton-profiler"}
 anyhow = "1.0"
 bincode = "1.3"
 blake3 = "1.2"
