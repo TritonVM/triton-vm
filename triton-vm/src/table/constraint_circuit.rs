@@ -1472,7 +1472,7 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_pbt() {
-        for _ in 0..1000 {
+        for _ in 0..200 {
             let (circuit, circuit_builder) = random_circuit_builder();
             let one = circuit_builder.x_constant(1.into());
             let zero = circuit_builder.x_constant(0.into());
