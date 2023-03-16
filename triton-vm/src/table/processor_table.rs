@@ -3156,6 +3156,8 @@ mod constraint_polynomial_tests {
     use triton_opcodes::ord_n::Ord16;
     use triton_opcodes::program::Program;
 
+    use crate::error::InstructionError;
+    use crate::error::InstructionError::DivisionByZero;
     use crate::shared_tests::SourceCodeAndInput;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::master_table::MasterTable;
@@ -3535,9 +3537,17 @@ mod constraint_polynomial_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Division by 0 is impossible")]
     fn division_by_zero_is_impossible_test() {
-        SourceCodeAndInput::without_input("div").run();
+        let (_aet, _out, err) = SourceCodeAndInput::without_input("div").simulate();
+        let Some(err) = err else {
+            panic!("Dividing by 0 must fail.");
+        };
+        let Ok(err) = err.downcast::<InstructionError>() else {
+            panic!("Dividing by 0 must fail with InstructionError.");
+        };
+        let DivisionByZero = err else {
+            panic!("Dividing by 0 must fail with DivisionByZero.");
+        };
     }
 
     #[test]

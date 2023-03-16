@@ -17,7 +17,6 @@ use crate::proof::Proof;
 use crate::stark::Stark;
 use crate::stark::StarkParameters;
 use crate::table::master_table::MasterBaseTable;
-use crate::vm::run;
 use crate::vm::simulate;
 use crate::vm::AlgebraicExecutionTrace;
 
@@ -89,9 +88,10 @@ impl SourceCodeAndInput {
         }
     }
 
+    #[deprecated(since = "0.19.0", note = "use `simulate` instead")]
     pub fn run(&self) -> Vec<BFieldElement> {
         let program = Program::from_code(&self.source_code).expect("Could not load source code");
-        let (_, output, err) = run(&program, self.input.clone(), self.secret_input.clone());
+        let (_, output, err) = simulate(&program, self.input.clone(), self.secret_input.clone());
         if let Some(e) = err {
             panic!("Running the program failed: {e}")
         }

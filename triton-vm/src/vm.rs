@@ -811,12 +811,13 @@ impl<'pgm> Display for VMState<'pgm> {
     }
 }
 
-/// Simulate (execute) a `Program` and record every state transition. Returns an
-/// `AlgebraicExecutionTrace` recording every intermediate state of the processor and all co-
-/// processors.
+/// Simulate, _i.e._, execute a [`Program`]. Returns
+/// 1. an [`AlgebraicExecutionTrace`],
+/// 1. the output of the program, and
+/// 1. an [`anyhow::Error`] if the program failed to execute.
 ///
-/// On premature termination of the VM, returns the `AlgebraicExecutionTrace` for the execution
-/// up to the point of failure.
+/// On premature termination of the VM, returns the `AlgebraicExecutionTrace` and output for the
+/// execution up to the point of failure.
 pub fn simulate(
     program: &Program,
     mut stdin: Vec<BFieldElement>,
@@ -870,6 +871,7 @@ pub fn simulate(
     (aet, stdout, None)
 }
 
+#[deprecated(since = "0.19.0", note = "use `simulate` instead")]
 pub fn run(
     program: &Program,
     mut stdin: Vec<BFieldElement>,
@@ -896,6 +898,10 @@ pub fn run(
     (states, stdout, None)
 }
 
+/// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
+/// holds every intermediate state of the processor and all co-processors, alongside additional
+/// witness information, such as the number of times each instruction has been looked up
+/// (equivalently, how often each instruction has been executed).
 #[derive(Debug, Clone)]
 pub struct AlgebraicExecutionTrace {
     /// The program that was executed in order to generate the trace.
@@ -1022,6 +1028,7 @@ pub mod triton_vm_tests {
     use rand::rngs::ThreadRng;
     use rand::Rng;
     use rand::RngCore;
+    use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
     use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
@@ -1041,7 +1048,6 @@ pub mod triton_vm_tests {
     use crate::shared_tests::VERIFY_SUDOKU;
     use crate::stark::Maker;
     use crate::table::processor_table::ProcessorTraceRow;
-    use crate::vm::run;
 
     use super::*;
 
@@ -1707,11 +1713,10 @@ pub mod triton_vm_tests {
     // Sanity check for the relatively complex property-based test for random RAM access.
     fn run_dont_prove_property_based_test_for_random_ram_access() {
         let source_code_and_input = property_based_test_program_for_random_ram_access();
-        source_code_and_input.run();
+        source_code_and_input.simulate();
     }
 
     #[test]
-    #[should_panic(expected = "st0 must be 1.")]
     pub fn negative_property_is_u32_test() {
         let mut rng = ThreadRng::default();
         let st0 = (rng.next_u32() as u64) << 32;
@@ -1723,7 +1728,12 @@ pub mod triton_vm_tests {
                 split pop push 0 eq return
             "
         ));
-        let _ = program.run();
+        let (_aet, _out, err) = program.simulate();
+        let err = err.unwrap();
+        let err = err.downcast::<InstructionError>().unwrap();
+        let AssertionFailed(_, _, _) = err else {
+            panic!("Non-u32 must not pass u32-ness test.");
+        };
     }
 
     pub fn test_program_for_split() -> SourceCodeAndInput {
@@ -1839,7 +1849,7 @@ pub mod triton_vm_tests {
             secret_input: vec![],
         };
 
-        let actual_stdout = program.run();
+        let (_, actual_stdout, _) = program.simulate();
         let expected_stdout = vec![
             BFieldElement::new(9),
             BFieldElement::new(14),
@@ -1873,7 +1883,7 @@ pub mod triton_vm_tests {
             secret_input: vec![],
         };
 
-        let actual_stdout = program.run();
+        let (_, actual_stdout, _) = program.simulate();
         let expected_stdout = vec![
             BFieldElement::new(108),
             BFieldElement::new(123),
@@ -1907,7 +1917,7 @@ pub mod triton_vm_tests {
             secret_input: vec![],
         };
 
-        let actual_stdout = program.run();
+        let (_, actual_stdout, _) = program.simulate();
         let expected_stdout = vec![
             BFieldElement::zero(),
             BFieldElement::zero(),
@@ -1941,7 +1951,7 @@ pub mod triton_vm_tests {
             secret_input: vec![],
         };
 
-        let actual_stdout = program.run();
+        let (_, actual_stdout, _) = program.simulate();
         let expected_stdout = [14, 21, 35].map(BFieldElement::new).to_vec();
 
         assert_eq!(expected_stdout, actual_stdout);
@@ -1949,14 +1959,14 @@ pub mod triton_vm_tests {
 
     #[test]
     fn pseudo_sub_test() {
-        let actual_stdout = SourceCodeAndInput::without_input(
+        let (_, actual_stdout, _) = SourceCodeAndInput::without_input(
             "
             push 7 push 19 call sub write_io halt
             sub:
                 swap 1 push -1 mul add return
             ",
         )
-        .run();
+        .simulate();
         let expected_stdout = vec![BFieldElement::new(12)];
 
         assert_eq!(expected_stdout, actual_stdout);
@@ -1969,16 +1979,6 @@ pub mod triton_vm_tests {
             DIGEST_LENGTH <= OP_STACK_REG_COUNT,
             "The OpStack must be large enough to hold a single digest"
         );
-    }
-
-    #[test]
-    fn run_tvm_parse_pop_p_test() {
-        let program = Program::from_code("push 1 push 1 add pop").unwrap();
-        let (trace, _out, _err) = run(&program, vec![], vec![]);
-
-        for state in trace.iter() {
-            println!("{state}");
-        }
     }
 
     #[test]
@@ -2003,30 +2003,29 @@ pub mod triton_vm_tests {
             write_io write_io write_io write_io write_io write_io write_io
         ";
         let program = Program::from_code(code).unwrap();
-        let (trace, _out, _err) = run(&program, vec![], vec![]);
+        let (aet, _out, _err) = simulate(&program, vec![], vec![]);
+        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        let st0 = last_processor_row[ProcessorBaseTableColumn::ST0.base_table_index()];
+        assert_eq!(BFIELD_ZERO, st0);
 
-        let last_state = trace.last().unwrap();
-        assert_eq!(BFieldElement::zero(), last_state.op_stack.safe_peek(ST0));
-
-        println!("{last_state}");
+        println!("{last_processor_row}");
     }
 
     #[test]
     fn run_tvm_halt_then_do_stuff_test() {
         let halt_then_do_stuff = "halt push 1 push 2 add invert write_io";
         let program = Program::from_code(halt_then_do_stuff).unwrap();
-        let (trace, _out, err) = run(&program, vec![], vec![]);
-
-        for state in trace.iter() {
-            println!("{state}");
-        }
-        if let Some(e) = err {
-            println!("Error: {e}");
+        let (aet, _out, err) = simulate(&program, vec![], vec![]);
+        if let Some(err) = err {
+            panic!("Simulation failed: {err}");
         }
 
-        // check for graceful termination
-        let last_state = trace.last().unwrap();
-        assert_eq!(last_state.current_instruction().unwrap(), Halt);
+        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        let clk_count = last_processor_row[ProcessorBaseTableColumn::CLK.base_table_index()];
+        assert_eq!(BFIELD_ZERO, clk_count);
+
+        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
+        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
     }
 
     #[test]
@@ -2042,22 +2041,20 @@ pub mod triton_vm_tests {
             halt
             ";
         let program = Program::from_code(basic_ram_read_write_code).unwrap();
-        let (trace, _out, err) = run(&program, vec![], vec![]);
+        let (aet, _out, err) = simulate(&program, vec![], vec![]);
         if let Some(e) = err {
-            println!("Error: {e}");
+            panic!("Error: {e}");
         }
 
-        let last_state = trace.last().expect("Execution seems to have failed.");
-        let five = BFieldElement::new(5);
-        let seven = BFieldElement::new(7);
-        let fifteen = BFieldElement::new(15);
-        let sixteen = BFieldElement::new(16);
-        assert_eq!(seven, last_state.op_stack.st(ST0));
-        assert_eq!(five, last_state.op_stack.st(ST1));
-        assert_eq!(sixteen, last_state.op_stack.st(ST2));
-        assert_eq!(fifteen, last_state.op_stack.st(ST3));
-        assert_eq!(last_state.ram[&five], seven);
-        assert_eq!(last_state.ram[&fifteen], sixteen);
+        let st0_idx = ProcessorBaseTableColumn::ST0.base_table_index();
+        let st1_idx = ProcessorBaseTableColumn::ST1.base_table_index();
+        let st2_idx = ProcessorBaseTableColumn::ST2.base_table_index();
+        let st3_idx = ProcessorBaseTableColumn::ST3.base_table_index();
+        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        assert_eq!(BFieldElement::new(7), last_processor_row[st0_idx]);
+        assert_eq!(BFieldElement::new(5), last_processor_row[st1_idx]);
+        assert_eq!(BFieldElement::new(16), last_processor_row[st2_idx]);
+        assert_eq!(BFieldElement::new(15), last_processor_row[st3_idx]);
     }
 
     #[test]
@@ -2081,20 +2078,18 @@ pub mod triton_vm_tests {
             halt
         ";
         let program = Program::from_code(edgy_ram_writes_code).unwrap();
-        let (trace, _out, err) = run(&program, vec![], vec![]);
+        let (aet, _out, err) = simulate(&program, vec![], vec![]);
         if let Some(e) = err {
-            println!("Error: {e}");
+            panic!("Error: {e}");
         }
 
-        let last_state = trace.last().expect("Execution seems to have failed.");
-        let zero = BFieldElement::zero();
-        let three = BFieldElement::new(3);
-        let five = BFieldElement::new(5);
-        assert_eq!(three, last_state.op_stack.st(ST0));
-        assert_eq!(five, last_state.op_stack.st(ST1));
-        assert_eq!(three, last_state.op_stack.st(ST2));
-        assert_eq!(last_state.ram[&zero], zero);
-        assert_eq!(last_state.ram[&five], three);
+        let st0_idx = ProcessorBaseTableColumn::ST0.base_table_index();
+        let st1_idx = ProcessorBaseTableColumn::ST1.base_table_index();
+        let st2_idx = ProcessorBaseTableColumn::ST2.base_table_index();
+        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        assert_eq!(BFieldElement::new(3), last_processor_row[st0_idx]);
+        assert_eq!(BFieldElement::new(5), last_processor_row[st1_idx]);
+        assert_eq!(BFieldElement::new(3), last_processor_row[st2_idx]);
     }
 
     #[test]
@@ -2129,18 +2124,15 @@ pub mod triton_vm_tests {
         let program = Program::from_code(sample_weights_code).unwrap();
         println!("Successfully parsed the program.");
         let input_symbols = vec![BFieldElement::new(11)];
-        let (trace, _out, err) = run(&program, input_symbols, vec![]);
+        let (aet, _out, err) = simulate(&program, input_symbols, vec![]);
 
-        for state in trace.iter() {
-            println!("{state}");
-        }
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");
         }
 
-        // check for graceful termination
-        let last_state = trace.last().unwrap();
-        assert_eq!(last_state.current_instruction().unwrap(), Halt);
+        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
+        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
     }
 
     /// TVM assembly to verify Merkle authentication paths
@@ -2287,18 +2279,15 @@ pub mod triton_vm_tests {
             leafs[55].values()[order[4]],
         ];
 
-        let (trace, _out, err) = run(&program, input, secret_input);
+        let (aet, _out, err) = simulate(&program, input, secret_input);
 
-        for state in trace.iter() {
-            println!("{state}");
-        }
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");
         }
 
-        // check for graceful termination
-        let last_state = trace.last().unwrap();
-        assert_eq!(last_state.current_instruction().unwrap(), Halt);
+        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
+        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
     }
 
     #[test]
@@ -2319,18 +2308,15 @@ pub mod triton_vm_tests {
         let program = Program::from_code(get_colinear_y_code).unwrap();
         println!("Successfully parsed the program.");
         let input_symbols = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
-        let (trace, out, err) = run(&program, input_symbols, vec![]);
-        assert_eq!(out[0], BFieldElement::new(4));
-        for state in trace.iter() {
-            println!("{state}");
-        }
+        let (aet, out, err) = simulate(&program, input_symbols, vec![]);
+        assert_eq!(BFieldElement::new(4), out[0]);
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");
         }
 
-        // check for graceful termination
-        let last_state = trace.last().unwrap();
-        assert_eq!(last_state.current_instruction().unwrap(), Halt);
+        let last_processor_row = aet.processor_trace.rows().into_iter().last().unwrap();
+        let last_instruction = last_processor_row[ProcessorBaseTableColumn::CI.base_table_index()];
+        assert_eq!(Instruction::Halt.opcode_b(), last_instruction);
     }
 
     #[test]
@@ -2352,17 +2338,11 @@ pub mod triton_vm_tests {
             ";
 
         let program = Program::from_code(countdown_code).unwrap();
-        let (trace, out, err) = run(&program, vec![], vec![]);
-
-        println!("{program}");
-        for state in trace.iter() {
-            println!("{state}");
-        }
+        let (_aet, out, err) = simulate(&program, vec![], vec![]);
 
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");
         }
-
         let expected = (0..=10).map(BFieldElement::new).rev().collect_vec();
         assert_eq!(expected, out);
     }
@@ -2371,7 +2351,7 @@ pub mod triton_vm_tests {
     fn run_tvm_fibonacci_tvm() {
         let code = FIBONACCI_SEQUENCE;
         let program = Program::from_code(code).unwrap();
-        let (_trace, out, err) = run(&program, vec![7_u64.into()], vec![]);
+        let (_aet, out, err) = simulate(&program, vec![7_u64.into()], vec![]);
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");
         }
@@ -2385,12 +2365,7 @@ pub mod triton_vm_tests {
         let program = Program::from_code(code).unwrap();
 
         println!("{program}");
-        let (trace, out, _err) = run(&program, vec![42_u64.into(), 56_u64.into()], vec![]);
-
-        println!("{program}");
-        for state in trace.iter() {
-            println!("{state}");
-        }
+        let (_aet, out, _err) = simulate(&program, vec![42_u64.into(), 56_u64.into()], vec![]);
 
         let expected = BFieldElement::new(14);
         let actual = *out.last().unwrap();
@@ -2401,21 +2376,21 @@ pub mod triton_vm_tests {
     fn run_tvm_swap_test() {
         let code = "push 1 push 2 swap 1 halt";
         let program = Program::from_code(code).unwrap();
-        let (_trace, _out, _err) = run(&program, vec![], vec![]);
+        simulate(&program, vec![], vec![]);
     }
 
     #[test]
     fn read_mem_unitialized() {
         let program = Program::from_code("read_mem halt").unwrap();
-        let (trace, _out, err) = run(&program, vec![], vec![]);
+        let (aet, _out, err) = simulate(&program, vec![], vec![]);
         assert!(err.is_none(), "Reading from uninitialized memory address");
-        assert_eq!(2, trace.len());
+        assert_eq!(2, aet.processor_trace.nrows());
     }
 
     #[test]
     fn program_without_halt_test() {
         let program = Program::from_code("nop").unwrap();
-        let (_trace, _out, err) = run(&program, vec![], vec![]);
+        let (_aet, _out, err) = simulate(&program, vec![], vec![]);
         let Some(err) = err else {
             panic!("Program without halt must fail.");
         };
@@ -2446,12 +2421,9 @@ pub mod triton_vm_tests {
         .map(BFieldElement::new)
         .to_vec();
         let secret_in = vec![];
-        let (trace, _stdout, err) = run(&program, stdin, secret_in);
+        let (_aet, _stdout, err) = simulate(&program, stdin, secret_in);
 
         if let Some(e) = err {
-            for state in trace.iter().rev().take(10).rev() {
-                println!("{state}");
-            }
             panic!("The VM encountered an error: {e}");
         }
 
@@ -2472,7 +2444,7 @@ pub mod triton_vm_tests {
         .map(BFieldElement::new)
         .to_vec();
         let secret_in = vec![];
-        let (_trace, _stdout, err) = run(&program, bad_stdin, secret_in);
+        let (_aet, _stdout, err) = simulate(&program, bad_stdin, secret_in);
         let Some(err) = err else {
             panic!("Sudoku verifier must fail on bad Sudoku.");
         };
