@@ -818,6 +818,8 @@ impl<'pgm> Display for VMState<'pgm> {
 ///
 /// On premature termination of the VM, returns the `AlgebraicExecutionTrace` and output for the
 /// execution up to the point of failure.
+///
+/// See also [`debug`] and [`run`].
 pub fn simulate(
     program: &Program,
     mut stdin: Vec<BFieldElement>,
@@ -871,8 +873,12 @@ pub fn simulate(
     (aet, stdout, None)
 }
 
-#[deprecated(since = "0.19.0", note = "use `simulate` instead")]
-pub fn run(
+/// Similar to [`run`], but also returns a [`Vec`] of [`VMState`]s, one for each step of the VM.
+/// On premature termination of the VM, returns all [`VMState`]s and output for the execution up
+/// to the point of failure.
+///
+/// See also [`simulate`].
+pub fn debug(
     program: &Program,
     mut stdin: Vec<BFieldElement>,
     mut secret_in: Vec<BFieldElement>,
@@ -896,6 +902,27 @@ pub fn run(
     }
 
     (states, stdout, None)
+}
+
+/// Run Triton VM on the given [`Program`] with the given public and secret input.
+///
+/// See also [`simulate`] and [`debug`].
+pub fn run(
+    program: &Program,
+    mut stdin: Vec<BFieldElement>,
+    mut secret_in: Vec<BFieldElement>,
+) -> Result<Vec<BFieldElement>, anyhow::Error> {
+    let mut state = VMState::new(program);
+    let mut stdout = vec![];
+
+    while !state.halting {
+        let vm_output = state.step_mut(&mut stdin, &mut secret_in)?;
+        if let Some(VMOutput::WriteOutputSymbol(written_word)) = vm_output {
+            stdout.push(written_word);
+        }
+    }
+
+    Ok(stdout)
 }
 
 /// An Algebraic Execution Trace (AET) is the primary witness required for proof generation. It
