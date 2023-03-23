@@ -55,10 +55,10 @@ the value `a` was supplied as a secret input.
 
 ## Memory Access
 
-| Instruction | Opcode | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                             |
-|:------------|-------:|:------------|:------------|:-----------|:-----------|:----------------------------------------------------------------------------------------|
-| `read_mem`  |     40 | `_ p a`     | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and overwrites the top of the OpStack with `v`. |
-| `write_mem` |     26 | `_ p v`     | `_ p v`     | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`.                          |
+| Instruction | Opcode | old OpStack | new OpStack | old `ramv` | new `ramv` | Description                                                                 |
+|:------------|-------:|:------------|:------------|:-----------|:-----------|:----------------------------------------------------------------------------|
+| `read_mem`  |     40 | `_ p`       | `_ p v`     | `v`        | `v`        | Reads value `v` from RAM at address `p` and pushes `v` onto the OpStack.    |
+| `write_mem` |     26 | `_ p v`     | `_ p`       | `_`        | `v`        | Writes OpStack's top-most value `v` to RAM at the address `p`, popping `v`. |
 
 ## Hashing
 
