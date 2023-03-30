@@ -1165,10 +1165,12 @@ mod constraint_circuit_tests {
     use rand::RngCore;
     use twenty_first::shared_math::other::random_elements;
 
+    use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::ChallengeId::U32Indeterminate;
     use crate::table::challenges::Challenges;
     use crate::table::hash_table::ExtHashTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
+    use crate::table::lookup_table::ExtLookupTable;
     use crate::table::master_table;
     use crate::table::op_stack_table::ExtOpStackTable;
     use crate::table::processor_table::ExtProcessorTable;
@@ -1760,5 +1762,31 @@ mod constraint_circuit_tests {
         table_constraints_prop(constraint_circuits, &challenges, "u32 transition");
         let constraint_circuits = ExtU32Table::ext_terminal_constraints_as_circuits();
         table_constraints_prop(constraint_circuits, &challenges, "u32 terminal");
+    }
+
+    #[test]
+    fn constant_folding_cascade_table_test() {
+        let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtCascadeTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "cascade initial");
+        let constraint_circuits = ExtCascadeTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "cascade consistency");
+        let constraint_circuits = ExtCascadeTable::ext_transition_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "cascade transition");
+        let constraint_circuits = ExtCascadeTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "cascade terminal");
+    }
+
+    #[test]
+    fn constant_folding_lookup_table_test() {
+        let challenges = Challenges::placeholder(&[], &[]);
+        let constraint_circuits = ExtLookupTable::ext_initial_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "lookup initial");
+        let constraint_circuits = ExtLookupTable::ext_consistency_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "lookup consistency");
+        let constraint_circuits = ExtLookupTable::ext_transition_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "lookup transition");
+        let constraint_circuits = ExtLookupTable::ext_terminal_constraints_as_circuits();
+        table_constraints_prop(constraint_circuits, &challenges, "lookup terminal");
     }
 }
