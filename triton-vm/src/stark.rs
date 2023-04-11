@@ -220,12 +220,36 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "quotient codewords");
 
-        // Get weights for nonlinear combination. Concretely, sample 2 weights for each base
-        // polynomial, each extension polynomial, and each quotient. The factor is 2 because
-        // transition constraints check 2 rows.
+        prof_start!(maybe_profiler, "non-linearly combine quotient codewords");
+        // Create quotient codeword. This is a part of the combination codeword. To reduce the
+        // amount of hashing necessary, the quotient codeword is non-linearly summed instead of
+        // hashed prior to comitting to it.
+        // When sampling weights, the shifted codewords need to be accounted for – hence the
+        // factor 2.
+        let quotient_combination_weights =
+            proof_stream.sample_scalars(2 * num_all_table_quotients());
+        let quotient_codeword = self.create_quotient_codeword(
+            quotient_domain,
+            master_quotient_table.view(),
+            &quotient_degree_bounds,
+            &quotient_combination_weights,
+        );
+        prof_stop!(maybe_profiler, "non-linearly combine quotient codewords");
+        debug_assert_eq!(quotient_domain.length, quotient_codeword.len());
+
+        prof_start!(maybe_profiler, "commit to quotient codeword");
+        let quotient_codeword_digests = quotient_codeword.iter().map(|&x| x.into()).collect_vec();
+        let quot_merkle_tree: MerkleTree<StarkHasher, _> =
+            Maker::from_digests(&quotient_codeword_digests);
+        let quot_merkle_tree_root = quot_merkle_tree.get_root();
+        proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
+        prof_stop!(maybe_profiler, "commit to quotient codeword");
+        debug_assert_eq!(quotient_domain.length, quot_merkle_tree.get_leaf_count());
+
+        // Get weights for remainder of the non-linear combination. Concretely, sample 2 weights
+        // for each base polynomial and each extension polynomial.
         prof_start!(maybe_profiler, "Fiat-Shamir");
-        let num_non_lin_combi_weights =
-            2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
+        let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
         let non_lin_combi_weights = proof_stream.sample_scalars(num_non_lin_combi_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
@@ -235,9 +259,8 @@ impl Stark {
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
-            master_quotient_table.view(),
+            &quotient_codeword,
             &non_lin_combi_weights,
-            quotient_degree_bounds,
         );
         prof_stop!(maybe_profiler, "create combination codeword");
 
@@ -378,21 +401,51 @@ impl Stark {
             .collect_vec()
     }
 
+    fn create_quotient_codeword(
+        &self,
+        quotient_domain: ArithmeticDomain,
+        quotient_codewords: ArrayView2<XFieldElement>,
+        quotient_degree_bounds: &[Degree],
+        quotient_weights: &[XFieldElement],
+    ) -> Vec<XFieldElement> {
+        assert_eq!(quotient_weights.len(), 2 * quotient_codewords.ncols());
+
+        let quotient_domain_values = quotient_domain.domain_values();
+        let mut quotient_codeword = vec![XFieldElement::zero(); quotient_domain.length];
+
+        for (idx, ((codeword, weights), &degree_bound)) in quotient_codewords
+            .columns()
+            .into_iter()
+            .zip_eq(quotient_weights.chunks_exact(2))
+            .zip_eq(quotient_degree_bounds)
+            .enumerate()
+        {
+            let shifted_domain_values =
+                Self::degree_shift_domain(&quotient_domain_values, self.max_degree - degree_bound);
+            Zip::from(&mut quotient_codeword)
+                .and(codeword)
+                .and(shifted_domain_values.view())
+                .par_for_each(|acc, &xfe, &shift| {
+                    *acc += weights[0] * xfe + weights[1] * xfe * shift
+                });
+            self.debug_check_degree(idx, &quotient_codeword, quotient_domain, true);
+        }
+
+        quotient_codeword
+    }
+
     fn create_combination_codeword(
         &self,
         quotient_domain: ArithmeticDomain,
         base_codewords: ArrayView2<BFieldElement>,
         extension_codewords: ArrayView2<XFieldElement>,
-        quotient_codewords: ArrayView2<XFieldElement>,
+        quotient_codeword: &[XFieldElement],
         weights: &[XFieldElement],
-        quotient_degree_bounds: Vec<Degree>,
     ) -> Vec<XFieldElement> {
-        let (base_weights, remaining_weights) = weights.split_at(2 * NUM_BASE_COLUMNS);
-        let (ext_weights, quot_weights) = remaining_weights.split_at(2 * NUM_EXT_COLUMNS);
+        let (base_weights, ext_weights) = weights.split_at(2 * NUM_BASE_COLUMNS);
 
         assert_eq!(base_weights.len(), 2 * base_codewords.ncols());
         assert_eq!(ext_weights.len(), 2 * extension_codewords.ncols());
-        assert_eq!(quot_weights.len(), 2 * quotient_codewords.ncols());
 
         let base_and_ext_col_shift = self.max_degree - self.interpolant_degree;
         let quotient_domain_values = quotient_domain.domain_values();
@@ -401,6 +454,9 @@ impl Stark {
 
         let mut combination_codeword = vec![XFieldElement::zero(); quotient_domain.length];
 
+        if std::env::var("DEBUG").is_ok() {
+            println!(" --- next up: base codewords");
+        }
         for (idx, (codeword, weights)) in base_codewords
             .columns()
             .into_iter()
@@ -432,28 +488,12 @@ impl Stark {
                 });
             self.debug_check_degree(idx, &combination_codeword, quotient_domain, false);
         }
-        if std::env::var("DEBUG").is_ok() {
-            println!(" --- next up: quotient codewords");
-        }
-        for (idx, ((codeword, weights), degree_bound)) in quotient_codewords
-            .columns()
-            .into_iter()
-            .zip_eq(quot_weights.chunks_exact(2))
-            .zip_eq(quotient_degree_bounds)
-            .enumerate()
-        {
-            let shifted_domain_values =
-                Self::degree_shift_domain(&quotient_domain_values, self.max_degree - degree_bound);
-            Zip::from(&mut combination_codeword)
-                .and(codeword)
-                .and(shifted_domain_values.view())
-                .par_for_each(|acc, &xfe, &shift| {
-                    *acc += weights[0] * xfe + weights[1] * xfe * shift
-                });
-            self.debug_check_degree(idx, &combination_codeword, quotient_domain, true);
-        }
 
         combination_codeword
+            .into_iter()
+            .zip_eq(quotient_codeword)
+            .map(|(cc, &qc)| cc + qc)
+            .collect_vec()
     }
 
     fn degree_shift_domain(
@@ -528,12 +568,21 @@ impl Stark {
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "dequeue");
 
-        // Get weights for nonlinear combination. Concretely, sample 2 weights for each base
-        // polynomial, each extension polynomial, and each quotient. The factor is 2 because
-        // transition constraints check 2 rows.
+        prof_start!(maybe_profiler, "sample quotient codeword weights");
+        // Sample weights for quotient codeword, which is a part of the combination codeword.
+        // See corresponding part in the prover for a more detailed explanation.
+        let num_quot_codeword_weights = 2 * num_all_table_quotients();
+        let quot_codeword_weights =
+            Array1::from(proof_stream.sample_scalars(num_quot_codeword_weights));
+        prof_stop!(maybe_profiler, "sample quotient codeword weights");
+
+        prof_start!(maybe_profiler, "get quotient codeword root");
+        // todo: check inclusion of revealed combination codeword elements in the Merkle tree
+        let _quot_codeword_root = proof_stream.dequeue()?.as_merkle_root()?;
+        prof_stop!(maybe_profiler, "get quotient codeword root");
+
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
-        let num_non_lin_combi_weights =
-            2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS + num_all_table_quotients());
+        let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
         let non_lin_combi_weights =
             Array1::from(proof_stream.sample_scalars(num_non_lin_combi_weights));
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
@@ -609,6 +658,10 @@ impl Stark {
             bail!("Failed to verify authentication path for extension codeword");
         }
         prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
+
+        prof_start!(maybe_profiler, "dequeue quotient elements");
+        // todo: check that compressed quotient elements were correctly committed to
+        prof_stop!(maybe_profiler, "dequeue quotient elements");
 
         // Verify Merkle authentication path for combination elements
         prof_start!(maybe_profiler, "Merkle verify (combination tree)");
@@ -691,7 +744,8 @@ impl Stark {
                 (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
             let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
             let transition_zerofier_inverse = except_last_row * consistency_zerofier_inverse;
-            let terminal_zerofier_inverse = except_last_row.inverse(); // i.e., only last row
+            let terminal_zerofier_inverse = except_last_row.inverse();
+            // i.e., only last row
             prof_stop!(maybe_profiler, "zerofiers");
 
             prof_start!(maybe_profiler, "shifted FRI domain values");
@@ -751,7 +805,9 @@ impl Stark {
             }
             prof_stop!(maybe_profiler, "populate base & ext elements");
 
-            prof_start!(maybe_profiler, "populate quotient elements");
+            prof_start!(maybe_profiler, "quotient elements");
+            prof_start!(maybe_profiler, "shift & collect");
+            let mut quotient_summands = Vec::with_capacity(quot_codeword_weights.len());
             for (degree_bound_category, evaluated_constraints_category, zerofier_inverse) in [
                 (
                     &initial_quotient_degree_bounds,
@@ -781,16 +837,23 @@ impl Stark {
                     let shift = self.max_degree - degree_bound;
                     let quotient = evaluated_constraint * zerofier_inverse;
                     let quotient_shifted = quotient * all_shifted_fri_domain_values[&shift];
-                    summands.push(quotient);
-                    summands.push(quotient_shifted);
+                    quotient_summands.push(quotient);
+                    quotient_summands.push(quotient_shifted);
                 }
             }
-            prof_stop!(maybe_profiler, "populate quotient elements");
+            prof_stop!(maybe_profiler, "shift & collect");
+            prof_start!(maybe_profiler, "inner product");
+            let combined_quotient_element =
+                (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
+            prof_stop!(maybe_profiler, "inner product");
+            prof_stop!(maybe_profiler, "quotient elements");
 
             prof_start!(maybe_profiler, "compute inner product");
             let inner_product = (&non_lin_combi_weights * &Array1::from(summands)).sum();
             let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
-            if revealed_combination_leaf != inner_product + randomizer_codewords_contribution {
+            if revealed_combination_leaf
+                != inner_product + combined_quotient_element + randomizer_codewords_contribution
+            {
                 bail!(StarkValidationError::CombinationLeafInequality);
             }
             prof_stop!(maybe_profiler, "compute inner product");
@@ -845,7 +908,6 @@ pub(crate) mod triton_stark_tests {
     use num_traits::Zero;
     use rand::prelude::ThreadRng;
     use rand_core::RngCore;
-
     use triton_opcodes::instruction::AnInstruction;
     use triton_opcodes::program::Program;
 
@@ -1814,7 +1876,7 @@ pub(crate) mod triton_stark_tests {
                 p.report(
                     None,
                     Some(stark.claim.padded_height),
-                    Some(stark.fri.domain.length)
+                    Some(stark.fri.domain.length),
                 )
             );
         }
@@ -1941,7 +2003,7 @@ pub(crate) mod triton_stark_tests {
             profiler.report(
                 None,
                 Some(stark.claim.padded_height),
-                Some(stark.fri.domain.length)
+                Some(stark.fri.domain.length),
             )
         );
     }
