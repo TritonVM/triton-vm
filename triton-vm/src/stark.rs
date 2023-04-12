@@ -31,6 +31,7 @@ use triton_profiler::prof_itr0;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
+use twenty_first::shared_math::polynomial::Polynomial;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::fri::Fri;
@@ -154,7 +155,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "LDE");
         master_base_table.randomize_trace();
-        let fri_domain_master_base_table = master_base_table.to_fri_domain_table();
+        let (fri_domain_master_base_table, base_interpolation_polys) =
+            master_base_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
@@ -183,7 +185,8 @@ impl Stark {
         prof_start!(maybe_profiler, "ext tables");
         prof_start!(maybe_profiler, "LDE");
         master_ext_table.randomize_trace();
-        let fri_domain_ext_master_table = master_ext_table.to_fri_domain_table();
+        let (fri_domain_ext_master_table, ext_interpolation_polys) =
+            master_ext_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
         prof_start!(maybe_profiler, "Merkle tree");
@@ -192,6 +195,25 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree_root));
         prof_stop!(maybe_profiler, "Merkle tree");
         prof_stop!(maybe_profiler, "ext tables");
+
+        prof_start!(maybe_profiler, "out-of-domain rows");
+        let out_of_domain_curr_row_index = proof_stream.sample_scalars(1)[0];
+        let out_of_domain_next_row_index =
+            master_base_table.randomized_trace_domain().generator * out_of_domain_curr_row_index;
+        prof_start!(maybe_profiler, "lift base polys");
+        let base_interpolation_polys = base_interpolation_polys
+            .map(|poly| Polynomial::new(poly.coefficients.iter().map(|b| b.lift()).collect_vec()));
+        prof_stop!(maybe_profiler, "lift base polys");
+        let _out_of_domain_curr_base_row =
+            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_curr_row_index));
+        let _out_of_domain_next_base_row =
+            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_next_row_index));
+        let _out_of_domain_curr_ext_row =
+            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_curr_row_index));
+        let _out_of_domain_next_ext_row =
+            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_next_row_index));
+        // todo: actually use the out-of-domain rows
+        prof_stop!(maybe_profiler, "out-of-domain rows");
 
         prof_start!(maybe_profiler, "quotient degree bounds");
         let quotient_degree_bounds =
@@ -588,6 +610,11 @@ impl Stark {
         prof_start!(maybe_profiler, "dequeue");
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "dequeue");
+
+        prof_start!(maybe_profiler, "get out-of-domain index");
+        let _out_of_domain_curr_row_index = proof_stream.sample_scalars(1)[0];
+        // todo: actually use the ood index
+        prof_stop!(maybe_profiler, "get out-of-domain index");
 
         prof_start!(maybe_profiler, "sample quotient codeword weights");
         // Sample weights for quotient codeword, which is a part of the combination codeword.
