@@ -238,13 +238,20 @@ impl Stark {
         debug_assert_eq!(quotient_domain.length, quotient_codeword.len());
 
         prof_start!(maybe_profiler, "commit to quotient codeword");
-        let quotient_codeword_digests = quotient_codeword.iter().map(|&x| x.into()).collect_vec();
+        prof_start!(maybe_profiler, "LDE");
+        let fri_quotient_codeword =
+            Array1::from(quotient_domain.low_degree_extension(&quotient_codeword, self.fri.domain));
+        prof_stop!(maybe_profiler, "LDE");
+        let fri_quotient_codeword_digests = fri_quotient_codeword
+            .iter()
+            .map(|&x| x.into())
+            .collect_vec();
         let quot_merkle_tree: MerkleTree<StarkHasher, _> =
-            Maker::from_digests(&quotient_codeword_digests);
+            Maker::from_digests(&fri_quotient_codeword_digests);
         let quot_merkle_tree_root = quot_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
         prof_stop!(maybe_profiler, "commit to quotient codeword");
-        debug_assert_eq!(quotient_domain.length, quot_merkle_tree.get_leaf_count());
+        debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
 
         // Get weights for remainder of the non-linear combination. Concretely, sample 2 weights
         // for each base polynomial and each extension polynomial.
@@ -331,9 +338,22 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MasterExtTableRows(revealed_ext_elems));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_ext));
 
-        // Open combination codeword at the same positions as base & ext codewords.
+        // Open quotient & combination codewords at the same positions as base & ext codewords.
         // Use `revealed_current_row_indices`, not `revealed_current_and_next_row_indices`, as
         // the latter is only needed to check transition constraints.
+        let revealed_quotient_elements = revealed_current_row_indices
+            .iter()
+            .map(|&i| fri_quotient_codeword[i])
+            .collect_vec();
+        let revealed_quotient_auth_paths =
+            quot_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
+        proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
+            revealed_quotient_elements,
+        ));
+        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
+            revealed_quotient_auth_paths,
+        ));
+
         let revealed_combination_elements = revealed_current_row_indices
             .iter()
             .map(|&i| fri_combination_codeword[i])
@@ -577,8 +597,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "sample quotient codeword weights");
 
         prof_start!(maybe_profiler, "get quotient codeword root");
-        // todo: check inclusion of revealed combination codeword elements in the Merkle tree
-        let _quot_codeword_root = proof_stream.dequeue()?.as_merkle_root()?;
+        let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "get quotient codeword root");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
@@ -659,9 +678,25 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
 
-        prof_start!(maybe_profiler, "dequeue quotient elements");
-        // todo: check that compressed quotient elements were correctly committed to
-        prof_stop!(maybe_profiler, "dequeue quotient elements");
+        prof_start!(maybe_profiler, "Merkle verify (combined quotient)");
+        let revealed_quotient_elements =
+            proof_stream.dequeue()?.as_revealed_combination_elements()?;
+        let revealed_quotient_digests = revealed_quotient_elements
+            .par_iter()
+            .map(|&x| x.into())
+            .collect::<Vec<_>>();
+        let revealed_quotient_auth_paths = proof_stream
+            .dequeue()?
+            .as_compressed_authentication_paths()?;
+        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
+            quotient_codeword_merkle_root,
+            &revealed_current_row_indices,
+            &revealed_quotient_digests,
+            &revealed_quotient_auth_paths,
+        ) {
+            bail!("Failed to verify authentication path for combined quotient codeword");
+        }
+        prof_stop!(maybe_profiler, "Merkle verify (combined quotient)");
 
         // Verify Merkle authentication path for combination elements
         prof_start!(maybe_profiler, "Merkle verify (combination tree)");
