@@ -91,6 +91,7 @@ impl Default for StarkParameters {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum StarkValidationError {
+    QuotientElementInequality,
     CombinationLeafInequality,
     PaddedHeightInequality,
     FriValidationError(FriValidationError),
@@ -760,9 +761,11 @@ impl Stark {
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        for (current_row_idx, revealed_combination_leaf) in revealed_current_row_indices
-            .into_iter()
-            .zip_eq(revealed_combination_leafs)
+        for ((current_row_idx, revealed_quotient_element), revealed_combination_leaf) in
+            revealed_current_row_indices
+                .into_iter()
+                .zip_eq(revealed_quotient_elements)
+                .zip_eq(revealed_combination_leafs)
         {
             prof_itr0!(maybe_profiler, "main loop");
             let next_row_idx = (current_row_idx + unit_distance) % self.fri.domain.length;
@@ -878,16 +881,19 @@ impl Stark {
             }
             prof_stop!(maybe_profiler, "shift & collect");
             prof_start!(maybe_profiler, "inner product");
-            let combined_quotient_element =
+            let quotient_element =
                 (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
             prof_stop!(maybe_profiler, "inner product");
+            if revealed_quotient_element != quotient_element {
+                bail!(StarkValidationError::QuotientElementInequality);
+            }
             prof_stop!(maybe_profiler, "quotient elements");
 
             prof_start!(maybe_profiler, "compute inner product");
             let inner_product = (&non_lin_combi_weights * &Array1::from(summands)).sum();
             let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
             if revealed_combination_leaf
-                != inner_product + combined_quotient_element + randomizer_codewords_contribution
+                != inner_product + quotient_element + randomizer_codewords_contribution
             {
                 bail!(StarkValidationError::CombinationLeafInequality);
             }
