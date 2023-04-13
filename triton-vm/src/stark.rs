@@ -301,33 +301,48 @@ impl Stark {
         // Get weights for remainder of the non-linear combination. Concretely, sample 2 weights
         // for each base polynomial and each extension polynomial.
         prof_start!(maybe_profiler, "Fiat-Shamir");
-        let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
-        let non_lin_combi_weights = proof_stream.sample_scalars(num_non_lin_combi_weights);
+        let num_base_and_ext_codeword_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
+        let base_and_ext_codeword_weights =
+            proof_stream.sample_scalars(num_base_and_ext_codeword_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
+        prof_start!(maybe_profiler, "create base&ext codeword");
         prof_start!(maybe_profiler, "nonlinear combination");
-        prof_start!(maybe_profiler, "create combination codeword");
-        let combination_codeword = self.create_combination_codeword(
+        let base_and_ext_codeword = self.create_base_and_ext_codeword(
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
-            &quotient_codeword,
-            &non_lin_combi_weights,
+            &base_and_ext_codeword_weights,
         );
-        prof_stop!(maybe_profiler, "create combination codeword");
+        prof_stop!(maybe_profiler, "nonlinear combination");
 
         prof_start!(maybe_profiler, "LDE 3");
-        let fri_combination_codeword_without_randomizer = Array1::from(
-            quotient_domain.low_degree_extension(&combination_codeword, self.fri.domain),
-        );
-        prof_stop!(maybe_profiler, "LDE 3");
+        let base_and_ext_interpolation_poly = quotient_domain.interpolate(&base_and_ext_codeword);
+        let fri_base_and_ext_codeword =
+            Array1::from(self.fri.domain.evaluate(&base_and_ext_interpolation_poly));
 
+        let out_of_domain_curr_row_base_and_ext_element =
+            base_and_ext_interpolation_poly.evaluate(&out_of_domain_curr_row_index);
+        let out_of_domain_next_row_base_and_ext_element =
+            base_and_ext_interpolation_poly.evaluate(&out_of_domain_next_row_index);
+        proof_stream.enqueue(&ProofItem::OutOfDomainElement(
+            out_of_domain_curr_row_base_and_ext_element,
+        ));
+        proof_stream.enqueue(&ProofItem::OutOfDomainElement(
+            out_of_domain_next_row_base_and_ext_element,
+        ));
+        prof_stop!(maybe_profiler, "LDE 3");
+        prof_stop!(maybe_profiler, "create base&ext codeword");
+
+        prof_start!(maybe_profiler, "combination codeword");
+        let fri_combination_codeword = fri_base_and_ext_codeword + fri_quotient_codeword.clone();
+        debug_assert_eq!(self.fri.domain.length, fri_combination_codeword.len());
         let fri_combination_codeword = fri_domain_ext_master_table
             .randomizer_polynomials()
             .into_iter()
-            .fold(fri_combination_codeword_without_randomizer, ArrayBase::add)
+            .fold(fri_combination_codeword, ArrayBase::add)
             .to_vec();
-        prof_stop!(maybe_profiler, "nonlinear combination");
+        prof_stop!(maybe_profiler, "combination codeword");
 
         prof_start!(maybe_profiler, "Merkle tree 3");
         let combination_codeword_digests = fri_combination_codeword
@@ -478,6 +493,9 @@ impl Stark {
         let quotient_domain_values = quotient_domain.domain_values();
         let mut quotient_codeword = vec![XFieldElement::zero(); quotient_domain.length];
 
+        if std::env::var("DEBUG").is_ok() {
+            println!(" --- next up: quotient codewords");
+        }
         for (idx, ((codeword, weights), &degree_bound)) in quotient_codewords
             .columns()
             .into_iter()
@@ -499,12 +517,11 @@ impl Stark {
         quotient_codeword
     }
 
-    fn create_combination_codeword(
+    fn create_base_and_ext_codeword(
         &self,
         quotient_domain: ArithmeticDomain,
         base_codewords: ArrayView2<BFieldElement>,
         extension_codewords: ArrayView2<XFieldElement>,
-        quotient_codeword: &[XFieldElement],
         weights: &[XFieldElement],
     ) -> Vec<XFieldElement> {
         let (base_weights, ext_weights) = weights.split_at(2 * NUM_BASE_COLUMNS);
@@ -517,7 +534,7 @@ impl Stark {
         let shifted_domain_values =
             Self::degree_shift_domain(&quotient_domain_values, base_and_ext_col_shift);
 
-        let mut combination_codeword = vec![XFieldElement::zero(); quotient_domain.length];
+        let mut base_and_ext_codeword = vec![XFieldElement::zero(); quotient_domain.length];
 
         if std::env::var("DEBUG").is_ok() {
             println!(" --- next up: base codewords");
@@ -528,13 +545,13 @@ impl Stark {
             .zip_eq(base_weights.chunks_exact(2))
             .enumerate()
         {
-            Zip::from(&mut combination_codeword)
+            Zip::from(&mut base_and_ext_codeword)
                 .and(codeword)
                 .and(shifted_domain_values.view())
                 .par_for_each(|acc, &bfe, &shift| {
                     *acc += weights[0] * bfe + weights[1] * bfe * shift
                 });
-            self.debug_check_degree(idx, &combination_codeword, quotient_domain, false);
+            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain, false);
         }
         if std::env::var("DEBUG").is_ok() {
             println!(" --- next up: extension codewords");
@@ -545,20 +562,16 @@ impl Stark {
             .zip_eq(ext_weights.chunks_exact(2))
             .enumerate()
         {
-            Zip::from(&mut combination_codeword)
+            Zip::from(&mut base_and_ext_codeword)
                 .and(codeword)
                 .and(shifted_domain_values.view())
                 .par_for_each(|acc, &xfe, &shift| {
                     *acc += weights[0] * xfe + weights[1] * xfe * shift
                 });
-            self.debug_check_degree(idx, &combination_codeword, quotient_domain, false);
+            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain, false);
         }
 
-        combination_codeword
-            .into_iter()
-            .zip_eq(quotient_codeword)
-            .map(|(cc, &qc)| cc + qc)
-            .collect_vec()
+        base_and_ext_codeword
     }
 
     fn degree_shift_domain(
@@ -661,10 +674,18 @@ impl Stark {
         prof_stop!(maybe_profiler, "get quotient codeword root");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
-        let num_non_lin_combi_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
-        let non_lin_combi_weights =
-            Array1::from(proof_stream.sample_scalars(num_non_lin_combi_weights));
+        let num_base_and_ext_codeword_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
+        let base_and_ext_codeword_weights =
+            Array1::from(proof_stream.sample_scalars(num_base_and_ext_codeword_weights));
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
+
+        prof_start!(maybe_profiler, "out-of-domain base&ext codeword element");
+        let _out_of_domain_curr_row_base_and_ext_element =
+            proof_stream.dequeue()?.as_out_of_domain_element()?;
+        let _out_of_domain_next_row_base_and_ext_element =
+            proof_stream.dequeue()?.as_out_of_domain_element()?;
+        // todo: actually use the ood element – verify it was computed correctly and DEEP trick
+        prof_stop!(maybe_profiler, "out-of-domain base&ext codeword element");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 3");
         let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
@@ -884,23 +905,29 @@ impl Stark {
                 evaluate_all_terminal_constraints(current_base_row, current_ext_row, &challenges);
             prof_stop!(maybe_profiler, "evaluate AIR");
 
-            prof_start!(maybe_profiler, "populate base & ext elements");
+            prof_start!(maybe_profiler, "base & ext elements");
+            prof_start!(maybe_profiler, "shift & collect");
             // populate summands with a the revealed FRI domain master table rows and their shifts
             let base_ext_fri_domain_value_shifted =
                 all_shifted_fri_domain_values[&base_and_ext_col_shift];
-            let mut summands = Vec::with_capacity(non_lin_combi_weights.len());
+            let mut base_and_ext_summands = Vec::with_capacity(base_and_ext_codeword_weights.len());
             for &base_row_element in current_base_row.iter() {
                 let base_row_element_shifted = base_row_element * base_ext_fri_domain_value_shifted;
-                summands.push(base_row_element.lift());
-                summands.push(base_row_element_shifted.lift());
+                base_and_ext_summands.push(base_row_element.lift());
+                base_and_ext_summands.push(base_row_element_shifted.lift());
             }
 
             for &ext_row_element in current_ext_row.iter() {
                 let ext_row_element_shifted = ext_row_element * base_ext_fri_domain_value_shifted;
-                summands.push(ext_row_element);
-                summands.push(ext_row_element_shifted);
+                base_and_ext_summands.push(ext_row_element);
+                base_and_ext_summands.push(ext_row_element_shifted);
             }
-            prof_stop!(maybe_profiler, "populate base & ext elements");
+            prof_stop!(maybe_profiler, "shift & collect");
+            prof_start!(maybe_profiler, "inner product");
+            let base_and_ext_element =
+                (&base_and_ext_codeword_weights * &Array1::from(base_and_ext_summands)).sum();
+            prof_stop!(maybe_profiler, "inner product");
+            prof_stop!(maybe_profiler, "base & ext elements");
 
             prof_start!(maybe_profiler, "quotient elements");
             prof_start!(maybe_profiler, "shift & collect");
@@ -948,15 +975,14 @@ impl Stark {
             }
             prof_stop!(maybe_profiler, "quotient elements");
 
-            prof_start!(maybe_profiler, "compute inner product");
-            let inner_product = (&non_lin_combi_weights * &Array1::from(summands)).sum();
+            prof_start!(maybe_profiler, "combination codeword equality");
             let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
             if revealed_combination_leaf
-                != inner_product + quotient_element + randomizer_codewords_contribution
+                != base_and_ext_element + quotient_element + randomizer_codewords_contribution
             {
                 bail!(StarkValidationError::CombinationLeafInequality);
             }
-            prof_stop!(maybe_profiler, "compute inner product");
+            prof_stop!(maybe_profiler, "combination codeword equality");
         }
         prof_stop!(maybe_profiler, "main loop");
         prof_stop!(maybe_profiler, "nonlinear combination");
