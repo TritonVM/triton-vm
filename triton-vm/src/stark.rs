@@ -197,21 +197,36 @@ impl Stark {
         prof_stop!(maybe_profiler, "ext tables");
 
         prof_start!(maybe_profiler, "out-of-domain rows");
+        let trace_domain_generator = derive_domain_generator(padded_height.value());
         let out_of_domain_curr_row_index = proof_stream.sample_scalars(1)[0];
-        let out_of_domain_next_row_index =
-            master_base_table.randomized_trace_domain().generator * out_of_domain_curr_row_index;
+        let out_of_domain_next_row_index = trace_domain_generator * out_of_domain_curr_row_index;
+
         prof_start!(maybe_profiler, "lift base polys");
         let base_interpolation_polys = base_interpolation_polys
             .map(|poly| Polynomial::new(poly.coefficients.iter().map(|b| b.lift()).collect_vec()));
+        // ignore randomizer codewords / polynomials
+        let ext_interpolation_polys = ext_interpolation_polys.slice(s![..NUM_EXT_COLUMNS]);
         prof_stop!(maybe_profiler, "lift base polys");
-        let _out_of_domain_curr_base_row =
+        let out_of_domain_curr_base_row =
             base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_curr_row_index));
-        let _out_of_domain_next_base_row =
+        let out_of_domain_next_base_row =
             base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_next_row_index));
-        let _out_of_domain_curr_ext_row =
+        let out_of_domain_curr_ext_row =
             ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_curr_row_index));
-        let _out_of_domain_next_ext_row =
+        let out_of_domain_next_ext_row =
             ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_next_row_index));
+        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
+            out_of_domain_curr_base_row.to_vec(),
+        ));
+        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
+            out_of_domain_curr_ext_row.to_vec(),
+        ));
+        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
+            out_of_domain_next_base_row.to_vec(),
+        ));
+        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
+            out_of_domain_next_ext_row.to_vec(),
+        ));
         // todo: actually use the out-of-domain rows
         prof_stop!(maybe_profiler, "out-of-domain rows");
 
@@ -262,8 +277,9 @@ impl Stark {
 
         prof_start!(maybe_profiler, "commit to quotient codeword");
         prof_start!(maybe_profiler, "LDE");
+        let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword);
         let fri_quotient_codeword =
-            Array1::from(quotient_domain.low_degree_extension(&quotient_codeword, self.fri.domain));
+            Array1::from(self.fri.domain.evaluate(&quotient_interpolation_poly));
         prof_stop!(maybe_profiler, "LDE");
         let fri_quotient_codeword_digests = fri_quotient_codeword
             .iter()
@@ -273,6 +289,12 @@ impl Stark {
             Maker::from_digests(&fri_quotient_codeword_digests);
         let quot_merkle_tree_root = quot_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
+
+        let out_of_domain_quotient_element =
+            quotient_interpolation_poly.evaluate(&out_of_domain_curr_row_index);
+        proof_stream.enqueue(&ProofItem::OutOfDomainElement(
+            out_of_domain_quotient_element,
+        ));
         prof_stop!(maybe_profiler, "commit to quotient codeword");
         debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
 
@@ -611,10 +633,18 @@ impl Stark {
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "dequeue");
 
-        prof_start!(maybe_profiler, "get out-of-domain index");
-        let _out_of_domain_curr_row_index = proof_stream.sample_scalars(1)[0];
-        // todo: actually use the ood index
-        prof_stop!(maybe_profiler, "get out-of-domain index");
+        prof_start!(maybe_profiler, "get out-of-domain index and rows");
+        let trace_domain_generator = derive_domain_generator(padded_height as u64);
+        let out_of_domain_curr_row_index = proof_stream.sample_scalars(1)[0];
+        let _out_of_domain_next_row_index = trace_domain_generator * out_of_domain_curr_row_index;
+        // todo: actually use the ood index – apply the DEEP trick
+
+        let _out_of_domain_curr_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
+        let _out_of_domain_curr_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
+        let _out_of_domain_next_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
+        let _out_of_domain_next_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
+        // todo: actually use the ood rows – apply the DEEP trick
+        prof_stop!(maybe_profiler, "get out-of-domain index and rows");
 
         prof_start!(maybe_profiler, "sample quotient codeword weights");
         // Sample weights for quotient codeword, which is a part of the combination codeword.
@@ -626,6 +656,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "get quotient codeword root");
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
+        let _out_of_domain_quotient_element = proof_stream.dequeue()?.as_out_of_domain_element()?;
+        // todo: actually use the ood element – verify it was computed correctly
         prof_stop!(maybe_profiler, "get quotient codeword root");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
