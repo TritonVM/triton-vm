@@ -9,6 +9,8 @@ use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
 use crate::bfield_codec::BFieldCodec;
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
 
 type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 
@@ -106,11 +108,13 @@ pub trait MayBeUncast {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
 pub enum ProofItem {
     CompressedAuthenticationPaths(AuthenticationStructure<Digest>),
     MasterBaseTableRows(Vec<Vec<BFieldElement>>),
     MasterExtTableRows(Vec<Vec<XFieldElement>>),
+    OutOfDomainBaseRow(Vec<XFieldElement>),
+    OutOfDomainExtRow(Vec<XFieldElement>),
+    OutOfDomainElement(XFieldElement),
     MerkleRoot(Digest),
     AuthenticationPath(Vec<Digest>),
     RevealedCombinationElements(Vec<XFieldElement>),
@@ -123,9 +127,8 @@ pub enum ProofItem {
 impl MayBeUncast for ProofItem {
     fn uncast(&self) -> Vec<BFieldElement> {
         if let Self::Uncast(vector) = self {
-            let mut str = vec![BFieldElement::new(vector.len() as u64)];
-            str.append(&mut vector.clone());
-            str
+            let vector_len = BFieldElement::new(vector.len() as u64);
+            vec![vec![vector_len], vector.to_owned()].concat()
         } else {
             self.encode()
         }
@@ -184,6 +187,65 @@ where
             },
             _ => bail!(ProofStreamError::new(
                 "expected master extension table rows, but got something else",
+            )),
+        }
+    }
+
+    pub fn as_out_of_domain_base_row(&self) -> Result<Vec<XFieldElement>> {
+        match self {
+            Self::OutOfDomainBaseRow(xs) => Ok(xs.to_owned()),
+            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
+                Ok(xs) => {
+                    if xs.len() != NUM_BASE_COLUMNS {
+                        bail!(ProofStreamError::new(
+                            "cast to out of domain base row failed"
+                        ));
+                    }
+                    Ok(*xs)
+                }
+                Err(_) => bail!(ProofStreamError::new(
+                    "cast to out of domain base row failed"
+                )),
+            },
+            _ => bail!(ProofStreamError::new(
+                "expected out of domain base row, but got something else",
+            )),
+        }
+    }
+
+    pub fn as_out_of_domain_ext_row(&self) -> Result<Vec<XFieldElement>> {
+        match self {
+            Self::OutOfDomainExtRow(xs) => Ok(xs.to_owned()),
+            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
+                Ok(xs) => {
+                    if xs.len() != NUM_EXT_COLUMNS {
+                        bail!(ProofStreamError::new(
+                            "cast to out of domain extension row failed"
+                        ));
+                    }
+                    Ok(*xs)
+                }
+                Err(_) => bail!(ProofStreamError::new(
+                    "cast to out of domain extension row failed"
+                )),
+            },
+            _ => bail!(ProofStreamError::new(
+                "expected out of domain extension row, but got something else",
+            )),
+        }
+    }
+
+    pub fn as_out_of_domain_element(&self) -> Result<XFieldElement> {
+        match self {
+            Self::OutOfDomainElement(x) => Ok(*x),
+            Self::Uncast(str) => match XFieldElement::decode(str) {
+                Ok(x) => Ok(*x),
+                Err(_) => bail!(ProofStreamError::new(
+                    "cast to out of domain element failed"
+                )),
+            },
+            _ => bail!(ProofStreamError::new(
+                "expected out of domain element, but got something else",
             )),
         }
     }
@@ -291,6 +353,15 @@ impl BFieldCodec for ProofItem {
             ProofItem::CompressedAuthenticationPaths(something) => something.encode(),
             ProofItem::MasterBaseTableRows(something) => something.encode(),
             ProofItem::MasterExtTableRows(something) => something.encode(),
+            ProofItem::OutOfDomainBaseRow(row) => {
+                debug_assert_eq!(NUM_BASE_COLUMNS, row.len());
+                row.encode()
+            }
+            ProofItem::OutOfDomainExtRow(row) => {
+                debug_assert_eq!(NUM_EXT_COLUMNS, row.len());
+                row.encode()
+            }
+            ProofItem::OutOfDomainElement(something) => something.encode(),
             ProofItem::MerkleRoot(something) => something.encode(),
             ProofItem::AuthenticationPath(something) => something.encode(),
             ProofItem::RevealedCombinationElements(something) => something.encode(),
