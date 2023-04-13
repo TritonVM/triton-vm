@@ -309,29 +309,24 @@ impl BFieldCodec for ProofItem {
 mod proof_item_typed_tests {
     use itertools::Itertools;
     use rand::thread_rng;
-    use rand::RngCore;
-    use twenty_first::shared_math::other::random_elements;
+    use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
-    use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
     use crate::proof_stream::ProofStream;
 
     use super::*;
 
     fn random_bool() -> bool {
-        let mut rng = thread_rng();
-        rng.next_u32() % 2 == 1
+        thread_rng().gen()
     }
 
-    fn random_xfieldelement() -> XFieldElement {
-        XFieldElement {
-            coefficients: random_elements(EXTENSION_DEGREE).try_into().unwrap(),
-        }
+    fn random_x_field_element() -> XFieldElement {
+        thread_rng().gen()
     }
 
     fn random_digest() -> Digest {
-        Digest::new(random_elements(DIGEST_LENGTH).try_into().unwrap())
+        thread_rng().gen()
     }
 
     fn random_fri_response() -> FriResponse {
@@ -350,7 +345,7 @@ mod proof_item_typed_tests {
                                 })
                                 .collect_vec(),
                         ),
-                        random_xfieldelement(),
+                        random_x_field_element(),
                     )
                 })
                 .collect_vec(),
