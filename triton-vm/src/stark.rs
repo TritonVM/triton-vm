@@ -347,7 +347,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Merkle tree 3");
         let combination_codeword_digests = fri_combination_codeword
             .par_iter()
-            .map(StarkHasher::hash)
+            .map(|&xfe| xfe.into())
             .collect::<Vec<_>>();
         let combination_tree: MerkleTree<StarkHasher, _> =
             Maker::from_digests(&combination_codeword_digests);
@@ -364,13 +364,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 3");
 
         prof_start!(maybe_profiler, "FRI");
-        match self.fri.prove(&fri_combination_codeword, &mut proof_stream) {
-            Ok((_, fri_first_round_merkle_root)) => assert_eq!(
-                combination_root, fri_first_round_merkle_root,
-                "Combination root from STARK and from FRI must agree."
-            ),
-            Err(e) => panic!("The FRI prover failed because of: {e}"),
-        }
+        let (_, fri_first_round_merkle_root) =
+            self.fri.prove(&fri_combination_codeword, &mut proof_stream);
+        assert_eq!(
+            combination_root, fri_first_round_merkle_root,
+            "Combination root from STARK and from FRI must agree."
+        );
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "open trace leafs");
@@ -697,8 +696,10 @@ impl Stark {
 
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
-        self.fri
-            .verify(&mut proof_stream, &combination_root, maybe_profiler)?;
+        let _revealed_fri_indices_and_elements =
+            self.fri.verify(&mut proof_stream, maybe_profiler)?;
+        // todo: actually use the revealed indices and elements – verify they were computed
+        //   correctly, using the DEEP update
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "check leafs");
@@ -780,12 +781,13 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle verify (combined quotient)");
 
         // Verify Merkle authentication path for combination elements
+        // todo: get rid of this entire tree – it's identical to the first round of FRI
         prof_start!(maybe_profiler, "Merkle verify (combination tree)");
         let revealed_combination_leafs =
             proof_stream.dequeue()?.as_revealed_combination_elements()?;
         let revealed_combination_digests = revealed_combination_leafs
             .par_iter()
-            .map(StarkHasher::hash)
+            .map(|&xfe| xfe.into())
             .collect::<Vec<_>>();
         let revealed_combination_auth_paths = proof_stream
             .dequeue()?
