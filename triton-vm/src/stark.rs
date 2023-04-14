@@ -335,6 +335,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "create base&ext codeword");
 
         prof_start!(maybe_profiler, "combination codeword");
+        // todo: apply DEEP trick, correctly build codeword to feed to FRI
         let fri_combination_codeword = fri_base_and_ext_codeword + fri_quotient_codeword.clone();
         debug_assert_eq!(self.fri.domain.length, fri_combination_codeword.len());
         let fri_combination_codeword = fri_domain_ext_master_table
@@ -344,32 +345,9 @@ impl Stark {
             .to_vec();
         prof_stop!(maybe_profiler, "combination codeword");
 
-        prof_start!(maybe_profiler, "Merkle tree 3");
-        let combination_codeword_digests = fri_combination_codeword
-            .par_iter()
-            .map(|&xfe| xfe.into())
-            .collect::<Vec<_>>();
-        let combination_tree: MerkleTree<StarkHasher, _> =
-            Maker::from_digests(&combination_codeword_digests);
-        let combination_root = combination_tree.get_root();
-        proof_stream.enqueue(&ProofItem::MerkleRoot(combination_root));
-        prof_stop!(maybe_profiler, "Merkle tree 3");
-
-        // Get indices of master table rows to prove nonlinear combination
-        prof_start!(maybe_profiler, "Fiat-Shamir 3");
-        let revealed_current_row_indices = proof_stream.sample_indices(
-            self.fri.domain.length,
-            self.parameters.num_non_linear_codeword_checks,
-        );
-        prof_stop!(maybe_profiler, "Fiat-Shamir 3");
-
         prof_start!(maybe_profiler, "FRI");
-        let (_, fri_first_round_merkle_root) =
+        let (revealed_current_row_indices, _) =
             self.fri.prove(&fri_combination_codeword, &mut proof_stream);
-        assert_eq!(
-            combination_root, fri_first_round_merkle_root,
-            "Combination root from STARK and from FRI must agree."
-        );
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "open trace leafs");
@@ -411,19 +389,6 @@ impl Stark {
         ));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
             revealed_quotient_auth_paths,
-        ));
-
-        let revealed_combination_elements = revealed_current_row_indices
-            .iter()
-            .map(|&i| fri_combination_codeword[i])
-            .collect_vec();
-        let revealed_combination_auth_paths =
-            combination_tree.get_authentication_structure(&revealed_current_row_indices);
-        proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
-            revealed_combination_elements,
-        ));
-        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
-            revealed_combination_auth_paths,
         ));
         prof_stop!(maybe_profiler, "open trace leafs");
 
@@ -686,19 +651,13 @@ impl Stark {
         // todo: actually use the ood element – verify it was computed correctly and DEEP trick
         prof_stop!(maybe_profiler, "out-of-domain base&ext codeword element");
 
-        prof_start!(maybe_profiler, "Fiat-Shamir 3");
-        let combination_root = proof_stream.dequeue()?.as_merkle_root()?;
-        let revealed_current_row_indices = proof_stream.sample_indices(
-            self.fri.domain.length,
-            self.parameters.num_non_linear_codeword_checks,
-        );
-        prof_stop!(maybe_profiler, "Fiat-Shamir 3");
-
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
-        let _revealed_fri_indices_and_elements =
+        let revealed_fri_indices_and_elements =
             self.fri.verify(&mut proof_stream, maybe_profiler)?;
-        // todo: actually use the revealed indices and elements – verify they were computed
+        let (revealed_current_row_indices, revealed_fri_elements): (Vec<_>, Vec<_>) =
+            revealed_fri_indices_and_elements.into_iter().unzip();
+        // todo: actually use the revealed FRI elements – verify they were computed
         //   correctly, using the DEEP update
         prof_stop!(maybe_profiler, "FRI");
 
@@ -779,28 +738,6 @@ impl Stark {
             bail!("Failed to verify authentication path for combined quotient codeword");
         }
         prof_stop!(maybe_profiler, "Merkle verify (combined quotient)");
-
-        // Verify Merkle authentication path for combination elements
-        // todo: get rid of this entire tree – it's identical to the first round of FRI
-        prof_start!(maybe_profiler, "Merkle verify (combination tree)");
-        let revealed_combination_leafs =
-            proof_stream.dequeue()?.as_revealed_combination_elements()?;
-        let revealed_combination_digests = revealed_combination_leafs
-            .par_iter()
-            .map(|&xfe| xfe.into())
-            .collect::<Vec<_>>();
-        let revealed_combination_auth_paths = proof_stream
-            .dequeue()?
-            .as_compressed_authentication_paths()?;
-        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
-            combination_root,
-            &revealed_current_row_indices,
-            &revealed_combination_digests,
-            &revealed_combination_auth_paths,
-        ) {
-            bail!("Failed to verify authentication path for combination codeword");
-        }
-        prof_stop!(maybe_profiler, "Merkle verify (combination tree)");
         prof_stop!(maybe_profiler, "check leafs");
 
         prof_start!(maybe_profiler, "nonlinear combination");
@@ -843,11 +780,11 @@ impl Stark {
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        for ((current_row_idx, revealed_quotient_element), revealed_combination_leaf) in
+        for ((current_row_idx, revealed_quotient_element), revealed_fri_element) in
             revealed_current_row_indices
                 .into_iter()
                 .zip_eq(revealed_quotient_elements)
-                .zip_eq(revealed_combination_leafs)
+                .zip_eq(revealed_fri_elements)
         {
             prof_itr0!(maybe_profiler, "main loop");
             let next_row_idx = (current_row_idx + unit_distance) % self.fri.domain.length;
@@ -979,7 +916,8 @@ impl Stark {
 
             prof_start!(maybe_profiler, "combination codeword equality");
             let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
-            if revealed_combination_leaf
+            // todo: DEEP update, check against revealed elements from FRI
+            if revealed_fri_element
                 != base_and_ext_element + quotient_element + randomizer_codewords_contribution
             {
                 bail!(StarkValidationError::CombinationLeafInequality);
