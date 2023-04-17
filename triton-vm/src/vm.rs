@@ -863,17 +863,42 @@ pub fn simulate(
 /// On premature termination of the VM, returns all [`VMState`]s and output for the execution up
 /// to the point of failure.
 ///
+/// The VM's initial state is either the provided `initial_state`, or a new [`VMState`] if
+/// `initial_state` is `None`. The initial state is not included in the returned [`Vec`] of
+/// [`VMState`]s. The initial state is the state of the VM before the first instruction is
+/// executed. The initial state must contain the same program as provided by parameter `program`,
+/// else the method will panic.
+///
+/// If `num_cycles_to_execute` is `Some(number_of_cycles)`, the VM will execute at most
+/// `number_of_cycles` cycles. If `num_cycles_to_execute` is `None`, the VM will execute until
+/// it halts.
+///
 /// See also [`simulate`].
-pub fn debug(
-    program: &Program,
+pub fn debug<'pgm>(
+    program: &'pgm Program,
     mut stdin: Vec<BFieldElement>,
     mut secret_in: Vec<BFieldElement>,
-) -> (Vec<VMState>, Vec<BFieldElement>, Option<anyhow::Error>) {
+    initial_state: Option<VMState<'pgm>>,
+    num_cycles_to_execute: Option<u32>,
+) -> (
+    Vec<VMState<'pgm>>,
+    Vec<BFieldElement>,
+    Option<anyhow::Error>,
+) {
     let mut states = vec![];
     let mut stdout = vec![];
-    let mut current_state = VMState::new(program);
+    let mut current_state = initial_state.unwrap_or(VMState::new(program));
+    let max_cycles = match num_cycles_to_execute {
+        Some(number_of_cycles) => current_state.cycle_count + number_of_cycles,
+        None => u32::MAX,
+    };
 
-    while !current_state.halting {
+    assert_eq!(
+        current_state.program, program.instructions,
+        "The (optional) initial state must be for the given program."
+    );
+
+    while !current_state.halting && current_state.cycle_count < max_cycles {
         states.push(current_state.clone());
         let step = current_state.step(&mut stdin, &mut secret_in);
         let (next_state, vm_output) = match step {
