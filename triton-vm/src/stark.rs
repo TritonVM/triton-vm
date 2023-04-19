@@ -8,8 +8,10 @@ use anyhow::Result;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
+use ndarray::Array2;
 use ndarray::ArrayBase;
 use ndarray::ArrayView2;
+use ndarray::Axis;
 use ndarray::Zip;
 use num_traits::One;
 use num_traits::Zero;
@@ -230,11 +232,6 @@ impl Stark {
         // todo: actually use the out-of-domain rows
         prof_stop!(maybe_profiler, "out-of-domain rows");
 
-        prof_start!(maybe_profiler, "quotient degree bounds");
-        let quotient_degree_bounds =
-            all_quotient_degree_bounds(self.interpolant_degree, master_base_table.padded_height);
-        prof_stop!(maybe_profiler, "quotient degree bounds");
-
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let trace_domain = ArithmeticDomain::new_no_offset(master_base_table.padded_height);
         let quotient_domain = self.quotient_domain();
@@ -261,16 +258,13 @@ impl Stark {
         prof_start!(maybe_profiler, "non-linearly combine quotient codewords");
         // Create quotient codeword. This is a part of the combination codeword. To reduce the
         // amount of hashing necessary, the quotient codeword is non-linearly summed instead of
-        // hashed prior to comitting to it.
-        // When sampling weights, the shifted codewords need to be accounted for – hence the
-        // factor 2.
+        // hashed prior to committing to it.
         let quotient_combination_weights =
-            proof_stream.sample_scalars(2 * num_all_table_quotients());
+            Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
         let quotient_codeword = self.create_quotient_codeword(
             quotient_domain,
-            master_quotient_table.view(),
-            &quotient_degree_bounds,
-            &quotient_combination_weights,
+            master_quotient_table,
+            quotient_combination_weights,
         );
         prof_stop!(maybe_profiler, "non-linearly combine quotient codewords");
         debug_assert_eq!(quotient_domain.length, quotient_codeword.len());
@@ -448,36 +442,17 @@ impl Stark {
     fn create_quotient_codeword(
         &self,
         quotient_domain: ArithmeticDomain,
-        quotient_codewords: ArrayView2<XFieldElement>,
-        quotient_degree_bounds: &[Degree],
-        quotient_weights: &[XFieldElement],
+        quotient_codewords: Array2<XFieldElement>,
+        quotient_weights: Array1<XFieldElement>,
     ) -> Vec<XFieldElement> {
-        assert_eq!(quotient_weights.len(), 2 * quotient_codewords.ncols());
+        assert_eq!(quotient_weights.len(), quotient_codewords.ncols());
 
-        let quotient_domain_values = quotient_domain.domain_values();
-        let mut quotient_codeword = vec![XFieldElement::zero(); quotient_domain.length];
+        let weighted_codewords = quotient_codewords * quotient_weights;
+        let quotient_codeword = weighted_codewords.sum_axis(Axis(1)).to_vec();
 
-        if std::env::var("DEBUG").is_ok() {
-            println!(" --- next up: quotient codewords");
-        }
-        for (idx, ((codeword, weights), &degree_bound)) in quotient_codewords
-            .columns()
-            .into_iter()
-            .zip_eq(quotient_weights.chunks_exact(2))
-            .zip_eq(quotient_degree_bounds)
-            .enumerate()
-        {
-            let shifted_domain_values =
-                Self::degree_shift_domain(&quotient_domain_values, self.max_degree - degree_bound);
-            Zip::from(&mut quotient_codeword)
-                .and(codeword)
-                .and(shifted_domain_values.view())
-                .par_for_each(|acc, &xfe, &shift| {
-                    *acc += weights[0] * xfe + weights[1] * xfe * shift
-                });
-            self.debug_check_degree(idx, &quotient_codeword, quotient_domain, true);
-        }
-
+        assert_eq!(quotient_domain.length, quotient_codeword.len());
+        #[cfg(debug_assertions)]
+        self.debug_check_degree(0, &quotient_codeword, quotient_domain);
         quotient_codeword
     }
 
@@ -515,7 +490,7 @@ impl Stark {
                 .par_for_each(|acc, &bfe, &shift| {
                     *acc += weights[0] * bfe + weights[1] * bfe * shift
                 });
-            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain, false);
+            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain);
         }
         if std::env::var("DEBUG").is_ok() {
             println!(" --- next up: extension codewords");
@@ -532,7 +507,7 @@ impl Stark {
                 .par_for_each(|acc, &xfe, &shift| {
                     *acc += weights[0] * xfe + weights[1] * xfe * shift
                 });
-            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain, false);
+            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain);
         }
 
         base_and_ext_codeword
@@ -549,36 +524,23 @@ impl Stark {
             .into()
     }
 
+    #[cfg(debug_assertions)]
     fn debug_check_degree(
         &self,
         index: usize,
         combination_codeword: &[XFieldElement],
         quotient_domain: ArithmeticDomain,
-        is_quotient_codeword: bool,
     ) {
-        if std::env::var("DEBUG").is_err() {
-            return;
-        }
-        let max_degree = self.max_degree;
+        let max_degree = self.max_degree as isize;
         let degree = quotient_domain.interpolate(combination_codeword).degree();
-        let maybe_excl_mark = if degree > max_degree as isize {
-            "!!!"
-        } else if degree != -1 && degree != max_degree as isize {
-            "!"
-        } else {
-            ""
+        let maybe_excl_mark = match degree > max_degree {
+            true => "!",
+            false => " ",
         };
         println!(
-            "{maybe_excl_mark:^3} combination codeword has degree {degree} after absorbing \
-            shifted codeword with index {index:>2}. Must be of maximal degree {max_degree}."
+            "{maybe_excl_mark} Combination codeword has degree {degree} after absorbing \
+            codeword with index {index:>2}. Must be of maximal degree {max_degree}."
         );
-        if is_quotient_codeword && degree > max_degree as isize {
-            let (constraint_type, table_name, index) =
-                constraint_type_and_index_and_table_name(index);
-            println!(
-                "Culprit: {constraint_type} constraint in {table_name} Table at index {index}."
-            );
-        }
     }
 
     pub fn verify(
@@ -626,9 +588,8 @@ impl Stark {
         prof_start!(maybe_profiler, "sample quotient codeword weights");
         // Sample weights for quotient codeword, which is a part of the combination codeword.
         // See corresponding part in the prover for a more detailed explanation.
-        let num_quot_codeword_weights = 2 * num_all_table_quotients();
         let quot_codeword_weights =
-            Array1::from(proof_stream.sample_scalars(num_quot_codeword_weights));
+            Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
         prof_stop!(maybe_profiler, "sample quotient codeword weights");
 
         prof_start!(maybe_profiler, "get quotient codeword root");
@@ -796,12 +757,12 @@ impl Stark {
             prof_start!(maybe_profiler, "zerofiers");
             let one = BFieldElement::one();
             let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
-            let initial_zerofier_inverse = (current_fri_domain_value - one).inverse();
-            let consistency_zerofier_inverse =
+            let initial_zerofier_inv = (current_fri_domain_value - one).inverse();
+            let consistency_zerofier_inv =
                 (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
             let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
-            let transition_zerofier_inverse = except_last_row * consistency_zerofier_inverse;
-            let terminal_zerofier_inverse = except_last_row.inverse();
+            let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
+            let terminal_zerofier_inv = except_last_row.inverse();
             // i.e., only last row
             prof_stop!(maybe_profiler, "zerofiers");
 
@@ -871,38 +832,17 @@ impl Stark {
             prof_start!(maybe_profiler, "quotient elements");
             prof_start!(maybe_profiler, "shift & collect");
             let mut quotient_summands = Vec::with_capacity(quot_codeword_weights.len());
-            for (degree_bound_category, evaluated_constraints_category, zerofier_inverse) in [
-                (
-                    &initial_quotient_degree_bounds,
-                    evaluated_initial_constraints,
-                    initial_zerofier_inverse,
-                ),
-                (
-                    &consistency_quotient_degree_bounds,
-                    evaluated_consistency_constraints,
-                    consistency_zerofier_inverse,
-                ),
-                (
-                    &transition_quotient_degree_bounds,
-                    evaluated_transition_constraints,
-                    transition_zerofier_inverse,
-                ),
-                (
-                    &terminal_quotient_degree_bounds,
-                    evaluated_terminal_constraints,
-                    terminal_zerofier_inverse,
-                ),
+            for (evaluated_constraints_category, zerofier_inverse) in [
+                (evaluated_initial_constraints, initial_zerofier_inv),
+                (evaluated_consistency_constraints, consistency_zerofier_inv),
+                (evaluated_transition_constraints, transition_zerofier_inv),
+                (evaluated_terminal_constraints, terminal_zerofier_inv),
             ] {
-                for (degree_bound, evaluated_constraint) in degree_bound_category
-                    .iter()
-                    .zip_eq(evaluated_constraints_category.into_iter())
-                {
-                    let shift = self.max_degree - degree_bound;
-                    let quotient = evaluated_constraint * zerofier_inverse;
-                    let quotient_shifted = quotient * all_shifted_fri_domain_values[&shift];
-                    quotient_summands.push(quotient);
-                    quotient_summands.push(quotient_shifted);
-                }
+                let category_quotients = evaluated_constraints_category
+                    .into_iter()
+                    .map(|evaluated_constraint| evaluated_constraint * zerofier_inverse)
+                    .collect_vec();
+                quotient_summands.extend(category_quotients);
             }
             prof_stop!(maybe_profiler, "shift & collect");
             prof_start!(maybe_profiler, "inner product");
