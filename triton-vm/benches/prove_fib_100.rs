@@ -2,12 +2,12 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+use triton_opcodes::program::Program;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
 
-use triton_opcodes::program::Program;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::stark::Stark;
@@ -25,12 +25,16 @@ fn prove_fib_100(criterion: &mut Criterion) {
     let mut report: Report = Report::placeholder();
 
     // stark object
+    prof_start!(maybe_profiler, "parse program");
     let program = match Program::from_code(FIBONACCI_SEQUENCE) {
         Err(e) => panic!("Cannot compile source code into program: {e}"),
         Ok(p) => p,
     };
+    prof_stop!(maybe_profiler, "parse program");
     let input = vec![100_u64.into()];
+    prof_start!(maybe_profiler, "generate AET");
     let (aet, output, err) = simulate(&program, input.clone(), vec![]);
+    prof_stop!(maybe_profiler, "generate AET");
     if let Some(error) = err {
         panic!("The VM encountered the following problem: {error}");
     }
@@ -44,10 +48,7 @@ fn prove_fib_100(criterion: &mut Criterion) {
         padded_height,
     };
     let stark = Stark::new(claim, Default::default());
-    //start the profiler
-    prof_start!(maybe_profiler, "prove");
     let _proof = stark.prove(aet.clone(), &mut maybe_profiler);
-    prof_stop!(maybe_profiler, "prove");
 
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.finish();
