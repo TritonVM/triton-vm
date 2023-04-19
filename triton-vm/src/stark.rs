@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::ops::Add;
+use std::ops::Mul;
 
 use anyhow::bail;
 use anyhow::Result;
@@ -10,6 +11,7 @@ use ndarray::s;
 use ndarray::Array1;
 use ndarray::Array2;
 use ndarray::ArrayBase;
+use ndarray::ArrayView1;
 use ndarray::ArrayView2;
 use ndarray::Axis;
 use num_traits::One;
@@ -198,8 +200,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "out-of-domain rows");
         let trace_domain_generator = derive_domain_generator(padded_height.value());
-        let out_of_domain_curr_row_index = proof_stream.sample_scalars(1)[0];
-        let out_of_domain_next_row_index = trace_domain_generator * out_of_domain_curr_row_index;
+        let out_of_domain_value_curr_row = proof_stream.sample_scalars(1)[0];
+        let out_of_domain_value_next_row = trace_domain_generator * out_of_domain_value_curr_row;
 
         prof_start!(maybe_profiler, "lift base polys");
         let base_interpolation_polys = base_interpolation_polys
@@ -208,13 +210,13 @@ impl Stark {
         let ext_interpolation_polys = ext_interpolation_polys.slice(s![..NUM_EXT_COLUMNS]);
         prof_stop!(maybe_profiler, "lift base polys");
         let out_of_domain_curr_base_row =
-            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_curr_row_index));
+            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_curr_row));
         let out_of_domain_next_base_row =
-            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_next_row_index));
+            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_next_row));
         let out_of_domain_curr_ext_row =
-            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_curr_row_index));
+            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_curr_row));
         let out_of_domain_next_ext_row =
-            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_next_row_index));
+            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_next_row));
         proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
             out_of_domain_curr_base_row.to_vec(),
         ));
@@ -227,7 +229,6 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
             out_of_domain_next_ext_row.to_vec(),
         ));
-        // todo: actually use the out-of-domain rows
         prof_stop!(maybe_profiler, "out-of-domain rows");
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
@@ -283,7 +284,7 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
 
         let out_of_domain_quotient_element =
-            quotient_interpolation_poly.evaluate(&out_of_domain_curr_row_index);
+            quotient_interpolation_poly.evaluate(&out_of_domain_value_curr_row);
         proof_stream.enqueue(&ProofItem::OutOfDomainElement(
             out_of_domain_quotient_element,
         ));
@@ -297,44 +298,93 @@ impl Stark {
             proof_stream.sample_scalars(num_base_and_ext_codeword_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
-        prof_start!(maybe_profiler, "create base&ext codeword");
-        prof_start!(maybe_profiler, "linear combination");
+        prof_start!(maybe_profiler, "base&ext codeword: linear combination");
         let base_and_ext_codeword = self.create_base_and_ext_codeword(
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
-            base_and_ext_codeword_weights,
+            &base_and_ext_codeword_weights,
         );
-        prof_stop!(maybe_profiler, "linear combination");
+        prof_stop!(maybe_profiler, "base&ext codeword: linear combination");
 
-        prof_start!(maybe_profiler, "LDE 3");
+        prof_start!(maybe_profiler, "DEEP: base&ext");
         let base_and_ext_interpolation_poly = quotient_domain.interpolate(&base_and_ext_codeword);
-        let fri_base_and_ext_codeword =
-            Array1::from(self.fri.domain.evaluate(&base_and_ext_interpolation_poly));
-
-        let out_of_domain_curr_row_base_and_ext_element =
-            base_and_ext_interpolation_poly.evaluate(&out_of_domain_curr_row_index);
         let out_of_domain_next_row_base_and_ext_element =
-            base_and_ext_interpolation_poly.evaluate(&out_of_domain_next_row_index);
-        proof_stream.enqueue(&ProofItem::OutOfDomainElement(
-            out_of_domain_curr_row_base_and_ext_element,
-        ));
+            base_and_ext_interpolation_poly.evaluate(&out_of_domain_value_next_row);
         proof_stream.enqueue(&ProofItem::OutOfDomainElement(
             out_of_domain_next_row_base_and_ext_element,
         ));
-        prof_stop!(maybe_profiler, "LDE 3");
-        prof_stop!(maybe_profiler, "create base&ext codeword");
+        let base_and_ext_next_row_deep_quotient = Self::deep_quotient(
+            &base_and_ext_codeword,
+            quotient_domain,
+            out_of_domain_value_next_row,
+            out_of_domain_next_row_base_and_ext_element,
+        );
+        prof_stop!(maybe_profiler, "DEEP: base&ext");
 
-        prof_start!(maybe_profiler, "combination codeword");
-        // todo: apply DEEP trick, correctly build codeword to feed to FRI
-        let fri_combination_codeword = fri_base_and_ext_codeword + fri_quotient_codeword.clone();
-        debug_assert_eq!(self.fri.domain.length, fri_combination_codeword.len());
+        prof_start!(maybe_profiler, "DEEP: base&ext + quot");
+        let base_and_ext_and_quot_codeword = base_and_ext_codeword
+            .par_iter()
+            .zip_eq(quotient_codeword.par_iter())
+            .map(|(&a, &b)| a + b)
+            .collect::<Vec<_>>();
+        let base_and_ext_and_quot_interpolation_poly =
+            quotient_domain.interpolate(&base_and_ext_and_quot_codeword);
+        let out_of_domain_curr_row_base_and_ext_and_quot_element =
+            base_and_ext_and_quot_interpolation_poly.evaluate(&out_of_domain_value_curr_row);
+        proof_stream.enqueue(&ProofItem::OutOfDomainElement(
+            out_of_domain_curr_row_base_and_ext_and_quot_element,
+        ));
+        let base_and_ext_and_quot_curr_row_deep_quotient = Self::deep_quotient(
+            &base_and_ext_and_quot_codeword,
+            quotient_domain,
+            out_of_domain_value_curr_row,
+            out_of_domain_curr_row_base_and_ext_and_quot_element,
+        );
+        prof_stop!(maybe_profiler, "DEEP: base&ext + quot");
+
+        #[cfg(debug_assertions)]
+        {
+            let base_and_ext_weights = Array1::from(base_and_ext_codeword_weights);
+            let out_of_domain_curr_row_base_and_ext_element = Self::linearly_sum_base_and_ext_row(
+                out_of_domain_curr_base_row.view(),
+                out_of_domain_curr_ext_row.view(),
+                base_and_ext_weights.view(),
+                &mut None,
+            );
+            assert_eq!(
+                out_of_domain_curr_row_base_and_ext_and_quot_element,
+                out_of_domain_curr_row_base_and_ext_element + out_of_domain_quotient_element,
+            );
+            let out_of_domain_next_row_base_and_ext_element_2 = Self::linearly_sum_base_and_ext_row(
+                out_of_domain_next_base_row.view(),
+                out_of_domain_next_ext_row.view(),
+                base_and_ext_weights.view(),
+                &mut None,
+            );
+            assert_eq!(
+                out_of_domain_next_row_base_and_ext_element,
+                out_of_domain_next_row_base_and_ext_element_2,
+            );
+        }
+
+        prof_start!(maybe_profiler, "LDE on combined DEEP quotient");
+        let base_and_ext_and_quot_curr_row_deep_quotient =
+            Array1::from(base_and_ext_and_quot_curr_row_deep_quotient);
+        let base_and_ext_next_row_deep_quotient = Array1::from(base_and_ext_next_row_deep_quotient);
+        let deep_quotient_codeword =
+            &base_and_ext_and_quot_curr_row_deep_quotient + &base_and_ext_next_row_deep_quotient;
+        let fri_deep_quotient_codeword = Array1::from(
+            quotient_domain.low_degree_extension(&deep_quotient_codeword.to_vec(), self.fri.domain),
+        );
+        assert_eq!(self.fri.domain.length, fri_deep_quotient_codeword.len());
         let fri_combination_codeword = fri_domain_ext_master_table
             .randomizer_polynomials()
             .into_iter()
-            .fold(fri_combination_codeword, ArrayBase::add)
+            .fold(fri_deep_quotient_codeword, ArrayBase::add)
             .to_vec();
-        prof_stop!(maybe_profiler, "combination codeword");
+        assert_eq!(self.fri.domain.length, fri_combination_codeword.len());
+        prof_stop!(maybe_profiler, "LDE on combined DEEP quotient");
 
         prof_start!(maybe_profiler, "FRI");
         let (revealed_current_row_indices, _) =
@@ -444,6 +494,7 @@ impl Stark {
     ) -> Vec<XFieldElement> {
         assert_eq!(quotient_weights.len(), quotient_codewords.ncols());
 
+        // Note: `*` is the element-wise (Hadamard) product
         let weighted_codewords = quotient_codewords * quotient_weights;
         let quotient_codeword = weighted_codewords.sum_axis(Axis(1)).to_vec();
 
@@ -458,7 +509,7 @@ impl Stark {
         quotient_domain: ArithmeticDomain,
         base_codewords: ArrayView2<BFieldElement>,
         extension_codewords: ArrayView2<XFieldElement>,
-        weights: Vec<XFieldElement>,
+        weights: &[XFieldElement],
     ) -> Vec<XFieldElement> {
         let (base_weights, ext_weights) = weights.split_at(NUM_BASE_COLUMNS);
         let base_weights = Array1::from(base_weights.to_vec());
@@ -467,6 +518,7 @@ impl Stark {
         assert_eq!(base_weights.len(), base_codewords.ncols());
         assert_eq!(ext_weights.len(), extension_codewords.ncols());
 
+        // Note: `*` is the element-wise (Hadamard) product
         let weighted_base_codewords = &base_codewords * base_weights;
         let weighted_ext_codewords = &extension_codewords * &ext_weights;
 
@@ -478,6 +530,42 @@ impl Stark {
         #[cfg(debug_assertions)]
         self.debug_check_degree(&base_and_ext_codeword, quotient_domain);
         base_and_ext_codeword
+    }
+
+    /// Apply the [DEEP update](Self::deep_update) to a polynomial in value form, _i.e._, to a
+    /// codeword.
+    fn deep_quotient(
+        codeword: &[XFieldElement],
+        domain: ArithmeticDomain,
+        out_of_domain_value: XFieldElement,
+        out_of_domain_evaluation: XFieldElement,
+    ) -> Vec<XFieldElement> {
+        domain
+            .domain_values()
+            .par_iter()
+            .zip_eq(codeword.par_iter())
+            .map(|(&in_domain_value, &in_domain_evaluation)| {
+                Self::deep_update(
+                    in_domain_value,
+                    in_domain_evaluation,
+                    out_of_domain_value,
+                    out_of_domain_evaluation,
+                )
+            })
+            .collect()
+    }
+
+    /// Given `f(x)` (the in-domain evaluation of polynomial `f` in `x`), the domain value `x` at
+    /// which polynomial `f` was evaluated, the out-of-domain evaluation `f(α)`, and the
+    /// out-of-domain domain value `α`, apply the DEEP update: `(f(x) - f(α)) / (x - α)`.
+    #[inline]
+    fn deep_update(
+        in_domain_value: BFieldElement,
+        in_domain_evaluation: XFieldElement,
+        out_of_domain_value: XFieldElement,
+        out_of_domain_evaluation: XFieldElement,
+    ) -> XFieldElement {
+        (in_domain_evaluation - out_of_domain_evaluation) / (in_domain_value - out_of_domain_value)
     }
 
     #[cfg(debug_assertions)]
@@ -529,15 +617,13 @@ impl Stark {
 
         prof_start!(maybe_profiler, "get out-of-domain index and rows");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
-        let out_of_domain_curr_row_index = proof_stream.sample_scalars(1)[0];
-        let _out_of_domain_next_row_index = trace_domain_generator * out_of_domain_curr_row_index;
-        // todo: actually use the ood index – apply the DEEP trick
+        let out_of_domain_value_curr_row = proof_stream.sample_scalars(1)[0];
+        let out_of_domain_value_next_row = trace_domain_generator * out_of_domain_value_curr_row;
 
-        let _out_of_domain_curr_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
-        let _out_of_domain_curr_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
-        let _out_of_domain_next_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
-        let _out_of_domain_next_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
-        // todo: actually use the ood rows – apply the DEEP trick
+        let out_of_domain_curr_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
+        let out_of_domain_curr_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
+        let out_of_domain_next_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
+        let out_of_domain_next_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
         prof_stop!(maybe_profiler, "get out-of-domain index and rows");
 
         prof_start!(maybe_profiler, "sample quotient codeword weights");
@@ -549,8 +635,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "get quotient codeword root");
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
-        let _out_of_domain_quotient_element = proof_stream.dequeue()?.as_out_of_domain_element()?;
-        // todo: actually use the ood element – verify it was computed correctly
+        let out_of_domain_quotient_element = proof_stream.dequeue()?.as_out_of_domain_element()?;
+        // todo: actually use the ood element – use AIR to verify it was computed correctly
         prof_stop!(maybe_profiler, "get quotient codeword root");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
@@ -559,13 +645,35 @@ impl Stark {
             Array1::from(proof_stream.sample_scalars(num_base_and_ext_codeword_weights));
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
 
-        prof_start!(maybe_profiler, "out-of-domain base&ext codeword element");
-        let _out_of_domain_curr_row_base_and_ext_element =
+        prof_start!(maybe_profiler, "out-of-domain elements");
+        let out_of_domain_next_row_base_and_ext_element =
             proof_stream.dequeue()?.as_out_of_domain_element()?;
-        let _out_of_domain_next_row_base_and_ext_element =
+        let out_of_domain_curr_row_base_and_ext_and_quot_element =
             proof_stream.dequeue()?.as_out_of_domain_element()?;
-        // todo: actually use the ood element – verify it was computed correctly and DEEP trick
-        prof_stop!(maybe_profiler, "out-of-domain base&ext codeword element");
+        prof_stop!(maybe_profiler, "out-of-domain elements");
+
+        prof_start!(maybe_profiler, "check out-of-domain element consistency");
+        let computed_ood_curr_row_base_and_ext_elem = Self::linearly_sum_base_and_ext_row(
+            Array1::from(out_of_domain_curr_base_row).view(),
+            Array1::from(out_of_domain_curr_ext_row).view(),
+            base_and_ext_codeword_weights.view(),
+            maybe_profiler,
+        );
+        if out_of_domain_curr_row_base_and_ext_and_quot_element
+            != computed_ood_curr_row_base_and_ext_elem + out_of_domain_quotient_element
+        {
+            bail!("Out-of-domain current row must match DEEP element for current row.");
+        }
+        let computed_ood_next_row_base_and_ext_elem = Self::linearly_sum_base_and_ext_row(
+            Array1::from(out_of_domain_next_base_row).view(),
+            Array1::from(out_of_domain_next_ext_row).view(),
+            base_and_ext_codeword_weights.view(),
+            maybe_profiler,
+        );
+        if out_of_domain_next_row_base_and_ext_element != computed_ood_next_row_base_and_ext_elem {
+            bail!("Out-of-domain next row must match DEEP element for next row.");
+        }
+        prof_stop!(maybe_profiler, "check out-of-domain element consistency");
 
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
@@ -573,8 +681,6 @@ impl Stark {
             self.fri.verify(&mut proof_stream, maybe_profiler)?;
         let (revealed_current_row_indices, revealed_fri_elements): (Vec<_>, Vec<_>) =
             revealed_fri_indices_and_elements.into_iter().unzip();
-        // todo: actually use the revealed FRI elements – verify they were computed
-        //   correctly, using the DEEP update
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "check leafs");
@@ -691,8 +797,7 @@ impl Stark {
                 (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
             let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
             let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
-            let terminal_zerofier_inv = except_last_row.inverse();
-            // i.e., only last row
+            let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
             prof_stop!(maybe_profiler, "zerofiers");
 
             prof_start!(maybe_profiler, "evaluate AIR");
@@ -715,16 +820,12 @@ impl Stark {
             prof_stop!(maybe_profiler, "evaluate AIR");
 
             prof_start!(maybe_profiler, "base & ext elements");
-            prof_start!(maybe_profiler, "collect");
-            let mut base_and_ext_summands = current_base_row.map(|&element| element.lift());
-            base_and_ext_summands
-                .append(Axis(0), current_ext_row)
-                .unwrap();
-            prof_stop!(maybe_profiler, "collect");
-            prof_start!(maybe_profiler, "inner product");
-            let base_and_ext_element =
-                (&base_and_ext_codeword_weights * base_and_ext_summands).sum();
-            prof_stop!(maybe_profiler, "inner product");
+            let base_and_ext_curr_row_element = Self::linearly_sum_base_and_ext_row(
+                current_base_row,
+                current_ext_row,
+                base_and_ext_codeword_weights.view(),
+                maybe_profiler,
+            );
             prof_stop!(maybe_profiler, "base & ext elements");
 
             prof_start!(maybe_profiler, "quotient elements");
@@ -752,11 +853,27 @@ impl Stark {
             }
             prof_stop!(maybe_profiler, "quotient elements");
 
+            prof_start!(maybe_profiler, "DEEP update");
+            let base_and_ext_and_quot_curr_row_deep_quotient_element = Self::deep_update(
+                current_fri_domain_value,
+                base_and_ext_curr_row_element + quotient_element,
+                out_of_domain_value_curr_row,
+                out_of_domain_curr_row_base_and_ext_and_quot_element,
+            );
+            let base_and_ext_next_row_deep_quotient_element = Self::deep_update(
+                current_fri_domain_value,
+                base_and_ext_curr_row_element,
+                out_of_domain_value_next_row,
+                out_of_domain_next_row_base_and_ext_element,
+            );
+            prof_stop!(maybe_profiler, "DEEP update");
+
             prof_start!(maybe_profiler, "combination codeword equality");
             let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
-            // todo: DEEP update, check against revealed elements from FRI
             if revealed_fri_element
-                != base_and_ext_element + quotient_element + randomizer_codewords_contribution
+                != base_and_ext_and_quot_curr_row_deep_quotient_element
+                    + base_and_ext_next_row_deep_quotient_element
+                    + randomizer_codewords_contribution
             {
                 bail!(StarkValidationError::CombinationLeafInequality);
             }
@@ -765,6 +882,30 @@ impl Stark {
         prof_stop!(maybe_profiler, "main loop");
         prof_stop!(maybe_profiler, "linear combination");
         Ok(true)
+    }
+
+    fn linearly_sum_base_and_ext_row<FF>(
+        base_row: ArrayView1<FF>,
+        ext_row: ArrayView1<XFieldElement>,
+        weights: ArrayView1<XFieldElement>,
+        maybe_profiler: &mut Option<TritonProfiler>,
+    ) -> XFieldElement
+    where
+        FF: FiniteField + Into<XFieldElement>,
+        XFieldElement: Mul<FF, Output = XFieldElement>,
+    {
+        prof_start!(maybe_profiler, "collect");
+        let mut row = base_row.map(|&element| element.into());
+        row.append(Axis(0), ext_row).unwrap();
+        prof_stop!(maybe_profiler, "collect");
+        prof_start!(maybe_profiler, "inner product");
+        // todo: Try to get rid of this clone. The alternative line
+        //   `let base_and_ext_element = (&weights * &summands).sum();`
+        //   without cloning the weights does not compile for a seemingly nonsensical reason.
+        let weights = weights.to_owned();
+        let base_and_ext_element = (weights * row).sum();
+        prof_stop!(maybe_profiler, "inner product");
+        base_and_ext_element
     }
 
     /// Hash-maps for base, extension, and randomizer rows that allow doing
