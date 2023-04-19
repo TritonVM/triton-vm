@@ -325,11 +325,11 @@ impl Stark {
         ));
         prof_stop!(maybe_profiler, "open trace leafs");
 
-        if std::env::var("DEBUG").is_ok() {
-            println!(
-                "Created proof containing {} B-field elements",
-                proof_stream.transcript_length()
-            );
+        #[cfg(debug_assertions)]
+        {
+            let transcript_length = proof_stream.transcript_length();
+            let kib = (transcript_length * 8 / 1024) + 1;
+            println!("Created proof containing {transcript_length} B-field elements ({kib} kiB).");
         }
 
         proof_stream.to_proof()
@@ -344,7 +344,7 @@ impl Stark {
         // However, it can also make it impossible to check if some operation (e.g., dividing out
         // the zerofier) has (erroneously) increased the polynomial's degree beyond the allowed
         // maximum.
-        if std::env::var("DEBUG").is_ok() {
+        if cfg!(debug_assertions) {
             self.fri.domain
         } else {
             let offset = self.fri.domain.offset;
