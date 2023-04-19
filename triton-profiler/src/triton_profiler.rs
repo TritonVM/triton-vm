@@ -116,7 +116,7 @@ impl TritonProfiler {
                 .map(|_| task.time.as_secs_f64() / self.total_time.as_secs_f64());
 
             let weight = if task.task_type == TaskType::AnyOtherIteration {
-                Weight::Light
+                Weight::LikeNothing
             } else {
                 Weight::weigh(task.time.as_secs_f64() / total_tracked_time)
             };
@@ -141,7 +141,7 @@ impl TritonProfiler {
                 is_last_sibling,
                 ancestors,
                 weight,
-                younger_max_weight: Weight::Light,
+                younger_max_weight: Weight::LikeNothing,
             });
         }
 
@@ -154,7 +154,7 @@ impl TritonProfiler {
                     younger_siblings.push(tsk_idx);
                 }
             }
-            let mut younger_max_weight: Weight = Weight::Light;
+            let mut younger_max_weight: Weight = Weight::LikeNothing;
             for sibling in younger_siblings.iter() {
                 younger_max_weight = max(younger_max_weight, report[*sibling].weight);
             }
@@ -302,38 +302,60 @@ impl Profiler for TritonProfiler {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Weight {
+    LikeNothing,
+    VeryLittle,
     Light,
     Noticeable,
     Heavy,
     Massive,
+    SuperMassive,
 }
 
 impl Weight {
-    /// Assign a weight based on a relative cost, which is a number
-    /// between 0 and 1.
+    /// Assign a weight based on a relative cost, which is a number between 0 and 1.
     fn weigh(relative_cost: f64) -> Weight {
         match relative_cost {
-            rc if rc >= 0.5 => Weight::Massive,
-            rc if rc >= 0.4 => Weight::Heavy,
-            rc if rc >= 0.3 => Weight::Noticeable,
-            _ => Weight::Light,
+            rc if rc >= 0.4 => Weight::SuperMassive,
+            rc if rc >= 0.3 => Weight::Massive,
+            rc if rc >= 0.2 => Weight::Heavy,
+            rc if rc >= 0.1 => Weight::Noticeable,
+            rc if rc >= 0.07 => Weight::Light,
+            rc if rc >= 0.04 => Weight::VeryLittle,
+            _ => Weight::LikeNothing,
         }
     }
 
     fn color(&self) -> Color {
+        use Color::*;
+        use Weight::*;
         match self {
-            Weight::Light => Color::White,
-            Weight::Noticeable => Color::TrueColor {
+            LikeNothing => TrueColor {
+                r: 120,
+                g: 120,
+                b: 120,
+            },
+            VeryLittle => TrueColor {
                 r: 200,
                 g: 200,
-                b: 100,
+                b: 200,
             },
-            Weight::Heavy => Color::TrueColor {
+            Light => White,
+            Noticeable => TrueColor {
+                r: 255,
+                g: 255,
+                b: 120,
+            },
+            Heavy => TrueColor {
                 r: 255,
                 g: 150,
                 b: 0,
             },
-            Weight::Massive => Color::Red,
+            Massive => TrueColor {
+                r: 255,
+                g: 75,
+                b: 0,
+            },
+            SuperMassive => Red,
         }
     }
 }
