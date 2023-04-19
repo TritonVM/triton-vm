@@ -5,7 +5,7 @@
 //! as well as for the RAM Table's Contiguity Argument.
 //!
 //! There are three types of challenges:
-//! - **Weights**. Weights are used to non-linearly combine multiple elements into one element. The
+//! - **Weights**. Weights are used to linearly combine multiple elements into one element. The
 //! resulting single element can then be used in a cross-table argument.
 //! - **Indeterminates**. All cross-table arguments work by checking the equality of polynomials (or
 //! rational functions). Through the Schwartz-Zippel lemma, this equality check can be performed
@@ -74,17 +74,17 @@ pub enum ChallengeId {
     /// The indeterminate for the Contiguity Argument within the Ram Table.
     RamTableBezoutRelationIndeterminate,
 
-    /// A weight for non-linearly combining multiple elements. Applies to
+    /// A weight for linearly combining multiple elements. Applies to
     /// - `Address` in the Program Table
     /// - `IP` in the Processor Table
     ProgramAddressWeight,
 
-    /// A weight for non-linearly combining multiple elements. Applies to
+    /// A weight for linearly combining multiple elements. Applies to
     /// - `Instruction` in the Program Table
     /// - `CI` in the Processor Table
     ProgramInstructionWeight,
 
-    /// A weight for non-linearly combining multiple elements. Applies to
+    /// A weight for linearly combining multiple elements. Applies to
     /// - `Instruction'` (_i.e._, in the next row) in the Program Table
     /// - `NIA` in the Processor Table
     ProgramNextInstructionWeight,
@@ -126,12 +126,12 @@ pub enum ChallengeId {
     /// The indeterminate for the Lookup Argument between the Hash Table and the Cascade Table.
     HashCascadeLookupIndeterminate,
 
-    /// A weight for non-linearly combining multiple elements. Applies to
+    /// A weight for linearly combining multiple elements. Applies to
     /// - `*LkIn` in the Hash Table, and
     /// - `2^16·LookInHi + LookInLo` in the Cascade Table.
     HashCascadeLookInWeight,
 
-    /// A weight for non-linearly combining multiple elements. Applies to
+    /// A weight for linearly combining multiple elements. Applies to
     /// - `*LkOut` in the Hash Table, and
     /// - `2^16·LookOutHi + LookOutLo` in the Cascade Table.
     HashCascadeLookOutWeight,
@@ -139,12 +139,12 @@ pub enum ChallengeId {
     /// The indeterminate for the Lookup Argument between the Cascade Table and the Lookup Table.
     CascadeLookupIndeterminate,
 
-    /// A weight for non-linearly combining multiple elements. Applies to
+    /// A weight for linearly combining multiple elements. Applies to
     /// - `LkIn*` in the Cascade Table, and
     /// - `LookIn` in the Lookup Table.
     LookupTableInputWeight,
 
-    /// A weight for non-linearly combining multiple elements. Applies to
+    /// A weight for linearly combining multiple elements. Applies to
     /// - `LkOut*` in the Cascade Table, and
     /// - `LookOut` in the Lookup Table.
     LookupTableOutputWeight,

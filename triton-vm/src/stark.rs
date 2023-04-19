@@ -12,9 +12,7 @@ use ndarray::Array2;
 use ndarray::ArrayBase;
 use ndarray::ArrayView2;
 use ndarray::Axis;
-use ndarray::Zip;
 use num_traits::One;
-use num_traits::Zero;
 use rayon::prelude::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
@@ -56,7 +54,7 @@ pub struct StarkParameters {
     pub num_trace_randomizers: usize,
     pub num_randomizer_polynomials: usize,
     pub num_colinearity_checks: usize,
-    pub num_non_linear_codeword_checks: usize,
+    pub num_combination_codeword_checks: usize,
 }
 
 impl StarkParameters {
@@ -70,7 +68,7 @@ impl StarkParameters {
         let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
         let num_colinearity_checks = security_level / log2_of_fri_expansion_factor;
         let num_trace_randomizers = num_colinearity_checks * 2;
-        let num_non_linear_codeword_checks = security_level;
+        let num_combination_codeword_checks = security_level;
 
         StarkParameters {
             security_level,
@@ -78,7 +76,7 @@ impl StarkParameters {
             num_trace_randomizers,
             num_randomizer_polynomials,
             num_colinearity_checks,
-            num_non_linear_codeword_checks,
+            num_combination_codeword_checks,
         }
     }
 }
@@ -255,9 +253,9 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "quotient codewords");
 
-        prof_start!(maybe_profiler, "non-linearly combine quotient codewords");
+        prof_start!(maybe_profiler, "linearly combine quotient codewords");
         // Create quotient codeword. This is a part of the combination codeword. To reduce the
-        // amount of hashing necessary, the quotient codeword is non-linearly summed instead of
+        // amount of hashing necessary, the quotient codeword is linearly summed instead of
         // hashed prior to committing to it.
         let quotient_combination_weights =
             Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
@@ -266,7 +264,7 @@ impl Stark {
             master_quotient_table,
             quotient_combination_weights,
         );
-        prof_stop!(maybe_profiler, "non-linearly combine quotient codewords");
+        prof_stop!(maybe_profiler, "linearly combine quotient codewords");
         debug_assert_eq!(quotient_domain.length, quotient_codeword.len());
 
         prof_start!(maybe_profiler, "commit to quotient codeword");
@@ -292,23 +290,22 @@ impl Stark {
         prof_stop!(maybe_profiler, "commit to quotient codeword");
         debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
 
-        // Get weights for remainder of the non-linear combination. Concretely, sample 2 weights
-        // for each base polynomial and each extension polynomial.
+        // Get weights for remainder of the combination codeword.
         prof_start!(maybe_profiler, "Fiat-Shamir");
-        let num_base_and_ext_codeword_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
+        let num_base_and_ext_codeword_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
         let base_and_ext_codeword_weights =
             proof_stream.sample_scalars(num_base_and_ext_codeword_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "create base&ext codeword");
-        prof_start!(maybe_profiler, "nonlinear combination");
+        prof_start!(maybe_profiler, "linear combination");
         let base_and_ext_codeword = self.create_base_and_ext_codeword(
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
-            &base_and_ext_codeword_weights,
+            base_and_ext_codeword_weights,
         );
-        prof_stop!(maybe_profiler, "nonlinear combination");
+        prof_stop!(maybe_profiler, "linear combination");
 
         prof_start!(maybe_profiler, "LDE 3");
         let base_and_ext_interpolation_poly = quotient_domain.interpolate(&base_and_ext_codeword);
@@ -435,7 +432,7 @@ impl Stark {
     ) -> Vec<Vec<FF>> {
         revealed_indices
             .iter()
-            .map(|&idx| master_matrix.slice(s![idx, ..]).to_vec())
+            .map(|&idx| master_matrix.row(idx).to_vec())
             .collect_vec()
     }
 
@@ -452,7 +449,7 @@ impl Stark {
 
         assert_eq!(quotient_domain.length, quotient_codeword.len());
         #[cfg(debug_assertions)]
-        self.debug_check_degree(0, &quotient_codeword, quotient_domain);
+        self.debug_check_degree(&quotient_codeword, quotient_domain);
         quotient_codeword
     }
 
@@ -461,73 +458,31 @@ impl Stark {
         quotient_domain: ArithmeticDomain,
         base_codewords: ArrayView2<BFieldElement>,
         extension_codewords: ArrayView2<XFieldElement>,
-        weights: &[XFieldElement],
+        weights: Vec<XFieldElement>,
     ) -> Vec<XFieldElement> {
-        let (base_weights, ext_weights) = weights.split_at(2 * NUM_BASE_COLUMNS);
+        let (base_weights, ext_weights) = weights.split_at(NUM_BASE_COLUMNS);
+        let base_weights = Array1::from(base_weights.to_vec());
+        let ext_weights = Array1::from(ext_weights.to_vec());
 
-        assert_eq!(base_weights.len(), 2 * base_codewords.ncols());
-        assert_eq!(ext_weights.len(), 2 * extension_codewords.ncols());
+        assert_eq!(base_weights.len(), base_codewords.ncols());
+        assert_eq!(ext_weights.len(), extension_codewords.ncols());
 
-        let base_and_ext_col_shift = self.max_degree - self.interpolant_degree;
-        let quotient_domain_values = quotient_domain.domain_values();
-        let shifted_domain_values =
-            Self::degree_shift_domain(&quotient_domain_values, base_and_ext_col_shift);
+        let weighted_base_codewords = &base_codewords * base_weights;
+        let weighted_ext_codewords = &extension_codewords * &ext_weights;
 
-        let mut base_and_ext_codeword = vec![XFieldElement::zero(); quotient_domain.length];
+        let base_and_ext_codeword =
+            weighted_base_codewords.sum_axis(Axis(1)) + weighted_ext_codewords.sum_axis(Axis(1));
+        let base_and_ext_codeword = base_and_ext_codeword.to_vec();
 
-        if std::env::var("DEBUG").is_ok() {
-            println!(" --- next up: base codewords");
-        }
-        for (idx, (codeword, weights)) in base_codewords
-            .columns()
-            .into_iter()
-            .zip_eq(base_weights.chunks_exact(2))
-            .enumerate()
-        {
-            Zip::from(&mut base_and_ext_codeword)
-                .and(codeword)
-                .and(shifted_domain_values.view())
-                .par_for_each(|acc, &bfe, &shift| {
-                    *acc += weights[0] * bfe + weights[1] * bfe * shift
-                });
-            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain);
-        }
-        if std::env::var("DEBUG").is_ok() {
-            println!(" --- next up: extension codewords");
-        }
-        for (idx, (codeword, weights)) in extension_codewords
-            .columns()
-            .into_iter()
-            .zip_eq(ext_weights.chunks_exact(2))
-            .enumerate()
-        {
-            Zip::from(&mut base_and_ext_codeword)
-                .and(codeword)
-                .and(shifted_domain_values.view())
-                .par_for_each(|acc, &xfe, &shift| {
-                    *acc += weights[0] * xfe + weights[1] * xfe * shift
-                });
-            self.debug_check_degree(idx, &base_and_ext_codeword, quotient_domain);
-        }
-
+        assert_eq!(quotient_domain.length, base_and_ext_codeword.len());
+        #[cfg(debug_assertions)]
+        self.debug_check_degree(&base_and_ext_codeword, quotient_domain);
         base_and_ext_codeword
-    }
-
-    fn degree_shift_domain(
-        domain_values: &[BFieldElement],
-        shift: Degree,
-    ) -> Array1<BFieldElement> {
-        domain_values
-            .into_par_iter()
-            .map(|domain_value| domain_value.mod_pow_u32(shift as u32))
-            .collect::<Vec<_>>()
-            .into()
     }
 
     #[cfg(debug_assertions)]
     fn debug_check_degree(
         &self,
-        index: usize,
         combination_codeword: &[XFieldElement],
         quotient_domain: ArithmeticDomain,
     ) {
@@ -538,8 +493,8 @@ impl Stark {
             false => " ",
         };
         println!(
-            "{maybe_excl_mark} Combination codeword has degree {degree} after absorbing \
-            codeword with index {index:>2}. Must be of maximal degree {max_degree}."
+            "{maybe_excl_mark} Combination codeword has degree {degree}. \
+            Must be of maximal degree {max_degree}."
         );
     }
 
@@ -599,7 +554,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "get quotient codeword root");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
-        let num_base_and_ext_codeword_weights = 2 * (NUM_BASE_COLUMNS + NUM_EXT_COLUMNS);
+        let num_base_and_ext_codeword_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
         let base_and_ext_codeword_weights =
             Array1::from(proof_stream.sample_scalars(num_base_and_ext_codeword_weights));
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
@@ -701,7 +656,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle verify (combined quotient)");
         prof_stop!(maybe_profiler, "check leafs");
 
-        prof_start!(maybe_profiler, "nonlinear combination");
+        prof_start!(maybe_profiler, "linear combination");
         prof_start!(maybe_profiler, "index");
         let (indexed_base_table_rows, indexed_ext_table_rows, indexed_randomizer_rows) =
             Self::index_revealed_rows(
@@ -711,33 +666,7 @@ impl Stark {
             );
         prof_stop!(maybe_profiler, "index");
 
-        // verify non-linear combination
-        prof_start!(maybe_profiler, "degree bounds");
-        let base_and_ext_col_shift = self.max_degree - self.interpolant_degree;
-        let initial_quotient_degree_bounds =
-            all_initial_quotient_degree_bounds(self.interpolant_degree);
-        let consistency_quotient_degree_bounds =
-            all_consistency_quotient_degree_bounds(self.interpolant_degree, padded_height);
-        let transition_quotient_degree_bounds =
-            all_transition_quotient_degree_bounds(self.interpolant_degree, padded_height);
-        let terminal_quotient_degree_bounds =
-            all_terminal_quotient_degree_bounds(self.interpolant_degree);
-        prof_stop!(maybe_profiler, "degree bounds");
-
-        prof_start!(maybe_profiler, "pre-compute all shifts");
-        let mut all_shifts = vec![self.interpolant_degree]
-            .iter()
-            .chain(initial_quotient_degree_bounds.iter())
-            .chain(consistency_quotient_degree_bounds.iter())
-            .chain(transition_quotient_degree_bounds.iter())
-            .chain(terminal_quotient_degree_bounds.iter())
-            .map(|degree_bound| self.max_degree - degree_bound)
-            .collect_vec();
-        all_shifts.sort();
-        all_shifts.dedup();
-        let mut all_shifted_fri_domain_values = HashMap::new();
-        prof_stop!(maybe_profiler, "pre-compute all shifts");
-
+        // verify linear combination
         prof_start!(maybe_profiler, "main loop");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let trace_domain_generator_inverse = trace_domain_generator.inverse();
@@ -766,26 +695,6 @@ impl Stark {
             // i.e., only last row
             prof_stop!(maybe_profiler, "zerofiers");
 
-            prof_start!(maybe_profiler, "shifted FRI domain values");
-            // Minimize the respective exponents and thus work spent exponentiating by using the
-            // fact that `all_shifts` is sorted. Concretely, use
-            // 1. `x^curr_shift = x^(prev_shift + shift_diff) = x^prev_shift * x^shift_diff`,
-            // 2. memoization of `x^prev_shift`, and
-            // 3. the fact that exponentiation by a smaller exponent is computationally cheaper.
-            let mut previous_shift = all_shifts[0];
-            let mut previously_shifted_fri_domain_value =
-                current_fri_domain_value.mod_pow_u32(previous_shift as u32);
-            all_shifted_fri_domain_values
-                .insert(previous_shift, previously_shifted_fri_domain_value);
-            for &shift in all_shifts.iter().skip(1) {
-                let current_shifted_fri_domain_value = previously_shifted_fri_domain_value
-                    * current_fri_domain_value.mod_pow_u32((shift - previous_shift) as u32);
-                all_shifted_fri_domain_values.insert(shift, current_shifted_fri_domain_value);
-                previous_shift = shift;
-                previously_shifted_fri_domain_value = current_shifted_fri_domain_value;
-            }
-            prof_stop!(maybe_profiler, "shifted FRI domain values");
-
             prof_start!(maybe_profiler, "evaluate AIR");
             let evaluated_initial_constraints =
                 evaluate_all_initial_constraints(current_base_row, current_ext_row, &challenges);
@@ -806,31 +715,20 @@ impl Stark {
             prof_stop!(maybe_profiler, "evaluate AIR");
 
             prof_start!(maybe_profiler, "base & ext elements");
-            prof_start!(maybe_profiler, "shift & collect");
-            // populate summands with a the revealed FRI domain master table rows and their shifts
-            let base_ext_fri_domain_value_shifted =
-                all_shifted_fri_domain_values[&base_and_ext_col_shift];
-            let mut base_and_ext_summands = Vec::with_capacity(base_and_ext_codeword_weights.len());
-            for &base_row_element in current_base_row.iter() {
-                let base_row_element_shifted = base_row_element * base_ext_fri_domain_value_shifted;
-                base_and_ext_summands.push(base_row_element.lift());
-                base_and_ext_summands.push(base_row_element_shifted.lift());
-            }
-
-            for &ext_row_element in current_ext_row.iter() {
-                let ext_row_element_shifted = ext_row_element * base_ext_fri_domain_value_shifted;
-                base_and_ext_summands.push(ext_row_element);
-                base_and_ext_summands.push(ext_row_element_shifted);
-            }
-            prof_stop!(maybe_profiler, "shift & collect");
+            prof_start!(maybe_profiler, "collect");
+            let mut base_and_ext_summands = current_base_row.map(|&element| element.lift());
+            base_and_ext_summands
+                .append(Axis(0), current_ext_row)
+                .unwrap();
+            prof_stop!(maybe_profiler, "collect");
             prof_start!(maybe_profiler, "inner product");
             let base_and_ext_element =
-                (&base_and_ext_codeword_weights * &Array1::from(base_and_ext_summands)).sum();
+                (&base_and_ext_codeword_weights * base_and_ext_summands).sum();
             prof_stop!(maybe_profiler, "inner product");
             prof_stop!(maybe_profiler, "base & ext elements");
 
             prof_start!(maybe_profiler, "quotient elements");
-            prof_start!(maybe_profiler, "shift & collect");
+            prof_start!(maybe_profiler, "divide");
             let mut quotient_summands = Vec::with_capacity(quot_codeword_weights.len());
             for (evaluated_constraints_category, zerofier_inverse) in [
                 (evaluated_initial_constraints, initial_zerofier_inv),
@@ -844,7 +742,7 @@ impl Stark {
                     .collect_vec();
                 quotient_summands.extend(category_quotients);
             }
-            prof_stop!(maybe_profiler, "shift & collect");
+            prof_stop!(maybe_profiler, "divide");
             prof_start!(maybe_profiler, "inner product");
             let quotient_element =
                 (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
@@ -865,7 +763,7 @@ impl Stark {
             prof_stop!(maybe_profiler, "combination codeword equality");
         }
         prof_stop!(maybe_profiler, "main loop");
-        prof_stop!(maybe_profiler, "nonlinear combination");
+        prof_stop!(maybe_profiler, "linear combination");
         Ok(true)
     }
 

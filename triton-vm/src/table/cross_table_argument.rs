@@ -220,7 +220,7 @@ impl Evaluable for GrandCrossTableArg {
                 .master_ext_table_index()]
             - ext_row[HashExtTableColumn::CascadeState3LowestClientLogDerivative
                 .master_ext_table_index()];
-        let casade_to_lookup = ext_row
+        let cascade_to_lookup = ext_row
             [CascadeExtTableColumn::LookupTableClientLogDerivative.master_ext_table_index()]
             - ext_row
                 [LookupExtTableColumn::CascadeTableServerLogDerivative.master_ext_table_index()];
@@ -237,8 +237,7 @@ impl Evaluable for GrandCrossTableArg {
             - ext_row[JumpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
                 .master_ext_table_index()];
 
-        let non_linear_sum = challenges.get_challenge(ProcessorToProgramWeight)
-            * instruction_lookup
+        let linear_sum = challenges.get_challenge(ProcessorToProgramWeight) * instruction_lookup
             + challenges.get_challenge(InputToProcessorWeight) * input_to_processor
             + challenges.get_challenge(ProcessorToOutputWeight) * processor_to_output
             + challenges.get_challenge(ProcessorToOpStackWeight) * processor_to_op_stack
@@ -248,11 +247,11 @@ impl Evaluable for GrandCrossTableArg {
             + challenges.get_challenge(HashDigestWeight) * hash_digest
             + challenges.get_challenge(SpongeWeight) * sponge
             + challenges.get_challenge(HashToCascadeWeight) * hash_to_cascade
-            + challenges.get_challenge(CascadeToLookupWeight) * casade_to_lookup
+            + challenges.get_challenge(CascadeToLookupWeight) * cascade_to_lookup
             + challenges.get_challenge(ProcessorToU32Weight) * processor_to_u32
             + challenges.get_challenge(ClockJumpDifferenceLookupWeight)
                 * clock_jump_difference_lookup;
-        vec![non_linear_sum]
+        vec![linear_sum]
     }
 }
 
