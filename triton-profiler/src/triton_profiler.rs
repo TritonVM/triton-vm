@@ -111,14 +111,10 @@ impl TritonProfiler {
         );
         for (task_index, task) in self.profile.iter().enumerate() {
             // compute this task's time relative to total duration
-            let relative_time = task
-                .parent_index
-                .map(|_| task.time.as_secs_f64() / self.total_time.as_secs_f64());
-
-            let weight = if task.task_type == TaskType::AnyOtherIteration {
-                Weight::LikeNothing
-            } else {
-                Weight::weigh(task.time.as_secs_f64() / total_tracked_time)
+            let relative_time = task.time.as_secs_f64() / total_tracked_time;
+            let weight = match task.task_type {
+                TaskType::AnyOtherIteration => Weight::LikeNothing,
+                _ => Weight::weigh(task.time.as_secs_f64() / total_tracked_time),
             };
 
             let is_last_sibling = !self.has_younger_sibling(task_index);
@@ -366,7 +362,7 @@ struct TaskReport {
     parent_index: Option<usize>,
     depth: usize,
     time: Duration,
-    relative_time: Option<f64>,
+    relative_time: f64,
     is_last_sibling: bool,
     ancestors: Vec<usize>,
     weight: Weight,
@@ -464,15 +460,8 @@ impl Display for Report {
             }
             let task_time_colored = task_time.color(task.weight.color());
             let padding = String::from_utf8(vec![b' '; padding_length]).unwrap();
-            let relative_time_string = if let Some(rt) = task.relative_time {
-                if rt > 0.3 {
-                    format!("{:2.2}%", 100.0 * rt)
-                } else {
-                    "      ".to_owned()
-                }
-            } else {
-                "      ".to_owned()
-            };
+            let relative_time_string =
+                format!("{:>6}", format!("{:2.2}%", 100.0 * task.relative_time));
             let relative_time_string_colored = relative_time_string.color(task.weight.color());
             f.write_fmt(format_args!(
                 "{task_name_colored}{padding}   \
@@ -486,8 +475,9 @@ impl Display for Report {
         {
             writeln!(f)?;
         }
+
+        let total_time = self.total_time.as_millis() as usize;
         if let Some(cycle_count) = self.cycle_count {
-            let total_time = self.total_time.as_millis() as usize;
             if total_time != 0 {
                 let freq = 1_000 * cycle_count / total_time;
                 writeln!(
@@ -498,7 +488,6 @@ impl Display for Report {
         }
 
         if let Some(padded_height) = self.padded_height {
-            let total_time = self.total_time.as_millis() as usize;
             if total_time != 0 {
                 let optimal_freq = 1_000 * padded_height / total_time;
                 writeln!(
