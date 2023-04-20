@@ -94,7 +94,6 @@ impl Default for StarkParameters {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum StarkValidationError {
-    QuotientElementInequality,
     CombinationLeafInequality,
     PaddedHeightInequality,
     FriValidationError(FriValidationError),
@@ -285,9 +284,6 @@ impl Stark {
 
         let out_of_domain_quotient_element =
             quotient_interpolation_poly.evaluate(&out_of_domain_value_curr_row);
-        proof_stream.enqueue(&ProofItem::OutOfDomainElement(
-            out_of_domain_quotient_element,
-        ));
         prof_stop!(maybe_profiler, "commit to quotient codeword");
         debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
 
@@ -671,16 +667,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "sample quotient codeword weights");
 
         prof_start!(maybe_profiler, "inner product");
-        let out_of_domain_quotient_element_computed =
+        let out_of_domain_quotient_element =
             (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
         prof_stop!(maybe_profiler, "inner product");
 
         prof_start!(maybe_profiler, "get quotient codeword root");
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
-        let out_of_domain_quotient_element = proof_stream.dequeue()?.as_out_of_domain_element()?;
-        if out_of_domain_quotient_element != out_of_domain_quotient_element_computed {
-            bail!(StarkValidationError::QuotientElementInequality);
-        }
         prof_stop!(maybe_profiler, "get quotient codeword root");
         prof_stop!(maybe_profiler, "out-of-domain quotient element");
 
