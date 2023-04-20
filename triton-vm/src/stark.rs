@@ -281,9 +281,6 @@ impl Stark {
             Maker::from_digests(&fri_quotient_codeword_digests);
         let quot_merkle_tree_root = quot_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
-
-        let out_of_domain_quotient_element =
-            quotient_interpolation_poly.evaluate(&out_of_domain_value_curr_row);
         prof_stop!(maybe_profiler, "commit to quotient codeword");
         debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
 
@@ -341,6 +338,8 @@ impl Stark {
 
         #[cfg(debug_assertions)]
         {
+            let out_of_domain_quotient_element =
+                quotient_interpolation_poly.evaluate(&out_of_domain_value_curr_row);
             let base_and_ext_weights = Array1::from(base_and_ext_codeword_weights);
             let out_of_domain_curr_row_base_and_ext_element = Self::linearly_sum_base_and_ext_row(
                 out_of_domain_curr_base_row.view(),
