@@ -392,33 +392,26 @@ impl Stark {
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "open trace leafs");
-        // the relation between the FRI domain and the trace domain
-        let unit_distance = self.fri.domain.length / master_base_table.padded_height;
         // Open leafs of zipped codewords at indicated positions
-        let revealed_current_and_next_row_indices = self
-            .revealed_current_and_next_row_indices(unit_distance, &revealed_current_row_indices);
-
         let revealed_base_elems = Self::get_revealed_elements(
             fri_domain_master_base_table.master_base_matrix.view(),
-            &revealed_current_and_next_row_indices,
+            &revealed_current_row_indices,
         );
         let auth_paths_base =
-            base_merkle_tree.get_authentication_structure(&revealed_current_and_next_row_indices);
+            base_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
         proof_stream.enqueue(&ProofItem::MasterBaseTableRows(revealed_base_elems));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_base));
 
         let revealed_ext_elems = Self::get_revealed_elements(
             fri_domain_ext_master_table.master_ext_matrix.view(),
-            &revealed_current_and_next_row_indices,
+            &revealed_current_row_indices,
         );
         let auth_paths_ext =
-            ext_merkle_tree.get_authentication_structure(&revealed_current_and_next_row_indices);
+            ext_merkle_tree.get_authentication_structure(&revealed_current_row_indices);
         proof_stream.enqueue(&ProofItem::MasterExtTableRows(revealed_ext_elems));
         proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(auth_paths_ext));
 
         // Open quotient & combination codewords at the same positions as base & ext codewords.
-        // Use `revealed_current_row_indices`, not `revealed_current_and_next_row_indices`, as
-        // the latter is only needed to check transition constraints.
         let revealed_quotient_elements = revealed_current_row_indices
             .iter()
             .map(|&i| fri_quotient_codeword[i])
@@ -459,21 +452,6 @@ impl Stark {
             let length = roundup_npo2(self.max_degree as u64);
             ArithmeticDomain::new(offset, length as usize)
         }
-    }
-
-    fn revealed_current_and_next_row_indices(
-        &self,
-        unit_distance: usize,
-        revealed_current_rows_indices: &[usize],
-    ) -> Vec<usize> {
-        let mut indices = vec![];
-        for &index in revealed_current_rows_indices.iter() {
-            indices.push(index);
-            indices.push((index + unit_distance) % self.fri.domain.length);
-        }
-        indices.sort_unstable();
-        indices.dedup();
-        indices
     }
 
     fn get_revealed_elements<FF: FiniteField>(
@@ -624,7 +602,66 @@ impl Stark {
         let out_of_domain_curr_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
         let out_of_domain_next_base_row = proof_stream.dequeue()?.as_out_of_domain_base_row()?;
         let out_of_domain_next_ext_row = proof_stream.dequeue()?.as_out_of_domain_ext_row()?;
+
+        let out_of_domain_curr_base_row = Array1::from(out_of_domain_curr_base_row);
+        let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row);
+        let out_of_domain_next_base_row = Array1::from(out_of_domain_next_base_row);
+        let out_of_domain_next_ext_row = Array1::from(out_of_domain_next_ext_row);
         prof_stop!(maybe_profiler, "get out-of-domain index and rows");
+
+        prof_start!(maybe_profiler, "out-of-domain quotient element");
+        prof_start!(maybe_profiler, "zerofiers");
+        let one = BFieldElement::one();
+        let trace_domain_generator = derive_domain_generator(padded_height as u64);
+        let trace_domain_generator_inverse = trace_domain_generator.inverse();
+        let initial_zerofier_inv = (out_of_domain_value_curr_row - one).inverse();
+        let consistency_zerofier_inv =
+            (out_of_domain_value_curr_row.mod_pow_u32(padded_height as u32) - one).inverse();
+        let except_last_row = out_of_domain_value_curr_row - trace_domain_generator_inverse;
+        let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
+        let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
+        prof_stop!(maybe_profiler, "zerofiers");
+
+        prof_start!(maybe_profiler, "evaluate AIR");
+        let evaluated_initial_constraints = evaluate_all_initial_constraints(
+            out_of_domain_curr_base_row.view(),
+            out_of_domain_curr_ext_row.view(),
+            &challenges,
+        );
+        let evaluated_consistency_constraints = evaluate_all_consistency_constraints(
+            out_of_domain_curr_base_row.view(),
+            out_of_domain_curr_ext_row.view(),
+            &challenges,
+        );
+        let evaluated_transition_constraints = evaluate_all_transition_constraints(
+            out_of_domain_curr_base_row.view(),
+            out_of_domain_curr_ext_row.view(),
+            out_of_domain_next_base_row.view(),
+            out_of_domain_next_ext_row.view(),
+            &challenges,
+        );
+        let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
+            out_of_domain_curr_base_row.view(),
+            out_of_domain_curr_ext_row.view(),
+            &challenges,
+        );
+        prof_stop!(maybe_profiler, "evaluate AIR");
+
+        prof_start!(maybe_profiler, "divide");
+        let mut quotient_summands = Vec::with_capacity(num_all_table_quotients());
+        for (evaluated_constraints_category, zerofier_inverse) in [
+            (evaluated_initial_constraints, initial_zerofier_inv),
+            (evaluated_consistency_constraints, consistency_zerofier_inv),
+            (evaluated_transition_constraints, transition_zerofier_inv),
+            (evaluated_terminal_constraints, terminal_zerofier_inv),
+        ] {
+            let category_quotients = evaluated_constraints_category
+                .into_iter()
+                .map(|evaluated_constraint| evaluated_constraint * zerofier_inverse)
+                .collect_vec();
+            quotient_summands.extend(category_quotients);
+        }
+        prof_stop!(maybe_profiler, "divide");
 
         prof_start!(maybe_profiler, "sample quotient codeword weights");
         // Sample weights for quotient codeword, which is a part of the combination codeword.
@@ -633,11 +670,19 @@ impl Stark {
             Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
         prof_stop!(maybe_profiler, "sample quotient codeword weights");
 
+        prof_start!(maybe_profiler, "inner product");
+        let out_of_domain_quotient_element_computed =
+            (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
+        prof_stop!(maybe_profiler, "inner product");
+
         prof_start!(maybe_profiler, "get quotient codeword root");
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         let out_of_domain_quotient_element = proof_stream.dequeue()?.as_out_of_domain_element()?;
-        // todo: actually use the ood element – use AIR to verify it was computed correctly
+        if out_of_domain_quotient_element != out_of_domain_quotient_element_computed {
+            bail!(StarkValidationError::QuotientElementInequality);
+        }
         prof_stop!(maybe_profiler, "get quotient codeword root");
+        prof_stop!(maybe_profiler, "out-of-domain quotient element");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
         let num_base_and_ext_codeword_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
@@ -654,8 +699,8 @@ impl Stark {
 
         prof_start!(maybe_profiler, "check out-of-domain element consistency");
         let computed_ood_curr_row_base_and_ext_elem = Self::linearly_sum_base_and_ext_row(
-            Array1::from(out_of_domain_curr_base_row).view(),
-            Array1::from(out_of_domain_curr_ext_row).view(),
+            out_of_domain_curr_base_row.view(),
+            out_of_domain_curr_ext_row.view(),
             base_and_ext_codeword_weights.view(),
             maybe_profiler,
         );
@@ -665,8 +710,8 @@ impl Stark {
             bail!("Out-of-domain current row must match DEEP element for current row.");
         }
         let computed_ood_next_row_base_and_ext_elem = Self::linearly_sum_base_and_ext_row(
-            Array1::from(out_of_domain_next_base_row).view(),
-            Array1::from(out_of_domain_next_ext_row).view(),
+            out_of_domain_next_base_row.view(),
+            out_of_domain_next_ext_row.view(),
             base_and_ext_codeword_weights.view(),
             maybe_profiler,
         );
@@ -684,13 +729,6 @@ impl Stark {
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "check leafs");
-        prof_start!(maybe_profiler, "get indices");
-        // the relation between the FRI domain and the trace domain
-        let unit_distance = self.fri.domain.length / padded_height;
-        let revealed_current_and_next_row_indices = self
-            .revealed_current_and_next_row_indices(unit_distance, &revealed_current_row_indices);
-        prof_stop!(maybe_profiler, "get indices");
-
         prof_start!(maybe_profiler, "dequeue base elements");
         let base_table_rows = proof_stream.dequeue()?.as_master_base_table_rows()?;
         let base_auth_paths = proof_stream
@@ -705,7 +743,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Merkle verify (base tree)");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
-            &revealed_current_and_next_row_indices,
+            &revealed_current_row_indices,
             &leaf_digests_base,
             &base_auth_paths,
         ) {
@@ -733,7 +771,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Merkle verify (extension tree)");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
-            &revealed_current_and_next_row_indices,
+            &revealed_current_row_indices,
             &leaf_digests_ext,
             &auth_paths_ext,
         ) {
@@ -766,7 +804,7 @@ impl Stark {
         prof_start!(maybe_profiler, "index");
         let (indexed_base_table_rows, indexed_ext_table_rows, indexed_randomizer_rows) =
             Self::index_revealed_rows(
-                revealed_current_and_next_row_indices,
+                &revealed_current_row_indices,
                 base_table_rows,
                 ext_table_rows,
             );
@@ -774,58 +812,15 @@ impl Stark {
 
         // verify linear combination
         prof_start!(maybe_profiler, "main loop");
-        let trace_domain_generator = derive_domain_generator(padded_height as u64);
-        let trace_domain_generator_inverse = trace_domain_generator.inverse();
-        for ((current_row_idx, revealed_quotient_element), revealed_fri_element) in
-            revealed_current_row_indices
-                .into_iter()
-                .zip_eq(revealed_quotient_elements)
-                .zip_eq(revealed_fri_elements)
+        for ((current_row_idx, quotient_element), fri_element) in revealed_current_row_indices
+            .into_iter()
+            .zip_eq(revealed_quotient_elements)
+            .zip_eq(revealed_fri_elements)
         {
             prof_itr0!(maybe_profiler, "main loop");
-            let next_row_idx = (current_row_idx + unit_distance) % self.fri.domain.length;
             let current_base_row = indexed_base_table_rows[&current_row_idx].view();
             let current_ext_row = indexed_ext_table_rows[&current_row_idx].view();
-            let next_base_row = indexed_base_table_rows[&next_row_idx].view();
-            let next_ext_row = indexed_ext_table_rows[&next_row_idx].view();
-
-            prof_start!(maybe_profiler, "zerofiers");
-            let one = BFieldElement::one();
             let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
-            let initial_zerofier_inv = (current_fri_domain_value - one).inverse();
-            let consistency_zerofier_inv =
-                (current_fri_domain_value.mod_pow_u32(padded_height as u32) - one).inverse();
-            let except_last_row = current_fri_domain_value - trace_domain_generator_inverse;
-            let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
-            let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
-            prof_stop!(maybe_profiler, "zerofiers");
-
-            prof_start!(maybe_profiler, "evaluate AIR");
-            let current_base_row_lifted = current_base_row.map(|e| e.lift());
-            let next_base_row_lifted = next_base_row.map(|e| e.lift());
-            let evaluated_initial_constraints = evaluate_all_initial_constraints(
-                current_base_row_lifted.view(),
-                current_ext_row,
-                &challenges,
-            );
-            let evaluated_consistency_constraints = evaluate_all_consistency_constraints(
-                current_base_row_lifted.view(),
-                current_ext_row,
-                &challenges,
-            );
-            let evaluated_transition_constraints = evaluate_all_transition_constraints(
-                current_base_row_lifted.view(),
-                current_ext_row,
-                next_base_row_lifted.view(),
-                next_ext_row,
-                &challenges,
-            );
-            let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
-                current_base_row_lifted.view(),
-                current_ext_row,
-                &challenges,
-            );
-            prof_stop!(maybe_profiler, "evaluate AIR");
 
             prof_start!(maybe_profiler, "base & ext elements");
             let base_and_ext_curr_row_element = Self::linearly_sum_base_and_ext_row(
@@ -835,31 +830,6 @@ impl Stark {
                 maybe_profiler,
             );
             prof_stop!(maybe_profiler, "base & ext elements");
-
-            prof_start!(maybe_profiler, "quotient elements");
-            prof_start!(maybe_profiler, "divide");
-            let mut quotient_summands = Vec::with_capacity(quot_codeword_weights.len());
-            for (evaluated_constraints_category, zerofier_inverse) in [
-                (evaluated_initial_constraints, initial_zerofier_inv),
-                (evaluated_consistency_constraints, consistency_zerofier_inv),
-                (evaluated_transition_constraints, transition_zerofier_inv),
-                (evaluated_terminal_constraints, terminal_zerofier_inv),
-            ] {
-                let category_quotients = evaluated_constraints_category
-                    .into_iter()
-                    .map(|evaluated_constraint| evaluated_constraint * zerofier_inverse)
-                    .collect_vec();
-                quotient_summands.extend(category_quotients);
-            }
-            prof_stop!(maybe_profiler, "divide");
-            prof_start!(maybe_profiler, "inner product");
-            let quotient_element =
-                (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
-            prof_stop!(maybe_profiler, "inner product");
-            if revealed_quotient_element != quotient_element {
-                bail!(StarkValidationError::QuotientElementInequality);
-            }
-            prof_stop!(maybe_profiler, "quotient elements");
 
             prof_start!(maybe_profiler, "DEEP update");
             let base_and_ext_and_quot_curr_row_deep_quotient_element = Self::deep_update(
@@ -878,7 +848,7 @@ impl Stark {
 
             prof_start!(maybe_profiler, "combination codeword equality");
             let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
-            if revealed_fri_element
+            if fri_element
                 != base_and_ext_and_quot_curr_row_deep_quotient_element
                     + base_and_ext_next_row_deep_quotient_element
                     + randomizer_codewords_contribution
@@ -921,7 +891,7 @@ impl Stark {
     /// `revealed_base_rows[revealed_indices.iter().position(|&i| i == revealed_index).unwrap()]`.
     #[allow(clippy::type_complexity)]
     fn index_revealed_rows(
-        revealed_indices: Vec<usize>,
+        revealed_indices: &[usize],
         revealed_base_rows: Vec<Vec<BFieldElement>>,
         revealed_ext_rows: Vec<Vec<XFieldElement>>,
     ) -> (
