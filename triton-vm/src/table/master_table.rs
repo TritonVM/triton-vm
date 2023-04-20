@@ -1499,7 +1499,7 @@ pub fn all_quotients(
 }
 
 pub fn evaluate_all_initial_constraints(
-    base_row: ArrayView1<BFieldElement>,
+    base_row: ArrayView1<XFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1518,7 +1518,7 @@ pub fn evaluate_all_initial_constraints(
 }
 
 pub fn evaluate_all_consistency_constraints(
-    base_row: ArrayView1<BFieldElement>,
+    base_row: ArrayView1<XFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1537,9 +1537,9 @@ pub fn evaluate_all_consistency_constraints(
 }
 
 pub fn evaluate_all_transition_constraints(
-    current_base_row: ArrayView1<BFieldElement>,
+    current_base_row: ArrayView1<XFieldElement>,
     current_ext_row: ArrayView1<XFieldElement>,
-    next_base_row: ArrayView1<BFieldElement>,
+    next_base_row: ArrayView1<XFieldElement>,
     next_ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1562,7 +1562,7 @@ pub fn evaluate_all_transition_constraints(
 }
 
 pub fn evaluate_all_terminal_constraints(
-    base_row: ArrayView1<BFieldElement>,
+    base_row: ArrayView1<XFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1582,9 +1582,9 @@ pub fn evaluate_all_terminal_constraints(
 }
 
 pub fn evaluate_all_constraints(
-    current_base_row: ArrayView1<BFieldElement>,
+    current_base_row: ArrayView1<XFieldElement>,
     current_ext_row: ArrayView1<XFieldElement>,
-    next_base_row: ArrayView1<BFieldElement>,
+    next_base_row: ArrayView1<XFieldElement>,
     next_ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {

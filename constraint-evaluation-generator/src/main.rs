@@ -196,7 +196,7 @@ impl Evaluable for {table_mod_name} {{
     #[inline]
     #[allow(unused_variables)]
     fn evaluate_initial_constraints(
-        base_row: ArrayView1<BFieldElement>,
+        base_row: ArrayView1<XFieldElement>,
         ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
@@ -206,7 +206,7 @@ impl Evaluable for {table_mod_name} {{
     #[inline]
     #[allow(unused_variables)]
     fn evaluate_consistency_constraints(
-        base_row: ArrayView1<BFieldElement>,
+        base_row: ArrayView1<XFieldElement>,
         ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
@@ -216,9 +216,9 @@ impl Evaluable for {table_mod_name} {{
     #[inline]
     #[allow(unused_variables)]
     fn evaluate_transition_constraints(
-        current_base_row: ArrayView1<BFieldElement>,
+        current_base_row: ArrayView1<XFieldElement>,
         current_ext_row: ArrayView1<XFieldElement>,
-        next_base_row: ArrayView1<BFieldElement>,
+        next_base_row: ArrayView1<XFieldElement>,
         next_ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
@@ -228,7 +228,7 @@ impl Evaluable for {table_mod_name} {{
     #[inline]
     #[allow(unused_variables)]
     fn evaluate_terminal_constraints(
-        base_row: ArrayView1<BFieldElement>,
+        base_row: ArrayView1<XFieldElement>,
         ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
@@ -359,7 +359,6 @@ fn turn_circuits_into_string<II: InputIndicator>(
         let ext_constraints = [{ext_constraint_evaluations_joined}];
 
         base_constraints
-            .map(|v| BFieldElement::lift(&v))
             .iter()
             .chain(ext_constraints.iter())
             .cloned()

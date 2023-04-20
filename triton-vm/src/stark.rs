@@ -801,22 +801,30 @@ impl Stark {
             prof_stop!(maybe_profiler, "zerofiers");
 
             prof_start!(maybe_profiler, "evaluate AIR");
-            let evaluated_initial_constraints =
-                evaluate_all_initial_constraints(current_base_row, current_ext_row, &challenges);
+            let current_base_row_lifted = current_base_row.map(|e| e.lift());
+            let next_base_row_lifted = next_base_row.map(|e| e.lift());
+            let evaluated_initial_constraints = evaluate_all_initial_constraints(
+                current_base_row_lifted.view(),
+                current_ext_row,
+                &challenges,
+            );
             let evaluated_consistency_constraints = evaluate_all_consistency_constraints(
-                current_base_row,
+                current_base_row_lifted.view(),
                 current_ext_row,
                 &challenges,
             );
             let evaluated_transition_constraints = evaluate_all_transition_constraints(
-                current_base_row,
+                current_base_row_lifted.view(),
                 current_ext_row,
-                next_base_row,
+                next_base_row_lifted.view(),
                 next_ext_row,
                 &challenges,
             );
-            let evaluated_terminal_constraints =
-                evaluate_all_terminal_constraints(current_base_row, current_ext_row, &challenges);
+            let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
+                current_base_row_lifted.view(),
+                current_ext_row,
+                &challenges,
+            );
             prof_stop!(maybe_profiler, "evaluate AIR");
 
             prof_start!(maybe_profiler, "base & ext elements");
@@ -1233,7 +1241,8 @@ pub(crate) mod triton_stark_tests {
 
             let master_base_trace_table = master_base_table.trace_table();
             let master_ext_trace_table = master_ext_table.trace_table();
-            let last_master_base_row = master_base_trace_table.slice(s![-1, ..]);
+            let last_master_base_row = master_base_trace_table.slice(s![-1, ..]).map(|e| e.lift());
+            let last_master_base_row = last_master_base_row.view();
             let last_master_ext_row = master_ext_trace_table.slice(s![-1, ..]);
             let evaluated_terminal_constraints = GrandCrossTableArg::evaluate_terminal_constraints(
                 last_master_base_row,
@@ -1775,8 +1784,9 @@ pub(crate) mod triton_stark_tests {
             master_ext_trace_table.nrows()
         );
 
+        let first_base_row_lifted = master_base_trace_table.row(0).map(|e| e.lift());
         let evaluated_initial_constraints = evaluate_all_initial_constraints(
-            master_base_trace_table.row(0),
+            first_base_row_lifted.view(),
             master_ext_trace_table.row(0),
             &challenges,
         );
@@ -1796,8 +1806,9 @@ pub(crate) mod triton_stark_tests {
         for row_idx in 0..num_rows {
             let base_row = master_base_trace_table.row(row_idx);
             let ext_row = master_ext_trace_table.row(row_idx);
+            let base_row_lifted = base_row.map(|e| e.lift());
             let evaluated_consistency_constraints =
-                evaluate_all_consistency_constraints(base_row, ext_row, &challenges);
+                evaluate_all_consistency_constraints(base_row_lifted.view(), ext_row, &challenges);
             let num_consistency_constraints = evaluated_consistency_constraints.len();
             assert_eq!(num_all_consistency_quotients(), num_consistency_constraints);
             for (constraint_idx, ecc) in evaluated_consistency_constraints.into_iter().enumerate() {
@@ -1819,10 +1830,12 @@ pub(crate) mod triton_stark_tests {
             let ext_row = master_ext_trace_table.row(row_idx);
             let next_base_row = master_base_trace_table.row(row_idx + 1);
             let next_ext_row = master_ext_trace_table.row(row_idx + 1);
+            let base_row_lifted = base_row.map(|e| e.lift());
+            let next_base_row_lifted = next_base_row.map(|e| e.lift());
             let evaluated_transition_constraints = evaluate_all_transition_constraints(
-                base_row,
+                base_row_lifted.view(),
                 ext_row,
-                next_base_row,
+                next_base_row_lifted.view(),
                 next_ext_row,
                 &challenges,
             );
@@ -1860,8 +1873,9 @@ pub(crate) mod triton_stark_tests {
             }
         }
 
+        let last_row_lifted = master_base_trace_table.row(num_rows - 1).map(|e| e.lift());
         let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
-            master_base_trace_table.row(num_rows - 1),
+            last_row_lifted.view(),
             master_ext_trace_table.row(num_rows - 1),
             &challenges,
         );
