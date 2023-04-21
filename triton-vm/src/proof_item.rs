@@ -114,7 +114,6 @@ pub enum ProofItem {
     MasterExtTableRows(Vec<Vec<XFieldElement>>),
     OutOfDomainBaseRow(Vec<XFieldElement>),
     OutOfDomainExtRow(Vec<XFieldElement>),
-    OutOfDomainElement(XFieldElement),
     MerkleRoot(Digest),
     AuthenticationPath(Vec<Digest>),
     RevealedCombinationElements(Vec<XFieldElement>),
@@ -235,21 +234,6 @@ where
         }
     }
 
-    pub fn as_out_of_domain_element(&self) -> Result<XFieldElement> {
-        match self {
-            Self::OutOfDomainElement(x) => Ok(*x),
-            Self::Uncast(str) => match XFieldElement::decode(str) {
-                Ok(x) => Ok(*x),
-                Err(_) => bail!(ProofStreamError::new(
-                    "cast to out of domain element failed"
-                )),
-            },
-            _ => bail!(ProofStreamError::new(
-                "expected out of domain element, but got something else",
-            )),
-        }
-    }
-
     pub fn as_merkle_root(&self) -> Result<Digest> {
         match self {
             Self::MerkleRoot(bs) => Ok(*bs),
@@ -361,7 +345,6 @@ impl BFieldCodec for ProofItem {
                 debug_assert_eq!(NUM_EXT_COLUMNS, row.len());
                 row.encode()
             }
-            ProofItem::OutOfDomainElement(something) => something.encode(),
             ProofItem::MerkleRoot(something) => something.encode(),
             ProofItem::AuthenticationPath(something) => something.encode(),
             ProofItem::RevealedCombinationElements(something) => something.encode(),
