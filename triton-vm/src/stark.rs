@@ -197,39 +197,6 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
         prof_stop!(maybe_profiler, "ext tables");
 
-        prof_start!(maybe_profiler, "out-of-domain rows");
-        let trace_domain_generator = derive_domain_generator(padded_height.value());
-        let out_of_domain_value_curr_row = proof_stream.sample_scalars(1)[0];
-        let out_of_domain_value_next_row = trace_domain_generator * out_of_domain_value_curr_row;
-
-        prof_start!(maybe_profiler, "lift base polys");
-        let base_interpolation_polys = base_interpolation_polys
-            .map(|poly| Polynomial::new(poly.coefficients.iter().map(|b| b.lift()).collect_vec()));
-        // ignore randomizer codewords / polynomials
-        let ext_interpolation_polys = ext_interpolation_polys.slice(s![..NUM_EXT_COLUMNS]);
-        prof_stop!(maybe_profiler, "lift base polys");
-        let out_of_domain_curr_base_row =
-            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_curr_row));
-        let out_of_domain_next_base_row =
-            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_next_row));
-        let out_of_domain_curr_ext_row =
-            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_curr_row));
-        let out_of_domain_next_ext_row =
-            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_next_row));
-        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
-            out_of_domain_curr_base_row.to_vec(),
-        ));
-        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
-            out_of_domain_curr_ext_row.to_vec(),
-        ));
-        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
-            out_of_domain_next_base_row.to_vec(),
-        ));
-        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
-            out_of_domain_next_ext_row.to_vec(),
-        ));
-        prof_stop!(maybe_profiler, "out-of-domain rows");
-
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let trace_domain = ArithmeticDomain::new_no_offset(master_base_table.padded_height);
         let quotient_domain = self.quotient_domain();
@@ -283,6 +250,39 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
         prof_stop!(maybe_profiler, "commit to quotient codeword");
         debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
+
+        prof_start!(maybe_profiler, "out-of-domain rows");
+        let trace_domain_generator = derive_domain_generator(padded_height.value());
+        let out_of_domain_value_curr_row = proof_stream.sample_scalars(1)[0];
+        let out_of_domain_value_next_row = trace_domain_generator * out_of_domain_value_curr_row;
+
+        prof_start!(maybe_profiler, "lift base polys");
+        let base_interpolation_polys = base_interpolation_polys
+            .map(|poly| Polynomial::new(poly.coefficients.iter().map(|b| b.lift()).collect_vec()));
+        // ignore randomizer codewords / polynomials
+        let ext_interpolation_polys = ext_interpolation_polys.slice(s![..NUM_EXT_COLUMNS]);
+        prof_stop!(maybe_profiler, "lift base polys");
+        let out_of_domain_curr_base_row =
+            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_curr_row));
+        let out_of_domain_next_base_row =
+            base_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_next_row));
+        let out_of_domain_curr_ext_row =
+            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_curr_row));
+        let out_of_domain_next_ext_row =
+            ext_interpolation_polys.map(|poly| poly.evaluate(&out_of_domain_value_next_row));
+        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
+            out_of_domain_curr_base_row.to_vec(),
+        ));
+        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
+            out_of_domain_curr_ext_row.to_vec(),
+        ));
+        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(
+            out_of_domain_next_base_row.to_vec(),
+        ));
+        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(
+            out_of_domain_next_ext_row.to_vec(),
+        ));
+        prof_stop!(maybe_profiler, "out-of-domain rows");
 
         // Get weights for remainder of the combination codeword.
         prof_start!(maybe_profiler, "Fiat-Shamir");
@@ -582,13 +582,15 @@ impl Stark {
             &self.claim.input,
             &self.claim.output,
         );
+        let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
+        // Sample weights for quotient codeword, which is a part of the combination codeword.
+        // See corresponding part in the prover for a more detailed explanation.
+        let quot_codeword_weights =
+            Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
+        let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
-        prof_start!(maybe_profiler, "dequeue");
-        let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
-        prof_stop!(maybe_profiler, "dequeue");
-
-        prof_start!(maybe_profiler, "get out-of-domain index and rows");
+        prof_start!(maybe_profiler, "dequeue out-of-domain point and rows");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let out_of_domain_value_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_value_next_row = trace_domain_generator * out_of_domain_value_curr_row;
@@ -602,17 +604,15 @@ impl Stark {
         let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row);
         let out_of_domain_next_base_row = Array1::from(out_of_domain_next_base_row);
         let out_of_domain_next_ext_row = Array1::from(out_of_domain_next_ext_row);
-        prof_stop!(maybe_profiler, "get out-of-domain index and rows");
+        prof_stop!(maybe_profiler, "dequeue out-of-domain point and rows");
 
         prof_start!(maybe_profiler, "out-of-domain quotient element");
         prof_start!(maybe_profiler, "zerofiers");
         let one = BFieldElement::one();
-        let trace_domain_generator = derive_domain_generator(padded_height as u64);
-        let trace_domain_generator_inverse = trace_domain_generator.inverse();
         let initial_zerofier_inv = (out_of_domain_value_curr_row - one).inverse();
         let consistency_zerofier_inv =
             (out_of_domain_value_curr_row.mod_pow_u32(padded_height as u32) - one).inverse();
-        let except_last_row = out_of_domain_value_curr_row - trace_domain_generator_inverse;
+        let except_last_row = out_of_domain_value_curr_row - trace_domain_generator.inverse();
         let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
         prof_stop!(maybe_profiler, "zerofiers");
@@ -658,21 +658,10 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "divide");
 
-        prof_start!(maybe_profiler, "sample quotient codeword weights");
-        // Sample weights for quotient codeword, which is a part of the combination codeword.
-        // See corresponding part in the prover for a more detailed explanation.
-        let quot_codeword_weights =
-            Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
-        prof_stop!(maybe_profiler, "sample quotient codeword weights");
-
         prof_start!(maybe_profiler, "inner product");
         let out_of_domain_quotient_element =
             (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
         prof_stop!(maybe_profiler, "inner product");
-
-        prof_start!(maybe_profiler, "get quotient codeword root");
-        let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
-        prof_stop!(maybe_profiler, "get quotient codeword root");
         prof_stop!(maybe_profiler, "out-of-domain quotient element");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 2");
