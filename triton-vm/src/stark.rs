@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::ops::Add;
@@ -6,6 +5,7 @@ use std::ops::Mul;
 
 use anyhow::bail;
 use anyhow::Result;
+use itertools::izip;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
@@ -763,31 +763,31 @@ impl Stark {
         prof_stop!(maybe_profiler, "check leafs");
 
         prof_start!(maybe_profiler, "linear combination");
-        prof_start!(maybe_profiler, "index");
-        let (indexed_base_table_rows, indexed_ext_table_rows, indexed_randomizer_rows) =
-            Self::index_revealed_rows(
-                &revealed_current_row_indices,
-                base_table_rows,
-                ext_table_rows,
-            );
-        prof_stop!(maybe_profiler, "index");
-
-        // verify linear combination
+        let num_checks = self.parameters.num_colinearity_checks;
+        assert_eq!(num_checks, revealed_current_row_indices.len());
+        assert_eq!(num_checks, base_table_rows.len());
+        assert_eq!(num_checks, ext_table_rows.len());
+        assert_eq!(num_checks, revealed_quotient_values.len());
+        assert_eq!(num_checks, revealed_fri_values.len());
         prof_start!(maybe_profiler, "main loop");
-        for ((current_row_idx, quotient_value), fri_value) in revealed_current_row_indices
-            .into_iter()
-            .zip_eq(revealed_quotient_values)
-            .zip_eq(revealed_fri_values)
-        {
+        for (row_idx, base_row, ext_row, quotient_value, fri_value) in izip!(
+            revealed_current_row_indices,
+            base_table_rows,
+            ext_table_rows,
+            revealed_quotient_values,
+            revealed_fri_values,
+        ) {
             prof_itr0!(maybe_profiler, "main loop");
-            let current_base_row = indexed_base_table_rows[&current_row_idx].view();
-            let current_ext_row = indexed_ext_table_rows[&current_row_idx].view();
-            let current_fri_domain_value = self.fri.domain.domain_value(current_row_idx as u32);
+            let (current_ext_row, randomizer_row) = ext_row.split_at(NUM_EXT_COLUMNS);
+            let base_row = Array1::from(base_row);
+            let ext_row = Array1::from(current_ext_row.to_vec());
+            let randomizer_row = Array1::from(randomizer_row.to_vec());
+            let current_fri_domain_value = self.fri.domain.domain_value(row_idx as u32);
 
             prof_start!(maybe_profiler, "base & ext elements");
             let base_and_ext_curr_row_element = Self::linearly_sum_base_and_ext_row(
-                current_base_row,
-                current_ext_row,
+                base_row.view(),
+                ext_row.view(),
                 base_and_ext_codeword_weights.view(),
                 maybe_profiler,
             );
@@ -809,7 +809,7 @@ impl Stark {
             prof_stop!(maybe_profiler, "DEEP update");
 
             prof_start!(maybe_profiler, "combination codeword equality");
-            let randomizer_codewords_contribution = indexed_randomizer_rows[&current_row_idx].sum();
+            let randomizer_codewords_contribution = randomizer_row.sum();
             if fri_value
                 != base_and_ext_and_quot_curr_row_deep_value
                     + base_and_ext_next_row_deep_value
@@ -846,43 +846,6 @@ impl Stark {
         let base_and_ext_element = (weights * row).sum();
         prof_stop!(maybe_profiler, "inner product");
         base_and_ext_element
-    }
-
-    /// Hash-maps for base, extension, and randomizer rows that allow doing
-    /// `indexed_revealed_base_rows[revealed_index]` instead of
-    /// `revealed_base_rows[revealed_indices.iter().position(|&i| i == revealed_index).unwrap()]`.
-    #[allow(clippy::type_complexity)]
-    fn index_revealed_rows(
-        revealed_indices: &[usize],
-        revealed_base_rows: Vec<Vec<BFieldElement>>,
-        revealed_ext_rows: Vec<Vec<XFieldElement>>,
-    ) -> (
-        HashMap<usize, Array1<BFieldElement>>,
-        HashMap<usize, Array1<XFieldElement>>,
-        HashMap<usize, Array1<XFieldElement>>,
-    ) {
-        assert_eq!(revealed_indices.len(), revealed_base_rows.len());
-        assert_eq!(revealed_indices.len(), revealed_ext_rows.len());
-
-        let mut indexed_revealed_base_rows: HashMap<usize, Array1<BFieldElement>> = HashMap::new();
-        let mut indexed_revealed_ext_rows: HashMap<usize, Array1<XFieldElement>> = HashMap::new();
-        let mut indexed_revealed_rand_rows: HashMap<usize, Array1<XFieldElement>> = HashMap::new();
-
-        for (i, &idx) in revealed_indices.iter().enumerate() {
-            let base_row = Array1::from(revealed_base_rows[i].to_vec());
-            let ext_row = Array1::from(revealed_ext_rows[i][..NUM_EXT_COLUMNS].to_vec());
-            let rand_row = Array1::from(revealed_ext_rows[i][NUM_EXT_COLUMNS..].to_vec());
-
-            indexed_revealed_base_rows.insert(idx, base_row);
-            indexed_revealed_ext_rows.insert(idx, ext_row);
-            indexed_revealed_rand_rows.insert(idx, rand_row);
-        }
-
-        (
-            indexed_revealed_base_rows,
-            indexed_revealed_ext_rows,
-            indexed_revealed_rand_rows,
-        )
     }
 }
 
