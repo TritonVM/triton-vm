@@ -3,9 +3,12 @@
 //! state-of-the-art ZKPS.
 
 use triton_opcodes::program::Program;
-use twenty_first::shared_math::b_field_element::BFieldElement;
+pub use twenty_first::shared_math::b_field_element::BFieldElement;
+pub use twenty_first::shared_math::tip5::Digest;
+use twenty_first::shared_math::tip5::Tip5;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
-use crate::proof::Claim;
+pub use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::stark::Stark;
 use crate::stark::StarkParameters;
@@ -51,11 +54,12 @@ pub fn prove(source_code: &str, public_input: &[u64], secret_input: &[u64]) -> (
         "Secret {canonical_representation_error}"
     );
 
-    let public_input = public_input
+    // Convert the public and secret inputs to BFieldElements.
+    let public_input_bfe = public_input
         .iter()
         .map(|&e| BFieldElement::new(e))
         .collect::<Vec<_>>();
-    let secret_input = secret_input
+    let secret_input_bfe = secret_input
         .iter()
         .map(|&e| BFieldElement::new(e))
         .collect::<Vec<_>>();
@@ -68,7 +72,7 @@ pub fn prove(source_code: &str, public_input: &[u64], secret_input: &[u64]) -> (
     // - the (public) output of the program, and
     // - an error, if the program crashes.
     let (aet, public_output, maybe_error) =
-        vm::simulate(&program, public_input.clone(), secret_input);
+        vm::simulate(&program, public_input_bfe, secret_input_bfe);
 
     // Check for VM crashes, for example due to failing `assert` instructions or an out-of-bounds
     // instruction pointer. Crashes can occur if any of the two inputs does not conform to the
@@ -78,11 +82,16 @@ pub fn prove(source_code: &str, public_input: &[u64], secret_input: &[u64]) -> (
         panic!("Execution error: {error}");
     }
 
+    // Convert the public output to a vector of u64.
+    let public_output = public_output.iter().map(|e| e.value()).collect::<Vec<_>>();
+
+    // Hash the program to obtain its digest.
+
     // Set up the claim that is to be proven. The claim contains all public information. The
     // proof is zero-knowledge with respect to everything else.
     let claim = Claim {
-        input: public_input,
-        program: program.to_bwords(),
+        input: public_input.to_vec(),
+        program_digest: Tip5::hash(&program),
         output: public_output,
         padded_height: MasterBaseTable::padded_height(&aet),
     };

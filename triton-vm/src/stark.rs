@@ -171,8 +171,11 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::PaddedHeight(padded_height));
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
-        let extension_challenges =
-            Challenges::new(extension_weights, &self.claim.input, &self.claim.output);
+        let extension_challenges = Challenges::new(
+            extension_weights,
+            &self.claim.public_input(),
+            &self.claim.public_output(),
+        );
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
@@ -585,8 +588,8 @@ impl Stark {
             proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let challenges = Challenges::new(
             extension_challenge_weights,
-            &self.claim.input,
-            &self.claim.output,
+            &self.claim.public_input(),
+            &self.claim.public_output(),
         );
         let extension_tree_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         // Sample weights for quotient codeword, which is a part of the combination codeword.
@@ -909,32 +912,39 @@ pub(crate) mod triton_stark_tests {
 
     pub fn parse_setup_simulate(
         code: &str,
-        input_symbols: Vec<BFieldElement>,
-        secret_input_symbols: Vec<BFieldElement>,
-    ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
+        input_symbols: Vec<u64>,
+        secret_input_symbols: Vec<u64>,
+    ) -> (AlgebraicExecutionTrace, Vec<u64>) {
         let program = Program::from_code(code);
 
         assert!(program.is_ok(), "program parses correctly");
         let program = program.unwrap();
+        let public_input = input_symbols.into_iter().map(BFieldElement::new).collect();
+        let secret_input = secret_input_symbols
+            .into_iter()
+            .map(BFieldElement::new)
+            .collect();
 
-        let (aet, stdout, err) = simulate(&program, input_symbols, secret_input_symbols);
+        let (aet, stdout, err) = simulate(&program, public_input, secret_input);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {error}");
         }
+
+        let stdout = stdout.into_iter().map(|x| x.value()).collect();
         (aet, stdout)
     }
 
     pub fn parse_simulate_pad(
         code: &str,
-        stdin: Vec<BFieldElement>,
-        secret_in: Vec<BFieldElement>,
+        stdin: Vec<u64>,
+        secret_in: Vec<u64>,
     ) -> (Stark, MasterBaseTable, MasterBaseTable) {
         let (aet, stdout) = parse_setup_simulate(code, stdin.clone(), secret_in);
 
         let padded_height = MasterBaseTable::padded_height(&aet);
         let claim = Claim {
             input: stdin,
-            program: aet.program.to_bwords(),
+            program_digest: Tip5::hash(&aet.program),
             output: stdout,
             padded_height,
         };
@@ -957,8 +967,8 @@ pub(crate) mod triton_stark_tests {
 
     pub fn parse_simulate_pad_extend(
         code: &str,
-        stdin: Vec<BFieldElement>,
-        secret_in: Vec<BFieldElement>,
+        stdin: Vec<u64>,
+        secret_in: Vec<u64>,
     ) -> (
         Stark,
         MasterBaseTable,
@@ -969,7 +979,8 @@ pub(crate) mod triton_stark_tests {
         let (stark, unpadded_master_base_table, master_base_table) =
             parse_simulate_pad(code, stdin, secret_in);
 
-        let dummy_challenges = Challenges::placeholder(&stark.claim.input, &stark.claim.output);
+        let dummy_challenges =
+            Challenges::placeholder(&stark.claim.public_input(), &stark.claim.public_output());
         let master_ext_table = master_base_table.extend(
             &dummy_challenges,
             stark.parameters.num_randomizer_polynomials,
@@ -1097,7 +1108,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     pub fn check_io_terminals() {
         let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io halt";
-        let input_symbols = [3, 5, 7].map(BFieldElement::new).to_vec();
+        let input_symbols = vec![3, 5, 7];
         let (stark, _, _, master_ext_table, all_challenges) =
             parse_simulate_pad_extend(read_nop_code, input_symbols, vec![]);
 
@@ -1105,7 +1116,7 @@ pub(crate) mod triton_stark_tests {
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         let ptie = processor_table_last_row[InputTableEvalArg.ext_table_index()];
         let ine = EvalArg::compute_terminal(
-            &stark.claim.input,
+            &stark.claim.public_input(),
             EvalArg::default_initial(),
             all_challenges.get_challenge(StandardInputIndeterminate),
         );
@@ -1113,7 +1124,7 @@ pub(crate) mod triton_stark_tests {
 
         let ptoe = processor_table_last_row[OutputTableEvalArg.ext_table_index()];
         let oute = EvalArg::compute_terminal(
-            &stark.claim.output,
+            &stark.claim.public_output(),
             EvalArg::default_initial(),
             all_challenges.get_challenge(StandardOutputIndeterminate),
         );
@@ -1650,7 +1661,7 @@ pub(crate) mod triton_stark_tests {
     fn triton_table_constraints_evaluate_to_zero_on_fibonacci_test() {
         let source_code_and_input = SourceCodeAndInput {
             source_code: FIBONACCI_SEQUENCE.to_string(),
-            input: vec![BFieldElement::new(100)],
+            input: vec![100],
             secret_input: vec![],
         };
         triton_table_constraints_evaluate_to_zero(source_code_and_input);
@@ -1901,7 +1912,7 @@ pub(crate) mod triton_stark_tests {
     fn prove_verify_fibonacci_100_test() {
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
         let source_code = FIBONACCI_SEQUENCE;
-        let stdin = vec![100_u64.into()];
+        let stdin = vec![100];
         let secret_in = vec![];
 
         let (stark, proof) = parse_simulate_prove(source_code, stdin, secret_in, &mut profiler);
@@ -1932,7 +1943,7 @@ pub(crate) mod triton_stark_tests {
         let code = FIBONACCI_SEQUENCE;
 
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
-            let stdin = vec![BFieldElement::new(fib_seq_idx)];
+            let stdin = vec![fib_seq_idx];
             let secret_in = vec![];
             let (stark, proof) = parse_simulate_prove(code, stdin, secret_in, &mut None);
             match stark.verify(proof, &mut None) {
@@ -1940,7 +1951,7 @@ pub(crate) mod triton_stark_tests {
                 Err(err) => panic!("The Verifier is unhappy! {err}"),
             }
 
-            assert_eq!(vec![BFieldElement::new(fib_seq_val)], stark.claim.output);
+            assert_eq!(vec![fib_seq_val], stark.claim.output);
         }
     }
 
@@ -1983,7 +1994,7 @@ pub(crate) mod triton_stark_tests {
             let mut profiler = Some(TritonProfiler::new(&format!(
                 "element #{fibonacci_number:>4} from Fibonacci sequence"
             )));
-            let stdin = vec![BFieldElement::new(fibonacci_number)];
+            let stdin = vec![fibonacci_number];
             let (stark, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
             if let Some(mut p) = profiler {
                 p.finish();

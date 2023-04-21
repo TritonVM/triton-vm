@@ -1214,7 +1214,7 @@ pub mod triton_vm_tests {
         SourceCodeAndInput {
             source_code: "divine assert halt".to_string(),
             input: vec![],
-            secret_input: vec![BFieldElement::one()],
+            secret_input: vec![1],
         }
     }
 
@@ -1234,11 +1234,8 @@ pub mod triton_vm_tests {
     pub fn test_program_for_hash() -> SourceCodeAndInput {
         let source_code = "push 0 push 0 push 0 push 1 push 2 push 3 hash \
             pop pop pop pop pop read_io eq assert halt";
-        let mut hash_input = [BFieldElement::zero(); 10];
-        hash_input[0] = BFieldElement::new(3);
-        hash_input[1] = BFieldElement::new(2);
-        hash_input[2] = BFieldElement::new(1);
-        let digest = Tip5::hash_10(&hash_input);
+        let hash_input = [3, 2, 1, 0, 0, 0, 0, 0, 0, 0].map(BFieldElement::new);
+        let digest = Tip5::hash_10(&hash_input).map(|e| e.value());
         SourceCodeAndInput {
             source_code: source_code.to_string(),
             input: vec![digest.to_vec()[0]],
@@ -1259,12 +1256,10 @@ pub mod triton_vm_tests {
             push -1 add assert \
             push -3 add assert \
             assert halt ";
-        let one = BFieldElement::one();
-        let zero = BFieldElement::zero();
         SourceCodeAndInput {
             source_code: source_code.to_string(),
             input: vec![],
-            secret_input: vec![one, one, one, one, zero],
+            secret_input: vec![1, 1, 1, 1, 0],
         }
     }
 
@@ -1281,12 +1276,10 @@ pub mod triton_vm_tests {
             push -3 add assert \
             push 1 add assert assert assert assert assert \
             assert halt ";
-        let one = BFieldElement::one();
-        let zero = BFieldElement::zero();
         SourceCodeAndInput {
             source_code: source_code.to_string(),
             input: vec![],
-            secret_input: vec![one, one, one, one, zero],
+            secret_input: vec![1, 1, 1, 1, 0],
         }
     }
 
@@ -1334,7 +1327,7 @@ pub mod triton_vm_tests {
 
         SourceCodeAndInput {
             source_code,
-            input: vec![st4.into(), st3.into(), st2.into(), st1.into(), st0.into()],
+            input: vec![st4, st3, st2, st1, st0],
             secret_input: vec![],
         }
     }
@@ -1386,7 +1379,7 @@ pub mod triton_vm_tests {
 
         SourceCodeAndInput {
             source_code,
-            input: sponge_output.to_vec(),
+            input: sponge_output.map(|e| e.value()).to_vec(),
             secret_input: vec![],
         }
     }
@@ -1409,7 +1402,7 @@ pub mod triton_vm_tests {
         let source_code = format!("push {st0} split read_io eq assert read_io eq assert halt");
         SourceCodeAndInput {
             source_code,
-            input: vec![lo.into(), hi.into()],
+            input: vec![lo, hi],
             secret_input: vec![],
         }
     }
@@ -1417,8 +1410,8 @@ pub mod triton_vm_tests {
     pub fn test_program_for_eq() -> SourceCodeAndInput {
         SourceCodeAndInput {
             source_code: "read_io divine eq assert halt".to_string(),
-            input: vec![BFieldElement::new(42)],
-            secret_input: vec![BFieldElement::new(42)],
+            input: vec![42],
+            secret_input: vec![42],
         }
     }
 
@@ -1429,8 +1422,8 @@ pub mod triton_vm_tests {
         let source_code = format!("push {st0} dup 0 read_io eq assert dup 0 divine eq assert halt");
         SourceCodeAndInput {
             source_code,
-            input: vec![st0.into()],
-            secret_input: vec![st0.into()],
+            input: vec![st0],
+            secret_input: vec![st0],
         }
     }
 
@@ -1476,15 +1469,15 @@ pub mod triton_vm_tests {
         let st1_0 = rng.next_u32();
         let st0_0 = rng.next_u32();
         let result_0 = match st0_0 < st1_0 {
-            true => 1_u64.into(),
-            false => 0_u64.into(),
+            true => 1,
+            false => 0,
         };
 
         let st1_1 = rng.next_u32();
         let st0_1 = rng.next_u32();
         let result_1 = match st0_1 < st1_1 {
-            true => 1_u64.into(),
-            false => 0_u64.into(),
+            true => 1,
+            false => 0,
         };
 
         let source_code = format!(
@@ -1624,11 +1617,11 @@ pub mod triton_vm_tests {
 
         let base_0: BFieldElement = rng.gen();
         let exp_0 = rng.next_u32();
-        let result_0 = base_0.mod_pow_u32(exp_0);
+        let result_0 = base_0.mod_pow_u32(exp_0).value();
 
         let base_1: BFieldElement = rng.gen();
         let exp_1 = rng.next_u32();
-        let result_1 = base_1.mod_pow_u32(exp_1);
+        let result_1 = base_1.mod_pow_u32(exp_1).value();
 
         let source_code = format!(
             "push {exp_0} push {base_0} pow read_io eq assert \
@@ -1827,7 +1820,7 @@ pub mod triton_vm_tests {
             source_code:
                 "read_io assert read_io read_io dup 1 dup 1 add write_io mul write_io halt"
                     .to_string(),
-            input: vec![1_u64.into(), 3_u64.into(), 14_u64.into()],
+            input: vec![1, 3, 14],
             secret_input: vec![],
         }
     }
@@ -1888,14 +1881,7 @@ pub mod triton_vm_tests {
 
     #[test]
     fn xxadd_test() {
-        let stdin_words = vec![
-            BFieldElement::new(2),
-            BFieldElement::new(3),
-            BFieldElement::new(5),
-            BFieldElement::new(7),
-            BFieldElement::new(11),
-            BFieldElement::new(13),
-        ];
+        let stdin_words = vec![2, 3, 5, 7, 11, 13];
         let xxadd_code = "
             read_io read_io read_io
             read_io read_io read_io
@@ -1911,25 +1897,14 @@ pub mod triton_vm_tests {
         };
 
         let (_, actual_stdout, _) = program.simulate();
-        let expected_stdout = vec![
-            BFieldElement::new(9),
-            BFieldElement::new(14),
-            BFieldElement::new(18),
-        ];
+        let expected_stdout = [9, 14, 18].map(BFieldElement::new).to_vec();
 
         assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
     fn xxmul_test() {
-        let stdin_words = vec![
-            BFieldElement::new(2),
-            BFieldElement::new(3),
-            BFieldElement::new(5),
-            BFieldElement::new(7),
-            BFieldElement::new(11),
-            BFieldElement::new(13),
-        ];
+        let stdin_words = vec![2, 3, 5, 7, 11, 13];
         let xxmul_code = "
             read_io read_io read_io
             read_io read_io read_io
@@ -1945,22 +1920,14 @@ pub mod triton_vm_tests {
         };
 
         let (_, actual_stdout, _) = program.simulate();
-        let expected_stdout = vec![
-            BFieldElement::new(108),
-            BFieldElement::new(123),
-            BFieldElement::new(22),
-        ];
+        let expected_stdout = [108, 123, 22].map(BFieldElement::new).to_vec();
 
         assert_eq!(expected_stdout, actual_stdout);
     }
 
     #[test]
     fn xinv_test() {
-        let stdin_words = vec![
-            BFieldElement::new(2),
-            BFieldElement::new(3),
-            BFieldElement::new(5),
-        ];
+        let stdin_words = vec![2, 3, 5];
         let xinv_code = "
             read_io read_io read_io
             dup 2 dup 2 dup 2
@@ -1993,12 +1960,7 @@ pub mod triton_vm_tests {
 
     #[test]
     fn xbmul_test() {
-        let stdin_words = vec![
-            BFieldElement::new(2),
-            BFieldElement::new(3),
-            BFieldElement::new(5),
-            BFieldElement::new(7),
-        ];
+        let stdin_words = vec![2, 3, 5, 7];
         let xbmul_code: &str = "
             read_io read_io read_io
             read_io

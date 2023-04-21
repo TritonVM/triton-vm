@@ -1,11 +1,15 @@
-use anyhow::Result;
 use std::fmt::Display;
 use std::io::Cursor;
 
+use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::util_types::algebraic_hasher::Hashable;
 
-use crate::instruction::{convert_labels, Instruction, LabelledInstruction};
-use crate::parser::{parse, to_labelled};
+use crate::instruction::convert_labels;
+use crate::instruction::Instruction;
+use crate::instruction::LabelledInstruction;
+use crate::parser::parse;
+use crate::parser::to_labelled;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Program {
@@ -24,6 +28,12 @@ impl Display for Program {
             }
         }
         Ok(())
+    }
+}
+
+impl Hashable for Program {
+    fn to_sequence(&self) -> Vec<BFieldElement> {
+        self.to_bwords()
     }
 }
 

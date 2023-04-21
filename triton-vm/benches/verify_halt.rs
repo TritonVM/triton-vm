@@ -2,10 +2,12 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
+use triton_opcodes::program::Program;
+use twenty_first::shared_math::tip5::Tip5;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
-
-use triton_opcodes::program::Program;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::load_proof;
 use triton_vm::shared_tests::proof_file_exists;
@@ -28,7 +30,7 @@ fn verify_halt(criterion: &mut Criterion) {
         Ok(p) => p,
     };
 
-    let instructions = program.to_bwords();
+    let program_digest = Tip5::hash(&program);
     let stark_parameters = StarkParameters::default();
     let filename = "halt.tsp";
     let mut maybe_cycle_count = None;
@@ -40,7 +42,7 @@ fn verify_halt(criterion: &mut Criterion) {
         let padded_height = proof.padded_height();
         let claim = Claim {
             input: vec![],
-            program: instructions,
+            program_digest,
             output: vec![],
             padded_height,
         };
@@ -51,11 +53,12 @@ fn verify_halt(criterion: &mut Criterion) {
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {error}");
         }
+        let output = output.iter().map(|x| x.value()).collect();
         maybe_cycle_count = Some(aet.processor_trace.nrows());
         let padded_height = MasterBaseTable::padded_height(&aet);
         let claim = Claim {
             input: vec![],
-            program: instructions,
+            program_digest,
             output,
             padded_height,
         };

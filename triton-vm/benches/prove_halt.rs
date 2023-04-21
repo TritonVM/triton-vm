@@ -2,11 +2,13 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 use triton_opcodes::program::Program;
+use twenty_first::shared_math::tip5::Tip5;
+use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
-
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
@@ -35,12 +37,12 @@ fn prove_halt(_criterion: &mut Criterion) {
         panic!("The VM encountered the following problem: {error}");
     }
 
-    let code = program.to_bwords();
+    let output = output.into_iter().map(|x| x.value()).collect();
     let cycle_count = aet.processor_trace.nrows();
     let padded_height = MasterBaseTable::padded_height(&aet);
     let claim = Claim {
         input: vec![],
-        program: code,
+        program_digest: Tip5::hash(&program),
         output,
         padded_height,
     };
