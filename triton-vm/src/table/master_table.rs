@@ -25,6 +25,7 @@ use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::other::roundup_npo2;
+use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::traits::ModPowU32;
@@ -212,25 +213,36 @@ where
         });
     }
 
-    /// Result is in row-major order.
-    fn low_degree_extend_all_columns(&self) -> Array2<FF>
+    fn randomized_trace_domain(&self) -> ArithmeticDomain {
+        let randomized_trace_domain_len = self.randomized_padded_trace_len();
+        ArithmeticDomain::new_no_offset(randomized_trace_domain_len)
+    }
+
+    /// Low-degree extends all columns.
+    /// Returns the thusly extended columns as well as the polynomials interpolating the columns.
+    /// The number of rows in the resulting table is equal to the length of the FRI domain.
+    /// The returned table is in row-major order.
+    /// The interpolation polynomials can be used to compute out-of-domain rows, _e.g._, for DEEP.
+    fn low_degree_extend_all_columns(&self) -> (Array2<FF>, Array1<Polynomial<FF>>)
     where
         Self: Sync,
     {
-        let randomized_trace_domain_len = self.randomized_padded_trace_len();
-        let randomized_trace_domain = ArithmeticDomain::new_no_offset(randomized_trace_domain_len);
+        let randomized_trace_domain = self.randomized_trace_domain();
 
         let num_rows = self.fri_domain().length;
         let num_columns = self.master_matrix().ncols();
+        let mut interpolation_polynomials = Array1::zeros(num_columns);
         let mut extended_columns = Array2::zeros([num_rows, num_columns]);
         Zip::from(extended_columns.axis_iter_mut(Axis(1)))
             .and(self.master_matrix().axis_iter(Axis(1)))
-            .par_for_each(|lde_column, trace_column| {
-                let fri_codeword = randomized_trace_domain
-                    .low_degree_extension(&trace_column.to_vec(), self.fri_domain());
+            .and(interpolation_polynomials.axis_iter_mut(Axis(0)))
+            .par_for_each(|lde_column, trace_column, poly| {
+                let inter_poly = randomized_trace_domain.interpolate(&trace_column.to_vec());
+                let fri_codeword = self.fri_domain().evaluate(&inter_poly);
                 Array1::from(fri_codeword).move_into(lde_column);
+                Array0::from_elem((), inter_poly).move_into(poly);
             });
-        extended_columns
+        (extended_columns, interpolation_polynomials)
     }
 }
 
@@ -464,11 +476,16 @@ impl MasterBaseTable {
         U32Table::pad_trace(u32_table, u32_table_len);
     }
 
-    pub fn to_fri_domain_table(&self) -> Self {
-        Self {
-            master_base_matrix: self.low_degree_extend_all_columns(),
+    /// Returns the low-degree extended columns as well as the columns' interpolation polynomials.
+    /// The polynomials are in the same order as the columns.
+    /// The interpolation polynomials can be used to compute out-of-domain rows, _e.g._, for DEEP.
+    pub fn to_fri_domain_table(&self) -> (Self, Array1<Polynomial<BFieldElement>>) {
+        let (master_base_matrix, interpolation_polynomials) = self.low_degree_extend_all_columns();
+        let master_base_table = Self {
+            master_base_matrix,
             ..*self
-        }
+        };
+        (master_base_table, interpolation_polynomials)
     }
 
     pub fn merkle_tree(
@@ -596,11 +613,16 @@ impl MasterBaseTable {
 }
 
 impl MasterExtTable {
-    pub fn to_fri_domain_table(&self) -> Self {
-        Self {
-            master_ext_matrix: self.low_degree_extend_all_columns(),
+    /// Returns the low-degree extended columns as well as the columns' interpolation polynomials.
+    /// The polynomials are in the same order as the columns.
+    /// The interpolation polynomials can be used to compute out-of-domain rows, _e.g._, for DEEP.
+    pub fn to_fri_domain_table(&self) -> (Self, Array1<Polynomial<XFieldElement>>) {
+        let (master_ext_matrix, interpolation_polynomials) = self.low_degree_extend_all_columns();
+        let master_ext_table = Self {
+            master_ext_matrix,
             ..*self
-        }
+        };
+        (master_ext_table, interpolation_polynomials)
     }
 
     pub fn randomizer_polynomials(&self) -> Vec<Array1<XFieldElement>> {
@@ -1477,7 +1499,7 @@ pub fn all_quotients(
 }
 
 pub fn evaluate_all_initial_constraints(
-    base_row: ArrayView1<BFieldElement>,
+    base_row: ArrayView1<XFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1496,7 +1518,7 @@ pub fn evaluate_all_initial_constraints(
 }
 
 pub fn evaluate_all_consistency_constraints(
-    base_row: ArrayView1<BFieldElement>,
+    base_row: ArrayView1<XFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1515,9 +1537,9 @@ pub fn evaluate_all_consistency_constraints(
 }
 
 pub fn evaluate_all_transition_constraints(
-    current_base_row: ArrayView1<BFieldElement>,
+    current_base_row: ArrayView1<XFieldElement>,
     current_ext_row: ArrayView1<XFieldElement>,
-    next_base_row: ArrayView1<BFieldElement>,
+    next_base_row: ArrayView1<XFieldElement>,
     next_ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1540,7 +1562,7 @@ pub fn evaluate_all_transition_constraints(
 }
 
 pub fn evaluate_all_terminal_constraints(
-    base_row: ArrayView1<BFieldElement>,
+    base_row: ArrayView1<XFieldElement>,
     ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {
@@ -1560,9 +1582,9 @@ pub fn evaluate_all_terminal_constraints(
 }
 
 pub fn evaluate_all_constraints(
-    current_base_row: ArrayView1<BFieldElement>,
+    current_base_row: ArrayView1<XFieldElement>,
     current_ext_row: ArrayView1<XFieldElement>,
-    next_base_row: ArrayView1<BFieldElement>,
+    next_base_row: ArrayView1<XFieldElement>,
     next_ext_row: ArrayView1<XFieldElement>,
     challenges: &Challenges,
 ) -> Vec<XFieldElement> {

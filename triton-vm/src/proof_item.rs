@@ -9,6 +9,8 @@ use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
 use crate::bfield_codec::BFieldCodec;
+use crate::table::master_table::NUM_BASE_COLUMNS;
+use crate::table::master_table::NUM_EXT_COLUMNS;
 
 type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 
@@ -106,11 +108,12 @@ pub trait MayBeUncast {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::large_enum_variant)]
 pub enum ProofItem {
     CompressedAuthenticationPaths(AuthenticationStructure<Digest>),
     MasterBaseTableRows(Vec<Vec<BFieldElement>>),
     MasterExtTableRows(Vec<Vec<XFieldElement>>),
+    OutOfDomainBaseRow(Vec<XFieldElement>),
+    OutOfDomainExtRow(Vec<XFieldElement>),
     MerkleRoot(Digest),
     AuthenticationPath(Vec<Digest>),
     RevealedCombinationElements(Vec<XFieldElement>),
@@ -123,9 +126,8 @@ pub enum ProofItem {
 impl MayBeUncast for ProofItem {
     fn uncast(&self) -> Vec<BFieldElement> {
         if let Self::Uncast(vector) = self {
-            let mut str = vec![BFieldElement::new(vector.len() as u64)];
-            str.append(&mut vector.clone());
-            str
+            let vector_len = BFieldElement::new(vector.len() as u64);
+            vec![vec![vector_len], vector.to_owned()].concat()
         } else {
             self.encode()
         }
@@ -184,6 +186,50 @@ where
             },
             _ => bail!(ProofStreamError::new(
                 "expected master extension table rows, but got something else",
+            )),
+        }
+    }
+
+    pub fn as_out_of_domain_base_row(&self) -> Result<Vec<XFieldElement>> {
+        match self {
+            Self::OutOfDomainBaseRow(xs) => Ok(xs.to_owned()),
+            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
+                Ok(xs) => {
+                    if xs.len() != NUM_BASE_COLUMNS {
+                        bail!(ProofStreamError::new(
+                            "cast to out of domain base row failed"
+                        ));
+                    }
+                    Ok(*xs)
+                }
+                Err(_) => bail!(ProofStreamError::new(
+                    "cast to out of domain base row failed"
+                )),
+            },
+            _ => bail!(ProofStreamError::new(
+                "expected out of domain base row, but got something else",
+            )),
+        }
+    }
+
+    pub fn as_out_of_domain_ext_row(&self) -> Result<Vec<XFieldElement>> {
+        match self {
+            Self::OutOfDomainExtRow(xs) => Ok(xs.to_owned()),
+            Self::Uncast(str) => match Vec::<XFieldElement>::decode(str) {
+                Ok(xs) => {
+                    if xs.len() != NUM_EXT_COLUMNS {
+                        bail!(ProofStreamError::new(
+                            "cast to out of domain extension row failed"
+                        ));
+                    }
+                    Ok(*xs)
+                }
+                Err(_) => bail!(ProofStreamError::new(
+                    "cast to out of domain extension row failed"
+                )),
+            },
+            _ => bail!(ProofStreamError::new(
+                "expected out of domain extension row, but got something else",
             )),
         }
     }
@@ -291,6 +337,14 @@ impl BFieldCodec for ProofItem {
             ProofItem::CompressedAuthenticationPaths(something) => something.encode(),
             ProofItem::MasterBaseTableRows(something) => something.encode(),
             ProofItem::MasterExtTableRows(something) => something.encode(),
+            ProofItem::OutOfDomainBaseRow(row) => {
+                debug_assert_eq!(NUM_BASE_COLUMNS, row.len());
+                row.encode()
+            }
+            ProofItem::OutOfDomainExtRow(row) => {
+                debug_assert_eq!(NUM_EXT_COLUMNS, row.len());
+                row.encode()
+            }
             ProofItem::MerkleRoot(something) => something.encode(),
             ProofItem::AuthenticationPath(something) => something.encode(),
             ProofItem::RevealedCombinationElements(something) => something.encode(),
@@ -309,29 +363,24 @@ impl BFieldCodec for ProofItem {
 mod proof_item_typed_tests {
     use itertools::Itertools;
     use rand::thread_rng;
-    use rand::RngCore;
-    use twenty_first::shared_math::other::random_elements;
+    use rand::Rng;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
-    use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 
     use crate::proof_stream::ProofStream;
 
     use super::*;
 
     fn random_bool() -> bool {
-        let mut rng = thread_rng();
-        rng.next_u32() % 2 == 1
+        thread_rng().gen()
     }
 
-    fn random_xfieldelement() -> XFieldElement {
-        XFieldElement {
-            coefficients: random_elements(EXTENSION_DEGREE).try_into().unwrap(),
-        }
+    fn random_x_field_element() -> XFieldElement {
+        thread_rng().gen()
     }
 
     fn random_digest() -> Digest {
-        Digest::new(random_elements(DIGEST_LENGTH).try_into().unwrap())
+        thread_rng().gen()
     }
 
     fn random_fri_response() -> FriResponse {
@@ -350,7 +399,7 @@ mod proof_item_typed_tests {
                                 })
                                 .collect_vec(),
                         ),
-                        random_xfieldelement(),
+                        random_x_field_element(),
                     )
                 })
                 .collect_vec(),

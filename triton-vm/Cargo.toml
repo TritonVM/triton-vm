@@ -30,7 +30,7 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = "0.19"
+twenty-first = "0.19.3"
 triton-opcodes = "0.19"
 triton-profiler = "0.19"
 anyhow = "1.0"
