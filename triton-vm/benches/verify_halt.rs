@@ -2,8 +2,6 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::BenchmarkId;
 use criterion::Criterion;
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
 use triton_profiler::triton_profiler::TritonProfiler;
 
@@ -79,10 +77,7 @@ fn verify_halt(criterion: &mut Criterion) {
 
     group.bench_function(halt, |bencher| {
         bencher.iter(|| {
-            prof_start!(maybe_profiler, "verify");
             let _result = stark.verify(proof.clone(), &mut maybe_profiler);
-            prof_stop!(maybe_profiler, "verify");
-
             if let Some(profiler) = maybe_profiler.as_mut() {
                 profiler.finish();
                 report = profiler.report(

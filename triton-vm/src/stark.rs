@@ -154,18 +154,18 @@ impl Stark {
         master_base_table.pad();
         prof_stop!(maybe_profiler, "pad");
 
-        prof_start!(maybe_profiler, "LDE");
+        prof_start!(maybe_profiler, "LDE", "LDE");
         master_base_table.randomize_trace();
         let (fri_domain_master_base_table, base_interpolation_polys) =
             master_base_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
-        prof_start!(maybe_profiler, "Merkle tree");
+        prof_start!(maybe_profiler, "Merkle tree", "hash");
         let base_merkle_tree = fri_domain_master_base_table.merkle_tree(maybe_profiler);
         let base_merkle_tree_root = base_merkle_tree.get_root();
         prof_stop!(maybe_profiler, "Merkle tree");
 
-        prof_start!(maybe_profiler, "Fiat-Shamir");
+        prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
         let padded_height = BFieldElement::new(master_base_table.padded_height as u64);
         let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::PaddedHeight(padded_height));
@@ -184,13 +184,13 @@ impl Stark {
         prof_stop!(maybe_profiler, "base tables");
 
         prof_start!(maybe_profiler, "ext tables");
-        prof_start!(maybe_profiler, "LDE");
+        prof_start!(maybe_profiler, "LDE", "LDE");
         master_ext_table.randomize_trace();
         let (fri_domain_ext_master_table, ext_interpolation_polys) =
             master_ext_table.to_fri_domain_table();
         prof_stop!(maybe_profiler, "LDE");
 
-        prof_start!(maybe_profiler, "Merkle tree");
+        prof_start!(maybe_profiler, "Merkle tree", "hash");
         let ext_merkle_tree = fri_domain_ext_master_table.merkle_tree(maybe_profiler);
         let ext_merkle_tree_root = ext_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(ext_merkle_tree_root));
@@ -209,7 +209,7 @@ impl Stark {
             .slice(s![..; unit_distance, ..]);
         prof_stop!(maybe_profiler, "quotient-domain codewords");
 
-        prof_start!(maybe_profiler, "quotient codewords");
+        prof_start!(maybe_profiler, "quotient codewords", "AIR");
         let master_quotient_table = all_quotients(
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords,
@@ -220,7 +220,7 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "quotient codewords");
 
-        prof_start!(maybe_profiler, "linearly combine quotient codewords");
+        prof_start!(maybe_profiler, "linearly combine quotient codewords", "CC");
         // Create quotient codeword. This is a part of the combination codeword. To reduce the
         // amount of hashing necessary, the quotient codeword is linearly summed instead of
         // hashed prior to committing to it.
@@ -235,19 +235,23 @@ impl Stark {
         debug_assert_eq!(quotient_domain.length, quotient_codeword.len());
 
         prof_start!(maybe_profiler, "commit to quotient codeword");
-        prof_start!(maybe_profiler, "LDE");
+        prof_start!(maybe_profiler, "LDE", "LDE");
         let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword);
         let fri_quotient_codeword =
             Array1::from(self.fri.domain.evaluate(&quotient_interpolation_poly));
         prof_stop!(maybe_profiler, "LDE");
+        prof_start!(maybe_profiler, "interpret XFEs as Digests");
         let fri_quotient_codeword_digests = fri_quotient_codeword
             .iter()
             .map(|&x| x.into())
             .collect_vec();
+        prof_stop!(maybe_profiler, "interpret XFEs as Digests");
+        prof_start!(maybe_profiler, "Merkle tree", "hash");
         let quot_merkle_tree: MerkleTree<StarkHasher, _> =
             Maker::from_digests(&fri_quotient_codeword_digests);
         let quot_merkle_tree_root = quot_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root));
+        prof_stop!(maybe_profiler, "Merkle tree");
         prof_stop!(maybe_profiler, "commit to quotient codeword");
         debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
 
@@ -285,22 +289,23 @@ impl Stark {
         prof_stop!(maybe_profiler, "out-of-domain rows");
 
         // Get weights for remainder of the combination codeword.
-        prof_start!(maybe_profiler, "Fiat-Shamir");
+        prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
         let num_base_and_ext_codeword_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
         let base_and_ext_codeword_weights =
             proof_stream.sample_scalars(num_base_and_ext_codeword_weights);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
-        prof_start!(maybe_profiler, "base&ext codeword: linear combination");
+        prof_start!(maybe_profiler, "base&ext: linear combination", "CC");
         let base_and_ext_codeword = self.create_base_and_ext_codeword(
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
             &base_and_ext_codeword_weights,
         );
-        prof_stop!(maybe_profiler, "base&ext codeword: linear combination");
+        prof_stop!(maybe_profiler, "base&ext: linear combination");
 
-        prof_start!(maybe_profiler, "DEEP: base&ext");
+        prof_start!(maybe_profiler, "DEEP");
+        prof_start!(maybe_profiler, "base&ext");
         let base_and_ext_interpolation_poly = quotient_domain.interpolate(&base_and_ext_codeword);
         let out_of_domain_next_row_base_and_ext_value =
             base_and_ext_interpolation_poly.evaluate(&out_of_domain_point_next_row);
@@ -310,9 +315,9 @@ impl Stark {
             out_of_domain_point_next_row,
             out_of_domain_next_row_base_and_ext_value,
         );
-        prof_stop!(maybe_profiler, "DEEP: base&ext");
+        prof_stop!(maybe_profiler, "base&ext");
 
-        prof_start!(maybe_profiler, "DEEP: base&ext + quot");
+        prof_start!(maybe_profiler, "base&ext + quot");
         let base_and_ext_and_quot_codeword = base_and_ext_codeword
             .par_iter()
             .zip_eq(quotient_codeword.par_iter())
@@ -328,7 +333,8 @@ impl Stark {
             out_of_domain_point_curr_row,
             out_of_domain_curr_row_base_and_ext_and_quot_value,
         );
-        prof_stop!(maybe_profiler, "DEEP: base&ext + quot");
+        prof_stop!(maybe_profiler, "base&ext + quot");
+        prof_stop!(maybe_profiler, "DEEP");
 
         #[cfg(debug_assertions)]
         {
@@ -357,23 +363,29 @@ impl Stark {
             );
         }
 
-        prof_start!(maybe_profiler, "LDE on combined DEEP polynomial");
+        prof_start!(maybe_profiler, "combined DEEP polynomial");
+        prof_start!(maybe_profiler, "sum", "CC");
         let base_and_ext_and_quot_curr_row_deep_codeword =
             Array1::from(base_and_ext_and_quot_curr_row_deep_codeword);
         let base_and_ext_next_row_deep_codeword = Array1::from(base_and_ext_next_row_deep_codeword);
         let deep_codeword =
             &base_and_ext_and_quot_curr_row_deep_codeword + &base_and_ext_next_row_deep_codeword;
+        prof_stop!(maybe_profiler, "sum");
+        prof_start!(maybe_profiler, "LDE", "LDE");
         let fri_deep_codeword = Array1::from(
             quotient_domain.low_degree_extension(&deep_codeword.to_vec(), self.fri.domain),
         );
+        prof_stop!(maybe_profiler, "LDE");
         assert_eq!(self.fri.domain.length, fri_deep_codeword.len());
+        prof_start!(maybe_profiler, "add randomizer codeword", "CC");
         let fri_combination_codeword = fri_domain_ext_master_table
             .randomizer_polynomials()
             .into_iter()
             .fold(fri_deep_codeword, ArrayBase::add)
             .to_vec();
+        prof_stop!(maybe_profiler, "add randomizer codeword");
         assert_eq!(self.fri.domain.length, fri_combination_codeword.len());
-        prof_stop!(maybe_profiler, "LDE on combined DEEP polynomial");
+        prof_stop!(maybe_profiler, "combined DEEP polynomial");
 
         prof_start!(maybe_profiler, "FRI");
         let (revealed_current_row_indices, _) =
@@ -562,7 +574,7 @@ impl Stark {
         let mut proof_stream = StarkProofStream::from_proof(&proof)?;
         prof_stop!(maybe_profiler, "deserialize");
 
-        prof_start!(maybe_profiler, "Fiat-Shamir 1");
+        prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
         let padded_height = proof_stream.dequeue()?.as_padded_heights()?.value() as usize;
         if self.claim.padded_height != padded_height {
             bail!(StarkValidationError::PaddedHeightInequality);
@@ -584,7 +596,7 @@ impl Stark {
         let quotient_codeword_merkle_root = proof_stream.dequeue()?.as_merkle_root()?;
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
-        prof_start!(maybe_profiler, "dequeue out-of-domain point and rows");
+        prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
         let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
@@ -598,7 +610,7 @@ impl Stark {
         let out_of_domain_curr_ext_row = Array1::from(out_of_domain_curr_ext_row);
         let out_of_domain_next_base_row = Array1::from(out_of_domain_next_base_row);
         let out_of_domain_next_ext_row = Array1::from(out_of_domain_next_ext_row);
-        prof_stop!(maybe_profiler, "dequeue out-of-domain point and rows");
+        prof_stop!(maybe_profiler, "dequeue ood point and rows");
 
         prof_start!(maybe_profiler, "out-of-domain quotient element");
         prof_start!(maybe_profiler, "zerofiers");
@@ -611,7 +623,7 @@ impl Stark {
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
         prof_stop!(maybe_profiler, "zerofiers");
 
-        prof_start!(maybe_profiler, "evaluate AIR");
+        prof_start!(maybe_profiler, "evaluate AIR", "AIR");
         let evaluated_initial_constraints = evaluate_all_initial_constraints(
             out_of_domain_curr_base_row.view(),
             out_of_domain_curr_ext_row.view(),
@@ -652,19 +664,19 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "divide");
 
-        prof_start!(maybe_profiler, "inner product");
+        prof_start!(maybe_profiler, "inner product", "CC");
         let out_of_domain_quotient_value =
             (&quot_codeword_weights * &Array1::from(quotient_summands)).sum();
         prof_stop!(maybe_profiler, "inner product");
         prof_stop!(maybe_profiler, "out-of-domain quotient element");
 
-        prof_start!(maybe_profiler, "Fiat-Shamir 2");
+        prof_start!(maybe_profiler, "Fiat-Shamir 2", "hash");
         let num_base_and_ext_codeword_weights = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
         let base_and_ext_codeword_weights =
             Array1::from(proof_stream.sample_scalars(num_base_and_ext_codeword_weights));
         prof_stop!(maybe_profiler, "Fiat-Shamir 2");
 
-        prof_start!(maybe_profiler, "out-of-domain values");
+        prof_start!(maybe_profiler, "sum out-of-domain values", "CC");
         let out_of_domain_curr_row_base_and_ext_value = Self::linearly_sum_base_and_ext_row(
             out_of_domain_curr_base_row.view(),
             out_of_domain_curr_ext_row.view(),
@@ -679,7 +691,7 @@ impl Stark {
             base_and_ext_codeword_weights.view(),
             maybe_profiler,
         );
-        prof_stop!(maybe_profiler, "out-of-domain values");
+        prof_stop!(maybe_profiler, "sum out-of-domain values");
 
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
@@ -690,7 +702,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "check leafs");
-        prof_start!(maybe_profiler, "dequeue base elements");
+        prof_start!(maybe_profiler, "dequeue base elements", "hash");
         let base_table_rows = proof_stream.dequeue()?.as_master_base_table_rows()?;
         let base_auth_paths = proof_stream
             .dequeue()?
@@ -701,7 +713,7 @@ impl Stark {
             .collect();
         prof_stop!(maybe_profiler, "dequeue base elements");
 
-        prof_start!(maybe_profiler, "Merkle verify (base tree)");
+        prof_start!(maybe_profiler, "Merkle verify (base tree)", "hash");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
             &revealed_current_row_indices,
@@ -712,7 +724,7 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "Merkle verify (base tree)");
 
-        prof_start!(maybe_profiler, "dequeue extension elements");
+        prof_start!(maybe_profiler, "dequeue extension elements", "hash");
         let ext_table_rows = proof_stream.dequeue()?.as_master_ext_table_rows()?;
         let auth_paths_ext = proof_stream
             .dequeue()?
@@ -729,7 +741,7 @@ impl Stark {
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "dequeue extension elements");
 
-        prof_start!(maybe_profiler, "Merkle verify (extension tree)");
+        prof_start!(maybe_profiler, "Merkle verify (extension tree)", "hash");
         if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
             &revealed_current_row_indices,
@@ -740,7 +752,7 @@ impl Stark {
         }
         prof_stop!(maybe_profiler, "Merkle verify (extension tree)");
 
-        prof_start!(maybe_profiler, "Merkle verify (combined quotient)");
+        prof_start!(maybe_profiler, "Merkle verify (combined quotient)", "hash");
         let revealed_quotient_values =
             proof_stream.dequeue()?.as_revealed_combination_elements()?;
         // Interpret the leaves, which are XFieldElements, as Digests, without hashing.
@@ -784,7 +796,7 @@ impl Stark {
             let randomizer_row = Array1::from(randomizer_row.to_vec());
             let current_fri_domain_value = self.fri.domain.domain_value(row_idx as u32);
 
-            prof_start!(maybe_profiler, "base & ext elements");
+            prof_start!(maybe_profiler, "base & ext elements", "CC");
             let base_and_ext_curr_row_element = Self::linearly_sum_base_and_ext_row(
                 base_row.view(),
                 ext_row.view(),
