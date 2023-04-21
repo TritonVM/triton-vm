@@ -563,7 +563,7 @@ mod parser_tests {
         let spaces = [" ", "\t", "\r", "\r\n", "\n", " // comment\n"];
         let weights = [5, 1, 1, 1, 2, 1];
         assert_eq!(spaces.len(), weights.len(), "all generators have weights");
-        let dist = WeightedIndex::new(&weights).expect("a weighted distribution of generators");
+        let dist = WeightedIndex::new(weights).expect("a weighted distribution of generators");
         let size = rng.gen_range(1..=std::cmp::max(1, max_size));
         (0..size).map(|_| spaces[dist.sample(&mut rng)]).collect()
     }
