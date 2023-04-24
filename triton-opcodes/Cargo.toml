@@ -1,6 +1,6 @@
 [package]
 name = "triton-opcodes"
-version = "0.19.0"
+version = "0.20.0"
 edition = "2021"
 authors = ["Triton Software AG"]
 
@@ -23,7 +23,7 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = "0.19"
+twenty-first = "0.19.3"
 anyhow = "1.0"
 itertools = "0.10.5"
 num-traits = "0.2.15"
