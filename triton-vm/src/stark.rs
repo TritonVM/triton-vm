@@ -870,9 +870,12 @@ pub(crate) mod triton_stark_tests {
     use ndarray::Array1;
     use num_traits::Zero;
     use rand::prelude::ThreadRng;
+    use rand::thread_rng;
+    use rand::Rng;
     use rand_core::RngCore;
     use triton_opcodes::instruction::AnInstruction;
     use triton_opcodes::program::Program;
+    use twenty_first::shared_math::other::random_elements;
 
     use crate::shared_tests::*;
     use crate::table::cascade_table::ExtCascadeTable;
@@ -2029,5 +2032,41 @@ pub(crate) mod triton_stark_tests {
         let result = stark.verify(proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
+    }
+
+    #[test]
+    pub fn deep_update_test() {
+        let domain_length = 1 << 10;
+        let domain = ArithmeticDomain::new_no_offset(domain_length);
+
+        let poly_degree = thread_rng().gen_range(2..20);
+        let low_deg_poly_coeffs: Vec<XFieldElement> = random_elements(poly_degree);
+        let low_deg_poly = Polynomial::new(low_deg_poly_coeffs.to_vec());
+        let low_deg_codeword = domain.evaluate(&low_deg_poly);
+
+        let out_of_domain_point: XFieldElement = thread_rng().gen();
+        let out_of_domain_value = low_deg_poly.evaluate(&out_of_domain_point);
+
+        let deep_poly = Stark::deep_codeword(
+            &low_deg_codeword,
+            domain,
+            out_of_domain_point,
+            out_of_domain_value,
+        );
+        let poly_of_maybe_low_degree = domain.interpolate(&deep_poly);
+        assert_eq!(poly_degree as isize - 2, poly_of_maybe_low_degree.degree());
+
+        let bogus_out_of_domain_value = thread_rng().gen();
+        let bogus_deep_poly = Stark::deep_codeword(
+            &low_deg_codeword,
+            domain,
+            out_of_domain_point,
+            bogus_out_of_domain_value,
+        );
+        let poly_of_hopefully_high_degree = domain.interpolate(&bogus_deep_poly);
+        assert_eq!(
+            domain_length as isize - 1,
+            poly_of_hopefully_high_degree.degree()
+        );
     }
 }
