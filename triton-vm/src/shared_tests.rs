@@ -71,7 +71,7 @@ pub fn parse_simulate_prove(
     };
     let log_expansion_factor = 2;
     let security_level = 32;
-    let parameters = StarkParameters::new(security_level, 1 << log_expansion_factor);
+    let parameters = StarkParameters::new(security_level, log_expansion_factor);
     let stark = Stark::new(claim, parameters);
 
     prof_start!(maybe_profiler, "prove");
