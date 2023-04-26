@@ -89,7 +89,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             .zip_eq(indices.iter())
             .map(|(ap, i)| (ap, codeword[*i]))
             .collect_vec();
-        proof_stream.enqueue(&ProofItem::FriResponse(FriResponse(value_ap_pairs)))
+        proof_stream.enqueue(&ProofItem::FriResponse(FriResponse(value_ap_pairs)), false)
     }
 
     /// Given a set of `indices`, a merkle `root`, and the (correctly set) `proof_stream`, verify
@@ -100,7 +100,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         root: Digest,
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) -> Result<Vec<XFieldElement>> {
-        let fri_response = proof_stream.dequeue()?.as_fri_response()?;
+        let fri_response = proof_stream.dequeue(false)?.as_fri_response()?;
         let FriResponse(dequeued_paths_and_leafs) = fri_response;
         let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
         let leaf_digests: Vec<_> = leaf_values.par_iter().map(|&xfe| xfe.into()).collect();
@@ -185,7 +185,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             .collect_into_vec(&mut digests);
 
         let mt = Maker::from_digests(&digests);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()));
+        proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()), true);
         codewords_and_merkle_trees.push((codeword.clone(), mt));
 
         for _round in 0..num_rounds {
@@ -218,7 +218,7 @@ impl<H: AlgebraicHasher> Fri<H> {
                 .collect_into_vec(&mut digests);
 
             let mt = Maker::from_digests(&digests);
-            proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()));
+            proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()), true);
             codewords_and_merkle_trees.push((codeword.clone(), mt));
 
             // Update subgroup generator and offset
@@ -227,7 +227,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
 
         // Send the last codeword in the clear
-        proof_stream.enqueue(&ProofItem::FriCodeword(codeword));
+        proof_stream.enqueue(&ProofItem::FriCodeword(codeword), false);
 
         codewords_and_merkle_trees
     }
@@ -247,7 +247,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         let mut roots = Vec::with_capacity(num_rounds);
         let mut alphas = Vec::with_capacity(num_rounds);
 
-        let first_root = proof_stream.dequeue()?.as_merkle_root()?;
+        let first_root = proof_stream.dequeue(true)?.as_merkle_root()?;
         roots.push(first_root);
         prof_stop!(maybe_profiler, "init");
 
@@ -257,14 +257,14 @@ impl<H: AlgebraicHasher> Fri<H> {
             let alpha = proof_stream.sample_scalars(1)[0];
             alphas.push(alpha);
 
-            let root = proof_stream.dequeue()?.as_merkle_root()?;
+            let root = proof_stream.dequeue(true)?.as_merkle_root()?;
             roots.push(root);
         }
         prof_stop!(maybe_profiler, "roots and alpha");
 
         prof_start!(maybe_profiler, "last codeword matches root");
         // Extract last codeword
-        let last_codeword = proof_stream.dequeue()?.as_fri_codeword()?;
+        let last_codeword = proof_stream.dequeue(false)?.as_fri_codeword()?;
 
         // Check if last codeword matches the given root
         let codeword_digests = last_codeword.iter().map(|&xfe| xfe.into()).collect_vec();
@@ -308,7 +308,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             proof_stream.sample_indices(self.domain.length, self.colinearity_checks_count);
         prof_stop!(maybe_profiler, "sample indices");
 
-        prof_start!(maybe_profiler, "dequeue and authenticate");
+        prof_start!(maybe_profiler, "dequeue and authenticate", "hash");
         let mut a_values = Self::dequeue_and_authenticate(&a_indices, roots[0], proof_stream)?;
         prof_stop!(maybe_profiler, "dequeue and authenticate");
 

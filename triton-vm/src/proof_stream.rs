@@ -110,34 +110,50 @@ where
 
     fn encode_and_pad_item(item: &Item) -> Vec<BFieldElement> {
         let encoding = item.encode();
-        let encoding_append_one = [encoding, vec![BFIELD_ONE]].concat();
-        let last_chunk_len = encoding_append_one.len() % H::RATE;
+        let last_chunk_len = (encoding.len() + 1) % H::RATE;
         let num_padding_zeros = match last_chunk_len {
             0 => 0,
             _ => H::RATE - last_chunk_len,
         };
-        [encoding_append_one, vec![BFIELD_ZERO; num_padding_zeros]].concat()
+        [
+            encoding,
+            vec![BFIELD_ONE],
+            vec![BFIELD_ZERO; num_padding_zeros],
+        ]
+        .concat()
     }
 
     /// Send a proof item as prover to verifier.
-    pub fn enqueue(&mut self, item: &Item) {
-        H::absorb_repeatedly(
-            &mut self.sponge_state,
-            Self::encode_and_pad_item(item).iter(),
-        );
+    /// Some items do not need to be included in the Fiat-Shamir heuristic, _i.e._, they do not
+    /// need to modify the sponge state. For those items, `include_in_fs_heuristic` should be set
+    /// to `false`. For example:
+    /// - Merkle authentication paths do not need to be included (hashed) if the root of the tree
+    ///     in question was included (hashed) previously.
+    /// - If the proof stream is not used to sample any more randomness, _i.e._, after the last
+    ///     round of interaction, no further items need to be included.
+    pub fn enqueue(&mut self, item: &Item, include_in_fs_heuristic: bool) {
+        if include_in_fs_heuristic {
+            H::absorb_repeatedly(
+                &mut self.sponge_state,
+                Self::encode_and_pad_item(item).iter(),
+            )
+        }
         self.items.push(item.clone());
     }
 
     /// Receive a proof item from prover as verifier.
-    pub fn dequeue(&mut self) -> Result<Item> {
+    /// See [`ProofStream::enqueue`] for more details.
+    pub fn dequeue(&mut self, include_in_fs_heuristic: bool) -> Result<Item> {
         let item = self
             .items
             .get(self.items_index)
             .ok_or_else(|| ProofStreamError::new("Could not dequeue, queue empty"))?;
-        H::absorb_repeatedly(
-            &mut self.sponge_state,
-            Self::encode_and_pad_item(item).iter(),
-        );
+        if include_in_fs_heuristic {
+            H::absorb_repeatedly(
+                &mut self.sponge_state,
+                Self::encode_and_pad_item(item).iter(),
+            )
+        }
         self.items_index += 1;
         Ok(item.clone())
     }
@@ -286,11 +302,11 @@ mod proof_stream_typed_tests {
         let manyb2: Vec<BFieldElement> = random_elements(11);
 
         let fs1 = proof_stream.sponge_state.state;
-        proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()));
+        proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()), false);
         let fs2 = proof_stream.sponge_state.state;
-        proof_stream.enqueue(&TestItem::ManyX(manyx.clone()));
+        proof_stream.enqueue(&TestItem::ManyX(manyx.clone()), true);
         let fs3 = proof_stream.sponge_state.state;
-        proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()));
+        proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()), true);
         let fs4 = proof_stream.sponge_state.state;
 
         let proof = proof_stream.to_proof();
@@ -299,19 +315,31 @@ mod proof_stream_typed_tests {
             ProofStream::from_proof(&proof).expect("invalid parsing of proof");
 
         let fs1_ = proof_stream.sponge_state.state;
-        match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
+        match proof_stream
+            .dequeue(false)
+            .expect("can't dequeue item")
+            .as_bs()
+        {
             TestItem::ManyB(manyb1_) => assert_eq!(manyb1, manyb1_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
         };
         let fs2_ = proof_stream.sponge_state.state;
-        match proof_stream.dequeue().expect("can't dequeue item").as_xs() {
+        match proof_stream
+            .dequeue(true)
+            .expect("can't dequeue item")
+            .as_xs()
+        {
             TestItem::ManyB(_) => panic!(),
             TestItem::ManyX(manyx_) => assert_eq!(manyx, manyx_),
             TestItem::Uncast(_) => panic!(),
         };
         let fs3_ = proof_stream.sponge_state.state;
-        match proof_stream.dequeue().expect("can't dequeue item").as_bs() {
+        match proof_stream
+            .dequeue(true)
+            .expect("can't dequeue item")
+            .as_bs()
+        {
             TestItem::ManyB(manyb2_) => assert_eq!(manyb2, manyb2_),
             TestItem::ManyX(_) => panic!(),
             TestItem::Uncast(_) => panic!(),
@@ -341,11 +369,15 @@ mod proof_stream_typed_tests {
         let fri_response = FriResponse(fri_response_content);
 
         let mut proof_stream = ProofStream::<ProofItem, H>::new();
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response));
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response), true);
 
         // TODO: Also check that deserializing from Proof works here.
 
-        let maybe_same_fri_response = proof_stream.dequeue().unwrap().as_fri_response().unwrap();
+        let maybe_same_fri_response = proof_stream
+            .dequeue(true)
+            .unwrap()
+            .as_fri_response()
+            .unwrap();
         let FriResponse(dequeued_paths_and_leafs) = maybe_same_fri_response;
         let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
         let maybe_same_leaf_digests = leaf_values.iter().map(H::hash).collect_vec();

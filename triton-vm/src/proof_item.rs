@@ -439,15 +439,16 @@ mod proof_item_typed_tests {
 
         let mut fs = vec![];
         fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::AuthenticationPath(map.clone()));
+        proof_stream.enqueue(&ProofItem::AuthenticationPath(map.clone()), false);
         fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
-            auth_struct.clone(),
-        ));
+        proof_stream.enqueue(
+            &ProofItem::CompressedAuthenticationPaths(auth_struct.clone()),
+            false,
+        );
         fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(root));
+        proof_stream.enqueue(&ProofItem::MerkleRoot(root), true);
         fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()), false);
         fs.push(proof_stream.sponge_state.state);
 
         let proof = proof_stream.to_proof();
@@ -459,7 +460,7 @@ mod proof_item_typed_tests {
         fs_.push(proof_stream_.sponge_state.state);
 
         let map_ = proof_stream_
-            .dequeue()
+            .dequeue(false)
             .expect("can't dequeue item")
             .as_authentication_path()
             .expect("cannot parse dequeued item");
@@ -467,7 +468,7 @@ mod proof_item_typed_tests {
         fs_.push(proof_stream_.sponge_state.state);
 
         let auth_struct_ = proof_stream_
-            .dequeue()
+            .dequeue(false)
             .expect("can't dequeue item")
             .as_compressed_authentication_paths()
             .expect("cannot parse dequeued item");
@@ -475,7 +476,7 @@ mod proof_item_typed_tests {
         fs_.push(proof_stream_.sponge_state.state);
 
         let root_ = proof_stream_
-            .dequeue()
+            .dequeue(true)
             .expect("can't dequeue item")
             .as_merkle_root()
             .expect("cannot parse dequeued item");
@@ -483,7 +484,7 @@ mod proof_item_typed_tests {
         fs_.push(proof_stream_.sponge_state.state);
 
         let fri_response_ = proof_stream_
-            .dequeue()
+            .dequeue(false)
             .expect("can't dequeue item")
             .as_fri_response()
             .expect("cannot parse dequeued item");
