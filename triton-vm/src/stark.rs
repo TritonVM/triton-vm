@@ -1185,7 +1185,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn constraint_polynomials_use_right_variable_count_test() {
         let challenges = Challenges::placeholder(&[], &[]);
-        let base_row = Array1::zeros(NUM_BASE_COLUMNS);
+        let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
 
         let br = base_row.view();
@@ -1317,7 +1317,7 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn number_of_quotient_degree_bounds_match_number_of_constraints_test() {
-        let base_row = Array1::zeros(NUM_BASE_COLUMNS);
+        let base_row = Array1::<BFieldElement>::zeros(NUM_BASE_COLUMNS);
         let ext_row = Array1::zeros(NUM_EXT_COLUMNS);
         let challenges = Challenges::placeholder(&[], &[]);
         let padded_height = 2;

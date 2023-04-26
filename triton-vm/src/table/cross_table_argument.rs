@@ -7,6 +7,7 @@ use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
+use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
@@ -126,9 +127,9 @@ impl LookupArg {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct GrandCrossTableArg {}
 
-impl Evaluable for GrandCrossTableArg {
+impl<FF: FiniteField> Evaluable<FF> for GrandCrossTableArg {
     fn evaluate_initial_constraints(
-        _base_row: ArrayView1<XFieldElement>,
+        _base_row: ArrayView1<FF>,
         _ext_row: ArrayView1<XFieldElement>,
         _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
@@ -136,7 +137,7 @@ impl Evaluable for GrandCrossTableArg {
     }
 
     fn evaluate_consistency_constraints(
-        _base_row: ArrayView1<XFieldElement>,
+        _base_row: ArrayView1<FF>,
         _ext_row: ArrayView1<XFieldElement>,
         _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
@@ -144,9 +145,9 @@ impl Evaluable for GrandCrossTableArg {
     }
 
     fn evaluate_transition_constraints(
-        _current_base_row: ArrayView1<XFieldElement>,
+        _current_base_row: ArrayView1<FF>,
         _current_ext_row: ArrayView1<XFieldElement>,
-        _next_base_row: ArrayView1<XFieldElement>,
+        _next_base_row: ArrayView1<FF>,
         _next_ext_row: ArrayView1<XFieldElement>,
         _challenges: &Challenges,
     ) -> Vec<XFieldElement> {
@@ -154,7 +155,7 @@ impl Evaluable for GrandCrossTableArg {
     }
 
     fn evaluate_terminal_constraints(
-        _base_row: ArrayView1<XFieldElement>,
+        _base_row: ArrayView1<FF>,
         ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {

@@ -19,8 +19,6 @@ use triton_vm::table::ram_table::ExtRamTable;
 use triton_vm::table::u32_table::ExtU32Table;
 
 fn main() {
-    println!("Generate those constraint evaluators!");
-
     let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["program"]);
     let source_code = gen(
         &table_name_snake,
@@ -171,10 +169,14 @@ fn gen<SII: InputIndicator, DII: InputIndicator>(
     let terminal_constraints_degrees =
         turn_circuits_into_degree_bounds_string(terminal_constraint_circuits);
 
-    let initial_constraint_strings = turn_circuits_into_string(initial_constraint_circuits);
-    let consistency_constraint_strings = turn_circuits_into_string(consistency_constraint_circuits);
-    let transition_constraint_strings = turn_circuits_into_string(transition_constraint_circuits);
-    let terminal_constraint_strings = turn_circuits_into_string(terminal_constraint_circuits);
+    let (initial_constraint_strings_bfe, initial_constraint_strings_xfe) =
+        turn_circuits_into_string(initial_constraint_circuits);
+    let (consistency_constraint_strings_bfe, consistency_constraint_strings_xfe) =
+        turn_circuits_into_string(consistency_constraint_circuits);
+    let (transition_constraint_strings_bfe, transition_constraint_strings_xfe) =
+        turn_circuits_into_string(transition_constraint_circuits);
+    let (terminal_constraint_strings_bfe, terminal_constraint_strings_xfe) =
+        turn_circuits_into_string(terminal_constraint_circuits);
 
     format!(
         "
@@ -192,7 +194,51 @@ use crate::table::{table_name_snake}::{table_mod_name};
 // This file has been auto-generated. Any modifications _will_ be lost.
 // To re-generate, execute:
 // `cargo run --bin constraint-evaluation-generator`
-impl Evaluable for {table_mod_name} {{
+impl Evaluable<BFieldElement> for {table_mod_name} {{
+    #[inline]
+    #[allow(unused_variables)]
+    fn evaluate_initial_constraints(
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
+        challenges: &Challenges,
+    ) -> Vec<XFieldElement> {{
+        {initial_constraint_strings_bfe}
+    }}
+
+    #[inline]
+    #[allow(unused_variables)]
+    fn evaluate_consistency_constraints(
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
+        challenges: &Challenges,
+    ) -> Vec<XFieldElement> {{
+        {consistency_constraint_strings_bfe}
+    }}
+
+    #[inline]
+    #[allow(unused_variables)]
+    fn evaluate_transition_constraints(
+        current_base_row: ArrayView1<BFieldElement>,
+        current_ext_row: ArrayView1<XFieldElement>,
+        next_base_row: ArrayView1<BFieldElement>,
+        next_ext_row: ArrayView1<XFieldElement>,
+        challenges: &Challenges,
+    ) -> Vec<XFieldElement> {{
+        {transition_constraint_strings_bfe}
+    }}
+
+    #[inline]
+    #[allow(unused_variables)]
+    fn evaluate_terminal_constraints(
+        base_row: ArrayView1<BFieldElement>,
+        ext_row: ArrayView1<XFieldElement>,
+        challenges: &Challenges,
+    ) -> Vec<XFieldElement> {{
+        {terminal_constraint_strings_bfe}
+    }}
+}}
+
+impl Evaluable<XFieldElement> for {table_mod_name} {{
     #[inline]
     #[allow(unused_variables)]
     fn evaluate_initial_constraints(
@@ -200,7 +246,7 @@ impl Evaluable for {table_mod_name} {{
         ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        {initial_constraint_strings}
+        {initial_constraint_strings_xfe}
     }}
 
     #[inline]
@@ -210,7 +256,7 @@ impl Evaluable for {table_mod_name} {{
         ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        {consistency_constraint_strings}
+        {consistency_constraint_strings_xfe}
     }}
 
     #[inline]
@@ -222,7 +268,7 @@ impl Evaluable for {table_mod_name} {{
         next_ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        {transition_constraint_strings}
+        {transition_constraint_strings_xfe}
     }}
 
     #[inline]
@@ -232,7 +278,7 @@ impl Evaluable for {table_mod_name} {{
         ext_row: ArrayView1<XFieldElement>,
         challenges: &Challenges,
     ) -> Vec<XFieldElement> {{
-        {terminal_constraint_strings}
+        {terminal_constraint_strings_xfe}
     }}
 }}
 
@@ -303,7 +349,11 @@ fn turn_circuits_into_degree_bounds_string<II: InputIndicator>(
 
 fn turn_circuits_into_string<II: InputIndicator>(
     constraint_circuits: &mut [ConstraintCircuit<II>],
-) -> String {
+) -> (String, String) {
+    if constraint_circuits.is_empty() {
+        return ("vec![]".to_string(), "vec![]".to_string());
+    }
+
     // Assert that all node IDs are unique (sanity check)
     ConstraintCircuit::assert_has_unique_ids(constraint_circuits);
 
@@ -352,18 +402,34 @@ fn turn_circuits_into_string<II: InputIndicator>(
     let base_constraint_evaluations_joined = base_constraint_evaluation_expressions.join(",\n");
     let ext_constraint_evaluations_joined = ext_constraint_evaluation_expressions.join(",\n");
 
-    format!(
-        "{shared_declarations}
+    // If there are no base constraints, the type needs to be explicitly declared.
+    let base_constraint_bfe_type = match base_constraint_evaluation_expressions.is_empty() {
+        true => ": [BFieldElement; 0]",
+        false => "",
+    };
 
+    let constraint_string_bfe = format!(
+        "{shared_declarations}
+        let base_constraints{base_constraint_bfe_type} = [{base_constraint_evaluations_joined}];
+        let ext_constraints = [{ext_constraint_evaluations_joined}];
+        base_constraints
+            .into_iter()
+            .map(|bfe| bfe.lift())
+            .chain(ext_constraints.into_iter())
+            .collect()"
+    );
+
+    let constraint_string_xfe = format!(
+        "{shared_declarations}
         let base_constraints = [{base_constraint_evaluations_joined}];
         let ext_constraints = [{ext_constraint_evaluations_joined}];
-
         base_constraints
-            .iter()
-            .chain(ext_constraints.iter())
-            .cloned()
+            .into_iter()
+            .chain(ext_constraints.into_iter())
             .collect()"
-    )
+    );
+
+    (constraint_string_bfe, constraint_string_xfe)
 }
 
 /// Produce the code to evaluate code for all nodes that share a value number of
