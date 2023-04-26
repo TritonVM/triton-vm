@@ -133,12 +133,20 @@ impl<H: AlgebraicHasher> Fri<H> {
             self.commit(codeword, proof_stream).into_iter().unzip();
 
         // Fiat-Shamir to get indices at which to reveal the codeword
-        let top_level_indices =
+        let initial_a_indices =
             proof_stream.sample_indices(self.domain.length, self.colinearity_checks_count);
+        let initial_b_indices = initial_a_indices
+            .iter()
+            .map(|&idx| (idx + self.domain.length / 2) % self.domain.length)
+            .collect_vec();
+        let top_level_indices = initial_a_indices
+            .iter()
+            .copied()
+            .chain(initial_b_indices)
+            .collect_vec();
 
         // query phase
         // query step 0: enqueue authentication paths for all points `A` into proof stream
-        let initial_a_indices = top_level_indices.clone();
         Self::enqueue_auth_pairs(&initial_a_indices, codeword, &merkle_trees[0], proof_stream);
         // query step 1: loop over FRI rounds, enqueue authentication paths for all points `B`
         let mut current_domain_len = self.domain.length;
@@ -313,11 +321,13 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_stop!(maybe_profiler, "dequeue and authenticate");
 
         // save indices and revealed leafs of first round's codeword for returning
-        let revealed_indices_and_elements = a_indices
+        let revealed_indices_and_elements_first_half = a_indices
             .iter()
             .copied()
             .zip_eq(a_values.iter().copied())
             .collect_vec();
+        // these indices and values will be computed in the first iteration of the main loop below
+        let mut revealed_indices_and_elements_second_half = vec![];
 
         // set up "B" for offsetting inside loop.  Note that "B" and "A" indices can be calcuated
         // from each other.
@@ -337,6 +347,15 @@ impl<H: AlgebraicHasher> Fri<H> {
             debug_assert_eq!(self.colinearity_checks_count, b_indices.len());
             debug_assert_eq!(self.colinearity_checks_count, a_values.len());
             debug_assert_eq!(self.colinearity_checks_count, b_values.len());
+
+            if r == 0 {
+                // save other half of indices and revealed leafs of first round for returning
+                revealed_indices_and_elements_second_half = b_indices
+                    .iter()
+                    .copied()
+                    .zip_eq(b_values.iter().copied())
+                    .collect_vec();
+            }
 
             // compute "C" indices and values for next round from "A" and "B" of current round
             current_domain_len /= 2;
@@ -367,6 +386,11 @@ impl<H: AlgebraicHasher> Fri<H> {
             bail!(FriValidationError::MismatchingLastCodeword);
         }
         prof_stop!(maybe_profiler, "compare last codeword");
+
+        let revealed_indices_and_elements = revealed_indices_and_elements_first_half
+            .into_iter()
+            .chain(revealed_indices_and_elements_second_half.into_iter())
+            .collect_vec();
         Ok(revealed_indices_and_elements)
     }
 

@@ -397,6 +397,10 @@ impl Stark {
         prof_start!(maybe_profiler, "FRI");
         let (revealed_current_row_indices, _) =
             self.fri.prove(&fri_combination_codeword, &mut proof_stream);
+        assert_eq!(
+            self.parameters.num_combination_codeword_checks,
+            revealed_current_row_indices.len()
+        );
         prof_stop!(maybe_profiler, "FRI");
 
         prof_start!(maybe_profiler, "open trace leafs");
@@ -796,7 +800,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "check leafs");
 
         prof_start!(maybe_profiler, "linear combination");
-        let num_checks = self.parameters.num_colinearity_checks;
+        let num_checks = self.parameters.num_combination_codeword_checks;
         assert_eq!(num_checks, revealed_current_row_indices.len());
         assert_eq!(num_checks, base_table_rows.len());
         assert_eq!(num_checks, ext_table_rows.len());
