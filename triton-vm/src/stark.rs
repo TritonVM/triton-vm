@@ -34,6 +34,7 @@ use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::polynomial::Polynomial;
+use twenty_first::shared_math::x_field_element;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::fri::Fri;
@@ -50,12 +51,32 @@ pub type StarkHasher = Tip5;
 pub type Maker = CpuParallel;
 pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
 
+/// All the security-related parameters for the zk-STARK.
 pub struct StarkParameters {
+    /// The conjectured security level in bits. Concretely, the system
+    /// - is perfectly complete, and
+    /// - has soundness error 2^(-security_level).
     pub security_level: usize,
+
+    /// The ratio between the lengths of the randomized trace domain and the FRI domain.
+    /// Must be a power of 2 for efficiency reasons.
     pub fri_expansion_factor: usize,
+
+    /// The number of randomizers for the execution trace. The trace randomizers are integral for
+    /// achieving zero-knowledge. In particular, they achieve ZK for the (DEEP) ALI part of the
+    /// zk-STARK.
     pub num_trace_randomizers: usize,
+
+    /// The number of randomizer polynomials. A single randomizer polynomial should be sufficient
+    /// in all cases. It is integral for achieving zero-knowledge for the FRI part of the zk-STARK.
     pub num_randomizer_polynomials: usize,
+
+    /// The number of colinearity checks to perform in FRI.
     pub num_colinearity_checks: usize,
+
+    /// The number of combination codeword checks. These checks link the (DEEP) ALI part and the
+    /// FRI part of the zk-STARK. The number of combination codeword checks directly depends on the
+    /// number of colinearity checks and the FRI folding factor.
     pub num_combination_codeword_checks: usize,
 }
 
@@ -69,8 +90,14 @@ impl StarkParameters {
         let num_randomizer_polynomials = 1; // over the XField
         let fri_expansion_factor = 1 << log2_of_fri_expansion_factor;
         let num_colinearity_checks = security_level / log2_of_fri_expansion_factor;
-        let num_trace_randomizers = num_colinearity_checks * 2;
-        let num_combination_codeword_checks = security_level;
+
+        // For now, the FRI folding factor is hardcoded in our zk-STARK.
+        let fri_folding_factor = 2;
+        let num_combination_codeword_checks = num_colinearity_checks * fri_folding_factor;
+
+        let num_out_of_domain_rows = 2;
+        let num_trace_randomizers = num_combination_codeword_checks
+            + num_out_of_domain_rows * x_field_element::EXTENSION_DEGREE;
 
         StarkParameters {
             security_level,
