@@ -1,5 +1,3 @@
-use std::error::Error;
-use std::fmt;
 use std::ops::Add;
 use std::ops::Mul;
 
@@ -39,7 +37,6 @@ use twenty_first::shared_math::x_field_element;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::fri::Fri;
-use crate::fri::FriValidationError;
 use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::proof_item::ProofItem;
@@ -118,21 +115,6 @@ impl Default for StarkParameters {
         let security_level = 160;
 
         Self::new(security_level, log_2_of_fri_expansion_factor)
-    }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum StarkValidationError {
-    CombinationLeafInequality,
-    PaddedHeightInequality,
-    FriValidationError(FriValidationError),
-}
-
-impl Error for StarkValidationError {}
-
-impl fmt::Display for StarkValidationError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "STARK error: {self:?}")
     }
 }
 
@@ -605,7 +587,7 @@ impl Stark {
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
         let padded_height = proof_stream.dequeue(true)?.as_padded_heights()?.value() as usize;
         if claim.padded_height != padded_height {
-            bail!(StarkValidationError::PaddedHeightInequality);
+            bail!("The claimed padded height must match the padded height in the proof.");
         }
         let base_merkle_tree_root = proof_stream.dequeue(true)?.as_merkle_root()?;
 
@@ -860,7 +842,7 @@ impl Stark {
                     + base_and_ext_next_row_deep_value
                     + randomizer_codewords_contribution
             {
-                bail!(StarkValidationError::CombinationLeafInequality);
+                bail!("Revealed and computed leaf of the combination codeword must equal.");
             }
             prof_stop!(maybe_profiler, "combination codeword equality");
         }
