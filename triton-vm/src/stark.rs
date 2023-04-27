@@ -9,7 +9,6 @@ use itertools::izip;
 use itertools::Itertools;
 use ndarray::s;
 use ndarray::Array1;
-use ndarray::Array2;
 use ndarray::ArrayBase;
 use ndarray::ArrayView1;
 use ndarray::ArrayView2;
@@ -255,18 +254,23 @@ impl Stark {
         // hashed prior to committing to it.
         let quotient_combination_weights =
             Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
-        let quotient_codeword = Self::create_quotient_codeword(
-            quotient_domain,
-            master_quotient_table,
-            quotient_combination_weights,
-            max_degree,
+        assert_eq!(
+            quotient_combination_weights.len(),
+            master_quotient_table.ncols()
         );
+
+        // Note: `*` is the element-wise (Hadamard) product
+        let weighted_codewords = master_quotient_table * quotient_combination_weights;
+        let quotient_codeword = weighted_codewords.sum_axis(Axis(1));
+
+        assert_eq!(quotient_domain.length, quotient_codeword.len());
+        #[cfg(debug_assertions)]
+        Self::debug_check_degree(&quotient_codeword.to_vec(), quotient_domain, max_degree);
         prof_stop!(maybe_profiler, "linearly combine quotient codewords");
-        debug_assert_eq!(quotient_domain.length, quotient_codeword.len());
 
         prof_start!(maybe_profiler, "commit to quotient codeword");
         prof_start!(maybe_profiler, "LDE", "LDE");
-        let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword);
+        let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword.to_vec());
         let fri_quotient_codeword = Array1::from(fri.domain.evaluate(&quotient_interpolation_poly));
         prof_stop!(maybe_profiler, "LDE");
         prof_start!(maybe_profiler, "interpret XFEs as Digests");
@@ -329,22 +333,35 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "base&ext: linear combination", "CC");
-        let base_and_ext_codeword = Self::create_base_and_ext_codeword(
-            quotient_domain,
-            base_quotient_domain_codewords,
-            extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
-            &base_and_ext_codeword_weights,
-            max_degree,
-        );
+        let extension_codewords =
+            extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]);
+        let (base_weights, ext_weights) = base_and_ext_codeword_weights.split_at(NUM_BASE_COLUMNS);
+        let base_weights = Array1::from(base_weights.to_vec());
+        let ext_weights = Array1::from(ext_weights.to_vec());
+
+        assert_eq!(base_weights.len(), base_quotient_domain_codewords.ncols());
+        assert_eq!(ext_weights.len(), extension_codewords.ncols());
+
+        // Note: `*` is the element-wise (Hadamard) product
+        let weighted_base_codewords = &base_quotient_domain_codewords * base_weights;
+        let weighted_ext_codewords = &extension_codewords * &ext_weights;
+
+        let base_and_ext_codeword =
+            weighted_base_codewords.sum_axis(Axis(1)) + weighted_ext_codewords.sum_axis(Axis(1));
+
+        assert_eq!(quotient_domain.length, base_and_ext_codeword.len());
+        #[cfg(debug_assertions)]
+        Self::debug_check_degree(&base_and_ext_codeword.to_vec(), quotient_domain, max_degree);
         prof_stop!(maybe_profiler, "base&ext: linear combination");
 
         prof_start!(maybe_profiler, "DEEP");
         prof_start!(maybe_profiler, "base&ext");
-        let base_and_ext_interpolation_poly = quotient_domain.interpolate(&base_and_ext_codeword);
+        let base_and_ext_interpolation_poly =
+            quotient_domain.interpolate(&base_and_ext_codeword.to_vec());
         let out_of_domain_next_row_base_and_ext_value =
             base_and_ext_interpolation_poly.evaluate(&out_of_domain_point_next_row);
         let base_and_ext_next_row_deep_codeword = Self::deep_codeword(
-            &base_and_ext_codeword,
+            &base_and_ext_codeword.to_vec(),
             quotient_domain,
             out_of_domain_point_next_row,
             out_of_domain_next_row_base_and_ext_value,
@@ -352,11 +369,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "base&ext");
 
         prof_start!(maybe_profiler, "base&ext + quot");
-        let base_and_ext_and_quot_codeword = base_and_ext_codeword
-            .par_iter()
-            .zip_eq(quotient_codeword.par_iter())
-            .map(|(&a, &b)| a + b)
-            .collect::<Vec<_>>();
+        let base_and_ext_and_quot_codeword = (base_and_ext_codeword + quotient_codeword).to_vec();
         let base_and_ext_and_quot_interpolation_poly =
             quotient_domain.interpolate(&base_and_ext_and_quot_codeword);
         let out_of_domain_curr_row_base_and_ext_and_quot_value =
@@ -517,52 +530,6 @@ impl Stark {
             .iter()
             .map(|&idx| master_matrix.row(idx).to_vec())
             .collect_vec()
-    }
-
-    fn create_quotient_codeword(
-        quotient_domain: ArithmeticDomain,
-        quotient_codewords: Array2<XFieldElement>,
-        quotient_weights: Array1<XFieldElement>,
-        max_degree: Degree,
-    ) -> Vec<XFieldElement> {
-        assert_eq!(quotient_weights.len(), quotient_codewords.ncols());
-
-        // Note: `*` is the element-wise (Hadamard) product
-        let weighted_codewords = quotient_codewords * quotient_weights;
-        let quotient_codeword = weighted_codewords.sum_axis(Axis(1)).to_vec();
-
-        assert_eq!(quotient_domain.length, quotient_codeword.len());
-        #[cfg(debug_assertions)]
-        Self::debug_check_degree(&quotient_codeword, quotient_domain, max_degree);
-        quotient_codeword
-    }
-
-    fn create_base_and_ext_codeword(
-        quotient_domain: ArithmeticDomain,
-        base_codewords: ArrayView2<BFieldElement>,
-        extension_codewords: ArrayView2<XFieldElement>,
-        weights: &[XFieldElement],
-        max_degree: Degree,
-    ) -> Vec<XFieldElement> {
-        let (base_weights, ext_weights) = weights.split_at(NUM_BASE_COLUMNS);
-        let base_weights = Array1::from(base_weights.to_vec());
-        let ext_weights = Array1::from(ext_weights.to_vec());
-
-        assert_eq!(base_weights.len(), base_codewords.ncols());
-        assert_eq!(ext_weights.len(), extension_codewords.ncols());
-
-        // Note: `*` is the element-wise (Hadamard) product
-        let weighted_base_codewords = &base_codewords * base_weights;
-        let weighted_ext_codewords = &extension_codewords * &ext_weights;
-
-        let base_and_ext_codeword =
-            weighted_base_codewords.sum_axis(Axis(1)) + weighted_ext_codewords.sum_axis(Axis(1));
-        let base_and_ext_codeword = base_and_ext_codeword.to_vec();
-
-        assert_eq!(quotient_domain.length, base_and_ext_codeword.len());
-        #[cfg(debug_assertions)]
-        Self::debug_check_degree(&base_and_ext_codeword, quotient_domain, max_degree);
-        base_and_ext_codeword
     }
 
     /// Apply the [DEEP update](Self::deep_update) to a polynomial in value form, _i.e._, to a
