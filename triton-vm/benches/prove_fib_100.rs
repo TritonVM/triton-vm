@@ -16,6 +16,7 @@ use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::stark::Stark;
 use triton_vm::table::master_table::MasterBaseTable;
 use triton_vm::vm::simulate;
+use triton_vm::StarkParameters;
 
 /// cargo criterion --bench prove_fib_100
 fn prove_fib_100(criterion: &mut Criterion) {
@@ -51,21 +52,25 @@ fn prove_fib_100(criterion: &mut Criterion) {
         output,
         padded_height,
     };
-    let stark = Stark::new(claim, Default::default());
-    let _proof = stark.prove(aet.clone(), &mut maybe_profiler);
+    let parameters = StarkParameters::default();
+    let _proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
+
+    let max_degree =
+        Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+    let fri = Stark::derive_fri(&parameters, max_degree);
 
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.finish();
         report = profiler.report(
             Some(aet.processor_trace.nrows()),
-            Some(stark.claim.padded_height),
-            Some(stark.fri.domain.length),
+            Some(claim.padded_height),
+            Some(fri.domain.length),
         );
     }
     //start the benchmarking
     group.bench_function(fib_100, |bencher| {
         bencher.iter(|| {
-            let _proof = stark.prove(aet.clone(), &mut None);
+            let _proof = Stark::prove(&parameters, &claim, &aet, &mut None);
         });
     });
 

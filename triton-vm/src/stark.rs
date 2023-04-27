@@ -134,47 +134,31 @@ impl fmt::Display for StarkValidationError {
     }
 }
 
-pub struct Stark {
-    pub parameters: StarkParameters,
-    pub claim: Claim,
-    pub max_degree: Degree,
-    pub interpolant_degree: Degree,
-    pub fri: Fri<StarkHasher>,
-}
+pub struct Stark {}
 
 impl Stark {
-    pub fn new(claim: Claim, parameters: StarkParameters) -> Self {
-        let interpolant_degree =
-            interpolant_degree(claim.padded_height, parameters.num_trace_randomizers);
-        let max_degree_with_origin =
-            max_degree_with_origin(interpolant_degree, claim.padded_height);
-        let max_degree = (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as Degree;
-        let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
-        let coset_offset = BFieldElement::generator();
-        let fri = Fri::new(
-            coset_offset,
-            fri_domain_length,
-            parameters.fri_expansion_factor,
-            parameters.num_colinearity_checks,
-        );
-        Self {
-            parameters,
-            claim,
-            max_degree,
-            interpolant_degree,
-            fri,
-        }
-    }
-
     pub fn prove(
-        &self,
-        aet: AlgebraicExecutionTrace,
+        parameters: &StarkParameters,
+        claim: &Claim,
+        aet: &AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Proof {
+        assert_eq!(
+            claim.padded_height,
+            MasterBaseTable::padded_height(aet),
+            "The claimed padded height must match the actual padded height of the trace."
+        );
+
+        prof_start!(maybe_profiler, "derive additional parameters");
+        let max_degree =
+            Self::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        let fri = Self::derive_fri(parameters, max_degree);
+        prof_stop!(maybe_profiler, "derive additional parameters");
+
         prof_start!(maybe_profiler, "base tables");
         prof_start!(maybe_profiler, "create");
         let mut master_base_table =
-            MasterBaseTable::new(aet, self.parameters.num_trace_randomizers, self.fri.domain);
+            MasterBaseTable::new(aet, parameters.num_trace_randomizers, fri.domain);
         prof_stop!(maybe_profiler, "create");
 
         prof_start!(maybe_profiler, "pad");
@@ -200,16 +184,14 @@ impl Stark {
         let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let extension_challenges = Challenges::new(
             extension_weights,
-            &self.claim.public_input(),
-            &self.claim.public_output(),
+            &claim.public_input(),
+            &claim.public_output(),
         );
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
-        let mut master_ext_table = master_base_table.extend(
-            &extension_challenges,
-            self.parameters.num_randomizer_polynomials,
-        );
+        let mut master_ext_table =
+            master_base_table.extend(&extension_challenges, parameters.num_randomizer_polynomials);
         prof_stop!(maybe_profiler, "extend");
         prof_stop!(maybe_profiler, "base tables");
 
@@ -229,8 +211,22 @@ impl Stark {
 
         prof_start!(maybe_profiler, "quotient-domain codewords");
         let trace_domain = ArithmeticDomain::new_no_offset(master_base_table.padded_height);
-        let quotient_domain = self.quotient_domain();
-        let unit_distance = self.fri.domain.length / quotient_domain.length;
+        // When debugging, it is useful to check the degree of some intermediate polynomials.
+        // The quotient domain is chosen to be _just_ large enough to perform all the necessary
+        // computations on polynomials. Concretely, the maximal degree of a polynomial over the
+        // quotient domain is at most only slightly larger than the maximal degree allowed in the
+        // STARK proof, and could be equal. This makes computation for the prover much faster.
+        // However, it can also make it impossible to check if some operation (e.g., dividing out
+        // the zerofier) has (erroneously) increased the polynomial's degree beyond the allowed
+        // maximum.
+        let quotient_domain = if cfg!(debug_assertions) {
+            fri.domain
+        } else {
+            let offset = fri.domain.offset;
+            let length = roundup_npo2(max_degree as u64);
+            ArithmeticDomain::new(offset, length as usize)
+        };
+        let unit_distance = fri.domain.length / quotient_domain.length;
         let base_quotient_domain_codewords = fri_domain_master_base_table
             .master_base_matrix
             .slice(s![..; unit_distance, ..]);
@@ -256,10 +252,11 @@ impl Stark {
         // hashed prior to committing to it.
         let quotient_combination_weights =
             Array1::from(proof_stream.sample_scalars(num_all_table_quotients()));
-        let quotient_codeword = self.create_quotient_codeword(
+        let quotient_codeword = Self::create_quotient_codeword(
             quotient_domain,
             master_quotient_table,
             quotient_combination_weights,
+            max_degree,
         );
         prof_stop!(maybe_profiler, "linearly combine quotient codewords");
         debug_assert_eq!(quotient_domain.length, quotient_codeword.len());
@@ -267,8 +264,7 @@ impl Stark {
         prof_start!(maybe_profiler, "commit to quotient codeword");
         prof_start!(maybe_profiler, "LDE", "LDE");
         let quotient_interpolation_poly = quotient_domain.interpolate(&quotient_codeword);
-        let fri_quotient_codeword =
-            Array1::from(self.fri.domain.evaluate(&quotient_interpolation_poly));
+        let fri_quotient_codeword = Array1::from(fri.domain.evaluate(&quotient_interpolation_poly));
         prof_stop!(maybe_profiler, "LDE");
         prof_start!(maybe_profiler, "interpret XFEs as Digests");
         let fri_quotient_codeword_digests = fri_quotient_codeword
@@ -283,7 +279,7 @@ impl Stark {
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root), true);
         prof_stop!(maybe_profiler, "Merkle tree");
         prof_stop!(maybe_profiler, "commit to quotient codeword");
-        debug_assert_eq!(self.fri.domain.length, quot_merkle_tree.get_leaf_count());
+        debug_assert_eq!(fri.domain.length, quot_merkle_tree.get_leaf_count());
 
         prof_start!(maybe_profiler, "out-of-domain rows");
         let trace_domain_generator = derive_domain_generator(padded_height.value());
@@ -330,11 +326,12 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "base&ext: linear combination", "CC");
-        let base_and_ext_codeword = self.create_base_and_ext_codeword(
+        let base_and_ext_codeword = Self::create_base_and_ext_codeword(
             quotient_domain,
             base_quotient_domain_codewords,
             extension_quotient_domain_codewords.slice(s![.., ..NUM_EXT_COLUMNS]),
             &base_and_ext_codeword_weights,
+            max_degree,
         );
         prof_stop!(maybe_profiler, "base&ext: linear combination");
 
@@ -406,11 +403,10 @@ impl Stark {
             &base_and_ext_and_quot_curr_row_deep_codeword + &base_and_ext_next_row_deep_codeword;
         prof_stop!(maybe_profiler, "sum");
         prof_start!(maybe_profiler, "LDE", "LDE");
-        let fri_deep_codeword = Array1::from(
-            quotient_domain.low_degree_extension(&deep_codeword.to_vec(), self.fri.domain),
-        );
+        let fri_deep_codeword =
+            Array1::from(quotient_domain.low_degree_extension(&deep_codeword.to_vec(), fri.domain));
         prof_stop!(maybe_profiler, "LDE");
-        assert_eq!(self.fri.domain.length, fri_deep_codeword.len());
+        assert_eq!(fri.domain.length, fri_deep_codeword.len());
         prof_start!(maybe_profiler, "add randomizer codeword", "CC");
         let fri_combination_codeword = fri_domain_ext_master_table
             .randomizer_polynomials()
@@ -418,14 +414,14 @@ impl Stark {
             .fold(fri_deep_codeword, ArrayBase::add)
             .to_vec();
         prof_stop!(maybe_profiler, "add randomizer codeword");
-        assert_eq!(self.fri.domain.length, fri_combination_codeword.len());
+        assert_eq!(fri.domain.length, fri_combination_codeword.len());
         prof_stop!(maybe_profiler, "combined DEEP polynomial");
 
         prof_start!(maybe_profiler, "FRI");
         let (revealed_current_row_indices, _) =
-            self.fri.prove(&fri_combination_codeword, &mut proof_stream);
+            fri.prove(&fri_combination_codeword, &mut proof_stream);
         assert_eq!(
-            self.parameters.num_combination_codeword_checks,
+            parameters.num_combination_codeword_checks,
             revealed_current_row_indices.len()
         );
         prof_stop!(maybe_profiler, "FRI");
@@ -483,22 +479,31 @@ impl Stark {
         proof_stream.to_proof()
     }
 
-    fn quotient_domain(&self) -> ArithmeticDomain {
-        // When debugging, it is useful to check the degree of some intermediate polynomials.
-        // The quotient domain is chosen to be _just_ large enough to perform all the necessary
-        // computations on polynomials. Concretely, the maximal degree of a polynomial over the
-        // quotient domain is at most only slightly larger than the maximal degree allowed in the
-        // STARK proof, and could be equal. This makes computation for the prover much faster.
-        // However, it can also make it impossible to check if some operation (e.g., dividing out
-        // the zerofier) has (erroneously) increased the polynomial's degree beyond the allowed
-        // maximum.
-        if cfg!(debug_assertions) {
-            self.fri.domain
-        } else {
-            let offset = self.fri.domain.offset;
-            let length = roundup_npo2(self.max_degree as u64);
-            ArithmeticDomain::new(offset, length as usize)
-        }
+    /// Compute the upper bound to use for the maximum degree the quotients given the length of the
+    /// trace and the number of trace randomizers.
+    /// The degree of the quotients depends on the constraints, _i.e._, the AIR.
+    /// The upper bound is computed as follows:
+    /// 1. Compute the degree of the trace interpolation polynomials.
+    /// 1. Compute the maximum degree of the quotients.
+    /// 1. Round up to the next power of 2.
+    pub fn derive_max_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
+        let interpolant_degree = interpolant_degree(padded_height, num_trace_randomizers);
+        let max_degree_with_origin = max_degree_with_origin(interpolant_degree, padded_height);
+        (roundup_npo2(max_degree_with_origin.degree as u64) - 1) as Degree
+    }
+
+    /// Compute the parameters for FRI. The size of the FRI domain depends on the
+    /// quotients' maximum degree, see [`derive_max_degree`](Self::derive_max_degree).
+    /// It also depends on the FRI expansion factor, which is a parameter of the STARK.
+    pub fn derive_fri(parameters: &StarkParameters, max_degree: Degree) -> Fri<StarkHasher> {
+        let fri_domain_length = parameters.fri_expansion_factor * (max_degree as usize + 1);
+        let fri_coset_offset = BFieldElement::generator();
+        Fri::new(
+            fri_coset_offset,
+            fri_domain_length,
+            parameters.fri_expansion_factor,
+            parameters.num_colinearity_checks,
+        )
     }
 
     fn get_revealed_elements<FF: FiniteField>(
@@ -512,10 +517,10 @@ impl Stark {
     }
 
     fn create_quotient_codeword(
-        &self,
         quotient_domain: ArithmeticDomain,
         quotient_codewords: Array2<XFieldElement>,
         quotient_weights: Array1<XFieldElement>,
+        max_degree: Degree,
     ) -> Vec<XFieldElement> {
         assert_eq!(quotient_weights.len(), quotient_codewords.ncols());
 
@@ -525,16 +530,16 @@ impl Stark {
 
         assert_eq!(quotient_domain.length, quotient_codeword.len());
         #[cfg(debug_assertions)]
-        self.debug_check_degree(&quotient_codeword, quotient_domain);
+        Self::debug_check_degree(&quotient_codeword, quotient_domain, max_degree);
         quotient_codeword
     }
 
     fn create_base_and_ext_codeword(
-        &self,
         quotient_domain: ArithmeticDomain,
         base_codewords: ArrayView2<BFieldElement>,
         extension_codewords: ArrayView2<XFieldElement>,
         weights: &[XFieldElement],
+        max_degree: Degree,
     ) -> Vec<XFieldElement> {
         let (base_weights, ext_weights) = weights.split_at(NUM_BASE_COLUMNS);
         let base_weights = Array1::from(base_weights.to_vec());
@@ -553,7 +558,7 @@ impl Stark {
 
         assert_eq!(quotient_domain.length, base_and_ext_codeword.len());
         #[cfg(debug_assertions)]
-        self.debug_check_degree(&base_and_ext_codeword, quotient_domain);
+        Self::debug_check_degree(&base_and_ext_codeword, quotient_domain, max_degree);
         base_and_ext_codeword
     }
 
@@ -595,11 +600,11 @@ impl Stark {
 
     #[cfg(debug_assertions)]
     fn debug_check_degree(
-        &self,
         combination_codeword: &[XFieldElement],
         quotient_domain: ArithmeticDomain,
+        max_degree: Degree,
     ) {
-        let max_degree = self.max_degree as isize;
+        let max_degree = max_degree as isize;
         let degree = quotient_domain.interpolate(combination_codeword).degree();
         let maybe_excl_mark = match degree > max_degree {
             true => "!",
@@ -612,17 +617,24 @@ impl Stark {
     }
 
     pub fn verify(
-        &self,
-        proof: Proof,
+        parameters: &StarkParameters,
+        claim: &Claim,
+        proof: &Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<bool> {
+        prof_start!(maybe_profiler, "derive additional parameters");
+        let max_degree =
+            Self::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        let fri = Self::derive_fri(parameters, max_degree);
+        prof_stop!(maybe_profiler, "derive additional parameters");
+
         prof_start!(maybe_profiler, "deserialize");
-        let mut proof_stream = StarkProofStream::from_proof(&proof)?;
+        let mut proof_stream = StarkProofStream::from_proof(proof)?;
         prof_stop!(maybe_profiler, "deserialize");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
         let padded_height = proof_stream.dequeue(true)?.as_padded_heights()?.value() as usize;
-        if self.claim.padded_height != padded_height {
+        if claim.padded_height != padded_height {
             bail!(StarkValidationError::PaddedHeightInequality);
         }
         let base_merkle_tree_root = proof_stream.dequeue(true)?.as_merkle_root()?;
@@ -631,8 +643,8 @@ impl Stark {
             proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let challenges = Challenges::new(
             extension_challenge_weights,
-            &self.claim.public_input(),
-            &self.claim.public_output(),
+            &claim.public_input(),
+            &claim.public_output(),
         );
         let extension_tree_merkle_root = proof_stream.dequeue(true)?.as_merkle_root()?;
         // Sample weights for quotient codeword, which is a part of the combination codeword.
@@ -743,8 +755,7 @@ impl Stark {
 
         // verify low degree of combination polynomial with FRI
         prof_start!(maybe_profiler, "FRI");
-        let revealed_fri_indices_and_elements =
-            self.fri.verify(&mut proof_stream, maybe_profiler)?;
+        let revealed_fri_indices_and_elements = fri.verify(&mut proof_stream, maybe_profiler)?;
         let (revealed_current_row_indices, revealed_fri_values): (Vec<_>, Vec<_>) =
             revealed_fri_indices_and_elements.into_iter().unzip();
         prof_stop!(maybe_profiler, "FRI");
@@ -827,7 +838,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "check leafs");
 
         prof_start!(maybe_profiler, "linear combination");
-        let num_checks = self.parameters.num_combination_codeword_checks;
+        let num_checks = parameters.num_combination_codeword_checks;
         assert_eq!(num_checks, revealed_current_row_indices.len());
         assert_eq!(num_checks, base_table_rows.len());
         assert_eq!(num_checks, ext_table_rows.len());
@@ -846,7 +857,7 @@ impl Stark {
             let base_row = Array1::from(base_row);
             let ext_row = Array1::from(current_ext_row.to_vec());
             let randomizer_row = Array1::from(randomizer_row.to_vec());
-            let current_fri_domain_value = self.fri.domain.domain_value(row_idx as u32);
+            let current_fri_domain_value = fri.domain.domain_value(row_idx as u32);
 
             prof_start!(maybe_profiler, "base & ext elements", "CC");
             let base_and_ext_curr_row_element = Self::linearly_sum_base_and_ext_row(
@@ -990,7 +1001,7 @@ pub(crate) mod triton_stark_tests {
         code: &str,
         stdin: Vec<u64>,
         secret_in: Vec<u64>,
-    ) -> (Stark, MasterBaseTable, MasterBaseTable) {
+    ) -> (StarkParameters, Claim, MasterBaseTable, MasterBaseTable) {
         let (aet, stdout) = parse_setup_simulate(code, stdin.clone(), secret_in);
 
         let padded_height = MasterBaseTable::padded_height(&aet);
@@ -1003,18 +1014,22 @@ pub(crate) mod triton_stark_tests {
         let log_expansion_factor = 2;
         let security_level = 32;
         let parameters = StarkParameters::new(security_level, log_expansion_factor);
-        let stark = Stark::new(claim, parameters);
+        let max_degree =
+            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        let fri = Stark::derive_fri(&parameters, max_degree);
 
-        let mut master_base_table = MasterBaseTable::new(
-            aet,
-            stark.parameters.num_trace_randomizers,
-            stark.fri.domain,
-        );
+        let mut master_base_table =
+            MasterBaseTable::new(&aet, parameters.num_trace_randomizers, fri.domain);
 
         let unpadded_master_base_table = master_base_table.clone();
         master_base_table.pad();
 
-        (stark, unpadded_master_base_table, master_base_table)
+        (
+            parameters,
+            claim,
+            unpadded_master_base_table,
+            master_base_table,
+        )
     }
 
     pub fn parse_simulate_pad_extend(
@@ -1022,24 +1037,24 @@ pub(crate) mod triton_stark_tests {
         stdin: Vec<u64>,
         secret_in: Vec<u64>,
     ) -> (
-        Stark,
+        StarkParameters,
+        Claim,
         MasterBaseTable,
         MasterBaseTable,
         MasterExtTable,
         Challenges,
     ) {
-        let (stark, unpadded_master_base_table, master_base_table) =
+        let (parameters, claim, unpadded_master_base_table, master_base_table) =
             parse_simulate_pad(code, stdin, secret_in);
 
         let dummy_challenges =
-            Challenges::placeholder(&stark.claim.public_input(), &stark.claim.public_output());
-        let master_ext_table = master_base_table.extend(
-            &dummy_challenges,
-            stark.parameters.num_randomizer_polynomials,
-        );
+            Challenges::placeholder(&claim.public_input(), &claim.public_output());
+        let master_ext_table =
+            master_base_table.extend(&dummy_challenges, parameters.num_randomizer_polynomials);
 
         (
-            stark,
+            parameters,
+            claim,
             unpadded_master_base_table,
             master_base_table,
             master_ext_table,
@@ -1059,7 +1074,7 @@ pub(crate) mod triton_stark_tests {
         push  5 read_mem
         halt
         ";
-        let (_, master_base_table, _) = parse_simulate_pad(program, vec![], vec![]);
+        let (_, _, master_base_table, _) = parse_simulate_pad(program, vec![], vec![]);
 
         println!();
         println!("Processor Table:");
@@ -1161,14 +1176,14 @@ pub(crate) mod triton_stark_tests {
     pub fn check_io_terminals() {
         let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io halt";
         let input_symbols = vec![3, 5, 7];
-        let (stark, _, _, master_ext_table, all_challenges) =
+        let (_, claim, _, _, master_ext_table, all_challenges) =
             parse_simulate_pad_extend(read_nop_code, input_symbols, vec![]);
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         let ptie = processor_table_last_row[InputTableEvalArg.ext_table_index()];
         let ine = EvalArg::compute_terminal(
-            &stark.claim.public_input(),
+            &claim.public_input(),
             EvalArg::default_initial(),
             all_challenges.get_challenge(StandardInputIndeterminate),
         );
@@ -1176,7 +1191,7 @@ pub(crate) mod triton_stark_tests {
 
         let ptoe = processor_table_last_row[OutputTableEvalArg.ext_table_index()];
         let oute = EvalArg::compute_terminal(
-            &stark.claim.public_output(),
+            &claim.public_output(),
             EvalArg::default_initial(),
             all_challenges.get_challenge(StandardOutputIndeterminate),
         );
@@ -1193,7 +1208,7 @@ pub(crate) mod triton_stark_tests {
             let code = code_with_input.source_code;
             let input = code_with_input.input;
             let secret_input = code_with_input.secret_input.clone();
-            let (_, _, master_base_table, master_ext_table, all_challenges) =
+            let (_, _, _, master_base_table, master_ext_table, all_challenges) =
                 parse_simulate_pad_extend(&code, input, secret_input);
 
             let processor_table = master_ext_table.table(ProcessorTable);
@@ -1737,7 +1752,7 @@ pub(crate) mod triton_stark_tests {
 
     pub fn triton_table_constraints_evaluate_to_zero(source_code_and_input: SourceCodeAndInput) {
         let zero = XFieldElement::zero();
-        let (_, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
+        let (_, _, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
             &source_code_and_input.source_code,
             source_code_and_input.input,
             source_code_and_input.secret_input,
@@ -1865,7 +1880,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_simple_program_test() {
         let code_with_input = test_hash_nop_nop_lt();
-        let (stark, proof) = parse_simulate_prove(
+        let (parameters, claim, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
@@ -1874,7 +1889,7 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = stark.verify(proof, &mut None);
+        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
@@ -1883,32 +1898,28 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn triton_prove_verify_halt_test() {
-        let mut profiler = Some(TritonProfiler::new("Prove Halt"));
         let code_with_input = test_halt();
-        let (stark, proof) = parse_simulate_prove(
+        let mut profiler = Some(TritonProfiler::new("Prove Halt"));
+        let (parameters, claim, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
             &mut profiler,
         );
+        let mut profiler = profiler.unwrap();
+        profiler.finish();
 
-        let result = stark.verify(proof, &mut None);
+        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
-        if let Some(mut p) = profiler {
-            p.finish();
-            println!(
-                "{}",
-                p.report(
-                    None,
-                    Some(stark.claim.padded_height),
-                    Some(stark.fri.domain.length),
-                )
-            );
-        }
+        let max_degree =
+            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        let fri = Stark::derive_fri(&parameters, max_degree);
+        let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+        println!("{report}");
     }
 
     #[test]
@@ -1917,7 +1928,7 @@ pub(crate) mod triton_stark_tests {
         let code_with_input = test_halt();
 
         for _ in 0..100 {
-            let (stark, proof) = parse_simulate_prove(
+            let (parameters, claim, proof) = parse_simulate_prove(
                 &code_with_input.source_code,
                 code_with_input.input.clone(),
                 code_with_input.secret_input.clone(),
@@ -1925,7 +1936,7 @@ pub(crate) mod triton_stark_tests {
             );
 
             let filename = "halt_error.tsp";
-            let result = stark.verify(proof.clone(), &mut None);
+            let result = Stark::verify(&parameters, &claim, &proof, &mut None);
             if let Err(e) = result {
                 if let Err(e) = save_proof(filename, proof) {
                     panic!("Unsyntactical proof and can't save! {e}");
@@ -1940,7 +1951,7 @@ pub(crate) mod triton_stark_tests {
     #[ignore = "used for tracking&debugging deserialization errors"]
     fn triton_load_verify_halt_test() {
         let code_with_input = test_halt();
-        let (stark, _) = parse_simulate_prove(
+        let (parameters, claim, _) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.input.clone(),
             code_with_input.secret_input.clone(),
@@ -1953,7 +1964,7 @@ pub(crate) mod triton_stark_tests {
             Err(e) => panic!("Could not load proof from disk at {filename}: {e}"),
         };
 
-        let result = stark.verify(proof, &mut None);
+        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("Verifier is unhappy! {e}");
         }
@@ -1962,32 +1973,29 @@ pub(crate) mod triton_stark_tests {
 
     #[test]
     fn prove_verify_fibonacci_100_test() {
-        let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
         let source_code = FIBONACCI_SEQUENCE;
         let stdin = vec![100];
         let secret_in = vec![];
 
-        let (stark, proof) = parse_simulate_prove(source_code, stdin, secret_in, &mut profiler);
+        let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
+        let (parameters, claim, proof) =
+            parse_simulate_prove(source_code, stdin, secret_in, &mut profiler);
+        let mut profiler = profiler.unwrap();
+        profiler.finish();
 
         println!("between prove and verify");
 
-        let result = stark.verify(proof, &mut None);
+        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
-        if let Some(mut p) = profiler {
-            p.finish();
-            println!(
-                "{}",
-                p.report(
-                    None,
-                    Some(stark.claim.padded_height),
-                    Some(stark.fri.domain.length),
-                )
-            );
-        }
+        let max_degree =
+            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        let fri = Stark::derive_fri(&parameters, max_degree);
+        let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+        println!("{report}");
     }
 
     #[test]
@@ -1997,13 +2005,14 @@ pub(crate) mod triton_stark_tests {
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
             let stdin = vec![fib_seq_idx];
             let secret_in = vec![];
-            let (stark, proof) = parse_simulate_prove(code, stdin, secret_in, &mut None);
-            match stark.verify(proof, &mut None) {
+            let (parameters, claim, proof) =
+                parse_simulate_prove(code, stdin, secret_in, &mut None);
+            match Stark::verify(&parameters, &claim, &proof, &mut None) {
                 Ok(result) => assert!(result, "The Verifier disagrees!"),
                 Err(err) => panic!("The Verifier is unhappy! {err}"),
             }
 
-            assert_eq!(vec![fib_seq_val], stark.claim.output);
+            assert_eq!(vec![fib_seq_val], claim.output);
         }
     }
 
@@ -2016,25 +2025,22 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_many_u32_operations_test() {
         let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
-        let (stark, proof) =
+        let (parameters, claim, proof) =
             parse_simulate_prove(MANY_U32_INSTRUCTIONS, vec![], vec![], &mut profiler);
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        let result = stark.verify(proof, &mut None);
+        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
         assert!(result.unwrap());
 
-        println!(
-            "{}",
-            profiler.report(
-                None,
-                Some(stark.claim.padded_height),
-                Some(stark.fri.domain.length),
-            )
-        );
+        let max_degree =
+            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        let fri = Stark::derive_fri(&parameters, max_degree);
+        let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+        println!("{report}");
     }
 
     #[test]
@@ -2043,20 +2049,19 @@ pub(crate) mod triton_stark_tests {
         let source_code = FIBONACCI_SEQUENCE;
 
         for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
-            let mut profiler = Some(TritonProfiler::new(&format!(
-                "element #{fibonacci_number:>4} from Fibonacci sequence"
-            )));
             let stdin = vec![fibonacci_number];
-            let (stark, _) = parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
-            if let Some(mut p) = profiler {
-                p.finish();
-                let report = p.report(
-                    None,
-                    Some(stark.claim.padded_height),
-                    Some(stark.fri.domain.length),
-                );
-                println!("{report}");
-            }
+            let fib_test_name = format!("element #{fibonacci_number:>4} from Fibonacci sequence");
+            let mut profiler = Some(TritonProfiler::new(&fib_test_name));
+            let (parameters, claim, _) =
+                parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
+            let mut profiler = profiler.unwrap();
+            profiler.finish();
+
+            let max_degree =
+                Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+            let fri = Stark::derive_fri(&parameters, max_degree);
+            let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+            println!("{report}");
         }
     }
 
@@ -2067,8 +2072,9 @@ pub(crate) mod triton_stark_tests {
         let st0 = (rng.next_u32() as u64) << 32;
 
         let source_code = format!("push {st0} log_2_floor halt");
-        let (stark, proof) = parse_simulate_prove(&source_code, vec![], vec![], &mut None);
-        let result = stark.verify(proof, &mut None);
+        let (parameters, claim, proof) =
+            parse_simulate_prove(&source_code, vec![], vec![], &mut None);
+        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
@@ -2077,8 +2083,9 @@ pub(crate) mod triton_stark_tests {
     #[should_panic(expected = "The logarithm of 0 does not exist")]
     pub fn negative_log_2_floor_of_0_test() {
         let source_code = "push 0 log_2_floor halt";
-        let (stark, proof) = parse_simulate_prove(source_code, vec![], vec![], &mut None);
-        let result = stark.verify(proof, &mut None);
+        let (parameters, claim, proof) =
+            parse_simulate_prove(source_code, vec![], vec![], &mut None);
+        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }

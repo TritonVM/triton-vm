@@ -3199,7 +3199,7 @@ mod constraint_polynomial_tests {
     }
 
     fn get_test_row_from_source_code(source_code: &str, row_num: usize) -> Array2<BFieldElement> {
-        let (_, unpadded_master_base_table, _) = parse_simulate_pad(source_code, vec![], vec![]);
+        let (_, _, unpadded_master_base_table, _) = parse_simulate_pad(source_code, vec![], vec![]);
         unpadded_master_base_table
             .trace_table()
             .slice(s![row_num..=row_num + 1, ..])

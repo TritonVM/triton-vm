@@ -54,7 +54,7 @@ pub fn parse_simulate_prove(
     input_symbols: Vec<u64>,
     secret_input_symbols: Vec<u64>,
     maybe_profiler: &mut Option<TritonProfiler>,
-) -> (Stark, Proof) {
+) -> (StarkParameters, Claim, Proof) {
     let (aet, output_symbols) = parse_setup_simulate(
         code,
         input_symbols.clone(),
@@ -72,13 +72,12 @@ pub fn parse_simulate_prove(
     let log_expansion_factor = 2;
     let security_level = 32;
     let parameters = StarkParameters::new(security_level, log_expansion_factor);
-    let stark = Stark::new(claim, parameters);
 
     prof_start!(maybe_profiler, "prove");
-    let proof = stark.prove(aet, maybe_profiler);
+    let proof = Stark::prove(&parameters, &claim, &aet, maybe_profiler);
     prof_stop!(maybe_profiler, "prove");
 
-    (stark, proof)
+    (parameters, claim, proof)
 }
 
 /// Source code and associated input. Primarily for testing of the VM's instructions.

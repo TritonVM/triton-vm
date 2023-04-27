@@ -1705,7 +1705,7 @@ mod constraint_tests {
     #[test]
     fn hash_table_satisfies_constraints_test() {
         let source_code = "hash hash hash halt";
-        let (_, _, master_base_table, master_ext_table, challenges) =
+        let (_, _, _, master_base_table, master_ext_table, challenges) =
             parse_simulate_pad_extend(source_code, vec![], vec![]);
         assert_eq!(
             master_base_table.master_base_matrix.nrows(),

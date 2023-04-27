@@ -47,15 +47,18 @@ fn prove_halt(_criterion: &mut Criterion) {
         padded_height,
     };
     let parameters = StarkParameters::default();
-    let stark = Stark::new(claim, parameters);
-    let proof = stark.prove(aet, &mut maybe_profiler);
+    let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
+
+    let max_degree =
+        Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+    let fri = Stark::derive_fri(&parameters, max_degree);
 
     if let Some(profiler) = &mut maybe_profiler {
         profiler.finish();
         report = profiler.report(
             Some(cycle_count),
-            Some(stark.claim.padded_height),
-            Some(stark.fri.domain.length),
+            Some(claim.padded_height),
+            Some(fri.domain.length),
         );
     };
 

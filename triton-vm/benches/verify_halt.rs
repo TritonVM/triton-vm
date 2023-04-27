@@ -31,10 +31,11 @@ fn verify_halt(criterion: &mut Criterion) {
     };
 
     let program_digest = Tip5::hash(&program);
-    let stark_parameters = StarkParameters::default();
+    let parameters = StarkParameters::default();
     let filename = "halt.tsp";
     let mut maybe_cycle_count = None;
-    let (proof, stark) = if proof_file_exists(filename) {
+
+    let (claim, proof) = if proof_file_exists(filename) {
         let proof = match load_proof(filename) {
             Ok(p) => p,
             Err(e) => panic!("Could not load proof from disk: {e:?}"),
@@ -46,8 +47,7 @@ fn verify_halt(criterion: &mut Criterion) {
             output: vec![],
             padded_height,
         };
-        let stark = Stark::new(claim, stark_parameters);
-        (proof, stark)
+        (claim, proof)
     } else {
         let (aet, output, err) = simulate(&program, vec![], vec![]);
         if let Some(error) = err {
@@ -62,31 +62,34 @@ fn verify_halt(criterion: &mut Criterion) {
             output,
             padded_height,
         };
-        let stark = Stark::new(claim, stark_parameters);
-        let proof = stark.prove(aet, &mut None);
+        let proof = Stark::prove(&parameters, &claim, &aet, &mut None);
         if let Err(e) = save_proof(filename, proof.clone()) {
             panic!("Problem! could not save proof to disk: {e:?}");
         }
-        (proof, stark)
+        (claim, proof)
     };
 
-    let result = stark.verify(proof.clone(), &mut None);
+    let result = Stark::verify(&parameters, &claim, &proof, &mut None);
     if let Err(e) = result {
         panic!("The Verifier is unhappy! {e}");
     }
+
+    let max_degree =
+        Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+    let fri = Stark::derive_fri(&parameters, max_degree);
 
     let mut maybe_profiler = Some(TritonProfiler::new("Verify Halt"));
     let mut report: Report = Report::placeholder();
 
     group.bench_function(halt, |bencher| {
         bencher.iter(|| {
-            let _result = stark.verify(proof.clone(), &mut maybe_profiler);
+            let _result = Stark::verify(&parameters, &claim, &proof, &mut maybe_profiler);
             if let Some(profiler) = maybe_profiler.as_mut() {
                 profiler.finish();
                 report = profiler.report(
                     maybe_cycle_count,
-                    Some(stark.claim.padded_height),
-                    Some(stark.fri.domain.length),
+                    Some(claim.padded_height),
+                    Some(fri.domain.length),
                 );
             }
             maybe_profiler = None;

@@ -391,13 +391,13 @@ impl MasterBaseTable {
     }
 
     pub fn new(
-        aet: AlgebraicExecutionTrace,
+        aet: &AlgebraicExecutionTrace,
         num_trace_randomizers: usize,
         fri_domain: ArithmeticDomain,
     ) -> Self {
-        let padded_height = Self::padded_height(&aet);
+        let padded_height = Self::padded_height(aet);
         let randomized_padded_trace_len =
-            randomized_padded_trace_len(num_trace_randomizers, padded_height);
+            randomized_padded_trace_len(padded_height, num_trace_randomizers);
         let unit_distance = randomized_padded_trace_len / padded_height;
 
         let num_rows = randomized_padded_trace_len;
@@ -407,11 +407,11 @@ impl MasterBaseTable {
         let mut master_base_table = Self {
             padded_height,
             num_trace_randomizers,
-            program_len: Self::program_table_length(&aet),
-            main_execution_len: Self::processor_table_length(&aet),
-            hash_coprocessor_execution_len: Self::hash_table_length(&aet),
-            cascade_table_len: Self::cascade_table_length(&aet),
-            u32_coprocesor_execution_len: Self::u32_table_length(&aet),
+            program_len: Self::program_table_length(aet),
+            main_execution_len: Self::processor_table_length(aet),
+            hash_coprocessor_execution_len: Self::hash_table_length(aet),
+            cascade_table_len: Self::cascade_table_length(aet),
+            u32_coprocesor_execution_len: Self::u32_table_length(aet),
             randomized_padded_trace_len,
             rand_trace_to_padded_trace_unit_distance: unit_distance,
             fri_domain,
@@ -419,28 +419,28 @@ impl MasterBaseTable {
         };
 
         let program_table = &mut master_base_table.table_mut(TableId::ProgramTable);
-        ProgramTable::fill_trace(program_table, &aet);
+        ProgramTable::fill_trace(program_table, aet);
         let op_stack_table = &mut master_base_table.table_mut(TableId::OpStackTable);
-        let clk_jump_diffs_op_stack = OpStackTable::fill_trace(op_stack_table, &aet);
+        let clk_jump_diffs_op_stack = OpStackTable::fill_trace(op_stack_table, aet);
         let ram_table = &mut master_base_table.table_mut(TableId::RamTable);
-        let clk_jump_diffs_ram = RamTable::fill_trace(ram_table, &aet);
+        let clk_jump_diffs_ram = RamTable::fill_trace(ram_table, aet);
         let jump_stack_table = &mut master_base_table.table_mut(TableId::JumpStackTable);
-        let clk_jump_diffs_jump_stack = JumpStackTable::fill_trace(jump_stack_table, &aet);
+        let clk_jump_diffs_jump_stack = JumpStackTable::fill_trace(jump_stack_table, aet);
         let hash_table = &mut master_base_table.table_mut(TableId::HashTable);
-        HashTable::fill_trace(hash_table, &aet);
+        HashTable::fill_trace(hash_table, aet);
         let cascade_table = &mut master_base_table.table_mut(TableId::CascadeTable);
-        CascadeTable::fill_trace(cascade_table, &aet);
+        CascadeTable::fill_trace(cascade_table, aet);
         let lookup_table = &mut master_base_table.table_mut(TableId::LookupTable);
-        LookupTable::fill_trace(lookup_table, &aet);
+        LookupTable::fill_trace(lookup_table, aet);
         let u32_table = &mut master_base_table.table_mut(TableId::U32Table);
-        U32Table::fill_trace(u32_table, &aet);
+        U32Table::fill_trace(u32_table, aet);
 
         // memory-like tables must be filled in before clock jump differences are known, hence
         // the break from the usual order
         let processor_table = &mut master_base_table.table_mut(TableId::ProcessorTable);
         ProcessorTable::fill_trace(
             processor_table,
-            &aet,
+            aet,
             &clk_jump_diffs_op_stack,
             &clk_jump_diffs_ram,
             &clk_jump_diffs_jump_stack,
@@ -1603,7 +1603,7 @@ pub fn evaluate_all_constraints(
     .concat()
 }
 
-pub fn randomized_padded_trace_len(num_trace_randomizers: usize, padded_height: usize) -> usize {
+pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
     roundup_npo2((padded_height + num_trace_randomizers) as u64) as usize
 }
 
@@ -1870,7 +1870,7 @@ mod master_table_tests {
 
     #[test]
     fn base_table_width_is_correct() {
-        let (_, _, master_base_table) = parse_simulate_pad("halt", vec![], vec![]);
+        let (_, _, _, master_base_table) = parse_simulate_pad("halt", vec![], vec![]);
 
         assert_eq!(
             program_table::BASE_WIDTH,
@@ -1912,7 +1912,8 @@ mod master_table_tests {
 
     #[test]
     fn ext_table_width_is_correct() {
-        let (stark, _, _, master_ext_table, _) = parse_simulate_pad_extend("halt", vec![], vec![]);
+        let (parameters, _, _, _, master_ext_table, _) =
+            parse_simulate_pad_extend("halt", vec![], vec![]);
 
         assert_eq!(
             program_table::EXT_WIDTH,
@@ -1952,7 +1953,7 @@ mod master_table_tests {
         );
         // use some domain-specific knowledge to also check for the randomizer columns
         assert_eq!(
-            stark.parameters.num_randomizer_polynomials,
+            parameters.num_randomizer_polynomials,
             master_ext_table
                 .master_ext_matrix
                 .slice(s![.., EXT_U32_TABLE_END..])
