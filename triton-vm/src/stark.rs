@@ -16,6 +16,8 @@ use ndarray::ArrayView2;
 use ndarray::Axis;
 use num_traits::One;
 use rayon::prelude::*;
+use serde::Deserialize;
+use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::roundup_npo2;
@@ -52,6 +54,7 @@ pub type Maker = CpuParallel;
 pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
 
 /// All the security-related parameters for the zk-STARK.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct StarkParameters {
     /// The conjectured security level in bits. Concretely, the system
     /// - is perfectly complete, and
