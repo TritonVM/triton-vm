@@ -119,7 +119,6 @@ pub enum ProofItem {
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
     FriResponse(FriResponse),
-    PaddedHeight(BFieldElement),
     Uncast(Vec<BFieldElement>),
 }
 
@@ -300,19 +299,6 @@ where
             )),
         }
     }
-
-    pub fn as_padded_heights(&self) -> Result<BFieldElement> {
-        match self {
-            Self::PaddedHeight(padded_height) => Ok(padded_height.to_owned()),
-            Self::Uncast(str) => match BFieldElement::decode(str) {
-                Ok(padded_height) => Ok(*padded_height),
-                Err(_) => bail!(ProofStreamError::new("cast to padded heights failed",)),
-            },
-            _ => bail!(ProofStreamError::new(
-                "expected padded table height, but got something else",
-            )),
-        }
-    }
 }
 
 impl BFieldCodec for ProofItem {
@@ -350,7 +336,6 @@ impl BFieldCodec for ProofItem {
             ProofItem::RevealedCombinationElements(something) => something.encode(),
             ProofItem::FriCodeword(something) => something.encode(),
             ProofItem::FriResponse(something) => something.encode(),
-            ProofItem::PaddedHeight(something) => something.encode(),
             ProofItem::Uncast(something) => something.encode(),
         };
         let head = BFieldElement::new(tail.len() as u64);

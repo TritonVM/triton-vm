@@ -163,7 +163,6 @@ impl Stark {
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
         let padded_height = BFieldElement::new(master_base_table.padded_height as u64);
         let mut proof_stream = StarkProofStream::new();
-        proof_stream.enqueue(&ProofItem::PaddedHeight(padded_height), true);
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root), true);
         let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let extension_challenges = Challenges::new(
@@ -585,12 +584,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "deserialize");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
-        let padded_height = proof_stream.dequeue(true)?.as_padded_heights()?.value() as usize;
-        if claim.padded_height != padded_height {
-            bail!("The claimed padded height must match the padded height in the proof.");
-        }
         let base_merkle_tree_root = proof_stream.dequeue(true)?.as_merkle_root()?;
-
         let extension_challenge_weights =
             proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let challenges = Challenges::new(
@@ -607,7 +601,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
-        let trace_domain_generator = derive_domain_generator(padded_height as u64);
+        let trace_domain_generator = derive_domain_generator(claim.padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
@@ -629,7 +623,7 @@ impl Stark {
         let one = BFieldElement::one();
         let initial_zerofier_inv = (out_of_domain_point_curr_row - one).inverse();
         let consistency_zerofier_inv =
-            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - one).inverse();
+            (out_of_domain_point_curr_row.mod_pow_u32(claim.padded_height as u32) - one).inverse();
         let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
         let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row

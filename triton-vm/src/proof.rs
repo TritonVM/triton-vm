@@ -3,18 +3,13 @@ use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::tip5::Digest;
 
+/// Contains the necessary cryptographic information to verify a computation.
+/// Should be used together with a [`Claim`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proof(pub Vec<BFieldElement>);
 
-/// Contains the necessary cryptographic information to verify a computation.
-impl Proof {
-    pub fn padded_height(&self) -> usize {
-        // FIXME: This is very brittle.
-        self.0[1].value() as usize
-    }
-}
-
 /// Contains all the public information of a verifiably correct computation.
+/// A corresponding [`Proof`] is needed to verify the computation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claim {
     /// The public input to the computation.
