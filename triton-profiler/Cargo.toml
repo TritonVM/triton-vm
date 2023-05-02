@@ -15,7 +15,7 @@ keywords = ["triton-vm", "stark", "profiler"]
 categories = ["cryptography", "mathematics"]
 
 [dependencies]
-twenty-first = "0.19.3"
+twenty-first = "0.21.1"
 colored = "2.0"
 rand = "0.8"
 unicode-width = "0.1.5"

@@ -29,7 +29,7 @@ use crate::arithmetic_domain::ArithmeticDomain;
 use crate::proof_item::FriResponse;
 use crate::proof_item::ProofItem;
 use crate::proof_stream::ProofStream;
-use crate::stark::Maker;
+use crate::stark::MTMaker;
 
 impl Error for FriValidationError {}
 
@@ -80,37 +80,41 @@ impl<H: AlgebraicHasher> Fri<H> {
     fn enqueue_auth_pairs(
         indices: &[usize],
         codeword: &[XFieldElement],
-        merkle_tree: &MerkleTree<H, Maker>,
+        merkle_tree: &MerkleTree<H>,
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) {
-        let value_ap_pairs = merkle_tree
-            .get_authentication_structure(indices)
+        let partial_authentication_paths = merkle_tree.get_authentication_structure(indices);
+        let revealed_values = indices.iter().map(|&i| codeword[i]).collect_vec();
+        let path_value_pairs = partial_authentication_paths
             .into_iter()
-            .zip_eq(indices.iter())
-            .map(|(ap, i)| (ap, codeword[*i]))
+            .zip_eq(revealed_values)
             .collect_vec();
-        proof_stream.enqueue(&ProofItem::FriResponse(FriResponse(value_ap_pairs)), false)
+        let fri_response = ProofItem::FriResponse(FriResponse(path_value_pairs));
+        proof_stream.enqueue(&fri_response, false)
     }
 
-    /// Given a set of `indices`, a merkle `root`, and the (correctly set) `proof_stream`, verify
-    /// whether the values at the `indices` are members of the set committed to by the merkle `root`
-    /// and return these values if they are. Fails otherwise.
+    /// Given a merkle `root`, the `tree_height`, the `indices` of the values to dequeue from the
+    /// proof stream, and the (correctly set) `proof_stream`, verify whether the values at the
+    /// `indices` are members of the set committed to by the merkle `root` and return these values
+    /// if they are. Fails otherwise.
     fn dequeue_and_authenticate(
-        indices: &[usize],
         root: Digest,
+        tree_height: usize,
+        indices: &[usize],
         proof_stream: &mut ProofStream<ProofItem, H>,
     ) -> Result<Vec<XFieldElement>> {
         let fri_response = proof_stream.dequeue(false)?.as_fri_response()?;
         let FriResponse(dequeued_paths_and_leafs) = fri_response;
+        debug_assert_eq!(indices.len(), dequeued_paths_and_leafs.len());
         let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
-        let leaf_digests: Vec<_> = leaf_values.par_iter().map(|&xfe| xfe.into()).collect();
-        let path_digest_pairs = paths.into_iter().zip_eq(leaf_digests).collect_vec();
-        debug_assert_eq!(indices.len(), path_digest_pairs.len());
+        let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
 
-        match MerkleTree::<H, Maker>::verify_authentication_structure(
+        match MerkleTree::<H>::verify_authentication_structure_from_leaves(
             root,
+            tree_height,
             indices,
-            &path_digest_pairs,
+            &leaf_digests,
+            &paths,
         ) {
             true => Ok(leaf_values),
             false => bail!(FriValidationError::BadMerkleAuthenticationPath),
@@ -175,7 +179,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         &self,
         codeword: &[XFieldElement],
         proof_stream: &mut ProofStream<ProofItem, H>,
-    ) -> Vec<(Vec<XFieldElement>, MerkleTree<H, Maker>)> {
+    ) -> Vec<(Vec<XFieldElement>, MerkleTree<H>)> {
         let one = XFieldElement::one();
         let two_inv = one / (one + one);
         let (num_rounds, _) = self.num_rounds();
@@ -192,7 +196,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             .map(|&xfe| xfe.into())
             .collect_into_vec(&mut digests);
 
-        let mt = Maker::from_digests(&digests);
+        let mt = MTMaker::from_digests(&digests);
         proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()), true);
         codewords_and_merkle_trees.push((codeword.clone(), mt));
 
@@ -225,7 +229,7 @@ impl<H: AlgebraicHasher> Fri<H> {
                 .map(|&xfe| xfe.into())
                 .collect_into_vec(&mut digests);
 
-            let mt = Maker::from_digests(&digests);
+            let mt = MTMaker::from_digests(&digests);
             proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()), true);
             codewords_and_merkle_trees.push((codeword.clone(), mt));
 
@@ -276,7 +280,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
         // Check if last codeword matches the given root
         let codeword_digests = last_codeword.iter().map(|&xfe| xfe.into()).collect_vec();
-        let last_codeword_mt: MerkleTree<H, _> = Maker::from_digests(&codeword_digests);
+        let last_codeword_mt: MerkleTree<H> = MTMaker::from_digests(&codeword_digests);
         let last_root = roots.last().unwrap();
         if *last_root != last_codeword_mt.get_root() {
             bail!(FriValidationError::BadMerkleRootForLastCodeword);
@@ -317,7 +321,9 @@ impl<H: AlgebraicHasher> Fri<H> {
         prof_stop!(maybe_profiler, "sample indices");
 
         prof_start!(maybe_profiler, "dequeue and authenticate", "hash");
-        let mut a_values = Self::dequeue_and_authenticate(&a_indices, roots[0], proof_stream)?;
+        let tree_height = self.domain.length.ilog2() as usize;
+        let mut a_values =
+            Self::dequeue_and_authenticate(roots[0], tree_height, &a_indices, proof_stream)?;
         prof_stop!(maybe_profiler, "dequeue and authenticate");
 
         // save indices and revealed leafs of first round's codeword for returning
@@ -333,6 +339,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // from each other.
         let mut b_indices = a_indices.clone();
         let mut current_domain_len = self.domain.length;
+        let mut current_tree_height = tree_height;
 
         // query step 1:  loop over FRI rounds, verify "B"s, compute values for "C"s
         prof_start!(maybe_profiler, "loop");
@@ -342,7 +349,12 @@ impl<H: AlgebraicHasher> Fri<H> {
                 .iter()
                 .map(|x| (x + current_domain_len / 2) % current_domain_len)
                 .collect();
-            let b_values = Self::dequeue_and_authenticate(&b_indices, roots[r], proof_stream)?;
+            let b_values = Self::dequeue_and_authenticate(
+                roots[r],
+                current_tree_height,
+                &b_indices,
+                proof_stream,
+            )?;
             debug_assert_eq!(self.colinearity_checks_count, a_indices.len());
             debug_assert_eq!(self.colinearity_checks_count, b_indices.len());
             debug_assert_eq!(self.colinearity_checks_count, a_values.len());
@@ -359,6 +371,7 @@ impl<H: AlgebraicHasher> Fri<H> {
 
             // compute "C" indices and values for next round from "A" and "B" of current round
             current_domain_len /= 2;
+            current_tree_height -= 1;
             let c_indices = a_indices.iter().map(|x| x % current_domain_len).collect();
             let c_values = (0..self.colinearity_checks_count)
                 .into_par_iter()

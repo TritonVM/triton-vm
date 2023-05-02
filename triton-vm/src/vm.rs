@@ -1084,7 +1084,7 @@ pub mod triton_vm_tests {
     use crate::shared_tests::SourceCodeAndInput;
     use crate::shared_tests::FIBONACCI_SEQUENCE;
     use crate::shared_tests::VERIFY_SUDOKU;
-    use crate::stark::Maker;
+    use crate::stark::MTMaker;
     use crate::table::processor_table::ProcessorTraceRow;
 
     use super::*;
@@ -2238,7 +2238,7 @@ pub mod triton_vm_tests {
             .iter()
             .map(|leaf| H::hash_pair(&zero_padding, leaf))
             .collect_vec();
-        let merkle_tree: MerkleTree<H, Maker> = Maker::from_digests(&digests);
+        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&digests);
         let root: Digest = merkle_tree.get_root();
 
         // generate program

@@ -356,40 +356,40 @@ mod proof_stream_typed_tests {
     fn enqueue_dequeue_verify_partial_authentication_structure() {
         type H = Tip5;
 
-        let leaf_values: Vec<XFieldElement> = random_elements(256);
-        let leaf_digests = leaf_values.iter().map(H::hash).collect_vec();
-        let merkle_tree: MerkleTree<H, _> = CpuParallel::from_digests(&leaf_digests);
+        let tree_height = 8;
+        let num_leaves = 1 << tree_height;
+        let leaf_values: Vec<XFieldElement> = random_elements(num_leaves);
+        let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
+        let merkle_tree: MerkleTree<H> = CpuParallel::from_digests(&leaf_digests);
         let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
         let authentication_structure = merkle_tree.get_authentication_structure(&indices_to_check);
         let fri_response_content = authentication_structure
-            .iter()
+            .into_iter()
             .zip_eq(indices_to_check.iter())
-            .map(|(path, &idx)| (path.to_owned(), leaf_values[idx]))
+            .map(|(path, &idx)| (path, leaf_values[idx]))
             .collect_vec();
         let fri_response = FriResponse(fri_response_content);
 
         let mut proof_stream = ProofStream::<ProofItem, H>::new();
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response), true);
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response), false);
 
         // TODO: Also check that deserializing from Proof works here.
 
         let maybe_same_fri_response = proof_stream
-            .dequeue(true)
+            .dequeue(false)
             .unwrap()
             .as_fri_response()
             .unwrap();
         let FriResponse(dequeued_paths_and_leafs) = maybe_same_fri_response;
         let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
-        let maybe_same_leaf_digests = leaf_values.iter().map(H::hash).collect_vec();
-        let path_digest_pairs = paths
-            .into_iter()
-            .zip_eq(maybe_same_leaf_digests)
-            .collect_vec();
-        assert_eq!(indices_to_check.len(), path_digest_pairs.len());
-        MerkleTree::<H, CpuParallel>::verify_authentication_structure(
+        let maybe_same_leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
+        let verdict = MerkleTree::<H>::verify_authentication_structure_from_leaves(
             merkle_tree.get_root(),
+            tree_height,
             &indices_to_check,
-            &path_digest_pairs,
+            &maybe_same_leaf_digests,
+            &paths,
         );
+        assert!(verdict);
     }
 }

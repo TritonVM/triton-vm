@@ -491,7 +491,7 @@ impl MasterBaseTable {
     pub fn merkle_tree(
         &self,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> MerkleTree<StarkHasher, CpuParallel> {
+    ) -> MerkleTree<StarkHasher> {
         prof_start!(maybe_profiler, "leafs");
         let hashed_rows = self
             .master_base_matrix
@@ -637,7 +637,7 @@ impl MasterExtTable {
     pub fn merkle_tree(
         &self,
         maybe_profiler: &mut Option<TritonProfiler>,
-    ) -> MerkleTree<StarkHasher, CpuParallel> {
+    ) -> MerkleTree<StarkHasher> {
         prof_start!(maybe_profiler, "leafs");
         let hashed_rows = self
             .master_ext_matrix

@@ -46,7 +46,7 @@ use crate::table::master_table::*;
 use crate::vm::AlgebraicExecutionTrace;
 
 pub type StarkHasher = Tip5;
-pub type Maker = CpuParallel;
+pub type MTMaker = CpuParallel;
 pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
 
 /// All the security-related parameters for the zk-STARK.
@@ -261,8 +261,8 @@ impl Stark {
             .collect_vec();
         prof_stop!(maybe_profiler, "interpret XFEs as Digests");
         prof_start!(maybe_profiler, "Merkle tree", "hash");
-        let quot_merkle_tree: MerkleTree<StarkHasher, _> =
-            Maker::from_digests(&fri_quotient_codeword_digests);
+        let quot_merkle_tree: MerkleTree<StarkHasher> =
+            MTMaker::from_digests(&fri_quotient_codeword_digests);
         let quot_merkle_tree_root = quot_merkle_tree.get_root();
         proof_stream.enqueue(&ProofItem::MerkleRoot(quot_merkle_tree_root), true);
         prof_stop!(maybe_profiler, "Merkle tree");
@@ -577,6 +577,7 @@ impl Stark {
         let max_degree =
             Self::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
+        let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
 
         prof_start!(maybe_profiler, "deserialize");
@@ -719,8 +720,9 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue base elements");
 
         prof_start!(maybe_profiler, "Merkle verify (base tree)", "hash");
-        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             base_merkle_tree_root,
+            merkle_tree_height,
             &revealed_current_row_indices,
             &leaf_digests_base,
             &base_auth_paths,
@@ -747,8 +749,9 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue extension elements");
 
         prof_start!(maybe_profiler, "Merkle verify (extension tree)", "hash");
-        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             extension_tree_merkle_root,
+            merkle_tree_height,
             &revealed_current_row_indices,
             &leaf_digests_ext,
             &auth_paths_ext,
@@ -772,8 +775,9 @@ impl Stark {
         prof_stop!(maybe_profiler, "dequeue quotient elements");
 
         prof_start!(maybe_profiler, "Merkle verify (combined quotient)", "hash");
-        if !MerkleTree::<StarkHasher, Maker>::verify_authentication_structure_from_leaves(
+        if !MerkleTree::<StarkHasher>::verify_authentication_structure_from_leaves(
             quotient_codeword_merkle_root,
+            merkle_tree_height,
             &revealed_current_row_indices,
             &revealed_quotient_digests,
             &revealed_quotient_auth_paths,
