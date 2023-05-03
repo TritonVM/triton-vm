@@ -184,7 +184,7 @@ pub enum ChallengeId {
 }
 
 impl ChallengeId {
-    pub fn index(&self) -> usize {
+    pub const fn index(&self) -> usize {
         *self as usize
     }
 }
@@ -214,6 +214,9 @@ impl Challenges {
     /// - The [`LookupTablePublicTerminal`] is computed from the publicly known and constant
     /// lookup table and the sampled indeterminate [`LookupTablePublicIndeterminate`].
     pub const fn num_challenges_to_sample() -> usize {
+        // When modifying this, be sure to add to the compile-time assertions of the form
+        // `const _: () = assert!(…);`
+        // at the end of this file.
         Self::count() - 3
     }
 
@@ -222,24 +225,7 @@ impl Challenges {
         public_input: &[BFieldElement],
         public_output: &[BFieldElement],
     ) -> Self {
-        assert_eq!(challenges.len(), Self::num_challenges_to_sample());
-
-        // The terminals are computed from the public input and output, and the indeterminates.
-        // Then, the terminals are inserted into the challenges vector.
-        // The indeterminates' positions must not change after they have been used for the first
-        // time. Therefore, the insertion index of the terminals must be greater than the index of
-        // the indeterminates.
-        assert!(StandardInputIndeterminate.index() < StandardInputTerminal.index());
-        assert!(StandardInputIndeterminate.index() < StandardOutputTerminal.index());
-        assert!(StandardInputIndeterminate.index() < LookupTablePublicTerminal.index());
-
-        assert!(StandardOutputIndeterminate.index() < StandardInputTerminal.index());
-        assert!(StandardOutputIndeterminate.index() < StandardOutputTerminal.index());
-        assert!(StandardOutputIndeterminate.index() < LookupTablePublicTerminal.index());
-
-        assert!(LookupTablePublicIndeterminate.index() < StandardInputTerminal.index());
-        assert!(LookupTablePublicIndeterminate.index() < StandardOutputTerminal.index());
-        assert!(LookupTablePublicIndeterminate.index() < LookupTablePublicTerminal.index());
+        assert_eq!(Self::num_challenges_to_sample(), challenges.len());
 
         let input_terminal = EvalArg::compute_terminal(
             public_input,
@@ -260,7 +246,7 @@ impl Challenges {
         challenges.insert(StandardInputTerminal.index(), input_terminal);
         challenges.insert(StandardOutputTerminal.index(), output_terminal);
         challenges.insert(LookupTablePublicTerminal.index(), lookup_terminal);
-        assert_eq!(challenges.len(), Self::count());
+        assert_eq!(Self::count(), challenges.len());
         let challenges = challenges.try_into().unwrap();
 
         Self { challenges }
@@ -278,3 +264,22 @@ impl Challenges {
         self.challenges[id.index()]
     }
 }
+
+// Compile-time assertions.
+//
+// Terminal challenges are computed from public information, such as public input or public output,
+// and other challenges. Because these other challenges are used to compute the terminal
+// challenges, the terminal challenges must be inserted into the challenges vector after the
+// used challenges.
+
+const _: () = assert!(StandardInputIndeterminate.index() < StandardInputTerminal.index());
+const _: () = assert!(StandardInputIndeterminate.index() < StandardOutputTerminal.index());
+const _: () = assert!(StandardInputIndeterminate.index() < LookupTablePublicTerminal.index());
+
+const _: () = assert!(StandardOutputIndeterminate.index() < StandardInputTerminal.index());
+const _: () = assert!(StandardOutputIndeterminate.index() < StandardOutputTerminal.index());
+const _: () = assert!(StandardOutputIndeterminate.index() < LookupTablePublicTerminal.index());
+
+const _: () = assert!(LookupTablePublicIndeterminate.index() < StandardInputTerminal.index());
+const _: () = assert!(LookupTablePublicIndeterminate.index() < StandardOutputTerminal.index());
+const _: () = assert!(LookupTablePublicIndeterminate.index() < LookupTablePublicTerminal.index());
