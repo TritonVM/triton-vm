@@ -1620,48 +1620,6 @@ pub fn derive_domain_generator(domain_length: u64) -> BFieldElement {
 }
 
 /// Primarily for debugging purposes.
-/// Given the global index of some constraint, returns
-/// 1. the type of constraint (initial, consistency, transition, or terminal),
-/// 2. the name of the table that the constraint is in, and
-/// 3. the index within that table.
-pub fn constraint_type_and_index_and_table_name(
-    constraint_idx: usize,
-) -> (&'static str, &'static str, usize) {
-    let initial_section_start = 0;
-    let initial_section_end = initial_section_start + num_all_initial_quotients();
-    let consistency_section_start = initial_section_end;
-    let consistency_section_end = consistency_section_start + num_all_consistency_quotients();
-    let transition_section_start = consistency_section_end;
-    let transition_section_end = transition_section_start + num_all_transition_quotients();
-    let terminal_section_start = transition_section_end;
-    let terminal_section_end = terminal_section_start + num_all_terminal_quotients();
-    assert_eq!(num_all_table_quotients(), terminal_section_end);
-    match constraint_idx {
-        idx if initial_section_start <= idx && idx < initial_section_end => {
-            let section_idx = idx - initial_section_start;
-            let (table_idx, table_name) = initial_constraint_table_idx_and_name(section_idx);
-            ("initial", table_name, table_idx)
-        }
-        idx if consistency_section_start <= idx && idx < consistency_section_end => {
-            let section_idx = idx - consistency_section_start;
-            let (table_idx, table_name) = consistency_constraint_table_idx_and_name(section_idx);
-            ("consistency", table_name, table_idx)
-        }
-        idx if transition_section_start <= idx && idx < transition_section_end => {
-            let section_idx = idx - transition_section_start;
-            let (table_idx, table_name) = transition_constraint_table_idx_and_name(section_idx);
-            ("transition", table_name, table_idx)
-        }
-        idx if terminal_section_start <= idx && idx < terminal_section_end => {
-            let section_idx = idx - terminal_section_start;
-            let (table_idx, table_name) = terminal_constraint_table_idx_and_name(section_idx);
-            ("terminal", table_name, table_idx)
-        }
-        _ => ("unknown", "unknown", 0),
-    }
-}
-
-/// Primarily for debugging purposes.
 /// Given the section index of some initial constraint, returns
 /// 1. the index within the specific table for that constraint, and
 /// 2. the name of that table.
