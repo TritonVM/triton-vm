@@ -1,4 +1,5 @@
 pub mod cascade_table_constraints;
+pub mod cross_table_argument_constraints;
 pub mod hash_table_constraints;
 pub mod jump_stack_table_constraints;
 pub mod lookup_table_constraints;

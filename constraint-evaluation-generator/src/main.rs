@@ -9,6 +9,7 @@ use triton_vm::table::cascade_table::ExtCascadeTable;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
 use triton_vm::table::constraint_circuit::InputIndicator;
+use triton_vm::table::cross_table_argument::GrandCrossTableArg;
 use triton_vm::table::hash_table::ExtHashTable;
 use triton_vm::table::jump_stack_table::ExtJumpStackTable;
 use triton_vm::table::lookup_table::ExtLookupTable;
@@ -119,6 +120,18 @@ fn main() {
     );
     write(&table_name_snake, source_code);
 
+    let table_name_snake = "cross_table_argument";
+    let table_name_camel = "GrandCrossTableArg";
+    let source_code = gen(
+        table_name_snake,
+        table_name_camel,
+        &mut GrandCrossTableArg::ext_initial_constraints_as_circuits(),
+        &mut GrandCrossTableArg::ext_consistency_constraints_as_circuits(),
+        &mut GrandCrossTableArg::ext_transition_constraints_as_circuits(),
+        &mut GrandCrossTableArg::ext_terminal_constraints_as_circuits(),
+    );
+    write(table_name_snake, source_code);
+
     if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
         println!("cargo fmt failed: {fmt_failed}");
     }
@@ -134,7 +147,7 @@ fn construct_needed_table_identifiers(table_name_constituents: &[&str]) -> (Stri
             format!("{first_char_upper}{rest}")
         })
         .collect_vec();
-    let table_name_camel = format!("{}Table", title_case.iter().join(""));
+    let table_name_camel = format!("Ext{}Table", title_case.iter().join(""));
     (table_name_snake, table_name_camel)
 }
 
@@ -147,14 +160,12 @@ fn write(table_name_snake: &str, rust_source_code: String) {
 
 fn gen<SII: InputIndicator, DII: InputIndicator>(
     table_name_snake: &str,
-    table_id_name: &str,
+    table_mod_name: &str,
     initial_constraint_circuits: &mut [ConstraintCircuit<SII>],
     consistency_constraint_circuits: &mut [ConstraintCircuit<SII>],
     transition_constraint_circuits: &mut [ConstraintCircuit<DII>],
     terminal_constraint_circuits: &mut [ConstraintCircuit<SII>],
 ) -> String {
-    let table_mod_name = format!("Ext{table_id_name}");
-
     let num_initial_constraints = initial_constraint_circuits.len();
     let num_consistency_constraints = consistency_constraint_circuits.len();
     let num_transition_constraints = transition_constraint_circuits.len();

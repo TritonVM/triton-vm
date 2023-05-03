@@ -1199,15 +1199,12 @@ pub(crate) mod triton_stark_tests {
                 last_master_ext_row,
                 &all_challenges,
             );
-            assert_eq!(
-                1,
-                evaluated_terminal_constraints.len(),
-                "The number of terminal constraints must be 1 – has the design changed?"
-            );
-            assert!(
-                evaluated_terminal_constraints[0].is_zero(),
-                "The terminal constraint must evaluate to 0 for TASM snippet #{code_idx}."
-            );
+            for (i, evaluation) in evaluated_terminal_constraints.iter().enumerate() {
+                assert!(
+                    evaluation.is_zero(),
+                    "Terminal constraint {i} must evaluate to 0 for snippet #{code_idx}."
+                );
+            }
         }
     }
 

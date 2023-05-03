@@ -2,29 +2,34 @@ use std::ops::Add;
 use std::ops::Mul;
 
 use itertools::Itertools;
-use ndarray::ArrayView1;
 use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId::*;
-use crate::table::challenges::Challenges;
-use crate::table::extension_table::Evaluable;
-use crate::table::extension_table::Quotientable;
+use crate::table::constraint_circuit::ConstraintCircuit;
+use crate::table::constraint_circuit::ConstraintCircuitBuilder;
+use crate::table::constraint_circuit::ConstraintCircuitMonad;
+use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::ExtRow;
 use crate::table::table_column::CascadeExtTableColumn;
 use crate::table::table_column::HashExtTableColumn;
+use crate::table::table_column::HashExtTableColumn::*;
 use crate::table::table_column::JumpStackExtTableColumn;
 use crate::table::table_column::LookupExtTableColumn;
+use crate::table::table_column::LookupExtTableColumn::*;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::OpStackExtTableColumn;
 use crate::table::table_column::ProcessorExtTableColumn;
+use crate::table::table_column::ProcessorExtTableColumn::*;
 use crate::table::table_column::ProgramExtTableColumn;
+use crate::table::table_column::ProgramExtTableColumn::*;
 use crate::table::table_column::RamExtTableColumn;
 use crate::table::table_column::U32ExtTableColumn;
+use crate::table::table_column::U32ExtTableColumn::*;
 
 pub trait CrossTableArg {
     fn default_initial() -> XFieldElement
@@ -127,175 +132,110 @@ impl LookupArg {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct GrandCrossTableArg {}
 
-impl<FF: FiniteField> Evaluable<FF> for GrandCrossTableArg {
-    fn evaluate_initial_constraints(
-        _base_row: ArrayView1<FF>,
-        _ext_row: ArrayView1<XFieldElement>,
-        _challenges: &Challenges,
-    ) -> Vec<XFieldElement> {
+impl GrandCrossTableArg {
+    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        // no further constraints
         vec![]
     }
 
-    fn evaluate_consistency_constraints(
-        _base_row: ArrayView1<FF>,
-        _ext_row: ArrayView1<XFieldElement>,
-        _challenges: &Challenges,
-    ) -> Vec<XFieldElement> {
+    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        // no further constraints
         vec![]
     }
 
-    fn evaluate_transition_constraints(
-        _current_base_row: ArrayView1<FF>,
-        _current_ext_row: ArrayView1<XFieldElement>,
-        _next_base_row: ArrayView1<FF>,
-        _next_ext_row: ArrayView1<XFieldElement>,
-        _challenges: &Challenges,
-    ) -> Vec<XFieldElement> {
+    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
+        // no further constraints
         vec![]
     }
 
-    fn evaluate_terminal_constraints(
-        _base_row: ArrayView1<FF>,
-        ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {
-        let input_to_processor = challenges.get_challenge(StandardInputTerminal)
-            - ext_row[ProcessorExtTableColumn::InputTableEvalArg.master_ext_table_index()];
-        let processor_to_output = ext_row
-            [ProcessorExtTableColumn::OutputTableEvalArg.master_ext_table_index()]
-            - challenges.get_challenge(StandardOutputTerminal);
+    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let challenge = |c| circuit_builder.challenge(c);
+        let ext_row = |col_index| circuit_builder.input(ExtRow(col_index));
 
-        let instruction_lookup = ext_row
-            [ProcessorExtTableColumn::InstructionLookupClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[ProgramExtTableColumn::InstructionLookupServerLogDerivative
-                .master_ext_table_index()];
-        let processor_to_op_stack = ext_row
-            [ProcessorExtTableColumn::OpStackTablePermArg.master_ext_table_index()]
-            - ext_row[OpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()];
-        let processor_to_ram = ext_row
-            [ProcessorExtTableColumn::RamTablePermArg.master_ext_table_index()]
-            - ext_row[RamExtTableColumn::RunningProductPermArg.master_ext_table_index()];
-        let processor_to_jump_stack = ext_row
-            [ProcessorExtTableColumn::JumpStackTablePermArg.master_ext_table_index()]
-            - ext_row[JumpStackExtTableColumn::RunningProductPermArg.master_ext_table_index()];
-        let hash_input = ext_row
-            [ProcessorExtTableColumn::HashInputEvalArg.master_ext_table_index()]
-            - ext_row[HashExtTableColumn::HashInputRunningEvaluation.master_ext_table_index()];
-        let hash_digest = ext_row
-            [HashExtTableColumn::HashDigestRunningEvaluation.master_ext_table_index()]
-            - ext_row[ProcessorExtTableColumn::HashDigestEvalArg.master_ext_table_index()];
-        let sponge = ext_row[ProcessorExtTableColumn::SpongeEvalArg.master_ext_table_index()]
-            - ext_row[HashExtTableColumn::SpongeRunningEvaluation.master_ext_table_index()];
-        let hash_to_cascade = ext_row
-            [CascadeExtTableColumn::HashTableServerLogDerivative.master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState0HighestClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState0MidHighClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState0MidLowClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState0LowestClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState1HighestClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState1MidHighClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState1MidLowClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState1LowestClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState2HighestClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState2MidHighClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState2MidLowClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState2LowestClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState3HighestClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState3MidHighClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState3MidLowClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[HashExtTableColumn::CascadeState3LowestClientLogDerivative
-                .master_ext_table_index()];
-        let cascade_to_lookup = ext_row
-            [CascadeExtTableColumn::LookupTableClientLogDerivative.master_ext_table_index()]
-            - ext_row
-                [LookupExtTableColumn::CascadeTableServerLogDerivative.master_ext_table_index()];
-        let processor_to_u32 = ext_row
-            [ProcessorExtTableColumn::U32LookupClientLogDerivative.master_ext_table_index()]
-            - ext_row[U32ExtTableColumn::LookupServerLogDerivative.master_ext_table_index()];
-        let clock_jump_difference_lookup = ext_row
-            [ProcessorExtTableColumn::ClockJumpDifferenceLookupServerLogDerivative
-                .master_ext_table_index()]
-            - ext_row[OpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[RamExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
-                .master_ext_table_index()]
-            - ext_row[JumpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative
-                .master_ext_table_index()];
+        // Closures cannot take arguments of type `impl Trait`. Hence: some more helpers. \o/
+        let program_ext_row =
+            |column: ProgramExtTableColumn| ext_row(column.master_ext_table_index());
+        let processor_ext_row =
+            |column: ProcessorExtTableColumn| ext_row(column.master_ext_table_index());
+        let op_stack_ext_row =
+            |column: OpStackExtTableColumn| ext_row(column.master_ext_table_index());
+        let ram_ext_row = |column: RamExtTableColumn| ext_row(column.master_ext_table_index());
+        let jump_stack_ext_row =
+            |column: JumpStackExtTableColumn| ext_row(column.master_ext_table_index());
+        let hash_ext_row = |column: HashExtTableColumn| ext_row(column.master_ext_table_index());
+        let cascade_ext_row =
+            |column: CascadeExtTableColumn| ext_row(column.master_ext_table_index());
+        let lookup_ext_row =
+            |column: LookupExtTableColumn| ext_row(column.master_ext_table_index());
+        let u32_ext_row = |column: U32ExtTableColumn| ext_row(column.master_ext_table_index());
 
-        let linear_sum = challenges.get_challenge(ProcessorToProgramWeight) * instruction_lookup
-            + challenges.get_challenge(InputToProcessorWeight) * input_to_processor
-            + challenges.get_challenge(ProcessorToOutputWeight) * processor_to_output
-            + challenges.get_challenge(ProcessorToOpStackWeight) * processor_to_op_stack
-            + challenges.get_challenge(ProcessorToRamWeight) * processor_to_ram
-            + challenges.get_challenge(ProcessorToJumpStackWeight) * processor_to_jump_stack
-            + challenges.get_challenge(HashInputWeight) * hash_input
-            + challenges.get_challenge(HashDigestWeight) * hash_digest
-            + challenges.get_challenge(SpongeWeight) * sponge
-            + challenges.get_challenge(HashToCascadeWeight) * hash_to_cascade
-            + challenges.get_challenge(CascadeToLookupWeight) * cascade_to_lookup
-            + challenges.get_challenge(ProcessorToU32Weight) * processor_to_u32
-            + challenges.get_challenge(ClockJumpDifferenceLookupWeight)
-                * clock_jump_difference_lookup;
-        vec![linear_sum]
-    }
-}
+        let input_to_processor =
+            challenge(StandardInputTerminal) - processor_ext_row(InputTableEvalArg);
+        let processor_to_output =
+            processor_ext_row(OutputTableEvalArg) - challenge(StandardOutputTerminal);
+        let instruction_lookup = processor_ext_row(InstructionLookupClientLogDerivative)
+            - program_ext_row(InstructionLookupServerLogDerivative);
+        let processor_to_op_stack = processor_ext_row(OpStackTablePermArg)
+            - op_stack_ext_row(OpStackExtTableColumn::RunningProductPermArg);
+        let processor_to_ram = processor_ext_row(RamTablePermArg)
+            - ram_ext_row(RamExtTableColumn::RunningProductPermArg);
+        let processor_to_jump_stack = processor_ext_row(JumpStackTablePermArg)
+            - jump_stack_ext_row(JumpStackExtTableColumn::RunningProductPermArg);
+        let hash_input =
+            processor_ext_row(HashInputEvalArg) - hash_ext_row(HashInputRunningEvaluation);
+        let hash_digest =
+            hash_ext_row(HashDigestRunningEvaluation) - processor_ext_row(HashDigestEvalArg);
+        let sponge = processor_ext_row(SpongeEvalArg) - hash_ext_row(SpongeRunningEvaluation);
+        let hash_to_cascade = cascade_ext_row(CascadeExtTableColumn::HashTableServerLogDerivative)
+            - hash_ext_row(CascadeState0HighestClientLogDerivative)
+            - hash_ext_row(CascadeState0MidHighClientLogDerivative)
+            - hash_ext_row(CascadeState0MidLowClientLogDerivative)
+            - hash_ext_row(CascadeState0LowestClientLogDerivative)
+            - hash_ext_row(CascadeState1HighestClientLogDerivative)
+            - hash_ext_row(CascadeState1MidHighClientLogDerivative)
+            - hash_ext_row(CascadeState1MidLowClientLogDerivative)
+            - hash_ext_row(CascadeState1LowestClientLogDerivative)
+            - hash_ext_row(CascadeState2HighestClientLogDerivative)
+            - hash_ext_row(CascadeState2MidHighClientLogDerivative)
+            - hash_ext_row(CascadeState2MidLowClientLogDerivative)
+            - hash_ext_row(CascadeState2LowestClientLogDerivative)
+            - hash_ext_row(CascadeState3HighestClientLogDerivative)
+            - hash_ext_row(CascadeState3MidHighClientLogDerivative)
+            - hash_ext_row(CascadeState3MidLowClientLogDerivative)
+            - hash_ext_row(CascadeState3LowestClientLogDerivative);
+        let cascade_to_lookup =
+            cascade_ext_row(CascadeExtTableColumn::LookupTableClientLogDerivative)
+                - lookup_ext_row(CascadeTableServerLogDerivative);
+        let processor_to_u32 = processor_ext_row(U32LookupClientLogDerivative)
+            - u32_ext_row(LookupServerLogDerivative);
 
-impl Quotientable for GrandCrossTableArg {
-    fn num_initial_quotients() -> usize {
-        0
-    }
+        // Introduce new variable names to increase readability. Potentially opinionated.
+        let processor_cjdld = ClockJumpDifferenceLookupServerLogDerivative;
+        let op_stack_cjdld = OpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative;
+        let ram_cjdld = RamExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative;
+        let j_stack_cjdld = JumpStackExtTableColumn::ClockJumpDifferenceLookupClientLogDerivative;
+        let clock_jump_difference_lookup = processor_ext_row(processor_cjdld)
+            - op_stack_ext_row(op_stack_cjdld)
+            - ram_ext_row(ram_cjdld)
+            - jump_stack_ext_row(j_stack_cjdld);
 
-    fn num_consistency_quotients() -> usize {
-        0
-    }
-
-    fn num_transition_quotients() -> usize {
-        0
-    }
-
-    fn num_terminal_quotients() -> usize {
-        1
-    }
-
-    fn initial_quotient_degree_bounds(_interpolant_degree: Degree) -> Vec<Degree> {
-        vec![]
-    }
-
-    fn consistency_quotient_degree_bounds(
-        _interpolant_degree: Degree,
-        _padded_height: usize,
-    ) -> Vec<Degree> {
-        vec![]
-    }
-
-    fn transition_quotient_degree_bounds(
-        _interpolant_degree: Degree,
-        _padded_height: usize,
-    ) -> Vec<Degree> {
-        vec![]
-    }
-
-    fn terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
-        let zerofier_degree = 1 as Degree;
-        let max_columns_involved_in_one_cross_table_argument = 1;
-        vec![
-            interpolant_degree * max_columns_involved_in_one_cross_table_argument - zerofier_degree,
-        ]
+        let mut constraints = [
+            input_to_processor,
+            processor_to_output,
+            instruction_lookup,
+            processor_to_op_stack,
+            processor_to_ram,
+            processor_to_jump_stack,
+            hash_input,
+            hash_digest,
+            sponge,
+            hash_to_cascade,
+            cascade_to_lookup,
+            processor_to_u32,
+            clock_jump_difference_lookup,
+        ];
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        constraints.map(|circuit| circuit.consume()).to_vec()
     }
 }

@@ -158,20 +158,6 @@ pub enum ChallengeId {
     U32CiWeight,
     U32ResultWeight,
 
-    ProcessorToProgramWeight,
-    InputToProcessorWeight,
-    ProcessorToOutputWeight,
-    ProcessorToOpStackWeight,
-    ProcessorToRamWeight,
-    ProcessorToJumpStackWeight,
-    HashInputWeight,
-    HashDigestWeight,
-    SpongeWeight,
-    HashToCascadeWeight,
-    CascadeToLookupWeight,
-    ProcessorToU32Weight,
-    ClockJumpDifferenceLookupWeight,
-
     /// The terminal for the Evaluation Argument with standard input.
     StandardInputTerminal,
 
