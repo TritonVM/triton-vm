@@ -44,6 +44,7 @@ use crate::table::cascade_table::CascadeTable;
 use crate::table::cascade_table::ExtCascadeTable;
 use crate::table::challenges::Challenges;
 use crate::table::cross_table_argument::GrandCrossTableArg;
+use crate::table::degree_lowering_table::DegreeLoweringTable;
 use crate::table::degree_lowering_table::ExtDegreeLoweringTable;
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::extension_table::Evaluable;
@@ -428,25 +429,17 @@ impl MasterBaseTable {
             master_base_matrix,
         };
 
-        let program_table = &mut master_base_table.table_mut(TableId::ProgramTable);
-        ProgramTable::fill_trace(program_table, aet);
-        let op_stack_table = &mut master_base_table.table_mut(TableId::OpStackTable);
-        let clk_jump_diffs_op_stack = OpStackTable::fill_trace(op_stack_table, aet);
-        let ram_table = &mut master_base_table.table_mut(TableId::RamTable);
-        let clk_jump_diffs_ram = RamTable::fill_trace(ram_table, aet);
-        let jump_stack_table = &mut master_base_table.table_mut(TableId::JumpStackTable);
-        let clk_jump_diffs_jump_stack = JumpStackTable::fill_trace(jump_stack_table, aet);
-        let hash_table = &mut master_base_table.table_mut(TableId::HashTable);
-        HashTable::fill_trace(hash_table, aet);
-        let cascade_table = &mut master_base_table.table_mut(TableId::CascadeTable);
-        CascadeTable::fill_trace(cascade_table, aet);
-        let lookup_table = &mut master_base_table.table_mut(TableId::LookupTable);
-        LookupTable::fill_trace(lookup_table, aet);
-        let u32_table = &mut master_base_table.table_mut(TableId::U32Table);
-        U32Table::fill_trace(u32_table, aet);
-
         // memory-like tables must be filled in before clock jump differences are known, hence
         // the break from the usual order
+        let clk_jump_diffs_op_stack =
+            OpStackTable::fill_trace(&mut master_base_table.table_mut(TableId::OpStackTable), aet);
+        let clk_jump_diffs_ram =
+            RamTable::fill_trace(&mut master_base_table.table_mut(TableId::RamTable), aet);
+        let clk_jump_diffs_jump_stack = JumpStackTable::fill_trace(
+            &mut master_base_table.table_mut(TableId::JumpStackTable),
+            aet,
+        );
+
         let processor_table = &mut master_base_table.table_mut(TableId::ProcessorTable);
         ProcessorTable::fill_trace(
             processor_table,
@@ -455,6 +448,15 @@ impl MasterBaseTable {
             &clk_jump_diffs_ram,
             &clk_jump_diffs_jump_stack,
         );
+
+        ProgramTable::fill_trace(&mut master_base_table.table_mut(TableId::ProgramTable), aet);
+        HashTable::fill_trace(&mut master_base_table.table_mut(TableId::HashTable), aet);
+        CascadeTable::fill_trace(&mut master_base_table.table_mut(TableId::CascadeTable), aet);
+        LookupTable::fill_trace(&mut master_base_table.table_mut(TableId::LookupTable), aet);
+        U32Table::fill_trace(&mut master_base_table.table_mut(TableId::U32Table), aet);
+
+        // Filling the degree-lowering table only makes sense after padding has happened.
+        // Hence, this table is omitted here.
 
         master_base_table
     }
@@ -468,22 +470,34 @@ impl MasterBaseTable {
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
         ProgramTable::pad_trace(program_table, program_len);
+
         let processor_table = &mut self.table_mut(TableId::ProcessorTable);
         ProcessorTable::pad_trace(processor_table, main_execution_len);
+
         let op_stack_table = &mut self.table_mut(TableId::OpStackTable);
         OpStackTable::pad_trace(op_stack_table, main_execution_len);
+
         let ram_table = &mut self.table_mut(TableId::RamTable);
         RamTable::pad_trace(ram_table, main_execution_len);
+
         let jump_stack_table = &mut self.table_mut(TableId::JumpStackTable);
         JumpStackTable::pad_trace(jump_stack_table, main_execution_len);
+
         let hash_table = &mut self.table_mut(TableId::HashTable);
         HashTable::pad_trace(hash_table, hash_coprocessor_execution_len);
+
         let cascade_table = &mut self.table_mut(TableId::CascadeTable);
         CascadeTable::pad_trace(cascade_table, cascade_table_len);
+
         let lookup_table = &mut self.table_mut(TableId::LookupTable);
         LookupTable::pad_trace(lookup_table);
+
         let u32_table = &mut self.table_mut(TableId::U32Table);
         U32Table::pad_trace(u32_table, u32_table_len);
+
+        DegreeLoweringTable::fill_deterministic_base_columns(
+            &mut self.master_base_matrix.view_mut(),
+        );
     }
 
     /// Returns the low-degree extended columns as well as the columns' interpolation polynomials.
@@ -591,6 +605,13 @@ impl MasterBaseTable {
             self.table(TableId::U32Table),
             master_ext_table.table_mut(TableId::U32Table),
             challenges,
+        );
+
+        DegreeLoweringTable::fill_deterministic_ext_columns(
+            self.master_base_matrix.view(),
+            &mut master_ext_table
+                .master_ext_matrix
+                .slice_mut(s![.., 0..NUM_EXT_COLUMNS]),
         );
 
         master_ext_table
