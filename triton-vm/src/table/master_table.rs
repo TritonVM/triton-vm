@@ -32,13 +32,13 @@ use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
-use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use triton_opcodes::instruction::Instruction;
 
 use crate::arithmetic_domain::ArithmeticDomain;
+use crate::stark::MTMaker;
 use crate::stark::StarkHasher;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::cascade_table::ExtCascadeTable;
@@ -488,6 +488,10 @@ impl MasterBaseTable {
         (master_base_table, interpolation_polynomials)
     }
 
+    /// Compute the Merkle tree of the base table. Every row is one leaf in the tree.
+    /// Therefore, constructing the tree is a two-step process:
+    /// 1. Hash each row.
+    /// 1. Construct the tree from the hashed rows.
     pub fn merkle_tree(
         &self,
         maybe_profiler: &mut Option<TritonProfiler>,
@@ -501,10 +505,10 @@ impl MasterBaseTable {
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "leafs");
         prof_start!(maybe_profiler, "Merkle tree");
-        let ret = CpuParallel::from_digests(&hashed_rows);
+        let merkle_tree = MTMaker::from_digests(&hashed_rows);
         prof_stop!(maybe_profiler, "Merkle tree");
 
-        ret
+        merkle_tree
     }
 
     /// Create a `MasterExtTable` from a `MasterBaseTable` by `.extend()`ing each individual base
@@ -654,7 +658,7 @@ impl MasterExtTable {
             .collect::<Vec<_>>();
         prof_stop!(maybe_profiler, "leafs");
         prof_start!(maybe_profiler, "Merkle tree");
-        let ret = CpuParallel::from_digests(&hashed_rows);
+        let ret = MTMaker::from_digests(&hashed_rows);
         prof_stop!(maybe_profiler, "Merkle tree");
 
         ret

@@ -195,12 +195,12 @@ mod proof_stream_typed_tests {
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
-    use twenty_first::util_types::merkle_tree::CpuParallel;
     use twenty_first::util_types::merkle_tree::MerkleTree;
     use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
     use crate::proof_item::FriResponse;
     use crate::proof_item::ProofItem;
+    use crate::stark::MTMaker;
 
     use super::*;
 
@@ -360,7 +360,7 @@ mod proof_stream_typed_tests {
         let num_leaves = 1 << tree_height;
         let leaf_values: Vec<XFieldElement> = random_elements(num_leaves);
         let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
-        let merkle_tree: MerkleTree<H> = CpuParallel::from_digests(&leaf_digests);
+        let merkle_tree: MerkleTree<H> = MTMaker::from_digests(&leaf_digests);
         let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
         let authentication_structure = merkle_tree.get_authentication_structure(&indices_to_check);
         let fri_response_content = authentication_structure

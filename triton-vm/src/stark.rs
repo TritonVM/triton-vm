@@ -46,8 +46,11 @@ use crate::table::master_table::*;
 use crate::vm::AlgebraicExecutionTrace;
 
 pub type StarkHasher = Tip5;
-pub type MTMaker = CpuParallel;
 pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
+
+/// The Merkle tree maker in use. Keeping this as a type alias should make it easier to switch
+/// between different Merkle tree makers.
+pub type MTMaker = CpuParallel;
 
 /// All the security-related parameters for the zk-STARK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
