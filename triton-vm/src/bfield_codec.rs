@@ -8,7 +8,6 @@ use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
-use twenty_first::util_types::algebraic_hasher::Hashable;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 
 /// BFieldCodec
@@ -67,7 +66,7 @@ impl BFieldCodec for Digest {
     }
 
     fn encode(&self) -> Vec<BFieldElement> {
-        self.to_sequence()
+        self.values().to_vec()
     }
 }
 
@@ -355,15 +354,15 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
     fn encode(&self) -> Vec<BFieldElement> {
         let mut str = vec![];
         for pap in self.iter() {
-            let len = pap.0.len();
+            let len = pap.len();
             let mut mask = 0u32;
-            for maybe_digest in pap.0.iter() {
+            for maybe_digest in pap.iter() {
                 mask <<= 1;
                 if maybe_digest.is_some() {
                     mask |= 1;
                 }
             }
-            let mut vector = pap.0.iter().flatten().map(|d| d.to_sequence()).concat();
+            let mut vector = pap.iter().flatten().map(|d| d.encode()).concat();
 
             str.push(BFieldElement::new(
                 2u64 + std::convert::TryInto::<u64>::try_into(vector.len()).unwrap(),
