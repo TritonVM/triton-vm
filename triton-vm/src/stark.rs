@@ -164,7 +164,6 @@ impl Stark {
         prof_stop!(maybe_profiler, "Merkle tree");
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
-        let padded_height = BFieldElement::new(master_base_table.padded_height as u64);
         let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root), true);
         let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
@@ -273,7 +272,7 @@ impl Stark {
         debug_assert_eq!(fri.domain.length, quot_merkle_tree.get_leaf_count());
 
         prof_start!(maybe_profiler, "out-of-domain rows");
-        let trace_domain_generator = derive_domain_generator(padded_height.value());
+        let trace_domain_generator = derive_domain_generator(claim.padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
