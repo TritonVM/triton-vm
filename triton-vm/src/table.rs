@@ -3,6 +3,7 @@ pub mod challenges;
 pub mod constraint_circuit;
 pub mod constraints;
 pub mod cross_table_argument;
+pub mod degree_lowering_table;
 pub mod extension_table;
 pub mod hash_table;
 pub mod jump_stack_table;

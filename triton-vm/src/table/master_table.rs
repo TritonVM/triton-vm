@@ -17,9 +17,6 @@ use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
@@ -36,6 +33,9 @@ use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
 use triton_opcodes::instruction::Instruction;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::stark::MTMaker;
@@ -44,6 +44,7 @@ use crate::table::cascade_table::CascadeTable;
 use crate::table::cascade_table::ExtCascadeTable;
 use crate::table::challenges::Challenges;
 use crate::table::cross_table_argument::GrandCrossTableArg;
+use crate::table::degree_lowering_table::ExtDegreeLoweringTable;
 use crate::table::extension_table::DegreeWithOrigin;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
@@ -76,7 +77,8 @@ pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + hash_table::BASE_WIDTH
     + cascade_table::BASE_WIDTH
     + lookup_table::BASE_WIDTH
-    + u32_table::BASE_WIDTH;
+    + u32_table::BASE_WIDTH
+    + degree_lowering_table::BASE_WIDTH;
 pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
     + processor_table::EXT_WIDTH
     + op_stack_table::EXT_WIDTH
@@ -85,7 +87,8 @@ pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
     + hash_table::EXT_WIDTH
     + cascade_table::EXT_WIDTH
     + lookup_table::EXT_WIDTH
-    + u32_table::EXT_WIDTH;
+    + u32_table::EXT_WIDTH
+    + degree_lowering_table::EXT_WIDTH;
 pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
 
 pub const PROGRAM_TABLE_START: usize = 0;
@@ -106,6 +109,9 @@ pub const LOOKUP_TABLE_START: usize = CASCADE_TABLE_END;
 pub const LOOKUP_TABLE_END: usize = LOOKUP_TABLE_START + lookup_table::BASE_WIDTH;
 pub const U32_TABLE_START: usize = LOOKUP_TABLE_END;
 pub const U32_TABLE_END: usize = U32_TABLE_START + u32_table::BASE_WIDTH;
+pub const DEGREE_LOWERING_TABLE_START: usize = U32_TABLE_END;
+pub const DEGREE_LOWERING_TABLE_END: usize =
+    DEGREE_LOWERING_TABLE_START + degree_lowering_table::BASE_WIDTH;
 
 pub const EXT_PROGRAM_TABLE_START: usize = 0;
 pub const EXT_PROGRAM_TABLE_END: usize = EXT_PROGRAM_TABLE_START + program_table::EXT_WIDTH;
@@ -126,6 +132,9 @@ pub const EXT_LOOKUP_TABLE_START: usize = EXT_CASCADE_TABLE_END;
 pub const EXT_LOOKUP_TABLE_END: usize = EXT_LOOKUP_TABLE_START + lookup_table::EXT_WIDTH;
 pub const EXT_U32_TABLE_START: usize = EXT_LOOKUP_TABLE_END;
 pub const EXT_U32_TABLE_END: usize = EXT_U32_TABLE_START + u32_table::EXT_WIDTH;
+pub const EXT_DEGREE_LOWERING_TABLE_START: usize = EXT_U32_TABLE_END;
+pub const EXT_DEGREE_LOWERING_TABLE_END: usize =
+    EXT_DEGREE_LOWERING_TABLE_START + degree_lowering_table::EXT_WIDTH;
 
 /// A `TableId` uniquely determines one of Triton VM's tables.
 #[derive(Debug, Copy, Clone, Display, EnumCountMacro, EnumIter, PartialEq, Eq, Hash)]
@@ -139,6 +148,7 @@ pub enum TableId {
     CascadeTable,
     LookupTable,
     U32Table,
+    DegreeLoweringTable,
 }
 
 /// A Master Table is, in some sense, a top-level table of Triton VM. It contains all the data
@@ -598,6 +608,7 @@ impl MasterBaseTable {
             CascadeTable => (CASCADE_TABLE_START, CASCADE_TABLE_END),
             LookupTable => (LOOKUP_TABLE_START, LOOKUP_TABLE_END),
             U32Table => (U32_TABLE_START, U32_TABLE_END),
+            DegreeLoweringTable => (DEGREE_LOWERING_TABLE_START, DEGREE_LOWERING_TABLE_END),
         }
     }
 
@@ -676,6 +687,10 @@ impl MasterExtTable {
             CascadeTable => (EXT_CASCADE_TABLE_START, EXT_CASCADE_TABLE_END),
             LookupTable => (EXT_LOOKUP_TABLE_START, EXT_LOOKUP_TABLE_END),
             U32Table => (EXT_U32_TABLE_START, EXT_U32_TABLE_END),
+            DegreeLoweringTable => (
+                EXT_DEGREE_LOWERING_TABLE_START,
+                EXT_DEGREE_LOWERING_TABLE_END,
+            ),
         }
     }
 
@@ -741,6 +756,7 @@ pub fn num_all_initial_quotients() -> usize {
         + ExtCascadeTable::num_initial_quotients()
         + ExtLookupTable::num_initial_quotients()
         + ExtU32Table::num_initial_quotients()
+        + ExtDegreeLoweringTable::num_initial_quotients()
 }
 
 pub fn num_all_consistency_quotients() -> usize {
@@ -753,6 +769,7 @@ pub fn num_all_consistency_quotients() -> usize {
         + ExtCascadeTable::num_consistency_quotients()
         + ExtLookupTable::num_consistency_quotients()
         + ExtU32Table::num_consistency_quotients()
+        + ExtDegreeLoweringTable::num_consistency_quotients()
 }
 
 pub fn num_all_transition_quotients() -> usize {
@@ -765,6 +782,7 @@ pub fn num_all_transition_quotients() -> usize {
         + ExtCascadeTable::num_transition_quotients()
         + ExtLookupTable::num_transition_quotients()
         + ExtU32Table::num_transition_quotients()
+        + ExtDegreeLoweringTable::num_transition_quotients()
 }
 
 pub fn num_all_terminal_quotients() -> usize {
@@ -778,6 +796,7 @@ pub fn num_all_terminal_quotients() -> usize {
         + ExtLookupTable::num_terminal_quotients()
         + ExtU32Table::num_terminal_quotients()
         + GrandCrossTableArg::num_terminal_quotients()
+        + ExtDegreeLoweringTable::num_terminal_quotients()
 }
 
 pub fn all_initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Degree> {
@@ -791,6 +810,7 @@ pub fn all_initial_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<Deg
         ExtCascadeTable::initial_quotient_degree_bounds(interpolant_degree),
         ExtLookupTable::initial_quotient_degree_bounds(interpolant_degree),
         ExtU32Table::initial_quotient_degree_bounds(interpolant_degree),
+        ExtDegreeLoweringTable::initial_quotient_degree_bounds(interpolant_degree),
     ]
     .concat()
 }
@@ -809,6 +829,10 @@ pub fn all_consistency_quotient_degree_bounds(
         ExtCascadeTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtLookupTable::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtU32Table::consistency_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtDegreeLoweringTable::consistency_quotient_degree_bounds(
+            interpolant_degree,
+            padded_height,
+        ),
     ]
     .concat()
 }
@@ -827,6 +851,10 @@ pub fn all_transition_quotient_degree_bounds(
         ExtCascadeTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtLookupTable::transition_quotient_degree_bounds(interpolant_degree, padded_height),
         ExtU32Table::transition_quotient_degree_bounds(interpolant_degree, padded_height),
+        ExtDegreeLoweringTable::transition_quotient_degree_bounds(
+            interpolant_degree,
+            padded_height,
+        ),
     ]
     .concat()
 }
@@ -842,6 +870,7 @@ pub fn all_terminal_quotient_degree_bounds(interpolant_degree: Degree) -> Vec<De
         ExtCascadeTable::terminal_quotient_degree_bounds(interpolant_degree),
         ExtLookupTable::terminal_quotient_degree_bounds(interpolant_degree),
         ExtU32Table::terminal_quotient_degree_bounds(interpolant_degree),
+        ExtDegreeLoweringTable::terminal_quotient_degree_bounds(interpolant_degree),
         GrandCrossTableArg::terminal_quotient_degree_bounds(interpolant_degree),
     ]
     .concat()
@@ -947,6 +976,9 @@ pub fn fill_all_initial_quotients(
     let lookup_section_end = lookup_section_start + ExtLookupTable::num_initial_quotients();
     let u32_section_start = lookup_section_end;
     let u32_section_end = u32_section_start + ExtU32Table::num_initial_quotients();
+    let degree_lowering_section_start = u32_section_end;
+    let degree_lowering_section_end =
+        degree_lowering_section_start + ExtDegreeLoweringTable::num_initial_quotients();
 
     let mut program_quot_table =
         quot_table.slice_mut(s![.., program_section_start..program_section_end]);
@@ -1026,6 +1058,17 @@ pub fn fill_all_initial_quotients(
         zerofier_inverse,
         challenges,
     );
+    let mut degree_lowering_quot_table = quot_table.slice_mut(s![
+        ..,
+        degree_lowering_section_start..degree_lowering_section_end
+    ]);
+    ExtDegreeLoweringTable::fill_initial_quotients(
+        master_base_table,
+        master_ext_table,
+        &mut degree_lowering_quot_table,
+        zerofier_inverse,
+        challenges,
+    );
 }
 
 pub fn fill_all_consistency_quotients(
@@ -1058,6 +1101,9 @@ pub fn fill_all_consistency_quotients(
     let lookup_section_end = lookup_section_start + ExtLookupTable::num_consistency_quotients();
     let u32_section_start = lookup_section_end;
     let u32_section_end = u32_section_start + ExtU32Table::num_consistency_quotients();
+    let degree_lowering_section_start = u32_section_end;
+    let degree_lowering_section_end =
+        degree_lowering_section_start + ExtDegreeLoweringTable::num_consistency_quotients();
 
     let mut program_quot_table =
         quot_table.slice_mut(s![.., program_section_start..program_section_end]);
@@ -1137,6 +1183,17 @@ pub fn fill_all_consistency_quotients(
         zerofier_inverse,
         challenges,
     );
+    let mut degree_lowering_quot_table = quot_table.slice_mut(s![
+        ..,
+        degree_lowering_section_start..degree_lowering_section_end
+    ]);
+    ExtDegreeLoweringTable::fill_consistency_quotients(
+        master_base_table,
+        master_ext_table,
+        &mut degree_lowering_quot_table,
+        zerofier_inverse,
+        challenges,
+    );
 }
 
 pub fn fill_all_transition_quotients(
@@ -1170,6 +1227,9 @@ pub fn fill_all_transition_quotients(
     let lookup_section_end = lookup_section_start + ExtLookupTable::num_transition_quotients();
     let u32_section_start = lookup_section_end;
     let u32_section_end = u32_section_start + ExtU32Table::num_transition_quotients();
+    let degree_lowering_section_start = u32_section_end;
+    let degree_lowering_section_end =
+        degree_lowering_section_start + ExtDegreeLoweringTable::num_transition_quotients();
 
     let mut program_quot_table =
         quot_table.slice_mut(s![.., program_section_start..program_section_end]);
@@ -1267,6 +1327,19 @@ pub fn fill_all_transition_quotients(
         trace_domain,
         quotient_domain,
     );
+    let mut degree_lowering_quot_table = quot_table.slice_mut(s![
+        ..,
+        degree_lowering_section_start..degree_lowering_section_end
+    ]);
+    ExtDegreeLoweringTable::fill_transition_quotients(
+        master_base_table,
+        master_ext_table,
+        &mut degree_lowering_quot_table,
+        zerofier_inverse,
+        challenges,
+        trace_domain,
+        quotient_domain,
+    );
 }
 
 pub fn fill_all_terminal_quotients(
@@ -1298,7 +1371,10 @@ pub fn fill_all_terminal_quotients(
     let lookup_section_end = lookup_section_start + ExtLookupTable::num_terminal_quotients();
     let u32_section_start = lookup_section_end;
     let u32_section_end = u32_section_start + ExtU32Table::num_terminal_quotients();
-    let cross_table_section_start = u32_section_end;
+    let degree_lowering_section_start = u32_section_end;
+    let degree_lowering_section_end =
+        degree_lowering_section_start + ExtDegreeLoweringTable::num_terminal_quotients();
+    let cross_table_section_start = degree_lowering_section_end;
     let cross_table_section_end =
         cross_table_section_start + GrandCrossTableArg::num_terminal_quotients();
 
@@ -1377,6 +1453,17 @@ pub fn fill_all_terminal_quotients(
         master_base_table,
         master_ext_table,
         &mut u32_quot_table,
+        zerofier_inverse,
+        challenges,
+    );
+    let mut degree_lowering_quot_table = quot_table.slice_mut(s![
+        ..,
+        degree_lowering_section_start..degree_lowering_section_end
+    ]);
+    ExtDegreeLoweringTable::fill_terminal_quotients(
+        master_base_table,
+        master_ext_table,
+        &mut degree_lowering_quot_table,
         zerofier_inverse,
         challenges,
     );
@@ -1517,6 +1604,7 @@ pub fn evaluate_all_initial_constraints(
         ExtCascadeTable::evaluate_initial_constraints(base_row, ext_row, challenges),
         ExtLookupTable::evaluate_initial_constraints(base_row, ext_row, challenges),
         ExtU32Table::evaluate_initial_constraints(base_row, ext_row, challenges),
+        ExtDegreeLoweringTable::evaluate_initial_constraints(base_row, ext_row, challenges),
     ]
     .concat()
 }
@@ -1536,6 +1624,7 @@ pub fn evaluate_all_consistency_constraints(
         ExtCascadeTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
         ExtLookupTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
         ExtU32Table::evaluate_consistency_constraints(base_row, ext_row, challenges),
+        ExtDegreeLoweringTable::evaluate_consistency_constraints(base_row, ext_row, challenges),
     ]
     .concat()
 }
@@ -1561,6 +1650,7 @@ pub fn evaluate_all_transition_constraints(
         ExtCascadeTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
         ExtLookupTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
         ExtU32Table::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
+        ExtDegreeLoweringTable::evaluate_transition_constraints(cbr, cer, nbr, ner, challenges),
     ]
     .concat()
 }
@@ -1580,6 +1670,7 @@ pub fn evaluate_all_terminal_constraints(
         ExtCascadeTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtLookupTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         ExtU32Table::evaluate_terminal_constraints(base_row, ext_row, challenges),
+        ExtDegreeLoweringTable::evaluate_terminal_constraints(base_row, ext_row, challenges),
         GrandCrossTableArg::evaluate_terminal_constraints(base_row, ext_row, challenges),
     ]
     .concat()
@@ -1646,7 +1737,10 @@ pub fn initial_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &
     let lookup_end = lookup_start + ExtLookupTable::num_initial_quotients();
     let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_initial_quotients();
-    assert_eq!(num_all_initial_quotients(), u32_end);
+    let degree_lowering_start = u32_end;
+    let degree_lowering_end =
+        degree_lowering_start + ExtDegreeLoweringTable::num_initial_quotients();
+    assert_eq!(num_all_initial_quotients(), degree_lowering_end);
     match constraint_idx {
         i if program_start <= i && i < program_end => (i - program_start, "Program"),
         i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
@@ -1657,6 +1751,9 @@ pub fn initial_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, &
         i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
         i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+        i if degree_lowering_start <= i && i < degree_lowering_end => {
+            (i - degree_lowering_start, "DegreeLowering")
+        }
         _ => (0, "Unknown"),
     }
 }
@@ -1684,7 +1781,10 @@ pub fn consistency_constraint_table_idx_and_name(constraint_idx: usize) -> (usiz
     let lookup_end = lookup_start + ExtLookupTable::num_consistency_quotients();
     let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_consistency_quotients();
-    assert_eq!(num_all_consistency_quotients(), u32_end);
+    let degree_lowering_start = u32_end;
+    let degree_lowering_end =
+        degree_lowering_start + ExtDegreeLoweringTable::num_consistency_quotients();
+    assert_eq!(num_all_consistency_quotients(), degree_lowering_end);
     match constraint_idx {
         i if program_start <= i && i < program_end => (i - program_start, "Program"),
         i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
@@ -1695,6 +1795,9 @@ pub fn consistency_constraint_table_idx_and_name(constraint_idx: usize) -> (usiz
         i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
         i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+        i if degree_lowering_start <= i && i < degree_lowering_end => {
+            (i - degree_lowering_start, "DegreeLowering")
+        }
         _ => (0, "Unknown"),
     }
 }
@@ -1722,7 +1825,10 @@ pub fn transition_constraint_table_idx_and_name(constraint_idx: usize) -> (usize
     let lookup_end = lookup_start + ExtLookupTable::num_transition_quotients();
     let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_transition_quotients();
-    assert_eq!(num_all_transition_quotients(), u32_end);
+    let degree_lowering_start = u32_end;
+    let degree_lowering_end =
+        degree_lowering_start + ExtDegreeLoweringTable::num_transition_quotients();
+    assert_eq!(num_all_transition_quotients(), degree_lowering_end);
     match constraint_idx {
         i if program_start <= i && i < program_end => (i - program_start, "Program"),
         i if processor_start <= i && i < processor_end => (i - processor_start, "Processor"),
@@ -1733,6 +1839,9 @@ pub fn transition_constraint_table_idx_and_name(constraint_idx: usize) -> (usize
         i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
         i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+        i if degree_lowering_start <= i && i < degree_lowering_end => {
+            (i - degree_lowering_start, "DegreeLowering")
+        }
         _ => (0, "Unknown"),
     }
 }
@@ -1760,7 +1869,10 @@ pub fn terminal_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, 
     let lookup_end = lookup_start + ExtLookupTable::num_terminal_quotients();
     let u32_start = lookup_end;
     let u32_end = u32_start + ExtU32Table::num_terminal_quotients();
-    let cross_table_start = u32_end;
+    let degree_lowering_start = u32_end;
+    let degree_lowering_end =
+        degree_lowering_start + ExtDegreeLoweringTable::num_terminal_quotients();
+    let cross_table_start = degree_lowering_end;
     let cross_table_end = cross_table_start + GrandCrossTableArg::num_terminal_quotients();
     assert_eq!(num_all_terminal_quotients(), cross_table_end);
     match constraint_idx {
@@ -1773,6 +1885,9 @@ pub fn terminal_constraint_table_idx_and_name(constraint_idx: usize) -> (usize, 
         i if cascade_start <= i && i < cascade_end => (i - cascade_start, "Cascade"),
         i if lookup_start <= i && i < lookup_end => (i - lookup_start, "Lookup"),
         i if u32_start <= i && i < u32_end => (i - u32_start, "U32"),
+        i if degree_lowering_start <= i && i < degree_lowering_end => {
+            (i - degree_lowering_start, "DegreeLowering")
+        }
         i if cross_table_start <= i && i < cross_table_end => {
             (i - cross_table_start, "GrandCrossTableArgument")
         }
@@ -1792,6 +1907,9 @@ mod master_table_tests {
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
     use crate::table::cascade_table;
+    use crate::table::degree_lowering_table;
+    use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
+    use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
     use crate::table::hash_table;
     use crate::table::jump_stack_table;
     use crate::table::lookup_table;
@@ -1800,7 +1918,7 @@ mod master_table_tests {
     use crate::table::master_table::terminal_quotient_zerofier_inverse;
     use crate::table::master_table::transition_quotient_zerofier_inverse;
     use crate::table::master_table::TableId::*;
-    use crate::table::master_table::EXT_U32_TABLE_END;
+    use crate::table::master_table::EXT_DEGREE_LOWERING_TABLE_END;
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -1870,6 +1988,10 @@ mod master_table_tests {
             u32_table::BASE_WIDTH,
             master_base_table.table(U32Table).ncols()
         );
+        assert_eq!(
+            degree_lowering_table::BASE_WIDTH,
+            master_base_table.table(DegreeLoweringTable).ncols()
+        );
     }
 
     #[test]
@@ -1913,12 +2035,16 @@ mod master_table_tests {
             u32_table::EXT_WIDTH,
             master_ext_table.table(U32Table).ncols()
         );
+        assert_eq!(
+            degree_lowering_table::EXT_WIDTH,
+            master_ext_table.table(DegreeLoweringTable).ncols()
+        );
         // use some domain-specific knowledge to also check for the randomizer columns
         assert_eq!(
             parameters.num_randomizer_polynomials,
             master_ext_table
                 .master_ext_matrix
-                .slice(s![.., EXT_U32_TABLE_END..])
+                .slice(s![.., EXT_DEGREE_LOWERING_TABLE_END..])
                 .ncols()
         );
     }
@@ -2045,6 +2171,13 @@ mod master_table_tests {
             u32_table::EXT_WIDTH,
             u32_table::FULL_WIDTH
         );
+        println!(
+            "| {:<18} | {:>10} | {:>9} | {:>10} |",
+            "DegreeLowering",
+            degree_lowering_table::BASE_WIDTH,
+            degree_lowering_table::EXT_WIDTH,
+            degree_lowering_table::FULL_WIDTH,
+        );
         println!("|                    |            |           |            |");
         println!(
             "| Sum                | {NUM_BASE_COLUMNS:>10} \
@@ -2112,6 +2245,12 @@ mod master_table_tests {
                 column.master_base_table_index()
             );
         }
+        for column in DegreeLoweringBaseTableColumn::iter() {
+            println!(
+                "{:>3} | degree low. | {column}",
+                column.master_base_table_index()
+            );
+        }
         println!();
         println!("idx | table       | extension column");
         println!("---:|:------------|:----------------");
@@ -2166,6 +2305,12 @@ mod master_table_tests {
         for column in U32ExtTableColumn::iter() {
             println!(
                 "{:>3} | u32         | {column}",
+                column.master_ext_table_index()
+            );
+        }
+        for column in DegreeLoweringExtTableColumn::iter() {
+            println!(
+                "{:>3} | degree low. | {column}",
                 column.master_ext_table_index()
             );
         }

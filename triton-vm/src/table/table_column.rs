@@ -7,8 +7,12 @@ use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
 
+use crate::table::degree_lowering_table::DegreeLoweringBaseTableColumn;
+use crate::table::degree_lowering_table::DegreeLoweringExtTableColumn;
 use crate::table::master_table::CASCADE_TABLE_START;
+use crate::table::master_table::DEGREE_LOWERING_TABLE_START;
 use crate::table::master_table::EXT_CASCADE_TABLE_START;
+use crate::table::master_table::EXT_DEGREE_LOWERING_TABLE_START;
 use crate::table::master_table::EXT_HASH_TABLE_START;
 use crate::table::master_table::EXT_JUMP_STACK_TABLE_START;
 use crate::table::master_table::EXT_LOOKUP_TABLE_START;
@@ -534,6 +538,18 @@ impl MasterBaseTableColumn for U32BaseTableColumn {
     }
 }
 
+impl MasterBaseTableColumn for DegreeLoweringBaseTableColumn {
+    #[inline]
+    fn base_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
+    fn master_base_table_index(&self) -> usize {
+        DEGREE_LOWERING_TABLE_START + self.base_table_index()
+    }
+}
+
 // --------------------------------------------------------------------
 
 /// A trait for the columns in the master extension table. This trait is implemented for all enums
@@ -658,6 +674,18 @@ impl MasterExtTableColumn for U32ExtTableColumn {
     }
 }
 
+impl MasterExtTableColumn for DegreeLoweringExtTableColumn {
+    #[inline]
+    fn ext_table_index(&self) -> usize {
+        (*self) as usize
+    }
+
+    #[inline]
+    fn master_ext_table_index(&self) -> usize {
+        EXT_DEGREE_LOWERING_TABLE_START + self.ext_table_index()
+    }
+}
+
 // --------------------------------------------------------------------
 
 #[cfg(test)]
@@ -665,6 +693,7 @@ mod table_column_tests {
     use strum::IntoEnumIterator;
 
     use crate::table::cascade_table;
+    use crate::table::degree_lowering_table;
     use crate::table::hash_table;
     use crate::table::jump_stack_table;
     use crate::table::lookup_table;
@@ -759,6 +788,15 @@ mod table_column_tests {
                 + 1,
             "U32Table's BASE_WIDTH is 1 + its max column index",
         );
+        assert_eq!(
+            degree_lowering_table::BASE_WIDTH,
+            DegreeLoweringBaseTableColumn::iter()
+                .last()
+                .unwrap()
+                .base_table_index()
+                + 1,
+            "DegreeLoweringTable's BASE_WIDTH is 1 + its max column index",
+        );
 
         assert_eq!(
             program_table::EXT_WIDTH,
@@ -829,6 +867,15 @@ mod table_column_tests {
             U32ExtTableColumn::iter().last().unwrap().ext_table_index() + 1,
             "U32Table's EXT_WIDTH is 1 + its max column index",
         );
+        assert_eq!(
+            degree_lowering_table::EXT_WIDTH,
+            DegreeLoweringExtTableColumn::iter()
+                .last()
+                .unwrap()
+                .ext_table_index()
+                + 1,
+            "DegreeLoweringTable's EXT_WIDTH is 1 + its max column index",
+        );
     }
 
     #[test]
@@ -870,6 +917,10 @@ mod table_column_tests {
             assert_eq!(expected_column_index, column.master_base_table_index());
             expected_column_index += 1;
         }
+        for column in DegreeLoweringBaseTableColumn::iter() {
+            assert_eq!(expected_column_index, column.master_base_table_index());
+            expected_column_index += 1;
+        }
     }
 
     #[test]
@@ -908,6 +959,10 @@ mod table_column_tests {
             expected_column_index += 1;
         }
         for column in U32ExtTableColumn::iter() {
+            assert_eq!(expected_column_index, column.master_ext_table_index());
+            expected_column_index += 1;
+        }
+        for column in DegreeLoweringExtTableColumn::iter() {
             assert_eq!(expected_column_index, column.master_ext_table_index());
             expected_column_index += 1;
         }
