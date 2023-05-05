@@ -11,7 +11,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -40,9 +39,9 @@ pub struct ProgramTable {}
 pub struct ExtProgramTable {}
 
 impl ExtProgramTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn ext_initial_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let address = circuit_builder.input(BaseRow(Address.master_base_table_index()));
         let instruction_lookup_log_derivative = circuit_builder.input(ExtRow(
             InstructionLookupServerLogDerivative.master_ext_table_index(),
@@ -54,29 +53,26 @@ impl ExtProgramTable {
             instruction_lookup_log_derivative
                 - circuit_builder.x_constant(LookupArg::default_initial());
 
-        let mut constraints = [
+        vec![
             first_address_is_zero,
             instruction_lookup_log_derivative_is_initialized_correctly,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_consistency_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let one = circuit_builder.b_constant(1_u32.into());
 
         let is_padding = circuit_builder.input(BaseRow(IsPadding.master_base_table_index()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
-        let mut constraints = [is_padding_is_bit];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![is_padding_is_bit]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_transition_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(1u32.into());
         let address = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
         let instruction =
@@ -114,16 +110,16 @@ impl ExtProgramTable {
             * log_derivative_updates
             + is_padding * log_derivative_remains;
 
-        let mut constraints = [
+        vec![
             address_increases_by_one,
             is_padding_is_0_or_remains_unchanged,
             log_derivative_updates_if_and_only_if_not_a_padding_row,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn ext_terminal_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }

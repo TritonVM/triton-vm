@@ -24,7 +24,6 @@ use triton_opcodes::instruction::Instruction;
 use crate::table::cascade_table::CascadeTable;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -81,8 +80,9 @@ impl ExtHashTable {
             * capital_r_inv
     }
 
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_initial_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         let b_constant = |c| circuit_builder.b_constant(c);
@@ -105,28 +105,28 @@ impl ExtHashTable {
         let one = constant(1);
 
         let state_0 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             base_row(State0HighestLkIn),
             base_row(State0MidHighLkIn),
             base_row(State0MidLowLkIn),
             base_row(State0LowestLkIn),
         );
         let state_1 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             base_row(State1HighestLkIn),
             base_row(State1MidHighLkIn),
             base_row(State1MidLowLkIn),
             base_row(State1LowestLkIn),
         );
         let state_2 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             base_row(State2HighestLkIn),
             base_row(State2MidHighLkIn),
             base_row(State2MidLowLkIn),
             base_row(State2LowestLkIn),
         );
         let state_3 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             base_row(State3HighestLkIn),
             base_row(State3MidHighLkIn),
             base_row(State3MidLowLkIn),
@@ -212,12 +212,8 @@ impl ExtHashTable {
             running_evaluation_sponge_absorb_is_initialized_correctly,
         ];
         constraints
-            .append(&mut Self::all_cascade_log_derivative_init_circuits(&circuit_builder).to_vec());
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
+            .append(&mut Self::all_cascade_log_derivative_init_circuits(circuit_builder).to_vec());
         constraints
-            .into_iter()
-            .map(|circuit| circuit.consume())
-            .collect()
     }
 
     fn round_number_deselector<II: InputIndicator>(
@@ -384,8 +380,9 @@ impl ExtHashTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_consistency_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         let base_row = |column_id: HashBaseTableColumn| {
             circuit_builder.input(BaseRow(column_id.master_base_table_index()))
@@ -406,9 +403,9 @@ impl ExtHashTable {
         let ci_is_squeeze = ci - constant(Instruction::Squeeze.opcode() as u64);
 
         let round_number_is_not_neg_1 =
-            Self::round_number_deselector(&circuit_builder, &round_number, -1);
+            Self::round_number_deselector(circuit_builder, &round_number, -1);
         let round_number_is_not_0 =
-            Self::round_number_deselector(&circuit_builder, &round_number, 0);
+            Self::round_number_deselector(circuit_builder, &round_number, 0);
 
         let if_padding_row_then_ci_is_hash = round_number_is_not_neg_1 * ci_is_hash.clone();
 
@@ -554,7 +551,7 @@ impl ExtHashTable {
                 let round_constant_for_current_row =
                     circuit_builder.b_constant(ROUND_CONSTANTS[round_constant_idx_for_current_row]);
                 let round_deselector_circuit = Self::round_number_deselector(
-                    &circuit_builder,
+                    circuit_builder,
                     &round_number,
                     round_idx as isize,
                 );
@@ -565,11 +562,7 @@ impl ExtHashTable {
             constraints.push(round_constant_constraint_circuit);
         }
 
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
         constraints
-            .into_iter()
-            .map(|circuit| circuit.consume())
-            .collect()
     }
 
     fn round_constant_column_by_index(index: usize) -> HashBaseTableColumn {
@@ -594,8 +587,9 @@ impl ExtHashTable {
         }
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_transition_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         let b_constant = |c| circuit_builder.b_constant(c);
@@ -635,28 +629,28 @@ impl ExtHashTable {
         let running_evaluation_sponge_next = next_ext_row(SpongeRunningEvaluation);
 
         let state_0 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             current_base_row(State0HighestLkIn),
             current_base_row(State0MidHighLkIn),
             current_base_row(State0MidLowLkIn),
             current_base_row(State0LowestLkIn),
         );
         let state_1 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             current_base_row(State1HighestLkIn),
             current_base_row(State1MidHighLkIn),
             current_base_row(State1MidLowLkIn),
             current_base_row(State1LowestLkIn),
         );
         let state_2 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             current_base_row(State2HighestLkIn),
             current_base_row(State2MidHighLkIn),
             current_base_row(State2MidLowLkIn),
             current_base_row(State2LowestLkIn),
         );
         let state_3 = Self::re_compose_16_bit_limbs(
-            &circuit_builder,
+            circuit_builder,
             current_base_row(State3HighestLkIn),
             current_base_row(State3MidHighLkIn),
             current_base_row(State3MidLowLkIn),
@@ -683,7 +677,7 @@ impl ExtHashTable {
         ];
 
         let (state_next, hash_function_round_correctly_performs_update) =
-            Self::tip5_constraints_as_circuits(&circuit_builder);
+            Self::tip5_constraints_as_circuits(circuit_builder);
 
         let state_weights = [
             HashStateWeight0,
@@ -711,9 +705,9 @@ impl ExtHashTable {
         // -1 -> -1
 
         let round_number_is_not_neg_1 =
-            Self::round_number_deselector(&circuit_builder, &round_number, -1);
+            Self::round_number_deselector(circuit_builder, &round_number, -1);
         let round_number_is_not_5 =
-            Self::round_number_deselector(&circuit_builder, &round_number, 5);
+            Self::round_number_deselector(circuit_builder, &round_number, 5);
 
         let round_number_is_0_through_5_or_round_number_next_is_neg_1 =
             round_number_is_not_neg_1 * (round_number_next.clone() + constant(1));
@@ -737,7 +731,7 @@ impl ExtHashTable {
 
         // copy capacity between rounds with index 5 and 0 if instruction is “absorb”
         let round_number_next_is_not_0 =
-            Self::round_number_deselector(&circuit_builder, &round_number_next, 0);
+            Self::round_number_deselector(circuit_builder, &round_number_next, 0);
         let round_number_next_is_0 = round_number_next.clone();
 
         let difference_of_capacity_registers = state_current[RATE..]
@@ -803,11 +797,8 @@ impl ExtHashTable {
         // If (and only if) the row number in the next row is 5 and the current instruction in
         // the next row corresponds to `hash`, update running evaluation “hash digest.”
         let round_number_next_is_5 = round_number_next.clone() - constant(NUM_ROUNDS as u64);
-        let round_number_next_is_not_5 = Self::round_number_deselector(
-            &circuit_builder,
-            &round_number_next,
-            NUM_ROUNDS as isize,
-        );
+        let round_number_next_is_not_5 =
+            Self::round_number_deselector(circuit_builder, &round_number_next, NUM_ROUNDS as isize);
         let running_evaluation_hash_digest_remains =
             running_evaluation_hash_digest_next.clone() - running_evaluation_hash_digest.clone();
         let hash_digest = state_next[..DIGEST_LENGTH].to_owned();
@@ -855,7 +846,7 @@ impl ExtHashTable {
                 + if_round_no_next_is_not_0_then_running_evaluation_sponge_absorb_remains
                 + if_ci_next_is_not_spongy_then_running_evaluation_sponge_absorb_remains;
 
-        let mut constraints = [
+        [
             vec![
                 round_number_is_0_through_5_or_round_number_next_is_neg_1,
                 round_number_is_neg_1_through_4_or_round_number_next_is_0_or_neg_1,
@@ -871,15 +862,9 @@ impl ExtHashTable {
                 running_evaluation_hash_digest_is_updated_correctly,
                 running_evaluation_sponge_is_updated_correctly,
             ],
-            Self::all_cascade_log_derivative_update_circuits(&circuit_builder).to_vec(),
+            Self::all_cascade_log_derivative_update_circuits(circuit_builder).to_vec(),
         ]
-        .concat();
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints
-            .into_iter()
-            .map(|circuit| circuit.consume())
-            .collect()
+        .concat()
     }
 
     fn tip5_constraints_as_circuits(
@@ -1207,7 +1192,9 @@ impl ExtHashTable {
         ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn ext_terminal_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no more constraints
         vec![]
     }

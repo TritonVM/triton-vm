@@ -15,7 +15,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::op_stack::OP_STACK_REG_COUNT;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -46,9 +45,9 @@ pub struct OpStackTable {}
 pub struct ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn ext_initial_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
         let ib1 = circuit_builder.input(BaseRow(IB1ShrinkStack.master_base_table_index()));
         let osp = circuit_builder.input(BaseRow(OSP.master_base_table_index()));
@@ -74,24 +73,25 @@ impl ExtOpStackTable {
         let clock_jump_diff_log_derivative_is_initialized_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 
-        let mut constraints = [
+        vec![
             clk_is_0,
             osv_is_0,
             osp_is_16,
             rppa_starts_correctly,
             clock_jump_diff_log_derivative_is_initialized_correctly,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn ext_consistency_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::<DualRowIndicator>::new();
+    pub fn ext_transition_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(1u32.into());
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
@@ -156,18 +156,17 @@ impl ExtOpStackTable {
             * log_derivative_accumulates
             + (osp_next - osp) * log_derivative_remains;
 
-        let mut constraints = [
+        vec![
             osp_increases_by_1_or_does_not_change,
             osp_increases_by_1_or_osv_does_not_change_or_shrink_stack,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn ext_terminal_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }

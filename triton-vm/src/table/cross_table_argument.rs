@@ -9,7 +9,6 @@ use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId::*;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -133,23 +132,30 @@ impl LookupArg {
 pub struct GrandCrossTableArg {}
 
 impl GrandCrossTableArg {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn ext_initial_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn ext_consistency_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
+    pub fn ext_transition_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_terminal_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let ext_row = |col_index| circuit_builder.input(ExtRow(col_index));
 
@@ -220,7 +226,7 @@ impl GrandCrossTableArg {
             - ram_ext_row(ram_cjdld)
             - jump_stack_ext_row(j_stack_cjdld);
 
-        let mut constraints = [
+        vec![
             input_to_processor,
             processor_to_output,
             instruction_lookup,
@@ -234,8 +240,6 @@ impl GrandCrossTableArg {
             cascade_to_lookup,
             processor_to_u32,
             clock_jump_difference_lookup,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 }

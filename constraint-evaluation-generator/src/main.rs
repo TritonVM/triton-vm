@@ -8,6 +8,8 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use triton_vm::table::cascade_table::ExtCascadeTable;
 use triton_vm::table::constraint_circuit::CircuitExpression;
 use triton_vm::table::constraint_circuit::ConstraintCircuit;
+use triton_vm::table::constraint_circuit::ConstraintCircuitBuilder;
+use triton_vm::table::constraint_circuit::ConstraintCircuitMonad;
 use triton_vm::table::constraint_circuit::InputIndicator;
 use triton_vm::table::cross_table_argument::GrandCrossTableArg;
 use triton_vm::table::hash_table::ExtHashTable;
@@ -24,10 +26,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtProgramTable::ext_initial_constraints_as_circuits(),
-        &mut ExtProgramTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtProgramTable::ext_transition_constraints_as_circuits(),
-        &mut ExtProgramTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtProgramTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProgramTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProgramTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProgramTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -46,10 +48,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtOpStackTable::ext_initial_constraints_as_circuits(),
-        &mut ExtOpStackTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtOpStackTable::ext_transition_constraints_as_circuits(),
-        &mut ExtOpStackTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtOpStackTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtOpStackTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtOpStackTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtOpStackTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -57,10 +59,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtRamTable::ext_initial_constraints_as_circuits(),
-        &mut ExtRamTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtRamTable::ext_transition_constraints_as_circuits(),
-        &mut ExtRamTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtRamTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtRamTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtRamTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtRamTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -69,10 +71,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtJumpStackTable::ext_initial_constraints_as_circuits(),
-        &mut ExtJumpStackTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtJumpStackTable::ext_transition_constraints_as_circuits(),
-        &mut ExtJumpStackTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtJumpStackTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtJumpStackTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtJumpStackTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtJumpStackTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -80,10 +82,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtHashTable::ext_initial_constraints_as_circuits(),
-        &mut ExtHashTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtHashTable::ext_transition_constraints_as_circuits(),
-        &mut ExtHashTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtHashTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtHashTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtHashTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtHashTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -91,10 +93,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtCascadeTable::ext_initial_constraints_as_circuits(),
-        &mut ExtCascadeTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtCascadeTable::ext_transition_constraints_as_circuits(),
-        &mut ExtCascadeTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtCascadeTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtCascadeTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtCascadeTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtCascadeTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -102,10 +104,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtLookupTable::ext_initial_constraints_as_circuits(),
-        &mut ExtLookupTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtLookupTable::ext_transition_constraints_as_circuits(),
-        &mut ExtLookupTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtLookupTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtLookupTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtLookupTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtLookupTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -113,10 +115,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtU32Table::ext_initial_constraints_as_circuits(),
-        &mut ExtU32Table::ext_consistency_constraints_as_circuits(),
-        &mut ExtU32Table::ext_transition_constraints_as_circuits(),
-        &mut ExtU32Table::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtU32Table::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtU32Table::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtU32Table::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtU32Table::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 
@@ -125,16 +127,30 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         table_name_camel,
-        &mut GrandCrossTableArg::ext_initial_constraints_as_circuits(),
-        &mut GrandCrossTableArg::ext_consistency_constraints_as_circuits(),
-        &mut GrandCrossTableArg::ext_transition_constraints_as_circuits(),
-        &mut GrandCrossTableArg::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&GrandCrossTableArg::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&GrandCrossTableArg::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&GrandCrossTableArg::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&GrandCrossTableArg::ext_terminal_constraints_as_circuits),
     );
     write(table_name_snake, source_code);
 
     if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
         println!("cargo fmt failed: {fmt_failed}");
     }
+}
+
+fn build_fold_circuitify<II: InputIndicator>(
+    circuit_monad_function: &dyn Fn(
+        &ConstraintCircuitBuilder<II>,
+    ) -> Vec<ConstraintCircuitMonad<II>>,
+) -> Vec<ConstraintCircuit<II>> {
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    let mut constraints = circuit_monad_function(&circuit_builder);
+    ConstraintCircuitMonad::constant_folding(&mut constraints);
+    constraints
+        .into_iter()
+        .map(|circuit| circuit.consume())
+        .collect()
 }
 
 fn construct_needed_table_identifiers(table_name_constituents: &[&str]) -> (String, String) {

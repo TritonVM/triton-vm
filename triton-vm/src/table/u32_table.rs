@@ -19,7 +19,6 @@ use triton_opcodes::instruction::Instruction;
 
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -70,8 +69,9 @@ impl ExtU32Table {
         )
     }
 
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_initial_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let one = circuit_builder.b_constant(1_u32.into());
 
@@ -102,13 +102,12 @@ impl ExtU32Table {
             if_copy_flag_is_0_then_log_derivative_is_default_initial
                 + if_copy_flag_is_1_then_log_derivative_has_accumulated_first_row;
 
-        let mut constraints = [running_sum_log_derivative_starts_correctly];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![running_sum_log_derivative_starts_correctly]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_consistency_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let one = circuit_builder.b_constant(1_u32.into());
         let two = circuit_builder.b_constant(2_u32.into());
 
@@ -126,7 +125,7 @@ impl ExtU32Table {
             circuit_builder.input(BaseRow(LookupMultiplicity.master_base_table_index()));
 
         let instruction_deselector = |instruction_to_select| {
-            Self::instruction_deselector(instruction_to_select, &circuit_builder, &ci)
+            Self::instruction_deselector(instruction_to_select, circuit_builder, &ci)
         };
 
         let copy_flag_is_bit = copy_flag.clone() * (one.clone() - copy_flag.clone());
@@ -175,7 +174,7 @@ impl ExtU32Table {
         let if_copy_flag_is_0_then_lookup_multiplicity_is_0 =
             (copy_flag - one) * lookup_multiplicity;
 
-        let mut constraints = [
+        vec![
             copy_flag_is_bit,
             copy_flag_is_0_or_bits_is_0,
             bits_minus_33_inv_is_inverse_of_bits_minus_33,
@@ -191,13 +190,12 @@ impl ExtU32Table {
             result_is_initialized_correctly_for_pop_count,
             if_log_2_floor_on_0_then_vm_crashes,
             if_copy_flag_is_0_then_lookup_multiplicity_is_0,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_transition_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let one = circuit_builder.b_constant(1_u32.into());
         let two = circuit_builder.b_constant(2_u32.into());
@@ -226,7 +224,7 @@ impl ExtU32Table {
         ));
 
         let instruction_deselector = |instruction_to_select: Instruction| {
-            Self::instruction_deselector(instruction_to_select, &circuit_builder, &ci_next)
+            Self::instruction_deselector(instruction_to_select, circuit_builder, &ci_next)
         };
 
         // helpful aliases
@@ -361,7 +359,7 @@ impl ExtU32Table {
                     * (challenge(U32Indeterminate) - compressed_row_next)
                     - lookup_multiplicity_next);
 
-        let mut constraints = [
+        vec![
             if_copy_flag_next_is_1_then_lhs_is_0_or_ci_is_pow,
             if_copy_flag_next_is_1_then_rhs_is_0,
             if_copy_flag_next_is_0_then_ci_stays,
@@ -384,14 +382,12 @@ impl ExtU32Table {
             if_copy_flag_next_is_0_and_ci_is_pop_count_then_result_increases_by_lhs_lsb,
             if_copy_flag_next_is_0_then_running_sum_log_derivative_stays,
             if_copy_flag_next_is_1_then_running_sum_log_derivative_accumulates_next_row,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn ext_terminal_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));
         let lhs = circuit_builder.input(BaseRow(LHS.master_base_table_index()));
         let rhs = circuit_builder.input(BaseRow(RHS.master_base_table_index()));
@@ -400,9 +396,7 @@ impl ExtU32Table {
             lhs * (ci - circuit_builder.b_constant(Instruction::Pow.opcode_b()));
         let rhs_is_0 = rhs;
 
-        let mut constraints = [lhs_is_0_or_ci_is_pow, rhs_is_0];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![lhs_is_0_or_ci_is_pow, rhs_is_0]
     }
 }
 

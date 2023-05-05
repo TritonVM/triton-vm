@@ -12,7 +12,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -135,9 +134,9 @@ impl CascadeTable {
 }
 
 impl ExtCascadeTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn ext_initial_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let base_row = |col_id: CascadeBaseTableColumn| {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
@@ -200,17 +199,15 @@ impl ExtCascadeTable {
             * lookup_table_log_derivative_has_accumulated_first_row
             + is_padding * lookup_table_log_derivative_is_default_initial;
 
-        let mut constraints = [
+        vec![
             hash_table_log_derivative_is_initialized_correctly,
             lookup_table_log_derivative_is_initialized_correctly,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn ext_consistency_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let base_row = |col_id: CascadeBaseTableColumn| {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
@@ -219,13 +216,12 @@ impl ExtCascadeTable {
         let is_padding = base_row(IsPadding);
         let is_padding_is_0_or_1 = is_padding.clone() * (one - is_padding);
 
-        let mut constraints = [is_padding_is_0_or_1];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![is_padding_is_0_or_1]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn ext_transition_constraints_as_circuits(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
         let constant = |c: u64| circuit_builder.b_constant(c.into());
 
@@ -304,16 +300,17 @@ impl ExtCascadeTable {
             * lookup_table_log_derivative_accumulates_next_row
             + is_padding_next * lookup_table_log_derivative_remains;
 
-        let mut constraints = [
+        vec![
             if_current_row_is_padding_row_then_next_row_is_padding_row,
             hash_table_log_derivative_updates_correctly,
             lookup_table_log_derivative_updates_correctly,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn ext_terminal_constraints_as_circuits(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        // no further constraints
         vec![]
     }
 }
