@@ -2677,11 +2677,25 @@ impl ExtProcessorTable {
             circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
+        // constraints common to all instructions
+        let clk_increases_by_1 = next_base_row(CLK) - curr_base_row(CLK) - constant(1);
+        let is_padding_is_0_or_does_not_change =
+            curr_base_row(IsPadding) * (next_base_row(IsPadding) - curr_base_row(IsPadding));
+        let previous_instruction_is_copied_correctly = (next_base_row(PreviousInstruction)
+            - curr_base_row(CI))
+            * (constant(1) - next_base_row(IsPadding));
+
+        let instruction_independent_constraints = vec![
+            clk_increases_by_1,
+            is_padding_is_0_or_does_not_change,
+            previous_instruction_is_copied_correctly,
+        ];
+
         // instruction-specific constraints
         let all_transition_constraints_by_instruction = ALL_INSTRUCTIONS.map(|instruction| {
             Self::get_transition_constraints_for_instruction(circuit_builder, instruction)
         });
-        let all_instruction_transition_constraints = ALL_INSTRUCTIONS
+        let all_instructions_and_their_transition_constraints = ALL_INSTRUCTIONS
             .into_iter()
             .zip_eq(all_transition_constraints_by_instruction.into_iter())
             .collect_vec()
@@ -2691,58 +2705,36 @@ impl ExtProcessorTable {
         let deselected_transition_constraints =
             Self::combine_instruction_constraints_with_deselectors(
                 circuit_builder,
-                all_instruction_transition_constraints,
+                all_instructions_and_their_transition_constraints,
             );
 
         // if next row is padding row: disable transition constraints, enable padding constraints
-        let mut transition_constraints =
+        let doubly_deselected_transition_constraints =
             Self::combine_transition_constraints_with_padding_constraints(
                 circuit_builder,
                 deselected_transition_constraints,
             );
 
-        // constraints common to all instructions
-        let clk_always_increases_by_1 = next_base_row(CLK) - curr_base_row(CLK) - constant(1);
-        let is_padding_is_0_or_does_not_change =
-            curr_base_row(IsPadding) * (next_base_row(IsPadding) - curr_base_row(IsPadding));
-        let previous_instruction_is_copied_correctly = (next_base_row(PreviousInstruction)
-            - curr_base_row(CI))
-            * (constant(1) - next_base_row(IsPadding));
+        let table_linking_constraints = vec![
+            Self::log_derivative_accumulates_clk_next(circuit_builder),
+            Self::running_evaluation_for_standard_input_updates_correctly(circuit_builder),
+            Self::log_derivative_for_instruction_lookup_updates_correctly(circuit_builder),
+            Self::running_evaluation_for_standard_output_updates_correctly(circuit_builder),
+            Self::running_product_for_op_stack_table_updates_correctly(circuit_builder),
+            Self::running_product_for_ram_table_updates_correctly(circuit_builder),
+            Self::running_product_for_jump_stack_table_updates_correctly(circuit_builder),
+            Self::running_evaluation_hash_input_updates_correctly(circuit_builder),
+            Self::running_evaluation_hash_digest_updates_correctly(circuit_builder),
+            Self::running_evaluation_sponge_updates_correctly(circuit_builder),
+            Self::log_derivative_with_u32_table_updates_correctly(circuit_builder),
+        ];
 
-        transition_constraints.insert(0, clk_always_increases_by_1);
-        transition_constraints.insert(1, is_padding_is_0_or_does_not_change);
-        transition_constraints.insert(2, previous_instruction_is_copied_correctly);
-
-        // constraints related to evaluation and permutation arguments
-        transition_constraints.push(Self::log_derivative_accumulates_clk_next(circuit_builder));
-        transition_constraints
-            .push(Self::running_evaluation_for_standard_input_updates_correctly(circuit_builder));
-        transition_constraints
-            .push(Self::log_derivative_for_instruction_lookup_updates_correctly(circuit_builder));
-        transition_constraints
-            .push(Self::running_evaluation_for_standard_output_updates_correctly(circuit_builder));
-        transition_constraints.push(Self::running_product_for_op_stack_table_updates_correctly(
-            circuit_builder,
-        ));
-        transition_constraints.push(Self::running_product_for_ram_table_updates_correctly(
-            circuit_builder,
-        ));
-        transition_constraints
-            .push(Self::running_product_for_jump_stack_table_updates_correctly(circuit_builder));
-        transition_constraints.push(Self::running_evaluation_hash_input_updates_correctly(
-            circuit_builder,
-        ));
-        transition_constraints.push(Self::running_evaluation_hash_digest_updates_correctly(
-            circuit_builder,
-        ));
-        transition_constraints.push(Self::running_evaluation_sponge_updates_correctly(
-            circuit_builder,
-        ));
-        transition_constraints.push(Self::log_derivative_with_u32_table_updates_correctly(
-            circuit_builder,
-        ));
-
-        transition_constraints
+        vec![
+            instruction_independent_constraints,
+            doubly_deselected_transition_constraints,
+            table_linking_constraints,
+        ]
+        .concat()
     }
 
     pub fn ext_terminal_constraints_as_circuits(
