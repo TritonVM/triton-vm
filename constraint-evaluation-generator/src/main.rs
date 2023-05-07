@@ -37,10 +37,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut ExtProcessorTable::ext_initial_constraints_as_circuits(),
-        &mut ExtProcessorTable::ext_consistency_constraints_as_circuits(),
-        &mut ExtProcessorTable::ext_transition_constraints_as_circuits(),
-        &mut ExtProcessorTable::ext_terminal_constraints_as_circuits(),
+        &mut build_fold_circuitify(&ExtProcessorTable::ext_initial_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProcessorTable::ext_consistency_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProcessorTable::ext_transition_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProcessorTable::ext_terminal_constraints_as_circuits),
     );
     write(&table_name_snake, source_code);
 

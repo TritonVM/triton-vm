@@ -1689,10 +1689,12 @@ mod constraint_circuit_tests {
     #[test]
     fn constant_folding_processor_table_test() {
         let challenges = Challenges::placeholder(&[], &[]);
-        let init = ExtProcessorTable::ext_initial_constraints_as_circuits();
-        let cons = ExtProcessorTable::ext_consistency_constraints_as_circuits();
-        let tran = ExtProcessorTable::ext_transition_constraints_as_circuits();
-        let term = ExtProcessorTable::ext_terminal_constraints_as_circuits();
+        let init = build_fold_circuitify(&ExtProcessorTable::ext_initial_constraints_as_circuits);
+        let cons =
+            build_fold_circuitify(&ExtProcessorTable::ext_consistency_constraints_as_circuits);
+        let tran =
+            build_fold_circuitify(&ExtProcessorTable::ext_transition_constraints_as_circuits);
+        let term = build_fold_circuitify(&ExtProcessorTable::ext_terminal_constraints_as_circuits);
         table_constraints_prop(init, &challenges, "processor initial");
         table_constraints_prop(cons, &challenges, "processor consistency");
         table_constraints_prop(tran, &challenges, "processor transition");
