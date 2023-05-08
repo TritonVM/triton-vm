@@ -468,77 +468,70 @@ fn declare_nodes_with_visit_count<II: InputIndicator>(
     requested_visited_count: usize,
     circuits: &[ConstraintCircuit<II>],
 ) -> String {
-    let mut in_scope: HashSet<usize> = HashSet::new();
+    let mut scope: HashSet<usize> = HashSet::new();
 
     circuits
         .iter()
         .map(|circuit| {
-            declare_single_node_with_visit_count(requested_visited_count, circuit, &mut in_scope)
+            declare_single_node_with_visit_count(circuit, requested_visited_count, &mut scope)
         })
         .collect_vec()
         .join("")
 }
 
 fn declare_single_node_with_visit_count<II: InputIndicator>(
-    requested_visited_count: usize,
     circuit: &ConstraintCircuit<II>,
-    in_scope: &mut HashSet<usize>,
+    requested_visited_count: usize,
+    scope: &mut HashSet<usize>,
 ) -> String {
-    if circuit.visited_counter < requested_visited_count {
-        // If the visited counter is not there yet, make a recursive call. We are
-        // not yet ready to bind this node's ID to a value.
-        if let CircuitExpression::BinaryOperation(_binop, lhs, rhs) = &circuit.expression {
-            let out_left = declare_single_node_with_visit_count(
-                requested_visited_count,
-                &lhs.as_ref().borrow(),
-                in_scope,
-            );
-            let out_right = declare_single_node_with_visit_count(
-                requested_visited_count,
-                &rhs.as_ref().borrow(),
-                in_scope,
-            );
-            return [out_left, out_right].join("\n");
-        }
-    }
-
-    // If this node has already been declared, or visit counter is higher than requested,
-    // then the node value *must* already be in scope. We should not redeclare it.
-    // We also do not declare nodes that are e.g `row[3]` since they are already in scope
-    // through the `points` input argument, and we do not declare constants.
-    if circuit.visited_counter > requested_visited_count
-        || in_scope.contains(&circuit.id)
-        || !matches!(
-            circuit.expression,
-            CircuitExpression::BinaryOperation(_, _, _)
-        )
-    {
+    // Don't declare a node twice.
+    if scope.contains(&circuit.id) {
         return String::default();
     }
 
-    // If this line is met, it means that the visit count is as requested, and that
-    // the value is not in scope. So it must be added to the scope. We find the
-    // expression for the value, and then put it into scope through a let expression
-    if circuit.visited_counter == requested_visited_count && !in_scope.contains(&circuit.id) {
-        let binding_name = get_binding_name(circuit);
-        let (to_output, _) = evaluate_single_node(requested_visited_count, circuit, in_scope);
-
-        let new_insertion = in_scope.insert(circuit.id);
-        // sanity check: don't declare same node multiple times
-        assert!(new_insertion);
-
-        return format!("let {binding_name} = {to_output};\n");
+    // A higher-than-requested visit counter means the node is already in global scope, albeit not
+    // necessarily in the passed-in scope.
+    if circuit.visited_counter > requested_visited_count {
+        return String::default();
     }
 
-    String::default()
+    let CircuitExpression::BinaryOperation(_, lhs, rhs) = &circuit.expression else {
+        // Constants are already (or can be) trivially declared.
+        return String::default();
+    };
+
+    // If the visited counter is not yet exact, start recursing on the BinaryOperation's children.
+    if circuit.visited_counter < requested_visited_count {
+        let out_left = declare_single_node_with_visit_count(
+            &lhs.as_ref().borrow(),
+            requested_visited_count,
+            scope,
+        );
+        let out_right = declare_single_node_with_visit_count(
+            &rhs.as_ref().borrow(),
+            requested_visited_count,
+            scope,
+        );
+        return [out_left, out_right].join("\n");
+    }
+
+    // Declare a new binding.
+    assert_eq!(circuit.visited_counter, requested_visited_count);
+    let binding_name = get_binding_name(circuit);
+    let (evaluation, _) = evaluate_single_node(requested_visited_count, circuit, scope);
+
+    let is_new_insertion = scope.insert(circuit.id);
+    assert!(is_new_insertion);
+
+    format!("let {binding_name} = {evaluation};\n")
 }
 
 /// Return a variable name for the node. Returns `point[n]` if node is just
 /// a value from the codewords. Otherwise returns the ID of the circuit.
 fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> String {
     match &circuit.expression {
-        CircuitExpression::XConstant(xfe) => print_xfe(xfe),
         CircuitExpression::BConstant(bfe) => print_bfe(bfe),
+        CircuitExpression::XConstant(xfe) => print_xfe(xfe),
         CircuitExpression::Input(idx) => idx.to_string(),
         CircuitExpression::Challenge(challenge_id) => {
             format!("challenges.get_challenge({challenge_id})")
@@ -547,14 +540,25 @@ fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> Stri
     }
 }
 
+fn print_bfe(bfe: &BFieldElement) -> String {
+    format!("BFieldElement::from_raw_u64({})", bfe.raw_u64())
+}
+
+fn print_xfe(xfe: &XFieldElement) -> String {
+    let coeff_0 = print_bfe(&xfe.coefficients[0]);
+    let coeff_1 = print_bfe(&xfe.coefficients[1]);
+    let coeff_2 = print_bfe(&xfe.coefficients[2]);
+    format!("XFieldElement::new([{coeff_0}, {coeff_1}, {coeff_2}])")
+}
+
 /// Recursively check whether a node is composed of only BFieldElements, i.e., only uses
 /// 1. inputs from base rows,
 /// 2. constants from the B-field, and
 /// 3. binary operations on BFieldElements.
 fn is_bfield_element<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> bool {
     match &circuit.expression {
-        CircuitExpression::XConstant(_) => false,
         CircuitExpression::BConstant(_) => true,
+        CircuitExpression::XConstant(_) => false,
         CircuitExpression::Input(indicator) => indicator.is_base_table_column(),
         CircuitExpression::Challenge(_) => false,
         CircuitExpression::BinaryOperation(_, lhs, rhs) => {
@@ -607,15 +611,4 @@ fn evaluate_single_node<II: InputIndicator>(
     }
 
     (output, dependent_symbols)
-}
-
-fn print_bfe(bfe: &BFieldElement) -> String {
-    format!("BFieldElement::from_raw_u64({})", bfe.raw_u64())
-}
-
-fn print_xfe(xfe: &XFieldElement) -> String {
-    let coeff_0 = print_bfe(&xfe.coefficients[0]);
-    let coeff_1 = print_bfe(&xfe.coefficients[1]);
-    let coeff_2 = print_bfe(&xfe.coefficients[2]);
-    format!("XFieldElement::new([{coeff_0}, {coeff_1}, {coeff_2}])")
 }
