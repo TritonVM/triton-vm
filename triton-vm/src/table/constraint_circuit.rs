@@ -546,97 +546,6 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Panics if two nodes evaluate to the same value
-    pub fn assert_all_evaluate_different(
-        constraints: &[Self],
-        challenges: &Challenges,
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayView2<XFieldElement>,
-    ) {
-        let mut evaluated_values = HashMap::default();
-        for constraint in constraints.iter() {
-            Self::evaluate_and_store_and_assert_unique(
-                constraint,
-                challenges,
-                base_table,
-                ext_table,
-                &mut evaluated_values,
-            );
-        }
-    }
-
-    /// Return own value and whether own value was seen before. Stores own value in hash map.
-    fn evaluate_and_store_and_assert_unique(
-        &self,
-        challenges: &Challenges,
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayView2<XFieldElement>,
-        evaluated_values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
-    ) -> XFieldElement {
-        // assert_eq!(
-        //     self.var_count,
-        //     input.len(),
-        //     "Input length match circuit's var count"
-        // );
-        let value = match &self.expression {
-            XConstant(xfe) => {
-                if self.id == 107 || self.id == 454 {
-                    println!("{}: XFE", self.id);
-                }
-                xfe.to_owned()
-            }
-            BConstant(bfe) => {
-                if self.id == 107 || self.id == 454 {
-                    println!("{}: BFE", self.id);
-                }
-                bfe.lift()
-            }
-            Input(s) => {
-                s.evaluate(base_table, ext_table)
-                // if s.is_base_table_row() {
-                //     base_input[s.base_row_index()].lift()
-                // } else {
-                //     ext_input[s.ext_row_index()]
-                // }
-            }
-            Challenge(cid) => challenges.get_challenge(*cid),
-            BinaryOperation(binop, lhs, rhs) => {
-                let lhs = lhs.as_ref().borrow().evaluate_and_store_and_assert_unique(
-                    challenges,
-                    base_table,
-                    ext_table,
-                    evaluated_values,
-                );
-                let rhs = rhs.as_ref().borrow().evaluate_and_store_and_assert_unique(
-                    challenges,
-                    base_table,
-                    ext_table,
-                    evaluated_values,
-                );
-                match binop {
-                    BinOp::Add => lhs + rhs,
-                    BinOp::Sub => lhs - rhs,
-                    BinOp::Mul => lhs * rhs,
-                }
-            }
-        };
-
-        let self_evaluated_is_unique =
-            evaluated_values.insert(value, (self.id.to_owned(), self.clone()));
-        if let Some((collided_circuit_id, collided_circuit)) = self_evaluated_is_unique {
-            let own_id = self.id.to_owned();
-            if collided_circuit_id != self.id {
-                panic!(
-                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. \
-                    Collission on:\n \
-                    {collided_circuit_id}: {collided_circuit}\n {own_id}: {self}. \
-                    Value was {value}",
-                );
-            }
-        }
-        value
-    }
-
     pub fn evaluate(
         &self,
         base_table: ArrayView2<BFieldElement>,
@@ -1159,6 +1068,7 @@ mod constraint_circuit_tests {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::Hasher;
 
+    use itertools::Itertools;
     use ndarray::Array2;
     use rand::random;
     use rand::thread_rng;
@@ -1641,45 +1551,96 @@ mod constraint_circuit_tests {
         }
     }
 
-    /// Get the constraints defined in the given function, perform constant folding, and return
-    /// them as a vector of `ConstraintCircuit`s.
-    fn build_fold_circuitify<II: InputIndicator>(
-        circuit_monad_function: &dyn Fn(
-            &ConstraintCircuitBuilder<II>,
-        ) -> Vec<ConstraintCircuitMonad<II>>,
-    ) -> Vec<ConstraintCircuit<II>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        let mut constraints = circuit_monad_function(&circuit_builder);
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints
-            .into_iter()
-            .map(|circuit| circuit.consume())
-            .collect()
+    /// Recursively evaluates the given constraint circuit and its sub-circuits on the given
+    /// base and extension table, and returns the result of the evaluation.
+    /// At each recursive step, updates the given HashMap with the result of the evaluation.
+    /// If the HashMap already contains the result of the evaluation, panics.
+    /// This function is used to assert that the evaluation of a constraint circuit
+    /// and its sub-circuits is unique.
+    /// It is used to identify redundant constraints or sub-circuits.
+    /// The employed method is the Schwartz-Zippel lemma.
+    fn evaluate_and_assert_uniqueness<II: InputIndicator>(
+        constraint: &ConstraintCircuit<II>,
+        challenges: &Challenges,
+        base_table: ArrayView2<BFieldElement>,
+        ext_table: ArrayView2<XFieldElement>,
+        evaluated_values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
+    ) -> XFieldElement {
+        let value = match &constraint.expression {
+            BConstant(bfe) => bfe.lift(),
+            XConstant(xfe) => xfe.to_owned(),
+            Input(s) => s.evaluate(base_table, ext_table),
+            Challenge(cid) => challenges.get_challenge(*cid),
+            BinaryOperation(binop, lhs, rhs) => {
+                let lhs = evaluate_and_assert_uniqueness(
+                    &lhs.as_ref().borrow(),
+                    challenges,
+                    base_table,
+                    ext_table,
+                    evaluated_values,
+                );
+                let rhs = evaluate_and_assert_uniqueness(
+                    &rhs.as_ref().borrow(),
+                    challenges,
+                    base_table,
+                    ext_table,
+                    evaluated_values,
+                );
+                match binop {
+                    BinOp::Add => lhs + rhs,
+                    BinOp::Sub => lhs - rhs,
+                    BinOp::Mul => lhs * rhs,
+                }
+            }
+        };
+
+        let own_id = constraint.id.to_owned();
+        let maybe_entry = evaluated_values.insert(value, (own_id, constraint.clone()));
+        if let Some((collided_circuit_id, collided_circuit)) = maybe_entry {
+            if collided_circuit_id != own_id {
+                panic!(
+                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. \
+                    Collision on:\n\
+                    ID {collided_circuit_id} – {collided_circuit}\n\
+                    ID {own_id} – {constraint}\n\
+                    Value was {value}.",
+                );
+            }
+        }
+
+        value
     }
 
     /// Verify that all nodes evaluate to a unique value when given a randomized input.
     /// If this is not the case two nodes that are not equal evaluate to the same value.
     fn table_constraints_prop<II: InputIndicator>(
-        mut constraints: Vec<ConstraintCircuit<II>>,
-        challenges: &Challenges,
+        constraint_builder: &dyn Fn(
+            &ConstraintCircuitBuilder<II>,
+        ) -> Vec<ConstraintCircuitMonad<II>>,
         table_name: &str,
     ) {
+        let challenges = Challenges::placeholder(&[], &[]);
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let mut constraints = constraint_builder(&circuit_builder);
+        ConstraintCircuitMonad::constant_folding(&mut constraints);
+        let mut constraints = constraints.into_iter().map(|c| c.consume()).collect_vec();
         ConstraintCircuit::assert_has_unique_ids(&mut constraints);
 
-        let base_table = Array2::from_shape_simple_fn(
-            [2, master_table::NUM_BASE_COLUMNS],
-            random::<BFieldElement>,
-        );
-        let ext_table = Array2::from_shape_simple_fn(
-            [2, master_table::NUM_EXT_COLUMNS],
-            random::<XFieldElement>,
-        );
-        ConstraintCircuit::assert_all_evaluate_different(
-            &constraints,
-            challenges,
-            base_table.view(),
-            ext_table.view(),
-        );
+        let base_table_shape = [2, master_table::NUM_BASE_COLUMNS];
+        let ext_table_shape = [2, master_table::NUM_EXT_COLUMNS];
+        let base_table = Array2::from_shape_simple_fn(base_table_shape, random::<BFieldElement>);
+        let ext_table = Array2::from_shape_simple_fn(ext_table_shape, random::<XFieldElement>);
+
+        let mut evaluated_values = HashMap::new();
+        for constraint in constraints.iter() {
+            evaluate_and_assert_uniqueness(
+                constraint,
+                &challenges,
+                base_table.view(),
+                ext_table.view(),
+                &mut evaluated_values,
+            );
+        }
 
         println!("nodes in {table_name}: {}", node_counter(&mut constraints));
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
@@ -1688,122 +1649,109 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_processor_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtProcessorTable::ext_initial_constraints_as_circuits);
-        let cons =
-            build_fold_circuitify(&ExtProcessorTable::ext_consistency_constraints_as_circuits);
-        let tran =
-            build_fold_circuitify(&ExtProcessorTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtProcessorTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "processor initial");
-        table_constraints_prop(cons, &challenges, "processor consistency");
-        table_constraints_prop(tran, &challenges, "processor transition");
-        table_constraints_prop(term, &challenges, "processor terminal");
+        let init = ExtProcessorTable::ext_initial_constraints_as_circuits;
+        let cons = ExtProcessorTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtProcessorTable::ext_transition_constraints_as_circuits;
+        let term = ExtProcessorTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "processor initial");
+        table_constraints_prop(&cons, "processor consistency");
+        table_constraints_prop(&tran, "processor transition");
+        table_constraints_prop(&term, "processor terminal");
     }
 
     #[test]
     fn constant_folding_program_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtProgramTable::ext_initial_constraints_as_circuits);
-        let cons = build_fold_circuitify(&ExtProgramTable::ext_consistency_constraints_as_circuits);
-        let tran = build_fold_circuitify(&ExtProgramTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtProgramTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "program initial");
-        table_constraints_prop(cons, &challenges, "program consistency");
-        table_constraints_prop(tran, &challenges, "program transition");
-        table_constraints_prop(term, &challenges, "program terminal");
+        let init = ExtProgramTable::ext_initial_constraints_as_circuits;
+        let cons = ExtProgramTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtProgramTable::ext_transition_constraints_as_circuits;
+        let term = ExtProgramTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "program initial");
+        table_constraints_prop(&cons, "program consistency");
+        table_constraints_prop(&tran, "program transition");
+        table_constraints_prop(&term, "program terminal");
     }
 
     #[test]
     fn constant_folding_jump_stack_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtJumpStackTable::ext_initial_constraints_as_circuits);
-        let cons =
-            build_fold_circuitify(&ExtJumpStackTable::ext_consistency_constraints_as_circuits);
-        let tran =
-            build_fold_circuitify(&ExtJumpStackTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtJumpStackTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "jump stack initial");
-        table_constraints_prop(cons, &challenges, "jump stack consistency");
-        table_constraints_prop(tran, &challenges, "jump stack transition");
-        table_constraints_prop(term, &challenges, "jump stack terminal");
+        let init = ExtJumpStackTable::ext_initial_constraints_as_circuits;
+        let cons = ExtJumpStackTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtJumpStackTable::ext_transition_constraints_as_circuits;
+        let term = ExtJumpStackTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "jump stack initial");
+        table_constraints_prop(&cons, "jump stack consistency");
+        table_constraints_prop(&tran, "jump stack transition");
+        table_constraints_prop(&term, "jump stack terminal");
     }
 
     #[test]
     fn constant_folding_op_stack_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtOpStackTable::ext_initial_constraints_as_circuits);
-        let cons = build_fold_circuitify(&ExtOpStackTable::ext_consistency_constraints_as_circuits);
-        let tran = build_fold_circuitify(&ExtOpStackTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtOpStackTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "op stack initial");
-        table_constraints_prop(cons, &challenges, "op stack consistency");
-        table_constraints_prop(tran, &challenges, "op stack transition");
-        table_constraints_prop(term, &challenges, "op stack terminal");
+        let init = ExtOpStackTable::ext_initial_constraints_as_circuits;
+        let cons = ExtOpStackTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtOpStackTable::ext_transition_constraints_as_circuits;
+        let term = ExtOpStackTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "op stack initial");
+        table_constraints_prop(&cons, "op stack consistency");
+        table_constraints_prop(&tran, "op stack transition");
+        table_constraints_prop(&term, "op stack terminal");
     }
 
     #[test]
     fn constant_folding_ram_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtRamTable::ext_initial_constraints_as_circuits);
-        let cons = build_fold_circuitify(&ExtRamTable::ext_consistency_constraints_as_circuits);
-        let tran = build_fold_circuitify(&ExtRamTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtRamTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "ram initial");
-        table_constraints_prop(cons, &challenges, "ram consistency");
-        table_constraints_prop(tran, &challenges, "ram transition");
-        table_constraints_prop(term, &challenges, "ram terminal");
+        let init = ExtRamTable::ext_initial_constraints_as_circuits;
+        let cons = ExtRamTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtRamTable::ext_transition_constraints_as_circuits;
+        let term = ExtRamTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "ram initial");
+        table_constraints_prop(&cons, "ram consistency");
+        table_constraints_prop(&tran, "ram transition");
+        table_constraints_prop(&term, "ram terminal");
     }
 
     #[test]
     fn constant_folding_hash_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtHashTable::ext_initial_constraints_as_circuits);
-        let cons = build_fold_circuitify(&ExtHashTable::ext_consistency_constraints_as_circuits);
-        let tran = build_fold_circuitify(&ExtHashTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtHashTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "hash initial");
-        table_constraints_prop(cons, &challenges, "hash consistency");
-        table_constraints_prop(tran, &challenges, "hash transition");
-        table_constraints_prop(term, &challenges, "hash terminal");
+        let init = ExtHashTable::ext_initial_constraints_as_circuits;
+        let cons = ExtHashTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtHashTable::ext_transition_constraints_as_circuits;
+        let term = ExtHashTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "hash initial");
+        table_constraints_prop(&cons, "hash consistency");
+        table_constraints_prop(&tran, "hash transition");
+        table_constraints_prop(&term, "hash terminal");
     }
 
     #[test]
     fn constant_folding_u32_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtU32Table::ext_initial_constraints_as_circuits);
-        let cons = build_fold_circuitify(&ExtU32Table::ext_consistency_constraints_as_circuits);
-        let tran = build_fold_circuitify(&ExtU32Table::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtU32Table::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "u32 initial");
-        table_constraints_prop(cons, &challenges, "u32 consistency");
-        table_constraints_prop(tran, &challenges, "u32 transition");
-        table_constraints_prop(term, &challenges, "u32 terminal");
+        let init = ExtU32Table::ext_initial_constraints_as_circuits;
+        let cons = ExtU32Table::ext_consistency_constraints_as_circuits;
+        let tran = ExtU32Table::ext_transition_constraints_as_circuits;
+        let term = ExtU32Table::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "u32 initial");
+        table_constraints_prop(&cons, "u32 consistency");
+        table_constraints_prop(&tran, "u32 transition");
+        table_constraints_prop(&term, "u32 terminal");
     }
 
     #[test]
     fn constant_folding_cascade_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtCascadeTable::ext_initial_constraints_as_circuits);
-        let cons = build_fold_circuitify(&ExtCascadeTable::ext_consistency_constraints_as_circuits);
-        let tran = build_fold_circuitify(&ExtCascadeTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtCascadeTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "cascade initial");
-        table_constraints_prop(cons, &challenges, "cascade consistency");
-        table_constraints_prop(tran, &challenges, "cascade transition");
-        table_constraints_prop(term, &challenges, "cascade terminal");
+        let init = ExtCascadeTable::ext_initial_constraints_as_circuits;
+        let cons = ExtCascadeTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtCascadeTable::ext_transition_constraints_as_circuits;
+        let term = ExtCascadeTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "cascade initial");
+        table_constraints_prop(&cons, "cascade consistency");
+        table_constraints_prop(&tran, "cascade transition");
+        table_constraints_prop(&term, "cascade terminal");
     }
 
     #[test]
     fn constant_folding_lookup_table_test() {
-        let challenges = Challenges::placeholder(&[], &[]);
-        let init = build_fold_circuitify(&ExtLookupTable::ext_initial_constraints_as_circuits);
-        let cons = build_fold_circuitify(&ExtLookupTable::ext_consistency_constraints_as_circuits);
-        let tran = build_fold_circuitify(&ExtLookupTable::ext_transition_constraints_as_circuits);
-        let term = build_fold_circuitify(&ExtLookupTable::ext_terminal_constraints_as_circuits);
-        table_constraints_prop(init, &challenges, "lookup initial");
-        table_constraints_prop(cons, &challenges, "lookup consistency");
-        table_constraints_prop(tran, &challenges, "lookup transition");
-        table_constraints_prop(term, &challenges, "lookup terminal");
+        let init = ExtLookupTable::ext_initial_constraints_as_circuits;
+        let cons = ExtLookupTable::ext_consistency_constraints_as_circuits;
+        let tran = ExtLookupTable::ext_transition_constraints_as_circuits;
+        let term = ExtLookupTable::ext_terminal_constraints_as_circuits;
+        table_constraints_prop(&init, "lookup initial");
+        table_constraints_prop(&cons, "lookup consistency");
+        table_constraints_prop(&tran, "lookup transition");
+        table_constraints_prop(&term, "lookup terminal");
     }
 }

@@ -139,6 +139,8 @@ fn main() {
     }
 }
 
+/// Get the constraints defined in the given function, perform constant folding, and return
+/// them as a vector of `ConstraintCircuit`s.
 fn build_fold_circuitify<II: InputIndicator>(
     circuit_monad_function: &dyn Fn(
         &ConstraintCircuitBuilder<II>,
