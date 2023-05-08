@@ -469,44 +469,37 @@ fn declare_nodes_with_visit_count<II: InputIndicator>(
     circuits: &[ConstraintCircuit<II>],
 ) -> String {
     let mut in_scope: HashSet<usize> = HashSet::new();
-    let mut output = String::default();
 
-    for circuit in circuits.iter() {
-        declare_single_node_with_visit_count(
-            requested_visited_count,
-            circuit,
-            &mut in_scope,
-            &mut output,
-        );
-    }
-
-    output
+    circuits
+        .iter()
+        .map(|circuit| {
+            declare_single_node_with_visit_count(requested_visited_count, circuit, &mut in_scope)
+        })
+        .collect_vec()
+        .join("")
 }
 
 fn declare_single_node_with_visit_count<II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<II>,
     in_scope: &mut HashSet<usize>,
-    output: &mut String,
-) {
+) -> String {
     if circuit.visited_counter < requested_visited_count {
         // If the visited counter is not there yet, make a recursive call. We are
         // not yet ready to bind this node's ID to a value.
         if let CircuitExpression::BinaryOperation(_binop, lhs, rhs) = &circuit.expression {
-            declare_single_node_with_visit_count(
+            let out_left = declare_single_node_with_visit_count(
                 requested_visited_count,
                 &lhs.as_ref().borrow(),
                 in_scope,
-                output,
             );
-            declare_single_node_with_visit_count(
+            let out_right = declare_single_node_with_visit_count(
                 requested_visited_count,
                 &rhs.as_ref().borrow(),
                 in_scope,
-                output,
             );
+            return [out_left, out_right].join("\n");
         }
-        return;
     }
 
     // If this node has already been declared, or visit counter is higher than requested,
@@ -520,7 +513,7 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
             CircuitExpression::BinaryOperation(_, _, _)
         )
     {
-        return;
+        return String::default();
     }
 
     // If this line is met, it means that the visit count is as requested, and that
@@ -528,15 +521,16 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
     // expression for the value, and then put it into scope through a let expression
     if circuit.visited_counter == requested_visited_count && !in_scope.contains(&circuit.id) {
         let binding_name = get_binding_name(circuit);
-        output.push_str(&format!("let {binding_name} =\n"));
         let (to_output, _) = evaluate_single_node(requested_visited_count, circuit, in_scope);
-        output.push_str(&to_output);
-        output.push_str(";\n");
 
         let new_insertion = in_scope.insert(circuit.id);
         // sanity check: don't declare same node multiple times
         assert!(new_insertion);
+
+        return format!("let {binding_name} = {to_output};\n");
     }
+
+    String::default()
 }
 
 /// Return a variable name for the node. Returns `point[n]` if node is just
