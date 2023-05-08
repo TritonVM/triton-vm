@@ -134,7 +134,7 @@ impl CascadeTable {
 }
 
 impl ExtCascadeTable {
-    pub fn ext_initial_constraints_as_circuits(
+    pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let base_row = |col_id: CascadeBaseTableColumn| {
@@ -205,7 +205,7 @@ impl ExtCascadeTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
+    pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let base_row = |col_id: CascadeBaseTableColumn| {
@@ -219,7 +219,7 @@ impl ExtCascadeTable {
         vec![is_padding_is_0_or_1]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
+    pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
@@ -307,7 +307,7 @@ impl ExtCascadeTable {
         ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
+    pub fn terminal_constraints(
         _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints

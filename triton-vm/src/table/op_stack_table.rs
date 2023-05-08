@@ -45,7 +45,7 @@ pub struct OpStackTable {}
 pub struct ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    pub fn ext_initial_constraints_as_circuits(
+    pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
@@ -82,14 +82,14 @@ impl ExtOpStackTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
+    pub fn consistency_constraints(
         _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
+    pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(1u32.into());
@@ -164,7 +164,7 @@ impl ExtOpStackTable {
         ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
+    pub fn terminal_constraints(
         _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints

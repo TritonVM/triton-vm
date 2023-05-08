@@ -69,7 +69,7 @@ impl ExtU32Table {
         )
     }
 
-    pub fn ext_initial_constraints_as_circuits(
+    pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
@@ -105,7 +105,7 @@ impl ExtU32Table {
         vec![running_sum_log_derivative_starts_correctly]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
+    pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let one = circuit_builder.b_constant(1_u32.into());
@@ -193,7 +193,7 @@ impl ExtU32Table {
         ]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
+    pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
@@ -385,7 +385,7 @@ impl ExtU32Table {
         ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
+    pub fn terminal_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let ci = circuit_builder.input(BaseRow(CI.master_base_table_index()));

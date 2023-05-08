@@ -1649,10 +1649,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_processor_table_test() {
-        let init = ExtProcessorTable::ext_initial_constraints_as_circuits;
-        let cons = ExtProcessorTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtProcessorTable::ext_transition_constraints_as_circuits;
-        let term = ExtProcessorTable::ext_terminal_constraints_as_circuits;
+        let init = ExtProcessorTable::initial_constraints;
+        let cons = ExtProcessorTable::consistency_constraints;
+        let tran = ExtProcessorTable::transition_constraints;
+        let term = ExtProcessorTable::terminal_constraints;
         table_constraints_prop(&init, "processor initial");
         table_constraints_prop(&cons, "processor consistency");
         table_constraints_prop(&tran, "processor transition");
@@ -1661,10 +1661,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_program_table_test() {
-        let init = ExtProgramTable::ext_initial_constraints_as_circuits;
-        let cons = ExtProgramTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtProgramTable::ext_transition_constraints_as_circuits;
-        let term = ExtProgramTable::ext_terminal_constraints_as_circuits;
+        let init = ExtProgramTable::initial_constraints;
+        let cons = ExtProgramTable::consistency_constraints;
+        let tran = ExtProgramTable::transition_constraints;
+        let term = ExtProgramTable::terminal_constraints;
         table_constraints_prop(&init, "program initial");
         table_constraints_prop(&cons, "program consistency");
         table_constraints_prop(&tran, "program transition");
@@ -1673,10 +1673,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_jump_stack_table_test() {
-        let init = ExtJumpStackTable::ext_initial_constraints_as_circuits;
-        let cons = ExtJumpStackTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtJumpStackTable::ext_transition_constraints_as_circuits;
-        let term = ExtJumpStackTable::ext_terminal_constraints_as_circuits;
+        let init = ExtJumpStackTable::initial_constraints;
+        let cons = ExtJumpStackTable::consistency_constraints;
+        let tran = ExtJumpStackTable::transition_constraints;
+        let term = ExtJumpStackTable::terminal_constraints;
         table_constraints_prop(&init, "jump stack initial");
         table_constraints_prop(&cons, "jump stack consistency");
         table_constraints_prop(&tran, "jump stack transition");
@@ -1685,10 +1685,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_op_stack_table_test() {
-        let init = ExtOpStackTable::ext_initial_constraints_as_circuits;
-        let cons = ExtOpStackTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtOpStackTable::ext_transition_constraints_as_circuits;
-        let term = ExtOpStackTable::ext_terminal_constraints_as_circuits;
+        let init = ExtOpStackTable::initial_constraints;
+        let cons = ExtOpStackTable::consistency_constraints;
+        let tran = ExtOpStackTable::transition_constraints;
+        let term = ExtOpStackTable::terminal_constraints;
         table_constraints_prop(&init, "op stack initial");
         table_constraints_prop(&cons, "op stack consistency");
         table_constraints_prop(&tran, "op stack transition");
@@ -1697,10 +1697,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_ram_table_test() {
-        let init = ExtRamTable::ext_initial_constraints_as_circuits;
-        let cons = ExtRamTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtRamTable::ext_transition_constraints_as_circuits;
-        let term = ExtRamTable::ext_terminal_constraints_as_circuits;
+        let init = ExtRamTable::initial_constraints;
+        let cons = ExtRamTable::consistency_constraints;
+        let tran = ExtRamTable::transition_constraints;
+        let term = ExtRamTable::terminal_constraints;
         table_constraints_prop(&init, "ram initial");
         table_constraints_prop(&cons, "ram consistency");
         table_constraints_prop(&tran, "ram transition");
@@ -1709,10 +1709,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_hash_table_test() {
-        let init = ExtHashTable::ext_initial_constraints_as_circuits;
-        let cons = ExtHashTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtHashTable::ext_transition_constraints_as_circuits;
-        let term = ExtHashTable::ext_terminal_constraints_as_circuits;
+        let init = ExtHashTable::initial_constraints;
+        let cons = ExtHashTable::consistency_constraints;
+        let tran = ExtHashTable::transition_constraints;
+        let term = ExtHashTable::terminal_constraints;
         table_constraints_prop(&init, "hash initial");
         table_constraints_prop(&cons, "hash consistency");
         table_constraints_prop(&tran, "hash transition");
@@ -1721,10 +1721,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_u32_table_test() {
-        let init = ExtU32Table::ext_initial_constraints_as_circuits;
-        let cons = ExtU32Table::ext_consistency_constraints_as_circuits;
-        let tran = ExtU32Table::ext_transition_constraints_as_circuits;
-        let term = ExtU32Table::ext_terminal_constraints_as_circuits;
+        let init = ExtU32Table::initial_constraints;
+        let cons = ExtU32Table::consistency_constraints;
+        let tran = ExtU32Table::transition_constraints;
+        let term = ExtU32Table::terminal_constraints;
         table_constraints_prop(&init, "u32 initial");
         table_constraints_prop(&cons, "u32 consistency");
         table_constraints_prop(&tran, "u32 transition");
@@ -1733,10 +1733,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_cascade_table_test() {
-        let init = ExtCascadeTable::ext_initial_constraints_as_circuits;
-        let cons = ExtCascadeTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtCascadeTable::ext_transition_constraints_as_circuits;
-        let term = ExtCascadeTable::ext_terminal_constraints_as_circuits;
+        let init = ExtCascadeTable::initial_constraints;
+        let cons = ExtCascadeTable::consistency_constraints;
+        let tran = ExtCascadeTable::transition_constraints;
+        let term = ExtCascadeTable::terminal_constraints;
         table_constraints_prop(&init, "cascade initial");
         table_constraints_prop(&cons, "cascade consistency");
         table_constraints_prop(&tran, "cascade transition");
@@ -1745,10 +1745,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_lookup_table_test() {
-        let init = ExtLookupTable::ext_initial_constraints_as_circuits;
-        let cons = ExtLookupTable::ext_consistency_constraints_as_circuits;
-        let tran = ExtLookupTable::ext_transition_constraints_as_circuits;
-        let term = ExtLookupTable::ext_terminal_constraints_as_circuits;
+        let init = ExtLookupTable::initial_constraints;
+        let cons = ExtLookupTable::consistency_constraints;
+        let tran = ExtLookupTable::transition_constraints;
+        let term = ExtLookupTable::terminal_constraints;
         table_constraints_prop(&init, "lookup initial");
         table_constraints_prop(&cons, "lookup consistency");
         table_constraints_prop(&tran, "lookup transition");

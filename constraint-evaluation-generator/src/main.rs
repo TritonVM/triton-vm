@@ -26,10 +26,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtProgramTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtProgramTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtProgramTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtProgramTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProgramTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtProgramTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtProgramTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtProgramTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -37,10 +37,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtProcessorTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtProcessorTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtProcessorTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtProcessorTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtProcessorTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtProcessorTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtProcessorTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtProcessorTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -48,10 +48,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtOpStackTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtOpStackTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtOpStackTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtOpStackTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtOpStackTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtOpStackTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtOpStackTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtOpStackTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -59,10 +59,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtRamTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtRamTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtRamTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtRamTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtRamTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtRamTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtRamTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtRamTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -71,10 +71,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtJumpStackTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtJumpStackTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtJumpStackTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtJumpStackTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtJumpStackTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtJumpStackTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtJumpStackTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtJumpStackTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -82,10 +82,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtHashTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtHashTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtHashTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtHashTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtHashTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtHashTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtHashTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtHashTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -93,10 +93,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtCascadeTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtCascadeTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtCascadeTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtCascadeTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtCascadeTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtCascadeTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtCascadeTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtCascadeTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -104,10 +104,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtLookupTable::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtLookupTable::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtLookupTable::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtLookupTable::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtLookupTable::initial_constraints),
+        &mut build_fold_circuitify(&ExtLookupTable::consistency_constraints),
+        &mut build_fold_circuitify(&ExtLookupTable::transition_constraints),
+        &mut build_fold_circuitify(&ExtLookupTable::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -115,10 +115,10 @@ fn main() {
     let source_code = gen(
         &table_name_snake,
         &table_name_camel,
-        &mut build_fold_circuitify(&ExtU32Table::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtU32Table::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtU32Table::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&ExtU32Table::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&ExtU32Table::initial_constraints),
+        &mut build_fold_circuitify(&ExtU32Table::consistency_constraints),
+        &mut build_fold_circuitify(&ExtU32Table::transition_constraints),
+        &mut build_fold_circuitify(&ExtU32Table::terminal_constraints),
     );
     write(&table_name_snake, source_code);
 
@@ -127,10 +127,10 @@ fn main() {
     let source_code = gen(
         table_name_snake,
         table_name_camel,
-        &mut build_fold_circuitify(&GrandCrossTableArg::ext_initial_constraints_as_circuits),
-        &mut build_fold_circuitify(&GrandCrossTableArg::ext_consistency_constraints_as_circuits),
-        &mut build_fold_circuitify(&GrandCrossTableArg::ext_transition_constraints_as_circuits),
-        &mut build_fold_circuitify(&GrandCrossTableArg::ext_terminal_constraints_as_circuits),
+        &mut build_fold_circuitify(&GrandCrossTableArg::initial_constraints),
+        &mut build_fold_circuitify(&GrandCrossTableArg::consistency_constraints),
+        &mut build_fold_circuitify(&GrandCrossTableArg::transition_constraints),
+        &mut build_fold_circuitify(&GrandCrossTableArg::terminal_constraints),
     );
     write(table_name_snake, source_code);
 

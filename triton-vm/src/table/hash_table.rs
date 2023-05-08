@@ -80,7 +80,7 @@ impl ExtHashTable {
             * capital_r_inv
     }
 
-    pub fn ext_initial_constraints_as_circuits(
+    pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
@@ -380,7 +380,7 @@ impl ExtHashTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
+    pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
@@ -587,7 +587,7 @@ impl ExtHashTable {
         }
     }
 
-    pub fn ext_transition_constraints_as_circuits(
+    pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let challenge = |c| circuit_builder.challenge(c);
@@ -1192,7 +1192,7 @@ impl ExtHashTable {
         ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
+    pub fn terminal_constraints(
         _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no more constraints

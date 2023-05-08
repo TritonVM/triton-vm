@@ -121,7 +121,7 @@ impl LookupTable {
 }
 
 impl ExtLookupTable {
-    pub fn ext_initial_constraints_as_circuits(
+    pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let base_row = |col_id: LookupBaseTableColumn| {
@@ -165,7 +165,7 @@ impl ExtLookupTable {
         ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits(
+    pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
@@ -178,7 +178,7 @@ impl ExtLookupTable {
         vec![padding_is_0_or_1]
     }
 
-    pub fn ext_transition_constraints_as_circuits(
+    pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(BFIELD_ONE);
@@ -258,7 +258,7 @@ impl ExtLookupTable {
         ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits(
+    pub fn terminal_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
