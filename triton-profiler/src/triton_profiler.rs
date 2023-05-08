@@ -532,7 +532,14 @@ impl Display for Report {
             writeln!(f)?;
             let category_title = ("### Categories").to_string().bold();
             writeln!(f, "{category_title}")?;
-            for (category, &category_time) in self.category_times.iter() {
+            let mut category_times_and_names_sorted_by_time = self
+                .category_times
+                .iter()
+                .map(|(category, &time)| (category, time))
+                .collect::<Vec<_>>();
+            category_times_and_names_sorted_by_time.sort_by_key(|&(_, time)| time);
+            category_times_and_names_sorted_by_time.reverse();
+            for (category, category_time) in category_times_and_names_sorted_by_time.into_iter() {
                 let category_relative_time =
                     category_time.as_secs_f64() / self.total_time.as_secs_f64();
                 let category_color = Weight::weigh(category_relative_time).color();
