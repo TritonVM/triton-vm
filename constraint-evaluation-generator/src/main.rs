@@ -554,8 +554,9 @@ fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> Stri
 }
 
 /// Recursively check whether a node is composed of only BFieldElements, i.e., only uses
-/// (1) inputs from base rows, (2) constants from the B-field, and (3) binary operations on
-/// BFieldElements.
+/// 1. inputs from base rows,
+/// 2. constants from the B-field, and
+/// 3. binary operations on BFieldElements.
 fn is_bfield_element<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> bool {
     match &circuit.expression {
         CircuitExpression::XConstant(_) => false,
@@ -568,8 +569,9 @@ fn is_bfield_element<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> boo
     }
 }
 
-/// Return (1) the code for evaluating a single node and (2) a list of symbols that this evaluation
-/// depends on.
+/// Return
+/// 1. the code for evaluating a single node and
+/// 2. a list of symbols that this evaluation depends on.
 fn evaluate_single_node<II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<II>,
@@ -614,14 +616,12 @@ fn evaluate_single_node<II: InputIndicator>(
 }
 
 fn print_bfe(bfe: &BFieldElement) -> String {
-    format!("BFieldElement::new({})", bfe.value())
+    format!("BFieldElement::from_raw_u64({})", bfe.raw_u64())
 }
 
 fn print_xfe(xfe: &XFieldElement) -> String {
-    format!(
-        "XFieldElement::new_u64([{}, {}, {}])",
-        xfe.coefficients[0].value(),
-        xfe.coefficients[1].value(),
-        xfe.coefficients[2].value()
-    )
+    let coeff_0 = print_bfe(&xfe.coefficients[0]);
+    let coeff_1 = print_bfe(&xfe.coefficients[1]);
+    let coeff_2 = print_bfe(&xfe.coefficients[2]);
+    format!("XFieldElement::new([{coeff_0}, {coeff_1}, {coeff_2}])")
 }
