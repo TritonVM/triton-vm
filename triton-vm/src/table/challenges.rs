@@ -265,21 +265,28 @@ impl Challenges {
     }
 }
 
-// Compile-time assertions.
-//
-// Terminal challenges are computed from public information, such as public input or public output,
-// and other challenges. Because these other challenges are used to compute the terminal
-// challenges, the terminal challenges must be inserted into the challenges vector after the
-// used challenges.
+#[cfg(test)]
+mod challenge_tests {
+    use super::*;
 
-const _: () = assert!(StandardInputIndeterminate.index() < StandardInputTerminal.index());
-const _: () = assert!(StandardInputIndeterminate.index() < StandardOutputTerminal.index());
-const _: () = assert!(StandardInputIndeterminate.index() < LookupTablePublicTerminal.index());
+    #[test]
+    const fn compile_time_index_assertions() {
+        // Terminal challenges are computed from public information, such as public input or
+        // public output, and other challenges. Because these other challenges are used to compute
+        // the terminal challenges, the terminal challenges must be inserted into the challenges
+        // vector after the used challenges.
+        assert!(StandardInputIndeterminate.index() < StandardInputTerminal.index());
+        assert!(StandardInputIndeterminate.index() < StandardOutputTerminal.index());
+        assert!(StandardInputIndeterminate.index() < LookupTablePublicTerminal.index());
 
-const _: () = assert!(StandardOutputIndeterminate.index() < StandardInputTerminal.index());
-const _: () = assert!(StandardOutputIndeterminate.index() < StandardOutputTerminal.index());
-const _: () = assert!(StandardOutputIndeterminate.index() < LookupTablePublicTerminal.index());
+        assert!(StandardOutputIndeterminate.index() < StandardInputTerminal.index());
+        assert!(StandardOutputIndeterminate.index() < StandardOutputTerminal.index());
+        assert!(StandardOutputIndeterminate.index() < LookupTablePublicTerminal.index());
 
-const _: () = assert!(LookupTablePublicIndeterminate.index() < StandardInputTerminal.index());
-const _: () = assert!(LookupTablePublicIndeterminate.index() < StandardOutputTerminal.index());
-const _: () = assert!(LookupTablePublicIndeterminate.index() < LookupTablePublicTerminal.index());
+        assert!(LookupTablePublicIndeterminate.index() < StandardInputTerminal.index());
+        assert!(LookupTablePublicIndeterminate.index() < StandardOutputTerminal.index());
+        assert!(LookupTablePublicIndeterminate.index() < LookupTablePublicTerminal.index());
+    }
+    // Ensure the compile-time assertions are actually executed by the compiler.
+    const _: () = compile_time_index_assertions();
+}
