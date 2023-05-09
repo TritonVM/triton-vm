@@ -189,23 +189,26 @@ fn gen<SII: InputIndicator, DII: InputIndicator>(
     let num_transition_constraints = transition_constraint_circuits.len();
     let num_terminal_constraints = terminal_constraint_circuits.len();
 
-    let initial_constraints_degrees =
-        turn_circuits_into_degree_bounds_string(initial_constraint_circuits);
-    let consistency_constraints_degrees =
-        turn_circuits_into_degree_bounds_string(consistency_constraint_circuits);
-    let transition_constraints_degrees =
-        turn_circuits_into_degree_bounds_string(transition_constraint_circuits);
-    let terminal_constraints_degrees =
-        turn_circuits_into_degree_bounds_string(terminal_constraint_circuits);
-
-    let (initial_constraint_strings_bfe, initial_constraint_strings_xfe) =
-        turn_circuits_into_string(initial_constraint_circuits);
-    let (consistency_constraint_strings_bfe, consistency_constraint_strings_xfe) =
-        turn_circuits_into_string(consistency_constraint_circuits);
-    let (transition_constraint_strings_bfe, transition_constraint_strings_xfe) =
-        turn_circuits_into_string(transition_constraint_circuits);
-    let (terminal_constraint_strings_bfe, terminal_constraint_strings_xfe) =
-        turn_circuits_into_string(terminal_constraint_circuits);
+    let (
+        initial_constraints_degrees,
+        initial_constraint_strings_bfe,
+        initial_constraint_strings_xfe,
+    ) = turn_circuits_into_string(initial_constraint_circuits);
+    let (
+        consistency_constraints_degrees,
+        consistency_constraint_strings_bfe,
+        consistency_constraint_strings_xfe,
+    ) = turn_circuits_into_string(consistency_constraint_circuits);
+    let (
+        transition_constraints_degrees,
+        transition_constraint_strings_bfe,
+        transition_constraint_strings_xfe,
+    ) = turn_circuits_into_string(transition_constraint_circuits);
+    let (
+        terminal_constraints_degrees,
+        terminal_constraint_strings_bfe,
+        terminal_constraint_strings_xfe,
+    ) = turn_circuits_into_string(terminal_constraint_circuits);
 
     format!(
         "
@@ -366,80 +369,79 @@ impl Quotientable for {table_mod_name} {{
     )
 }
 
-fn turn_circuits_into_degree_bounds_string<II: InputIndicator>(
-    constraint_circuits: &[ConstraintCircuit<II>],
-) -> String {
-    constraint_circuits
-        .iter()
-        .map(|circuit| circuit.degree())
-        .map(|degree| format!("interpolant_degree * {degree} as Degree - zerofier_degree"))
-        .join(",\n")
-}
-
+/// Given a slice of constraint circuits, return a tuple of strings corresponding to code
+/// evaluating these constraints as well as their degrees. In particular:
+/// 1. The first string contains code that, when evaluated, produces the constraints' degrees,
+/// 1. the second string contains code that, when evaluated, produces the constraints' values, with
+///     the input type for the base row being `BFieldElement`, and
+/// 1. the third string is like the second string, except that the input type for the base row is
+///    `XFieldElement`.
 fn turn_circuits_into_string<II: InputIndicator>(
     constraint_circuits: &mut [ConstraintCircuit<II>],
-) -> (String, String) {
+) -> (String, String, String) {
     if constraint_circuits.is_empty() {
-        return ("vec![]".to_string(), "vec![]".to_string());
+        return ("".to_string(), "vec![]".to_string(), "vec![]".to_string());
     }
 
-    // Assert that all node IDs are unique (sanity check)
+    // Sanity check: all node IDs must be unique.
     ConstraintCircuit::assert_has_unique_ids(constraint_circuits);
 
-    // Count number of times each node is visited
+    // Count number of times each node is referenced.
     ConstraintCircuit::traverse_multiple(constraint_circuits);
 
-    // Get all values for the visited counters in the entire multi-circuit
-    let mut visited_counters = vec![];
-    for constraint in constraint_circuits.iter() {
-        visited_counters.append(&mut constraint.get_all_visited_counters());
-    }
-
+    // Get all unique reference counts.
+    let mut visited_counters = constraint_circuits
+        .iter()
+        .flat_map(|constraint| constraint.get_all_visited_counters())
+        .collect_vec();
     visited_counters.sort_unstable();
-    visited_counters.reverse();
     visited_counters.dedup();
 
-    // Declare shared values
-    // In the main function we predeclare all variables with a visit count of more than 1
-    // These declarations must be made from the highest count number to the lowest, otherwise
-    // the code will refer to bindings that have not yet been made
-    let mut shared_evaluations: Vec<String> = vec![];
-    for visited_counter in visited_counters {
-        if visited_counter == 1 {
-            continue;
-        }
-        shared_evaluations.push(declare_nodes_with_visit_count(
-            visited_counter,
-            constraint_circuits,
-        ));
-    }
+    // Declare all shared variables, i.e., those with a visit count greater than 1.
+    // These declarations must be made starting from the highest visit count.
+    // Otherwise, the resulting code will refer to bindings that have not yet been made.
+    let shared_declarations = visited_counters
+        .into_iter()
+        .filter(|&x| x > 1)
+        .rev()
+        .map(|visit_count| declare_nodes_with_visit_count(visit_count, constraint_circuits))
+        .collect_vec()
+        .join("");
 
-    let shared_declarations = shared_evaluations.join("");
+    let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraint_circuits
+        .iter()
+        .partition(|constraint| is_bfield_element(constraint));
 
-    let mut base_constraint_evaluation_expressions: Vec<String> = vec![];
-    let mut ext_constraint_evaluation_expressions: Vec<String> = vec![];
-    for constraint in constraint_circuits.iter() {
-        // Build code for expressions that evaluate to the constraints
-        let constraint_evaluation = evaluate_single_node(1, constraint, &HashSet::default());
-        match is_bfield_element(constraint) {
-            true => base_constraint_evaluation_expressions.push(constraint_evaluation),
-            false => ext_constraint_evaluation_expressions.push(constraint_evaluation),
-        }
-    }
+    // The order of the constraints' degrees must match the order of the constraints.
+    // Hence, listing the degrees is only possible after the partition into base and extension
+    // constraints is known.
+    let degree_bounds_string = base_constraints
+        .iter()
+        .chain(ext_constraints.iter())
+        .map(|circuit| circuit.degree())
+        .map(|degree| format!("interpolant_degree * {degree} as Degree - zerofier_degree"))
+        .join(",\n");
 
-    let base_constraint_evaluations_joined = base_constraint_evaluation_expressions.join(",\n");
-    let ext_constraint_evaluations_joined = ext_constraint_evaluation_expressions.join(",\n");
+    let build_constraint_evaluation_code = |constraints: &[&ConstraintCircuit<II>]| {
+        constraints
+            .iter()
+            .map(|constraint| evaluate_single_node(1, constraint, &HashSet::default()))
+            .collect_vec()
+            .join(",\n")
+    };
+    let base_constraint_strings = build_constraint_evaluation_code(&base_constraints);
+    let ext_constraint_strings = build_constraint_evaluation_code(&ext_constraints);
 
     // If there are no base constraints, the type needs to be explicitly declared.
-    let base_constraint_bfe_type = match base_constraint_evaluation_expressions.is_empty() {
+    let base_constraint_bfe_type = match base_constraints.is_empty() {
         true => ": [BFieldElement; 0]",
         false => "",
     };
 
     let constraint_string_bfe = format!(
         "{shared_declarations}
-        let base_constraints{base_constraint_bfe_type} = [{base_constraint_evaluations_joined}];
-        let ext_constraints = [{ext_constraint_evaluations_joined}];
+        let base_constraints{base_constraint_bfe_type} = [{base_constraint_strings}];
+        let ext_constraints = [{ext_constraint_strings}];
         base_constraints
             .into_iter()
             .map(|bfe| bfe.lift())
@@ -449,15 +451,19 @@ fn turn_circuits_into_string<II: InputIndicator>(
 
     let constraint_string_xfe = format!(
         "{shared_declarations}
-        let base_constraints = [{base_constraint_evaluations_joined}];
-        let ext_constraints = [{ext_constraint_evaluations_joined}];
+        let base_constraints = [{base_constraint_strings}];
+        let ext_constraints = [{ext_constraint_strings}];
         base_constraints
             .into_iter()
             .chain(ext_constraints.into_iter())
             .collect()"
     );
 
-    (constraint_string_bfe, constraint_string_xfe)
+    (
+        degree_bounds_string,
+        constraint_string_bfe,
+        constraint_string_xfe,
+    )
 }
 
 /// Produce the code to evaluate code for all nodes that share a value number of
