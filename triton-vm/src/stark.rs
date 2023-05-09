@@ -905,6 +905,7 @@ pub(crate) mod triton_stark_tests {
     use twenty_first::shared_math::other::random_elements;
 
     use crate::shared_tests::*;
+    use crate::table::cascade_table;
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::ChallengeId::StandardInputIndeterminate;
     use crate::table::challenges::ChallengeId::StandardInputTerminal;
@@ -915,15 +916,22 @@ pub(crate) mod triton_stark_tests {
     use crate::table::cross_table_argument::GrandCrossTableArg;
     use crate::table::extension_table::Evaluable;
     use crate::table::extension_table::Quotientable;
+    use crate::table::hash_table;
     use crate::table::hash_table::ExtHashTable;
+    use crate::table::jump_stack_table;
     use crate::table::jump_stack_table::ExtJumpStackTable;
+    use crate::table::lookup_table;
     use crate::table::lookup_table::ExtLookupTable;
     use crate::table::master_table::all_degrees_with_origin;
     use crate::table::master_table::MasterExtTable;
     use crate::table::master_table::TableId::ProcessorTable;
+    use crate::table::op_stack_table;
     use crate::table::op_stack_table::ExtOpStackTable;
+    use crate::table::processor_table;
     use crate::table::processor_table::ExtProcessorTable;
+    use crate::table::program_table;
     use crate::table::program_table::ExtProgramTable;
+    use crate::table::ram_table;
     use crate::table::ram_table::ExtRamTable;
     use crate::table::table_column::MasterBaseTableColumn;
     use crate::table::table_column::MasterExtTableColumn;
@@ -931,6 +939,7 @@ pub(crate) mod triton_stark_tests {
     use crate::table::table_column::ProcessorExtTableColumn::InputTableEvalArg;
     use crate::table::table_column::ProcessorExtTableColumn::OutputTableEvalArg;
     use crate::table::table_column::RamBaseTableColumn;
+    use crate::table::u32_table;
     use crate::table::u32_table::ExtU32Table;
     use crate::vm::simulate;
     use crate::vm::triton_vm_tests::property_based_test_programs;
@@ -1715,7 +1724,6 @@ pub(crate) mod triton_stark_tests {
     }
 
     pub fn triton_table_constraints_evaluate_to_zero(source_code_and_input: SourceCodeAndInput) {
-        let zero = XFieldElement::zero();
         let (_, _, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
             &source_code_and_input.source_code,
             source_code_and_input.input,
@@ -1733,112 +1741,51 @@ pub(crate) mod triton_stark_tests {
             master_ext_trace_table.nrows()
         );
 
-        let first_base_row_lifted = master_base_trace_table.row(0).map(|e| e.lift());
-        let evaluated_initial_constraints = evaluate_all_initial_constraints(
-            first_base_row_lifted.view(),
-            master_ext_trace_table.row(0),
+        assert!(program_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
             &challenges,
-        );
-        let num_initial_constraints = evaluated_initial_constraints.len();
-        assert_eq!(num_all_initial_quotients(), num_initial_constraints);
-        for (constraint_idx, ebc) in evaluated_initial_constraints.into_iter().enumerate() {
-            let (table_idx, table_name) = initial_constraint_table_idx_and_name(constraint_idx);
-            assert_eq!(
-                zero, ebc,
-                "Failed initial constraint with global index {constraint_idx}. \
-                Total number of initial constraints: {num_initial_constraints}. \
-                Table: {table_name}. Index within table: {table_idx}",
-            );
-        }
-
-        let num_rows = master_base_trace_table.nrows();
-        for row_idx in 0..num_rows {
-            let base_row = master_base_trace_table.row(row_idx);
-            let ext_row = master_ext_trace_table.row(row_idx);
-            let base_row_lifted = base_row.map(|e| e.lift());
-            let evaluated_consistency_constraints =
-                evaluate_all_consistency_constraints(base_row_lifted.view(), ext_row, &challenges);
-            let num_consistency_constraints = evaluated_consistency_constraints.len();
-            assert_eq!(num_all_consistency_quotients(), num_consistency_constraints);
-            for (constraint_idx, ecc) in evaluated_consistency_constraints.into_iter().enumerate() {
-                let (table_idx, table_name) =
-                    consistency_constraint_table_idx_and_name(constraint_idx);
-                assert_eq!(
-                    zero, ecc,
-                    "Failed consistency constraint with global index {constraint_idx}. \
-                    Total number of consistency constraints: {num_consistency_constraints}. \
-                    Table: {table_name}. Index within table: {table_idx} \
-                    Row index: {row_idx}. \
-                    Total rows: {num_rows}",
-                );
-            }
-        }
-
-        for row_idx in 0..num_rows - 1 {
-            let base_row = master_base_trace_table.row(row_idx);
-            let ext_row = master_ext_trace_table.row(row_idx);
-            let next_base_row = master_base_trace_table.row(row_idx + 1);
-            let next_ext_row = master_ext_trace_table.row(row_idx + 1);
-            let base_row_lifted = base_row.map(|e| e.lift());
-            let next_base_row_lifted = next_base_row.map(|e| e.lift());
-            let evaluated_transition_constraints = evaluate_all_transition_constraints(
-                base_row_lifted.view(),
-                ext_row,
-                next_base_row_lifted.view(),
-                next_ext_row,
-                &challenges,
-            );
-            let num_transition_constraints = evaluated_transition_constraints.len();
-            assert_eq!(num_all_transition_quotients(), num_transition_constraints);
-            for (constraint_idx, etc) in evaluated_transition_constraints.into_iter().enumerate() {
-                if zero != etc {
-                    let pi_idx =
-                        ProcessorBaseTableColumn::PreviousInstruction.master_base_table_index();
-                    let ci_idx = ProcessorBaseTableColumn::CI.master_base_table_index();
-                    let nia_idx = ProcessorBaseTableColumn::NIA.master_base_table_index();
-                    let pi = base_row[pi_idx].value();
-                    let ci = base_row[ci_idx].value();
-                    let nia = base_row[nia_idx].value();
-                    let previous_instruction =
-                        AnInstruction::<BFieldElement>::try_from(pi).unwrap();
-                    let current_instruction = AnInstruction::<BFieldElement>::try_from(ci).unwrap();
-                    let next_instruction_str = match AnInstruction::<BFieldElement>::try_from(nia) {
-                        Ok(instr) => format!("{instr:?}"),
-                        Err(_) => "not an instruction".to_string(),
-                    };
-                    let (table_idx, table_name) =
-                        transition_constraint_table_idx_and_name(constraint_idx);
-                    panic!(
-                        "Failed transition constraint with global index {constraint_idx}. \
-                        Total number of transition constraints: {num_transition_constraints}. \
-                        Table: {table_name}. Index within table: {table_idx} \
-                        Row index: {row_idx}. \
-                        Total rows: {num_rows}\n\
-                        Previous Instruction: {previous_instruction:?} – opcode: {pi}\n\
-                        Current Instruction:  {current_instruction:?} – opcode: {ci}\n\
-                        Next Instruction:     {next_instruction_str} – opcode: {nia}\n"
-                    );
-                }
-            }
-        }
-
-        let last_row_lifted = master_base_trace_table.row(num_rows - 1).map(|e| e.lift());
-        let evaluated_terminal_constraints = evaluate_all_terminal_constraints(
-            last_row_lifted.view(),
-            master_ext_trace_table.row(num_rows - 1),
+        ));
+        assert!(processor_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
             &challenges,
-        );
-        let num_terminal_constraints = evaluated_terminal_constraints.len();
-        assert_eq!(num_all_terminal_quotients(), num_terminal_constraints);
-        for (constraint_idx, etermc) in evaluated_terminal_constraints.into_iter().enumerate() {
-            let (table_idx, table_name) = terminal_constraint_table_idx_and_name(constraint_idx);
-            assert_eq!(
-                zero, etermc,
-                "Failed terminal constraint with global index {constraint_idx}. \
-                Total number of terminal constraints: {num_terminal_constraints}. \
-                Table: {table_name}. Index within table: {table_idx}",
-            );
-        }
+        ));
+        assert!(op_stack_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
+            &challenges,
+        ));
+        assert!(ram_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
+            &challenges,
+        ));
+        assert!(jump_stack_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
+            &challenges,
+        ));
+        assert!(hash_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
+            &challenges,
+        ));
+        assert!(cascade_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
+            &challenges,
+        ));
+        assert!(lookup_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
+            &challenges,
+        ));
+        assert!(u32_table::tests::constraints_evaluate_to_zero(
+            master_base_trace_table,
+            master_ext_trace_table,
+            &challenges,
+        ));
     }
 
     #[test]
