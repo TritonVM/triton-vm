@@ -335,7 +335,7 @@ impl Quotientable for {table_mod_name} {{
     fn initial_quotient_degree_bounds(
         interpolant_degree: Degree,
     ) -> Vec<Degree> {{
-        let zerofier_degree = 1 as Degree;
+        let zerofier_degree = 1;
         [{initial_constraints_degrees}].to_vec()
     }}
 
@@ -361,7 +361,7 @@ impl Quotientable for {table_mod_name} {{
     fn terminal_quotient_degree_bounds(
         interpolant_degree: Degree,
     ) -> Vec<Degree> {{
-        let zerofier_degree = 1 as Degree;
+        let zerofier_degree = 1;
         [{terminal_constraints_degrees}].to_vec()
     }}
 }}
@@ -418,8 +418,11 @@ fn turn_circuits_into_string<II: InputIndicator>(
     let degree_bounds_string = base_constraints
         .iter()
         .chain(ext_constraints.iter())
-        .map(|circuit| circuit.degree())
-        .map(|degree| format!("interpolant_degree * {degree} as Degree - zerofier_degree"))
+        .map(|circuit| match circuit.degree() {
+            d if d > 1 => format!("interpolant_degree * {d} - zerofier_degree"),
+            d if d == 1 => "interpolant_degree - zerofier_degree".to_string(),
+            _ => unreachable!("Constraint degree must be positive"),
+        })
         .join(",\n");
 
     let build_constraint_evaluation_code = |constraints: &[&ConstraintCircuit<II>]| {
