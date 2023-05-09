@@ -252,35 +252,15 @@ impl<II: InputIndicator> Hash for CircuitExpression<II> {
 
 impl<II: InputIndicator> PartialEq for CircuitExpression<II> {
     fn eq(&self, other: &Self) -> bool {
-        match self {
-            XConstant(self_xfe) => match other {
-                XConstant(other_xfe) => self_xfe == other_xfe,
-                _ => false,
-            },
-            BConstant(self_bfe) => match other {
-                BConstant(other_bfe) => self_bfe == other_bfe,
-                _ => false,
-            },
-            Input(self_input) => match other {
-                Input(other_input) => self_input == other_input,
-                _ => false,
-            },
-            Challenge(self_challenge_id) => match other {
-                Challenge(other_challenge_id) => self_challenge_id == other_challenge_id,
-                _ => false,
-            },
-            BinaryOperation(binop_self, lhs_self, rhs_self) => {
-                match other {
-                    BinaryOperation(binop_other, lhs_other, rhs_other) => {
-                        // a = b `op0` c,
-                        // d = e `op1` f =>
-                        // a = d <= op0 == op1 && b == e && c ==f
-                        binop_self == binop_other && lhs_self == lhs_other && rhs_self == rhs_other
-                    }
-
-                    _ => false,
-                }
+        match (self, other) {
+            (BConstant(bfe_self), BConstant(bfe_other)) => bfe_self == bfe_other,
+            (XConstant(xfe_self), XConstant(xfe_other)) => xfe_self == xfe_other,
+            (Input(input_self), Input(input_other)) => input_self == input_other,
+            (Challenge(id_self), Challenge(id_other)) => id_self == id_other,
+            (BinaryOperation(op_s, lhs_s, rhs_s), BinaryOperation(op_o, lhs_o, rhs_o)) => {
+                op_s == op_o && lhs_s == lhs_o && rhs_s == rhs_o
             }
+            _ => false,
         }
     }
 }
