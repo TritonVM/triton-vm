@@ -420,8 +420,7 @@ fn turn_circuits_into_string<II: InputIndicator>(
     let mut ext_constraint_evaluation_expressions: Vec<String> = vec![];
     for constraint in constraint_circuits.iter() {
         // Build code for expressions that evaluate to the constraints
-        let (constraint_evaluation, _dependent_symbols) =
-            evaluate_single_node(1, constraint, &HashSet::default());
+        let constraint_evaluation = evaluate_single_node(1, constraint, &HashSet::default());
         match is_bfield_element(constraint) {
             true => base_constraint_evaluation_expressions.push(constraint_evaluation),
             false => ext_constraint_evaluation_expressions.push(constraint_evaluation),
@@ -518,7 +517,7 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
     // Declare a new binding.
     assert_eq!(circuit.visited_counter, requested_visited_count);
     let binding_name = get_binding_name(circuit);
-    let (evaluation, _) = evaluate_single_node(requested_visited_count, circuit, scope);
+    let evaluation = evaluate_single_node(requested_visited_count, circuit, scope);
 
     let is_new_insertion = scope.insert(circuit.id);
     assert!(is_new_insertion);
@@ -562,53 +561,40 @@ fn is_bfield_element<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> boo
         CircuitExpression::Input(indicator) => indicator.is_base_table_column(),
         CircuitExpression::Challenge(_) => false,
         CircuitExpression::BinaryOperation(_, lhs, rhs) => {
-            is_bfield_element(&lhs.as_ref().borrow()) && is_bfield_element(&rhs.as_ref().borrow())
+            let lhs = lhs.as_ref().borrow();
+            let rhs = rhs.as_ref().borrow();
+            is_bfield_element(&lhs) && is_bfield_element(&rhs)
         }
     }
 }
 
-/// Return
-/// 1. the code for evaluating a single node and
-/// 2. a list of symbols that this evaluation depends on.
+/// Recursively construct the code for evaluating a single node.
 fn evaluate_single_node<II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<II>,
-    in_scope: &HashSet<usize>,
-) -> (String, Vec<String>) {
-    let mut output = String::default();
-    // If this node has already been declared, or visit counter is higher than requested,
-    // than the node value *must* be in scope, meaning that we can just reference it.
-    if circuit.visited_counter > requested_visited_count || in_scope.contains(&circuit.id) {
-        let binding_name = get_binding_name(circuit);
-        output.push_str(&binding_name);
-        return match &circuit.expression {
-            CircuitExpression::BinaryOperation(_, _, _) => (output, vec![binding_name]),
-            _ => (output, vec![]),
-        };
+    scope: &HashSet<usize>,
+) -> String {
+    let binding_name = get_binding_name(circuit);
+
+    // Don't declare a node twice.
+    if scope.contains(&circuit.id) {
+        return binding_name;
     }
 
-    // If variable is not already in scope, then we must generate the expression to evaluate it.
-    let mut dependent_symbols = vec![];
-    match &circuit.expression {
-        CircuitExpression::BinaryOperation(binop, lhs, rhs) => {
-            output.push('(');
-            let (to_output, lhs_symbols) =
-                evaluate_single_node(requested_visited_count, &lhs.as_ref().borrow(), in_scope);
-            output.push_str(&to_output);
-            output.push(')');
-            output.push_str(&binop.to_string());
-            output.push('(');
-            let (to_output, rhs_symbols) =
-                evaluate_single_node(requested_visited_count, &rhs.as_ref().borrow(), in_scope);
-            output.push_str(&to_output);
-            output.push(')');
-
-            let ret_as_vec = vec![lhs_symbols, rhs_symbols].concat();
-            let ret_as_hash_set: HashSet<String> = ret_as_vec.into_iter().collect();
-            dependent_symbols = ret_as_hash_set.into_iter().collect_vec()
-        }
-        _ => output.push_str(&get_binding_name(circuit)),
+    // The binding must already be known.
+    if circuit.visited_counter > requested_visited_count {
+        return binding_name;
     }
 
-    (output, dependent_symbols)
+    // Constants have trivial bindings.
+    let CircuitExpression::BinaryOperation(binop, lhs, rhs) = &circuit.expression else {
+        return binding_name;
+    };
+
+    let lhs = lhs.as_ref().borrow();
+    let rhs = rhs.as_ref().borrow();
+    let evaluated_lhs = evaluate_single_node(requested_visited_count, &lhs, scope);
+    let evaluated_rhs = evaluate_single_node(requested_visited_count, &rhs, scope);
+    let operation = binop.to_string();
+    format!("({evaluated_lhs}) {operation} ({evaluated_rhs})")
 }
