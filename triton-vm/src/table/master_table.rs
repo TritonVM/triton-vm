@@ -1697,28 +1697,6 @@ pub fn evaluate_all_terminal_constraints(
     .concat()
 }
 
-pub fn evaluate_all_constraints(
-    current_base_row: ArrayView1<XFieldElement>,
-    current_ext_row: ArrayView1<XFieldElement>,
-    next_base_row: ArrayView1<XFieldElement>,
-    next_ext_row: ArrayView1<XFieldElement>,
-    challenges: &Challenges,
-) -> Vec<XFieldElement> {
-    [
-        evaluate_all_initial_constraints(current_base_row, current_ext_row, challenges),
-        evaluate_all_consistency_constraints(current_base_row, current_ext_row, challenges),
-        evaluate_all_transition_constraints(
-            current_base_row,
-            current_ext_row,
-            next_base_row,
-            next_ext_row,
-            challenges,
-        ),
-        evaluate_all_terminal_constraints(current_base_row, current_ext_row, challenges),
-    ]
-    .concat()
-}
-
 pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
     roundup_npo2((padded_height + num_trace_randomizers) as u64) as usize
 }
