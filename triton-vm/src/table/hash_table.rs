@@ -1756,8 +1756,8 @@ pub mod tests {
             .enumerate()
         {
             let evaluated_constraint = constraint.evaluate(
-                master_base_trace_table.slice(s![-1..0, ..]),
-                master_ext_trace_table.slice(s![-1..0, ..]),
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
                 challenges,
             );
             assert_eq!(
