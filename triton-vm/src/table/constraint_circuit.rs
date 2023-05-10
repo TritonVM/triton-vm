@@ -392,54 +392,6 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         }
     }
 
-    /// Return max degree after evaluating the circuit with an input of specified degree
-    pub fn symbolic_degree_bound(
-        &self,
-        max_base_degrees: &[Degree],
-        max_ext_degrees: &[Degree],
-    ) -> Degree {
-        match &self.expression {
-            BinaryOperation(binop, lhs, rhs) => {
-                let lhs_degree = lhs
-                    .borrow()
-                    .symbolic_degree_bound(max_base_degrees, max_ext_degrees);
-                let rhs_degree = rhs
-                    .borrow()
-                    .symbolic_degree_bound(max_base_degrees, max_ext_degrees);
-                match binop {
-                    BinOp::Add | BinOp::Sub => cmp::max(lhs_degree, rhs_degree),
-                    BinOp::Mul => {
-                        // If either operand is zero, product is zero so degree is -1
-                        if lhs_degree == -1 || rhs_degree == -1 {
-                            -1
-                        } else {
-                            lhs_degree + rhs_degree
-                        }
-                    }
-                }
-            }
-            Input(input) => match input.is_base_table_column() {
-                true => max_base_degrees[input.base_col_index()],
-                false => max_ext_degrees[input.ext_col_index()],
-            },
-            XConstant(xfe) => {
-                if xfe.is_zero() {
-                    -1
-                } else {
-                    0
-                }
-            }
-            BConstant(bfe) => {
-                if bfe.is_zero() {
-                    -1
-                } else {
-                    0
-                }
-            }
-            Challenge(_) => 0,
-        }
-    }
-
     /// Return degree of the multivariate polynomial represented by this circuit
     pub fn degree(&self) -> Degree {
         match &self.expression {
@@ -448,30 +400,21 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
                 let rhs_degree = rhs.borrow().degree();
                 match binop {
                     BinOp::Add | BinOp::Sub => cmp::max(lhs_degree, rhs_degree),
-                    BinOp::Mul => {
-                        if lhs_degree == -1 || rhs_degree == -1 {
-                            -1
-                        } else {
-                            lhs_degree + rhs_degree
-                        }
-                    }
+                    BinOp::Mul => match lhs_degree == -1 || rhs_degree == -1 {
+                        true => -1,
+                        false => lhs_degree + rhs_degree,
+                    },
                 }
             }
             Input(_) => 1,
-            XConstant(xfe) => {
-                if xfe.is_zero() {
-                    -1
-                } else {
-                    0
-                }
-            }
-            BConstant(bfe) => {
-                if bfe.is_zero() {
-                    -1
-                } else {
-                    0
-                }
-            }
+            XConstant(xfe) => match xfe.is_zero() {
+                true => -1,
+                false => 0,
+            },
+            BConstant(bfe) => match bfe.is_zero() {
+                true => -1,
+                false => 0,
+            },
             Challenge(_) => 0,
         }
     }
@@ -481,17 +424,14 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
         // Maybe this could be solved smarter with dynamic programming
         // but we probably don't need that as our circuits aren't too big.
         match &self.expression {
-            // The highest number will always be in a leaf so we only
-            // need to check those.
             BinaryOperation(_, lhs, rhs) => {
                 let lhs_counters = lhs.as_ref().borrow().get_all_visited_counters();
                 let rhs_counters = rhs.as_ref().borrow().get_all_visited_counters();
-                let own_counter = self.visited_counter;
-                let mut all = vec![vec![own_counter], lhs_counters, rhs_counters].concat();
-                all.sort_unstable();
-                all.dedup();
-                all.reverse();
-                all
+                let own_counter = vec![self.visited_counter];
+                let mut all_counters = vec![own_counter, lhs_counters, rhs_counters].concat();
+                all_counters.sort_unstable();
+                all_counters.dedup();
+                all_counters
             }
             _ => vec![self.visited_counter],
         }
@@ -894,7 +834,6 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                     };
                 }
             }
-            return None;
         }
         None
     }
