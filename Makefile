@@ -55,8 +55,8 @@ build-constraints:
 	cargo run --bin constraint-evaluation-generator
 
 clean-constraints:
-	git restore --staged triton-vm/src/table/constraints/
-	git restore triton-vm/src/table/constraints/
+	git restore --staged triton-vm/src/table/constraints.rs
+	git restore triton-vm/src/table/constraints.rs
 
 fmt-only:
 	cargo fmt $(FMT_ARGS)
