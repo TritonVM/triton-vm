@@ -22,163 +22,94 @@ use triton_vm::table::ram_table::ExtRamTable;
 use triton_vm::table::u32_table::ExtU32Table;
 
 fn main() {
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["program"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtProgramTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtProgramTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtProgramTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtProgramTable::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    let initial_constraints = vec![
+        ExtProgramTable::initial_constraints(&circuit_builder),
+        ExtProcessorTable::initial_constraints(&circuit_builder),
+        ExtOpStackTable::initial_constraints(&circuit_builder),
+        ExtRamTable::initial_constraints(&circuit_builder),
+        ExtJumpStackTable::initial_constraints(&circuit_builder),
+        ExtHashTable::initial_constraints(&circuit_builder),
+        ExtCascadeTable::initial_constraints(&circuit_builder),
+        ExtLookupTable::initial_constraints(&circuit_builder),
+        ExtU32Table::initial_constraints(&circuit_builder),
+        GrandCrossTableArg::initial_constraints(&circuit_builder),
+    ]
+    .concat();
 
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["processor"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtProcessorTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtProcessorTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtProcessorTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtProcessorTable::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    let consistency_constraints = vec![
+        ExtProgramTable::consistency_constraints(&circuit_builder),
+        ExtProcessorTable::consistency_constraints(&circuit_builder),
+        ExtOpStackTable::consistency_constraints(&circuit_builder),
+        ExtRamTable::consistency_constraints(&circuit_builder),
+        ExtJumpStackTable::consistency_constraints(&circuit_builder),
+        ExtHashTable::consistency_constraints(&circuit_builder),
+        ExtCascadeTable::consistency_constraints(&circuit_builder),
+        ExtLookupTable::consistency_constraints(&circuit_builder),
+        ExtU32Table::consistency_constraints(&circuit_builder),
+        GrandCrossTableArg::consistency_constraints(&circuit_builder),
+    ]
+    .concat();
 
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["op", "stack"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtOpStackTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtOpStackTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtOpStackTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtOpStackTable::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    let transition_constraints = vec![
+        ExtProgramTable::transition_constraints(&circuit_builder),
+        ExtProcessorTable::transition_constraints(&circuit_builder),
+        ExtOpStackTable::transition_constraints(&circuit_builder),
+        ExtRamTable::transition_constraints(&circuit_builder),
+        ExtJumpStackTable::transition_constraints(&circuit_builder),
+        ExtHashTable::transition_constraints(&circuit_builder),
+        ExtCascadeTable::transition_constraints(&circuit_builder),
+        ExtLookupTable::transition_constraints(&circuit_builder),
+        ExtU32Table::transition_constraints(&circuit_builder),
+        GrandCrossTableArg::transition_constraints(&circuit_builder),
+    ]
+    .concat();
 
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["ram"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtRamTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtRamTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtRamTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtRamTable::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
+    let circuit_builder = ConstraintCircuitBuilder::new();
+    let terminal_constraints = vec![
+        ExtProgramTable::terminal_constraints(&circuit_builder),
+        ExtProcessorTable::terminal_constraints(&circuit_builder),
+        ExtOpStackTable::terminal_constraints(&circuit_builder),
+        ExtRamTable::terminal_constraints(&circuit_builder),
+        ExtJumpStackTable::terminal_constraints(&circuit_builder),
+        ExtHashTable::terminal_constraints(&circuit_builder),
+        ExtCascadeTable::terminal_constraints(&circuit_builder),
+        ExtLookupTable::terminal_constraints(&circuit_builder),
+        ExtU32Table::terminal_constraints(&circuit_builder),
+        GrandCrossTableArg::terminal_constraints(&circuit_builder),
+    ]
+    .concat();
 
-    let (table_name_snake, table_name_camel) =
-        construct_needed_table_identifiers(&["jump", "stack"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtJumpStackTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtJumpStackTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtJumpStackTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtJumpStackTable::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
+    let mut initial_constraints = fold_and_consume(initial_constraints);
+    let mut consistency_constraints = fold_and_consume(consistency_constraints);
+    let mut transition_constraints = fold_and_consume(transition_constraints);
+    let mut terminal_constraints = fold_and_consume(terminal_constraints);
 
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["hash"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtHashTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtHashTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtHashTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtHashTable::terminal_constraints),
+    let code = gen(
+        &mut initial_constraints,
+        &mut consistency_constraints,
+        &mut transition_constraints,
+        &mut terminal_constraints,
     );
-    write(&table_name_snake, source_code);
 
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["cascade"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtCascadeTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtCascadeTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtCascadeTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtCascadeTable::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
-
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["lookup"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtLookupTable::initial_constraints),
-        &mut build_fold_circuitify(&ExtLookupTable::consistency_constraints),
-        &mut build_fold_circuitify(&ExtLookupTable::transition_constraints),
-        &mut build_fold_circuitify(&ExtLookupTable::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
-
-    let (table_name_snake, table_name_camel) = construct_needed_table_identifiers(&["u32"]);
-    let source_code = gen(
-        &table_name_snake,
-        &table_name_camel,
-        &mut build_fold_circuitify(&ExtU32Table::initial_constraints),
-        &mut build_fold_circuitify(&ExtU32Table::consistency_constraints),
-        &mut build_fold_circuitify(&ExtU32Table::transition_constraints),
-        &mut build_fold_circuitify(&ExtU32Table::terminal_constraints),
-    );
-    write(&table_name_snake, source_code);
-
-    let table_name_snake = "cross_table_argument";
-    let table_name_camel = "GrandCrossTableArg";
-    let source_code = gen(
-        table_name_snake,
-        table_name_camel,
-        &mut build_fold_circuitify(&GrandCrossTableArg::initial_constraints),
-        &mut build_fold_circuitify(&GrandCrossTableArg::consistency_constraints),
-        &mut build_fold_circuitify(&GrandCrossTableArg::transition_constraints),
-        &mut build_fold_circuitify(&GrandCrossTableArg::terminal_constraints),
-    );
-    write(table_name_snake, source_code);
+    std::fs::write("triton-vm/src/table/constraints.rs", code)
+        .expect("Writing to disk has failed.");
 
     if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
         println!("cargo fmt failed: {fmt_failed}");
     }
 }
 
-/// Get the constraints defined in the given function, perform constant folding, and return
-/// them as a vector of `ConstraintCircuit`s.
-fn build_fold_circuitify<II: InputIndicator>(
-    circuit_monad_function: &dyn Fn(
-        &ConstraintCircuitBuilder<II>,
-    ) -> Vec<ConstraintCircuitMonad<II>>,
+fn fold_and_consume<II: InputIndicator>(
+    mut constraints: Vec<ConstraintCircuitMonad<II>>,
 ) -> Vec<ConstraintCircuit<II>> {
-    let circuit_builder = ConstraintCircuitBuilder::new();
-    let mut constraints = circuit_monad_function(&circuit_builder);
     ConstraintCircuitMonad::constant_folding(&mut constraints);
-    constraints
-        .into_iter()
-        .map(|circuit| circuit.consume())
-        .collect()
-}
-
-fn construct_needed_table_identifiers(table_name_constituents: &[&str]) -> (String, String) {
-    let table_name_snake = format!("{}_table", table_name_constituents.join("_"));
-    let title_case = table_name_constituents
-        .iter()
-        .map(|part| {
-            let (first_char, rest) = part.split_at(1);
-            let first_char_upper = first_char.to_uppercase();
-            format!("{first_char_upper}{rest}")
-        })
-        .collect_vec();
-    let table_name_camel = format!("Ext{}Table", title_case.iter().join(""));
-    (table_name_snake, table_name_camel)
-}
-
-fn write(table_name_snake: &str, rust_source_code: String) {
-    let output_filename =
-        format!("triton-vm/src/table/constraints/{table_name_snake}_constraints.rs");
-
-    std::fs::write(output_filename, rust_source_code).expect("Write Rust source code");
+    constraints.into_iter().map(|c| c.consume()).collect()
 }
 
 fn gen<SII: InputIndicator, DII: InputIndicator>(
-    table_name_snake: &str,
-    table_mod_name: &str,
     initial_constraint_circuits: &mut [ConstraintCircuit<SII>],
     consistency_constraint_circuits: &mut [ConstraintCircuit<SII>],
     transition_constraint_circuits: &mut [ConstraintCircuit<DII>],
@@ -190,22 +121,22 @@ fn gen<SII: InputIndicator, DII: InputIndicator>(
     let num_terminal_constraints = terminal_constraint_circuits.len();
 
     let (
-        initial_constraints_degrees,
+        initial_constraint_degrees,
         initial_constraint_strings_bfe,
         initial_constraint_strings_xfe,
     ) = turn_circuits_into_string(initial_constraint_circuits);
     let (
-        consistency_constraints_degrees,
+        consistency_constraint_degrees,
         consistency_constraint_strings_bfe,
         consistency_constraint_strings_xfe,
     ) = turn_circuits_into_string(consistency_constraint_circuits);
     let (
-        transition_constraints_degrees,
+        transition_constraint_degrees,
         transition_constraint_strings_bfe,
         transition_constraint_strings_xfe,
     ) = turn_circuits_into_string(transition_constraint_circuits);
     let (
-        terminal_constraints_degrees,
+        terminal_constraint_degrees,
         terminal_constraint_strings_bfe,
         terminal_constraint_strings_xfe,
     ) = turn_circuits_into_string(terminal_constraint_circuits);
@@ -221,12 +152,12 @@ use crate::table::challenges::Challenges;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::extension_table::Evaluable;
 use crate::table::extension_table::Quotientable;
-use crate::table::{table_name_snake}::{table_mod_name};
+use crate::table::master_table::MasterExtTable;
 
 // This file has been auto-generated. Any modifications _will_ be lost.
 // To re-generate, execute:
 // `cargo run --bin constraint-evaluation-generator`
-impl Evaluable<BFieldElement> for {table_mod_name} {{
+impl Evaluable<BFieldElement> for MasterExtTable {{
     #[inline]
     #[allow(unused_variables)]
     fn evaluate_initial_constraints(
@@ -270,7 +201,7 @@ impl Evaluable<BFieldElement> for {table_mod_name} {{
     }}
 }}
 
-impl Evaluable<XFieldElement> for {table_mod_name} {{
+impl Evaluable<XFieldElement> for MasterExtTable {{
     #[inline]
     #[allow(unused_variables)]
     fn evaluate_initial_constraints(
@@ -314,7 +245,7 @@ impl Evaluable<XFieldElement> for {table_mod_name} {{
     }}
 }}
 
-impl Quotientable for {table_mod_name} {{
+impl Quotientable for MasterExtTable {{
     fn num_initial_quotients() -> usize {{
         {num_initial_constraints}
     }}
@@ -336,7 +267,7 @@ impl Quotientable for {table_mod_name} {{
         interpolant_degree: Degree,
     ) -> Vec<Degree> {{
         let zerofier_degree = 1;
-        [{initial_constraints_degrees}].to_vec()
+        [{initial_constraint_degrees}].to_vec()
     }}
 
     #[allow(unused_variables)]
@@ -345,7 +276,7 @@ impl Quotientable for {table_mod_name} {{
         padded_height: usize,
     ) -> Vec<Degree> {{
         let zerofier_degree = padded_height as Degree;
-        [{consistency_constraints_degrees}].to_vec()
+        [{consistency_constraint_degrees}].to_vec()
     }}
 
     #[allow(unused_variables)]
@@ -354,7 +285,7 @@ impl Quotientable for {table_mod_name} {{
         padded_height: usize,
     ) -> Vec<Degree> {{
         let zerofier_degree = padded_height as Degree - 1;
-        [{transition_constraints_degrees}].to_vec()
+        [{transition_constraint_degrees}].to_vec()
     }}
 
     #[allow(unused_variables)]
@@ -362,7 +293,7 @@ impl Quotientable for {table_mod_name} {{
         interpolant_degree: Degree,
     ) -> Vec<Degree> {{
         let zerofier_degree = 1;
-        [{terminal_constraints_degrees}].to_vec()
+        [{terminal_constraint_degrees}].to_vec()
     }}
 }}
 "
@@ -520,7 +451,7 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
             requested_visited_count,
             scope,
         );
-        return [out_left, out_right].join("\n");
+        return [out_left, out_right].join("");
     }
 
     // Declare a new binding.

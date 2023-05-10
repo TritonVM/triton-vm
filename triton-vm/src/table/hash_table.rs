@@ -1680,97 +1680,6 @@ impl HashTable {
 }
 
 #[cfg(test)]
-mod constraint_tests {
-    use num_traits::Zero;
-
-    use crate::stark::triton_stark_tests::parse_simulate_pad_extend;
-    use crate::table::extension_table::Evaluable;
-    use crate::table::master_table::MasterTable;
-
-    use super::*;
-
-    #[test]
-    fn hash_table_satisfies_constraints_test() {
-        let source_code = "hash hash hash halt";
-        let (_, _, _, master_base_table, master_ext_table, challenges) =
-            parse_simulate_pad_extend(source_code, vec![], vec![]);
-        assert_eq!(
-            master_base_table.master_base_matrix.nrows(),
-            master_ext_table.master_ext_matrix.nrows()
-        );
-        let master_base_trace_table = master_base_table.trace_table();
-        let master_ext_trace_table = master_ext_table.trace_table();
-        assert_eq!(
-            master_base_trace_table.nrows(),
-            master_ext_trace_table.nrows()
-        );
-
-        let num_rows = master_base_trace_table.nrows();
-        let first_base_row = master_base_trace_table.row(0).map(|e| e.lift());
-        let first_base_row = first_base_row.view();
-        let first_ext_row = master_ext_trace_table.row(0);
-        for (idx, v) in
-            ExtHashTable::evaluate_initial_constraints(first_base_row, first_ext_row, &challenges)
-                .iter()
-                .enumerate()
-        {
-            assert!(v.is_zero(), "Initial constraint {idx} failed.");
-        }
-
-        for row_idx in 0..num_rows {
-            let base_row = master_base_trace_table.row(row_idx).map(|e| e.lift());
-            let base_row = base_row.view();
-            let ext_row = master_ext_trace_table.row(row_idx);
-            for (constraint_idx, v) in
-                ExtHashTable::evaluate_consistency_constraints(base_row, ext_row, &challenges)
-                    .iter()
-                    .enumerate()
-            {
-                assert!(
-                    v.is_zero(),
-                    "consistency constraint {constraint_idx} failed in row {row_idx}"
-                );
-            }
-        }
-
-        for row_idx in 0..num_rows - 1 {
-            let base_row = master_base_trace_table.row(row_idx).map(|e| e.lift());
-            let base_row = base_row.view();
-            let ext_row = master_ext_trace_table.row(row_idx);
-            let next_base_row = master_base_trace_table.row(row_idx + 1).map(|e| e.lift());
-            let next_base_row = next_base_row.view();
-            let next_ext_row = master_ext_trace_table.row(row_idx + 1);
-            for (constraint_idx, v) in ExtHashTable::evaluate_transition_constraints(
-                base_row,
-                ext_row,
-                next_base_row,
-                next_ext_row,
-                &challenges,
-            )
-            .iter()
-            .enumerate()
-            {
-                assert!(
-                    v.is_zero(),
-                    "transition constraint {constraint_idx} failed in row {row_idx}",
-                );
-            }
-        }
-
-        let last_base_row = master_base_trace_table.row(num_rows - 1).map(|e| e.lift());
-        let last_base_row = last_base_row.view();
-        let last_ext_row = master_ext_trace_table.row(num_rows - 1);
-        for (idx, v) in
-            ExtHashTable::evaluate_terminal_constraints(last_base_row, last_ext_row, &challenges)
-                .iter()
-                .enumerate()
-        {
-            assert!(v.is_zero(), "Terminal constraint {idx} failed.");
-        }
-    }
-}
-
-#[cfg(test)]
 pub mod tests {
     use super::*;
 
@@ -1847,8 +1756,8 @@ pub mod tests {
             .enumerate()
         {
             let evaluated_constraint = constraint.evaluate(
-                master_base_trace_table.slice(s![master_base_trace_table.nrows() - 1.., ..]),
-                master_ext_trace_table.slice(s![master_ext_trace_table.nrows() - 1.., ..]),
+                master_base_trace_table.slice(s![-1..0, ..]),
+                master_ext_trace_table.slice(s![-1..0, ..]),
                 challenges,
             );
             assert_eq!(

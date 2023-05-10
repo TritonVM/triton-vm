@@ -1,10 +1,14 @@
-pub mod cascade_table_constraints;
-pub mod cross_table_argument_constraints;
-pub mod hash_table_constraints;
-pub mod jump_stack_table_constraints;
-pub mod lookup_table_constraints;
-pub mod op_stack_table_constraints;
-pub mod processor_table_constraints;
-pub mod program_table_constraints;
-pub mod ram_table_constraints;
-pub mod u32_table_constraints;
+use twenty_first::shared_math::b_field_element::BFieldElement;
+use twenty_first::shared_math::x_field_element::XFieldElement;
+
+use crate::table::extension_table::Evaluable;
+use crate::table::extension_table::Quotientable;
+use crate::table::master_table::MasterExtTable;
+
+// This file is a placeholder for auto-generated code
+// Run `cargo run --bin constraint-evaluation-generator`
+// to fill in this file with optimized constraints.
+impl Evaluable<BFieldElement> for MasterExtTable {}
+impl Evaluable<XFieldElement> for MasterExtTable {}
+
+impl Quotientable for MasterExtTable {}
