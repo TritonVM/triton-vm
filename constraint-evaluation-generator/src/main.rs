@@ -23,7 +23,7 @@ use triton_vm::table::u32_table::ExtU32Table;
 
 fn main() {
     let circuit_builder = ConstraintCircuitBuilder::new();
-    let initial_constraints = vec![
+    let mut initial_constraints = vec![
         ExtProgramTable::initial_constraints(&circuit_builder),
         ExtProcessorTable::initial_constraints(&circuit_builder),
         ExtOpStackTable::initial_constraints(&circuit_builder),
@@ -38,7 +38,7 @@ fn main() {
     .concat();
 
     let circuit_builder = ConstraintCircuitBuilder::new();
-    let consistency_constraints = vec![
+    let mut consistency_constraints = vec![
         ExtProgramTable::consistency_constraints(&circuit_builder),
         ExtProcessorTable::consistency_constraints(&circuit_builder),
         ExtOpStackTable::consistency_constraints(&circuit_builder),
@@ -53,7 +53,7 @@ fn main() {
     .concat();
 
     let circuit_builder = ConstraintCircuitBuilder::new();
-    let transition_constraints = vec![
+    let mut transition_constraints = vec![
         ExtProgramTable::transition_constraints(&circuit_builder),
         ExtProcessorTable::transition_constraints(&circuit_builder),
         ExtOpStackTable::transition_constraints(&circuit_builder),
@@ -68,7 +68,7 @@ fn main() {
     .concat();
 
     let circuit_builder = ConstraintCircuitBuilder::new();
-    let terminal_constraints = vec![
+    let mut terminal_constraints = vec![
         ExtProgramTable::terminal_constraints(&circuit_builder),
         ExtProcessorTable::terminal_constraints(&circuit_builder),
         ExtOpStackTable::terminal_constraints(&circuit_builder),
@@ -82,12 +82,17 @@ fn main() {
     ]
     .concat();
 
-    let mut initial_constraints = fold_and_consume(initial_constraints);
-    let mut consistency_constraints = fold_and_consume(consistency_constraints);
-    let mut transition_constraints = fold_and_consume(transition_constraints);
-    let mut terminal_constraints = fold_and_consume(terminal_constraints);
+    ConstraintCircuitMonad::constant_folding(&mut initial_constraints);
+    ConstraintCircuitMonad::constant_folding(&mut consistency_constraints);
+    ConstraintCircuitMonad::constant_folding(&mut transition_constraints);
+    ConstraintCircuitMonad::constant_folding(&mut terminal_constraints);
 
-    let code = gen(
+    let mut initial_constraints = consume(initial_constraints);
+    let mut consistency_constraints = consume(consistency_constraints);
+    let mut transition_constraints = consume(transition_constraints);
+    let mut terminal_constraints = consume(terminal_constraints);
+
+    let code = generate_constraint_code(
         &mut initial_constraints,
         &mut consistency_constraints,
         &mut transition_constraints,
@@ -102,14 +107,14 @@ fn main() {
     }
 }
 
-fn fold_and_consume<II: InputIndicator>(
-    mut constraints: Vec<ConstraintCircuitMonad<II>>,
+/// Consumes every `ConstraintCircuitMonad`, returning their corresponding `ConstraintCircuit`s.
+fn consume<II: InputIndicator>(
+    constraints: Vec<ConstraintCircuitMonad<II>>,
 ) -> Vec<ConstraintCircuit<II>> {
-    ConstraintCircuitMonad::constant_folding(&mut constraints);
     constraints.into_iter().map(|c| c.consume()).collect()
 }
 
-fn gen<SII: InputIndicator, DII: InputIndicator>(
+fn generate_constraint_code<SII: InputIndicator, DII: InputIndicator>(
     initial_constraint_circuits: &mut [ConstraintCircuit<SII>],
     consistency_constraint_circuits: &mut [ConstraintCircuit<SII>],
     transition_constraint_circuits: &mut [ConstraintCircuit<DII>],
@@ -339,7 +344,7 @@ fn turn_circuits_into_string<II: InputIndicator>(
 
     let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraint_circuits
         .iter()
-        .partition(|constraint| is_bfield_element(constraint));
+        .partition(|constraint| constraint.evaluates_to_base_element());
 
     // The order of the constraints' degrees must match the order of the constraints.
     // Hence, listing the degrees is only possible after the partition into base and extension
@@ -486,24 +491,6 @@ fn print_xfe(xfe: &XFieldElement) -> String {
     let coeff_1 = print_bfe(&xfe.coefficients[1]);
     let coeff_2 = print_bfe(&xfe.coefficients[2]);
     format!("XFieldElement::new([{coeff_0}, {coeff_1}, {coeff_2}])")
-}
-
-/// Recursively check whether a node is composed of only BFieldElements, i.e., only uses
-/// 1. inputs from base rows,
-/// 2. constants from the B-field, and
-/// 3. binary operations on BFieldElements.
-fn is_bfield_element<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> bool {
-    match &circuit.expression {
-        CircuitExpression::BConstant(_) => true,
-        CircuitExpression::XConstant(_) => false,
-        CircuitExpression::Input(indicator) => indicator.is_base_table_column(),
-        CircuitExpression::Challenge(_) => false,
-        CircuitExpression::BinaryOperation(_, lhs, rhs) => {
-            let lhs = lhs.as_ref().borrow();
-            let rhs = rhs.as_ref().borrow();
-            is_bfield_element(&lhs) && is_bfield_element(&rhs)
-        }
-    }
 }
 
 /// Recursively construct the code for evaluating a single node.

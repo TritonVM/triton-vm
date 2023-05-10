@@ -6,6 +6,7 @@
 //! constraint polynomials, with each root corresponding to a different constraint polynomial.
 //! Because the graph has multiple roots, it is called a “multitree.”
 
+use itertools::Itertools;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::cmp;
@@ -69,6 +70,9 @@ pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display
     fn base_col_index(&self) -> usize;
     fn ext_col_index(&self) -> usize;
 
+    fn base_table_input(index: usize) -> Self;
+    fn ext_table_input(index: usize) -> Self;
+
     fn evaluate(
         &self,
         base_table: ArrayView2<BFieldElement>,
@@ -116,6 +120,14 @@ impl InputIndicator for SingleRowIndicator {
             BaseRow(_) => panic!("not an ext row"),
             ExtRow(i) => *i,
         }
+    }
+
+    fn base_table_input(index: usize) -> Self {
+        Self::BaseRow(index)
+    }
+
+    fn ext_table_input(index: usize) -> Self {
+        Self::ExtRow(index)
     }
 
     fn evaluate(
@@ -175,6 +187,17 @@ impl InputIndicator for DualRowIndicator {
             CurrentBaseRow(_) | NextBaseRow(_) => panic!("not an ext row"),
             CurrentExtRow(i) | NextExtRow(i) => *i,
         }
+    }
+
+    fn base_table_input(index: usize) -> Self {
+        // It seems that the choice between `CurrentBaseRow` and `NextBaseRow` is arbitrary:
+        // any transition constraint polynomial is evaluated on both the current and the next row.
+        // Hence, both rows are in scope.
+        Self::CurrentBaseRow(index)
+    }
+
+    fn ext_table_input(index: usize) -> Self {
+        Self::CurrentExtRow(index)
     }
 
     fn evaluate(
@@ -471,6 +494,24 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
                 lhs.as_ref().borrow().is_randomized() || rhs.as_ref().borrow().is_randomized()
             }
             _ => false,
+        }
+    }
+
+    /// Recursively check whether this node is composed of only BFieldElements, i.e., only uses
+    /// 1. inputs from base rows,
+    /// 2. constants from the B-field, and
+    /// 3. binary operations on BFieldElements.
+    pub fn evaluates_to_base_element(&self) -> bool {
+        match &self.expression {
+            BConstant(_) => true,
+            XConstant(_) => false,
+            Input(indicator) => indicator.is_base_table_column(),
+            Challenge(_) => false,
+            BinaryOperation(_, lhs, rhs) => {
+                let lhs = lhs.as_ref().borrow();
+                let rhs = rhs.as_ref().borrow();
+                lhs.evaluates_to_base_element() && rhs.evaluates_to_base_element()
+            }
         }
     }
 
@@ -895,6 +936,136 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
                 }
             }
         }
+    }
+
+    /// Lowers the degree of a given multicircuit to the target degree.
+    /// This is achieved by introducing additional variables and constraints.
+    /// The appropriate substitutions are applied to the given multicircuit.
+    /// The target degree must be greater than 1.
+    ///
+    /// The new constraints are returned as two vector of ConstraintCircuitMonads:
+    /// the first corresponds to base columns and constraints,
+    /// the second to extension columns and constraints.
+    ///
+    /// Each returned constraint is guaranteed to correspond to some
+    /// `CircuitExpression::BinaryOperation(BinOp::Sub, lhs, rhs)` where
+    /// - `lhs` is the new variable, and
+    /// - `rhs` is the (sub)circuit replaced by `lhs`.
+    /// These can then be used to construct new columns,
+    /// as well as derivation rules for filling those new columns.
+    ///
+    /// The number of base and extension columns used by the multicircuit have to be provided.
+    /// The uniqueness of the new columns' indices depends on these provided values.
+    pub fn lower_to_degree(
+        multicircuit: &mut [ConstraintCircuitMonad<II>],
+        target_degree: Degree,
+        num_base_cols: usize,
+        num_ext_cols: usize,
+    ) -> (
+        Vec<ConstraintCircuitMonad<II>>,
+        Vec<ConstraintCircuitMonad<II>>,
+    ) {
+        if target_degree <= 1 {
+            panic!("Target degree must be greater than 1. Got {target_degree}.");
+        }
+
+        let mut base_constraints = vec![];
+        let mut ext_constraints = vec![];
+
+        if multicircuit.is_empty() {
+            return (base_constraints, ext_constraints);
+        }
+
+        let builder = multicircuit[0].builder.clone();
+
+        while multicircuit
+            .iter()
+            .map(|circuit| circuit.circuit.as_ref().borrow().degree())
+            .max()
+            .unwrap_or(0)
+            > target_degree
+        {
+            // Filter for all nodes with degree > target degree.
+            let all_nodes = builder.all_nodes.as_ref().borrow();
+            let high_degree_nodes = all_nodes
+                .iter()
+                .filter(|node| node.circuit.as_ref().borrow().degree() > target_degree)
+                .collect_vec();
+
+            // Of those nodes, get all the children with degree <= target degree.
+            let mut barely_low_degree_nodes = vec![];
+            for node in high_degree_nodes.iter() {
+                // Constants are always of degree <= 1 and hence not high degree nodes.
+                // Addition and subtraction don't affect the degree, and hence uninteresting.
+                if let BinaryOperation(BinOp::Mul, lhs, rhs) =
+                    &node.circuit.as_ref().borrow().expression
+                {
+                    if lhs.as_ref().borrow().degree() <= target_degree {
+                        barely_low_degree_nodes.push(lhs.clone());
+                    }
+                    if rhs.as_ref().borrow().degree() <= target_degree {
+                        barely_low_degree_nodes.push(rhs.clone());
+                    }
+                }
+            }
+            let barely_low_degree_nodes = barely_low_degree_nodes;
+
+            // If the resulting list is empty, there is no way forward. PANIC TIME!
+            if barely_low_degree_nodes.is_empty() {
+                panic!("Could not lower degree of circuit to target degree. This is a bug.");
+            }
+
+            // Of the remaining nodes, pick the one occurring the most often.
+            let mut low_deg_node_occurrences = HashMap::new();
+            for node in barely_low_degree_nodes.iter() {
+                *low_deg_node_occurrences
+                    .entry(node.as_ref().borrow().id)
+                    .or_insert(0) += 1;
+            }
+            let (&chosen_node_id, _) = low_deg_node_occurrences
+                .iter()
+                .max_by_key(|(_, &count)| count)
+                .unwrap();
+            let chosen_node = barely_low_degree_nodes
+                .into_iter()
+                .find(|node| node.as_ref().borrow().id == chosen_node_id)
+                .unwrap();
+
+            // Create a new variable.
+            let new_var_is_base_col = chosen_node.as_ref().borrow().evaluates_to_base_element();
+            let new_col_idx = match new_var_is_base_col {
+                true => num_base_cols + base_constraints.len(),
+                false => num_ext_cols + ext_constraints.len(),
+            };
+            let new_input_indicator = match new_var_is_base_col {
+                true => II::base_table_input(new_col_idx),
+                false => II::ext_table_input(new_col_idx),
+            };
+            let new_variable = builder.input(new_input_indicator);
+            let new_circuit = new_variable.circuit.clone();
+
+            // Substitute the chosen circuit with a new variable.
+            new_variable.replace_references(chosen_node_id, new_circuit);
+
+            // Create a new constraint: new_var - chosen_node
+            let chosen_node_monad = ConstraintCircuitMonad {
+                circuit: chosen_node,
+                builder: builder.clone(),
+            };
+            let new_constraint = new_variable - chosen_node_monad;
+
+            // Put the new constraint into the appropriate return vector.
+            match new_var_is_base_col {
+                true => base_constraints.push(new_constraint),
+                false => ext_constraints.push(new_constraint),
+            }
+
+            // todo: treat a change of the root explicitly.
+            //  Iterate through the list of roots, check if one of them is the chosen node.
+            //  If so, replace it with the new variable.
+        }
+
+        (base_constraints, ext_constraints)
     }
 }
 
