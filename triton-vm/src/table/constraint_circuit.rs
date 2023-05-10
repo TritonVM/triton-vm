@@ -324,46 +324,49 @@ impl<II: InputIndicator> Display for ConstraintCircuit<II> {
 
 impl<II: InputIndicator> ConstraintCircuit<II> {
     /// Increment `visited_counter` by one for each reachable node
-    fn traverse_single(&mut self) {
+    fn increment_visit_count_for_tree(&mut self) {
         self.visited_counter += 1;
         if let BinaryOperation(_, lhs, rhs) = self.expression.borrow_mut() {
-            lhs.as_ref().borrow_mut().traverse_single();
-            rhs.as_ref().borrow_mut().traverse_single();
+            lhs.as_ref().borrow_mut().increment_visit_count_for_tree();
+            rhs.as_ref().borrow_mut().increment_visit_count_for_tree();
         }
     }
 
-    /// Count how many times each reachable node is reached when traversing from
-    /// the starting points that are given as input. The result is stored in the
-    /// `visited_counter` field in each node.
-    pub fn traverse_multiple(ccs: &mut [ConstraintCircuit<II>]) {
+    /// Count how often each node is referenced when traversing from the given starting points.
+    /// The result is stored in the `visited_counter` field of each node.
+    pub fn refresh_visit_counters(ccs: &mut [ConstraintCircuit<II>]) {
         for cc in ccs.iter_mut() {
-            assert!(
-                cc.visited_counter.is_zero(),
-                "visited counter must be zero before starting count"
-            );
-            cc.traverse_single();
+            cc.reset_visit_count_for_tree();
+        }
+        for cc in ccs.iter_mut() {
+            cc.increment_visit_count_for_tree();
         }
     }
 
     /// Reset the visited counters for the entire subtree
-    fn reset_visited_counters(&mut self) {
+    fn reset_visit_count_for_tree(&mut self) {
         self.visited_counter = 0;
 
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
-            lhs.as_ref().borrow_mut().reset_visited_counters();
-            rhs.as_ref().borrow_mut().reset_visited_counters();
+            lhs.as_ref().borrow_mut().reset_visit_count_for_tree();
+            rhs.as_ref().borrow_mut().reset_visit_count_for_tree();
         }
     }
 
     /// Verify that all IDs in the subtree are unique. Panics otherwise.
     fn inner_has_unique_ids(&mut self, ids: &mut HashMap<usize, ConstraintCircuit<II>>) {
-        let node_with_repeated_id = ids.insert(self.id, self.clone());
-        assert!(
-            !self.visited_counter.is_zero() || node_with_repeated_id.is_none(),
-            "ID = {} was repeated. Self was: {self:?}, other node: {:?}",
-            self.id,
-            node_with_repeated_id.unwrap(),
-        );
+        let self_id = self.id;
+
+        // Try to detect duplicate IDs only once for this node.
+        let maybe_other_node = if self.visited_counter == 0 {
+            ids.insert(self_id, self.clone())
+        } else {
+            None
+        };
+        if let Some(other) = maybe_other_node {
+            panic!("ID {self_id} was repeated. Self: {self:?}. Other: {other:?}.");
+        }
+
         self.visited_counter += 1;
         if let BinaryOperation(_, lhs, rhs) = &self.expression {
             lhs.as_ref().borrow_mut().inner_has_unique_ids(ids);
@@ -372,15 +375,20 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
     }
 
     /// Verify that a multicircuit has unique IDs. Panics otherwise.
+    /// Also determines how often each node is referenced and stores the result in the
+    /// `visited_counter` field of each node.
+    /// This makes this function very similar to
+    /// [`refresh_visit_counters`](ConstraintCircuit::refresh_visit_counters),
+    /// but it also checks for duplicate IDs.
     pub fn assert_has_unique_ids(constraints: &mut [ConstraintCircuit<II>]) {
         let mut ids: HashMap<usize, ConstraintCircuit<II>> = HashMap::new();
-
+        // The inner uniqueness checks relies on visit counters being 0 for unseen nodes.
+        // Hence, they are reset here.
+        for circuit in constraints.iter_mut() {
+            circuit.reset_visit_count_for_tree();
+        }
         for circuit in constraints.iter_mut() {
             circuit.inner_has_unique_ids(&mut ids);
-        }
-
-        for circuit in constraints.iter_mut() {
-            circuit.reset_visited_counters();
         }
     }
 
@@ -1094,7 +1102,7 @@ mod constraint_circuit_tests {
         }
 
         for constraint in constraints.iter_mut() {
-            ConstraintCircuit::reset_visited_counters(constraint);
+            ConstraintCircuit::reset_visit_count_for_tree(constraint);
         }
 
         counter
@@ -1223,7 +1231,11 @@ mod constraint_circuit_tests {
         let digest_prior = hasher0.finish();
 
         // Increase visited counter and verify digest is unchanged
-        circuit.circuit.as_ref().borrow_mut().traverse_single();
+        circuit
+            .circuit
+            .as_ref()
+            .borrow_mut()
+            .increment_visit_count_for_tree();
         let mut hasher1 = DefaultHasher::new();
         circuit.hash(&mut hasher1);
         let digest_after = hasher1.finish();

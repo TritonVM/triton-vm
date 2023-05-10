@@ -315,10 +315,8 @@ fn turn_circuits_into_string<II: InputIndicator>(
     }
 
     // Sanity check: all node IDs must be unique.
+    // This also ounts the number of times each node is referenced.
     ConstraintCircuit::assert_has_unique_ids(constraint_circuits);
-
-    // Count number of times each node is referenced.
-    ConstraintCircuit::traverse_multiple(constraint_circuits);
 
     // Get all unique reference counts.
     let mut visited_counters = constraint_circuits
