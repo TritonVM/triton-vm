@@ -1169,8 +1169,11 @@ mod constraint_circuit_tests {
     use itertools::Itertools;
     use ndarray::Array2;
     use rand::random;
+    use rand::rngs::StdRng;
     use rand::thread_rng;
+    use rand::Rng;
     use rand::RngCore;
+    use rand::SeedableRng;
     use twenty_first::shared_math::other::random_elements;
 
     use crate::table::cascade_table::ExtCascadeTable;
@@ -1188,34 +1191,36 @@ mod constraint_circuit_tests {
 
     use super::*;
 
-    fn node_counter_inner<II: InputIndicator>(
-        constraint: &mut ConstraintCircuit<II>,
-        counter: &mut usize,
-    ) {
-        if constraint.visited_counter == 0 {
-            *counter += 1;
-            constraint.visited_counter = 1;
-
-            if let BinaryOperation(_, lhs, rhs) = &constraint.expression {
-                node_counter_inner(&mut lhs.as_ref().borrow_mut(), counter);
-                node_counter_inner(&mut rhs.as_ref().borrow_mut(), counter);
+    /// Returns the number of unvisited nodes in the subtree of the given node, which includes
+    /// the node itself. Increments the visit counter of each visited node.
+    fn count_nodes_inner<II: InputIndicator>(constraint: &mut ConstraintCircuit<II>) -> usize {
+        let num_unvisited_self = match constraint.visited_counter {
+            0 => 1,
+            _ => 0,
+        };
+        constraint.visited_counter += 1;
+        let num_unvisited_children = match &constraint.expression {
+            BinaryOperation(_, lhs, rhs) => {
+                let num_left = count_nodes_inner(&mut lhs.as_ref().borrow_mut());
+                let num_right = count_nodes_inner(&mut rhs.as_ref().borrow_mut());
+                num_left + num_right
             }
-        }
+            _ => 0,
+        };
+
+        num_unvisited_self + num_unvisited_children
     }
 
-    /// Count the total number of nodes in call constraints
-    fn node_counter<II: InputIndicator>(constraints: &mut [ConstraintCircuit<II>]) -> usize {
-        let mut counter = 0;
-
-        for constraint in constraints.iter_mut() {
-            node_counter_inner(constraint, &mut counter);
-        }
-
+    /// Count the total number of unique nodes in the given multicircuit.
+    /// Also refreshes the visit counter for each node, similar to
+    /// [`refresh_visit_counters`](ConstraintCircuit::refresh_visit_counters).
+    fn count_nodes<II: InputIndicator>(constraints: &mut [ConstraintCircuit<II>]) -> usize {
+        // The uniqueness of nodes is determined by their visit count.
+        // To ensure a correct node count, the visit count must be reset before counting nodes.
         for constraint in constraints.iter_mut() {
             ConstraintCircuit::reset_visit_count_for_tree(constraint);
         }
-
-        counter
+        constraints.iter_mut().map(|c| count_nodes_inner(c)).sum()
     }
 
     fn random_circuit_builder() -> (
@@ -1661,53 +1666,39 @@ mod constraint_circuit_tests {
     /// and its sub-circuits is unique.
     /// It is used to identify redundant constraints or sub-circuits.
     /// The employed method is the Schwartz-Zippel lemma.
-    fn evaluate_and_assert_uniqueness<II: InputIndicator>(
+    fn evaluate_assert_unique<II: InputIndicator>(
         constraint: &ConstraintCircuit<II>,
         challenges: &Challenges,
-        base_table: ArrayView2<BFieldElement>,
-        ext_table: ArrayView2<XFieldElement>,
-        evaluated_values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
+        base_rows: ArrayView2<BFieldElement>,
+        ext_rows: ArrayView2<XFieldElement>,
+        values: &mut HashMap<XFieldElement, (usize, ConstraintCircuit<II>)>,
     ) -> XFieldElement {
         let value = match &constraint.expression {
-            BConstant(bfe) => bfe.lift(),
-            XConstant(xfe) => xfe.to_owned(),
-            Input(s) => s.evaluate(base_table, ext_table),
-            Challenge(cid) => challenges.get_challenge(*cid),
             BinaryOperation(binop, lhs, rhs) => {
-                let lhs = evaluate_and_assert_uniqueness(
-                    &lhs.as_ref().borrow(),
-                    challenges,
-                    base_table,
-                    ext_table,
-                    evaluated_values,
-                );
-                let rhs = evaluate_and_assert_uniqueness(
-                    &rhs.as_ref().borrow(),
-                    challenges,
-                    base_table,
-                    ext_table,
-                    evaluated_values,
-                );
+                let lhs = lhs.as_ref().borrow();
+                let rhs = rhs.as_ref().borrow();
+                let lhs = evaluate_assert_unique(&lhs, challenges, base_rows, ext_rows, values);
+                let rhs = evaluate_assert_unique(&rhs, challenges, base_rows, ext_rows, values);
                 match binop {
                     BinOp::Add => lhs + rhs,
                     BinOp::Sub => lhs - rhs,
                     BinOp::Mul => lhs * rhs,
                 }
             }
+            _ => constraint.evaluate(base_rows, ext_rows, challenges),
         };
 
         let own_id = constraint.id.to_owned();
-        let maybe_entry = evaluated_values.insert(value, (own_id, constraint.clone()));
-        if let Some((collided_circuit_id, collided_circuit)) = maybe_entry {
-            if collided_circuit_id != own_id {
-                panic!(
-                    "Circuit ID {collided_circuit_id} and circuit ID {own_id} are not unique. \
-                    Collision on:\n\
-                    ID {collided_circuit_id} – {collided_circuit}\n\
-                    ID {own_id} – {constraint}\n\
-                    Value was {value}.",
-                );
-            }
+        let maybe_entry = values.insert(value, (own_id, constraint.clone()));
+        if let Some((other_id, other_circuit)) = maybe_entry {
+            assert_eq!(
+                own_id, other_id,
+                "Circuit ID {other_id} and circuit ID {own_id} are not unique. \
+                Collision on:\n\
+                ID {other_id} – {other_circuit}\n\
+                ID {own_id} – {constraint}\n\
+                Both evaluate to {value}.",
+            );
         }
 
         value
@@ -1721,31 +1712,37 @@ mod constraint_circuit_tests {
         ) -> Vec<ConstraintCircuitMonad<II>>,
         table_name: &str,
     ) {
-        let challenges = Challenges::placeholder(&[], &[]);
+        let seed = random();
+        let mut rng = StdRng::seed_from_u64(seed);
+        println!("seed: {seed}");
+
+        let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
+        let challenges = challenges.to_vec();
+        let challenges = Challenges::new(challenges, &[], &[]);
+
         let circuit_builder = ConstraintCircuitBuilder::new();
         let mut constraints = constraint_builder(&circuit_builder);
         ConstraintCircuitMonad::constant_folding(&mut constraints);
         let mut constraints = constraints.into_iter().map(|c| c.consume()).collect_vec();
         ConstraintCircuit::assert_has_unique_ids(&mut constraints);
+        let num_total_nodes = count_nodes(&mut constraints);
+        let constraints = constraints;
 
-        let base_table_shape = [2, master_table::NUM_BASE_COLUMNS];
-        let ext_table_shape = [2, master_table::NUM_EXT_COLUMNS];
-        let base_table = Array2::from_shape_simple_fn(base_table_shape, random::<BFieldElement>);
-        let ext_table = Array2::from_shape_simple_fn(ext_table_shape, random::<XFieldElement>);
+        let num_rows = 2;
+        let base_shape = [num_rows, master_table::NUM_BASE_COLUMNS];
+        let ext_shape = [num_rows, master_table::NUM_EXT_COLUMNS];
+        let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
+        let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
+        let base_rows = base_rows.view();
+        let ext_rows = ext_rows.view();
 
-        let mut evaluated_values = HashMap::new();
-        for constraint in constraints.iter() {
-            evaluate_and_assert_uniqueness(
-                constraint,
-                &challenges,
-                base_table.view(),
-                ext_table.view(),
-                &mut evaluated_values,
-            );
+        let mut values = HashMap::new();
+        for c in constraints.iter() {
+            evaluate_assert_unique(c, &challenges, base_rows, ext_rows, &mut values);
         }
 
-        println!("nodes in {table_name}: {}", node_counter(&mut constraints));
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
+        println!("nodes in {table_name}: {num_total_nodes}");
         println!("Max degree constraint for {table_name} table: {circuit_degree}");
     }
 
