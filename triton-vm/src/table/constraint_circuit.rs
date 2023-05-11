@@ -737,25 +737,6 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         max_from_hash_map
     }
 
-    fn replace_references(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
-        for node in self.builder.all_nodes.as_ref().borrow().clone().into_iter() {
-            if node.circuit.as_ref().borrow().id == old_id {
-                continue;
-            }
-
-            if let BinaryOperation(_, ref mut lhs, ref mut rhs) =
-                node.circuit.as_ref().borrow_mut().expression
-            {
-                if lhs.as_ref().borrow().id == old_id {
-                    *lhs = new.clone();
-                }
-                if rhs.as_ref().borrow().id == old_id {
-                    *rhs = new.clone();
-                }
-            }
-        }
-    }
-
     fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
         if let BinaryOperation(binop, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
             // a + 0 = a ∧ a - 0 = a
@@ -912,8 +893,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
         if equivalent_circuit.is_some() {
             let equivalent_circuit = equivalent_circuit.as_ref().unwrap().clone();
-            let id_of_node_to_be_deleted = self.circuit.borrow().id;
-            self.replace_references(id_of_node_to_be_deleted, equivalent_circuit);
+            let id_to_remove = self.circuit.borrow().id;
+            self.builder.substitute(id_to_remove, equivalent_circuit);
             self.builder.all_nodes.as_ref().borrow_mut().remove(self);
         }
 
@@ -994,7 +975,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             let new_circuit = new_variable.circuit.clone();
 
             // Substitute the chosen circuit with the new variable.
-            new_variable.replace_references(chosen_node_id, new_circuit.clone());
+            builder.substitute(chosen_node_id, new_circuit.clone());
 
             // Create a new constraint: new_var - chosen_node
             let chosen_node_monad = ConstraintCircuitMonad {
@@ -1171,6 +1152,26 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             .insert(new_node.clone());
 
         new_node
+    }
+
+    /// Substitute all nodes with ID `old_id` with the given `new` node.
+    pub fn substitute(&self, old_id: usize, new: Rc<RefCell<ConstraintCircuit<II>>>) {
+        for node in self.all_nodes.as_ref().borrow().clone().into_iter() {
+            if node.circuit.as_ref().borrow().id == old_id {
+                continue;
+            }
+
+            if let BinaryOperation(_, ref mut lhs, ref mut rhs) =
+                node.circuit.as_ref().borrow_mut().expression
+            {
+                if lhs.as_ref().borrow().id == old_id {
+                    *lhs = new.clone();
+                }
+                if rhs.as_ref().borrow().id == old_id {
+                    *rhs = new.clone();
+                }
+            }
+        }
     }
 }
 
