@@ -542,6 +542,41 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
             }
         }
     }
+
+    /// Returns the number of unvisited nodes in the subtree of the given node, which includes
+    /// the node itself. Increments the visit counter of each visited node.
+    fn count_nodes_inner(constraint: &mut ConstraintCircuit<II>) -> usize {
+        let num_unvisited_self = match constraint.visited_counter {
+            0 => 1,
+            _ => 0,
+        };
+        constraint.visited_counter += 1;
+        let num_unvisited_children = match &constraint.expression {
+            BinaryOperation(_, lhs, rhs) => {
+                let num_left = Self::count_nodes_inner(&mut lhs.as_ref().borrow_mut());
+                let num_right = Self::count_nodes_inner(&mut rhs.as_ref().borrow_mut());
+                num_left + num_right
+            }
+            _ => 0,
+        };
+
+        num_unvisited_self + num_unvisited_children
+    }
+
+    /// Count the total number of unique nodes in the given multicircuit.
+    /// Also refreshes the visit counter for each node, similar to
+    /// [`refresh_visit_counters`](ConstraintCircuit::refresh_visit_counters).
+    pub fn count_nodes(constraints: &mut [ConstraintCircuit<II>]) -> usize {
+        // The uniqueness of nodes is determined by their visit count.
+        // To ensure a correct node count, the visit count must be reset before counting nodes.
+        for constraint in constraints.iter_mut() {
+            ConstraintCircuit::reset_visit_count_for_tree(constraint);
+        }
+        constraints
+            .iter_mut()
+            .map(|c| Self::count_nodes_inner(c))
+            .sum()
+    }
 }
 
 /// Constraint expressions, with context needed to ensure that two equal nodes are not added to
@@ -1209,38 +1244,6 @@ mod constraint_circuit_tests {
     use crate::table::u32_table::ExtU32Table;
 
     use super::*;
-
-    /// Returns the number of unvisited nodes in the subtree of the given node, which includes
-    /// the node itself. Increments the visit counter of each visited node.
-    fn count_nodes_inner<II: InputIndicator>(constraint: &mut ConstraintCircuit<II>) -> usize {
-        let num_unvisited_self = match constraint.visited_counter {
-            0 => 1,
-            _ => 0,
-        };
-        constraint.visited_counter += 1;
-        let num_unvisited_children = match &constraint.expression {
-            BinaryOperation(_, lhs, rhs) => {
-                let num_left = count_nodes_inner(&mut lhs.as_ref().borrow_mut());
-                let num_right = count_nodes_inner(&mut rhs.as_ref().borrow_mut());
-                num_left + num_right
-            }
-            _ => 0,
-        };
-
-        num_unvisited_self + num_unvisited_children
-    }
-
-    /// Count the total number of unique nodes in the given multicircuit.
-    /// Also refreshes the visit counter for each node, similar to
-    /// [`refresh_visit_counters`](ConstraintCircuit::refresh_visit_counters).
-    fn count_nodes<II: InputIndicator>(constraints: &mut [ConstraintCircuit<II>]) -> usize {
-        // The uniqueness of nodes is determined by their visit count.
-        // To ensure a correct node count, the visit count must be reset before counting nodes.
-        for constraint in constraints.iter_mut() {
-            ConstraintCircuit::reset_visit_count_for_tree(constraint);
-        }
-        constraints.iter_mut().map(|c| count_nodes_inner(c)).sum()
-    }
 
     fn random_circuit_builder() -> (
         ConstraintCircuitMonad<DualRowIndicator>,
