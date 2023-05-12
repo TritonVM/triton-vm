@@ -1232,12 +1232,13 @@ mod constraint_circuit_tests {
     use crate::table::cascade_table::ExtCascadeTable;
     use crate::table::challenges::ChallengeId::U32Indeterminate;
     use crate::table::challenges::Challenges;
-    use crate::table::constraint_circuit::SingleRowIndicator::BaseRow;
+    use crate::table::constraint_circuit::SingleRowIndicator::*;
     use crate::table::hash_table::ExtHashTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::lookup_table::ExtLookupTable;
     use crate::table::master_table;
     use crate::table::op_stack_table::ExtOpStackTable;
+    use crate::table::processor_table;
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
@@ -1729,9 +1730,7 @@ mod constraint_circuit_tests {
     /// Verify that all nodes evaluate to a unique value when given a randomized input.
     /// If this is not the case two nodes that are not equal evaluate to the same value.
     fn table_constraints_prop<II: InputIndicator>(
-        constraint_builder: &dyn Fn(
-            &ConstraintCircuitBuilder<II>,
-        ) -> Vec<ConstraintCircuitMonad<II>>,
+        constraints: &[ConstraintCircuit<II>],
         table_name: &str,
     ) {
         let seed = random();
@@ -1741,14 +1740,6 @@ mod constraint_circuit_tests {
         let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
         let challenges = challenges.to_vec();
         let challenges = Challenges::new(challenges, &[], &[]);
-
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        let mut constraints = constraint_builder(&circuit_builder);
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        let mut constraints = constraints.into_iter().map(|c| c.consume()).collect_vec();
-        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
-        let num_total_nodes = count_nodes(&mut constraints);
-        let constraints = constraints;
 
         let num_rows = 2;
         let base_shape = [num_rows, master_table::NUM_BASE_COLUMNS];
@@ -1764,16 +1755,37 @@ mod constraint_circuit_tests {
         }
 
         let circuit_degree = constraints.iter().map(|c| c.degree()).max().unwrap_or(-1);
-        println!("nodes in {table_name}: {num_total_nodes}");
         println!("Max degree constraint for {table_name} table: {circuit_degree}");
+    }
+
+    fn build_constraints<II: InputIndicator>(
+        multicircuit_builder: &dyn Fn(
+            &ConstraintCircuitBuilder<II>,
+        ) -> Vec<ConstraintCircuitMonad<II>>,
+    ) -> Vec<ConstraintCircuit<II>> {
+        let multicircuit = build_multicircuit(multicircuit_builder);
+        let mut constraints = multicircuit.into_iter().map(|c| c.consume()).collect_vec();
+        ConstraintCircuit::assert_has_unique_ids(&mut constraints);
+        constraints
+    }
+
+    fn build_multicircuit<II: InputIndicator>(
+        multicircuit_builder: &dyn Fn(
+            &ConstraintCircuitBuilder<II>,
+        ) -> Vec<ConstraintCircuitMonad<II>>,
+    ) -> Vec<ConstraintCircuitMonad<II>> {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        let mut multicircuit = multicircuit_builder(&circuit_builder);
+        ConstraintCircuitMonad::constant_folding(&mut multicircuit);
+        multicircuit
     }
 
     #[test]
     fn constant_folding_processor_table_test() {
-        let init = ExtProcessorTable::initial_constraints;
-        let cons = ExtProcessorTable::consistency_constraints;
-        let tran = ExtProcessorTable::transition_constraints;
-        let term = ExtProcessorTable::terminal_constraints;
+        let init = build_constraints(&ExtProcessorTable::initial_constraints);
+        let cons = build_constraints(&ExtProcessorTable::consistency_constraints);
+        let tran = build_constraints(&ExtProcessorTable::transition_constraints);
+        let term = build_constraints(&ExtProcessorTable::terminal_constraints);
         table_constraints_prop(&init, "processor initial");
         table_constraints_prop(&cons, "processor consistency");
         table_constraints_prop(&tran, "processor transition");
@@ -1782,10 +1794,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_program_table_test() {
-        let init = ExtProgramTable::initial_constraints;
-        let cons = ExtProgramTable::consistency_constraints;
-        let tran = ExtProgramTable::transition_constraints;
-        let term = ExtProgramTable::terminal_constraints;
+        let init = build_constraints(&ExtProgramTable::initial_constraints);
+        let cons = build_constraints(&ExtProgramTable::consistency_constraints);
+        let tran = build_constraints(&ExtProgramTable::transition_constraints);
+        let term = build_constraints(&ExtProgramTable::terminal_constraints);
         table_constraints_prop(&init, "program initial");
         table_constraints_prop(&cons, "program consistency");
         table_constraints_prop(&tran, "program transition");
@@ -1794,10 +1806,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_jump_stack_table_test() {
-        let init = ExtJumpStackTable::initial_constraints;
-        let cons = ExtJumpStackTable::consistency_constraints;
-        let tran = ExtJumpStackTable::transition_constraints;
-        let term = ExtJumpStackTable::terminal_constraints;
+        let init = build_constraints(&ExtJumpStackTable::initial_constraints);
+        let cons = build_constraints(&ExtJumpStackTable::consistency_constraints);
+        let tran = build_constraints(&ExtJumpStackTable::transition_constraints);
+        let term = build_constraints(&ExtJumpStackTable::terminal_constraints);
         table_constraints_prop(&init, "jump stack initial");
         table_constraints_prop(&cons, "jump stack consistency");
         table_constraints_prop(&tran, "jump stack transition");
@@ -1806,10 +1818,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_op_stack_table_test() {
-        let init = ExtOpStackTable::initial_constraints;
-        let cons = ExtOpStackTable::consistency_constraints;
-        let tran = ExtOpStackTable::transition_constraints;
-        let term = ExtOpStackTable::terminal_constraints;
+        let init = build_constraints(&ExtOpStackTable::initial_constraints);
+        let cons = build_constraints(&ExtOpStackTable::consistency_constraints);
+        let tran = build_constraints(&ExtOpStackTable::transition_constraints);
+        let term = build_constraints(&ExtOpStackTable::terminal_constraints);
         table_constraints_prop(&init, "op stack initial");
         table_constraints_prop(&cons, "op stack consistency");
         table_constraints_prop(&tran, "op stack transition");
@@ -1818,10 +1830,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_ram_table_test() {
-        let init = ExtRamTable::initial_constraints;
-        let cons = ExtRamTable::consistency_constraints;
-        let tran = ExtRamTable::transition_constraints;
-        let term = ExtRamTable::terminal_constraints;
+        let init = build_constraints(&ExtRamTable::initial_constraints);
+        let cons = build_constraints(&ExtRamTable::consistency_constraints);
+        let tran = build_constraints(&ExtRamTable::transition_constraints);
+        let term = build_constraints(&ExtRamTable::terminal_constraints);
         table_constraints_prop(&init, "ram initial");
         table_constraints_prop(&cons, "ram consistency");
         table_constraints_prop(&tran, "ram transition");
@@ -1830,10 +1842,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_hash_table_test() {
-        let init = ExtHashTable::initial_constraints;
-        let cons = ExtHashTable::consistency_constraints;
-        let tran = ExtHashTable::transition_constraints;
-        let term = ExtHashTable::terminal_constraints;
+        let init = build_constraints(&ExtHashTable::initial_constraints);
+        let cons = build_constraints(&ExtHashTable::consistency_constraints);
+        let tran = build_constraints(&ExtHashTable::transition_constraints);
+        let term = build_constraints(&ExtHashTable::terminal_constraints);
         table_constraints_prop(&init, "hash initial");
         table_constraints_prop(&cons, "hash consistency");
         table_constraints_prop(&tran, "hash transition");
@@ -1842,10 +1854,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_u32_table_test() {
-        let init = ExtU32Table::initial_constraints;
-        let cons = ExtU32Table::consistency_constraints;
-        let tran = ExtU32Table::transition_constraints;
-        let term = ExtU32Table::terminal_constraints;
+        let init = build_constraints(&ExtU32Table::initial_constraints);
+        let cons = build_constraints(&ExtU32Table::consistency_constraints);
+        let tran = build_constraints(&ExtU32Table::transition_constraints);
+        let term = build_constraints(&ExtU32Table::terminal_constraints);
         table_constraints_prop(&init, "u32 initial");
         table_constraints_prop(&cons, "u32 consistency");
         table_constraints_prop(&tran, "u32 transition");
@@ -1854,10 +1866,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_cascade_table_test() {
-        let init = ExtCascadeTable::initial_constraints;
-        let cons = ExtCascadeTable::consistency_constraints;
-        let tran = ExtCascadeTable::transition_constraints;
-        let term = ExtCascadeTable::terminal_constraints;
+        let init = build_constraints(&ExtCascadeTable::initial_constraints);
+        let cons = build_constraints(&ExtCascadeTable::consistency_constraints);
+        let tran = build_constraints(&ExtCascadeTable::transition_constraints);
+        let term = build_constraints(&ExtCascadeTable::terminal_constraints);
         table_constraints_prop(&init, "cascade initial");
         table_constraints_prop(&cons, "cascade consistency");
         table_constraints_prop(&tran, "cascade transition");
@@ -1866,10 +1878,10 @@ mod constraint_circuit_tests {
 
     #[test]
     fn constant_folding_lookup_table_test() {
-        let init = ExtLookupTable::initial_constraints;
-        let cons = ExtLookupTable::consistency_constraints;
-        let tran = ExtLookupTable::transition_constraints;
-        let term = ExtLookupTable::terminal_constraints;
+        let init = build_constraints(&ExtLookupTable::initial_constraints);
+        let cons = build_constraints(&ExtLookupTable::consistency_constraints);
+        let tran = build_constraints(&ExtLookupTable::transition_constraints);
+        let term = build_constraints(&ExtLookupTable::terminal_constraints);
         table_constraints_prop(&init, "lookup initial");
         table_constraints_prop(&cons, "lookup consistency");
         table_constraints_prop(&tran, "lookup transition");
@@ -1879,40 +1891,121 @@ mod constraint_circuit_tests {
     #[test]
     fn simple_degree_lowering_test() {
         let builder = ConstraintCircuitBuilder::new();
-        let x = builder.input(BaseRow(0));
-        let x_pow_3 = x.clone() * x.clone() * x.clone();
-        let x_pow_5 = x_pow_3.clone() * x.clone() * x;
+        let x = || builder.input(BaseRow(0));
+        let x_pow_3 = x() * x() * x();
+        let x_pow_5 = x() * x() * x() * x() * x();
         let mut multicircuit = [x_pow_5, x_pow_3];
 
-        let target_deg = 3;
+        let target_degree = 3;
         let num_base_cols = 1;
         let num_ext_cols = 0;
-        let (new_base_constraints, new_ext_constraints) = ConstraintCircuitMonad::lower_to_degree(
+        let (new_base_constraints, new_ext_constraints) = lower_degree_and_assert_properties(
             &mut multicircuit,
+            target_degree,
+            num_base_cols,
+            num_ext_cols,
+        );
+
+        assert!(new_ext_constraints.is_empty());
+        assert_eq!(1, new_base_constraints.len());
+    }
+
+    #[test]
+    fn somewhat_simple_degree_lowering_test() {
+        let builder = ConstraintCircuitBuilder::new();
+        let x = |i| builder.input(BaseRow(i));
+        let y = |i| builder.input(ExtRow(i));
+        let b_con = |i: u64| builder.b_constant(i.into());
+
+        let constraint_0 = x(0) * x(0) * (x(1) - x(2)) - x(0) * x(2) - b_con(42);
+        let constraint_1 = x(1) * (x(1) - b_con(5)) * x(2) * (x(2) - b_con(1));
+        let constraint_2 = y(0)
+            * (b_con(2) * x(0) + b_con(3) * x(1) + b_con(4) * x(2))
+            * (b_con(4) * x(0) + b_con(8) * x(1) + b_con(16) * x(2))
+            - y(1);
+
+        let mut multicircuit = [constraint_0, constraint_1, constraint_2];
+
+        let target_degree = 2;
+        let num_base_cols = 3;
+        let num_ext_cols = 2;
+        let (new_base_constraints, new_ext_constraints) = lower_degree_and_assert_properties(
+            &mut multicircuit,
+            target_degree,
+            num_base_cols,
+            num_ext_cols,
+        );
+
+        assert!(new_base_constraints.len() <= 3);
+        assert!(new_ext_constraints.len() <= 1);
+    }
+
+    #[test]
+    fn serious_degree_lowering_test() {
+        let mut multicircuit = build_multicircuit(&ExtProcessorTable::transition_constraints);
+        let target_degree = 3;
+        let num_base_cols = processor_table::BASE_WIDTH;
+        let num_ext_cols = processor_table::EXT_WIDTH;
+        lower_degree_and_assert_properties(
+            &mut multicircuit,
+            target_degree,
+            num_base_cols,
+            num_ext_cols,
+        );
+    }
+
+    /// Like [`ConstraintCircuitMonad::lower_to_degree`] with additional assertion of expected
+    /// properties. Also prints:
+    /// - the given multicircuit prior to degree lowering
+    /// - the multicircuit after degree lowering
+    /// - the new base constraints
+    /// - the new extension constraints
+    /// - the numbers of original and new constraints
+    fn lower_degree_and_assert_properties<II: InputIndicator>(
+        multicircuit: &mut [ConstraintCircuitMonad<II>],
+        target_deg: Degree,
+        num_base_cols: usize,
+        num_ext_cols: usize,
+    ) -> (
+        Vec<ConstraintCircuitMonad<II>>,
+        Vec<ConstraintCircuitMonad<II>>,
+    ) {
+        let num_constraints = multicircuit.len();
+        println!("original multicircuit:");
+        for circuit in multicircuit.iter() {
+            println!("  {circuit}");
+        }
+
+        let (new_base_constraints, new_ext_constraints) = ConstraintCircuitMonad::lower_to_degree(
+            multicircuit,
             target_deg,
             num_base_cols,
             num_ext_cols,
         );
-        assert!(new_ext_constraints.is_empty());
-        assert_eq!(1, new_base_constraints.len());
 
-        assert!(ConstraintCircuitMonad::multicircuit_degree(&multicircuit) <= target_deg);
+        assert_eq!(num_constraints, multicircuit.len());
+        assert!(ConstraintCircuitMonad::multicircuit_degree(multicircuit) <= target_deg);
         assert!(ConstraintCircuitMonad::multicircuit_degree(&new_base_constraints) <= target_deg);
         assert!(ConstraintCircuitMonad::multicircuit_degree(&new_ext_constraints) <= target_deg);
 
-        for (i, constraint) in new_base_constraints.iter().enumerate() {
-            let expression = constraint.circuit.as_ref().borrow().expression.clone();
-            let BinaryOperation(BinOp::Sub, lhs, _) = expression else {
-                panic!("New base constraint {i} must be a subtraction.");
-            };
-            let lhs_degree = lhs.as_ref().borrow().degree();
-            assert_eq!(
-                1, lhs_degree,
-                "New base constraint {i} must be a simple substitution."
-            );
+        for (constraint_type, constraints) in [
+            ("base", &new_base_constraints),
+            ("ext", &new_ext_constraints),
+        ] {
+            for (i, constraint) in constraints.iter().enumerate() {
+                let expression = constraint.circuit.as_ref().borrow().expression.clone();
+                let BinaryOperation(BinOp::Sub, lhs, _) = expression else {
+                    panic!("New {constraint_type} constraint {i} must be a subtraction.");
+                };
+                let lhs_degree = lhs.as_ref().borrow().degree();
+                assert_eq!(
+                    1, lhs_degree,
+                    "New {constraint_type} constraint {i} must be a simple substitution."
+                );
+            }
         }
 
-        println!("multicircuit:");
+        println!("new multicircuit:");
         for circuit in multicircuit.iter() {
             println!("  {circuit}");
         }
@@ -1920,5 +2013,19 @@ mod constraint_circuit_tests {
         for constraint in new_base_constraints.iter() {
             println!("  {constraint}");
         }
+        println!("new ext constraints:");
+        for constraint in new_ext_constraints.iter() {
+            println!("  {constraint}");
+        }
+
+        let num_new_base_constraints = new_base_constraints.len();
+        let num_new_ext_constraints = new_ext_constraints.len();
+        println!(
+            "Started with {num_constraints} constraints. \
+            Derived {num_new_base_constraints} new base, \
+            {num_new_ext_constraints} new extension constraints."
+        );
+
+        (new_base_constraints, new_ext_constraints)
     }
 }
