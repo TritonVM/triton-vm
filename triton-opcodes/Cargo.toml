@@ -23,11 +23,14 @@ version = "1"
 default-features = false
 
 [dependencies]
-twenty-first = "0.21.1"
+twenty-first = "0.22.0"
 anyhow = "1.0"
+get-size = { version = "^0.1", features = ["derive"] }
 itertools = "0.10.5"
 num-traits = "0.2.15"
 rand = "0.8.5"
+serde = { version = "1", features = ["derive"] }
+serde_derive = "1"
 strum = "0.24.1"
 strum_macros = "0.24.1"
 nom = "7.1"

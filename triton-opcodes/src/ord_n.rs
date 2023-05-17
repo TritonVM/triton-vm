@@ -1,3 +1,5 @@
+use get_size::GetSize;
+use serde_derive::{Deserialize, Serialize};
 use std::fmt::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use Ord16::*;
@@ -57,7 +59,7 @@ impl TryFrom<usize> for Ord8 {
 }
 
 /// `Ord16` represents numbers that are exactly 0--15.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, GetSize, Serialize, Deserialize)]
 pub enum Ord16 {
     #[default]
     ST0,

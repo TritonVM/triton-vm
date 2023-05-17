@@ -2,6 +2,9 @@ use std::fmt::Display;
 use std::io::Cursor;
 
 use anyhow::Result;
+use get_size::GetSize;
+use serde_derive::Deserialize;
+use serde_derive::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::util_types::algebraic_hasher::Hashable;
 
@@ -11,7 +14,7 @@ use crate::instruction::LabelledInstruction;
 use crate::parser::parse;
 use crate::parser::to_labelled;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, GetSize, Serialize, Deserialize)]
 pub struct Program {
     pub instructions: Vec<Instruction>,
 }

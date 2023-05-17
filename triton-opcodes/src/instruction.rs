@@ -4,6 +4,9 @@ use std::vec;
 
 use anyhow::bail;
 use anyhow::Result;
+use get_size::GetSize;
+use serde_derive::Deserialize;
+use serde_derive::Serialize;
 use strum::EnumCount;
 use strum::IntoEnumIterator;
 use strum_macros::Display as DisplayMacro;
@@ -44,7 +47,19 @@ impl Display for LabelledInstruction {
     }
 }
 
-#[derive(Debug, DisplayMacro, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro)]
+#[derive(
+    Debug,
+    DisplayMacro,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    EnumCountMacro,
+    GetSize,
+    Serialize,
+    Deserialize,
+)]
 pub enum DivinationHint {}
 
 /// A Triton VM instruction. See the
@@ -52,7 +67,19 @@ pub enum DivinationHint {}
 /// for more details.
 ///
 /// The type parameter `Dest` describes the type of addresses (absolute or labels).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumCountMacro, EnumIter)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    EnumCountMacro,
+    EnumIter,
+    GetSize,
+    Serialize,
+    Deserialize,
+)]
 pub enum AnInstruction<Dest: PartialEq + Default> {
     // OpStack manipulation
     Pop,
