@@ -375,10 +375,61 @@ impl BFieldCodec for Vec<PartialAuthenticationPath<Digest>> {
     }
 }
 
+/// Decode a string of `BFieldElement`s into a `Vec` for `T`s. This
+/// function exists because it is not a good idea to implement
+/// `BFieldCodec` for `Vec<T>`.
+pub fn decode_vec<T: BFieldCodec>(sequence: &[BFieldElement]) -> Result<Box<Vec<T>>> {
+    let total_length = match sequence.get(0) {
+        Some(result) => result.value() as usize,
+        None => bail!("Cannot decode empty Vec of BFieldElements."),
+    };
+    if sequence.len() < total_length + 1 {
+        bail!("Cannot decode Vec of BFieldElements because of improper length prepending.");
+    }
+
+    let mut vector: Vec<T> = vec![];
+    let mut read_index = 1;
+    while read_index < sequence.len() {
+        let inner_len = match sequence.get(read_index) {
+            Some(result) => result.value() as usize,
+            None => bail!(
+                "Cannot decode Vec of BFieldElements because element is not length-prepended."
+            ),
+        };
+        read_index += 1;
+
+        if sequence.len() < read_index + inner_len {
+            bail!("Cannot decode Vec of BFieldElements because of improper element length prepending.");
+        }
+
+        let inner_sequence = &sequence[read_index..read_index + inner_len];
+        read_index += inner_len;
+        vector.push(*T::decode(inner_sequence)?);
+    }
+
+    Ok(Box::new(vector))
+}
+
+/// Encode a `Vec` of `T`s into a `Vec` of `BFieldElement`s in such a
+/// way that the matching `decode_vec` function recovers the original
+/// This function exists because it is not a good idea to implement
+/// `BFieldCodec` for `Vec<T>`.
+pub fn encode_vec<T: BFieldCodec>(vector: &[T]) -> Vec<BFieldElement> {
+    let mut sequence: Vec<BFieldElement> = vec![BFieldElement::zero()];
+    for v in vector.iter() {
+        let mut element = v.encode();
+        sequence.push(BFieldElement::new(element.len() as u64));
+        sequence.append(&mut element);
+    }
+    sequence[0] = BFieldElement::new(sequence.len() as u64 - 1);
+    sequence
+}
+
 #[cfg(test)]
 mod bfield_codec_tests {
     use itertools::Itertools;
     use rand::thread_rng;
+    use rand::Rng;
     use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFieldElement;
 
@@ -599,5 +650,24 @@ mod bfield_codec_tests {
                 panic!();
             }
         }
+    }
+
+    #[test]
+    fn test_encode_decode_random_vec_option_xfieldelement() {
+        let mut rng = thread_rng();
+        let n = 10 + (rng.next_u32() % 50);
+        let mut vector: Vec<Option<XFieldElement>> = vec![];
+        for _ in 0..n {
+            if rng.next_u32() % 2 == 0 {
+                vector.push(None);
+            } else {
+                vector.push(Some(rng.gen()));
+            }
+        }
+
+        let encoded = encode_vec(&vector);
+        let decoded = *decode_vec(&encoded).unwrap();
+
+        assert_eq!(vector, decoded);
     }
 }
