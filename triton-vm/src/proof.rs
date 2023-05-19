@@ -1,3 +1,4 @@
+use get_size::GetSize;
 use serde::Deserialize;
 use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
@@ -10,7 +11,7 @@ pub struct Proof(pub Vec<BFieldElement>);
 
 /// Contains all the public information of a verifiably correct computation.
 /// A corresponding [`Proof`] is needed to verify the computation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize)]
 pub struct Claim {
     /// The public input to the computation.
     pub input: Vec<u64>,
