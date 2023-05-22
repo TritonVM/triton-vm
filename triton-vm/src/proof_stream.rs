@@ -6,11 +6,11 @@ use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
+use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::other::is_power_of_two;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
-use crate::bfield_codec::BFieldCodec;
 use crate::proof::Proof;
 use crate::proof_item::MayBeUncast;
 

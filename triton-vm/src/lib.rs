@@ -15,7 +15,6 @@ pub use crate::stark::StarkParameters;
 use crate::table::master_table::MasterBaseTable;
 
 pub mod arithmetic_domain;
-pub mod bfield_codec;
 pub mod error;
 pub mod fri;
 pub mod op_stack;
@@ -90,12 +89,13 @@ pub fn prove(
     let public_output = public_output.iter().map(|e| e.value()).collect::<Vec<_>>();
 
     // Hash the program to obtain its digest.
+    let program_digest = Tip5::hash(&program);
 
     // Set up the claim that is to be proven. The claim contains all public information. The
     // proof is zero-knowledge with respect to everything else.
     let claim = Claim {
         input: public_input.to_vec(),
-        program_digest: Tip5::hash(&program),
+        program_digest,
         output: public_output,
         padded_height: MasterBaseTable::padded_height(&aet),
     };
