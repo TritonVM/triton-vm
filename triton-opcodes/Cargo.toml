@@ -25,7 +25,7 @@ default-features = false
 [dependencies]
 twenty-first = "0.22.0"
 anyhow = "1.0"
-get-size = { version = "^0.1", features = ["derive"] }
+get-size = "0.1.3"
 itertools = "0.10.5"
 num-traits = "0.2.15"
 rand = "0.8.5"

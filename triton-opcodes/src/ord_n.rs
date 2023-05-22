@@ -1,7 +1,10 @@
-use get_size::GetSize;
-use serde_derive::{Deserialize, Serialize};
 use std::fmt::Display;
+
+use get_size::GetSize;
+use serde_derive::Deserialize;
+use serde_derive::Serialize;
 use strum_macros::EnumCount as EnumCountMacro;
+
 use Ord16::*;
 use Ord8::*;
 
