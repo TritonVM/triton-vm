@@ -4,6 +4,7 @@ use get_size::GetSize;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
 use strum_macros::EnumCount as EnumCountMacro;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 
 use Ord16::*;
 use Ord8::*;
@@ -58,6 +59,13 @@ impl TryFrom<usize> for Ord8 {
             7 => Ok(IB7),
             _ => Err(format!("{value} is out of range for Ord8")),
         }
+    }
+}
+
+impl From<Ord8> for BFieldElement {
+    fn from(n: Ord8) -> Self {
+        let n: usize = n.into();
+        BFieldElement::new(n as u64)
     }
 }
 
@@ -150,7 +158,10 @@ impl TryFrom<u64> for Ord16 {
     type Error = String;
 
     fn try_from(n: u64) -> Result<Self, Self::Error> {
-        let n: u32 = n.try_into().unwrap();
+        let n: u32 = match n.try_into() {
+            Ok(n) => n,
+            Err(_) => return Err(format!("{n} is out of range for Ord16")),
+        };
         n.try_into()
     }
 }
@@ -169,6 +180,19 @@ impl From<Ord16> for usize {
 }
 
 impl From<&Ord16> for usize {
+    fn from(n: &Ord16) -> Self {
+        (*n).into()
+    }
+}
+
+impl From<Ord16> for BFieldElement {
+    fn from(n: Ord16) -> Self {
+        let n: u32 = n.into();
+        n.into()
+    }
+}
+
+impl From<&Ord16> for BFieldElement {
     fn from(n: &Ord16) -> Self {
         (*n).into()
     }

@@ -497,7 +497,7 @@ fn token1<'a>(token: &'a str) -> impl Fn(&'a str) -> ParseResult<()> {
 }
 
 #[cfg(test)]
-mod parser_tests {
+pub mod parser_tests {
     use itertools::Itertools;
     use rand::distributions::WeightedIndex;
     use rand::prelude::*;
@@ -652,7 +652,7 @@ mod parser_tests {
     // FIXME: Apply shrinking.
     #[allow(unstable_name_collisions)]
     // reason = "Switch to standard library intersperse_with() when it's ported"
-    fn program_gen(size: usize) -> String {
+    pub fn program_gen(size: usize) -> String {
         // Generate random program
         let mut labels = vec![];
         let mut program: Vec<Vec<String>> =

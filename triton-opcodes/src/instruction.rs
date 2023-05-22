@@ -348,13 +348,39 @@ impl<Dest: Display + PartialEq + Default> Display for AnInstruction<Dest> {
 }
 
 impl Instruction {
+    /// Get the argument of the instruction, if it has one.
     pub fn arg(&self) -> Option<BFieldElement> {
         match self {
             // Double-word instructions (instructions that take arguments)
             Push(arg) => Some(*arg),
-            Dup(arg) => Some(ord16_to_bfe(arg)),
-            Swap(arg) => Some(ord16_to_bfe(arg)),
+            Dup(arg) => Some(arg.into()),
+            Swap(arg) => Some(arg.into()),
             Call(arg) => Some(*arg),
+            _ => None,
+        }
+    }
+
+    /// `true` iff the instruction has an argument.
+    pub fn has_arg(&self) -> bool {
+        self.arg().is_some()
+    }
+
+    /// Change the argument of the instruction, if it has one.
+    /// Returns `None` if the instruction does not have an argument or
+    /// if the argument is out of range.
+    pub fn change_arg(&self, new_arg: BFieldElement) -> Option<Self> {
+        let maybe_ord_16 = new_arg.value().try_into();
+        match self {
+            Push(_) => Some(Push(new_arg)),
+            Dup(_) => match maybe_ord_16 {
+                Ok(ord_16) => Some(Dup(ord_16)),
+                Err(_) => None,
+            },
+            Swap(_) => match maybe_ord_16 {
+                Ok(ord_16) => Some(Swap(ord_16)),
+                Err(_) => None,
+            },
+            Call(_) => Some(Call(new_arg)),
             _ => None,
         }
     }
@@ -364,12 +390,9 @@ impl TryFrom<u32> for Instruction {
     type Error = anyhow::Error;
 
     fn try_from(opcode: u32) -> Result<Self> {
-        if let Some(instruction) =
-            Instruction::iter().find(|instruction| instruction.opcode() == opcode)
-        {
-            Ok(instruction)
-        } else {
-            bail!("No instruction with opcode {opcode} exists.")
+        match Instruction::iter().find(|instruction| instruction.opcode() == opcode) {
+            Some(instruction) => Ok(instruction),
+            None => bail!("No instruction with opcode {opcode} exists."),
         }
     }
 }
@@ -388,11 +411,6 @@ impl TryFrom<usize> for Instruction {
     fn try_from(opcode: usize) -> Result<Self> {
         (opcode as u32).try_into()
     }
-}
-
-fn ord16_to_bfe(n: &Ord16) -> BFieldElement {
-    let n: u32 = n.into();
-    n.into()
 }
 
 /// Convert a program with labels to a program with absolute positions
