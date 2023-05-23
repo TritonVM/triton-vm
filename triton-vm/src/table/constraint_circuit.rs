@@ -32,14 +32,12 @@ use CircuitExpression::*;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::Challenges;
 
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub enum BinOp {
     Add,
     Sub,
     Mul,
 }
-
-impl Eq for BinOp {}
 
 impl Display for BinOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,6 +45,19 @@ impl Display for BinOp {
             BinOp::Add => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
             BinOp::Mul => write!(f, "*"),
+        }
+    }
+}
+
+impl BinOp {
+    pub fn operation<L, R, O>(&self, lhs: L, rhs: R) -> O
+    where
+        L: Add<R, Output = O> + Sub<R, Output = O> + Mul<R, Output = O>,
+    {
+        match self {
+            BinOp::Add => lhs + rhs,
+            BinOp::Sub => lhs - rhs,
+            BinOp::Mul => lhs * rhs,
         }
     }
 }
@@ -773,138 +784,62 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     }
 
     fn find_equivalent_expression(&self) -> Option<Rc<RefCell<ConstraintCircuit<II>>>> {
-        if let BinaryOperation(binop, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
+        if let BinaryOperation(op, lhs, rhs) = &self.circuit.as_ref().borrow().expression {
             // a + 0 = a ∧ a - 0 = a
-            if matches!(binop, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
-                return Some(Rc::clone(lhs));
+            if matches!(op, BinOp::Add | BinOp::Sub) && rhs.borrow().is_zero() {
+                return Some(lhs.clone());
             }
 
             // 0 + a = a
-            if *binop == BinOp::Add && lhs.borrow().is_zero() {
-                return Some(Rc::clone(rhs));
+            if op == &BinOp::Add && lhs.borrow().is_zero() {
+                return Some(rhs.clone());
             }
 
-            if matches!(binop, BinOp::Mul) {
+            if op == &BinOp::Mul {
                 // a * 1 = a
                 if rhs.borrow().is_one() {
-                    return Some(Rc::clone(lhs));
+                    return Some(lhs.clone());
                 }
-
                 // 1 * a = a
                 if lhs.borrow().is_one() {
-                    return Some(Rc::clone(rhs));
+                    return Some(rhs.clone());
                 }
-
                 // 0 * a = 0
                 if lhs.borrow().is_zero() {
-                    return Some(Rc::clone(lhs));
+                    return Some(lhs.clone());
                 }
-
                 // a * 0 = 0
                 if rhs.borrow().is_zero() {
-                    return Some(Rc::clone(rhs));
+                    return Some(rhs.clone());
                 }
             }
 
-            // if left and right hand sides are both constants
-            if let XConstant(lhs_xfe) = lhs.borrow().expression {
-                if let XConstant(rhs_xfe) = rhs.borrow().expression {
-                    return match binop {
-                        BinOp::Add => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_xfe + rhs_xfe))
-                                .consume(),
-                        ))),
-                        BinOp::Sub => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_xfe - rhs_xfe))
-                                .consume(),
-                        ))),
-                        BinOp::Mul => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_xfe * rhs_xfe))
-                                .consume(),
-                        ))),
-                    };
-                }
+            // if both left and right hand sides are constants, simplify
+            let maybe_new_const = match (&lhs.borrow().expression, &rhs.borrow().expression) {
+                (&BConstant(l), &BConstant(r)) => Some(BConstant(op.operation(l, r))),
+                (&BConstant(l), &XConstant(r)) => Some(XConstant(op.operation(l, r))),
+                (&XConstant(l), &BConstant(r)) => Some(XConstant(op.operation(l, r))),
+                (&XConstant(l), &XConstant(r)) => Some(XConstant(op.operation(l, r))),
+                _ => None,
+            };
 
-                if let BConstant(rhs_bfe) = rhs.borrow().expression {
-                    return match binop {
-                        BinOp::Add => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_xfe + rhs_bfe.lift()))
-                                .consume(),
-                        ))),
-                        BinOp::Sub => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_xfe - rhs_bfe.lift()))
-                                .consume(),
-                        ))),
-                        BinOp::Mul => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_xfe * rhs_bfe))
-                                .consume(),
-                        ))),
-                    };
-                }
-            }
-
-            if let BConstant(lhs_bfe) = lhs.borrow().expression {
-                if let XConstant(rhs_xfe) = rhs.borrow().expression {
-                    return match binop {
-                        BinOp::Add => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_bfe.lift() + rhs_xfe))
-                                .consume(),
-                        ))),
-                        BinOp::Sub => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(lhs_bfe.lift() - rhs_xfe))
-                                .consume(),
-                        ))),
-                        BinOp::Mul => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(XConstant(rhs_xfe * lhs_bfe))
-                                .consume(),
-                        ))),
-                    };
-                }
-
-                if let BConstant(rhs_bfe) = rhs.borrow().expression {
-                    return match binop {
-                        BinOp::Add => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(BConstant(lhs_bfe + rhs_bfe))
-                                .consume(),
-                        ))),
-                        BinOp::Sub => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(BConstant(lhs_bfe - rhs_bfe))
-                                .consume(),
-                        ))),
-                        BinOp::Mul => Some(Rc::new(RefCell::new(
-                            self.builder
-                                .make_leaf(BConstant(lhs_bfe * lhs_bfe))
-                                .consume(),
-                        ))),
-                    };
-                }
+            if let Some(new_const) = maybe_new_const {
+                let new_const = self.builder.make_leaf(new_const).consume();
+                let new_const = Rc::new(RefCell::new(new_const));
+                return Some(new_const);
             }
         }
         None
     }
 
     /// Apply constant folding to simplify the (sub)tree.
-    /// If the subtree is a leaf (terminal), no change.
+    /// If the subtree is a leaf: no change.
     /// If the subtree is a binary operation on:
     ///
-    ///  - one constant x one constant   => fold
-    ///  - one constant x one expr       => can't
-    ///  - one expr x one constant       => can't
-    ///  - one expr x one expr           => can't
+    ///  - constant x constant => fold
+    ///  - anything else       => can't fold
     ///
-    /// This operation mutates self and returns true if a change was
-    /// applied anywhere in the tree.
+    /// This operation mutates self and returns true if a change was applied anywhere in the tree.
     fn constant_fold_inner(&mut self) -> (bool, Option<Rc<RefCell<ConstraintCircuit<II>>>>) {
         let mut change_tracker = false;
         let self_expr = self.circuit.as_ref().borrow().expression.clone();
@@ -1165,32 +1100,26 @@ impl<II: InputIndicator> ConstraintCircuitBuilder<II> {
             }
         }
 
-        let new_id = self.id_counter.as_ref().borrow().to_owned();
+        let id = self.id_counter.as_ref().borrow().to_owned();
+        let circuit = ConstraintCircuit {
+            id,
+            visited_counter: 0,
+            expression,
+        };
+        let circuit = Rc::new(RefCell::new(circuit));
         let new_node = ConstraintCircuitMonad {
-            circuit: Rc::new(RefCell::new(ConstraintCircuit {
-                visited_counter: 0usize,
-                expression,
-                id: new_id,
-            })),
+            circuit,
             builder: self.clone(),
         };
 
-        // Check if node already exists, return the existing one if it does
-        let contained = self.all_nodes.as_ref().borrow().contains(&new_node);
-        if contained {
-            let ret0 = &self.all_nodes.as_ref().borrow();
-            let ret1 = &(*ret0.get(&new_node).as_ref().unwrap()).clone();
-            return ret1.to_owned();
+        let mut all_nodes = self.all_nodes.as_ref().borrow_mut();
+        if let Some(same_node) = all_nodes.get(&new_node) {
+            same_node.to_owned()
+        } else {
+            *self.id_counter.as_ref().borrow_mut() += 1;
+            all_nodes.insert(new_node.clone());
+            new_node
         }
-
-        // If node did not already exist, increment counter and insert node into hash set
-        *self.id_counter.as_ref().borrow_mut() = new_id + 1;
-        self.all_nodes
-            .as_ref()
-            .borrow_mut()
-            .insert(new_node.clone());
-
-        new_node
     }
 
     /// Substitute all nodes with ID `old_id` with the given `new` node.
