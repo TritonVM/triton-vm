@@ -545,11 +545,7 @@ impl<II: InputIndicator> ConstraintCircuit<II> {
                     .as_ref()
                     .borrow()
                     .evaluate(base_table, ext_table, challenges);
-                match binop {
-                    BinOp::Add => lhs_value + rhs_value,
-                    BinOp::Sub => lhs_value - rhs_value,
-                    BinOp::Mul => lhs_value * rhs_value,
-                }
+                binop.operation(lhs_value, rhs_value)
             }
         }
     }
@@ -1586,11 +1582,7 @@ mod constraint_circuit_tests {
                 let rhs = rhs.as_ref().borrow();
                 let lhs = evaluate_assert_unique(&lhs, challenges, base_rows, ext_rows, values);
                 let rhs = evaluate_assert_unique(&rhs, challenges, base_rows, ext_rows, values);
-                match binop {
-                    BinOp::Add => lhs + rhs,
-                    BinOp::Sub => lhs - rhs,
-                    BinOp::Mul => lhs * rhs,
-                }
+                binop.operation(lhs, rhs)
             }
             _ => constraint.evaluate(base_rows, ext_rows, challenges),
         };
