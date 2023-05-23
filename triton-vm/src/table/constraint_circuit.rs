@@ -1846,6 +1846,10 @@ mod constraint_circuit_tests {
         Vec<ConstraintCircuitMonad<II>>,
         Vec<ConstraintCircuitMonad<II>>,
     ) {
+        let seed = random();
+        let mut rng = StdRng::seed_from_u64(seed);
+        println!("seed: {seed}");
+
         let num_constraints = multicircuit.len();
         println!("original multicircuit:");
         for circuit in multicircuit.iter() {
@@ -1864,13 +1868,15 @@ mod constraint_circuit_tests {
         assert!(ConstraintCircuitMonad::multicircuit_degree(&new_base_constraints) <= target_deg);
         assert!(ConstraintCircuitMonad::multicircuit_degree(&new_ext_constraints) <= target_deg);
 
+        // Check that the new constraints are simple substitutions.
+        let mut substitution_rules = vec![];
         for (constraint_type, constraints) in [
             ("base", &new_base_constraints),
             ("ext", &new_ext_constraints),
         ] {
             for (i, constraint) in constraints.iter().enumerate() {
                 let expression = constraint.circuit.as_ref().borrow().expression.clone();
-                let BinaryOperation(BinOp::Sub, lhs, _) = expression else {
+                let BinaryOperation(BinOp::Sub, lhs, rhs) = expression else {
                     panic!("New {constraint_type} constraint {i} must be a subtraction.");
                 };
                 let lhs_degree = lhs.as_ref().borrow().degree();
@@ -1878,9 +1884,41 @@ mod constraint_circuit_tests {
                     1, lhs_degree,
                     "New {constraint_type} constraint {i} must be a simple substitution."
                 );
+                substitution_rules.push(rhs.as_ref().borrow().clone());
             }
         }
 
+        // Use the Schwartz-Zippel lemma to check no two substitution rules are equal.
+        let challenges: [XFieldElement; Challenges::num_challenges_to_sample()] = rng.gen();
+        let challenges = challenges.to_vec();
+        let challenges = Challenges::new(challenges, &[], &[]);
+
+        let num_rows = 2;
+        let num_new_base_constraints = new_base_constraints.len();
+        let num_new_ext_constraints = new_ext_constraints.len();
+        let num_base_cols = master_table::NUM_BASE_COLUMNS + num_new_base_constraints;
+        let num_ext_cols = master_table::NUM_EXT_COLUMNS + num_new_ext_constraints;
+        let base_shape = [num_rows, num_base_cols];
+        let ext_shape = [num_rows, num_ext_cols];
+        let base_rows = Array2::from_shape_simple_fn(base_shape, || rng.gen::<BFieldElement>());
+        let ext_rows = Array2::from_shape_simple_fn(ext_shape, || rng.gen::<XFieldElement>());
+        let base_rows = base_rows.view();
+        let ext_rows = ext_rows.view();
+
+        let evaluated_substitution_rules = substitution_rules
+            .iter()
+            .map(|c| c.evaluate(base_rows, ext_rows, &challenges));
+
+        let mut values_to_index = HashMap::new();
+        for (idx, value) in evaluated_substitution_rules.enumerate() {
+            if let Some(index) = values_to_index.get(&value) {
+                panic!("Substitution {idx} must be distinct from substitution {index}.");
+            } else {
+                values_to_index.insert(value, idx);
+            }
+        }
+
+        // Print the multicircuit and new constraints after degree lowering.
         println!("new multicircuit:");
         for circuit in multicircuit.iter() {
             println!("  {circuit}");
@@ -1894,8 +1932,6 @@ mod constraint_circuit_tests {
             println!("  {constraint}");
         }
 
-        let num_new_base_constraints = new_base_constraints.len();
-        let num_new_ext_constraints = new_ext_constraints.len();
         println!(
             "Started with {num_constraints} constraints. \
             Derived {num_new_base_constraints} new base, \
