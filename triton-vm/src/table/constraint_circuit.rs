@@ -878,11 +878,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
         while Self::multicircuit_degree(multicircuit) > target_degree {
             let chosen_node = Self::pick_node_to_substitute(target_degree, &builder);
-            dbg!(chosen_node.as_ref().borrow().degree());
 
             // Create a new variable.
             let chosen_node_id = chosen_node.as_ref().borrow().id;
-            dbg!(chosen_node_id);
             let chosen_node_is_base_col = chosen_node.as_ref().borrow().evaluates_to_base_element();
             let new_col_idx = match chosen_node_is_base_col {
                 true => num_base_cols + base_constraints.len(),
