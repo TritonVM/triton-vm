@@ -640,91 +640,46 @@ fn binop<II: InputIndicator>(
     lhs: ConstraintCircuitMonad<II>,
     rhs: ConstraintCircuitMonad<II>,
 ) -> ConstraintCircuitMonad<II> {
-    // Get ID for the new node
-    let new_index = lhs.builder.id_counter.as_ref().borrow().to_owned();
-    let lhs = Rc::new(RefCell::new(lhs));
-    let rhs = Rc::new(RefCell::new(rhs));
-
+    let id = lhs.builder.id_counter.as_ref().borrow().to_owned();
+    let expression = BinaryOperation(binop, lhs.circuit.clone(), rhs.circuit.clone());
+    let circuit = ConstraintCircuit {
+        id,
+        visited_counter: 0,
+        expression,
+    };
+    let circuit = Rc::new(RefCell::new(circuit));
     let new_node = ConstraintCircuitMonad {
-        circuit: Rc::new(RefCell::new(ConstraintCircuit {
-            visited_counter: 0,
-            expression: BinaryOperation(
-                binop,
-                Rc::clone(&lhs.as_ref().borrow().circuit),
-                Rc::clone(&rhs.as_ref().borrow().circuit),
-            ),
-            id: new_index,
-        })),
-        builder: lhs.as_ref().borrow().builder.clone(),
+        circuit,
+        builder: lhs.builder.clone(),
     };
 
-    // check if node already exists
-    let contained = lhs
-        .as_ref()
-        .borrow()
-        .builder
-        .all_nodes
-        .as_ref()
-        .borrow()
-        .contains(&new_node);
-    if contained {
-        let ret0 = &lhs.as_ref().borrow();
-        let ret1 = ret0.builder.all_nodes.as_ref().borrow();
-        let ret2 = &(*ret1.get(&new_node).as_ref().unwrap()).clone();
-        return ret2.to_owned();
+    let mut all_nodes = lhs.builder.all_nodes.as_ref().borrow_mut();
+    if let Some(same_node) = all_nodes.get(&new_node) {
+        return same_node.to_owned();
     }
 
-    // If the operator commutes, check if the inverse node has already been constructed.
-    // If it has, return this instead. Do not allow a new one to be built.
+    // If the operator commutes, check if the switched node has already been constructed.
+    // If it has, return it instead. Do not allow a new one to be built.
     if matches!(binop, BinOp::Add | BinOp::Mul) {
-        let new_node_inverted = ConstraintCircuitMonad {
-            circuit: Rc::new(RefCell::new(ConstraintCircuit {
-                visited_counter: 0,
-                expression: BinaryOperation(
-                    binop,
-                    // Switch rhs and lhs for symmetric operators to check membership in hash set
-                    Rc::clone(&rhs.as_ref().borrow().circuit),
-                    Rc::clone(&lhs.as_ref().borrow().circuit),
-                ),
-                id: new_index,
-            })),
-            builder: lhs.as_ref().borrow().builder.clone(),
+        let expression_switched = BinaryOperation(binop, rhs.circuit, lhs.circuit);
+        let circuit_switched = ConstraintCircuit {
+            id,
+            visited_counter: 0,
+            expression: expression_switched,
         };
-
-        // check if node already exists
-        let inverted_contained = lhs
-            .as_ref()
-            .borrow()
-            .builder
-            .all_nodes
-            .as_ref()
-            .borrow()
-            .contains(&new_node_inverted);
-        if inverted_contained {
-            let ret0 = &lhs.as_ref().borrow();
-            let ret1 = ret0.builder.all_nodes.as_ref().borrow();
-            let ret2 = &(*ret1.get(&new_node_inverted).as_ref().unwrap()).clone();
-            return ret2.to_owned();
+        let circuit_switched = Rc::new(RefCell::new(circuit_switched));
+        let new_node_switched = ConstraintCircuitMonad {
+            circuit: circuit_switched,
+            builder: lhs.builder.clone(),
+        };
+        if let Some(same_node) = all_nodes.get(&new_node_switched) {
+            return same_node.to_owned();
         }
     }
 
-    // Increment counter index
-    *lhs.as_ref()
-        .borrow()
-        .builder
-        .id_counter
-        .as_ref()
-        .borrow_mut() = new_index + 1;
-
-    // Store new node in HashSet
-    let inserted_value_was_new = new_node
-        .builder
-        .all_nodes
-        .as_ref()
-        .borrow_mut()
-        .insert(new_node.clone());
-    assert!(inserted_value_was_new, "Binop-created value must be new");
-
+    *lhs.builder.id_counter.as_ref().borrow_mut() += 1;
+    let was_inserted = all_nodes.insert(new_node.clone());
+    assert!(was_inserted, "Binop-created value must be new");
     new_node
 }
 
