@@ -85,7 +85,6 @@ impl BFieldCodec for Claim {
         }
         read_index += 1;
         let input = sequence[read_index..read_index + input_length]
-            .to_vec()
             .iter()
             .map(|b| b.value())
             .collect_vec();
@@ -97,10 +96,15 @@ impl BFieldCodec for Claim {
         }
         read_index += 1;
         let output = sequence[read_index..read_index + output_length]
-            .to_vec()
             .iter()
             .map(|b| b.value())
             .collect_vec();
+
+        read_index += output_length;
+        if read_index != sequence.len() {
+            assert_eq!(read_index, sequence.len());
+            bail!("Cannot decode Vec of BFieldElements as Claim: improper total length");
+        }
 
         Ok(Box::new(Claim {
             program_digest,
@@ -124,10 +128,10 @@ impl BFieldCodec for Claim {
 pub mod test_claim_proof {
     use itertools::Itertools;
     use rand::random;
-    use twenty_first::shared_math::{
-        b_field_element::BFieldElement, bfield_codec::BFieldCodec, other::random_elements,
-        tip5::Digest,
-    };
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::bfield_codec::BFieldCodec;
+    use twenty_first::shared_math::other::random_elements;
+    use twenty_first::shared_math::tip5::Digest;
 
     use super::*;
 
