@@ -700,9 +700,9 @@ pub struct DegreeLoweringTable {{}}
 
 impl DegreeLoweringTable {{
     {fill_base_columns_code}
+
     {fill_ext_columns_code}
-}}
-"
+}}"
     )
 }
 
@@ -725,12 +725,50 @@ fn generate_fill_base_columns_code(
         .to_owned();
     }
 
-    // todo: generate code to compute the columns' content corresponding to the substitutions
-    for circuit in init_base_substitutions.iter() {
-        let _code = substitution_rule_to_code(circuit.circuit.as_ref().borrow().to_owned());
-    }
+    let single_row_substitutions = init_base_substitutions
+        .iter()
+        .chain(cons_base_substitutions.iter())
+        .chain(term_base_substitutions.iter())
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec()
+        .join("\n");
+    let single_row_substitutions = if single_row_substitutions.is_empty() {
+        "".to_owned()
+    } else {
+        format!(
+            "
+        // For single-row constraints.
+        Zip::from(main_trace_section.axis_iter(Axis(0)))
+            .and(deterministic_section.axis_iter_mut(Axis(0)))
+            .par_for_each(|base_row, mut deterministic_row| {{
+                {single_row_substitutions}
+            }});"
+        )
+    };
 
-    let placeholder = "";
+    let dual_row_substitutions = tran_base_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec()
+        .join("\n");
+    let dual_row_substitutions = if dual_row_substitutions.is_empty() {
+        "".to_owned()
+    } else {
+        format!(
+            "
+        // For dual-row constraints.
+        // The last row of the deterministic section for transition constraints is not used.
+        let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
+        Zip::from(main_trace_section.axis_windows(Axis(0), 2))
+            .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
+            .par_for_each(|main_trace_chunk, mut deterministic_chunk| {{
+                let current_base_row = main_trace_chunk.row(0);
+                let next_base_row = main_trace_chunk.row(1);
+                let mut deterministic_row = deterministic_chunk.row_mut(0);
+                {dual_row_substitutions}
+            }});"
+        )
+    };
 
     format!(
         "
@@ -747,26 +785,10 @@ fn generate_fill_base_columns_code(
             s![.., deterministic_section_start..deterministic_section_end],
         ));
 
-        // For single-row constraints.
-        Zip::from(main_trace_section.axis_iter(Axis(0)))
-            .and(deterministic_section.axis_iter_mut(Axis(0)))
-            .par_for_each(|_base_row, mut _deterministic_row| {{
-                {placeholder}
-            }});
+        {single_row_substitutions}
 
-        // For dual-row constraints.
-        // The last row of the deterministic section for transition constraints is not used.
-        let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
-        Zip::from(main_trace_section.axis_windows(Axis(0), 2))
-            .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
-            .par_for_each(|main_trace_chunk, mut deterministic_chunk| {{
-                let _current_base_row = main_trace_chunk.row(0);
-                let _next_base_row = main_trace_chunk.row(1);
-                let mut _current_deterministic_row = deterministic_chunk.row_mut(0);
-                {placeholder}
-            }});
-    }}
-"
+        {dual_row_substitutions}
+    }}"
     )
 }
 
@@ -792,7 +814,54 @@ fn generate_fill_ext_columns_code(
         .to_owned();
     }
 
-    let placeholder = "";
+    let single_row_substitutions = init_ext_substitutions
+        .iter()
+        .chain(cons_ext_substitutions.iter())
+        .chain(term_ext_substitutions.iter())
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec()
+        .join("\n");
+    let single_row_substitutions = if single_row_substitutions.is_empty() {
+        "".to_owned()
+    } else {
+        format!(
+            "
+        // For single-row constraints.
+        Zip::from(master_base_table.axis_iter(Axis(0)))
+            .and(main_ext_section.axis_iter(Axis(0)))
+            .and(deterministic_section.axis_iter_mut(Axis(0)))
+            .par_for_each(|base_row, ext_row, mut deterministic_row| {{
+                {single_row_substitutions}
+            }});"
+        )
+    };
+
+    let dual_row_substitutions = tran_ext_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec()
+        .join("\n");
+    let dual_row_substitutions = if dual_row_substitutions.is_empty() {
+        "".to_owned()
+    } else {
+        format!(
+            "
+        // For dual-row constraints.
+        // The last row of the deterministic section for transition constraints is not used.
+        let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
+        Zip::from(master_base_table.axis_windows(Axis(0), 2))
+            .and(main_ext_section.axis_windows(Axis(0), 2))
+            .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
+            .par_for_each(|base_chunk, main_ext_chunk, mut det_ext_chunk| {{
+                let current_base_row = base_chunk.row(0);
+                let next_base_row = base_chunk.row(1);
+                let current_ext_row = main_ext_chunk.row(0);
+                let next_ext_row = main_ext_chunk.row(1);
+                let mut deterministic_row = det_ext_chunk.row_mut(0);
+                {dual_row_substitutions}
+            }});"
+        )
+    };
 
     format!(
         "
@@ -813,28 +882,9 @@ fn generate_fill_ext_columns_code(
             s![.., det_ext_section_start..det_ext_section_end],
         ));
 
-        // For single-row constraints.
-        Zip::from(master_base_table.axis_iter(Axis(0)))
-            .and(main_ext_section.axis_iter(Axis(0)))
-            .and(deterministic_section.axis_iter_mut(Axis(0)))
-            .par_for_each(|_base_row, _ext_row, mut _det_ext_row| {{
-                {placeholder}
-            }});
+        {single_row_substitutions}
 
-        // For dual-row constraints.
-        // The last row of the deterministic section for transition constraints is not used.
-        let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
-        Zip::from(master_base_table.axis_windows(Axis(0), 2))
-            .and(main_ext_section.axis_windows(Axis(0), 2))
-            .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
-            .par_for_each(|base_chunk, main_ext_chunk, mut det_ext_chunk| {{
-                let _current_base_row = base_chunk.row(0);
-                let _next_base_row = base_chunk.row(1);
-                let _current_ext_row = main_ext_chunk.row(0);
-                let _next_ext_row = main_ext_chunk.row(1);
-                let mut _current_det_ext_row = det_ext_chunk.row_mut(0);
-                {placeholder}
-            }});
+        {dual_row_substitutions}
     }}
 "
     )
