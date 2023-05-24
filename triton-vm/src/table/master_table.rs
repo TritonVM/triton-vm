@@ -13,7 +13,6 @@ use num_traits::One;
 use rand::distributions::Standard;
 use rand::prelude::Distribution;
 use rand::random;
-use strum::EnumCount;
 use strum_macros::Display;
 use strum_macros::EnumCount as EnumCountMacro;
 use strum_macros::EnumIter;
@@ -56,8 +55,11 @@ use crate::table::u32_table::U32Table;
 use crate::table::*;
 use crate::vm::AlgebraicExecutionTrace;
 
-pub const NUM_TABLES: usize = TableId::COUNT;
+/// The degree of the AIR after the degree lowering step.
+/// See also [`DegreeLoweringTable`].
+pub const AIR_TARGET_DEGREE: Degree = 5;
 
+/// The total number of base columns across all tables.
 pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + processor_table::BASE_WIDTH
     + op_stack_table::BASE_WIDTH
@@ -68,6 +70,8 @@ pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
     + lookup_table::BASE_WIDTH
     + u32_table::BASE_WIDTH
     + degree_lowering_table::BASE_WIDTH;
+
+/// The total number of extension columns across all tables.
 pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
     + processor_table::EXT_WIDTH
     + op_stack_table::EXT_WIDTH
@@ -78,6 +82,8 @@ pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
     + lookup_table::EXT_WIDTH
     + u32_table::EXT_WIDTH
     + degree_lowering_table::EXT_WIDTH;
+
+/// The total number of columns across all tables.
 pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
 
 pub const PROGRAM_TABLE_START: usize = 0;
