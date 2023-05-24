@@ -645,10 +645,18 @@ fn generate_degree_lowering_table_code(
         .collect_vec()
         .join(",\n");
 
-    // todo: generate code to compute the columns' content corresponding to the substitutions
-    for circuit in init_base_substitutions.iter() {
-        let _code = substitution_rule_to_code(circuit.circuit.as_ref().borrow().to_owned());
-    }
+    let fill_base_columns_code = generate_fill_base_columns_code(
+        init_base_substitutions,
+        cons_base_substitutions,
+        tran_base_substitutions,
+        term_base_substitutions,
+    );
+    let fill_ext_columns_code = generate_fill_ext_columns_code(
+        init_ext_substitutions,
+        cons_ext_substitutions,
+        tran_ext_substitutions,
+        term_ext_substitutions,
+    );
 
     format!(
         "
@@ -691,6 +699,41 @@ pub enum DegreeLoweringExtTableColumn {{
 pub struct DegreeLoweringTable {{}}
 
 impl DegreeLoweringTable {{
+    {fill_base_columns_code}
+    {fill_ext_columns_code}
+}}
+"
+    )
+}
+
+fn generate_fill_base_columns_code(
+    init_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    cons_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    tran_base_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
+    term_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+) -> String {
+    if init_base_substitutions.is_empty()
+        && cons_base_substitutions.is_empty()
+        && tran_base_substitutions.is_empty()
+        && term_base_substitutions.is_empty()
+    {
+        return "pub fn fill_deterministic_base_columns(_: &mut ArrayViewMut2<BFieldElement>) {
+            // prevent unused variable warning
+            let _ = NUM_BASE_COLUMNS;
+            // no substitutions
+        }"
+        .to_owned();
+    }
+
+    // todo: generate code to compute the columns' content corresponding to the substitutions
+    for circuit in init_base_substitutions.iter() {
+        let _code = substitution_rule_to_code(circuit.circuit.as_ref().borrow().to_owned());
+    }
+
+    let placeholder = "";
+
+    format!(
+        "
     pub fn fill_deterministic_base_columns(master_base_table: &mut ArrayViewMut2<BFieldElement>) {{
         assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
 
@@ -708,6 +751,7 @@ impl DegreeLoweringTable {{
         Zip::from(main_trace_section.axis_iter(Axis(0)))
             .and(deterministic_section.axis_iter_mut(Axis(0)))
             .par_for_each(|_base_row, mut _deterministic_row| {{
+                {placeholder}
             }});
 
         // For dual-row constraints.
@@ -719,9 +763,39 @@ impl DegreeLoweringTable {{
                 let _current_base_row = main_trace_chunk.row(0);
                 let _next_base_row = main_trace_chunk.row(1);
                 let mut _current_deterministic_row = deterministic_chunk.row_mut(0);
+                {placeholder}
             }});
     }}
+"
+    )
+}
 
+fn generate_fill_ext_columns_code(
+    init_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    cons_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    tran_ext_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
+    term_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+) -> String {
+    if init_ext_substitutions.is_empty()
+        && cons_ext_substitutions.is_empty()
+        && tran_ext_substitutions.is_empty()
+        && term_ext_substitutions.is_empty()
+    {
+        return "pub fn fill_deterministic_ext_columns(
+                _: ArrayView2<BFieldElement>,
+                _: &mut ArrayViewMut2<XFieldElement>,
+            ) {
+                // prevent unused variable warning
+                let _ = NUM_EXT_COLUMNS;
+                // no substitutions
+            }"
+        .to_owned();
+    }
+
+    let placeholder = "";
+
+    format!(
+        "
     pub fn fill_deterministic_ext_columns(
         master_base_table: ArrayView2<BFieldElement>,
         master_ext_table: &mut ArrayViewMut2<XFieldElement>,
@@ -744,6 +818,7 @@ impl DegreeLoweringTable {{
             .and(main_ext_section.axis_iter(Axis(0)))
             .and(deterministic_section.axis_iter_mut(Axis(0)))
             .par_for_each(|_base_row, _ext_row, mut _det_ext_row| {{
+                {placeholder}
             }});
 
         // For dual-row constraints.
@@ -758,9 +833,9 @@ impl DegreeLoweringTable {{
                 let _current_ext_row = main_ext_chunk.row(0);
                 let _next_ext_row = main_ext_chunk.row(1);
                 let mut _current_det_ext_row = det_ext_chunk.row_mut(0);
+                {placeholder}
             }});
     }}
-}}
 "
     )
 }
