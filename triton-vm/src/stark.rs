@@ -1,5 +1,6 @@
 use std::ops::Add;
 use std::ops::Mul;
+use std::ops::MulAssign;
 
 use anyhow::bail;
 use anyhow::Result;
@@ -15,25 +16,24 @@ use num_traits::One;
 use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
+use triton_profiler::prof_itr0;
+use triton_profiler::prof_start;
+use triton_profiler::prof_stop;
+use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::roundup_npo2;
+use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::traits::FiniteField;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::traits::ModPowU32;
+use twenty_first::shared_math::x_field_element;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 use twenty_first::util_types::merkle_tree::CpuParallel;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
-
-use triton_profiler::prof_itr0;
-use triton_profiler::prof_start;
-use triton_profiler::prof_stop;
-use triton_profiler::triton_profiler::TritonProfiler;
-use twenty_first::shared_math::polynomial::Polynomial;
-use twenty_first::shared_math::x_field_element;
 
 use crate::arithmetic_domain::ArithmeticDomain;
 use crate::fri::Fri;
@@ -232,6 +232,26 @@ impl Stark {
         );
         prof_stop!(maybe_profiler, "quotient codewords");
 
+        #[cfg(debug_assertions)]
+        {
+            prof_start!(maybe_profiler, "debug degree check", "debug");
+            println!(" -- checking degree of base columns --");
+            Self::debug_check_degree(
+                base_quotient_domain_codewords.view(),
+                quotient_domain,
+                max_degree,
+            );
+            println!(" -- checking degree of extension columns --");
+            Self::debug_check_degree(
+                extension_quotient_domain_codewords.view(),
+                quotient_domain,
+                max_degree,
+            );
+            println!(" -- checking degree of quotient columns --");
+            Self::debug_check_degree(master_quotient_table.view(), quotient_domain, max_degree);
+            prof_stop!(maybe_profiler, "debug degree check");
+        }
+
         prof_start!(maybe_profiler, "linearly combine quotient codewords", "CC");
         // Create quotient codeword. This is a part of the combination codeword. To reduce the
         // amount of hashing necessary, the quotient codeword is linearly summed instead of
@@ -249,9 +269,6 @@ impl Stark {
 
         assert_eq!(quotient_domain.length, quotient_codeword.len());
         prof_stop!(maybe_profiler, "linearly combine quotient codewords");
-
-        #[cfg(debug_assertions)]
-        Self::debug_check_degree(&quotient_codeword.to_vec(), quotient_domain, max_degree);
 
         prof_start!(maybe_profiler, "commit to quotient codeword");
         prof_start!(maybe_profiler, "LDE", "LDE");
@@ -335,8 +352,6 @@ impl Stark {
             weighted_base_codewords.sum_axis(Axis(1)) + weighted_ext_codewords.sum_axis(Axis(1));
 
         assert_eq!(quotient_domain.length, base_and_ext_codeword.len());
-        #[cfg(debug_assertions)]
-        Self::debug_check_degree(&base_and_ext_codeword.to_vec(), quotient_domain, max_degree);
         prof_stop!(maybe_profiler, "base&ext: linear combination");
 
         prof_start!(maybe_profiler, "DEEP");
@@ -554,21 +569,25 @@ impl Stark {
     }
 
     #[cfg(debug_assertions)]
-    fn debug_check_degree(
-        combination_codeword: &[XFieldElement],
+    fn debug_check_degree<FF>(
+        table: ArrayView2<FF>,
         quotient_domain: ArithmeticDomain,
         max_degree: Degree,
-    ) {
+    ) where
+        FF: FiniteField + MulAssign<BFieldElement>,
+    {
         let max_degree = max_degree as isize;
-        let degree = quotient_domain.interpolate(combination_codeword).degree();
-        let maybe_excl_mark = match degree > max_degree {
-            true => "!",
-            false => " ",
-        };
-        println!(
-            "{maybe_excl_mark} Combination codeword has degree {degree}. \
-            Must be of maximal degree {max_degree}."
-        );
+        for (col_idx, codeword) in table.columns().into_iter().enumerate() {
+            let degree = quotient_domain.interpolate(&codeword.to_vec()).degree();
+            let maybe_excl_mark = match degree > max_degree {
+                true => "!",
+                false => " ",
+            };
+            println!(
+                "{maybe_excl_mark} Codeword {col_idx:>3} has degree {degree:>5}. \
+                Must be of maximal degree {max_degree:>5}."
+            );
+        }
     }
 
     pub fn verify(
