@@ -14,19 +14,11 @@ pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 // This file is a placeholder for auto-generated code.
 // Run `cargo run --bin constraint-evaluation-generator` to generate the actual code.
 
-#[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
-pub enum DegreeLoweringBaseTableColumn {
-    /// To be replaced by generated code. Needed to keep the type-checker and linter happy.
-    STANDIN,
-}
+pub enum DegreeLoweringBaseTableColumn {}
 
-#[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
-pub enum DegreeLoweringExtTableColumn {
-    /// To be replaced by generated code. Needed to keep the type-checker and linter happy.
-    STANDIN,
-}
+pub enum DegreeLoweringExtTableColumn {}
 
 #[derive(Debug, Clone)]
 pub struct DegreeLoweringTable {}

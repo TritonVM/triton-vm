@@ -693,7 +693,6 @@ mod table_column_tests {
     use strum::IntoEnumIterator;
 
     use crate::table::cascade_table;
-    use crate::table::degree_lowering_table;
     use crate::table::hash_table;
     use crate::table::jump_stack_table;
     use crate::table::lookup_table;
@@ -788,15 +787,6 @@ mod table_column_tests {
                 + 1,
             "U32Table's BASE_WIDTH is 1 + its max column index",
         );
-        assert_eq!(
-            degree_lowering_table::BASE_WIDTH,
-            DegreeLoweringBaseTableColumn::iter()
-                .last()
-                .unwrap()
-                .base_table_index()
-                + 1,
-            "DegreeLoweringTable's BASE_WIDTH is 1 + its max column index",
-        );
 
         assert_eq!(
             program_table::EXT_WIDTH,
@@ -866,15 +856,6 @@ mod table_column_tests {
             u32_table::EXT_WIDTH,
             U32ExtTableColumn::iter().last().unwrap().ext_table_index() + 1,
             "U32Table's EXT_WIDTH is 1 + its max column index",
-        );
-        assert_eq!(
-            degree_lowering_table::EXT_WIDTH,
-            DegreeLoweringExtTableColumn::iter()
-                .last()
-                .unwrap()
-                .ext_table_index()
-                + 1,
-            "DegreeLoweringTable's EXT_WIDTH is 1 + its max column index",
         );
     }
 
