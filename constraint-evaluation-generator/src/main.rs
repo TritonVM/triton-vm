@@ -142,12 +142,35 @@ fn main() {
         &term_ext_substitutions,
     );
 
+    let initial_constraints = vec![
+        initial_constraints,
+        init_base_substitutions,
+        init_ext_substitutions,
+    ]
+    .concat();
+    let consistency_constraints = vec![
+        consistency_constraints,
+        cons_base_substitutions,
+        cons_ext_substitutions,
+    ]
+    .concat();
+    let transition_constraints = vec![
+        transition_constraints,
+        tran_base_substitutions,
+        tran_ext_substitutions,
+    ]
+    .concat();
+    let terminal_constraints = vec![
+        terminal_constraints,
+        term_base_substitutions,
+        term_ext_substitutions,
+    ]
+    .concat();
+
     let mut initial_constraints = consume(initial_constraints);
     let mut consistency_constraints = consume(consistency_constraints);
     let mut transition_constraints = consume(transition_constraints);
     let mut terminal_constraints = consume(terminal_constraints);
-
-    // todo: add substitution rules to the constraints
 
     let constraint_code = generate_constraint_code(
         &mut initial_constraints,
