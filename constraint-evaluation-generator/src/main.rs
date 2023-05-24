@@ -161,8 +161,18 @@ fn main() {
     std::fs::write("triton-vm/src/table/constraints.rs", constraint_code)
         .expect("Writing to disk has failed.");
 
-    if let Err(fmt_failed) = Command::new("cargo").arg("fmt").output() {
-        println!("cargo fmt failed: {fmt_failed}");
+    match Command::new("cargo")
+        .arg("clippy")
+        .arg("--workspace")
+        .arg("--all-targets")
+        .output()
+    {
+        Ok(_) => (),
+        Err(err) => panic!("cargo clippy failed: {err}"),
+    }
+    match Command::new("cargo").arg("fmt").output() {
+        Ok(_) => (),
+        Err(err) => panic!("cargo fmt failed: {err}"),
     }
 }
 
