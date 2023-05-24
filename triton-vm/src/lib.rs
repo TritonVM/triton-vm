@@ -113,3 +113,68 @@ pub fn prove(
 pub fn verify(parameters: &StarkParameters, claim: &Claim, proof: &Proof) -> bool {
     Stark::verify(parameters, claim, proof, &mut None).unwrap_or(false)
 }
+
+#[cfg(test)]
+mod public_interface_tests {
+    use twenty_first::shared_math::bfield_codec::BFieldCodec;
+
+    use crate::stark::StarkHasher;
+
+    use super::*;
+
+    #[test]
+    pub fn lockscript_test() {
+        // Program proves the knowledge of a hash preimage
+        let source_code = "
+        divine divine divine divine divine
+        hash pop pop pop pop pop
+        push 09456474867485907852
+        push 12765666850723567758
+        push 08551752384389703074
+        push 03612858832443241113
+        push 12064501419749299924
+        assert_vector
+        read_io read_io read_io read_io read_io
+        halt";
+
+        let secret_input = vec![
+            7534225252725590272,
+            10242377928140984092,
+            4934077665495234419,
+            1344204945079929819,
+            2308095244057597075,
+        ];
+        let public_input = vec![
+            4541691341642414223,
+            488727826369776966,
+            18398227966153280881,
+            6431838875748878863,
+            17174585125955027015,
+        ];
+        let parameters = StarkParameters::default();
+
+        let (used_stark_parameters, claim, proof) =
+            prove(source_code, &public_input, &secret_input);
+        assert_eq!(
+            StarkParameters::default(),
+            used_stark_parameters,
+            "Prover must return default STARK parameters"
+        );
+        let program = Program::from_code(source_code).unwrap();
+        let expected_program_digest = StarkHasher::hash_varlen(&program.encode());
+        assert_eq!(
+            expected_program_digest, claim.program_digest,
+            "program digest must match program"
+        );
+        assert_eq!(
+            public_input, claim.input,
+            "Claimed input must match supplied input"
+        );
+        assert!(
+            claim.output.is_empty(),
+            "Output must be empty for program that doesn't write to output"
+        );
+        let result = verify(&parameters, &claim, &proof);
+        assert!(result);
+    }
+}
