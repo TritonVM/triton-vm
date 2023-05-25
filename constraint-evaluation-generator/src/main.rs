@@ -2,12 +2,12 @@ use std::collections::HashSet;
 use std::process::Command;
 
 use itertools::Itertools;
+use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use proc_macro2::TokenStream;
 use triton_vm::table::cascade_table::ExtCascadeTable;
 use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
@@ -182,13 +182,19 @@ fn main() {
         &mut terminal_constraints,
     );
 
-    std::fs::write("triton-vm/src/table/degree_lowering_table.rs", table_code)
-        .expect("Writing to disk has failed.");
-    std::fs::write(
-        "triton-vm/src/table/constraints.rs",
-        constraint_code.to_string(),
-    )
-    .expect("Writing to disk has failed.");
+    let table_syntax_tree = syn::parse_str(&table_code).unwrap();
+    let table_code = prettyplease::unparse(&table_syntax_tree);
+    match std::fs::write("triton-vm/src/table/degree_lowering_table.rs", table_code) {
+        Ok(_) => (),
+        Err(err) => panic!("Writing to disk has failed: {err}"),
+    }
+
+    let constraint_syntax_tree = syn::parse2(constraint_code).unwrap();
+    let constraint_code = prettyplease::unparse(&constraint_syntax_tree);
+    match std::fs::write("triton-vm/src/table/constraints.rs", constraint_code) {
+        Ok(_) => (),
+        Err(err) => panic!("Writing to disk has failed: {err}"),
+    }
 
     match Command::new("cargo")
         .arg("clippy")
@@ -198,10 +204,6 @@ fn main() {
     {
         Ok(_) => (),
         Err(err) => panic!("cargo clippy failed: {err}"),
-    }
-    match Command::new("cargo").arg("fmt").output() {
-        Ok(_) => (),
-        Err(err) => panic!("cargo fmt failed: {err}"),
     }
 }
 
