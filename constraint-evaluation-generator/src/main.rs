@@ -833,92 +833,113 @@ fn generate_fill_base_columns_code(
 }
 
 fn generate_fill_ext_columns_code(
-    init_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
-    cons_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
-    tran_ext_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
-    term_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    init_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    cons_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    tran_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
+    term_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
 ) -> TokenStream {
-    if init_ext_substitutions.is_empty()
-        && cons_ext_substitutions.is_empty()
-        && tran_ext_substitutions.is_empty()
-        && term_ext_substitutions.is_empty()
-    {
-        return quote!(
-            pub fn fill_deterministic_ext_columns(
-                _: ArrayView2<BFieldElement>,
-                _: &mut ArrayViewMut2<XFieldElement>,
-            ) {
-                // prevent unused variable warning
-                let _ = NUM_EXT_COLUMNS;
-                // no substitutions
+    let deterministic_section_start =
+        master_table::NUM_EXT_COLUMNS - degree_lowering_table::EXT_WIDTH;
+
+    let num_init_substitutions = init_substitutions.len();
+    let num_cons_substitutions = cons_substitutions.len();
+    let num_tran_substitutions = tran_substitutions.len();
+    let num_term_substitutions = term_substitutions.len();
+
+    let init_col_indices = (0..num_init_substitutions)
+        .map(|i| i + deterministic_section_start)
+        .collect_vec();
+    let cons_col_indices = (0..num_cons_substitutions)
+        .map(|i| i + deterministic_section_start + num_init_substitutions)
+        .collect_vec();
+    let tran_col_indices = (0..num_tran_substitutions)
+        .map(|i| i + deterministic_section_start + num_init_substitutions + num_cons_substitutions)
+        .collect_vec();
+    let term_col_indices = (0..num_term_substitutions)
+        .map(|i| {
+            i + deterministic_section_start
+                + num_init_substitutions
+                + num_cons_substitutions
+                + num_tran_substitutions
+        })
+        .collect_vec();
+
+    let init_substitutions = init_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+    let cons_substitutions = cons_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+    let tran_substitutions = tran_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+    let term_substitutions = term_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+
+    let single_row_substitutions = |indices: Vec<usize>, substitutions: Vec<TokenStream>| {
+        assert_eq!(indices.len(), substitutions.len());
+        if indices.is_empty() {
+            return quote!();
+        }
+        quote!(
+            for row_idx in 0..master_base_table.nrows() - 1 {
+                let base_row = master_base_table.row(row_idx);
+                let mut extension_row = master_ext_table.row_mut(row_idx);
+                #(
+                    let (ext_row, mut det_col) =
+                        extension_row.multi_slice_mut((s![..#indices],s![#indices..#indices + 1]));
+                    det_col[0] = #substitutions;
+                )*
             }
-        );
-    }
-
-    let single_row_substitutions = init_ext_substitutions
-        .iter()
-        .chain(cons_ext_substitutions.iter())
-        .chain(term_ext_substitutions.iter())
-        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec();
-    let single_row_substitutions = if single_row_substitutions.is_empty() {
-        quote!()
-    } else {
+        )
+    };
+    let dual_row_substitutions = |indices: Vec<usize>, substitutions: Vec<TokenStream>| {
+        assert_eq!(indices.len(), substitutions.len());
+        if indices.is_empty() {
+            return quote!();
+        }
         quote!(
-            // For single-row constraints.
-            Zip::from(master_base_table.axis_iter(Axis(0)))
-                .and(main_ext_section.axis_iter(Axis(0)))
-                .and(deterministic_section.axis_iter_mut(Axis(0)))
-                .par_for_each(|base_row, ext_row, mut deterministic_row| {
-                    #(#single_row_substitutions)*
-                });
+            for row_idx in 0..master_base_table.nrows() - 1 {
+                let current_base_row = master_base_table.row(row_idx);
+                let next_base_row = master_base_table.row(row_idx + 1);
+                let (mut curr_ext_row, next_ext_row) = master_ext_table.multi_slice_mut((
+                    s![row_idx..row_idx + 1, ..],
+                    s![row_idx + 1..row_idx + 2, ..],
+                ));
+                let mut curr_ext_row = curr_ext_row.row_mut(0);
+                let next_ext_row = next_ext_row.row(0);
+                #(
+                let (current_ext_row, mut det_col) =
+                    curr_ext_row.multi_slice_mut((s![..#indices], s![#indices..#indices + 1]));
+                det_col[0] = #substitutions;
+                )*
+            }
         )
     };
 
-    let dual_row_substitutions = tran_ext_substitutions
-        .iter()
-        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec();
-    let dual_row_substitutions = if dual_row_substitutions.is_empty() {
-        quote!()
-    } else {
-        quote!(
-            // For dual-row constraints.
-            // The last row of the deterministic section for transition constraints is not used.
-            let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
-            Zip::from(master_base_table.axis_windows(Axis(0), 2))
-                .and(main_ext_section.axis_windows(Axis(0), 2))
-                .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
-                .par_for_each(|base_chunk, main_ext_chunk, mut det_ext_chunk| {
-                    let current_base_row = base_chunk.row(0);
-                    let next_base_row = base_chunk.row(1);
-                    let current_ext_row = main_ext_chunk.row(0);
-                    let next_ext_row = main_ext_chunk.row(1);
-                    let mut deterministic_row = det_ext_chunk.row_mut(0);
-                    #(#dual_row_substitutions)*
-                });
-        )
-    };
+    let init_substitutions = single_row_substitutions(init_col_indices, init_substitutions);
+    let cons_substitutions = single_row_substitutions(cons_col_indices, cons_substitutions);
+    let tran_substitutions = dual_row_substitutions(tran_col_indices, tran_substitutions);
+    let term_substitutions = single_row_substitutions(term_col_indices, term_substitutions);
 
     quote!(
+        #[allow(unused_variables)]
         pub fn fill_deterministic_ext_columns(
             master_base_table: ArrayView2<BFieldElement>,
             master_ext_table: &mut ArrayViewMut2<XFieldElement>,
         ) {
             assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
             assert_eq!(NUM_EXT_COLUMNS, master_ext_table.ncols());
-
-            let main_ext_section_start = 0;
-            let main_ext_section_end = main_ext_section_start + NUM_EXT_COLUMNS - EXT_WIDTH;
-            let det_ext_section_start = main_ext_section_end;
-            let det_ext_section_end = det_ext_section_start + EXT_WIDTH;
-
-            let (main_ext_section, mut deterministic_section) = master_ext_table.multi_slice_mut((
-                s![.., main_ext_section_start..main_ext_section_end],
-                s![.., det_ext_section_start..det_ext_section_end],
-            ));
-            #single_row_substitutions
-            #dual_row_substitutions
+            assert_eq!(master_base_table.nrows(), master_ext_table.nrows());
+            #init_substitutions
+            #cons_substitutions
+            #tran_substitutions
+            #term_substitutions
         }
     )
 }
