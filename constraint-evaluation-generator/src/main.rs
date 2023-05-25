@@ -182,7 +182,7 @@ fn main() {
         &mut terminal_constraints,
     );
 
-    let table_syntax_tree = syn::parse_str(&table_code).unwrap();
+    let table_syntax_tree = syn::parse2(table_code).unwrap();
     let table_code = prettyplease::unparse(&table_syntax_tree);
     match std::fs::write("triton-vm/src/table/degree_lowering_table.rs", table_code) {
         Ok(_) => (),
@@ -619,7 +619,7 @@ fn evaluate_single_node<II: InputIndicator>(
 
 /// Given a substitution rule, i.e., a `ConstraintCircuit` of the form `x - expr`, generate code
 /// that evaluates `expr` on the appropriate base rows and sets `x` to the result.
-fn substitution_rule_to_code<II: InputIndicator>(circuit: ConstraintCircuit<II>) -> String {
+fn substitution_rule_to_code<II: InputIndicator>(circuit: ConstraintCircuit<II>) -> TokenStream {
     let circuit_evaluates_to_base_element = circuit.evaluates_to_base_element();
     let BinaryOperation(BinOp::Sub, new_var, expr) = circuit.expression else {
         panic!("Substitution rule must be a subtraction.");
@@ -635,7 +635,7 @@ fn substitution_rule_to_code<II: InputIndicator>(circuit: ConstraintCircuit<II>)
     let expr = expr.as_ref().borrow().to_owned();
     let expr = evaluate_single_node(usize::MAX, &expr, &HashSet::new());
 
-    format!("deterministic_row[{new_var_idx} - deterministic_section_start] = {expr};")
+    quote!(deterministic_row[#new_var_idx - deterministic_section_start] = #expr;)
 }
 
 /// Given all substitution rules, generate the code that evaluates them in order.
@@ -650,7 +650,7 @@ fn generate_degree_lowering_table_code(
     cons_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
     tran_ext_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
     term_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
-) -> String {
+) -> TokenStream {
     let num_new_base_cols = init_base_substitutions.len()
         + cons_base_substitutions.len()
         + tran_base_substitutions.len()
@@ -662,22 +662,22 @@ fn generate_degree_lowering_table_code(
 
     // A zero-variant enum cannot be annotated with `repr(usize)`.
     let base_repr_usize = match num_new_base_cols == 0 {
-        true => "",
-        false => "#[repr(usize)]",
+        true => quote!(),
+        false => quote!(#[repr(usize)]),
     };
     let ext_repr_usize = match num_new_ext_cols == 0 {
-        true => "",
-        false => "#[repr(usize)]",
+        true => quote!(),
+        false => quote!(#[repr(usize)]),
     };
 
     let base_columns = (0..num_new_base_cols)
-        .map(|i| format!("DegreeLoweringBaseCol{i}"))
-        .collect_vec()
-        .join(",\n");
+        .map(|i| format_ident!("DegreeLoweringBaseCol{i}"))
+        .map(|ident| quote!(#ident))
+        .collect_vec();
     let ext_columns = (0..num_new_ext_cols)
-        .map(|i| format!("DegreeLoweringExtCol{i}"))
-        .collect_vec()
-        .join(",\n");
+        .map(|i| format_ident!("DegreeLoweringExtCol{i}"))
+        .map(|ident| quote!(#ident))
+        .collect_vec();
 
     let fill_base_columns_code = generate_fill_base_columns_code(
         init_base_substitutions,
@@ -692,51 +692,49 @@ fn generate_degree_lowering_table_code(
         term_ext_substitutions,
     );
 
-    format!(
-        "
-use ndarray::s;
-use ndarray::ArrayView2;
-use ndarray::ArrayViewMut2;
-use ndarray::Axis;
-use ndarray::Zip;
-use strum::EnumCount;
-use strum_macros::Display;
-use strum_macros::EnumCount as EnumCountMacro;
-use strum_macros::EnumIter;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+    quote!(
+        use ndarray::s;
+        use ndarray::ArrayView2;
+        use ndarray::ArrayViewMut2;
+        use ndarray::Axis;
+        use ndarray::Zip;
+        use strum::EnumCount;
+        use strum_macros::Display;
+        use strum_macros::EnumCount as EnumCountMacro;
+        use strum_macros::EnumIter;
+        use twenty_first::shared_math::b_field_element::BFieldElement;
+        use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::table::master_table::NUM_BASE_COLUMNS;
-use crate::table::master_table::NUM_EXT_COLUMNS;
+        use crate::table::master_table::NUM_BASE_COLUMNS;
+        use crate::table::master_table::NUM_EXT_COLUMNS;
 
-pub const BASE_WIDTH: usize = DegreeLoweringBaseTableColumn::COUNT;
-pub const EXT_WIDTH: usize = DegreeLoweringExtTableColumn::COUNT;
-pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
+        pub const BASE_WIDTH: usize = DegreeLoweringBaseTableColumn::COUNT;
+        pub const EXT_WIDTH: usize = DegreeLoweringExtTableColumn::COUNT;
+        pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
 
-// This file has been auto-generated. Any modifications _will_ be lost.
-// To re-generate, execute:
-// `cargo run --bin constraint-evaluation-generator`
+        // This file has been auto-generated. Any modifications _will_ be lost.
+        // To re-generate, execute:
+        // `cargo run --bin constraint-evaluation-generator`
 
-{base_repr_usize}
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
-pub enum DegreeLoweringBaseTableColumn {{
-    {base_columns}
-}}
+        #base_repr_usize
+        #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+        pub enum DegreeLoweringBaseTableColumn {
+            #(#base_columns),*
+        }
 
-{ext_repr_usize}
-#[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
-pub enum DegreeLoweringExtTableColumn {{
-    {ext_columns}
-}}
+        #ext_repr_usize
+        #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
+        pub enum DegreeLoweringExtTableColumn {
+            #(#ext_columns),*
+        }
 
-#[derive(Debug, Clone)]
-pub struct DegreeLoweringTable {{}}
+        #[derive(Debug, Clone)]
+        pub struct DegreeLoweringTable {}
 
-impl DegreeLoweringTable {{
-    {fill_base_columns_code}
-
-    {fill_ext_columns_code}
-}}"
+        impl DegreeLoweringTable {
+            #fill_base_columns_code
+            #fill_ext_columns_code
+        }
     )
 }
 
@@ -745,18 +743,19 @@ fn generate_fill_base_columns_code(
     cons_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
     tran_base_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
     term_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
-) -> String {
+) -> TokenStream {
     if init_base_substitutions.is_empty()
         && cons_base_substitutions.is_empty()
         && tran_base_substitutions.is_empty()
         && term_base_substitutions.is_empty()
     {
-        return "pub fn fill_deterministic_base_columns(_: &mut ArrayViewMut2<BFieldElement>) {
-            // prevent unused variable warning
-            let _ = NUM_BASE_COLUMNS;
-            // no substitutions
-        }"
-        .to_owned();
+        return quote!(
+            pub fn fill_deterministic_base_columns(_: &mut ArrayViewMut2<BFieldElement>) {
+                // prevent unused variable warning
+                let _ = NUM_BASE_COLUMNS;
+                // no substitutions
+            }
+        );
     }
 
     let single_row_substitutions = init_base_substitutions
@@ -764,49 +763,44 @@ fn generate_fill_base_columns_code(
         .chain(cons_base_substitutions.iter())
         .chain(term_base_substitutions.iter())
         .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec()
-        .join("\n");
+        .collect_vec();
     let single_row_substitutions = if single_row_substitutions.is_empty() {
-        "".to_owned()
+        quote!()
     } else {
-        format!(
-            "
+        quote!(
         // For single-row constraints.
         Zip::from(main_trace_section.axis_iter(Axis(0)))
             .and(deterministic_section.axis_iter_mut(Axis(0)))
-            .par_for_each(|base_row, mut deterministic_row| {{
-                {single_row_substitutions}
-            }});"
+            .par_for_each(|base_row, mut deterministic_row| {
+                #(#single_row_substitutions)*
+            });
         )
     };
 
     let dual_row_substitutions = tran_base_substitutions
         .iter()
         .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec()
-        .join("\n");
+        .collect_vec();
     let dual_row_substitutions = if dual_row_substitutions.is_empty() {
-        "".to_owned()
+        quote!()
     } else {
-        format!(
-            "
+        quote!(
         // For dual-row constraints.
         // The last row of the deterministic section for transition constraints is not used.
         let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
         Zip::from(main_trace_section.axis_windows(Axis(0), 2))
             .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
-            .par_for_each(|main_trace_chunk, mut deterministic_chunk| {{
+            .par_for_each(|main_trace_chunk, mut deterministic_chunk| {
                 let current_base_row = main_trace_chunk.row(0);
                 let next_base_row = main_trace_chunk.row(1);
                 let mut deterministic_row = deterministic_chunk.row_mut(0);
-                {dual_row_substitutions}
-            }});"
+                #(#dual_row_substitutions)*
+            });
         )
     };
 
-    format!(
-        "
-    pub fn fill_deterministic_base_columns(master_base_table: &mut ArrayViewMut2<BFieldElement>) {{
+    quote!(
+    pub fn fill_deterministic_base_columns(master_base_table: &mut ArrayViewMut2<BFieldElement>) {
         assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
 
         let main_trace_section_start = 0;
@@ -819,10 +813,10 @@ fn generate_fill_base_columns_code(
             s![.., deterministic_section_start..deterministic_section_end],
         ));
 
-        {single_row_substitutions}
+        #single_row_substitutions
 
-        {dual_row_substitutions}
-    }}"
+        #dual_row_substitutions
+    }
     )
 }
 
@@ -831,7 +825,7 @@ fn generate_fill_ext_columns_code(
     cons_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
     tran_ext_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
     term_ext_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
-) -> String {
+) -> TokenStream {
     if init_ext_substitutions.is_empty()
         && cons_ext_substitutions.is_empty()
         && tran_ext_substitutions.is_empty()
@@ -846,8 +840,7 @@ fn generate_fill_ext_columns_code(
                 let _ = NUM_EXT_COLUMNS;
                 // no substitutions
             }
-        )
-        .to_string();
+        );
     }
 
     let single_row_substitutions = init_ext_substitutions
@@ -855,73 +848,65 @@ fn generate_fill_ext_columns_code(
         .chain(cons_ext_substitutions.iter())
         .chain(term_ext_substitutions.iter())
         .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec()
-        .join("\n");
+        .collect_vec();
     let single_row_substitutions = if single_row_substitutions.is_empty() {
-        "".to_owned()
+        quote!()
     } else {
-        format!(
-            "
-        // For single-row constraints.
-        Zip::from(master_base_table.axis_iter(Axis(0)))
-            .and(main_ext_section.axis_iter(Axis(0)))
-            .and(deterministic_section.axis_iter_mut(Axis(0)))
-            .par_for_each(|base_row, ext_row, mut deterministic_row| {{
-                {single_row_substitutions}
-            }});"
+        quote!(
+            // For single-row constraints.
+            Zip::from(master_base_table.axis_iter(Axis(0)))
+                .and(main_ext_section.axis_iter(Axis(0)))
+                .and(deterministic_section.axis_iter_mut(Axis(0)))
+                .par_for_each(|base_row, ext_row, mut deterministic_row| {
+                    #(#single_row_substitutions)*
+                });
         )
     };
 
     let dual_row_substitutions = tran_ext_substitutions
         .iter()
         .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec()
-        .join("\n");
+        .collect_vec();
     let dual_row_substitutions = if dual_row_substitutions.is_empty() {
-        "".to_owned()
+        quote!()
     } else {
-        format!(
-            "
-        // For dual-row constraints.
-        // The last row of the deterministic section for transition constraints is not used.
-        let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
-        Zip::from(master_base_table.axis_windows(Axis(0), 2))
-            .and(main_ext_section.axis_windows(Axis(0), 2))
-            .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
-            .par_for_each(|base_chunk, main_ext_chunk, mut det_ext_chunk| {{
-                let current_base_row = base_chunk.row(0);
-                let next_base_row = base_chunk.row(1);
-                let current_ext_row = main_ext_chunk.row(0);
-                let next_ext_row = main_ext_chunk.row(1);
-                let mut deterministic_row = det_ext_chunk.row_mut(0);
-                {dual_row_substitutions}
-            }});"
+        quote!(
+            // For dual-row constraints.
+            // The last row of the deterministic section for transition constraints is not used.
+            let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
+            Zip::from(master_base_table.axis_windows(Axis(0), 2))
+                .and(main_ext_section.axis_windows(Axis(0), 2))
+                .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
+                .par_for_each(|base_chunk, main_ext_chunk, mut det_ext_chunk| {
+                    let current_base_row = base_chunk.row(0);
+                    let next_base_row = base_chunk.row(1);
+                    let current_ext_row = main_ext_chunk.row(0);
+                    let next_ext_row = main_ext_chunk.row(1);
+                    let mut deterministic_row = det_ext_chunk.row_mut(0);
+                    #(#dual_row_substitutions)*
+                });
         )
     };
 
-    format!(
-        "
-    pub fn fill_deterministic_ext_columns(
-        master_base_table: ArrayView2<BFieldElement>,
-        master_ext_table: &mut ArrayViewMut2<XFieldElement>,
-    ) {{
-        assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
-        assert_eq!(NUM_EXT_COLUMNS, master_ext_table.ncols());
+    quote!(
+        pub fn fill_deterministic_ext_columns(
+            master_base_table: ArrayView2<BFieldElement>,
+            master_ext_table: &mut ArrayViewMut2<XFieldElement>,
+        ) {
+            assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
+            assert_eq!(NUM_EXT_COLUMNS, master_ext_table.ncols());
 
-        let main_ext_section_start = 0;
-        let main_ext_section_end = main_ext_section_start + NUM_EXT_COLUMNS - EXT_WIDTH;
-        let det_ext_section_start = main_ext_section_end;
-        let det_ext_section_end = det_ext_section_start + EXT_WIDTH;
+            let main_ext_section_start = 0;
+            let main_ext_section_end = main_ext_section_start + NUM_EXT_COLUMNS - EXT_WIDTH;
+            let det_ext_section_start = main_ext_section_end;
+            let det_ext_section_end = det_ext_section_start + EXT_WIDTH;
 
-        let (main_ext_section, mut deterministic_section) = master_ext_table.multi_slice_mut((
-            s![.., main_ext_section_start..main_ext_section_end],
-            s![.., det_ext_section_start..det_ext_section_end],
-        ));
-
-        {single_row_substitutions}
-
-        {dual_row_substitutions}
-    }}
-"
+            let (main_ext_section, mut deterministic_section) = master_ext_table.multi_slice_mut((
+                s![.., main_ext_section_start..main_ext_section_end],
+                s![.., det_ext_section_start..det_ext_section_end],
+            ));
+            #single_row_substitutions
+            #dual_row_substitutions
+        }
     )
 }
