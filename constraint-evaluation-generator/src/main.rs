@@ -618,24 +618,17 @@ fn evaluate_single_node<II: InputIndicator>(
 }
 
 /// Given a substitution rule, i.e., a `ConstraintCircuit` of the form `x - expr`, generate code
-/// that evaluates `expr` on the appropriate base rows and sets `x` to the result.
+/// that evaluates `expr`.
 fn substitution_rule_to_code<II: InputIndicator>(circuit: ConstraintCircuit<II>) -> TokenStream {
-    let circuit_evaluates_to_base_element = circuit.evaluates_to_base_element();
     let BinaryOperation(BinOp::Sub, new_var, expr) = circuit.expression else {
         panic!("Substitution rule must be a subtraction.");
     };
-    let Input(new_var) = new_var.as_ref().borrow().expression else {
+    let Input(_) = new_var.as_ref().borrow().expression else {
         panic!("Substitution rule must be a simple substitution.");
-    };
-    let new_var_idx = match circuit_evaluates_to_base_element {
-        true => new_var.base_col_index(),
-        false => new_var.ext_col_index(),
     };
 
     let expr = expr.as_ref().borrow().to_owned();
-    let expr = evaluate_single_node(usize::MAX, &expr, &HashSet::new());
-
-    quote!(deterministic_row[#new_var_idx - deterministic_section_start] = #expr;)
+    evaluate_single_node(usize::MAX, &expr, &HashSet::new())
 }
 
 /// Given all substitution rules, generate the code that evaluates them in order.
@@ -696,8 +689,6 @@ fn generate_degree_lowering_table_code(
         use ndarray::s;
         use ndarray::ArrayView2;
         use ndarray::ArrayViewMut2;
-        use ndarray::Axis;
-        use ndarray::Zip;
         use strum::EnumCount;
         use strum_macros::Display;
         use strum_macros::EnumCount as EnumCountMacro;
@@ -739,83 +730,104 @@ fn generate_degree_lowering_table_code(
 }
 
 fn generate_fill_base_columns_code(
-    init_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
-    cons_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
-    tran_base_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
-    term_base_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    init_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    cons_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
+    tran_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
+    term_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
 ) -> TokenStream {
-    if init_base_substitutions.is_empty()
-        && cons_base_substitutions.is_empty()
-        && tran_base_substitutions.is_empty()
-        && term_base_substitutions.is_empty()
-    {
-        return quote!(
-            pub fn fill_deterministic_base_columns(_: &mut ArrayViewMut2<BFieldElement>) {
-                // prevent unused variable warning
-                let _ = NUM_BASE_COLUMNS;
-                // no substitutions
+    let deterministic_section_start =
+        master_table::NUM_BASE_COLUMNS - degree_lowering_table::BASE_WIDTH;
+
+    let num_init_substitutions = init_substitutions.len();
+    let num_cons_substitutions = cons_substitutions.len();
+    let num_tran_substitutions = tran_substitutions.len();
+    let num_term_substitutions = term_substitutions.len();
+
+    let init_col_indices = (0..num_init_substitutions)
+        .map(|i| i + deterministic_section_start)
+        .collect_vec();
+    let cons_col_indices = (0..num_cons_substitutions)
+        .map(|i| i + deterministic_section_start + num_init_substitutions)
+        .collect_vec();
+    let tran_col_indices = (0..num_tran_substitutions)
+        .map(|i| i + deterministic_section_start + num_init_substitutions + num_cons_substitutions)
+        .collect_vec();
+    let term_col_indices = (0..num_term_substitutions)
+        .map(|i| {
+            i + deterministic_section_start
+                + num_init_substitutions
+                + num_cons_substitutions
+                + num_tran_substitutions
+        })
+        .collect_vec();
+
+    let init_substitutions = init_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+    let cons_substitutions = cons_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+    let tran_substitutions = tran_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+    let term_substitutions = term_substitutions
+        .iter()
+        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
+        .collect_vec();
+
+    let single_row_substitutions = |indices: Vec<usize>, substitutions: Vec<TokenStream>| {
+        assert_eq!(indices.len(), substitutions.len());
+        if indices.is_empty() {
+            return quote!();
+        }
+        quote!(
+            master_base_table.rows_mut().into_iter().for_each(|mut row| {
+                #(
+                let (base_row, mut det_col) =
+                    row.multi_slice_mut((s![..#indices],s![#indices..#indices + 1]));
+                det_col[0] = #substitutions;
+                )*
+            });
+        )
+    };
+    let dual_row_substitutions = |indices: Vec<usize>, substitutions: Vec<TokenStream>| {
+        assert_eq!(indices.len(), substitutions.len());
+        if indices.is_empty() {
+            return quote!();
+        }
+        quote!(
+            for row_idx in 0..master_base_table.nrows() - 1 {
+                let (mut curr_base_row, next_base_row) = master_base_table.multi_slice_mut((
+                    s![row_idx..row_idx + 1, ..],
+                    s![row_idx + 1..row_idx + 2, ..],
+                ));
+                let mut curr_base_row = curr_base_row.row_mut(0);
+                let next_base_row = next_base_row.row(0);
+                #(
+                let (current_base_row, mut det_col) =
+                    curr_base_row.multi_slice_mut((s![..#indices], s![#indices..#indices + 1]));
+                det_col[0] = #substitutions;
+                )*
             }
-        );
-    }
-
-    let single_row_substitutions = init_base_substitutions
-        .iter()
-        .chain(cons_base_substitutions.iter())
-        .chain(term_base_substitutions.iter())
-        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec();
-    let single_row_substitutions = if single_row_substitutions.is_empty() {
-        quote!()
-    } else {
-        quote!(
-        // For single-row constraints.
-        Zip::from(main_trace_section.axis_iter(Axis(0)))
-            .and(deterministic_section.axis_iter_mut(Axis(0)))
-            .par_for_each(|base_row, mut deterministic_row| {
-                #(#single_row_substitutions)*
-            });
         )
     };
 
-    let dual_row_substitutions = tran_base_substitutions
-        .iter()
-        .map(|c| substitution_rule_to_code(c.circuit.as_ref().borrow().to_owned()))
-        .collect_vec();
-    let dual_row_substitutions = if dual_row_substitutions.is_empty() {
-        quote!()
-    } else {
-        quote!(
-        // For dual-row constraints.
-        // The last row of the deterministic section for transition constraints is not used.
-        let mut deterministic_section = deterministic_section.slice_mut(s![..-1, ..]);
-        Zip::from(main_trace_section.axis_windows(Axis(0), 2))
-            .and(deterministic_section.exact_chunks_mut((1, deterministic_section.ncols())))
-            .par_for_each(|main_trace_chunk, mut deterministic_chunk| {
-                let current_base_row = main_trace_chunk.row(0);
-                let next_base_row = main_trace_chunk.row(1);
-                let mut deterministic_row = deterministic_chunk.row_mut(0);
-                #(#dual_row_substitutions)*
-            });
-        )
-    };
+    let init_substitutions = single_row_substitutions(init_col_indices, init_substitutions);
+    let cons_substitutions = single_row_substitutions(cons_col_indices, cons_substitutions);
+    let tran_substitutions = dual_row_substitutions(tran_col_indices, tran_substitutions);
+    let term_substitutions = single_row_substitutions(term_col_indices, term_substitutions);
 
     quote!(
+    #[allow(unused_variables)]
     pub fn fill_deterministic_base_columns(master_base_table: &mut ArrayViewMut2<BFieldElement>) {
         assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
-
-        let main_trace_section_start = 0;
-        let main_trace_section_end = main_trace_section_start + NUM_BASE_COLUMNS - BASE_WIDTH;
-        let deterministic_section_start = main_trace_section_end;
-        let deterministic_section_end = deterministic_section_start + BASE_WIDTH;
-
-        let (main_trace_section, mut deterministic_section) = master_base_table.multi_slice_mut((
-            s![.., main_trace_section_start..main_trace_section_end],
-            s![.., deterministic_section_start..deterministic_section_end],
-        ));
-
-        #single_row_substitutions
-
-        #dual_row_substitutions
+        #init_substitutions
+        #cons_substitutions
+        #tran_substitutions
+        #term_substitutions
     }
     )
 }
