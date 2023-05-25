@@ -151,7 +151,6 @@ mod public_interface_tests {
             6431838875748878863,
             17174585125955027015,
         ];
-        let parameters = StarkParameters::default();
 
         let (used_stark_parameters, claim, proof) =
             prove(source_code, &public_input, &secret_input);
@@ -174,7 +173,7 @@ mod public_interface_tests {
             claim.output.is_empty(),
             "Output must be empty for program that doesn't write to output"
         );
-        let result = verify(&parameters, &claim, &proof);
+        let result = verify(&used_stark_parameters, &claim, &proof);
         assert!(result);
     }
 }
