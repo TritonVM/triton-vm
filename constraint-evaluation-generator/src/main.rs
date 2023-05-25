@@ -2,9 +2,12 @@ use std::collections::HashSet;
 use std::process::Command;
 
 use itertools::Itertools;
+use quote::format_ident;
+use quote::quote;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use proc_macro2::TokenStream;
 use triton_vm::table::cascade_table::ExtCascadeTable;
 use triton_vm::table::constraint_circuit::BinOp;
 use triton_vm::table::constraint_circuit::CircuitExpression;
@@ -181,8 +184,11 @@ fn main() {
 
     std::fs::write("triton-vm/src/table/degree_lowering_table.rs", table_code)
         .expect("Writing to disk has failed.");
-    std::fs::write("triton-vm/src/table/constraints.rs", constraint_code)
-        .expect("Writing to disk has failed.");
+    std::fs::write(
+        "triton-vm/src/table/constraints.rs",
+        constraint_code.to_string(),
+    )
+    .expect("Writing to disk has failed.");
 
     match Command::new("cargo")
         .arg("clippy")
@@ -207,212 +213,198 @@ fn consume<II: InputIndicator>(
 }
 
 fn generate_constraint_code<SII: InputIndicator, DII: InputIndicator>(
-    initial_constraint_circuits: &mut [ConstraintCircuit<SII>],
-    consistency_constraint_circuits: &mut [ConstraintCircuit<SII>],
-    transition_constraint_circuits: &mut [ConstraintCircuit<DII>],
-    terminal_constraint_circuits: &mut [ConstraintCircuit<SII>],
-) -> String {
-    let num_initial_constraints = initial_constraint_circuits.len();
-    let num_consistency_constraints = consistency_constraint_circuits.len();
-    let num_transition_constraints = transition_constraint_circuits.len();
-    let num_terminal_constraints = terminal_constraint_circuits.len();
+    init_constraint_circuits: &mut [ConstraintCircuit<SII>],
+    cons_constraint_circuits: &mut [ConstraintCircuit<SII>],
+    tran_constraint_circuits: &mut [ConstraintCircuit<DII>],
+    term_constraint_circuits: &mut [ConstraintCircuit<SII>],
+) -> TokenStream {
+    let num_init_constraints = init_constraint_circuits.len();
+    let num_cons_constraints = cons_constraint_circuits.len();
+    let num_tran_constraints = tran_constraint_circuits.len();
+    let num_term_constraints = term_constraint_circuits.len();
 
-    let (
-        initial_constraint_degrees,
-        initial_constraint_strings_bfe,
-        initial_constraint_strings_xfe,
-    ) = turn_circuits_into_string(initial_constraint_circuits);
-    let (
-        consistency_constraint_degrees,
-        consistency_constraint_strings_bfe,
-        consistency_constraint_strings_xfe,
-    ) = turn_circuits_into_string(consistency_constraint_circuits);
-    let (
-        transition_constraint_degrees,
-        transition_constraint_strings_bfe,
-        transition_constraint_strings_xfe,
-    ) = turn_circuits_into_string(transition_constraint_circuits);
-    let (
-        terminal_constraint_degrees,
-        terminal_constraint_strings_bfe,
-        terminal_constraint_strings_xfe,
-    ) = turn_circuits_into_string(terminal_constraint_circuits);
+    let (init_constraint_degrees, init_constraints_bfe, init_constraints_xfe) =
+        tokenize_circuits(init_constraint_circuits);
+    let (cons_constraint_degrees, cons_constraints_bfe, cons_constraints_xfe) =
+        tokenize_circuits(cons_constraint_circuits);
+    let (tran_constraint_degrees, tran_constraints_bfe, tran_constraints_xfe) =
+        tokenize_circuits(tran_constraint_circuits);
+    let (term_constraint_degrees, term_constraints_bfe, term_constraints_xfe) =
+        tokenize_circuits(term_constraint_circuits);
 
-    format!(
-        "
-use ndarray::ArrayView1;
-use twenty_first::shared_math::b_field_element::BFieldElement;
-use twenty_first::shared_math::mpolynomial::Degree;
-use twenty_first::shared_math::x_field_element::XFieldElement;
+    quote!(
+    use ndarray::ArrayView1;
+    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use twenty_first::shared_math::mpolynomial::Degree;
+    use twenty_first::shared_math::x_field_element::XFieldElement;
 
-use crate::table::challenges::Challenges;
-use crate::table::challenges::ChallengeId::*;
-use crate::table::extension_table::Evaluable;
-use crate::table::extension_table::Quotientable;
-use crate::table::master_table::MasterExtTable;
+    use crate::table::challenges::Challenges;
+    use crate::table::challenges::ChallengeId::*;
+    use crate::table::extension_table::Evaluable;
+    use crate::table::extension_table::Quotientable;
+    use crate::table::master_table::MasterExtTable;
 
-// This file has been auto-generated. Any modifications _will_ be lost.
-// To re-generate, execute:
-// `cargo run --bin constraint-evaluation-generator`
-impl Evaluable<BFieldElement> for MasterExtTable {{
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_initial_constraints(
-        base_row: ArrayView1<BFieldElement>,
-        ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {initial_constraint_strings_bfe}
-    }}
+    // This file has been auto-generated. Any modifications _will_ be lost.
+    // To re-generate, execute:
+    // `cargo run --bin constraint-evaluation-generator`
+    impl Evaluable<BFieldElement> for MasterExtTable {
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_initial_constraints(
+            base_row: ArrayView1<BFieldElement>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #init_constraints_bfe
+        }
 
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_consistency_constraints(
-        base_row: ArrayView1<BFieldElement>,
-        ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {consistency_constraint_strings_bfe}
-    }}
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_consistency_constraints(
+            base_row: ArrayView1<BFieldElement>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #cons_constraints_bfe
+        }
 
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_transition_constraints(
-        current_base_row: ArrayView1<BFieldElement>,
-        current_ext_row: ArrayView1<XFieldElement>,
-        next_base_row: ArrayView1<BFieldElement>,
-        next_ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {transition_constraint_strings_bfe}
-    }}
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_transition_constraints(
+            current_base_row: ArrayView1<BFieldElement>,
+            current_ext_row: ArrayView1<XFieldElement>,
+            next_base_row: ArrayView1<BFieldElement>,
+            next_ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #tran_constraints_bfe
+        }
 
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_terminal_constraints(
-        base_row: ArrayView1<BFieldElement>,
-        ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {terminal_constraint_strings_bfe}
-    }}
-}}
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_terminal_constraints(
+            base_row: ArrayView1<BFieldElement>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #term_constraints_bfe
+        }
+    }
 
-impl Evaluable<XFieldElement> for MasterExtTable {{
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_initial_constraints(
-        base_row: ArrayView1<XFieldElement>,
-        ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {initial_constraint_strings_xfe}
-    }}
+    impl Evaluable<XFieldElement> for MasterExtTable {
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_initial_constraints(
+            base_row: ArrayView1<XFieldElement>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #init_constraints_xfe
+        }
 
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_consistency_constraints(
-        base_row: ArrayView1<XFieldElement>,
-        ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {consistency_constraint_strings_xfe}
-    }}
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_consistency_constraints(
+            base_row: ArrayView1<XFieldElement>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #cons_constraints_xfe
+        }
 
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_transition_constraints(
-        current_base_row: ArrayView1<XFieldElement>,
-        current_ext_row: ArrayView1<XFieldElement>,
-        next_base_row: ArrayView1<XFieldElement>,
-        next_ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {transition_constraint_strings_xfe}
-    }}
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_transition_constraints(
+            current_base_row: ArrayView1<XFieldElement>,
+            current_ext_row: ArrayView1<XFieldElement>,
+            next_base_row: ArrayView1<XFieldElement>,
+            next_ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #tran_constraints_xfe
+        }
 
-    #[inline]
-    #[allow(unused_variables)]
-    fn evaluate_terminal_constraints(
-        base_row: ArrayView1<XFieldElement>,
-        ext_row: ArrayView1<XFieldElement>,
-        challenges: &Challenges,
-    ) -> Vec<XFieldElement> {{
-        {terminal_constraint_strings_xfe}
-    }}
-}}
+        #[inline]
+        #[allow(unused_variables)]
+        fn evaluate_terminal_constraints(
+            base_row: ArrayView1<XFieldElement>,
+            ext_row: ArrayView1<XFieldElement>,
+            challenges: &Challenges,
+        ) -> Vec<XFieldElement> {
+            #term_constraints_xfe
+        }
+    }
 
-impl Quotientable for MasterExtTable {{
-    fn num_initial_quotients() -> usize {{
-        {num_initial_constraints}
-    }}
+    impl Quotientable for MasterExtTable {
+        fn num_initial_quotients() -> usize {
+            #num_init_constraints
+        }
 
-    fn num_consistency_quotients() -> usize {{
-        {num_consistency_constraints}
-    }}
+        fn num_consistency_quotients() -> usize {
+            #num_cons_constraints
+        }
 
-    fn num_transition_quotients() -> usize {{
-        {num_transition_constraints}
-    }}
+        fn num_transition_quotients() -> usize {
+            #num_tran_constraints
+        }
 
-    fn num_terminal_quotients() -> usize {{
-        {num_terminal_constraints}
-    }}
+        fn num_terminal_quotients() -> usize {
+            #num_term_constraints
+        }
 
-    #[allow(unused_variables)]
-    fn initial_quotient_degree_bounds(
-        interpolant_degree: Degree,
-    ) -> Vec<Degree> {{
-        let zerofier_degree = 1;
-        [{initial_constraint_degrees}].to_vec()
-    }}
+        #[allow(unused_variables)]
+        fn initial_quotient_degree_bounds(
+            interpolant_degree: Degree,
+        ) -> Vec<Degree> {
+            let zerofier_degree = 1;
+            [#init_constraint_degrees].to_vec()
+        }
 
-    #[allow(unused_variables)]
-    fn consistency_quotient_degree_bounds(
-        interpolant_degree: Degree,
-        padded_height: usize,
-    ) -> Vec<Degree> {{
-        let zerofier_degree = padded_height as Degree;
-        [{consistency_constraint_degrees}].to_vec()
-    }}
+        #[allow(unused_variables)]
+        fn consistency_quotient_degree_bounds(
+            interpolant_degree: Degree,
+            padded_height: usize,
+        ) -> Vec<Degree> {
+            let zerofier_degree = padded_height as Degree;
+            [#cons_constraint_degrees].to_vec()
+        }
 
-    #[allow(unused_variables)]
-    fn transition_quotient_degree_bounds(
-        interpolant_degree: Degree,
-        padded_height: usize,
-    ) -> Vec<Degree> {{
-        let zerofier_degree = padded_height as Degree - 1;
-        [{transition_constraint_degrees}].to_vec()
-    }}
+        #[allow(unused_variables)]
+        fn transition_quotient_degree_bounds(
+            interpolant_degree: Degree,
+            padded_height: usize,
+        ) -> Vec<Degree> {
+            let zerofier_degree = padded_height as Degree - 1;
+            [#tran_constraint_degrees].to_vec()
+        }
 
-    #[allow(unused_variables)]
-    fn terminal_quotient_degree_bounds(
-        interpolant_degree: Degree,
-    ) -> Vec<Degree> {{
-        let zerofier_degree = 1;
-        [{terminal_constraint_degrees}].to_vec()
-    }}
-}}
-"
+        #[allow(unused_variables)]
+        fn terminal_quotient_degree_bounds(
+            interpolant_degree: Degree,
+        ) -> Vec<Degree> {
+            let zerofier_degree = 1;
+            [#term_constraint_degrees].to_vec()
+        }
+    }
     )
 }
 
-/// Given a slice of constraint circuits, return a tuple of strings corresponding to code
+/// Given a slice of constraint circuits, return a tuple of [`TokenStream`]s corresponding to code
 /// evaluating these constraints as well as their degrees. In particular:
-/// 1. The first string contains code that, when evaluated, produces the constraints' degrees,
-/// 1. the second string contains code that, when evaluated, produces the constraints' values, with
+/// 1. The first stream contains code that, when evaluated, produces the constraints' degrees,
+/// 1. the second stream contains code that, when evaluated, produces the constraints' values, with
 ///     the input type for the base row being `BFieldElement`, and
-/// 1. the third string is like the second string, except that the input type for the base row is
+/// 1. the third stream is like the second, except that the input type for the base row is
 ///    `XFieldElement`.
-fn turn_circuits_into_string<II: InputIndicator>(
+fn tokenize_circuits<II: InputIndicator>(
     constraint_circuits: &mut [ConstraintCircuit<II>],
-) -> (String, String, String) {
+) -> (TokenStream, TokenStream, TokenStream) {
     if constraint_circuits.is_empty() {
-        return ("".to_string(), "vec![]".to_string(), "vec![]".to_string());
+        return (quote!(), quote!(vec![]), quote!(vec![]));
     }
 
     // Sanity check: all node IDs must be unique.
-    // This also ounts the number of times each node is referenced.
+    // This also counts the number of times each node is referenced.
     ConstraintCircuit::assert_has_unique_ids(constraint_circuits);
 
     // Get all unique reference counts.
@@ -431,8 +423,7 @@ fn turn_circuits_into_string<II: InputIndicator>(
         .filter(|&x| x > 1)
         .rev()
         .map(|visit_count| declare_nodes_with_visit_count(visit_count, constraint_circuits))
-        .collect_vec()
-        .join("");
+        .collect_vec();
 
     let (base_constraints, ext_constraints): (Vec<_>, Vec<_>) = constraint_circuits
         .iter()
@@ -441,57 +432,56 @@ fn turn_circuits_into_string<II: InputIndicator>(
     // The order of the constraints' degrees must match the order of the constraints.
     // Hence, listing the degrees is only possible after the partition into base and extension
     // constraints is known.
-    let degree_bounds_string = base_constraints
+    let tokenized_degree_bounds = base_constraints
         .iter()
         .chain(ext_constraints.iter())
         .map(|circuit| match circuit.degree() {
-            d if d > 1 => format!("interpolant_degree * {d} - zerofier_degree"),
-            d if d == 1 => "interpolant_degree - zerofier_degree".to_string(),
+            d if d > 1 => quote!(interpolant_degree * #d - zerofier_degree),
+            d if d == 1 => quote!(interpolant_degree - zerofier_degree),
             _ => unreachable!("Constraint degree must be positive"),
         })
-        .join(",\n");
+        .collect_vec();
+    let tokenized_degree_bounds = quote!(#(#tokenized_degree_bounds),*);
 
-    let build_constraint_evaluation_code = |constraints: &[&ConstraintCircuit<II>]| {
+    let tokenize_constraint_evaluation = |constraints: &[&ConstraintCircuit<II>]| {
         constraints
             .iter()
             .map(|constraint| evaluate_single_node(1, constraint, &HashSet::default()))
             .collect_vec()
-            .join(",\n")
     };
-    let base_constraint_strings = build_constraint_evaluation_code(&base_constraints);
-    let ext_constraint_strings = build_constraint_evaluation_code(&ext_constraints);
+    let tokenized_base_constraints = tokenize_constraint_evaluation(&base_constraints);
+    let tokenized_ext_constraints = tokenize_constraint_evaluation(&ext_constraints);
 
     // If there are no base constraints, the type needs to be explicitly declared.
-    let base_constraint_bfe_type = match base_constraints.is_empty() {
-        true => ": [BFieldElement; 0]",
-        false => "",
+    let tokenized_bfe_base_constraints = match base_constraints.is_empty() {
+        true => quote!(let base_constraints: [BFieldElement; 0] = []),
+        false => quote!(let base_constraints = [#(#tokenized_base_constraints),*]),
     };
-
-    let constraint_string_bfe = format!(
-        "{shared_declarations}
-        let base_constraints{base_constraint_bfe_type} = [{base_constraint_strings}];
-        let ext_constraints = [{ext_constraint_strings}];
+    let tokenized_bfe_constraints = quote!(
+        #(#shared_declarations)*
+        #tokenized_bfe_base_constraints;
+        let ext_constraints = [#(#tokenized_ext_constraints),*];
         base_constraints
             .into_iter()
             .map(|bfe| bfe.lift())
             .chain(ext_constraints.into_iter())
-            .collect()"
+            .collect()
     );
 
-    let constraint_string_xfe = format!(
-        "{shared_declarations}
-        let base_constraints = [{base_constraint_strings}];
-        let ext_constraints = [{ext_constraint_strings}];
+    let tokenized_xfe_constraints = quote!(
+        #(#shared_declarations)*
+        let base_constraints = [#(#tokenized_base_constraints),*];
+        let ext_constraints = [#(#tokenized_ext_constraints),*];
         base_constraints
             .into_iter()
             .chain(ext_constraints.into_iter())
-            .collect()"
+            .collect()
     );
 
     (
-        degree_bounds_string,
-        constraint_string_bfe,
-        constraint_string_xfe,
+        tokenized_degree_bounds,
+        tokenized_bfe_constraints,
+        tokenized_xfe_constraints,
     )
 }
 
@@ -501,37 +491,37 @@ fn turn_circuits_into_string<II: InputIndicator>(
 fn declare_nodes_with_visit_count<II: InputIndicator>(
     requested_visited_count: usize,
     circuits: &[ConstraintCircuit<II>],
-) -> String {
+) -> TokenStream {
     let mut scope: HashSet<usize> = HashSet::new();
 
-    circuits
+    let tokenized_circuits = circuits
         .iter()
-        .map(|circuit| {
+        .filter_map(|circuit| {
             declare_single_node_with_visit_count(circuit, requested_visited_count, &mut scope)
         })
-        .collect_vec()
-        .join("")
+        .collect_vec();
+    quote!(#(#tokenized_circuits)*)
 }
 
 fn declare_single_node_with_visit_count<II: InputIndicator>(
     circuit: &ConstraintCircuit<II>,
     requested_visited_count: usize,
     scope: &mut HashSet<usize>,
-) -> String {
+) -> Option<TokenStream> {
     // Don't declare a node twice.
     if scope.contains(&circuit.id) {
-        return String::default();
+        return None;
     }
 
     // A higher-than-requested visit counter means the node is already in global scope, albeit not
     // necessarily in the passed-in scope.
     if circuit.visited_counter > requested_visited_count {
-        return String::default();
+        return None;
     }
 
     let CircuitExpression::BinaryOperation(_, lhs, rhs) = &circuit.expression else {
         // Constants are already (or can be) trivially declared.
-        return String::default();
+        return None;
     };
 
     // If the visited counter is not yet exact, start recursing on the BinaryOperation's children.
@@ -546,7 +536,12 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
             requested_visited_count,
             scope,
         );
-        return [out_left, out_right].join("");
+        return match (out_left, out_right) {
+            (None, None) => None,
+            (Some(l), None) => Some(l),
+            (None, Some(r)) => Some(r),
+            (Some(l), Some(r)) => Some(quote!(#l #r)),
+        };
     }
 
     // Declare a new binding.
@@ -557,32 +552,37 @@ fn declare_single_node_with_visit_count<II: InputIndicator>(
     let is_new_insertion = scope.insert(circuit.id);
     assert!(is_new_insertion);
 
-    format!("let {binding_name} = {evaluation};\n")
+    Some(quote!(let #binding_name = #evaluation;))
 }
 
 /// Return a variable name for the node. Returns `point[n]` if node is just
 /// a value from the codewords. Otherwise returns the ID of the circuit.
-fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> String {
+fn get_binding_name<II: InputIndicator>(circuit: &ConstraintCircuit<II>) -> TokenStream {
     match &circuit.expression {
-        CircuitExpression::BConstant(bfe) => print_bfe(bfe),
-        CircuitExpression::XConstant(xfe) => print_xfe(xfe),
-        CircuitExpression::Input(idx) => idx.to_string(),
-        CircuitExpression::Challenge(challenge_id) => {
-            format!("challenges.get_challenge({challenge_id})")
+        CircuitExpression::BConstant(bfe) => tokenize_bfe(bfe),
+        CircuitExpression::XConstant(xfe) => tokenize_xfe(xfe),
+        CircuitExpression::Input(idx) => quote!(#idx),
+        CircuitExpression::Challenge(challenge) => {
+            let challenge_ident = format_ident!("{challenge}");
+            quote!(challenges.get_challenge(#challenge_ident))
         }
-        CircuitExpression::BinaryOperation(_, _, _) => format!("node_{}", circuit.id),
+        CircuitExpression::BinaryOperation(_, _, _) => {
+            let node_ident = format_ident!("node_{}", circuit.id);
+            quote!(#node_ident)
+        }
     }
 }
 
-fn print_bfe(bfe: &BFieldElement) -> String {
-    format!("BFieldElement::from_raw_u64({})", bfe.raw_u64())
+fn tokenize_bfe(bfe: &BFieldElement) -> TokenStream {
+    let raw_u64 = bfe.raw_u64();
+    quote!(BFieldElement::from_raw_u64(#raw_u64))
 }
 
-fn print_xfe(xfe: &XFieldElement) -> String {
-    let coeff_0 = print_bfe(&xfe.coefficients[0]);
-    let coeff_1 = print_bfe(&xfe.coefficients[1]);
-    let coeff_2 = print_bfe(&xfe.coefficients[2]);
-    format!("XFieldElement::new([{coeff_0}, {coeff_1}, {coeff_2}])")
+fn tokenize_xfe(xfe: &XFieldElement) -> TokenStream {
+    let coeff_0 = tokenize_bfe(&xfe.coefficients[0]);
+    let coeff_1 = tokenize_bfe(&xfe.coefficients[1]);
+    let coeff_2 = tokenize_bfe(&xfe.coefficients[2]);
+    quote!(XFieldElement::new([#coeff_0, #coeff_1, #coeff_2]))
 }
 
 /// Recursively construct the code for evaluating a single node.
@@ -590,7 +590,7 @@ fn evaluate_single_node<II: InputIndicator>(
     requested_visited_count: usize,
     circuit: &ConstraintCircuit<II>,
     scope: &HashSet<usize>,
-) -> String {
+) -> TokenStream {
     let binding_name = get_binding_name(circuit);
 
     // Don't declare a node twice.
@@ -612,8 +612,7 @@ fn evaluate_single_node<II: InputIndicator>(
     let rhs = rhs.as_ref().borrow();
     let evaluated_lhs = evaluate_single_node(requested_visited_count, &lhs, scope);
     let evaluated_rhs = evaluate_single_node(requested_visited_count, &rhs, scope);
-    let operation = binop.to_string();
-    format!("({evaluated_lhs}) {operation} ({evaluated_rhs})")
+    quote!((#evaluated_lhs) #binop (#evaluated_rhs))
 }
 
 /// Given a substitution rule, i.e., a `ConstraintCircuit` of the form `x - expr`, generate code
@@ -836,15 +835,17 @@ fn generate_fill_ext_columns_code(
         && tran_ext_substitutions.is_empty()
         && term_ext_substitutions.is_empty()
     {
-        return "pub fn fill_deterministic_ext_columns(
+        return quote!(
+            pub fn fill_deterministic_ext_columns(
                 _: ArrayView2<BFieldElement>,
                 _: &mut ArrayViewMut2<XFieldElement>,
             ) {
                 // prevent unused variable warning
                 let _ = NUM_EXT_COLUMNS;
                 // no substitutions
-            }"
-        .to_owned();
+            }
+        )
+        .to_string();
     }
 
     let single_row_substitutions = init_ext_substitutions

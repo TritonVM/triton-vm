@@ -44,6 +44,8 @@ serde = { version = "1.0", features = ["derive"] }
 strum = "0.24"
 strum_macros = "0.24"
 ndarray = { version = "0.15", features = ["rayon"] }
+quote = "1.0"
+proc-macro2 = "1.0"
 
 [[bench]]
 name = "prove_halt"

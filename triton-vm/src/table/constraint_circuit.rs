@@ -27,6 +27,8 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use quote::quote;
+use quote::ToTokens;
 use CircuitExpression::*;
 
 use crate::table::challenges::ChallengeId;
@@ -45,6 +47,16 @@ impl Display for BinOp {
             BinOp::Add => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
             BinOp::Mul => write!(f, "*"),
+        }
+    }
+}
+
+impl ToTokens for BinOp {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            BinOp::Add => tokens.extend(quote!(+)),
+            BinOp::Sub => tokens.extend(quote!(-)),
+            BinOp::Mul => tokens.extend(quote!(*)),
         }
     }
 }
@@ -73,7 +85,9 @@ impl BinOp {
 /// a uniform interface for accessing the index.
 ///
 /// Having `Clone + Copy + Hash + PartialEq + Eq` helps putting `InputIndicator`s into containers.
-pub trait InputIndicator: Debug + Clone + Copy + Hash + PartialEq + Eq + Display {
+pub trait InputIndicator:
+    Debug + Clone + Copy + Hash + PartialEq + Eq + Display + ToTokens
+{
     /// `true` iff `self` refers to a column in the base table.
     fn is_base_table_column(&self) -> bool;
 
@@ -107,6 +121,16 @@ impl Display for SingleRowIndicator {
         };
 
         write!(f, "{input_indicator}")
+    }
+}
+
+impl ToTokens for SingleRowIndicator {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        use SingleRowIndicator::*;
+        match self {
+            BaseRow(i) => tokens.extend(quote!(base_row[#i])),
+            ExtRow(i) => tokens.extend(quote!(ext_row[#i])),
+        }
     }
 }
 
@@ -174,6 +198,18 @@ impl Display for DualRowIndicator {
         };
 
         write!(f, "{input_indicator}")
+    }
+}
+
+impl ToTokens for DualRowIndicator {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        use DualRowIndicator::*;
+        match self {
+            CurrentBaseRow(i) => tokens.extend(quote!(current_base_row[#i])),
+            CurrentExtRow(i) => tokens.extend(quote!(current_ext_row[#i])),
+            NextBaseRow(i) => tokens.extend(quote!(next_base_row[#i])),
+            NextExtRow(i) => tokens.extend(quote!(next_ext_row[#i])),
+        }
     }
 }
 

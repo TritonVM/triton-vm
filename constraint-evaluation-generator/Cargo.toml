@@ -26,3 +26,5 @@ default-features = false
 twenty-first = "0.21.1"
 triton-vm = { path = "../triton-vm" }
 itertools = "0.10"
+quote = "1.0"
+proc-macro2 = "1.0"
