@@ -891,8 +891,10 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     /// These can then be used to construct new columns,
     /// as well as derivation rules for filling those new columns.
     ///
-    /// The number of base and extension columns used by the multicircuit have to be provided.
-    /// The uniqueness of the new columns' indices depends on these provided values.
+    /// The highest index of base and extension columns used by the multicircuit have to be
+    /// provided. The uniqueness of the new columns' indices depends on these provided values.
+    /// Note that these indices are generally not equal to the number of used columns, especially
+    /// when a tables' constraints are built using the master table's column indices.
     pub fn lower_to_degree(
         multicircuit: &mut [Self],
         target_degree: Degree,
@@ -1151,8 +1153,8 @@ mod constraint_circuit_tests {
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::lookup_table::ExtLookupTable;
     use crate::table::master_table;
+    use crate::table::master_table::*;
     use crate::table::op_stack_table::ExtOpStackTable;
-    use crate::table::processor_table;
     use crate::table::processor_table::ExtProcessorTable;
     use crate::table::program_table::ExtProgramTable;
     use crate::table::ram_table::ExtRamTable;
@@ -1851,16 +1853,362 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    fn serious_degree_lowering_test() {
-        let mut multicircuit = build_multicircuit(&ExtProcessorTable::transition_constraints);
-        let target_degree = 3;
-        let num_base_cols = processor_table::BASE_WIDTH;
-        let num_ext_cols = processor_table::EXT_WIDTH;
+    fn program_table_initial_constraints_degree_lowering_test() {
         lower_degree_and_assert_properties(
-            &mut multicircuit,
-            target_degree,
-            num_base_cols,
-            num_ext_cols,
+            &mut build_multicircuit(&ExtProgramTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            PROGRAM_TABLE_END,
+            EXT_PROGRAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn program_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtProgramTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            PROGRAM_TABLE_END,
+            EXT_PROGRAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn program_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtProgramTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            PROGRAM_TABLE_END,
+            EXT_PROGRAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn program_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtProgramTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            PROGRAM_TABLE_END,
+            EXT_PROGRAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn processor_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtProcessorTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            PROCESSOR_TABLE_END,
+            EXT_PROCESSOR_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn processor_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtProcessorTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            PROCESSOR_TABLE_END,
+            EXT_PROCESSOR_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn processor_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtProcessorTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            PROCESSOR_TABLE_END,
+            EXT_PROCESSOR_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn processor_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtProcessorTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            PROCESSOR_TABLE_END,
+            EXT_PROCESSOR_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn op_stack_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtOpStackTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            OP_STACK_TABLE_END,
+            EXT_OP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn op_stack_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtOpStackTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            OP_STACK_TABLE_END,
+            EXT_OP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn op_stack_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtOpStackTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            OP_STACK_TABLE_END,
+            EXT_OP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn op_stack_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtOpStackTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            OP_STACK_TABLE_END,
+            EXT_OP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn ram_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtRamTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            RAM_TABLE_END,
+            EXT_RAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn ram_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtRamTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            RAM_TABLE_END,
+            EXT_RAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn ram_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtRamTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            RAM_TABLE_END,
+            EXT_RAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn ram_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtRamTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            RAM_TABLE_END,
+            EXT_RAM_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn jump_stack_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtJumpStackTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            JUMP_STACK_TABLE_END,
+            EXT_JUMP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn jump_stack_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtJumpStackTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            JUMP_STACK_TABLE_END,
+            EXT_JUMP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn jump_stack_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtJumpStackTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            JUMP_STACK_TABLE_END,
+            EXT_JUMP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn jump_stack_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtJumpStackTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            JUMP_STACK_TABLE_END,
+            EXT_JUMP_STACK_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn hash_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtHashTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            HASH_TABLE_END,
+            EXT_HASH_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn hash_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtHashTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            HASH_TABLE_END,
+            EXT_HASH_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn hash_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtHashTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            HASH_TABLE_END,
+            EXT_HASH_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn hash_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtHashTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            HASH_TABLE_END,
+            EXT_HASH_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn cascade_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtCascadeTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            CASCADE_TABLE_END,
+            EXT_CASCADE_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn cascade_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtCascadeTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            CASCADE_TABLE_END,
+            EXT_CASCADE_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn cascade_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtCascadeTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            CASCADE_TABLE_END,
+            EXT_CASCADE_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn cascade_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtCascadeTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            CASCADE_TABLE_END,
+            EXT_CASCADE_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn lookup_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtLookupTable::initial_constraints),
+            AIR_TARGET_DEGREE,
+            LOOKUP_TABLE_END,
+            EXT_LOOKUP_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn lookup_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtLookupTable::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            LOOKUP_TABLE_END,
+            EXT_LOOKUP_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn lookup_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtLookupTable::transition_constraints),
+            AIR_TARGET_DEGREE,
+            LOOKUP_TABLE_END,
+            EXT_LOOKUP_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn lookup_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtLookupTable::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            LOOKUP_TABLE_END,
+            EXT_LOOKUP_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn u32_table_initial_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtU32Table::initial_constraints),
+            AIR_TARGET_DEGREE,
+            U32_TABLE_END,
+            EXT_U32_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn u32_table_consistency_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtU32Table::consistency_constraints),
+            AIR_TARGET_DEGREE,
+            U32_TABLE_END,
+            EXT_U32_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn u32_table_transition_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtU32Table::transition_constraints),
+            AIR_TARGET_DEGREE,
+            U32_TABLE_END,
+            EXT_U32_TABLE_END,
+        );
+    }
+
+    #[test]
+    fn u32_table_terminal_constraints_degree_lowering_test() {
+        lower_degree_and_assert_properties(
+            &mut build_multicircuit(&ExtU32Table::terminal_constraints),
+            AIR_TARGET_DEGREE,
+            U32_TABLE_END,
+            EXT_U32_TABLE_END,
         );
     }
 
