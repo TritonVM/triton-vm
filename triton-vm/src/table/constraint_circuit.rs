@@ -1913,12 +1913,12 @@ mod constraint_circuit_tests {
                 let BinaryOperation(BinOp::Sub, lhs, rhs) = expression else {
                     panic!("New {constraint_type} constraint {i} must be a subtraction.");
                 };
-                let lhs_degree = lhs.as_ref().borrow().degree();
-                assert_eq!(
-                    1, lhs_degree,
-                    "New {constraint_type} constraint {i} must be a simple substitution."
-                );
-                substitution_rules.push(rhs.as_ref().borrow().clone());
+                let Input(input_indicator) = lhs.as_ref().borrow().expression.clone() else {
+                    panic!("New {constraint_type} constraint {i} must be a simple substitution.");
+                };
+                let substitution_rule = rhs.as_ref().borrow().clone();
+                assert_substitution_rule_uses_legal_variables(input_indicator, &substitution_rule);
+                substitution_rules.push(substitution_rule);
             }
         }
 
@@ -1973,5 +1973,34 @@ mod constraint_circuit_tests {
         );
 
         (new_base_constraints, new_ext_constraints)
+    }
+
+    /// Panics if the given substitution rule uses variables with an index greater than (or equal)
+    /// to the given index. In practice, this given index corresponds to a newly introduced
+    /// variable.
+    fn assert_substitution_rule_uses_legal_variables<II: InputIndicator>(
+        new_var: II,
+        substitution_rule: &ConstraintCircuit<II>,
+    ) {
+        match substitution_rule.expression.clone() {
+            BinaryOperation(_, lhs, rhs) => {
+                let lhs = lhs.as_ref().borrow();
+                let rhs = rhs.as_ref().borrow();
+                assert_substitution_rule_uses_legal_variables(new_var, &lhs);
+                assert_substitution_rule_uses_legal_variables(new_var, &rhs);
+            }
+            Input(old_var) => {
+                let new_var_is_base = new_var.is_base_table_column();
+                let old_var_is_base = old_var.is_base_table_column();
+                let legal_substitute = match (new_var_is_base, old_var_is_base) {
+                    (true, true) => old_var.base_col_index() < new_var.base_col_index(),
+                    (true, false) => false,
+                    (false, true) => true,
+                    (false, false) => old_var.ext_col_index() < new_var.ext_col_index(),
+                };
+                assert!(legal_substitute, "Cannot replace {old_var} with {new_var}.");
+            }
+            _ => (),
+        };
     }
 }
