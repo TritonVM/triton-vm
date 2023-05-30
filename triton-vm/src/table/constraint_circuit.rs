@@ -915,7 +915,9 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         let builder = multicircuit[0].builder.clone();
 
         while Self::multicircuit_degree(multicircuit) > target_degree {
-            let chosen_node = Self::pick_node_to_substitute(target_degree, &builder);
+            let current_multicircuit =
+                [multicircuit, &base_constraints[..], &ext_constraints[..]].concat();
+            let chosen_node = Self::pick_node_to_substitute(&current_multicircuit, target_degree);
 
             // Create a new variable.
             let chosen_node_id = chosen_node.as_ref().borrow().id;
@@ -958,24 +960,29 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         (base_constraints, ext_constraints)
     }
 
+    /// Pick a node from the given multicircuit that is to be substituted with a new variable.
+    /// The node is chosen such that the degree of the multicircuit is lowered.
+    /// A heuristic is used to pick the node.
     fn pick_node_to_substitute(
+        multicircuit: &[ConstraintCircuitMonad<II>],
         target_degree: Degree,
-        builder: &ConstraintCircuitBuilder<II>,
     ) -> Rc<RefCell<ConstraintCircuit<II>>> {
+        if multicircuit.is_empty() {
+            panic!("Multicircuit must be non-empty in order to pick a node from it.");
+        }
+
         // Only nodes with degree > target_degree need changing.
-        let all_nodes = builder.all_nodes.as_ref().borrow();
+        let all_nodes = Self::all_nodes_in_multicircuit(multicircuit);
         let high_degree_nodes = all_nodes
             .iter()
-            .filter(|node| node.circuit.as_ref().borrow().degree() > target_degree);
+            .filter(|node| node.degree() > target_degree);
 
         // Of those nodes, get all the children with degree <= target_degree.
         let mut barely_low_degree_nodes = vec![];
         for node in high_degree_nodes {
             // Constants, inputs, and challenges are of degree <= 1, which is not high.
             // Addition and subtraction don't affect the degree. Hence, they are uninteresting.
-            if let BinaryOperation(BinOp::Mul, lhs, rhs) =
-                &node.circuit.as_ref().borrow().expression
-            {
+            if let BinaryOperation(BinOp::Mul, lhs, rhs) = &node.expression {
                 if lhs.as_ref().borrow().degree() <= target_degree {
                     barely_low_degree_nodes.push(lhs.clone());
                 }
@@ -1012,6 +1019,34 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .into_iter()
             .find(|node| node.as_ref().borrow().id == chosen_node_id)
             .unwrap()
+    }
+
+    /// Returns all nodes used in the multicircuit.
+    /// This is distinct from [`ConstraintCircuitBuilder::all_nodes`] because it only considers
+    /// nodes actually used in the given multicircuit, not all nodes in the builder.
+    pub fn all_nodes_in_multicircuit(
+        multicircuit: &[ConstraintCircuitMonad<II>],
+    ) -> HashSet<ConstraintCircuit<II>> {
+        let mut all_nodes = HashSet::new();
+        for circuit in multicircuit.iter() {
+            let constraint_circuit = circuit.circuit.as_ref().borrow().clone();
+            let nodes_in_circuit = Self::all_nodes_in_circuit(constraint_circuit);
+            all_nodes.extend(nodes_in_circuit);
+        }
+        all_nodes
+    }
+
+    /// Internal helper function to recursively find all nodes in a circuit.
+    fn all_nodes_in_circuit(circuit: ConstraintCircuit<II>) -> HashSet<ConstraintCircuit<II>> {
+        let mut all_nodes = HashSet::new();
+        if let BinaryOperation(_, lhs, rhs) = circuit.expression.clone() {
+            let lhs_nodes = Self::all_nodes_in_circuit(lhs.as_ref().borrow().clone());
+            let rhs_nodes = Self::all_nodes_in_circuit(rhs.as_ref().borrow().clone());
+            all_nodes.extend(lhs_nodes);
+            all_nodes.extend(rhs_nodes);
+        };
+        all_nodes.insert(circuit);
+        all_nodes
     }
 
     /// Returns the maximum degree of all circuits in the multicircuit.
