@@ -7,6 +7,8 @@ use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use crate::table::challenges::Challenges;
+
 pub const BASE_WIDTH: usize = DegreeLoweringBaseTableColumn::COUNT;
 pub const EXT_WIDTH: usize = DegreeLoweringExtTableColumn::COUNT;
 pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
@@ -31,6 +33,7 @@ impl DegreeLoweringTable {
     pub fn fill_deterministic_ext_columns(
         _master_base_table: ArrayView2<BFieldElement>,
         _master_ext_table: &mut ArrayViewMut2<XFieldElement>,
+        _challenges: &Challenges,
     ) {
         // to be filled by generated code
     }

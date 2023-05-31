@@ -662,6 +662,12 @@ fn generate_degree_lowering_table_code(
         true => quote!(),
         false => quote!(#[repr(usize)]),
     };
+    let use_challenge_ids = match num_new_ext_cols == 0 {
+        true => quote!(),
+        false => quote!(
+            use crate::table::challenges::ChallengeId::*;
+        ),
+    };
 
     let base_columns = (0..num_new_base_cols)
         .map(|i| format_ident!("DegreeLoweringBaseCol{i}"))
@@ -696,6 +702,8 @@ fn generate_degree_lowering_table_code(
         use twenty_first::shared_math::b_field_element::BFieldElement;
         use twenty_first::shared_math::x_field_element::XFieldElement;
 
+        #use_challenge_ids
+        use crate::table::challenges::Challenges;
         use crate::table::master_table::NUM_BASE_COLUMNS;
         use crate::table::master_table::NUM_EXT_COLUMNS;
 
@@ -932,6 +940,7 @@ fn generate_fill_ext_columns_code(
         pub fn fill_deterministic_ext_columns(
             master_base_table: ArrayView2<BFieldElement>,
             master_ext_table: &mut ArrayViewMut2<XFieldElement>,
+            challenges: &Challenges,
         ) {
             assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
             assert_eq!(NUM_EXT_COLUMNS, master_ext_table.ncols());

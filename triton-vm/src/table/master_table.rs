@@ -606,6 +606,7 @@ impl MasterBaseTable {
             &mut master_ext_table
                 .master_ext_matrix
                 .slice_mut(s![.., 0..NUM_EXT_COLUMNS]),
+            challenges,
         );
 
         master_ext_table
