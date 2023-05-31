@@ -6,6 +6,7 @@
 //! constraint polynomials, with each root corresponding to a different constraint polynomial.
 //! Because the graph has multiple roots, it is called a “multitree.”
 
+use itertools::Itertools;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::cmp;
@@ -915,13 +916,11 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         let builder = multicircuit[0].builder.clone();
 
         while Self::multicircuit_degree(multicircuit) > target_degree {
-            let current_multicircuit =
-                [multicircuit, &base_constraints[..], &ext_constraints[..]].concat();
-            let chosen_node = Self::pick_node_to_substitute(&current_multicircuit, target_degree);
+            let chosen_node_id = Self::pick_node_to_substitute(multicircuit, target_degree);
 
             // Create a new variable.
-            let chosen_node_id = chosen_node.as_ref().borrow().id;
-            let chosen_node_is_base_col = chosen_node.as_ref().borrow().evaluates_to_base_element();
+            let chosen_node = builder.get_node_by_id(chosen_node_id).unwrap();
+            let chosen_node_is_base_col = chosen_node.circuit.borrow().evaluates_to_base_element();
             let new_col_idx = match chosen_node_is_base_col {
                 true => num_base_cols + base_constraints.len(),
                 false => num_ext_cols + ext_constraints.len(),
@@ -936,14 +935,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             // Substitute the chosen circuit with the new variable.
             builder.substitute(chosen_node_id, new_circuit.clone());
 
-            // Create a new constraint: new_var - chosen_node
-            let chosen_node_monad = ConstraintCircuitMonad {
-                circuit: chosen_node,
-                builder: builder.clone(),
-            };
-            let new_constraint = new_variable - chosen_node_monad;
-
-            // Put the new constraint into the appropriate return vector.
+            // Create new constraint and put it into the appropriate return vector.
+            let new_constraint = new_variable - chosen_node;
             match chosen_node_is_base_col {
                 true => base_constraints.push(new_constraint),
                 false => ext_constraints.push(new_constraint),
@@ -951,7 +944,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
 
             // Treat roots of the multicircuit explicitly.
             for circuit in multicircuit.iter_mut() {
-                if circuit.circuit.as_ref().borrow().id == chosen_node_id {
+                if circuit.circuit.borrow().id == chosen_node_id {
                     circuit.circuit = new_circuit.clone();
                 }
             }
@@ -960,19 +953,23 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         (base_constraints, ext_constraints)
     }
 
-    /// Pick a node from the given multicircuit that is to be substituted with a new variable.
-    /// The node is chosen such that the degree of the multicircuit is lowered.
-    /// A heuristic is used to pick the node.
+    /// Heuristically pick a node from the given multicircuit that is to be substituted with a new
+    /// variable. The ID of the chosen node is returned.
     fn pick_node_to_substitute(
         multicircuit: &[ConstraintCircuitMonad<II>],
         target_degree: Degree,
-    ) -> Rc<RefCell<ConstraintCircuit<II>>> {
+    ) -> usize {
         if multicircuit.is_empty() {
             panic!("Multicircuit must be non-empty in order to pick a node from it.");
         }
 
         // Only nodes with degree > target_degree need changing.
-        let all_nodes = Self::all_nodes_in_multicircuit(multicircuit);
+        let multicircuit = multicircuit
+            .iter()
+            .map(|c| c.clone().consume())
+            .collect_vec();
+        let all_nodes = Self::all_nodes_in_multicircuit(&multicircuit);
+        let all_nodes: HashSet<_> = HashSet::from_iter(all_nodes.iter());
         let high_degree_nodes = all_nodes
             .iter()
             .filter(|node| node.degree() > target_degree);
@@ -983,69 +980,78 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             // Constants, inputs, and challenges are of degree <= 1, which is not high.
             // Addition and subtraction don't affect the degree. Hence, they are uninteresting.
             if let BinaryOperation(BinOp::Mul, lhs, rhs) = &node.expression {
-                if lhs.as_ref().borrow().degree() <= target_degree {
-                    barely_low_degree_nodes.push(lhs.clone());
+                if lhs.borrow().degree() <= target_degree {
+                    barely_low_degree_nodes.push(lhs.borrow().clone());
                 }
-                if rhs.as_ref().borrow().degree() <= target_degree {
-                    barely_low_degree_nodes.push(rhs.clone());
+                if rhs.borrow().degree() <= target_degree {
+                    barely_low_degree_nodes.push(rhs.borrow().clone());
                 }
             }
         }
 
+        // Collect all the nodes where some substitution is necessary.
         // Substituting a node of degree 1 is both pointless and can lead to infinite iteration.
-        barely_low_degree_nodes.retain(|node| node.as_ref().borrow().degree() > 1);
-        let max_degree = barely_low_degree_nodes
-            .iter()
-            .map(|node| node.as_ref().borrow().degree())
-            .max()
-            .unwrap_or(-1);
-        barely_low_degree_nodes.retain(|node| node.as_ref().borrow().degree() == max_degree);
-        let barely_low_degree_nodes = barely_low_degree_nodes;
+        let low_degree_nodes = Self::all_nodes_in_multicircuit(&barely_low_degree_nodes)
+            .into_iter()
+            .filter(|node| node.degree() > 1)
+            .collect_vec();
 
         // If the resulting list is empty, there is no way forward. Stop – panic time!
         assert!(
-            !barely_low_degree_nodes.is_empty(),
+            !low_degree_nodes.is_empty(),
             "Could not lower degree of circuit to target degree. This is a bug."
         );
 
-        // Of the remaining nodes, pick the one occurring the most often.
-        let mut occurrences = HashMap::new();
-        for node in barely_low_degree_nodes.iter() {
-            let node_id = node.as_ref().borrow().id;
-            *occurrences.entry(node_id).or_insert(0) += 1;
+        // Of the remaining nodes, keep the ones occurring the most often.
+        let mut nodes_and_occurrences = HashMap::new();
+        for node in low_degree_nodes.iter() {
+            *nodes_and_occurrences.entry(node).or_insert(0) += 1;
         }
-        let (&chosen_node_id, _) = occurrences.iter().max_by_key(|(_, &count)| count).unwrap();
-        barely_low_degree_nodes
-            .into_iter()
-            .find(|node| node.as_ref().borrow().id == chosen_node_id)
-            .unwrap()
+        let max_occurrences = nodes_and_occurrences
+            .iter()
+            .map(|(_, &count)| count)
+            .max()
+            .unwrap();
+        nodes_and_occurrences.retain(|_, &mut count| count == max_occurrences);
+        let mut candidate_nodes = nodes_and_occurrences.keys().cloned().collect_vec();
+
+        let max_degree = candidate_nodes
+            .iter()
+            .map(|node| node.degree())
+            .max()
+            .unwrap();
+        candidate_nodes.retain(|node| node.degree() == max_degree);
+
+        // If there are still multiple nodes, pick any.
+        candidate_nodes[0].id
     }
 
     /// Returns all nodes used in the multicircuit.
-    /// This is distinct from [`ConstraintCircuitBuilder::all_nodes`] because it only considers
-    /// nodes actually used in the given multicircuit, not all nodes in the builder.
+    /// This is distinct from [`ConstraintCircuitBuilder::all_nodes`] because it
+    /// 1. only considers nodes used in the given multicircuit, not all nodes in the builder,
+    /// 2. returns the nodes as [`ConstraintCircuit`]s, not as [`ConstraintCircuitMonad`]s, and
+    /// 3. keeps duplicates, allowing to count how often a node occurs.
     pub fn all_nodes_in_multicircuit(
-        multicircuit: &[ConstraintCircuitMonad<II>],
-    ) -> HashSet<ConstraintCircuit<II>> {
-        let mut all_nodes = HashSet::new();
+        multicircuit: &[ConstraintCircuit<II>],
+    ) -> Vec<ConstraintCircuit<II>> {
+        let mut all_nodes = vec![];
         for circuit in multicircuit.iter() {
-            let constraint_circuit = circuit.circuit.as_ref().borrow().clone();
-            let nodes_in_circuit = Self::all_nodes_in_circuit(constraint_circuit);
+            let nodes_in_circuit = Self::all_nodes_in_circuit(circuit);
             all_nodes.extend(nodes_in_circuit);
         }
         all_nodes
     }
 
     /// Internal helper function to recursively find all nodes in a circuit.
-    fn all_nodes_in_circuit(circuit: ConstraintCircuit<II>) -> HashSet<ConstraintCircuit<II>> {
-        let mut all_nodes = HashSet::new();
+    fn all_nodes_in_circuit(circuit: &ConstraintCircuit<II>) -> Vec<ConstraintCircuit<II>> {
+        let mut all_nodes = vec![];
         if let BinaryOperation(_, lhs, rhs) = circuit.expression.clone() {
-            let lhs_nodes = Self::all_nodes_in_circuit(lhs.as_ref().borrow().clone());
-            let rhs_nodes = Self::all_nodes_in_circuit(rhs.as_ref().borrow().clone());
+            let lhs_nodes = Self::all_nodes_in_circuit(&lhs.borrow());
+            let rhs_nodes = Self::all_nodes_in_circuit(&rhs.borrow());
             all_nodes.extend(lhs_nodes);
             all_nodes.extend(rhs_nodes);
         };
-        all_nodes.insert(circuit);
+        all_nodes.push(circuit.to_owned());
         all_nodes
     }
 
@@ -1053,7 +1059,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
     fn multicircuit_degree(multicircuit: &[ConstraintCircuitMonad<II>]) -> Degree {
         multicircuit
             .iter()
-            .map(|circuit| circuit.circuit.as_ref().borrow().degree())
+            .map(|circuit| circuit.circuit.borrow().degree())
             .max()
             .unwrap_or(-1)
     }
@@ -1907,7 +1913,7 @@ mod constraint_circuit_tests {
             num_ext_cols,
         );
 
-        assert!(new_base_constraints.len() <= 4);
+        assert!(new_base_constraints.len() <= 3);
         assert!(new_ext_constraints.is_empty());
     }
 
