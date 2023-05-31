@@ -1888,6 +1888,30 @@ mod constraint_circuit_tests {
     }
 
     #[test]
+    fn less_simple_degree_lowering_test() {
+        let builder = ConstraintCircuitBuilder::new();
+        let x = |i| builder.input(BaseRow(i));
+
+        let constraint_0 = (x(0) * x(1) * x(2)) * (x(3) * x(4)) * x(5);
+        let constraint_1 = (x(6) * x(7)) * (x(3) * x(4)) * x(8);
+
+        let mut multicircuit = [constraint_0, constraint_1];
+
+        let target_degree = 3;
+        let num_base_cols = 9;
+        let num_ext_cols = 0;
+        let (new_base_constraints, new_ext_constraints) = lower_degree_and_assert_properties(
+            &mut multicircuit,
+            target_degree,
+            num_base_cols,
+            num_ext_cols,
+        );
+
+        assert!(new_base_constraints.len() <= 4);
+        assert!(new_ext_constraints.is_empty());
+    }
+
+    #[test]
     fn program_table_initial_constraints_degree_lowering_test() {
         lower_degree_and_assert_properties(
             &mut build_multicircuit(&ExtProgramTable::initial_constraints),
