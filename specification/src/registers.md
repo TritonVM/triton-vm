@@ -1,6 +1,6 @@
 # Registers
 
-This section covers all columns in the Protocol Table.
+This section covers all columns in the [Processor Table](processor-table.md).
 Only a subset of these registers relate to the instruction set;
 the remaining registers exist only to enable an efficient arithmetization and are marked with an asterisk (\*).
 
