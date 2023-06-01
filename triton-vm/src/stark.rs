@@ -1513,6 +1513,87 @@ pub(crate) mod triton_stark_tests {
     }
 
     #[test]
+    fn derived_constraints_evaluate_to_zero_on_halt_test() {
+        derived_constraints_evaluate_to_zero(test_halt());
+    }
+
+    pub fn derived_constraints_evaluate_to_zero(source_code_and_input: SourceCodeAndInput) {
+        let (_, _, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
+            &source_code_and_input.source_code,
+            source_code_and_input.input,
+            source_code_and_input.secret_input,
+        );
+
+        let zero = XFieldElement::zero();
+        let master_base_trace_table = master_base_table.trace_table();
+        let master_ext_trace_table = master_ext_table.trace_table();
+
+        let evaluated_initial_constraints = MasterExtTable::evaluate_initial_constraints(
+            master_base_trace_table.row(0),
+            master_ext_trace_table.row(0),
+            &challenges,
+        );
+        for (constraint_idx, evaluated_constraint) in
+            evaluated_initial_constraints.into_iter().enumerate()
+        {
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Initial constraint {constraint_idx} failed.",
+            );
+        }
+
+        for row_idx in 0..master_base_trace_table.nrows() {
+            let evaluated_consistency_constraints =
+                MasterExtTable::evaluate_consistency_constraints(
+                    master_base_trace_table.row(row_idx),
+                    master_ext_trace_table.row(row_idx),
+                    &challenges,
+                );
+            for (constraint_idx, evaluated_constraint) in
+                evaluated_consistency_constraints.into_iter().enumerate()
+            {
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Consistency constraint {constraint_idx} failed in row {row_idx}.",
+                );
+            }
+        }
+
+        for curr_row_idx in 0..master_base_trace_table.nrows() - 1 {
+            let next_row_idx = curr_row_idx + 1;
+            let evaluated_transition_constraints = MasterExtTable::evaluate_transition_constraints(
+                master_base_trace_table.row(curr_row_idx),
+                master_ext_trace_table.row(curr_row_idx),
+                master_base_trace_table.row(next_row_idx),
+                master_ext_trace_table.row(next_row_idx),
+                &challenges,
+            );
+            for (constraint_idx, evaluated_constraint) in
+                evaluated_transition_constraints.into_iter().enumerate()
+            {
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Transition constraint {constraint_idx} failed in row {curr_row_idx}.",
+                );
+            }
+        }
+
+        let evaluated_terminal_constraints = MasterExtTable::evaluate_terminal_constraints(
+            master_base_trace_table.row(master_base_trace_table.nrows() - 1),
+            master_ext_trace_table.row(master_ext_trace_table.nrows() - 1),
+            &challenges,
+        );
+        for (constraint_idx, evaluated_constraint) in
+            evaluated_terminal_constraints.into_iter().enumerate()
+        {
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed.",
+            );
+        }
+    }
+
+    #[test]
     fn triton_prove_verify_simple_program_test() {
         let code_with_input = test_hash_nop_nop_lt();
         let (parameters, claim, proof) = parse_simulate_prove(
