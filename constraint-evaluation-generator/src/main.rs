@@ -807,10 +807,11 @@ fn generate_fill_base_columns_code(
             return quote!();
         }
         quote!(
-            for row_idx in 0..master_base_table.nrows() - 1 {
+            for curr_row_idx in 0..master_base_table.nrows() - 1 {
+                let next_row_idx = curr_row_idx + 1;
                 let (mut curr_base_row, next_base_row) = master_base_table.multi_slice_mut((
-                    s![row_idx..row_idx + 1, ..],
-                    s![row_idx + 1..row_idx + 2, ..],
+                    s![curr_row_idx..curr_row_idx + 1, ..],
+                    s![next_row_idx..next_row_idx + 1, ..],
                 ));
                 let mut curr_base_row = curr_base_row.row_mut(0);
                 let next_base_row = next_base_row.row(0);
@@ -912,12 +913,13 @@ fn generate_fill_ext_columns_code(
             return quote!();
         }
         quote!(
-            for row_idx in 0..master_base_table.nrows() - 1 {
-                let current_base_row = master_base_table.row(row_idx);
-                let next_base_row = master_base_table.row(row_idx + 1);
+            for curr_row_idx in 0..master_base_table.nrows() - 1 {
+                let next_row_idx = curr_row_idx + 1;
+                let current_base_row = master_base_table.row(curr_row_idx);
+                let next_base_row = master_base_table.row(next_row_idx);
                 let (mut curr_ext_row, next_ext_row) = master_ext_table.multi_slice_mut((
-                    s![row_idx..row_idx + 1, ..],
-                    s![row_idx + 1..row_idx + 2, ..],
+                    s![curr_row_idx..curr_row_idx + 1, ..],
+                    s![next_row_idx..next_row_idx + 1, ..],
                 ));
                 let mut curr_ext_row = curr_ext_row.row_mut(0);
                 let next_ext_row = next_ext_row.row(0);
