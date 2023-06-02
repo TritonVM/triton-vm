@@ -26,11 +26,11 @@ pub enum DegreeLoweringExtTableColumn {}
 pub struct DegreeLoweringTable {}
 
 impl DegreeLoweringTable {
-    pub fn fill_deterministic_base_columns(_master_base_table: &mut ArrayViewMut2<BFieldElement>) {
+    pub fn fill_derived_base_columns(_master_base_table: &mut ArrayViewMut2<BFieldElement>) {
         // to be filled by generated code
     }
 
-    pub fn fill_deterministic_ext_columns(
+    pub fn fill_derived_ext_columns(
         _master_base_table: ArrayView2<BFieldElement>,
         _master_ext_table: &mut ArrayViewMut2<XFieldElement>,
         _challenges: &Challenges,

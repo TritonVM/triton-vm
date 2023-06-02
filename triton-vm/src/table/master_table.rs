@@ -503,7 +503,7 @@ impl MasterBaseTable {
         let u32_table = &mut self.table_mut(TableId::U32Table);
         U32Table::pad_trace(u32_table, u32_table_len);
 
-        DegreeLoweringTable::fill_deterministic_base_columns(&mut self.trace_table_mut());
+        DegreeLoweringTable::fill_derived_base_columns(&mut self.trace_table_mut());
     }
 
     /// Returns the low-degree extended columns as well as the columns' interpolation polynomials.
@@ -613,7 +613,7 @@ impl MasterBaseTable {
             challenges,
         );
 
-        DegreeLoweringTable::fill_deterministic_ext_columns(
+        DegreeLoweringTable::fill_derived_ext_columns(
             self.trace_table(),
             &mut master_ext_table.trace_table_mut(),
             challenges,

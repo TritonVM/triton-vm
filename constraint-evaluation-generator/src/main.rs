@@ -743,8 +743,7 @@ fn generate_fill_base_columns_code(
     tran_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
     term_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
 ) -> TokenStream {
-    let deterministic_section_start =
-        master_table::NUM_BASE_COLUMNS - degree_lowering_table::BASE_WIDTH;
+    let derived_section_start = master_table::NUM_BASE_COLUMNS - degree_lowering_table::BASE_WIDTH;
 
     let num_init_substitutions = init_substitutions.len();
     let num_cons_substitutions = cons_substitutions.len();
@@ -752,17 +751,17 @@ fn generate_fill_base_columns_code(
     let num_term_substitutions = term_substitutions.len();
 
     let init_col_indices = (0..num_init_substitutions)
-        .map(|i| i + deterministic_section_start)
+        .map(|i| i + derived_section_start)
         .collect_vec();
     let cons_col_indices = (0..num_cons_substitutions)
-        .map(|i| i + deterministic_section_start + num_init_substitutions)
+        .map(|i| i + derived_section_start + num_init_substitutions)
         .collect_vec();
     let tran_col_indices = (0..num_tran_substitutions)
-        .map(|i| i + deterministic_section_start + num_init_substitutions + num_cons_substitutions)
+        .map(|i| i + derived_section_start + num_init_substitutions + num_cons_substitutions)
         .collect_vec();
     let term_col_indices = (0..num_term_substitutions)
         .map(|i| {
-            i + deterministic_section_start
+            i + derived_section_start
                 + num_init_substitutions
                 + num_cons_substitutions
                 + num_tran_substitutions
@@ -831,7 +830,7 @@ fn generate_fill_base_columns_code(
 
     quote!(
     #[allow(unused_variables)]
-    pub fn fill_deterministic_base_columns(master_base_table: &mut ArrayViewMut2<BFieldElement>) {
+    pub fn fill_derived_base_columns(master_base_table: &mut ArrayViewMut2<BFieldElement>) {
         assert_eq!(NUM_BASE_COLUMNS, master_base_table.ncols());
         #init_substitutions
         #cons_substitutions
@@ -847,8 +846,7 @@ fn generate_fill_ext_columns_code(
     tran_substitutions: &[ConstraintCircuitMonad<DualRowIndicator>],
     term_substitutions: &[ConstraintCircuitMonad<SingleRowIndicator>],
 ) -> TokenStream {
-    let deterministic_section_start =
-        master_table::NUM_EXT_COLUMNS - degree_lowering_table::EXT_WIDTH;
+    let derived_section_start = master_table::NUM_EXT_COLUMNS - degree_lowering_table::EXT_WIDTH;
 
     let num_init_substitutions = init_substitutions.len();
     let num_cons_substitutions = cons_substitutions.len();
@@ -856,17 +854,17 @@ fn generate_fill_ext_columns_code(
     let num_term_substitutions = term_substitutions.len();
 
     let init_col_indices = (0..num_init_substitutions)
-        .map(|i| i + deterministic_section_start)
+        .map(|i| i + derived_section_start)
         .collect_vec();
     let cons_col_indices = (0..num_cons_substitutions)
-        .map(|i| i + deterministic_section_start + num_init_substitutions)
+        .map(|i| i + derived_section_start + num_init_substitutions)
         .collect_vec();
     let tran_col_indices = (0..num_tran_substitutions)
-        .map(|i| i + deterministic_section_start + num_init_substitutions + num_cons_substitutions)
+        .map(|i| i + derived_section_start + num_init_substitutions + num_cons_substitutions)
         .collect_vec();
     let term_col_indices = (0..num_term_substitutions)
         .map(|i| {
-            i + deterministic_section_start
+            i + derived_section_start
                 + num_init_substitutions
                 + num_cons_substitutions
                 + num_tran_substitutions
@@ -939,7 +937,7 @@ fn generate_fill_ext_columns_code(
 
     quote!(
         #[allow(unused_variables)]
-        pub fn fill_deterministic_ext_columns(
+        pub fn fill_derived_ext_columns(
             master_base_table: ArrayView2<BFieldElement>,
             master_ext_table: &mut ArrayViewMut2<XFieldElement>,
             challenges: &Challenges,
