@@ -692,6 +692,15 @@ fn generate_degree_lowering_table_code(
     );
 
     quote!(
+        //! The degree lowering table contains the introduced variables that allow
+        //! lowering the degree of the AIR. See
+        //! [`master_table::AIR_TARGET_DEGREE`]
+        //! for additional information.
+        //!
+        //! This file has been auto-generated. Any modifications _will_ be lost.
+        //! To re-generate, execute:
+        //! `cargo run --bin constraint-evaluation-generator`
+
         use ndarray::s;
         use ndarray::ArrayView2;
         use ndarray::ArrayViewMut2;
@@ -710,10 +719,6 @@ fn generate_degree_lowering_table_code(
         pub const BASE_WIDTH: usize = DegreeLoweringBaseTableColumn::COUNT;
         pub const EXT_WIDTH: usize = DegreeLoweringExtTableColumn::COUNT;
         pub const FULL_WIDTH: usize = BASE_WIDTH + EXT_WIDTH;
-
-        // This file has been auto-generated. Any modifications _will_ be lost.
-        // To re-generate, execute:
-        // `cargo run --bin constraint-evaluation-generator`
 
         #base_repr_usize
         #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
