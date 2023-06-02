@@ -196,9 +196,13 @@ where
     fn randomized_padded_trace_len(&self) -> usize;
     fn rand_trace_to_padded_trace_unit_distance(&self) -> usize;
 
-    /// Presents underlying trace data, excluding trace randomizers. Makes little sense over the
-    /// FRI domain.
+    /// Presents underlying trace data, excluding trace randomizers and randomizer polynomials.
+    /// Makes little sense over the FRI domain.
     fn trace_table(&self) -> ArrayView2<FF>;
+
+    /// Mutably presents underlying trace data, excluding trace randomizers and randomizer
+    /// polynomials. Makes little sense over the FRI domain.
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<FF>;
 
     /// Presents all underlying data.
     fn master_matrix(&self) -> ArrayView2<FF>;
@@ -301,6 +305,11 @@ impl MasterTable<BFieldElement> for MasterBaseTable {
             .slice(s![..; self.rand_trace_to_padded_trace_unit_distance, ..])
     }
 
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<BFieldElement> {
+        self.master_base_matrix
+            .slice_mut(s![..; self.rand_trace_to_padded_trace_unit_distance, ..])
+    }
+
     fn master_matrix(&self) -> ArrayView2<BFieldElement> {
         self.master_base_matrix.view()
     }
@@ -325,7 +334,12 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 
     fn trace_table(&self) -> ArrayView2<XFieldElement> {
         self.master_ext_matrix
-            .slice(s![..; self.rand_trace_to_padded_trace_unit_distance, ..])
+            .slice(s![..; self.rand_trace_to_padded_trace_unit_distance, ..NUM_EXT_COLUMNS])
+    }
+
+    fn trace_table_mut(&mut self) -> ArrayViewMut2<XFieldElement> {
+        self.master_ext_matrix
+            .slice_mut(s![..; self.rand_trace_to_padded_trace_unit_distance, ..NUM_EXT_COLUMNS])
     }
 
     fn master_matrix(&self) -> ArrayView2<XFieldElement> {
@@ -489,9 +503,7 @@ impl MasterBaseTable {
         let u32_table = &mut self.table_mut(TableId::U32Table);
         U32Table::pad_trace(u32_table, u32_table_len);
 
-        DegreeLoweringTable::fill_deterministic_base_columns(
-            &mut self.master_base_matrix.view_mut(),
-        );
+        DegreeLoweringTable::fill_deterministic_base_columns(&mut self.trace_table_mut());
     }
 
     /// Returns the low-degree extended columns as well as the columns' interpolation polynomials.
@@ -602,10 +614,8 @@ impl MasterBaseTable {
         );
 
         DegreeLoweringTable::fill_deterministic_ext_columns(
-            self.master_base_matrix.view(),
-            &mut master_ext_table
-                .master_ext_matrix
-                .slice_mut(s![.., 0..NUM_EXT_COLUMNS]),
+            self.trace_table(),
+            &mut master_ext_table.trace_table_mut(),
             challenges,
         );
 
@@ -628,6 +638,7 @@ impl MasterBaseTable {
         }
     }
 
+    /// Returns a view of the specified table, excluding the trace randomizers.
     pub fn table(&self, id: TableId) -> ArrayView2<BFieldElement> {
         let (table_start, table_end) = Self::table_slice_info(id);
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
@@ -635,6 +646,7 @@ impl MasterBaseTable {
             .slice(s![..; unit_distance, table_start..table_end])
     }
 
+    /// Returns a mutable view of the specified table, excluding the trace randomizers.
     pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<BFieldElement> {
         let (table_start, table_end) = Self::table_slice_info(id);
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
@@ -710,6 +722,7 @@ impl MasterExtTable {
         }
     }
 
+    /// Returns a view of the entire master table, excluding the trace randomizers.
     pub fn table(&self, id: TableId) -> ArrayView2<XFieldElement> {
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         let (table_start, table_end) = Self::table_slice_info(id);
@@ -717,6 +730,7 @@ impl MasterExtTable {
             .slice(s![..; unit_distance, table_start..table_end])
     }
 
+    /// Returns a mutable view of the specified table, excluding the trace randomizers.
     pub fn table_mut(&mut self, id: TableId) -> ArrayViewMut2<XFieldElement> {
         let unit_distance = self.rand_trace_to_padded_trace_unit_distance;
         let (table_start, table_end) = Self::table_slice_info(id);
