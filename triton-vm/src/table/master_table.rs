@@ -76,7 +76,7 @@ use crate::vm::AlgebraicExecutionTrace;
 /// The new variables introduced by the degree lowering step are called “derived columns.”
 /// They are added to the [`DegreeLoweringTable`], whose sole purpose is to store the values
 /// of these derived columns.
-pub const AIR_TARGET_DEGREE: Degree = 5;
+pub const AIR_TARGET_DEGREE: Degree = 4;
 
 /// The total number of base columns across all tables.
 pub const NUM_BASE_COLUMNS: usize = program_table::BASE_WIDTH
