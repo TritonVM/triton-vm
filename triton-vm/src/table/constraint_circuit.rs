@@ -2416,4 +2416,69 @@ mod constraint_circuit_tests {
             _ => (),
         };
     }
+
+    #[test]
+    pub fn all_nodes_in_multicircuit_are_identified_correctly() {
+        let builder = ConstraintCircuitBuilder::new();
+
+        let x = |i| builder.input(BaseRow(i));
+        let b_con = |i: u64| builder.b_constant(i.into());
+
+        let sub_tree_0 = x(0) * x(1) * (x(2) - b_con(1)) * x(3) * x(4);
+        let sub_tree_1 = x(0) * x(1) * (x(2) - b_con(1)) * x(3) * x(5);
+        let sub_tree_2 = x(10) * x(10) * x(2) * x(13);
+        let sub_tree_3 = x(10) * x(10) * x(2) * x(14);
+
+        let circuit_0 = sub_tree_0.clone() + sub_tree_1.clone();
+        let circuit_1 = sub_tree_2.clone() + sub_tree_3.clone();
+        let circuit_2 = sub_tree_0 + sub_tree_2;
+        let circuit_3 = sub_tree_1 + sub_tree_3;
+
+        let multicircuit = [circuit_0, circuit_1, circuit_2, circuit_3].map(|c| c.consume());
+
+        let all_nodes = ConstraintCircuitMonad::all_nodes_in_multicircuit(&multicircuit);
+
+        let x0 = x(0).consume();
+        let x0_count = all_nodes.iter().filter(|&node| node == &x0).count();
+        assert_eq!(4, x0_count);
+
+        let x2 = x(2).consume();
+        let x2_count = all_nodes.iter().filter(|&node| node == &x2).count();
+        assert_eq!(8, x2_count);
+
+        let x10 = x(10).consume();
+        let x10_count = all_nodes.iter().filter(|&node| node == &x10).count();
+        assert_eq!(8, x10_count);
+
+        let x4 = x(4).consume();
+        let x4_count = all_nodes.iter().filter(|&node| node == &x4).count();
+        assert_eq!(2, x4_count);
+
+        let x6 = x(6).consume();
+        let x6_count = all_nodes.iter().filter(|&node| node == &x6).count();
+        assert_eq!(0, x6_count);
+
+        let x0_x1 = (x(0) * x(1)).consume();
+        let x0_x1_count = all_nodes.iter().filter(|&node| node == &x0_x1).count();
+        assert_eq!(4, x0_x1_count);
+
+        let tree = (x(0) * x(1) * (x(2) - b_con(1))).consume();
+        let tree_count = all_nodes.iter().filter(|&node| node == &tree).count();
+        assert_eq!(4, tree_count);
+
+        let max_occurences = all_nodes
+            .iter()
+            .map(|node| all_nodes.iter().filter(|&n| n == node).count())
+            .max()
+            .unwrap();
+        assert_eq!(8, max_occurences);
+
+        let most_frequent_nodes = all_nodes
+            .iter()
+            .filter(|&node| all_nodes.iter().filter(|&n| n == node).count() == max_occurences)
+            .collect::<HashSet<_>>();
+        assert_eq!(2, most_frequent_nodes.len());
+        assert!(most_frequent_nodes.contains(&&x2));
+        assert!(most_frequent_nodes.contains(&&x10));
+    }
 }
