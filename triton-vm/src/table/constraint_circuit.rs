@@ -1178,6 +1178,7 @@ mod constraint_circuit_tests {
     use crate::table::challenges::ChallengeId::U32Indeterminate;
     use crate::table::challenges::Challenges;
     use crate::table::constraint_circuit::SingleRowIndicator::*;
+    use crate::table::degree_lowering_table::DegreeLoweringTable;
     use crate::table::hash_table::ExtHashTable;
     use crate::table::jump_stack_table::ExtJumpStackTable;
     use crate::table::lookup_table::ExtLookupTable;
@@ -2462,5 +2463,41 @@ mod constraint_circuit_tests {
         assert_eq!(2, most_frequent_nodes.len());
         assert!(most_frequent_nodes.contains(&x(2).consume()));
         assert!(most_frequent_nodes.contains(&x(10).consume()));
+    }
+
+    /// Fills the derived columns of the degree-lowering table using randomly generated rows and
+    /// checks the resulting values for uniqueness. The described method corresponds to an
+    /// application of the Schwartz-Zippel lemma to check uniqueness of the substitution rules
+    /// generated during degree lowering.
+    #[test]
+    #[ignore = "(probably) requires normalization of circuit expressions"]
+    fn substitution_rules_are_unique() {
+        let challenges = Challenges::placeholder(&[], &[]);
+        let mut base_table_rows = Array2::from_shape_fn((2, NUM_BASE_COLUMNS), |_| random());
+        let mut ext_table_rows = Array2::from_shape_fn((2, NUM_EXT_COLUMNS), |_| random());
+
+        DegreeLoweringTable::fill_derived_base_columns(&mut base_table_rows.view_mut());
+        DegreeLoweringTable::fill_derived_ext_columns(
+            base_table_rows.view(),
+            &mut ext_table_rows.view_mut(),
+            &challenges,
+        );
+
+        let mut encountered_values = HashMap::new();
+        for col_idx in 0..NUM_BASE_COLUMNS {
+            let val = base_table_rows[(0, col_idx)].lift();
+            let other_entry = encountered_values.insert(val, col_idx);
+            if let Some(other_idx) = other_entry {
+                panic!("Duplicate value {val} in derived base column {other_idx} and {col_idx}.");
+            }
+        }
+        println!("Now comparing extension columns…");
+        for col_idx in 0..NUM_EXT_COLUMNS {
+            let val = ext_table_rows[(0, col_idx)];
+            let other_entry = encountered_values.insert(val, col_idx);
+            if let Some(other_idx) = other_entry {
+                panic!("Duplicate value {val} in derived ext column {other_idx} and {col_idx}.");
+            }
+        }
     }
 }
