@@ -963,36 +963,24 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             panic!("Multicircuit must be non-empty in order to pick a node from it.");
         }
 
-        // Only nodes with degree > target_degree need changing.
         let multicircuit = multicircuit
             .iter()
             .map(|c| c.clone().consume())
             .collect_vec();
         let all_nodes = Self::all_nodes_in_multicircuit(&multicircuit);
-        let all_nodes: HashSet<_> = HashSet::from_iter(all_nodes.iter());
-        let high_degree_nodes = all_nodes
-            .iter()
-            .filter(|node| node.degree() > target_degree);
+        let all_nodes: HashSet<_> = HashSet::from_iter(all_nodes.into_iter());
 
-        // Of those nodes, get all the children with degree <= target_degree.
-        let mut barely_low_degree_nodes = vec![];
-        for node in high_degree_nodes {
-            // Constants, inputs, and challenges are of degree <= 1, which is not high.
-            // Addition and subtraction don't affect the degree. Hence, they are uninteresting.
-            if let BinaryOperation(BinOp::Mul, lhs, rhs) = &node.expression {
-                if lhs.borrow().degree() <= target_degree {
-                    barely_low_degree_nodes.push(lhs.borrow().clone());
-                }
-                if rhs.borrow().degree() <= target_degree {
-                    barely_low_degree_nodes.push(rhs.borrow().clone());
-                }
-            }
-        }
+        // Only nodes with degree > target_degree need changing.
+        let high_degree_nodes = all_nodes
+            .into_iter()
+            .filter(|node| node.degree() > target_degree)
+            .collect_vec();
 
         // Collect all the nodes where some substitution is necessary.
         // Substituting a node of degree 1 is both pointless and can lead to infinite iteration.
-        let low_degree_nodes = Self::all_nodes_in_multicircuit(&barely_low_degree_nodes)
+        let low_degree_nodes = Self::all_nodes_in_multicircuit(&high_degree_nodes)
             .into_iter()
+            .filter(|node| node.degree() <= target_degree)
             .filter(|node| node.degree() > 1)
             .collect_vec();
 
