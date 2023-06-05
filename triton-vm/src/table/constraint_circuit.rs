@@ -2406,7 +2406,7 @@ mod constraint_circuit_tests {
     }
 
     #[test]
-    pub fn all_nodes_in_multicircuit_are_identified_correctly() {
+    fn all_nodes_in_multicircuit_are_identified_correctly() {
         let builder = ConstraintCircuitBuilder::new();
 
         let x = |i| builder.input(BaseRow(i));
@@ -2425,34 +2425,28 @@ mod constraint_circuit_tests {
         let multicircuit = [circuit_0, circuit_1, circuit_2, circuit_3].map(|c| c.consume());
 
         let all_nodes = ConstraintCircuitMonad::all_nodes_in_multicircuit(&multicircuit);
+        let count_node = |node| all_nodes.iter().filter(|&n| n == &node).count();
 
         let x0 = x(0).consume();
-        let x0_count = all_nodes.iter().filter(|&node| node == &x0).count();
-        assert_eq!(4, x0_count);
+        assert_eq!(4, count_node(x0));
 
         let x2 = x(2).consume();
-        let x2_count = all_nodes.iter().filter(|&node| node == &x2).count();
-        assert_eq!(8, x2_count);
+        assert_eq!(8, count_node(x2));
 
         let x10 = x(10).consume();
-        let x10_count = all_nodes.iter().filter(|&node| node == &x10).count();
-        assert_eq!(8, x10_count);
+        assert_eq!(8, count_node(x10));
 
         let x4 = x(4).consume();
-        let x4_count = all_nodes.iter().filter(|&node| node == &x4).count();
-        assert_eq!(2, x4_count);
+        assert_eq!(2, count_node(x4));
 
         let x6 = x(6).consume();
-        let x6_count = all_nodes.iter().filter(|&node| node == &x6).count();
-        assert_eq!(0, x6_count);
+        assert_eq!(0, count_node(x6));
 
         let x0_x1 = (x(0) * x(1)).consume();
-        let x0_x1_count = all_nodes.iter().filter(|&node| node == &x0_x1).count();
-        assert_eq!(4, x0_x1_count);
+        assert_eq!(4, count_node(x0_x1));
 
         let tree = (x(0) * x(1) * (x(2) - b_con(1))).consume();
-        let tree_count = all_nodes.iter().filter(|&node| node == &tree).count();
-        assert_eq!(4, tree_count);
+        assert_eq!(4, count_node(tree));
 
         let max_occurences = all_nodes
             .iter()
@@ -2466,7 +2460,7 @@ mod constraint_circuit_tests {
             .filter(|&node| all_nodes.iter().filter(|&n| n == node).count() == max_occurences)
             .collect::<HashSet<_>>();
         assert_eq!(2, most_frequent_nodes.len());
-        assert!(most_frequent_nodes.contains(&&x2));
-        assert!(most_frequent_nodes.contains(&&x10));
+        assert!(most_frequent_nodes.contains(&x(2).consume()));
+        assert!(most_frequent_nodes.contains(&x(10).consume()));
     }
 }
