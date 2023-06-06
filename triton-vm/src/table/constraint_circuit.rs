@@ -921,13 +921,12 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             // Create a new variable.
             let chosen_node = builder.get_node_by_id(chosen_node_id).unwrap();
             let chosen_node_is_base_col = chosen_node.circuit.borrow().evaluates_to_base_element();
-            let new_col_idx = match chosen_node_is_base_col {
-                true => num_base_cols + base_constraints.len(),
-                false => num_ext_cols + ext_constraints.len(),
-            };
-            let new_input_indicator = match chosen_node_is_base_col {
-                true => II::base_table_input(new_col_idx),
-                false => II::ext_table_input(new_col_idx),
+            let new_input_indicator = if chosen_node_is_base_col {
+                let new_base_col_idx = num_base_cols + base_constraints.len();
+                II::base_table_input(new_base_col_idx)
+            } else {
+                let new_ext_col_idx = num_ext_cols + ext_constraints.len();
+                II::ext_table_input(new_ext_col_idx)
             };
             let new_variable = builder.input(new_input_indicator);
             let new_circuit = new_variable.circuit.clone();
