@@ -975,7 +975,8 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
             .filter(|node| node.degree() > target_degree)
             .collect_vec();
 
-        // Collect all the nodes where some substitution is necessary.
+        // Collect all candidates for substitution, i.e., descendents of high_degree_nodes
+        // with degree <= target_degree.
         // Substituting a node of degree 1 is both pointless and can lead to infinite iteration.
         let low_degree_nodes = Self::all_nodes_in_multicircuit(&high_degree_nodes)
             .into_iter()
@@ -1002,6 +1003,7 @@ impl<II: InputIndicator> ConstraintCircuitMonad<II> {
         nodes_and_occurrences.retain(|_, &mut count| count == max_occurrences);
         let mut candidate_nodes = nodes_and_occurrences.keys().cloned().collect_vec();
 
+        // If there are still multiple nodes, pick the one with the highest degree.
         let max_degree = candidate_nodes
             .iter()
             .map(|node| node.degree())
