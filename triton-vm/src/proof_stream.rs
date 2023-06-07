@@ -3,6 +3,7 @@ use std::fmt::Display;
 
 use anyhow::bail;
 use anyhow::Result;
+use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
@@ -12,12 +13,11 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::proof::Proof;
-use crate::proof_item::MayBeUncast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProofStream<Item, H>
 where
-    Item: Clone + BFieldCodec + MayBeUncast,
+    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     pub items: Vec<Item>,
@@ -49,7 +49,7 @@ impl Error for ProofStreamError {}
 
 impl<Item, H> ProofStream<Item, H>
 where
-    Item: Clone + BFieldCodec + MayBeUncast,
+    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     pub fn new() -> Self {
@@ -64,10 +64,12 @@ where
         self.items.is_empty()
     }
 
+    /// The number of items in the proof stream.
     pub fn len(&self) -> usize {
         self.items.len()
     }
 
+    /// The number of field elements required to encode the proof.
     pub fn transcript_length(&self) -> usize {
         let Proof(b_field_elements) = self.to_proof();
         b_field_elements.len()
@@ -75,11 +77,9 @@ where
 
     /// Convert the proof stream, _i.e._, the transcript, into a Proof.
     pub fn to_proof(&self) -> Proof {
-        let mut bfes = vec![];
-        for item in self.items.iter() {
-            bfes.append(&mut item.encode());
-        }
-        Proof(bfes)
+        let encoded_items = self.items.iter().map(|item| item.encode()).collect_vec();
+        let complete_encoding = encoded_items.concat();
+        Proof(complete_encoding)
     }
 
     /// Convert the proof into a proof stream for the verifier.
@@ -96,7 +96,7 @@ where
                     have {proof_len} but expected {next_index}"
                 )));
             }
-            let str = &proof.0[index..(next_index)];
+            let str = &proof.0[index..next_index];
             let item = Item::decode(str)?;
             items.push(*item);
             index = next_index;
@@ -180,7 +180,7 @@ where
 
 impl<Item, H> Default for ProofStream<Item, H>
 where
-    Item: Clone + BFieldCodec + MayBeUncast,
+    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     fn default() -> Self {
@@ -208,88 +208,44 @@ mod proof_stream_typed_tests {
     enum TestItem {
         ManyB(Vec<BFieldElement>),
         ManyX(Vec<XFieldElement>),
-        Uncast(Vec<BFieldElement>),
-    }
-
-    impl MayBeUncast for TestItem {
-        fn uncast(&self) -> Vec<BFieldElement> {
-            if let Self::Uncast(vector) = self {
-                let mut str = vec![];
-                str.push(BFieldElement::new(vector.len().try_into().unwrap()));
-                str.append(&mut vector.clone());
-                str
-            } else {
-                self.encode()
-            }
-        }
     }
 
     impl TestItem {
-        pub fn as_bs(&self) -> Self {
+        /// The unique identifier for this item type.
+        pub fn discriminant(&self) -> BFieldElement {
+            use TestItem::*;
             match self {
-                Self::Uncast(bs) => Self::ManyB(bs.to_vec()),
-                _ => panic!("can only cast from Uncast"),
-            }
-        }
-
-        pub fn as_xs(&self) -> Self {
-            match self {
-                Self::Uncast(bs) => Self::ManyX(
-                    bs.chunks(3)
-                        .collect_vec()
-                        .into_iter()
-                        .map(|bbb| {
-                            XFieldElement::new(
-                                bbb.try_into()
-                                    .expect("cannot unwrap chunk of 3 (?) BFieldElements"),
-                            )
-                        })
-                        .collect_vec(),
-                ),
-                _ => panic!("can only cast from Uncast"),
+                ManyB(_) => BFieldElement::new(0),
+                ManyX(_) => BFieldElement::new(1),
             }
         }
     }
 
     impl BFieldCodec for TestItem {
         fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
-            let maybe_element_zero = str.get(0);
-            match maybe_element_zero {
-                None => Err(ProofStreamError::new(
-                    "trying to decode empty string into test item",
-                )),
-                Some(bfe) => {
-                    if str.len() != 1 + (bfe.value() as usize) {
-                        Err(ProofStreamError::new("length mismatch"))
-                    } else {
-                        Ok(Box::new(Self::Uncast(str[1..].to_vec())))
-                    }
-                }
+            if str.is_empty() {
+                bail!("trying to decode empty string into test item");
             }
+
+            let discriminant = str[0].value();
+            let str = &str[1..];
+            let item = match discriminant {
+                0 => Self::ManyB(*Vec::<BFieldElement>::decode(str)?),
+                1 => Self::ManyX(*Vec::<XFieldElement>::decode(str)?),
+                i => bail!("Unknown discriminant ID {i}."),
+            };
+            Ok(Box::new(item))
         }
 
         fn encode(&self) -> Vec<BFieldElement> {
-            let mut vect = vec![];
-            match self {
-                Self::ManyB(bs) => {
-                    for b in bs {
-                        vect.append(&mut b.encode());
-                    }
-                }
-                Self::ManyX(xs) => {
-                    for x in xs {
-                        vect.append(&mut x.encode());
-                    }
-                }
-                Self::Uncast(bs) => {
-                    for b in bs {
-                        vect.append(&mut b.encode());
-                    }
-                }
-            }
-            vect.insert(0, BFieldElement::new(vect.len().try_into().unwrap()));
+            use TestItem::*;
 
-            vect
+            let discriminant = vec![self.discriminant()];
+            let encoding = match self {
+                ManyB(bs) => bs.encode(),
+                ManyX(xs) => xs.encode(),
+            };
+            [discriminant, encoding].concat()
         }
 
         fn static_length() -> Option<usize> {
@@ -319,34 +275,19 @@ mod proof_stream_typed_tests {
             ProofStream::from_proof(&proof).expect("invalid parsing of proof");
 
         let fs1_ = proof_stream.sponge_state.state;
-        match proof_stream
-            .dequeue(false)
-            .expect("can't dequeue item")
-            .as_bs()
-        {
+        match proof_stream.dequeue(false).expect("can't dequeue item") {
             TestItem::ManyB(manyb1_) => assert_eq!(manyb1, manyb1_),
             TestItem::ManyX(_) => panic!(),
-            TestItem::Uncast(_) => panic!(),
         };
         let fs2_ = proof_stream.sponge_state.state;
-        match proof_stream
-            .dequeue(true)
-            .expect("can't dequeue item")
-            .as_xs()
-        {
+        match proof_stream.dequeue(true).expect("can't dequeue item") {
             TestItem::ManyB(_) => panic!(),
             TestItem::ManyX(manyx_) => assert_eq!(manyx, manyx_),
-            TestItem::Uncast(_) => panic!(),
         };
         let fs3_ = proof_stream.sponge_state.state;
-        match proof_stream
-            .dequeue(true)
-            .expect("can't dequeue item")
-            .as_bs()
-        {
+        match proof_stream.dequeue(true).expect("can't dequeue item") {
             TestItem::ManyB(manyb2_) => assert_eq!(manyb2, manyb2_),
             TestItem::ManyX(_) => panic!(),
-            TestItem::Uncast(_) => panic!(),
         };
         let fs4_ = proof_stream.sponge_state.state;
 
