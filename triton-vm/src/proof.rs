@@ -1,16 +1,13 @@
-use anyhow::bail;
 use get_size::GetSize;
-use itertools::Itertools;
 use serde::Deserialize;
 use serde::Serialize;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
-use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
 pub struct Proof(pub Vec<BFieldElement>);
 
 impl GetSize for Proof {
@@ -27,106 +24,45 @@ impl GetSize for Proof {
     }
 }
 
-impl BFieldCodec for Proof {
-    fn decode(sequence: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
-        Ok(Box::new(Proof(sequence.to_vec())))
-    }
-
-    fn encode(&self) -> Vec<BFieldElement> {
-        self.0.clone()
-    }
-}
-
 /// Contains all the public information of a verifiably correct computation.
 /// A corresponding [`Proof`] is needed to verify the computation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec)]
 pub struct Claim {
     /// The hash digest of the program that was executed. The hash function in use is Tip5.
     pub program_digest: Digest,
 
     /// The public input to the computation.
-    pub input: Vec<u64>,
+    pub input: Vec<BFieldElement>,
 
     /// The public output of the computation.
-    pub output: Vec<u64>,
+    pub output: Vec<BFieldElement>,
 
     /// An upper bound on the length of the computation.
-    pub padded_height: usize,
+    pub padded_height: BFieldElement,
 }
 
 impl Claim {
-    /// The public input as `BFieldElements`.
-    /// If u64s are needed, use field `input`.
-    pub fn public_input(&self) -> Vec<BFieldElement> {
-        self.input.iter().map(|&x| BFieldElement::new(x)).collect()
+    /// The public input as `u64`s.
+    /// If `BFieldElement`s are needed, use field `input`.
+    pub fn public_input(&self) -> Vec<u64> {
+        self.input.iter().map(|x| x.value()).collect()
     }
 
-    /// The public output as `BFieldElements`.
-    /// If u64s are needed, use field `output`.
-    pub fn public_output(&self) -> Vec<BFieldElement> {
-        self.output.iter().map(|&x| BFieldElement::new(x)).collect()
-    }
-}
-
-impl BFieldCodec for Claim {
-    fn decode(sequence: &[BFieldElement]) -> anyhow::Result<Box<Self>> {
-        if sequence.len() < 7 {
-            bail!(
-                "Cannot decode Vec of {} < 7 BFieldElements as Claim",
-                sequence.len()
-            );
-        }
-        let program_digest = *Digest::decode(&sequence[0..DIGEST_LENGTH])?;
-        let mut read_index = DIGEST_LENGTH;
-
-        let input_length = sequence[read_index].value() as usize;
-        if sequence.len() < read_index + input_length + 1 {
-            bail!("Cannot decode Vec of BFieldElements as Claim: improper input length");
-        }
-        read_index += 1;
-        let input = sequence[read_index..read_index + input_length]
-            .iter()
-            .map(|b| b.value())
-            .collect_vec();
-        read_index += input_length;
-
-        let output_length = sequence[read_index].value() as usize;
-        if sequence.len() < read_index + output_length {
-            bail!("Cannot decode Vec of BFieldElements as Claim: improper output length");
-        }
-        read_index += 1;
-        let output = sequence[read_index..read_index + output_length]
-            .iter()
-            .map(|b| b.value())
-            .collect_vec();
-
-        read_index += output_length;
-        if read_index != sequence.len() {
-            assert_eq!(read_index, sequence.len());
-            bail!("Cannot decode Vec of BFieldElements as Claim: improper total length");
-        }
-
-        Ok(Box::new(Claim {
-            program_digest,
-            input,
-            output,
-            padded_height: 0,
-        }))
+    /// The public output as `u64`.
+    /// If `BFieldElements`s are needed, use field `output`.
+    pub fn public_output(&self) -> Vec<u64> {
+        self.output.iter().map(|x| x.value()).collect()
     }
 
-    fn encode(&self) -> Vec<BFieldElement> {
-        let mut string = self.program_digest.encode();
-        string.push(BFieldElement::new(self.input.len() as u64));
-        string.append(&mut self.public_input());
-        string.push(BFieldElement::new(self.output.len() as u64));
-        string.append(&mut self.public_output());
-        string
+    /// The padded height as `u64`.
+    /// If a `BFieldElement` is needed, use field `padded_height`.
+    pub fn padded_height(&self) -> usize {
+        self.padded_height.value() as usize
     }
 }
 
 #[cfg(test)]
 pub mod test_claim_proof {
-    use itertools::Itertools;
     use rand::random;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::bfield_codec::BFieldCodec;
@@ -149,15 +85,9 @@ pub mod test_claim_proof {
     #[test]
     fn test_decode_claim() {
         let program_digest: Digest = random();
-        let input: Vec<u64> = random_elements(346)
-            .iter()
-            .map(|i: &u64| i % BFieldElement::P)
-            .collect_vec();
-        let output: Vec<u64> = random_elements(125)
-            .iter()
-            .map(|i: &u64| i % BFieldElement::P)
-            .collect_vec();
-        let padded_height = 11;
+        let input: Vec<BFieldElement> = random_elements(346);
+        let output: Vec<BFieldElement> = random_elements(125);
+        let padded_height = 11_u64.into();
 
         let claim = Claim {
             program_digest,

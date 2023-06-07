@@ -58,11 +58,11 @@ pub fn prove(
     );
 
     // Convert the public and secret inputs to BFieldElements.
-    let public_input_bfe = public_input
+    let public_input = public_input
         .iter()
         .map(|&e| BFieldElement::new(e))
         .collect::<Vec<_>>();
-    let secret_input_bfe = secret_input
+    let secret_input = secret_input
         .iter()
         .map(|&e| BFieldElement::new(e))
         .collect::<Vec<_>>();
@@ -75,7 +75,7 @@ pub fn prove(
     // - the (public) output of the program, and
     // - an error, if the program crashes.
     let (aet, public_output, maybe_error) =
-        vm::simulate(&program, public_input_bfe, secret_input_bfe);
+        vm::simulate(&program, public_input.clone(), secret_input);
 
     // Check for VM crashes, for example due to failing `assert` instructions or an out-of-bounds
     // instruction pointer. Crashes can occur if any of the two inputs does not conform to the
@@ -85,19 +85,21 @@ pub fn prove(
         panic!("Execution error: {error}");
     }
 
-    // Convert the public output to a vector of u64.
-    let public_output = public_output.iter().map(|e| e.value()).collect::<Vec<_>>();
-
     // Hash the program to obtain its digest.
     let program_digest = Tip5::hash(&program);
+
+    // Compute the padded height of the AET. The padded height is the smallest power of two
+    // that is larger than or equal to the height of the largest table in the AET.
+    let padded_height = MasterBaseTable::padded_height(&aet);
+    let padded_height = BFieldElement::new(padded_height as u64);
 
     // Set up the claim that is to be proven. The claim contains all public information. The
     // proof is zero-knowledge with respect to everything else.
     let claim = Claim {
-        input: public_input.to_vec(),
+        input: public_input,
         program_digest,
         output: public_output,
-        padded_height: MasterBaseTable::padded_height(&aet),
+        padded_height,
     };
 
     // The default parameters give a (conjectured) security level of 160 bits.
@@ -166,7 +168,8 @@ mod public_interface_tests {
             "program digest must match program"
         );
         assert_eq!(
-            public_input, claim.input,
+            public_input,
+            claim.public_input(),
             "Claimed input must match supplied input"
         );
         assert!(

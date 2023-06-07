@@ -291,6 +291,10 @@ mod proof_stream_typed_tests {
 
             vect
         }
+
+        fn static_length() -> Option<usize> {
+            None
+        }
     }
 
     #[test]

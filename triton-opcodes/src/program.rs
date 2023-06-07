@@ -91,6 +91,10 @@ impl BFieldCodec for Program {
         sequence.extend(self.to_bwords());
         sequence
     }
+
+    fn static_length() -> Option<usize> {
+        None
+    }
 }
 
 /// An `InstructionIter` loops the instructions of a `Program` by skipping duplicate placeholders.

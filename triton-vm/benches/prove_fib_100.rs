@@ -35,19 +35,18 @@ fn prove_fib_100(criterion: &mut Criterion) {
         Ok(p) => p,
     };
     prof_stop!(maybe_profiler, "parse program");
-    let input = vec![100];
-    let public_input = input.iter().map(|&e| BFieldElement::new(e)).collect();
+    let public_input = [100].map(BFieldElement::new).to_vec();
     prof_start!(maybe_profiler, "generate AET");
-    let (aet, output, err) = simulate(&program, public_input, vec![]);
+    let (aet, output, err) = simulate(&program, public_input.clone(), vec![]);
     prof_stop!(maybe_profiler, "generate AET");
     if let Some(error) = err {
         panic!("The VM encountered the following problem: {error}");
     }
 
-    let output = output.iter().map(|x| x.value()).collect();
     let padded_height = MasterBaseTable::padded_height(&aet);
+    let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
-        input,
+        input: public_input,
         program_digest: Tip5::hash(&program),
         output,
         padded_height,
@@ -56,14 +55,14 @@ fn prove_fib_100(criterion: &mut Criterion) {
     let _proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
 
     let max_degree =
-        Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
 
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.finish();
         report = profiler.report(
             Some(aet.processor_trace.nrows()),
-            Some(claim.padded_height),
+            Some(claim.padded_height()),
             Some(fri.domain.length),
         );
     }

@@ -128,14 +128,14 @@ impl Stark {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Proof {
         assert_eq!(
-            claim.padded_height,
+            claim.padded_height(),
             MasterBaseTable::padded_height(aet),
             "The claimed padded height must match the actual padded height of the trace."
         );
 
         prof_start!(maybe_profiler, "derive additional parameters");
         let max_degree =
-            Self::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+            Self::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -165,11 +165,7 @@ impl Stark {
         let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root), true);
         let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
-        let extension_challenges = Challenges::new(
-            extension_weights,
-            &claim.public_input(),
-            &claim.public_output(),
-        );
+        let extension_challenges = Challenges::new(extension_weights, &claim.input, &claim.output);
         prof_stop!(maybe_profiler, "Fiat-Shamir");
 
         prof_start!(maybe_profiler, "extend");
@@ -575,7 +571,7 @@ impl Stark {
     ) -> Result<bool> {
         prof_start!(maybe_profiler, "derive additional parameters");
         let max_degree =
-            Self::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+            Self::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
@@ -588,11 +584,7 @@ impl Stark {
         let base_merkle_tree_root = proof_stream.dequeue(true)?.as_merkle_root()?;
         let extension_challenge_weights =
             proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
-        let challenges = Challenges::new(
-            extension_challenge_weights,
-            &claim.public_input(),
-            &claim.public_output(),
-        );
+        let challenges = Challenges::new(extension_challenge_weights, &claim.input, &claim.output);
         let extension_tree_merkle_root = proof_stream.dequeue(true)?.as_merkle_root()?;
         // Sample weights for quotient codeword, which is a part of the combination codeword.
         // See corresponding part in the prover for a more detailed explanation.
@@ -602,7 +594,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
-        let trace_domain_generator = derive_domain_generator(claim.padded_height as u64);
+        let trace_domain_generator = derive_domain_generator(claim.padded_height() as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
@@ -624,7 +616,8 @@ impl Stark {
         let one = BFieldElement::one();
         let initial_zerofier_inv = (out_of_domain_point_curr_row - one).inverse();
         let consistency_zerofier_inv =
-            (out_of_domain_point_curr_row.mod_pow_u32(claim.padded_height as u32) - one).inverse();
+            (out_of_domain_point_curr_row.mod_pow_u32(claim.padded_height() as u32) - one)
+                .inverse();
         let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
         let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
@@ -940,36 +933,31 @@ pub(crate) mod triton_stark_tests {
 
     pub fn parse_setup_simulate(
         code: &str,
-        input_symbols: Vec<u64>,
-        secret_input_symbols: Vec<u64>,
-    ) -> (AlgebraicExecutionTrace, Vec<u64>) {
+        public_input: Vec<BFieldElement>,
+        secret_input: Vec<BFieldElement>,
+    ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
         let program = Program::from_code(code);
 
         assert!(program.is_ok(), "program parses correctly");
         let program = program.unwrap();
-        let public_input = input_symbols.into_iter().map(BFieldElement::new).collect();
-        let secret_input = secret_input_symbols
-            .into_iter()
-            .map(BFieldElement::new)
-            .collect();
 
         let (aet, stdout, err) = simulate(&program, public_input, secret_input);
         if let Some(error) = err {
             panic!("The VM encountered the following problem: {error}");
         }
 
-        let stdout = stdout.into_iter().map(|x| x.value()).collect();
         (aet, stdout)
     }
 
     pub fn parse_simulate_pad(
         code: &str,
-        stdin: Vec<u64>,
-        secret_in: Vec<u64>,
+        stdin: Vec<BFieldElement>,
+        secret_in: Vec<BFieldElement>,
     ) -> (StarkParameters, Claim, MasterBaseTable, MasterBaseTable) {
         let (aet, stdout) = parse_setup_simulate(code, stdin.clone(), secret_in);
 
         let padded_height = MasterBaseTable::padded_height(&aet);
+        let padded_height = BFieldElement::new(padded_height as u64);
         let claim = Claim {
             input: stdin,
             program_digest: Tip5::hash(&aet.program),
@@ -980,7 +968,7 @@ pub(crate) mod triton_stark_tests {
         let security_level = 32;
         let parameters = StarkParameters::new(security_level, log_expansion_factor);
         let max_degree =
-            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
 
         let mut master_base_table =
@@ -999,8 +987,8 @@ pub(crate) mod triton_stark_tests {
 
     pub fn parse_simulate_pad_extend(
         code: &str,
-        stdin: Vec<u64>,
-        secret_in: Vec<u64>,
+        stdin: Vec<BFieldElement>,
+        secret_in: Vec<BFieldElement>,
     ) -> (
         StarkParameters,
         Claim,
@@ -1012,8 +1000,7 @@ pub(crate) mod triton_stark_tests {
         let (parameters, claim, unpadded_master_base_table, master_base_table) =
             parse_simulate_pad(code, stdin, secret_in);
 
-        let dummy_challenges =
-            Challenges::placeholder(&claim.public_input(), &claim.public_output());
+        let dummy_challenges = Challenges::placeholder(&claim.input, &claim.output);
         let master_ext_table =
             master_base_table.extend(&dummy_challenges, parameters.num_randomizer_polynomials);
 
@@ -1140,15 +1127,15 @@ pub(crate) mod triton_stark_tests {
     #[test]
     pub fn check_io_terminals() {
         let read_nop_code = "read_io read_io read_io nop nop write_io push 17 write_io halt";
-        let input_symbols = vec![3, 5, 7];
+        let public_input = [3, 5, 7].map(BFieldElement::new).to_vec();
         let (_, claim, _, _, master_ext_table, all_challenges) =
-            parse_simulate_pad_extend(read_nop_code, input_symbols, vec![]);
+            parse_simulate_pad_extend(read_nop_code, public_input, vec![]);
 
         let processor_table = master_ext_table.table(ProcessorTable);
         let processor_table_last_row = processor_table.slice(s![-1, ..]);
         let ptie = processor_table_last_row[InputTableEvalArg.ext_table_index()];
         let ine = EvalArg::compute_terminal(
-            &claim.public_input(),
+            &claim.input,
             EvalArg::default_initial(),
             all_challenges.get_challenge(StandardInputIndeterminate),
         );
@@ -1156,7 +1143,7 @@ pub(crate) mod triton_stark_tests {
 
         let ptoe = processor_table_last_row[OutputTableEvalArg.ext_table_index()];
         let oute = EvalArg::compute_terminal(
-            &claim.public_output(),
+            &claim.output,
             EvalArg::default_initial(),
             all_challenges.get_challenge(StandardOutputIndeterminate),
         );
@@ -1170,11 +1157,12 @@ pub(crate) mod triton_stark_tests {
 
         for (code_idx, code_with_input) in code_collection.into_iter().enumerate() {
             println!("Checking Grand Cross-Table Argument for TASM snippet {code_idx}.");
-            let code = code_with_input.source_code;
-            let input = code_with_input.input;
-            let secret_input = code_with_input.secret_input.clone();
             let (_, _, _, master_base_table, master_ext_table, all_challenges) =
-                parse_simulate_pad_extend(&code, input, secret_input);
+                parse_simulate_pad_extend(
+                    &code_with_input.source_code,
+                    code_with_input.public_input(),
+                    code_with_input.secret_input(),
+                );
 
             let processor_table = master_ext_table.table(ProcessorTable);
             let processor_table_last_row = processor_table.slice(s![-1, ..]);
@@ -1719,8 +1707,8 @@ pub(crate) mod triton_stark_tests {
         let zero = XFieldElement::zero();
         let (_, _, _, master_base_table, master_ext_table, challenges) = parse_simulate_pad_extend(
             &source_code_and_input.source_code,
-            source_code_and_input.input,
-            source_code_and_input.secret_input,
+            source_code_and_input.public_input(),
+            source_code_and_input.secret_input(),
         );
 
         assert_eq!(
@@ -1847,8 +1835,8 @@ pub(crate) mod triton_stark_tests {
         let code_with_input = test_hash_nop_nop_lt();
         let (parameters, claim, proof) = parse_simulate_prove(
             &code_with_input.source_code,
-            code_with_input.input.clone(),
-            code_with_input.secret_input.clone(),
+            code_with_input.public_input(),
+            code_with_input.secret_input(),
             &mut None,
         );
 
@@ -1867,8 +1855,8 @@ pub(crate) mod triton_stark_tests {
         let mut profiler = Some(TritonProfiler::new("Prove Halt"));
         let (parameters, claim, proof) = parse_simulate_prove(
             &code_with_input.source_code,
-            code_with_input.input.clone(),
-            code_with_input.secret_input.clone(),
+            code_with_input.public_input(),
+            code_with_input.secret_input(),
             &mut profiler,
         );
         let mut profiler = profiler.unwrap();
@@ -1881,9 +1869,9 @@ pub(crate) mod triton_stark_tests {
         assert!(result.unwrap());
 
         let max_degree =
-            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
-        let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+        let report = profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
         println!("{report}");
     }
 
@@ -1895,8 +1883,8 @@ pub(crate) mod triton_stark_tests {
         for _ in 0..100 {
             let (parameters, claim, proof) = parse_simulate_prove(
                 &code_with_input.source_code,
-                code_with_input.input.clone(),
-                code_with_input.secret_input.clone(),
+                code_with_input.public_input(),
+                code_with_input.secret_input(),
                 &mut None,
             );
 
@@ -1918,8 +1906,8 @@ pub(crate) mod triton_stark_tests {
         let code_with_input = test_halt();
         let (parameters, claim, _) = parse_simulate_prove(
             &code_with_input.source_code,
-            code_with_input.input.clone(),
-            code_with_input.secret_input.clone(),
+            code_with_input.public_input(),
+            code_with_input.secret_input(),
             &mut None,
         );
 
@@ -1939,7 +1927,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn prove_verify_fibonacci_100_test() {
         let source_code = FIBONACCI_SEQUENCE;
-        let stdin = vec![100];
+        let stdin = [100].map(BFieldElement::new).to_vec();
         let secret_in = vec![];
 
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
@@ -1957,9 +1945,9 @@ pub(crate) mod triton_stark_tests {
         assert!(result.unwrap());
 
         let max_degree =
-            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
-        let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+        let report = profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
         println!("{report}");
     }
 
@@ -1968,7 +1956,7 @@ pub(crate) mod triton_stark_tests {
         let code = FIBONACCI_SEQUENCE;
 
         for (fib_seq_idx, fib_seq_val) in [(0, 1), (7, 21), (11, 144)] {
-            let stdin = vec![fib_seq_idx];
+            let stdin = [fib_seq_idx].map(BFieldElement::new).to_vec();
             let secret_in = vec![];
             let (parameters, claim, proof) =
                 parse_simulate_prove(code, stdin, secret_in, &mut None);
@@ -1977,7 +1965,7 @@ pub(crate) mod triton_stark_tests {
                 Err(err) => panic!("The Verifier is unhappy! {err}"),
             }
 
-            assert_eq!(vec![fib_seq_val], claim.output);
+            assert_eq!(vec![fib_seq_val], claim.public_output());
         }
     }
 
@@ -2002,9 +1990,9 @@ pub(crate) mod triton_stark_tests {
         assert!(result.unwrap());
 
         let max_degree =
-            Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
-        let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+        let report = profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
         println!("{report}");
     }
 
@@ -2014,7 +2002,7 @@ pub(crate) mod triton_stark_tests {
         let source_code = FIBONACCI_SEQUENCE;
 
         for fibonacci_number in [100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600, 51200] {
-            let stdin = vec![fibonacci_number];
+            let stdin = [fibonacci_number].map(BFieldElement::new).to_vec();
             let fib_test_name = format!("element #{fibonacci_number:>4} from Fibonacci sequence");
             let mut profiler = Some(TritonProfiler::new(&fib_test_name));
             let (parameters, claim, _) =
@@ -2023,9 +2011,10 @@ pub(crate) mod triton_stark_tests {
             profiler.finish();
 
             let max_degree =
-                Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+                Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
             let fri = Stark::derive_fri(&parameters, max_degree);
-            let report = profiler.report(None, Some(claim.padded_height), Some(fri.domain.length));
+            let report =
+                profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
             println!("{report}");
         }
     }

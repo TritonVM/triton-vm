@@ -2146,8 +2146,8 @@ pub mod triton_vm_tests {
         ";
         let program = Program::from_code(sample_weights_code).unwrap();
         println!("Successfully parsed the program.");
-        let input_symbols = vec![BFieldElement::new(11)];
-        let (aet, _out, err) = simulate(&program, input_symbols, vec![]);
+        let public_input = vec![BFieldElement::new(11)];
+        let (aet, _out, err) = simulate(&program, public_input, vec![]);
 
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");
@@ -2330,8 +2330,8 @@ pub mod triton_vm_tests {
 
         let program = Program::from_code(get_colinear_y_code).unwrap();
         println!("Successfully parsed the program.");
-        let input_symbols = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
-        let (aet, out, err) = simulate(&program, input_symbols, vec![]);
+        let public_input = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
+        let (aet, out, err) = simulate(&program, public_input, vec![]);
         assert_eq!(BFieldElement::new(4), out[0]);
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");

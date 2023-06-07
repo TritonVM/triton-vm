@@ -25,18 +25,12 @@ use crate::vm::AlgebraicExecutionTrace;
 
 pub fn parse_setup_simulate(
     code: &str,
-    input_symbols: Vec<u64>,
-    secret_input_symbols: Vec<u64>,
+    public_input: Vec<BFieldElement>,
+    secret_input: Vec<BFieldElement>,
     maybe_profiler: &mut Option<TritonProfiler>,
-) -> (AlgebraicExecutionTrace, Vec<u64>) {
+) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
     let program = Program::from_code(code);
-
     let program = program.expect("Program must parse.");
-    let public_input = input_symbols.into_iter().map(BFieldElement::new).collect();
-    let secret_input = secret_input_symbols
-        .into_iter()
-        .map(BFieldElement::new)
-        .collect();
 
     prof_start!(maybe_profiler, "simulate");
     let (aet, stdout, err) = simulate(&program, public_input, secret_input);
@@ -45,28 +39,24 @@ pub fn parse_setup_simulate(
     }
     prof_stop!(maybe_profiler, "simulate");
 
-    let stdout = stdout.into_iter().map(|e| e.value()).collect();
     (aet, stdout)
 }
 
 pub fn parse_simulate_prove(
     code: &str,
-    input_symbols: Vec<u64>,
-    secret_input_symbols: Vec<u64>,
+    public_input: Vec<BFieldElement>,
+    secret_input: Vec<BFieldElement>,
     maybe_profiler: &mut Option<TritonProfiler>,
 ) -> (StarkParameters, Claim, Proof) {
-    let (aet, output_symbols) = parse_setup_simulate(
-        code,
-        input_symbols.clone(),
-        secret_input_symbols,
-        maybe_profiler,
-    );
+    let (aet, public_output) =
+        parse_setup_simulate(code, public_input.clone(), secret_input, maybe_profiler);
 
     let padded_height = MasterBaseTable::padded_height(&aet);
+    let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
-        input: input_symbols,
+        input: public_input,
         program_digest: Tip5::hash(&aet.program),
-        output: output_symbols,
+        output: public_output,
         padded_height,
     };
     let log_expansion_factor = 2;

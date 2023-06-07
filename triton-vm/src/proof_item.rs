@@ -3,9 +3,7 @@ use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
-use twenty_first::shared_math::tip5::DIGEST_LENGTH;
 use twenty_first::shared_math::x_field_element::XFieldElement;
-use twenty_first::shared_math::x_field_element::EXTENSION_DEGREE;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
 use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
@@ -18,90 +16,8 @@ type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
 /// `XFieldElements` are the values of the leaves of the Merkle tree. They correspond to the
 /// queried index of the FRI codeword (of that round). The corresponding partial authentication
 /// paths are the paths from the queried leaf to the root of the Merkle tree.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, BFieldCodec)]
 pub struct FriResponse(pub Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>);
-
-impl BFieldCodec for FriResponse {
-    fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
-        let mut index = 0usize;
-        let mut vect: Vec<(PartialAuthenticationPath<Digest>, XFieldElement)> = vec![];
-        while index < str.len() {
-            // length
-            let len = match str.get(index) {
-                Some(bfe) => bfe.value() as usize,
-                None => {
-                    bail!(ProofStreamError::new(
-                        "invalid index counting in decode for FriResponse",
-                    ));
-                }
-            };
-            index += 1;
-
-            // mask
-            let mask = match str.get(index) {
-                Some(bfe) => bfe.value() as u32,
-                None => {
-                    bail!(ProofStreamError::new(
-                        "invalid mask decoding in decode for FriResponse",
-                    ));
-                }
-            };
-            index += 1;
-
-            // partial authentication path
-            let mut pap: Vec<Option<Digest>> = vec![];
-            for i in (0..len).rev() {
-                if mask & (1 << i) == 0 {
-                    pap.push(None);
-                } else if let Some(digest) = str.get(index..(index + DIGEST_LENGTH)) {
-                    pap.push(Some(*Digest::decode(digest)?));
-                    index += DIGEST_LENGTH;
-                } else {
-                    bail!(ProofStreamError::new(
-                        "length mismatch in decoding FRI response",
-                    ));
-                }
-            }
-
-            // x field element
-            let xfe = match str.get(index..(index + EXTENSION_DEGREE)) {
-                Some(substr) => *XFieldElement::decode(substr)?,
-                None => {
-                    bail!(ProofStreamError::new(
-                        "could not decode XFieldElement in decode for FriResponse",
-                    ));
-                }
-            };
-            index += EXTENSION_DEGREE;
-
-            // push to vector
-            vect.push((PartialAuthenticationPath(pap), xfe));
-        }
-        Ok(Box::new(FriResponse(vect)))
-    }
-
-    fn encode(&self) -> Vec<BFieldElement> {
-        let mut str = vec![];
-        for (partial_authentication_path, xfe) in self.0.iter() {
-            str.push(BFieldElement::new(
-                partial_authentication_path.0.len().try_into().unwrap(),
-            ));
-            let mut mask = 0u32;
-            for maybe_digest in partial_authentication_path.0.iter() {
-                mask <<= 1;
-                if maybe_digest.is_some() {
-                    mask |= 1;
-                }
-            }
-            str.push(BFieldElement::new(mask as u64));
-            for digest in partial_authentication_path.0.iter().flatten() {
-                str.append(&mut digest.encode())
-            }
-            str.append(&mut xfe.encode());
-        }
-        str
-    }
-}
 
 pub trait MayBeUncast {
     fn uncast(&self) -> Vec<BFieldElement>;
@@ -341,6 +257,10 @@ impl BFieldCodec for ProofItem {
         let head = BFieldElement::new(tail.len() as u64);
         tail.insert(0, head);
         tail
+    }
+
+    fn static_length() -> Option<usize> {
+        None
     }
 }
 
