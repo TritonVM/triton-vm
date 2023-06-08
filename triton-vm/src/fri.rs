@@ -83,13 +83,13 @@ impl<H: AlgebraicHasher> Fri<H> {
         merkle_tree: &MerkleTree<H>,
         proof_stream: &mut ProofStream<H>,
     ) {
-        let partial_authentication_paths = merkle_tree.get_authentication_structure(indices);
-        let revealed_values = indices.iter().map(|&i| codeword[i]).collect_vec();
-        let path_value_pairs = partial_authentication_paths
-            .into_iter()
-            .zip_eq(revealed_values)
-            .collect_vec();
-        let fri_response = ProofItem::FriResponse(FriResponse(path_value_pairs));
+        let auth_structure = merkle_tree.get_authentication_structure(indices);
+        let revealed_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
+        let fri_response = FriResponse {
+            auth_structure,
+            revealed_leaves,
+        };
+        let fri_response = ProofItem::FriResponse(fri_response);
         proof_stream.enqueue(&fri_response, false)
     }
 
@@ -104,19 +104,22 @@ impl<H: AlgebraicHasher> Fri<H> {
         proof_stream: &mut ProofStream<H>,
     ) -> Result<Vec<XFieldElement>> {
         let fri_response = proof_stream.dequeue(false)?.as_fri_response()?;
-        let FriResponse(dequeued_paths_and_leafs) = fri_response;
-        debug_assert_eq!(indices.len(), dequeued_paths_and_leafs.len());
-        let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
-        let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
+        let FriResponse {
+            auth_structure,
+            revealed_leaves,
+        } = fri_response;
+        debug_assert_eq!(indices.len(), auth_structure.len());
+        debug_assert_eq!(indices.len(), revealed_leaves.len());
+        let leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
 
         match MerkleTree::<H>::verify_authentication_structure_from_leaves(
             root,
             tree_height,
             indices,
             &leaf_digests,
-            &paths,
+            &auth_structure,
         ) {
-            true => Ok(leaf_values),
+            true => Ok(revealed_leaves),
             false => bail!(FriValidationError::BadMerkleAuthenticationPath),
         }
     }
@@ -696,8 +699,7 @@ mod triton_xfri_tests {
 
         fri.prove(&codeword, &mut prover_proof_stream);
 
-        let proof = prover_proof_stream.into();
-
+        let proof = (&prover_proof_stream).into();
         let mut verifier_proof_stream: ProofStream<H> = ProofStream::try_from(&proof).unwrap();
 
         assert_eq!(prover_proof_stream.len(), verifier_proof_stream.len());

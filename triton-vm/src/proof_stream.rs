@@ -274,16 +274,14 @@ mod proof_stream_typed_tests {
         let ood_ext_row = random_elements(rng.next_u64(), NUM_EXT_COLUMNS);
         let combination_elements = random_elements(rng.next_u64(), 5);
 
-        let revealed_elements = revealed_indices
+        let revealed_leaves = revealed_indices
             .iter()
             .map(|&idx| fri_codeword[idx])
             .collect_vec();
-        let fri_response = auth_structure
-            .clone()
-            .into_iter()
-            .zip(revealed_elements)
-            .collect_vec();
-        let fri_response = FriResponse(fri_response);
+        let fri_response = FriResponse {
+            auth_structure: auth_structure.clone(),
+            revealed_leaves,
+        };
 
         let mut sponge_states = VecDeque::new();
         let mut proof_stream = ProofStream::<H>::new();
@@ -431,13 +429,15 @@ mod proof_stream_typed_tests {
         let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
         let merkle_tree: MerkleTree<H> = CpuParallel::from_digests(&leaf_digests);
         let indices_to_check = vec![5, 173, 175, 167, 228, 140, 252, 149, 232, 182, 5, 5, 182];
-        let authentication_structure = merkle_tree.get_authentication_structure(&indices_to_check);
-        let fri_response_content = authentication_structure
-            .into_iter()
-            .zip_eq(indices_to_check.iter())
-            .map(|(path, &idx)| (path, leaf_values[idx]))
+        let auth_structure = merkle_tree.get_authentication_structure(&indices_to_check);
+        let revealed_leaves = indices_to_check
+            .iter()
+            .map(|&idx| leaf_values[idx])
             .collect_vec();
-        let fri_response = FriResponse(fri_response_content);
+        let fri_response = FriResponse {
+            auth_structure,
+            revealed_leaves,
+        };
 
         let mut proof_stream = ProofStream::<H>::new();
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response), false);
@@ -449,15 +449,17 @@ mod proof_stream_typed_tests {
             .unwrap()
             .as_fri_response()
             .unwrap();
-        let FriResponse(dequeued_paths_and_leafs) = maybe_same_fri_response;
-        let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
-        let maybe_same_leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
+        let FriResponse {
+            auth_structure,
+            revealed_leaves,
+        } = maybe_same_fri_response;
+        let maybe_same_leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
         let verdict = MerkleTree::<H>::verify_authentication_structure_from_leaves(
             merkle_tree.get_root(),
             tree_height,
             &indices_to_check,
             &maybe_same_leaf_digests,
-            &paths,
+            &auth_structure,
         );
         assert!(verdict);
     }

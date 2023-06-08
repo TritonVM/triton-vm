@@ -10,18 +10,22 @@ use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
 
-type AuthenticationStructure<Digest> = Vec<PartialAuthenticationPath<Digest>>;
+type AuthenticationStructure = Vec<PartialAuthenticationPath<Digest>>;
 
-/// A `FriResponse` is a vector of partial authentication paths and `XFieldElements`. The
-/// `XFieldElements` are the values of the leaves of the Merkle tree. They correspond to the
-/// queried index of the FRI codeword (of that round). The corresponding partial authentication
-/// paths are the paths from the queried leaf to the root of the Merkle tree.
+/// A `FriResponse` is an [`AuthenticationStructure`] together with the values of the
+/// revealed leaves of the Merkle tree. Together, they correspond to the
+/// queried indices of the FRI codeword (of that round).
 #[derive(Debug, Clone, PartialEq, Eq, BFieldCodec)]
-pub struct FriResponse(pub Vec<(PartialAuthenticationPath<Digest>, XFieldElement)>);
+pub struct FriResponse {
+    /// The authentication structure of the Merkle tree.
+    pub auth_structure: AuthenticationStructure,
+    /// The values of the opened leaves of the Merkle tree.
+    pub revealed_leaves: Vec<XFieldElement>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProofItem {
-    CompressedAuthenticationPaths(AuthenticationStructure<Digest>),
+    CompressedAuthenticationPaths(AuthenticationStructure),
     MasterBaseTableRows(Vec<Vec<BFieldElement>>),
     MasterExtTableRows(Vec<Vec<XFieldElement>>),
     OutOfDomainBaseRow(Vec<XFieldElement>),
@@ -52,7 +56,7 @@ impl ProofItem {
         BFieldElement::new(discriminant)
     }
 
-    pub fn as_compressed_authentication_paths(&self) -> Result<AuthenticationStructure<Digest>> {
+    pub fn as_compressed_authentication_paths(&self) -> Result<AuthenticationStructure> {
         match self {
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
             other => bail!(ProofStreamError::new(&format!(
@@ -240,13 +244,12 @@ mod proof_item_typed_tests {
         leaves: &[XFieldElement],
         revealed_indices: &[usize],
     ) -> FriResponse {
-        let revealed_elements = revealed_indices.iter().map(|&i| leaves[i]).collect_vec();
+        let revealed_leaves = revealed_indices.iter().map(|&i| leaves[i]).collect_vec();
         let auth_structure = merkle_tree.get_authentication_structure(revealed_indices);
-        let fri_response = auth_structure
-            .into_iter()
-            .zip(revealed_elements)
-            .collect_vec();
-        FriResponse(fri_response)
+        FriResponse {
+            auth_structure,
+            revealed_leaves,
+        }
     }
 
     #[test]
