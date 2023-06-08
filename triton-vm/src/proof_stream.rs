@@ -11,14 +11,14 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
 use crate::proof::Proof;
+use crate::proof_item::ProofItem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProofStream<Item, H>
+pub struct ProofStream<H>
 where
-    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
-    pub items: Vec<Item>,
+    pub items: Vec<ProofItem>,
     pub items_index: usize,
     pub sponge_state: H::SpongeState,
 }
@@ -45,9 +45,8 @@ impl Display for ProofStreamError {
 
 impl Error for ProofStreamError {}
 
-impl<Item, H> ProofStream<Item, H>
+impl<H> ProofStream<H>
 where
-    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     pub fn new() -> Self {
@@ -73,7 +72,7 @@ where
         b_field_elements.len()
     }
 
-    fn encode_and_pad_item(item: &Item) -> Vec<BFieldElement> {
+    fn encode_and_pad_item(item: &ProofItem) -> Vec<BFieldElement> {
         let encoding = item.encode();
         let last_chunk_len = (encoding.len() + 1) % H::RATE;
         let num_padding_zeros = match last_chunk_len {
@@ -96,7 +95,7 @@ where
     ///     in question was included (hashed) previously.
     /// - If the proof stream is not used to sample any more randomness, _i.e._, after the last
     ///     round of interaction, no further items need to be included.
-    pub fn enqueue(&mut self, item: &Item, include_in_fs_heuristic: bool) {
+    pub fn enqueue(&mut self, item: &ProofItem, include_in_fs_heuristic: bool) {
         if include_in_fs_heuristic {
             H::absorb_repeatedly(
                 &mut self.sponge_state,
@@ -108,7 +107,7 @@ where
 
     /// Receive a proof item from prover as verifier.
     /// See [`ProofStream::enqueue`] for more details.
-    pub fn dequeue(&mut self, include_in_fs_heuristic: bool) -> Result<Item> {
+    pub fn dequeue(&mut self, include_in_fs_heuristic: bool) -> Result<ProofItem> {
         let item = self
             .items
             .get(self.items_index)
@@ -143,9 +142,8 @@ where
     }
 }
 
-impl<Item, H> Default for ProofStream<Item, H>
+impl<H> Default for ProofStream<H>
 where
-    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     fn default() -> Self {
@@ -153,13 +151,12 @@ where
     }
 }
 
-impl<Item, H> BFieldCodec for ProofStream<Item, H>
+impl<H> BFieldCodec for ProofStream<H>
 where
-    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>> {
-        let items = *Vec::<Item>::decode(sequence)?;
+        let items = *Vec::<ProofItem>::decode(sequence)?;
         let proof_stream = ProofStream {
             items,
             items_index: 0,
@@ -177,9 +174,8 @@ where
     }
 }
 
-impl<Item, H> TryFrom<&Proof> for ProofStream<Item, H>
+impl<H> TryFrom<&Proof> for ProofStream<H>
 where
-    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
     type Error = anyhow::Error;
@@ -190,31 +186,35 @@ where
     }
 }
 
-impl<Item, H> From<&ProofStream<Item, H>> for Proof
+impl<H> From<&ProofStream<H>> for Proof
 where
-    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
-    fn from(proof_stream: &ProofStream<Item, H>) -> Self {
+    fn from(proof_stream: &ProofStream<H>) -> Self {
         Proof(proof_stream.encode())
     }
 }
 
-impl<Item, H> From<ProofStream<Item, H>> for Proof
+impl<H> From<ProofStream<H>> for Proof
 where
-    Item: Clone + BFieldCodec,
     H: AlgebraicHasher,
 {
-    fn from(proof_stream: ProofStream<Item, H>) -> Self {
+    fn from(proof_stream: ProofStream<H>) -> Self {
         (&proof_stream).into()
     }
 }
 
 #[cfg(test)]
 mod proof_stream_typed_tests {
-    use anyhow::bail;
     use itertools::Itertools;
-    use twenty_first::shared_math::b_field_element::BFieldElement;
+    use rand::distributions::Standard;
+    use rand::prelude::Distribution;
+    use rand::prelude::SeedableRng;
+    use rand::prelude::StdRng;
+    use rand::random;
+    use rand::Rng;
+    use rand_core::RngCore;
+    use std::collections::VecDeque;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
@@ -224,100 +224,201 @@ mod proof_stream_typed_tests {
 
     use crate::proof_item::FriResponse;
     use crate::proof_item::ProofItem;
+    use crate::table::master_table::NUM_BASE_COLUMNS;
+    use crate::table::master_table::NUM_EXT_COLUMNS;
 
     use super::*;
-
-    #[derive(Clone, Debug, PartialEq)]
-    enum TestItem {
-        ManyB(Vec<BFieldElement>),
-        ManyX(Vec<XFieldElement>),
-    }
-
-    impl TestItem {
-        /// The unique identifier for this item type.
-        pub fn discriminant(&self) -> BFieldElement {
-            use TestItem::*;
-            match self {
-                ManyB(_) => BFieldElement::new(0),
-                ManyX(_) => BFieldElement::new(1),
-            }
-        }
-    }
-
-    impl BFieldCodec for TestItem {
-        fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
-            if str.is_empty() {
-                bail!("trying to decode empty string into test item");
-            }
-
-            let discriminant = str[0].value();
-            let str = &str[1..];
-            let item = match discriminant {
-                0 => Self::ManyB(*Vec::<BFieldElement>::decode(str)?),
-                1 => Self::ManyX(*Vec::<XFieldElement>::decode(str)?),
-                i => bail!("Unknown discriminant ID {i}."),
-            };
-            Ok(Box::new(item))
-        }
-
-        fn encode(&self) -> Vec<BFieldElement> {
-            use TestItem::*;
-
-            let discriminant = vec![self.discriminant()];
-            let encoding = match self {
-                ManyB(bs) => bs.encode(),
-                ManyX(xs) => xs.encode(),
-            };
-            [discriminant, encoding].concat()
-        }
-
-        fn static_length() -> Option<usize> {
-            None
-        }
-    }
 
     #[test]
     fn test_serialize_proof_with_fiat_shamir() {
         type H = Tip5;
-        let mut proof_stream: ProofStream<_, H> = ProofStream::new();
-        let manyb1: Vec<BFieldElement> = random_elements(10);
-        let manyx: Vec<XFieldElement> = random_elements(13);
-        let manyb2: Vec<BFieldElement> = random_elements(11);
 
-        let fs1 = proof_stream.sponge_state.state;
-        proof_stream.enqueue(&TestItem::ManyB(manyb1.clone()), false);
-        let fs2 = proof_stream.sponge_state.state;
-        proof_stream.enqueue(&TestItem::ManyX(manyx.clone()), true);
-        let fs3 = proof_stream.sponge_state.state;
-        proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()), true);
-        let fs4 = proof_stream.sponge_state.state;
+        fn random_elements<T>(seed: u64, n: usize) -> Vec<T>
+        where
+            Standard: Distribution<T>,
+        {
+            let rng = StdRng::seed_from_u64(seed);
+            rng.sample_iter(Standard).take(n).collect()
+        }
+
+        let seed = random();
+        let mut rng = StdRng::seed_from_u64(seed);
+        println!("seed: {seed}");
+
+        let base_rows = vec![
+            random_elements(rng.next_u64(), NUM_BASE_COLUMNS),
+            random_elements(rng.next_u64(), NUM_BASE_COLUMNS),
+        ];
+        let ext_rows = vec![
+            random_elements(rng.next_u64(), NUM_EXT_COLUMNS),
+            random_elements(rng.next_u64(), NUM_EXT_COLUMNS),
+        ];
+
+        let codeword_len = 32;
+        let fri_codeword: Vec<XFieldElement> = random_elements(rng.next_u64(), codeword_len);
+        let fri_codeword_digests = fri_codeword.iter().map(|&x| x.into()).collect_vec();
+        let merkle_tree: MerkleTree<H> = CpuParallel::from_digests(&fri_codeword_digests);
+        let root = merkle_tree.get_root();
+
+        let revealed_index = rng.gen_range(0..codeword_len);
+        let auth_path = merkle_tree.get_authentication_path(revealed_index);
+
+        let num_revealed_indices = rng.gen_range(1..=codeword_len);
+        let revealed_indices = random_elements(rng.next_u64(), num_revealed_indices)
+            .into_iter()
+            .map(|idx: usize| idx % codeword_len)
+            .collect_vec();
+        let auth_structure = merkle_tree.get_authentication_structure(&revealed_indices);
+
+        let ood_base_row = random_elements(rng.next_u64(), NUM_BASE_COLUMNS);
+        let ood_ext_row = random_elements(rng.next_u64(), NUM_EXT_COLUMNS);
+        let combination_elements = random_elements(rng.next_u64(), 5);
+
+        let revealed_elements = revealed_indices
+            .iter()
+            .map(|&idx| fri_codeword[idx])
+            .collect_vec();
+        let fri_response = auth_structure
+            .clone()
+            .into_iter()
+            .zip(revealed_elements)
+            .collect_vec();
+        let fri_response = FriResponse(fri_response);
+
+        let mut sponge_states = VecDeque::new();
+        let mut proof_stream = ProofStream::<H>::new();
+
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(
+            &ProofItem::CompressedAuthenticationPaths(auth_structure.clone()),
+            false,
+        );
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::MasterBaseTableRows(base_rows.clone()), false);
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::MasterExtTableRows(ext_rows.clone()), true);
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(ood_base_row.clone()), true);
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(ood_ext_row.clone()), true);
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::MerkleRoot(root), true);
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::AuthenticationPath(auth_path.clone()), true);
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(
+            &ProofItem::RevealedCombinationElements(combination_elements.clone()),
+            true,
+        );
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()), true);
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()), true);
+        sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
-
-        let mut proof_stream: ProofStream<TestItem, H> =
+        let mut proof_stream: ProofStream<H> =
             ProofStream::try_from(&proof).expect("invalid parsing of proof");
 
-        let fs1_ = proof_stream.sponge_state.state;
-        match proof_stream.dequeue(false).expect("can't dequeue item") {
-            TestItem::ManyB(manyb1_) => assert_eq!(manyb1, manyb1_),
-            TestItem::ManyX(_) => panic!(),
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(false).unwrap() {
+            ProofItem::CompressedAuthenticationPaths(auth_structure_) => {
+                assert_eq!(auth_structure, auth_structure_)
+            }
+            _ => panic!(),
         };
-        let fs2_ = proof_stream.sponge_state.state;
-        match proof_stream.dequeue(true).expect("can't dequeue item") {
-            TestItem::ManyB(_) => panic!(),
-            TestItem::ManyX(manyx_) => assert_eq!(manyx, manyx_),
-        };
-        let fs3_ = proof_stream.sponge_state.state;
-        match proof_stream.dequeue(true).expect("can't dequeue item") {
-            TestItem::ManyB(manyb2_) => assert_eq!(manyb2, manyb2_),
-            TestItem::ManyX(_) => panic!(),
-        };
-        let fs4_ = proof_stream.sponge_state.state;
 
-        assert_eq!(fs1, fs1_);
-        assert_eq!(fs2, fs2_);
-        assert_eq!(fs3, fs3_);
-        assert_eq!(fs4, fs4_);
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(false).unwrap() {
+            ProofItem::MasterBaseTableRows(base_rows_) => assert_eq!(base_rows, base_rows_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::MasterExtTableRows(ext_rows_) => assert_eq!(ext_rows, ext_rows_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::OutOfDomainBaseRow(ood_base_row_) => assert_eq!(ood_base_row, ood_base_row_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::OutOfDomainExtRow(ood_ext_row_) => assert_eq!(ood_ext_row, ood_ext_row_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::MerkleRoot(root_) => assert_eq!(root, root_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::AuthenticationPath(auth_path_) => assert_eq!(auth_path, auth_path_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::RevealedCombinationElements(combination_elements_) => {
+                assert_eq!(combination_elements, combination_elements_)
+            }
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::FriCodeword(fri_codeword_) => assert_eq!(fri_codeword, fri_codeword_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue(true).unwrap() {
+            ProofItem::FriResponse(fri_response_) => assert_eq!(fri_response, fri_response_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        assert_eq!(sponge_states.len(), 0);
     }
 
     #[test]
@@ -338,7 +439,7 @@ mod proof_stream_typed_tests {
             .collect_vec();
         let fri_response = FriResponse(fri_response_content);
 
-        let mut proof_stream = ProofStream::<ProofItem, H>::new();
+        let mut proof_stream = ProofStream::<H>::new();
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response), false);
 
         // TODO: Also check that deserializing from Proof works here.

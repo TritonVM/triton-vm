@@ -47,7 +47,7 @@ use crate::vm::AlgebraicExecutionTrace;
 
 pub type StarkHasher = Tip5;
 pub type MTMaker = CpuParallel;
-pub type StarkProofStream = ProofStream<ProofItem, StarkHasher>;
+pub type StarkProofStream = ProofStream<StarkHasher>;
 
 /// All the security-related parameters for the zk-STARK.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]

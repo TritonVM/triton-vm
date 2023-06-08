@@ -81,7 +81,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         indices: &[usize],
         codeword: &[XFieldElement],
         merkle_tree: &MerkleTree<H>,
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) {
         let partial_authentication_paths = merkle_tree.get_authentication_structure(indices);
         let revealed_values = indices.iter().map(|&i| codeword[i]).collect_vec();
@@ -101,7 +101,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         root: Digest,
         tree_height: usize,
         indices: &[usize],
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) -> Result<Vec<XFieldElement>> {
         let fri_response = proof_stream.dequeue(false)?.as_fri_response()?;
         let FriResponse(dequeued_paths_and_leafs) = fri_response;
@@ -125,7 +125,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) -> (Vec<usize>, Digest) {
         debug_assert_eq!(
             self.domain.length,
@@ -178,7 +178,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     fn commit(
         &self,
         codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) -> Vec<(Vec<XFieldElement>, MerkleTree<H>)> {
         let one = XFieldElement::one();
         let two_inv = one / (one + one);
@@ -248,7 +248,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     /// Returns the indices and revealed elements of the codeword at the top level of the FRI proof.
     pub fn verify(
         &self,
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<Vec<(usize, XFieldElement)>> {
         prof_start!(maybe_profiler, "init");
@@ -698,8 +698,7 @@ mod triton_xfri_tests {
 
         let proof = prover_proof_stream.into();
 
-        let mut verifier_proof_stream: ProofStream<ProofItem, H> =
-            ProofStream::try_from(&proof).unwrap();
+        let mut verifier_proof_stream: ProofStream<H> = ProofStream::try_from(&proof).unwrap();
 
         assert_eq!(prover_proof_stream.len(), verifier_proof_stream.len());
         for (prover_item, verifier_item) in prover_proof_stream

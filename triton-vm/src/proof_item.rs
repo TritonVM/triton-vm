@@ -207,135 +207,72 @@ impl BFieldCodec for ProofItem {
 #[cfg(test)]
 mod proof_item_typed_tests {
     use itertools::Itertools;
-    use rand::thread_rng;
+    use rand::distributions::Standard;
+    use rand::prelude::StdRng;
+    use rand::random;
     use rand::Rng;
+    use rand_core::RngCore;
+    use rand_core::SeedableRng;
     use twenty_first::shared_math::tip5::Tip5;
     use twenty_first::shared_math::x_field_element::XFieldElement;
+    use twenty_first::util_types::merkle_tree::CpuParallel;
+    use twenty_first::util_types::merkle_tree::MerkleTree;
+    use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
+    use crate::proof::Proof;
     use crate::proof_stream::ProofStream;
 
     use super::*;
 
-    fn random_bool() -> bool {
-        thread_rng().gen()
+    fn random_merkle_tree(seed: u64, num_leaves: usize) -> (MerkleTree<Tip5>, Vec<XFieldElement>) {
+        let rng = StdRng::seed_from_u64(seed);
+        let leaves: Vec<XFieldElement> = rng.sample_iter(Standard).take(num_leaves).collect();
+        let leaves_as_digests: Vec<Digest> = leaves.iter().map(|&x| x.into()).collect();
+        (CpuParallel::from_digests(&leaves_as_digests), leaves)
     }
 
-    fn random_x_field_element() -> XFieldElement {
-        thread_rng().gen()
-    }
-
-    fn random_digest() -> Digest {
-        thread_rng().gen()
-    }
-
-    fn random_fri_response() -> FriResponse {
-        FriResponse(
-            (0..18)
-                .map(|r| {
-                    (
-                        PartialAuthenticationPath(
-                            (0..(20 - r))
-                                .map(|_| {
-                                    if random_bool() {
-                                        Some(random_digest())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect_vec(),
-                        ),
-                        random_x_field_element(),
-                    )
-                })
-                .collect_vec(),
-        )
+    fn fri_response(
+        merkle_tree: &MerkleTree<Tip5>,
+        leaves: &[XFieldElement],
+        revealed_indices: &[usize],
+    ) -> FriResponse {
+        let revealed_elements = revealed_indices.iter().map(|&i| leaves[i]).collect_vec();
+        let auth_structure = merkle_tree.get_authentication_structure(revealed_indices);
+        let fri_response = auth_structure
+            .into_iter()
+            .zip(revealed_elements)
+            .collect_vec();
+        FriResponse(fri_response)
     }
 
     #[test]
     fn serialize_fri_response_test() {
-        let fri_response = random_fri_response();
-        let str = fri_response.encode();
-        let fri_response_ = *FriResponse::decode(&str).unwrap();
-        assert_eq!(fri_response, fri_response_);
-    }
-
-    #[test]
-    fn test_serialize_stark_proof_with_fiat_shamir() {
         type H = Tip5;
-        let mut proof_stream: ProofStream<_, H> = ProofStream::new();
-        let map = (0..7).map(|_| random_digest()).collect_vec();
-        let auth_struct = (0..8)
-            .map(|_| {
-                PartialAuthenticationPath(
-                    (0..11)
-                        .map(|_| {
-                            if random_bool() {
-                                Some(random_digest())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect_vec(),
-                )
-            })
+
+        let seed = random();
+        let mut rng = StdRng::seed_from_u64(seed);
+        println!("seed: {seed}");
+
+        let codeword_len = 64;
+        let (merkle_tree, leaves) = random_merkle_tree(rng.next_u64(), codeword_len);
+        let num_indices = rng.gen_range(1..=codeword_len);
+        let revealed_indices = (0..num_indices)
+            .map(|_| rng.gen_range(0..codeword_len))
             .collect_vec();
-        let root = random_digest();
-        let fri_response = random_fri_response();
+        let fri_response = fri_response(&merkle_tree, &leaves, &revealed_indices);
 
-        let mut fs = vec![];
-        fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::AuthenticationPath(map.clone()), false);
-        fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(
-            &ProofItem::CompressedAuthenticationPaths(auth_struct.clone()),
-            false,
-        );
-        fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(root), true);
-        fs.push(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()), false);
-        fs.push(proof_stream.sponge_state.state);
-
-        let proof = proof_stream.into();
-
-        let mut proof_stream_ =
-            ProofStream::<ProofItem, H>::try_from(&proof).expect("invalid parsing of proof");
-
-        let mut fs_ = vec![];
-        fs_.push(proof_stream_.sponge_state.state);
-
-        let map_ = proof_stream_
-            .dequeue(false)
-            .expect("can't dequeue item")
-            .as_authentication_path()
-            .expect("cannot parse dequeued item");
-        assert_eq!(map, map_);
-        fs_.push(proof_stream_.sponge_state.state);
-
-        let auth_struct_ = proof_stream_
-            .dequeue(false)
-            .expect("can't dequeue item")
-            .as_compressed_authentication_paths()
-            .expect("cannot parse dequeued item");
-        assert_eq!(auth_struct, auth_struct_);
-        fs_.push(proof_stream_.sponge_state.state);
-
-        let root_ = proof_stream_
-            .dequeue(true)
-            .expect("can't dequeue item")
-            .as_merkle_root()
-            .expect("cannot parse dequeued item");
-        assert_eq!(root, root_);
-        fs_.push(proof_stream_.sponge_state.state);
-
-        let fri_response_ = proof_stream_
-            .dequeue(false)
-            .expect("can't dequeue item")
-            .as_fri_response()
-            .expect("cannot parse dequeued item");
+        // test encoding and decoding in isolation
+        let encoding = fri_response.encode();
+        let fri_response_ = *FriResponse::decode(&encoding).unwrap();
         assert_eq!(fri_response, fri_response_);
-        fs_.push(proof_stream_.sponge_state.state);
 
-        assert_eq!(fs, fs_);
+        // test encoding and decoding in a stream
+        let mut proof_stream = ProofStream::<H>::new();
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()), false);
+        let proof: Proof = proof_stream.into();
+        let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
+        let fri_response_ = proof_stream.dequeue(false).unwrap();
+        let fri_response_ = fri_response_.as_fri_response().unwrap();
+        assert_eq!(fri_response, fri_response_);
     }
 }
