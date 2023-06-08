@@ -296,10 +296,10 @@ mod proof_item_typed_tests {
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()), false);
         fs.push(proof_stream.sponge_state.state);
 
-        let proof = proof_stream.to_proof();
+        let proof = proof_stream.into();
 
         let mut proof_stream_ =
-            ProofStream::<ProofItem, H>::from_proof(&proof).expect("invalid parsing of proof");
+            ProofStream::<ProofItem, H>::try_from(&proof).expect("invalid parsing of proof");
 
         let mut fs_ = vec![];
         fs_.push(proof_stream_.sponge_state.state);

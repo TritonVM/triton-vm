@@ -69,19 +69,8 @@ where
 
     /// The number of field elements required to encode the proof.
     pub fn transcript_length(&self) -> usize {
-        let Proof(b_field_elements) = self.to_proof();
+        let Proof(b_field_elements) = self.into();
         b_field_elements.len()
-    }
-
-    /// Convert the proof stream, _i.e._, the transcript, into a Proof.
-    pub fn to_proof(&self) -> Proof {
-        Proof(self.encode())
-    }
-
-    /// Convert the proof into a proof stream for the verifier.
-    pub fn from_proof(proof: &Proof) -> Result<Self> {
-        let proof_stream = *ProofStream::decode(&proof.0)?;
-        Ok(proof_stream)
     }
 
     fn encode_and_pad_item(item: &Item) -> Vec<BFieldElement> {
@@ -188,6 +177,39 @@ where
     }
 }
 
+impl<Item, H> TryFrom<&Proof> for ProofStream<Item, H>
+where
+    Item: Clone + BFieldCodec,
+    H: AlgebraicHasher,
+{
+    type Error = anyhow::Error;
+
+    fn try_from(proof: &Proof) -> Result<Self> {
+        let proof_stream = *ProofStream::decode(&proof.0)?;
+        Ok(proof_stream)
+    }
+}
+
+impl<Item, H> From<&ProofStream<Item, H>> for Proof
+where
+    Item: Clone + BFieldCodec,
+    H: AlgebraicHasher,
+{
+    fn from(proof_stream: &ProofStream<Item, H>) -> Self {
+        Proof(proof_stream.encode())
+    }
+}
+
+impl<Item, H> From<ProofStream<Item, H>> for Proof
+where
+    Item: Clone + BFieldCodec,
+    H: AlgebraicHasher,
+{
+    fn from(proof_stream: ProofStream<Item, H>) -> Self {
+        (&proof_stream).into()
+    }
+}
+
 #[cfg(test)]
 mod proof_stream_typed_tests {
     use anyhow::bail;
@@ -270,10 +292,10 @@ mod proof_stream_typed_tests {
         proof_stream.enqueue(&TestItem::ManyB(manyb2.clone()), true);
         let fs4 = proof_stream.sponge_state.state;
 
-        let proof = proof_stream.to_proof();
+        let proof = proof_stream.into();
 
         let mut proof_stream: ProofStream<TestItem, H> =
-            ProofStream::from_proof(&proof).expect("invalid parsing of proof");
+            ProofStream::try_from(&proof).expect("invalid parsing of proof");
 
         let fs1_ = proof_stream.sponge_state.state;
         match proof_stream.dequeue(false).expect("can't dequeue item") {

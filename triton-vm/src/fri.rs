@@ -696,10 +696,10 @@ mod triton_xfri_tests {
 
         fri.prove(&codeword, &mut prover_proof_stream);
 
-        let proof = prover_proof_stream.to_proof();
+        let proof = prover_proof_stream.into();
 
         let mut verifier_proof_stream: ProofStream<ProofItem, H> =
-            ProofStream::from_proof(&proof).unwrap();
+            ProofStream::try_from(&proof).unwrap();
 
         assert_eq!(prover_proof_stream.len(), verifier_proof_stream.len());
         for (prover_item, verifier_item) in prover_proof_stream

@@ -469,7 +469,7 @@ impl Stark {
             println!("Created proof containing {transcript_length} B-field elements ({kib} kiB).");
         }
 
-        proof_stream.to_proof()
+        proof_stream.into()
     }
 
     /// Compute the upper bound to use for the maximum degree the quotients given the length of the
@@ -577,7 +577,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "derive additional parameters");
 
         prof_start!(maybe_profiler, "deserialize");
-        let mut proof_stream = StarkProofStream::from_proof(proof)?;
+        let mut proof_stream = StarkProofStream::try_from(proof)?;
         prof_stop!(maybe_profiler, "deserialize");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
