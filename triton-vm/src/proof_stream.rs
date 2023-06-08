@@ -89,14 +89,16 @@ where
 
     /// Send a proof item as prover to verifier.
     /// Some items do not need to be included in the Fiat-Shamir heuristic, _i.e._, they do not
-    /// need to modify the sponge state. For those items, `include_in_fs_heuristic` should be set
-    /// to `false`. For example:
+    /// need to modify the sponge state. For those items, namely those that evaluate to `false`
+    /// according to [`ProofItem::include_in_fiat_shamir_heuristic`], the sponge state is not
+    /// modified.
+    /// For example:
     /// - Merkle authentication paths do not need to be included (hashed) if the root of the tree
     ///     in question was included (hashed) previously.
     /// - If the proof stream is not used to sample any more randomness, _i.e._, after the last
     ///     round of interaction, no further items need to be included.
-    pub fn enqueue(&mut self, item: &ProofItem, include_in_fs_heuristic: bool) {
-        if include_in_fs_heuristic {
+    pub fn enqueue(&mut self, item: &ProofItem) {
+        if item.include_in_fiat_shamir_heuristic() {
             H::absorb_repeatedly(
                 &mut self.sponge_state,
                 Self::encode_and_pad_item(item).iter(),
@@ -107,12 +109,12 @@ where
 
     /// Receive a proof item from prover as verifier.
     /// See [`ProofStream::enqueue`] for more details.
-    pub fn dequeue(&mut self, include_in_fs_heuristic: bool) -> Result<ProofItem> {
+    pub fn dequeue(&mut self) -> Result<ProofItem> {
         let item = self
             .items
             .get(self.items_index)
             .ok_or_else(|| ProofStreamError::new("Could not dequeue, queue empty"))?;
-        if include_in_fs_heuristic {
+        if item.include_in_fiat_shamir_heuristic() {
             H::absorb_repeatedly(
                 &mut self.sponge_state,
                 Self::encode_and_pad_item(item).iter(),
@@ -287,31 +289,29 @@ mod proof_stream_typed_tests {
         let mut proof_stream = ProofStream::<H>::new();
 
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(
-            &ProofItem::CompressedAuthenticationPaths(auth_structure.clone()),
-            false,
-        );
+        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
+            auth_structure.clone(),
+        ));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MasterBaseTableRows(base_rows.clone()), false);
+        proof_stream.enqueue(&ProofItem::MasterBaseTableRows(base_rows.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MasterExtTableRows(ext_rows.clone()), true);
+        proof_stream.enqueue(&ProofItem::MasterExtTableRows(ext_rows.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(ood_base_row.clone()), true);
+        proof_stream.enqueue(&ProofItem::OutOfDomainBaseRow(ood_base_row.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(ood_ext_row.clone()), true);
+        proof_stream.enqueue(&ProofItem::OutOfDomainExtRow(ood_ext_row.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(root), true);
+        proof_stream.enqueue(&ProofItem::MerkleRoot(root));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::AuthenticationPath(auth_path.clone()), true);
+        proof_stream.enqueue(&ProofItem::AuthenticationPath(auth_path.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(
-            &ProofItem::RevealedCombinationElements(combination_elements.clone()),
-            true,
-        );
+        proof_stream.enqueue(&ProofItem::RevealedCombinationElements(
+            combination_elements.clone(),
+        ));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()), true);
+        proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()), true);
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
@@ -322,7 +322,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(false).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::CompressedAuthenticationPaths(auth_structure_) => {
                 assert_eq!(auth_structure, auth_structure_)
             }
@@ -333,7 +333,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(false).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::MasterBaseTableRows(base_rows_) => assert_eq!(base_rows, base_rows_),
             _ => panic!(),
         };
@@ -342,7 +342,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::MasterExtTableRows(ext_rows_) => assert_eq!(ext_rows, ext_rows_),
             _ => panic!(),
         };
@@ -351,7 +351,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::OutOfDomainBaseRow(ood_base_row_) => assert_eq!(ood_base_row, ood_base_row_),
             _ => panic!(),
         };
@@ -360,7 +360,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::OutOfDomainExtRow(ood_ext_row_) => assert_eq!(ood_ext_row, ood_ext_row_),
             _ => panic!(),
         };
@@ -369,7 +369,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::MerkleRoot(root_) => assert_eq!(root, root_),
             _ => panic!(),
         };
@@ -378,7 +378,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::AuthenticationPath(auth_path_) => assert_eq!(auth_path, auth_path_),
             _ => panic!(),
         };
@@ -387,7 +387,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::RevealedCombinationElements(combination_elements_) => {
                 assert_eq!(combination_elements, combination_elements_)
             }
@@ -398,7 +398,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::FriCodeword(fri_codeword_) => assert_eq!(fri_codeword, fri_codeword_),
             _ => panic!(),
         };
@@ -407,7 +407,7 @@ mod proof_stream_typed_tests {
             sponge_states.pop_front(),
             Some(proof_stream.sponge_state.state)
         );
-        match proof_stream.dequeue(true).unwrap() {
+        match proof_stream.dequeue().unwrap() {
             ProofItem::FriResponse(fri_response_) => assert_eq!(fri_response, fri_response_),
             _ => panic!(),
         };
@@ -440,15 +440,11 @@ mod proof_stream_typed_tests {
         };
 
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response), false);
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response));
 
         // TODO: Also check that deserializing from Proof works here.
 
-        let maybe_same_fri_response = proof_stream
-            .dequeue(false)
-            .unwrap()
-            .as_fri_response()
-            .unwrap();
+        let maybe_same_fri_response = proof_stream.dequeue().unwrap().as_fri_response().unwrap();
         let FriResponse {
             auth_structure,
             revealed_leaves,

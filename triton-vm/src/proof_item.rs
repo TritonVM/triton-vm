@@ -56,6 +56,31 @@ impl ProofItem {
         BFieldElement::new(discriminant)
     }
 
+    /// Whether a given proof item should be considered in the Fiat-Shamir heuristic.
+    /// The Fiat-Shamir heuristic is sound only if all elements in the (current) transcript are
+    /// considered. However, certain elements indirectly appear more than once. For example, a
+    /// Merkle root is a commitment to any number of elements. If the Merkle root is part of the
+    /// transcript, has been considered in the Fiat-Shamir heuristic, and assuming collision
+    /// resistance of the hash function in use, none of the committed-to elements have to be
+    /// considered in the Fiat-Shamir heuristic again.
+    /// This also extends to the authentication paths of these elements, et cetera.
+    pub const fn include_in_fiat_shamir_heuristic(&self) -> bool {
+        use ProofItem::*;
+        match self {
+            MerkleRoot(_) => true,
+            OutOfDomainBaseRow(_) => true,
+            OutOfDomainExtRow(_) => true,
+            // all of the following are implied by a corresponding Merkle root
+            AuthenticationPath(_) => false,
+            CompressedAuthenticationPaths(_) => false,
+            MasterBaseTableRows(_) => false,
+            MasterExtTableRows(_) => false,
+            RevealedCombinationElements(_) => false,
+            FriCodeword(_) => false,
+            FriResponse(_) => false,
+        }
+    }
+
     pub fn as_compressed_authentication_paths(&self) -> Result<AuthenticationStructure> {
         match self {
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
@@ -275,10 +300,10 @@ mod proof_item_typed_tests {
 
         // test encoding and decoding in a stream
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()), false);
+        proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
         let proof: Proof = proof_stream.into();
         let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
-        let fri_response_ = proof_stream.dequeue(false).unwrap();
+        let fri_response_ = proof_stream.dequeue().unwrap();
         let fri_response_ = fri_response_.as_fri_response().unwrap();
         assert_eq!(fri_response, fri_response_);
     }
@@ -306,13 +331,12 @@ mod proof_item_typed_tests {
 
         // test encoding and decoding in a stream
         let mut proof_stream = ProofStream::<H>::new();
-        proof_stream.enqueue(
-            &ProofItem::CompressedAuthenticationPaths(auth_structure.clone()),
-            false,
-        );
+        proof_stream.enqueue(&ProofItem::CompressedAuthenticationPaths(
+            auth_structure.clone(),
+        ));
         let proof: Proof = proof_stream.into();
         let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
-        let auth_structure_ = proof_stream.dequeue(false).unwrap();
+        let auth_structure_ = proof_stream.dequeue().unwrap();
         let auth_structure_ = auth_structure_
             .as_compressed_authentication_paths()
             .unwrap();
