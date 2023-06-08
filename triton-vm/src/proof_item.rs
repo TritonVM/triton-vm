@@ -224,6 +224,8 @@ mod proof_item_typed_tests {
 
     use super::*;
 
+    /// Pseudo-randomly generates an indicated number of leaves,
+    /// the corresponding Merkle tree, and returns both.
     fn random_merkle_tree(seed: u64, num_leaves: usize) -> (MerkleTree<Tip5>, Vec<XFieldElement>) {
         let rng = StdRng::seed_from_u64(seed);
         let leaves: Vec<XFieldElement> = rng.sample_iter(Standard).take(num_leaves).collect();
@@ -231,6 +233,8 @@ mod proof_item_typed_tests {
         (CpuParallel::from_digests(&leaves_as_digests), leaves)
     }
 
+    /// Given a Merkle tree and a set of leaves,
+    /// return a FRI response for the given revealed indices.
     fn fri_response(
         merkle_tree: &MerkleTree<Tip5>,
         leaves: &[XFieldElement],
@@ -274,5 +278,41 @@ mod proof_item_typed_tests {
         let fri_response_ = proof_stream.dequeue(false).unwrap();
         let fri_response_ = fri_response_.as_fri_response().unwrap();
         assert_eq!(fri_response, fri_response_);
+    }
+
+    #[test]
+    fn serialize_compressed_authentication_paths_test() {
+        type H = Tip5;
+
+        let seed = random();
+        let mut rng = StdRng::seed_from_u64(seed);
+        println!("seed: {seed}");
+
+        let codeword_len = 64;
+        let (merkle_tree, _) = random_merkle_tree(rng.next_u64(), codeword_len);
+        let num_indices = rng.gen_range(1..=codeword_len);
+        let revealed_indices = (0..num_indices)
+            .map(|_| rng.gen_range(0..codeword_len))
+            .collect_vec();
+        let auth_structure = merkle_tree.get_authentication_structure(&revealed_indices);
+
+        // test encoding and decoding in isolation
+        let encoding = auth_structure.encode();
+        let auth_structure_ = *AuthenticationStructure::decode(&encoding).unwrap();
+        assert_eq!(auth_structure, auth_structure_);
+
+        // test encoding and decoding in a stream
+        let mut proof_stream = ProofStream::<H>::new();
+        proof_stream.enqueue(
+            &ProofItem::CompressedAuthenticationPaths(auth_structure.clone()),
+            false,
+        );
+        let proof: Proof = proof_stream.into();
+        let mut proof_stream = ProofStream::<H>::try_from(&proof).unwrap();
+        let auth_structure_ = proof_stream.dequeue(false).unwrap();
+        let auth_structure_ = auth_structure_
+            .as_compressed_authentication_paths()
+            .unwrap();
+        assert_eq!(auth_structure, auth_structure_);
     }
 }
