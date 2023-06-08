@@ -1,9 +1,7 @@
 use std::error::Error;
 use std::fmt::Display;
 
-use anyhow::bail;
 use anyhow::Result;
-use itertools::Itertools;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
@@ -77,35 +75,13 @@ where
 
     /// Convert the proof stream, _i.e._, the transcript, into a Proof.
     pub fn to_proof(&self) -> Proof {
-        let encoded_items = self.items.iter().map(|item| item.encode()).collect_vec();
-        let complete_encoding = encoded_items.concat();
-        Proof(complete_encoding)
+        Proof(self.encode())
     }
 
     /// Convert the proof into a proof stream for the verifier.
     pub fn from_proof(proof: &Proof) -> Result<Self> {
-        let proof_len = proof.0.len();
-        let mut index = 0;
-        let mut items = vec![];
-        while index < proof.0.len() {
-            let next_item_len = proof.0[index].value() as usize;
-            let next_index = index + 1 + next_item_len;
-            if proof_len < next_index {
-                bail!(ProofStreamError::new(&format!(
-                    "failed to decode proof; wrong length: \
-                    have {proof_len} but expected {next_index}"
-                )));
-            }
-            let str = &proof.0[index..next_index];
-            let item = Item::decode(str)?;
-            items.push(*item);
-            index = next_index;
-        }
-        Ok(ProofStream {
-            items,
-            items_index: 0,
-            sponge_state: H::init(),
-        })
+        let proof_stream = *ProofStream::decode(&proof.0)?;
+        Ok(proof_stream)
     }
 
     fn encode_and_pad_item(item: &Item) -> Vec<BFieldElement> {
@@ -188,8 +164,33 @@ where
     }
 }
 
+impl<Item, H> BFieldCodec for ProofStream<Item, H>
+where
+    Item: Clone + BFieldCodec,
+    H: AlgebraicHasher,
+{
+    fn decode(sequence: &[BFieldElement]) -> Result<Box<Self>> {
+        let items = *Vec::<Item>::decode(sequence)?;
+        let proof_stream = ProofStream {
+            items,
+            items_index: 0,
+            sponge_state: H::init(),
+        };
+        Ok(Box::new(proof_stream))
+    }
+
+    fn encode(&self) -> Vec<BFieldElement> {
+        self.items.encode()
+    }
+
+    fn static_length() -> Option<usize> {
+        None
+    }
+}
+
 #[cfg(test)]
 mod proof_stream_typed_tests {
+    use anyhow::bail;
     use itertools::Itertools;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::other::random_elements;
