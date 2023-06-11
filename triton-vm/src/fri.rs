@@ -10,7 +10,6 @@ use rayon::iter::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::ntt::intt;
 use twenty_first::shared_math::other::log_2_ceil;
-use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::traits::CyclicGroupGenerator;
@@ -296,7 +295,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // Compute interpolant to get the degree of the last codeword.
         // Note that we don't have to scale the polynomial back to the trace subgroup since we
         // only check its degree and don't use it further.
-        let log_2_of_n = log_2_floor(last_codeword.len() as u128) as u32;
+        let log_2_of_n = last_codeword.len().ilog2();
         let mut last_polynomial = last_codeword.clone();
 
         let last_fri_domain_generator = self

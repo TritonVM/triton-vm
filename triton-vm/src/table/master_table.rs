@@ -23,7 +23,6 @@ use triton_profiler::triton_profiler::TritonProfiler;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
-use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
@@ -338,7 +337,7 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 
 impl MasterBaseTable {
     pub fn padded_height(aet: &AlgebraicExecutionTrace) -> usize {
-        let max_height = [
+        let relevant_table_heights = [
             // The Program Table's side of the instruction lookup argument requires at least one
             // padding row to account for the processor's “next instruction or argument.”
             Self::program_table_length(aet) + 1,
@@ -347,12 +346,11 @@ impl MasterBaseTable {
             Self::cascade_table_length(aet),
             Self::lookup_table_length(),
             Self::u32_table_length(aet),
-        ]
-        .iter()
-        .max()
-        .unwrap()
-        .to_owned();
-        roundup_npo2(max_height as u64) as usize
+        ];
+        let max_height = relevant_table_heights.into_iter().max().unwrap();
+        let max_height = max_height.try_into().unwrap();
+        let padded_height = roundup_npo2(max_height);
+        padded_height.try_into().unwrap()
     }
 
     pub fn program_table_length(aet: &AlgebraicExecutionTrace) -> usize {
@@ -384,10 +382,12 @@ impl MasterBaseTable {
                 _ => max(lhs.value(), rhs.value()),
             })
             .map(|relevant_entry| match relevant_entry == 0 {
-                true => 1,
-                false => 2 + log_2_floor(relevant_entry as u128) as usize,
+                true => 2 - 1,
+                false => 2 + relevant_entry.ilog2(),
             })
-            .sum()
+            .sum::<u32>()
+            .try_into()
+            .unwrap()
     }
 
     pub fn new(
@@ -1604,7 +1604,8 @@ pub fn evaluate_all_constraints(
 }
 
 pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
-    roundup_npo2((padded_height + num_trace_randomizers) as u64) as usize
+    let total_table_length = (padded_height + num_trace_randomizers).try_into().unwrap();
+    roundup_npo2(total_table_length).try_into().unwrap()
 }
 
 pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
