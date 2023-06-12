@@ -208,6 +208,7 @@ where
 
 #[cfg(test)]
 mod proof_stream_typed_tests {
+    use crate::Claim;
     use itertools::Itertools;
     use rand::distributions::Standard;
     use rand::prelude::Distribution;
@@ -285,6 +286,17 @@ mod proof_stream_typed_tests {
             revealed_leaves,
         };
 
+        let program_digest = random_elements(rng.next_u64(), 1)[0];
+        let input = random_elements(rng.next_u64(), 5);
+        let output = random_elements(rng.next_u64(), 5);
+        let padded_height = random_elements(rng.next_u64(), 1)[0];
+        let claim = Claim {
+            program_digest,
+            input,
+            output,
+            padded_height,
+        };
+
         let mut sponge_states = VecDeque::new();
         let mut proof_stream = ProofStream::<H>::new();
 
@@ -312,6 +324,8 @@ mod proof_stream_typed_tests {
         proof_stream.enqueue(&ProofItem::FriCodeword(fri_codeword.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
         proof_stream.enqueue(&ProofItem::FriResponse(fri_response.clone()));
+        sponge_states.push_back(proof_stream.sponge_state.state);
+        proof_stream.enqueue(&ProofItem::Claim(claim.clone()));
         sponge_states.push_back(proof_stream.sponge_state.state);
 
         let proof = proof_stream.into();
@@ -409,6 +423,15 @@ mod proof_stream_typed_tests {
         );
         match proof_stream.dequeue().unwrap() {
             ProofItem::FriResponse(fri_response_) => assert_eq!(fri_response, fri_response_),
+            _ => panic!(),
+        };
+
+        assert_eq!(
+            sponge_states.pop_front(),
+            Some(proof_stream.sponge_state.state)
+        );
+        match proof_stream.dequeue().unwrap() {
+            ProofItem::Claim(claim_) => assert_eq!(claim, claim_),
             _ => panic!(),
         };
 

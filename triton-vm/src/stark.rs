@@ -132,6 +132,10 @@ impl Stark {
             MasterBaseTable::padded_height(aet),
             "The claimed padded height must match the actual padded height of the trace."
         );
+        prof_start!(maybe_profiler, "Fiat-Shamir: claim", "hash");
+        let mut proof_stream = StarkProofStream::new();
+        proof_stream.enqueue(&ProofItem::Claim(claim.clone()));
+        prof_stop!(maybe_profiler, "Fiat-Shamir: claim");
 
         prof_start!(maybe_profiler, "derive additional parameters");
         let max_degree =
@@ -162,7 +166,6 @@ impl Stark {
 
         prof_start!(maybe_profiler, "Fiat-Shamir", "hash");
         let padded_height = BFieldElement::new(master_base_table.padded_height as u64);
-        let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::MerkleRoot(base_merkle_tree_root));
         let extension_weights = proof_stream.sample_scalars(Challenges::num_challenges_to_sample());
         let extension_challenges = Challenges::new(extension_weights, &claim.input, &claim.output);
@@ -553,20 +556,23 @@ impl Stark {
 
     pub fn verify(
         parameters: &StarkParameters,
-        claim: &Claim,
         proof: &Proof,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<bool> {
+        prof_start!(maybe_profiler, "deserialize");
+        let mut proof_stream = StarkProofStream::try_from(proof)?;
+        prof_stop!(maybe_profiler, "deserialize");
+
+        prof_start!(maybe_profiler, "Fiat-Shamir: Claim", "hash");
+        let claim = proof_stream.dequeue()?.as_claim()?;
+        prof_stop!(maybe_profiler, "Fiat-Shamir: Claim");
+
         prof_start!(maybe_profiler, "derive additional parameters");
         let max_degree =
             Self::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
-
-        prof_start!(maybe_profiler, "deserialize");
-        let mut proof_stream = StarkProofStream::try_from(proof)?;
-        prof_stop!(maybe_profiler, "deserialize");
 
         prof_start!(maybe_profiler, "Fiat-Shamir 1", "hash");
         let base_merkle_tree_root = proof_stream.dequeue()?.as_merkle_root()?;
@@ -1818,7 +1824,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_simple_program_test() {
         let code_with_input = test_hash_nop_nop_lt();
-        let (parameters, claim, proof) = parse_simulate_prove(
+        let (parameters, _, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.public_input(),
             code_with_input.secret_input(),
@@ -1827,7 +1833,7 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(&parameters, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
@@ -1847,7 +1853,7 @@ pub(crate) mod triton_stark_tests {
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(&parameters, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
@@ -1866,7 +1872,7 @@ pub(crate) mod triton_stark_tests {
         let code_with_input = test_halt();
 
         for _ in 0..100 {
-            let (parameters, claim, proof) = parse_simulate_prove(
+            let (parameters, _, proof) = parse_simulate_prove(
                 &code_with_input.source_code,
                 code_with_input.public_input(),
                 code_with_input.secret_input(),
@@ -1874,7 +1880,7 @@ pub(crate) mod triton_stark_tests {
             );
 
             let filename = "halt_error.tsp";
-            let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+            let result = Stark::verify(&parameters, &proof, &mut None);
             if let Err(e) = result {
                 if let Err(e) = save_proof(filename, proof) {
                     panic!("Unsyntactical proof and can't save! {e}");
@@ -1889,7 +1895,7 @@ pub(crate) mod triton_stark_tests {
     #[ignore = "used for tracking&debugging deserialization errors"]
     fn triton_load_verify_halt_test() {
         let code_with_input = test_halt();
-        let (parameters, claim, _) = parse_simulate_prove(
+        let (parameters, _, _) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.public_input(),
             code_with_input.secret_input(),
@@ -1902,7 +1908,7 @@ pub(crate) mod triton_stark_tests {
             Err(e) => panic!("Could not load proof from disk at {filename}: {e}"),
         };
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(&parameters, &proof, &mut None);
         if let Err(e) = result {
             panic!("Verifier is unhappy! {e}");
         }
@@ -1923,7 +1929,7 @@ pub(crate) mod triton_stark_tests {
 
         println!("between prove and verify");
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(&parameters, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
@@ -1945,7 +1951,7 @@ pub(crate) mod triton_stark_tests {
             let secret_in = vec![];
             let (parameters, claim, proof) =
                 parse_simulate_prove(code, stdin, secret_in, &mut None);
-            match Stark::verify(&parameters, &claim, &proof, &mut None) {
+            match Stark::verify(&parameters, &proof, &mut None) {
                 Ok(result) => assert!(result, "The Verifier disagrees!"),
                 Err(err) => panic!("The Verifier is unhappy! {err}"),
             }
@@ -1968,7 +1974,7 @@ pub(crate) mod triton_stark_tests {
         let mut profiler = profiler.unwrap();
         profiler.finish();
 
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let result = Stark::verify(&parameters, &proof, &mut None);
         if let Err(e) = result {
             panic!("The Verifier is unhappy! {e}");
         }
@@ -2011,9 +2017,8 @@ pub(crate) mod triton_stark_tests {
         let st0 = (rng.next_u32() as u64) << 32;
 
         let source_code = format!("push {st0} log_2_floor halt");
-        let (parameters, claim, proof) =
-            parse_simulate_prove(&source_code, vec![], vec![], &mut None);
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let (parameters, _, proof) = parse_simulate_prove(&source_code, vec![], vec![], &mut None);
+        let result = Stark::verify(&parameters, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
@@ -2022,9 +2027,8 @@ pub(crate) mod triton_stark_tests {
     #[should_panic(expected = "The logarithm of 0 does not exist")]
     pub fn negative_log_2_floor_of_0_test() {
         let source_code = "push 0 log_2_floor halt";
-        let (parameters, claim, proof) =
-            parse_simulate_prove(source_code, vec![], vec![], &mut None);
-        let result = Stark::verify(&parameters, &claim, &proof, &mut None);
+        let (parameters, _, proof) = parse_simulate_prove(source_code, vec![], vec![], &mut None);
+        let result = Stark::verify(&parameters, &proof, &mut None);
         assert!(result.is_ok());
         assert!(result.unwrap());
     }

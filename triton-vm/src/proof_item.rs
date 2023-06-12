@@ -9,6 +9,7 @@ use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
+use crate::Claim;
 
 type AuthenticationStructure = Vec<PartialAuthenticationPath<Digest>>;
 
@@ -35,6 +36,7 @@ pub enum ProofItem {
     RevealedCombinationElements(Vec<XFieldElement>),
     FriCodeword(Vec<XFieldElement>),
     FriResponse(FriResponse),
+    Claim(Claim),
 }
 
 impl ProofItem {
@@ -52,6 +54,7 @@ impl ProofItem {
             RevealedCombinationElements(_) => 7,
             FriCodeword(_) => 8,
             FriResponse(_) => 9,
+            Claim(_) => 10,
         };
         BFieldElement::new(discriminant)
     }
@@ -70,6 +73,7 @@ impl ProofItem {
             MerkleRoot(_) => true,
             OutOfDomainBaseRow(_) => true,
             OutOfDomainExtRow(_) => true,
+            Claim(_) => true,
             // all of the following are implied by a corresponding Merkle root
             AuthenticationPath(_) => false,
             CompressedAuthenticationPaths(_) => false,
@@ -170,6 +174,13 @@ impl ProofItem {
             ),)),
         }
     }
+
+    pub fn as_claim(&self) -> Result<Claim> {
+        match self {
+            Self::Claim(claim) => Ok(claim.to_owned()),
+            other => bail!("expected claim, but got {other:?}"),
+        }
+    }
 }
 
 impl BFieldCodec for ProofItem {
@@ -193,6 +204,7 @@ impl BFieldCodec for ProofItem {
             7 => Self::RevealedCombinationElements(*Vec::<XFieldElement>::decode(str)?),
             8 => Self::FriCodeword(*Vec::<XFieldElement>::decode(str)?),
             9 => Self::FriResponse(*FriResponse::decode(str)?),
+            10 => Self::Claim(*Claim::decode(str)?),
             i => bail!(ProofStreamError::new(&format!(
                 "Unknown discriminant {i} for ProofItem."
             ))),
@@ -224,6 +236,7 @@ impl BFieldCodec for ProofItem {
             RevealedCombinationElements(something) => something.encode(),
             FriCodeword(something) => something.encode(),
             FriResponse(something) => something.encode(),
+            Claim(something) => something.encode(),
         };
         [discriminant, encoding].concat()
     }
