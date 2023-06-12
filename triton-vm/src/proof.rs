@@ -108,27 +108,13 @@ impl Proof {
                         / (constraint_degree - 1)
                 }
                 ConstraintType::Transition => {
-                    padded_height_times_constraint_degree_minus_zerofier_degree
+                    (padded_height_times_constraint_degree_minus_zerofier_degree - 1)
                         / (constraint_degree - 1)
-                        + 1
                 }
             };
 
         // round down to the previous power of 2
         1 << (upper_bound_of_padded_height.ilog2() - 1)
-
-        // vvvvv alternative approach vvvvv
-        // for padded_height_exponent in 1..=32 {
-        //     let padded_height = 1 << padded_height_exponent;
-        //     let max_degree =
-        //         Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
-        //     let fri = Stark::derive_fri(parameters, max_degree);
-        //     if fri.domain.length == fri_domain_length {
-        //         dbg!(padded_height);
-        //         return padded_height;
-        //     }
-        // }
-        // panic!("An authentication path can be at most 32 items long.");
     }
 }
 
