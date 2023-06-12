@@ -5,6 +5,12 @@ use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 
+use crate::proof_stream::ProofStream;
+use crate::stark;
+use crate::table::extension_table::ConstraintType;
+use crate::table::master_table;
+use crate::StarkParameters;
+
 /// Contains the necessary cryptographic information to verify a computation.
 /// Should be used together with a [`Claim`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, BFieldCodec)]
@@ -21,6 +27,108 @@ impl GetSize for Proof {
 
     fn get_size(&self) -> usize {
         Self::get_stack_size() + GetSize::get_heap_size(self)
+    }
+}
+
+impl Proof {
+    /// Given the parameters used to generate this proof,
+    /// compute the height of the trace used during proof generation.
+    /// This is an upper bound on the length of the computation this proof is for.
+    /// It it one of the main contributing factors to the length of the FRI domain.
+    pub fn padded_height(&self, parameters: &StarkParameters) -> usize {
+        // The forward computation for the FRI domain length is
+        //
+        // ```rust
+        // let interpolant_degree = npo2(padded_height + num_trace_randomizers) - 1;
+        // let max_degree_for_fri = npo2(interpolant_degree * constraint_degree - zerofier_degree);
+        // let fri_domain_length = fri_expansion_factor * max_degree_for_fri;
+        // ```
+        //
+        // where `npo2` is the “next power of 2” function.
+        // In above computation, the pair of `constraint_degree` and `zerofier_degree` are
+        // assumed to be from the dominating constraint.
+        //
+        // Assuming that all arguments to `npo2` are powers of 2, this can be expressed as:
+        //
+        // ```rust
+        // let fri_domain_length = fri_expansion_factor *
+        //      ((padded_height + num_trace_randomizers - 1) * constraint_degree - zerofier_degree);
+        // ```
+        //
+        // Note that the `zerofier_degree` potentially depends on the `padded_height`, depending
+        // on the _type_ of the dominating constraint:
+        // - For initial and terminal constraints, the `zerofier_degree` is 1.
+        // - For consistency constraints, the `zerofier_degree` is `padded_height`.
+        // - For transition constraints, the `zerofier_degree` is `padded_height - 1`.
+        //
+        // Using the above equations, it is possible to compute an upper bound for the
+        // `padded_height`. Since the `padded_height` must itself be a power of two, the largest
+        // power of two smaller than the upper bound for `padded_height` is the result.
+
+        let proof_stream = ProofStream::<stark::StarkHasher>::try_from(self).unwrap();
+        let mut auth_path_len = None;
+        for item in proof_stream.items {
+            if let Ok(auth_structure) = item.as_compressed_authentication_paths() {
+                auth_path_len = Some(auth_structure[0].len());
+
+                // It is fine to take the first candidate. If any item in the proof does not
+                // conform to this candidate, the proof is invalid. Corresponding inconsistencies
+                // will be identified during the verification process.
+                break;
+            }
+        }
+        let auth_path_len = auth_path_len.expect("The proof must contain authentication paths.");
+        let fri_domain_length = 1 << auth_path_len;
+        let max_degree_for_fri = fri_domain_length / parameters.fri_expansion_factor;
+
+        // These dummy values are used to compute the constraint degree.
+        // They are factored out later.
+        let dummy_interpolant_degree = 2;
+        let dummy_padded_height = 2;
+        let max_degree_quotient_with_origin =
+            master_table::max_degree_with_origin(dummy_interpolant_degree, dummy_padded_height);
+        let constraint_degree = (max_degree_quotient_with_origin.degree
+            + max_degree_quotient_with_origin.zerofier_degree)
+            / dummy_interpolant_degree;
+        assert!(constraint_degree > 0, "Constraint degree must be positive.");
+        let constraint_degree: usize = constraint_degree.try_into().unwrap();
+
+        let padded_height_times_constraint_degree_minus_zerofier_degree = max_degree_for_fri
+            - parameters.num_trace_randomizers * constraint_degree
+            + constraint_degree;
+
+        let upper_bound_of_padded_height =
+            match max_degree_quotient_with_origin.origin_constraint_type {
+                ConstraintType::Initial | ConstraintType::Terminal => {
+                    (padded_height_times_constraint_degree_minus_zerofier_degree + 1)
+                        / constraint_degree
+                }
+                ConstraintType::Consistency => {
+                    padded_height_times_constraint_degree_minus_zerofier_degree
+                        / (constraint_degree - 1)
+                }
+                ConstraintType::Transition => {
+                    padded_height_times_constraint_degree_minus_zerofier_degree
+                        / (constraint_degree - 1)
+                        + 1
+                }
+            };
+
+        // round down to the previous power of 2
+        1 << (upper_bound_of_padded_height.ilog2() - 1)
+
+        // vvvvv alternative approach vvvvv
+        // for padded_height_exponent in 1..=32 {
+        //     let padded_height = 1 << padded_height_exponent;
+        //     let max_degree =
+        //         Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
+        //     let fri = Stark::derive_fri(parameters, max_degree);
+        //     if fri.domain.length == fri_domain_length {
+        //         dbg!(padded_height);
+        //         return padded_height;
+        //     }
+        // }
+        // panic!("An authentication path can be at most 32 items long.");
     }
 }
 

@@ -558,6 +558,7 @@ impl Stark {
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<bool> {
         prof_start!(maybe_profiler, "derive additional parameters");
+        assert_eq!(claim.padded_height(), proof.padded_height(parameters));
         let max_degree =
             Self::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);

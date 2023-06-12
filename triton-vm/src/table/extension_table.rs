@@ -81,7 +81,7 @@ pub trait Quotientable: Evaluable<BFieldElement> {
                 origin_table_name: table_name.to_owned(),
                 origin_index: i,
                 origin_table_height: padded_height,
-                origin_constraint_type: "initial constraint".to_string(),
+                origin_constraint_type: ConstraintType::Initial,
             })
             .collect_vec();
 
@@ -96,7 +96,7 @@ pub trait Quotientable: Evaluable<BFieldElement> {
                     origin_table_name: table_name.to_owned(),
                     origin_index: i,
                     origin_table_height: padded_height,
-                    origin_constraint_type: "consistency constraint".to_string(),
+                    origin_constraint_type: ConstraintType::Consistency,
                 })
                 .collect();
 
@@ -111,7 +111,7 @@ pub trait Quotientable: Evaluable<BFieldElement> {
                     origin_table_name: table_name.to_owned(),
                     origin_index: i,
                     origin_table_height: padded_height,
-                    origin_constraint_type: "transition constraint".to_string(),
+                    origin_constraint_type: ConstraintType::Transition,
                 })
                 .collect();
 
@@ -126,7 +126,7 @@ pub trait Quotientable: Evaluable<BFieldElement> {
                     origin_table_name: table_name.to_owned(),
                     origin_index: i,
                     origin_table_height: padded_height,
-                    origin_constraint_type: "terminal constraint".to_string(),
+                    origin_constraint_type: ConstraintType::Terminal,
                 })
                 .collect();
 
@@ -295,6 +295,28 @@ pub trait Quotientable: Evaluable<BFieldElement> {
     }
 }
 
+/// The type of a constraint. Can be used to determine the degree bounds for the quotient
+/// polynomials. Concretely, the degree of the zerofier polynomials differs between the
+/// constraint types.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum ConstraintType {
+    Initial,
+    Consistency,
+    Transition,
+    Terminal,
+}
+
+impl Display for ConstraintType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConstraintType::Initial => write!(f, "initial"),
+            ConstraintType::Consistency => write!(f, "consistency"),
+            ConstraintType::Transition => write!(f, "transition"),
+            ConstraintType::Terminal => write!(f, "terminal"),
+        }
+    }
+}
+
 /// Helps debugging and benchmarking. The maximal degree achieved in any table dictates the length
 /// of the FRI domain, which in turn is responsible for the main performance bottleneck.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -305,21 +327,7 @@ pub struct DegreeWithOrigin {
     pub origin_table_name: String,
     pub origin_index: usize,
     pub origin_table_height: usize,
-    pub origin_constraint_type: String,
-}
-
-impl Default for DegreeWithOrigin {
-    fn default() -> Self {
-        DegreeWithOrigin {
-            degree: -1,
-            interpolant_degree: 0,
-            zerofier_degree: -1,
-            origin_table_name: "NoTable".to_string(),
-            origin_index: usize::MAX,
-            origin_table_height: 0,
-            origin_constraint_type: "NoType".to_string(),
-        }
-    }
+    pub origin_constraint_type: ConstraintType,
 }
 
 impl Display for DegreeWithOrigin {
@@ -332,7 +340,7 @@ impl Display for DegreeWithOrigin {
         };
         write!(
             f,
-            "Degree of poly for table {} (index {:02}) of type {} is {}.",
+            "Degree of poly for table {} (index {:02}) of type “{}” is {}.",
             self.origin_table_name, self.origin_index, self.origin_constraint_type, degree,
         )
     }

@@ -717,7 +717,7 @@ pub fn max_degree_with_origin(
     all_degrees_with_origin(interpolant_degree, padded_height)
         .into_iter()
         .max()
-        .unwrap_or_default()
+        .unwrap()
 }
 
 pub fn num_all_table_quotients() -> usize {
