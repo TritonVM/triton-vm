@@ -43,7 +43,8 @@ fn prove_fib_100(criterion: &mut Criterion) {
         panic!("The VM encountered the following problem: {error}");
     }
 
-    let padded_height = MasterBaseTable::padded_height(&aet);
+    let parameters = StarkParameters::default();
+    let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
     let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
         input: public_input,
@@ -51,7 +52,6 @@ fn prove_fib_100(criterion: &mut Criterion) {
         output,
         padded_height,
     };
-    let parameters = StarkParameters::default();
     let _proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
 
     let max_degree =

@@ -39,7 +39,9 @@ fn prove_halt(_criterion: &mut Criterion) {
     }
 
     let cycle_count = aet.processor_trace.nrows();
-    let padded_height = MasterBaseTable::padded_height(&aet);
+    let parameters = StarkParameters::default();
+    let num_trace_randomizers = parameters.num_trace_randomizers;
+    let padded_height = MasterBaseTable::padded_height(&aet, num_trace_randomizers);
     let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
         input: vec![],
@@ -47,11 +49,9 @@ fn prove_halt(_criterion: &mut Criterion) {
         output,
         padded_height,
     };
-    let parameters = StarkParameters::default();
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
 
-    let max_degree =
-        Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+    let max_degree = Stark::derive_max_degree(claim.padded_height(), num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
 
     if let Some(profiler) = &mut maybe_profiler {

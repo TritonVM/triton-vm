@@ -51,7 +51,11 @@ pub fn parse_simulate_prove(
     let (aet, public_output) =
         parse_setup_simulate(code, public_input.clone(), secret_input, maybe_profiler);
 
-    let padded_height = MasterBaseTable::padded_height(&aet);
+    let log_expansion_factor = 2;
+    let security_level = 32;
+    let parameters = StarkParameters::new(security_level, log_expansion_factor);
+
+    let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
     let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
         input: public_input,
@@ -59,9 +63,6 @@ pub fn parse_simulate_prove(
         output: public_output,
         padded_height,
     };
-    let log_expansion_factor = 2;
-    let security_level = 32;
-    let parameters = StarkParameters::new(security_level, log_expansion_factor);
 
     prof_start!(maybe_profiler, "prove");
     let proof = Stark::prove(&parameters, &claim, &aet, maybe_profiler);

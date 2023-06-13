@@ -88,9 +88,12 @@ pub fn prove(
     // Hash the program to obtain its digest.
     let program_digest = Tip5::hash(&program);
 
+    // The default parameters give a (conjectured) security level of 160 bits.
+    let parameters = StarkParameters::default();
+
     // Compute the padded height of the AET. The padded height is the smallest power of two
     // that is larger than or equal to the height of the largest table in the AET.
-    let padded_height = MasterBaseTable::padded_height(&aet);
+    let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
     let padded_height = BFieldElement::new(padded_height as u64);
 
     // Set up the claim that is to be proven. The claim contains all public information. The
@@ -101,9 +104,6 @@ pub fn prove(
         output: public_output,
         padded_height,
     };
-
-    // The default parameters give a (conjectured) security level of 160 bits.
-    let parameters = StarkParameters::default();
 
     // Generate the proof.
     let proof = Stark::prove(&parameters, &claim, &aet, &mut None);

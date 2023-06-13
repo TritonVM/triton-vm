@@ -129,7 +129,7 @@ impl Stark {
     ) -> Proof {
         assert_eq!(
             claim.padded_height(),
-            MasterBaseTable::padded_height(aet),
+            MasterBaseTable::padded_height(aet, parameters.num_trace_randomizers),
             "The claimed padded height must match the actual padded height of the trace."
         );
         prof_start!(maybe_profiler, "Fiat-Shamir: claim", "hash");
@@ -568,6 +568,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir: Claim");
 
         prof_start!(maybe_profiler, "derive additional parameters");
+        assert_eq!(claim.padded_height(), proof.padded_height(parameters));
         let max_degree =
             Self::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
@@ -947,7 +948,11 @@ pub(crate) mod triton_stark_tests {
     ) -> (StarkParameters, Claim, MasterBaseTable, MasterBaseTable) {
         let (aet, stdout) = parse_setup_simulate(code, stdin.clone(), secret_in);
 
-        let padded_height = MasterBaseTable::padded_height(&aet);
+        let log_expansion_factor = 2;
+        let security_level = 32;
+        let parameters = StarkParameters::new(security_level, log_expansion_factor);
+
+        let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
         let padded_height = BFieldElement::new(padded_height as u64);
         let claim = Claim {
             input: stdin,
@@ -955,9 +960,6 @@ pub(crate) mod triton_stark_tests {
             output: stdout,
             padded_height,
         };
-        let log_expansion_factor = 2;
-        let security_level = 32;
-        let parameters = StarkParameters::new(security_level, log_expansion_factor);
         let max_degree =
             Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);

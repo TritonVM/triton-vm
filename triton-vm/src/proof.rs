@@ -1,3 +1,5 @@
+use std::cmp::max;
+
 use get_size::GetSize;
 use serde::Deserialize;
 use serde::Serialize;
@@ -114,7 +116,20 @@ impl Proof {
             };
 
         // round down to the previous power of 2
-        1 << (upper_bound_of_padded_height.ilog2() - 1)
+        let padded_height = 1 << (upper_bound_of_padded_height.ilog2() - 1);
+
+        // The `padded_height` must be at least as large as the number of trace randomizers.
+        // See [`MasterBaseTable::padded_height()`] for a detailed explanation.
+        let min_possible_padded_height_given_num_trace_randomizers =
+            1 << parameters.num_trace_randomizers.ilog2();
+        let padded_height = max(
+            min_possible_padded_height_given_num_trace_randomizers,
+            padded_height,
+        );
+
+        // The `padded_height` must be at least as large as the smallest possible padded height.
+        let smallest_possible_padded_height = 1 << master_table::LOG2_MIN_PADDED_HEIGHT;
+        max(smallest_possible_padded_height, padded_height)
     }
 
     /// The [`Claim`] that this proof is for.
@@ -170,11 +185,15 @@ impl Claim {
 
 #[cfg(test)]
 pub mod test_claim_proof {
+    use std::collections::HashMap;
+
     use rand::random;
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::tip5::Digest;
+
+    use crate::stark::Stark;
 
     use super::*;
 
@@ -210,5 +229,36 @@ pub mod test_claim_proof {
         assert_eq!(claim.input, decoded.input);
         assert_eq!(claim.output, decoded.output);
         // padded height is ignored
+    }
+
+    #[test]
+    fn possible_padded_heights_to_fri_domain_lengths_is_bijective_test() {
+        let parameters = StarkParameters::default();
+        let num_trace_randomizers = parameters.num_trace_randomizers;
+
+        let smallest_padded_height_exp = master_table::LOG2_MIN_PADDED_HEIGHT;
+        let largest_padded_height_exp = 25;
+
+        let mut fri_dom_lens_to_phs = HashMap::new();
+
+        println!();
+        println!("num_trace_randomizers = {num_trace_randomizers}");
+        println!();
+        println!("| exp | p_height | fri_dom_len |");
+        println!("|----:|---------:|------------:|");
+        for padded_height_exponent in smallest_padded_height_exp..=largest_padded_height_exp {
+            let ph = 1 << padded_height_exponent;
+            let max_degree = Stark::derive_max_degree(ph, num_trace_randomizers);
+            let fri = Stark::derive_fri(&parameters, max_degree);
+            let fri_domain_length = fri.domain.length;
+            println!("| {padded_height_exponent:>3} | {ph:>8} | {fri_domain_length:>11} |");
+
+            if let Some(other_ph) = fri_dom_lens_to_phs.insert(fri_domain_length, ph) {
+                panic!(
+                    "The FRI domain length {fri_domain_length} results from two padded heights: \
+                    {other_ph} and {ph}.",
+                );
+            }
+        }
     }
 }
