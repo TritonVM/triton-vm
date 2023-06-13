@@ -12,7 +12,6 @@ use num_traits::One;
 use num_traits::Zero;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::tip5;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::shared_math::tip5::Tip5State;
@@ -458,7 +457,7 @@ impl<'pgm> VMState<'pgm> {
                 if lhs.is_zero() {
                     return vm_err(LogarithmOfZero);
                 }
-                let l2f = BFieldElement::new(log_2_floor(lhs as u128));
+                let l2f = BFieldElement::new(lhs.ilog2().into());
                 self.op_stack.push(l2f);
                 self.instruction_pointer += 1;
                 let u32_table_entry = (Log2Floor, (lhs as u64).into(), BFIELD_ZERO);
@@ -1067,7 +1066,6 @@ pub mod triton_vm_tests {
     use rand::Rng;
     use rand::RngCore;
     use twenty_first::shared_math::b_field_element::BFIELD_ZERO;
-    use twenty_first::shared_math::other::log_2_floor;
     use twenty_first::shared_math::other::random_elements;
     use twenty_first::shared_math::other::random_elements_array;
     use twenty_first::shared_math::tip5::Digest;
@@ -1568,10 +1566,10 @@ pub mod triton_vm_tests {
         let mut rng = ThreadRng::default();
 
         let st0_0 = rng.next_u32();
-        let l2f_0 = log_2_floor(st0_0 as u128) as u32;
+        let l2f_0 = st0_0.ilog2();
 
         let st0_1 = rng.next_u32();
-        let l2f_1 = log_2_floor(st0_1 as u128) as u32;
+        let l2f_1 = st0_1.ilog2();
 
         let source_code = format!(
             "push {st0_0} log_2_floor read_io eq assert \
@@ -2146,8 +2144,8 @@ pub mod triton_vm_tests {
         ";
         let program = Program::from_code(sample_weights_code).unwrap();
         println!("Successfully parsed the program.");
-        let input_symbols = vec![BFieldElement::new(11)];
-        let (aet, _out, err) = simulate(&program, input_symbols, vec![]);
+        let public_input = vec![BFieldElement::new(11)];
+        let (aet, _out, err) = simulate(&program, public_input, vec![]);
 
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");
@@ -2330,8 +2328,8 @@ pub mod triton_vm_tests {
 
         let program = Program::from_code(get_colinear_y_code).unwrap();
         println!("Successfully parsed the program.");
-        let input_symbols = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
-        let (aet, out, err) = simulate(&program, input_symbols, vec![]);
+        let public_input = [7, 2, 1, 3, 4].map(BFieldElement::new).to_vec();
+        let (aet, out, err) = simulate(&program, public_input, vec![]);
         assert_eq!(BFieldElement::new(4), out[0]);
         if let Some(e) = err {
             panic!("The VM encountered an error: {e}");

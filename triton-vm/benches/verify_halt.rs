@@ -26,7 +26,7 @@ fn verify_halt(criterion: &mut Criterion) {
         input: vec![],
         program_digest: Tip5::hash(&program),
         output: vec![],
-        padded_height: 256, // domain-specific knowledge
+        padded_height: 256_u64.into(), // domain-specific knowledge
     };
 
     let filename = "halt.tsp";
@@ -50,7 +50,7 @@ fn verify_halt(criterion: &mut Criterion) {
     };
 
     let mut profiler = Some(TritonProfiler::new("Verify Halt"));
-    let verdict = Stark::verify(&parameters, &claim, &proof, &mut profiler)
+    let verdict = Stark::verify(&parameters, &proof, &mut profiler)
         .map_err(|e| panic!("The Verifier is unhappy! {e}"))
         .unwrap();
     assert!(verdict);
@@ -58,11 +58,11 @@ fn verify_halt(criterion: &mut Criterion) {
     let mut profiler = profiler.unwrap();
     profiler.finish();
     let max_degree =
-        Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+        Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
     let report = profiler.report(
         maybe_cycle_count,
-        Some(claim.padded_height),
+        Some(claim.padded_height()),
         Some(fri.domain.length),
     );
 
@@ -71,7 +71,7 @@ fn verify_halt(criterion: &mut Criterion) {
     group.sample_size(10);
     group.bench_function(bench_id, |bencher| {
         bencher.iter(|| {
-            let _ = Stark::verify(&parameters, &claim, &proof, &mut None);
+            let _ = Stark::verify(&parameters, &proof, &mut None);
         });
     });
     group.finish();

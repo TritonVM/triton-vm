@@ -2,6 +2,7 @@ use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
 use triton_opcodes::program::Program;
+use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
@@ -37,27 +38,27 @@ fn prove_halt(_criterion: &mut Criterion) {
         panic!("The VM encountered the following problem: {error}");
     }
 
-    let output = output.into_iter().map(|x| x.value()).collect();
     let cycle_count = aet.processor_trace.nrows();
-    let padded_height = MasterBaseTable::padded_height(&aet);
+    let parameters = StarkParameters::default();
+    let num_trace_randomizers = parameters.num_trace_randomizers;
+    let padded_height = MasterBaseTable::padded_height(&aet, num_trace_randomizers);
+    let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
         input: vec![],
         program_digest: Tip5::hash(&program),
         output,
         padded_height,
     };
-    let parameters = StarkParameters::default();
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
 
-    let max_degree =
-        Stark::derive_max_degree(claim.padded_height, parameters.num_trace_randomizers);
+    let max_degree = Stark::derive_max_degree(claim.padded_height(), num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
 
     if let Some(profiler) = &mut maybe_profiler {
         profiler.finish();
         report = profiler.report(
             Some(cycle_count),
-            Some(claim.padded_height),
+            Some(claim.padded_height()),
             Some(fri.domain.length),
         );
     };

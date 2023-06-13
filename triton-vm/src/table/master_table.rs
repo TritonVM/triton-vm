@@ -19,7 +19,6 @@ use strum_macros::EnumIter;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::mpolynomial::Degree;
 use twenty_first::shared_math::other::is_power_of_two;
-use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::other::roundup_npo2;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::traits::FiniteField;
@@ -104,6 +103,12 @@ pub const NUM_EXT_COLUMNS: usize = program_table::EXT_WIDTH
 
 /// The total number of columns across all tables.
 pub const NUM_COLUMNS: usize = NUM_BASE_COLUMNS + NUM_EXT_COLUMNS;
+
+/// The binary logarithm of the smallest possible `padded_height`.
+/// The (unpadded) [`LookupTable`] always has a height of 2^8.
+///
+/// See [`MasterBaseTable::pad()`] for more details about padding.
+pub const LOG2_MIN_PADDED_HEIGHT: usize = 8;
 
 pub const PROGRAM_TABLE_START: usize = 0;
 pub const PROGRAM_TABLE_END: usize = PROGRAM_TABLE_START + program_table::BASE_WIDTH;
@@ -375,8 +380,26 @@ impl MasterTable<XFieldElement> for MasterExtTable {
 }
 
 impl MasterBaseTable {
-    pub fn padded_height(aet: &AlgebraicExecutionTrace) -> usize {
-        let max_height = [
+    pub fn padded_height(aet: &AlgebraicExecutionTrace, num_trace_randomizers: usize) -> usize {
+        // The number of trace randomizers influences the padded height for the following reason.
+        // The interpolant degree is the next power of two of the sum of the padded height and the
+        // number of trace randomizers. In the interpolant degree, the padded height must not be
+        // “overshadowed” by the number of trace randomizers. For example:
+        //
+        // ```rust
+        // let num_trace_randomizers = 1024;
+        // let padded_height = 256;
+        // let interpolant_degree = roundup_npo2(padded_height + num_trace_randomizers); // 2048
+        //
+        // let padded_height = 512;
+        // let interpolant_degree = roundup_npo2(padded_height + num_trace_randomizers); // 2048 (!)
+        // ```
+        //
+        // To guarantee a unique padded height given an interpolant degree and
+        // the number of trace randomizers degree, the padded height must be at least as large as
+        // the number of trace randomizers.
+
+        let relevant_table_heights = [
             // The Program Table's side of the instruction lookup argument requires at least one
             // padding row to account for the processor's “next instruction or argument.”
             Self::program_table_length(aet) + 1,
@@ -385,12 +408,12 @@ impl MasterBaseTable {
             Self::cascade_table_length(aet),
             Self::lookup_table_length(),
             Self::u32_table_length(aet),
-        ]
-        .iter()
-        .max()
-        .unwrap()
-        .to_owned();
-        roundup_npo2(max_height as u64) as usize
+            num_trace_randomizers,
+        ];
+        let max_height = relevant_table_heights.into_iter().max().unwrap();
+        let max_height = max_height.try_into().unwrap();
+        let padded_height = roundup_npo2(max_height);
+        padded_height.try_into().unwrap()
     }
 
     pub fn program_table_length(aet: &AlgebraicExecutionTrace) -> usize {
@@ -422,10 +445,12 @@ impl MasterBaseTable {
                 _ => max(lhs.value(), rhs.value()),
             })
             .map(|relevant_entry| match relevant_entry == 0 {
-                true => 1,
-                false => 2 + log_2_floor(relevant_entry as u128) as usize,
+                true => 2 - 1,
+                false => 2 + relevant_entry.ilog2(),
             })
-            .sum()
+            .sum::<u32>()
+            .try_into()
+            .unwrap()
     }
 
     pub fn new(
@@ -433,7 +458,7 @@ impl MasterBaseTable {
         num_trace_randomizers: usize,
         fri_domain: ArithmeticDomain,
     ) -> Self {
-        let padded_height = Self::padded_height(aet);
+        let padded_height = Self::padded_height(aet, num_trace_randomizers);
         let randomized_padded_trace_len =
             randomized_padded_trace_len(padded_height, num_trace_randomizers);
         let unit_distance = randomized_padded_trace_len / padded_height;
@@ -488,6 +513,11 @@ impl MasterBaseTable {
         master_base_table
     }
 
+    /// Pad the trace to the next power of two using the various, table-specific padding rules.
+    /// All tables must have the same height for reasons of verifier efficiency.
+    /// Furthermore, that height must be a power of two for reasons of prover efficiency.
+    /// Concretely, the Number Theory Transform (NTT) performed by the prover is particularly
+    /// efficient over the used base field when the number of rows is a power of two.
     pub fn pad(&mut self) {
         let program_len = self.program_len;
         let main_execution_len = self.main_execution_len;
@@ -772,7 +802,7 @@ pub fn max_degree_with_origin(
     all_degrees_with_origin(interpolant_degree, padded_height)
         .into_iter()
         .max()
-        .unwrap_or_default()
+        .unwrap()
 }
 
 pub fn initial_quotient_zerofier_inverse(
@@ -936,7 +966,8 @@ pub fn num_quotients() -> usize {
 }
 
 pub fn randomized_padded_trace_len(padded_height: usize, num_trace_randomizers: usize) -> usize {
-    roundup_npo2((padded_height + num_trace_randomizers) as u64) as usize
+    let total_table_length = (padded_height + num_trace_randomizers).try_into().unwrap();
+    roundup_npo2(total_table_length).try_into().unwrap()
 }
 
 pub fn interpolant_degree(padded_height: usize, num_trace_randomizers: usize) -> Degree {
@@ -975,6 +1006,7 @@ mod master_table_tests {
     use crate::table::master_table::transition_quotient_zerofier_inverse;
     use crate::table::master_table::TableId::*;
     use crate::table::master_table::EXT_DEGREE_LOWERING_TABLE_END;
+    use crate::table::master_table::LOG2_MIN_PADDED_HEIGHT;
     use crate::table::master_table::NUM_BASE_COLUMNS;
     use crate::table::master_table::NUM_COLUMNS;
     use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -1370,5 +1402,14 @@ mod master_table_tests {
                 column.master_ext_table_index()
             );
         }
+    }
+
+    #[test]
+    fn smallest_possible_padded_height_is_correct_test() {
+        let (_, proof) = crate::prove("halt", &[], &[]);
+        let claim = proof.claim();
+        let smallest_padded_height_exp = claim.padded_height().ilog2();
+        let smallest_padded_height_exp: usize = smallest_padded_height_exp.try_into().unwrap();
+        assert_eq!(smallest_padded_height_exp, LOG2_MIN_PADDED_HEIGHT);
     }
 }

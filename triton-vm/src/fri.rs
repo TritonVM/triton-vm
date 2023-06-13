@@ -10,7 +10,6 @@ use rayon::iter::*;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::ntt::intt;
 use twenty_first::shared_math::other::log_2_ceil;
-use twenty_first::shared_math::other::log_2_floor;
 use twenty_first::shared_math::polynomial::Polynomial;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::traits::CyclicGroupGenerator;
@@ -81,16 +80,16 @@ impl<H: AlgebraicHasher> Fri<H> {
         indices: &[usize],
         codeword: &[XFieldElement],
         merkle_tree: &MerkleTree<H>,
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) {
-        let partial_authentication_paths = merkle_tree.get_authentication_structure(indices);
-        let revealed_values = indices.iter().map(|&i| codeword[i]).collect_vec();
-        let path_value_pairs = partial_authentication_paths
-            .into_iter()
-            .zip_eq(revealed_values)
-            .collect_vec();
-        let fri_response = ProofItem::FriResponse(FriResponse(path_value_pairs));
-        proof_stream.enqueue(&fri_response, false)
+        let auth_structure = merkle_tree.get_authentication_structure(indices);
+        let revealed_leaves = indices.iter().map(|&i| codeword[i]).collect_vec();
+        let fri_response = FriResponse {
+            auth_structure,
+            revealed_leaves,
+        };
+        let fri_response = ProofItem::FriResponse(fri_response);
+        proof_stream.enqueue(&fri_response)
     }
 
     /// Given a merkle `root`, the `tree_height`, the `indices` of the values to dequeue from the
@@ -101,22 +100,25 @@ impl<H: AlgebraicHasher> Fri<H> {
         root: Digest,
         tree_height: usize,
         indices: &[usize],
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) -> Result<Vec<XFieldElement>> {
-        let fri_response = proof_stream.dequeue(false)?.as_fri_response()?;
-        let FriResponse(dequeued_paths_and_leafs) = fri_response;
-        debug_assert_eq!(indices.len(), dequeued_paths_and_leafs.len());
-        let (paths, leaf_values): (Vec<_>, Vec<_>) = dequeued_paths_and_leafs.into_iter().unzip();
-        let leaf_digests = leaf_values.iter().map(|&xfe| xfe.into()).collect_vec();
+        let fri_response = proof_stream.dequeue()?.as_fri_response()?;
+        let FriResponse {
+            auth_structure,
+            revealed_leaves,
+        } = fri_response;
+        debug_assert_eq!(indices.len(), auth_structure.len());
+        debug_assert_eq!(indices.len(), revealed_leaves.len());
+        let leaf_digests = revealed_leaves.iter().map(|&xfe| xfe.into()).collect_vec();
 
         match MerkleTree::<H>::verify_authentication_structure_from_leaves(
             root,
             tree_height,
             indices,
             &leaf_digests,
-            &paths,
+            &auth_structure,
         ) {
-            true => Ok(leaf_values),
+            true => Ok(revealed_leaves),
             false => bail!(FriValidationError::BadMerkleAuthenticationPath),
         }
     }
@@ -125,7 +127,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     pub fn prove(
         &self,
         codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) -> (Vec<usize>, Digest) {
         debug_assert_eq!(
             self.domain.length,
@@ -178,7 +180,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     fn commit(
         &self,
         codeword: &[XFieldElement],
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
     ) -> Vec<(Vec<XFieldElement>, MerkleTree<H>)> {
         let one = XFieldElement::one();
         let two_inv = one / (one + one);
@@ -197,7 +199,7 @@ impl<H: AlgebraicHasher> Fri<H> {
             .collect_into_vec(&mut digests);
 
         let mt = MTMaker::from_digests(&digests);
-        proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()), true);
+        proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()));
         codewords_and_merkle_trees.push((codeword.clone(), mt));
 
         for _round in 0..num_rounds {
@@ -230,7 +232,7 @@ impl<H: AlgebraicHasher> Fri<H> {
                 .collect_into_vec(&mut digests);
 
             let mt = MTMaker::from_digests(&digests);
-            proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()), true);
+            proof_stream.enqueue(&ProofItem::MerkleRoot(mt.get_root()));
             codewords_and_merkle_trees.push((codeword.clone(), mt));
 
             // Update subgroup generator and offset
@@ -239,7 +241,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         }
 
         // Send the last codeword in the clear
-        proof_stream.enqueue(&ProofItem::FriCodeword(codeword), false);
+        proof_stream.enqueue(&ProofItem::FriCodeword(codeword));
 
         codewords_and_merkle_trees
     }
@@ -248,7 +250,7 @@ impl<H: AlgebraicHasher> Fri<H> {
     /// Returns the indices and revealed elements of the codeword at the top level of the FRI proof.
     pub fn verify(
         &self,
-        proof_stream: &mut ProofStream<ProofItem, H>,
+        proof_stream: &mut ProofStream<H>,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Result<Vec<(usize, XFieldElement)>> {
         prof_start!(maybe_profiler, "init");
@@ -259,7 +261,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         let mut roots = Vec::with_capacity(num_rounds);
         let mut alphas = Vec::with_capacity(num_rounds);
 
-        let first_root = proof_stream.dequeue(true)?.as_merkle_root()?;
+        let first_root = proof_stream.dequeue()?.as_merkle_root()?;
         roots.push(first_root);
         prof_stop!(maybe_profiler, "init");
 
@@ -269,14 +271,14 @@ impl<H: AlgebraicHasher> Fri<H> {
             let alpha = proof_stream.sample_scalars(1)[0];
             alphas.push(alpha);
 
-            let root = proof_stream.dequeue(true)?.as_merkle_root()?;
+            let root = proof_stream.dequeue()?.as_merkle_root()?;
             roots.push(root);
         }
         prof_stop!(maybe_profiler, "roots and alpha");
 
         prof_start!(maybe_profiler, "last codeword matches root");
         // Extract last codeword
-        let last_codeword = proof_stream.dequeue(false)?.as_fri_codeword()?;
+        let last_codeword = proof_stream.dequeue()?.as_fri_codeword()?;
 
         // Check if last codeword matches the given root
         let codeword_digests = last_codeword.iter().map(|&xfe| xfe.into()).collect_vec();
@@ -293,7 +295,7 @@ impl<H: AlgebraicHasher> Fri<H> {
         // Compute interpolant to get the degree of the last codeword.
         // Note that we don't have to scale the polynomial back to the trace subgroup since we
         // only check its degree and don't use it further.
-        let log_2_of_n = log_2_floor(last_codeword.len() as u128) as u32;
+        let log_2_of_n = last_codeword.len().ilog2();
         let mut last_polynomial = last_codeword.clone();
 
         let last_fri_domain_generator = self
@@ -696,10 +698,8 @@ mod triton_xfri_tests {
 
         fri.prove(&codeword, &mut prover_proof_stream);
 
-        let proof = prover_proof_stream.to_proof();
-
-        let mut verifier_proof_stream: ProofStream<ProofItem, H> =
-            ProofStream::from_proof(&proof).unwrap();
+        let proof = (&prover_proof_stream).into();
+        let mut verifier_proof_stream: ProofStream<H> = ProofStream::try_from(&proof).unwrap();
 
         assert_eq!(prover_proof_stream.len(), verifier_proof_stream.len());
         for (prover_item, verifier_item) in prover_proof_stream
