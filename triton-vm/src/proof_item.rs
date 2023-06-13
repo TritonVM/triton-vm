@@ -5,7 +5,6 @@ use twenty_first::shared_math::bfield_codec::BFieldCodec;
 use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::merkle_tree::PartialAuthenticationPath;
-use twenty_first::util_types::proof_stream_typed::ProofStreamError;
 
 use crate::table::master_table::NUM_BASE_COLUMNS;
 use crate::table::master_table::NUM_EXT_COLUMNS;
@@ -185,9 +184,7 @@ impl BFieldCodec for ProofItem {
             8 => Self::FriCodeword(*Vec::<XFieldElement>::decode(str)?),
             9 => Self::FriResponse(*FriResponse::decode(str)?),
             10 => Self::Claim(*Claim::decode(str)?),
-            i => bail!(ProofStreamError::new(&format!(
-                "Unknown discriminant {i} for ProofItem."
-            ))),
+            i => bail!("Unknown discriminant {i} for ProofItem."),
         };
         Ok(Box::new(item))
     }
