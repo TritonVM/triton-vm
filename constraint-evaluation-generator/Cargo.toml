@@ -1,32 +1,28 @@
 [package]
 name = "constraint-evaluation-generator"
-version = "0.1.0"
-edition = "2021"
-authors = ["Triton Software AG"]
-
-license = "Apache-2.0"
 description = "Generate constraint evaluation functions for Triton VM tables"
-homepage = "https://triton-vm.org/"
-documentation = "https://github.com/TritonVM/triton-vm/blob/master/constraint-evaluation-generator"
-repository = "https://github.com/TritonVM/triton-vm"
-readme = "README.md"
 
-[dev-dependencies]
-proptest = "1.0"
-
-[dev-dependencies.criterion]
-version = "0.4.0"
-features = ["html_reports"]
-
-[dev-dependencies.cargo-husky]
-version = "1"
-default-features = false
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+readme.workspace = true
 
 [dependencies]
-twenty-first = { path = "../../twenty-first/twenty-first" }
 triton-vm = { path = "../triton-vm" }
-itertools = "0.10"
-syn = "2.0"
-quote = "1.0"
-proc-macro2 = "1.0"
+
+twenty-first.workspace = true
+itertools.workspace = true
+syn.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+
 prettyplease = "0.2"
+
+[dev-dependencies]
+proptest.workspace = true
+criterion.workspace = true
+cargo-husky.workspace = true

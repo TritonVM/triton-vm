@@ -1,52 +1,46 @@
 [package]
 name = "triton-vm"
-version = "0.25.1"
-edition = "2021"
-authors = ["Triton Software AG"]
-
-license = "Apache-2.0"
 description = """
 A virtual machine that comes with Algebraic Execution Tables (AET) and Arithmetic Intermediate Representations (AIR)
 for use in combination with a STARK proof system to allow proving correct execution of arbitrary programs
 in zero-knowledge.
 """
-homepage = "https://triton-vm.org/"
-documentation = "https://github.com/TritonVM/triton-vm/tree/master/specification"
-repository = "https://github.com/TritonVM/triton-vm"
-readme = "../README.md"
-
 keywords = ["zero-knowledge", "STARK", "virtual-machine", "recursive"]
 categories = ["cryptography", "mathematics"]
 
-[dev-dependencies]
-proptest = "1.0"
-
-[dev-dependencies.criterion]
-version = "0.4.0"
-features = ["html_reports"]
-
-[dev-dependencies.cargo-husky]
-version = "1"
-default-features = false
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+repository.workspace = true
+readme.workspace = true
 
 [dependencies]
-twenty-first = { path = "../../twenty-first/twenty-first" }
-triton-opcodes = { path = "../triton-opcodes" }
-triton-profiler = { path = "../triton-profiler" }
-anyhow = "1.0"
+triton-opcodes.workspace = true
+triton-profiler.workspace = true
+twenty-first.workspace = true
+itertools.workspace = true
+quote.workspace = true
+proc-macro2.workspace = true
+anyhow.workspace = true
+get-size.workspace = true
+num-traits.workspace = true
+rand.workspace = true
+rand_core.workspace = true
+serde.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
+
 bincode = "1.3"
-get-size = "0.1.3"
-itertools = "0.10.5"
-num-traits = "0.2"
-rand = "0.8.5"
-rand_core = "0.6.4"
 rayon = "1.5"
-serde = { version = "1.0", features = ["derive"] }
-strum = "0.24"
-strum_macros = "0.24"
 ndarray = { version = "0.15", features = ["rayon"] }
-quote = "1.0"
-proc-macro2 = "1.0"
+
+[dev-dependencies]
+proptest.workspace = true
+criterion.workspace = true
+cargo-husky.workspace = true
 
 [[bench]]
 name = "prove_halt"
