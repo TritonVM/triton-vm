@@ -26,10 +26,6 @@ impl GetSize for Proof {
     fn get_heap_size(&self) -> usize {
         self.0.len() * std::mem::size_of::<BFieldElement>()
     }
-
-    fn get_size(&self) -> usize {
-        Self::get_stack_size() + GetSize::get_heap_size(self)
-    }
 }
 
 impl Proof {
