@@ -88,90 +88,70 @@ impl ProofItem {
     pub fn as_compressed_authentication_paths(&self) -> Result<AuthenticationStructure> {
         match self {
             Self::CompressedAuthenticationPaths(caps) => Ok(caps.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected compressed authentication paths, but got {other:?}",
-            ))),
+            other => bail!("expected compressed authentication paths, but got {other:?}",),
         }
     }
 
     pub fn as_master_base_table_rows(&self) -> Result<Vec<Vec<BFieldElement>>> {
         match self {
             Self::MasterBaseTableRows(bss) => Ok(bss.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected master base table rows, but got something {other:?}",
-            ))),
+            other => bail!("expected master base table rows, but got something {other:?}",),
         }
     }
 
     pub fn as_master_ext_table_rows(&self) -> Result<Vec<Vec<XFieldElement>>> {
         match self {
             Self::MasterExtTableRows(xss) => Ok(xss.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected master extension table rows, but got {other:?}",
-            ))),
+            other => bail!("expected master extension table rows, but got {other:?}",),
         }
     }
 
     pub fn as_out_of_domain_base_row(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::OutOfDomainBaseRow(xs) => Ok(xs.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected out of domain base row, but got {other:?}",
-            ))),
+            other => bail!("expected out of domain base row, but got {other:?}",),
         }
     }
 
     pub fn as_out_of_domain_ext_row(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::OutOfDomainExtRow(xs) => Ok(xs.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected out of domain extension row, but got {other:?}",
-            ))),
+            other => bail!("expected out of domain extension row, but got {other:?}",),
         }
     }
 
     pub fn as_merkle_root(&self) -> Result<Digest> {
         match self {
             Self::MerkleRoot(bs) => Ok(*bs),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected merkle root, but got {other:?}",
-            ))),
+            other => bail!("expected merkle root, but got {other:?}",),
         }
     }
 
     pub fn as_authentication_path(&self) -> Result<Vec<Digest>> {
         match self {
             Self::AuthenticationPath(bss) => Ok(bss.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected authentication path, but got {other:?}",
-            ))),
+            other => bail!("expected authentication path, but got {other:?}",),
         }
     }
 
     pub fn as_revealed_combination_elements(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::RevealedCombinationElements(xs) => Ok(xs.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected revealed combination elements, but got {other:?}",
-            ))),
+            other => bail!("expected revealed combination elements, but got {other:?}",),
         }
     }
 
     pub fn as_fri_codeword(&self) -> Result<Vec<XFieldElement>> {
         match self {
             Self::FriCodeword(xs) => Ok(xs.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected FRI codeword, but got {other:?}",
-            ))),
+            other => bail!("expected FRI codeword, but got {other:?}",),
         }
     }
 
     pub fn as_fri_response(&self) -> Result<FriResponse> {
         match self {
             Self::FriResponse(fri_proof) => Ok(fri_proof.to_owned()),
-            other => bail!(ProofStreamError::new(&format!(
-                "expected FRI proof, but got {other:?}"
-            ),)),
+            other => bail!("expected FRI proof, but got {other:?}"),
         }
     }
 
@@ -188,7 +168,7 @@ impl BFieldCodec for ProofItem {
     /// field type, and the rest of the elements are the data for the item.
     fn decode(str: &[BFieldElement]) -> Result<Box<Self>> {
         if str.is_empty() {
-            bail!(ProofStreamError::new("empty buffer"));
+            bail!("empty buffer");
         }
 
         let discriminant = str[0].value();

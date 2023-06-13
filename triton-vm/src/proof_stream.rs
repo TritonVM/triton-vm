@@ -1,6 +1,4 @@
-use std::error::Error;
-use std::fmt::Display;
-
+use anyhow::bail;
 use anyhow::Result;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
@@ -22,28 +20,6 @@ where
     pub items_index: usize,
     pub sponge_state: H::SpongeState,
 }
-
-#[derive(Debug, Clone)]
-pub struct ProofStreamError {
-    pub message: String,
-}
-
-impl ProofStreamError {
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(message: &str) -> anyhow::Error {
-        anyhow::Error::new(Self {
-            message: message.to_string(),
-        })
-    }
-}
-
-impl Display for ProofStreamError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}", self.message)
-    }
-}
-
-impl Error for ProofStreamError {}
 
 impl<H> ProofStream<H>
 where
@@ -110,10 +86,9 @@ where
     /// Receive a proof item from prover as verifier.
     /// See [`ProofStream::enqueue`] for more details.
     pub fn dequeue(&mut self) -> Result<ProofItem> {
-        let item = self
-            .items
-            .get(self.items_index)
-            .ok_or_else(|| ProofStreamError::new("Could not dequeue, queue empty"))?;
+        let Some(item) = self.items.get(self.items_index) else {
+            bail!("Queue must be non-empty in order to dequeue.");
+        };
         if item.include_in_fiat_shamir_heuristic() {
             H::absorb_repeatedly(
                 &mut self.sponge_state,
