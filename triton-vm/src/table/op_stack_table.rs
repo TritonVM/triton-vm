@@ -15,7 +15,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::op_stack::OP_STACK_REG_COUNT;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -46,9 +45,9 @@ pub struct OpStackTable {}
 pub struct ExtOpStackTable {}
 
 impl ExtOpStackTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn initial_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
         let ib1 = circuit_builder.input(BaseRow(IB1ShrinkStack.master_base_table_index()));
         let osp = circuit_builder.input(BaseRow(OSP.master_base_table_index()));
@@ -74,24 +73,25 @@ impl ExtOpStackTable {
         let clock_jump_diff_log_derivative_is_initialized_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 
-        let mut constraints = [
+        vec![
             clk_is_0,
             osv_is_0,
             osp_is_16,
             rppa_starts_correctly,
             clock_jump_diff_log_derivative_is_initialized_correctly,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn consistency_constraints(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::<DualRowIndicator>::new();
+    pub fn transition_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(1u32.into());
 
         let clk = circuit_builder.input(CurrentBaseRow(CLK.master_base_table_index()));
@@ -156,18 +156,17 @@ impl ExtOpStackTable {
             * log_derivative_accumulates
             + (osp_next - osp) * log_derivative_remains;
 
-        let mut constraints = [
+        vec![
             osp_increases_by_1_or_does_not_change,
             osp_increases_by_1_or_osv_does_not_change_or_shrink_stack,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn terminal_constraints(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
@@ -338,5 +337,99 @@ impl OpStackTable {
                 clock_jump_diff_lookup_log_derivative;
             previous_row = Some(current_row);
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use num_traits::Zero;
+
+    pub fn constraints_evaluate_to_zero(
+        master_base_trace_table: ArrayView2<BFieldElement>,
+        master_ext_trace_table: ArrayView2<XFieldElement>,
+        challenges: &Challenges,
+    ) -> bool {
+        let zero = XFieldElement::zero();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtOpStackTable::initial_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![..1, ..]),
+                master_ext_trace_table.slice(s![..1, ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Initial constraint {constraint_idx} failed."
+            );
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtOpStackTable::consistency_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Consistency constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtOpStackTable::transition_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Transition constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtOpStackTable::terminal_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed."
+            );
+        }
+
+        true
     }
 }

@@ -11,7 +11,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -40,9 +39,9 @@ pub struct ProgramTable {}
 pub struct ExtProgramTable {}
 
 impl ExtProgramTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn initial_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let address = circuit_builder.input(BaseRow(Address.master_base_table_index()));
         let instruction_lookup_log_derivative = circuit_builder.input(ExtRow(
             InstructionLookupServerLogDerivative.master_ext_table_index(),
@@ -54,29 +53,26 @@ impl ExtProgramTable {
             instruction_lookup_log_derivative
                 - circuit_builder.x_constant(LookupArg::default_initial());
 
-        let mut constraints = [
+        vec![
             first_address_is_zero,
             instruction_lookup_log_derivative_is_initialized_correctly,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn consistency_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let one = circuit_builder.b_constant(1_u32.into());
 
         let is_padding = circuit_builder.input(BaseRow(IsPadding.master_base_table_index()));
         let is_padding_is_bit = is_padding.clone() * (is_padding - one);
 
-        let mut constraints = [is_padding_is_bit];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![is_padding_is_bit]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn transition_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(1u32.into());
         let address = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
         let instruction =
@@ -114,16 +110,16 @@ impl ExtProgramTable {
             * log_derivative_updates
             + is_padding * log_derivative_remains;
 
-        let mut constraints = [
+        vec![
             address_increases_by_one,
             is_padding_is_0_or_remains_unchanged,
             log_derivative_updates_if_and_only_if_not_a_padding_row,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn terminal_constraints(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
@@ -218,5 +214,98 @@ impl ProgramTable {
             .expect("Program Table must not be empty.");
         last_row[InstructionLookupServerLogDerivative.ext_table_index()] =
             instruction_lookup_log_derivative;
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    pub fn constraints_evaluate_to_zero(
+        master_base_trace_table: ArrayView2<BFieldElement>,
+        master_ext_trace_table: ArrayView2<XFieldElement>,
+        challenges: &Challenges,
+    ) -> bool {
+        let zero = XFieldElement::zero();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtProgramTable::initial_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![..1, ..]),
+                master_ext_trace_table.slice(s![..1, ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Initial constraint {constraint_idx} failed."
+            );
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtProgramTable::consistency_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Consistency constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtProgramTable::transition_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Transition constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtProgramTable::terminal_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed."
+            );
+        }
+
+        true
     }
 }

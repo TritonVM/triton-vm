@@ -17,7 +17,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::DualRowIndicator;
 use crate::table::constraint_circuit::DualRowIndicator::*;
@@ -48,9 +47,9 @@ pub struct JumpStackTable {}
 pub struct ExtJumpStackTable {}
 
 impl ExtJumpStackTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn initial_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let clk = circuit_builder.input(BaseRow(CLK.master_base_table_index()));
         let jsp = circuit_builder.input(BaseRow(JSP.master_base_table_index()));
         let jso = circuit_builder.input(BaseRow(JSO.master_base_table_index()));
@@ -70,27 +69,26 @@ impl ExtJumpStackTable {
         let clock_jump_diff_log_derivative_starts_correctly = clock_jump_diff_log_derivative
             - circuit_builder.x_constant(LookupArg::default_initial());
 
-        let mut constraints = [
+        vec![
             clk,
             jsp,
             jso,
             jsd,
             rppa_starts_correctly,
             clock_jump_diff_log_derivative_starts_correctly,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn consistency_constraints(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         // no further constraints
         vec![]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn transition_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(1u32.into());
         let call_opcode =
             circuit_builder.b_constant(Instruction::Call(Default::default()).opcode_b());
@@ -175,20 +173,20 @@ impl ExtJumpStackTable {
             * log_derivative_accumulates
             + (jsp_next - jsp) * log_derivative_remains;
 
-        let mut constraints = [
+        vec![
             jsp_inc_or_stays,
             jsp_inc_or_jso_stays_or_ci_is_ret,
             jsp_inc_or_jsd_stays_or_ci_ret,
             jsp_inc_or_clk_inc_or_ci_call_or_ci_ret,
             rppa_updates_correctly,
             log_derivative_updates_correctly,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
+    pub fn terminal_constraints(
+        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        // no further constraints
         vec![]
     }
 }
@@ -385,5 +383,100 @@ impl Display for JumpStackTraceRow {
             self.row[JSO.base_table_index()].value(),
             self.row[JSD.base_table_index()].value(),
         )
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use num_traits::Zero;
+
+    pub fn constraints_evaluate_to_zero(
+        master_base_trace_table: ArrayView2<BFieldElement>,
+        master_ext_trace_table: ArrayView2<XFieldElement>,
+        challenges: &Challenges,
+    ) -> bool {
+        let zero = XFieldElement::zero();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtJumpStackTable::initial_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![..1, ..]),
+                master_ext_trace_table.slice(s![..1, ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Initial constraint {constraint_idx} failed."
+            );
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtJumpStackTable::consistency_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Consistency constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtJumpStackTable::transition_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Transition constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtJumpStackTable::terminal_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed."
+            );
+        }
+
+        true
     }
 }

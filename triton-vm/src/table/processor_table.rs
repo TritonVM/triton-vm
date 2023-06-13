@@ -1,5 +1,4 @@
 use std::cmp::max;
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::Mul;
 
@@ -14,29 +13,30 @@ use ndarray::Axis;
 use num_traits::One;
 use num_traits::Zero;
 use strum::EnumCount;
-use triton_opcodes::instruction::AnInstruction::*;
-use triton_opcodes::instruction::Instruction;
-use triton_opcodes::instruction::ALL_INSTRUCTIONS;
-use triton_opcodes::ord_n::Ord8;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::b_field_element::BFIELD_ONE;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 
+use triton_opcodes::instruction::AnInstruction::*;
+use triton_opcodes::instruction::Instruction;
+use triton_opcodes::instruction::ALL_INSTRUCTIONS;
+use triton_opcodes::ord_n::Ord8;
+
+use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
+use crate::table::constraint_circuit::DualRowIndicator::*;
 use crate::table::constraint_circuit::InputIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator;
+use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::EvalArg;
 use crate::table::cross_table_argument::LookupArg;
 use crate::table::cross_table_argument::PermArg;
-use crate::table::master_table::NUM_BASE_COLUMNS;
-use crate::table::master_table::NUM_EXT_COLUMNS;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProcessorBaseTableColumn;
@@ -389,165 +389,71 @@ impl ProcessorTable {
     }
 }
 
-impl ExtProcessorTable {
-    /// Instruction-specific transition constraints are combined with deselectors in such a way
-    /// that arbitrary sets of mutually exclusive combinations are summed, i.e.,
-    ///
-    /// ```py
-    /// [ deselector_pop * tc_pop_0 + deselector_push * tc_push_0 + ...,
-    ///   deselector_pop * tc_pop_1 + deselector_push * tc_push_1 + ...,
-    ///   ...,
-    ///   deselector_pop * tc_pop_i + deselector_push * tc_push_i + ...,
-    ///   deselector_pop * 0        + deselector_push * tc_push_{i+1} + ...,
-    ///   ...,
-    /// ]
-    /// ```
-    /// For instructions that have fewer transition constraints than the maximal number of
-    /// transition constraints among all instructions, the deselector is multiplied with a zero,
-    /// causing no additional terms in the final sets of combined transition constraint polynomials.
-    fn combine_instruction_constraints_with_deselectors(
-        factory: &mut DualRowConstraints,
-        instr_tc_polys_tuples: [(Instruction, Vec<ConstraintCircuitMonad<DualRowIndicator>>);
-            Instruction::COUNT],
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let (all_instructions, all_tc_polys_for_all_instructions): (Vec<_>, Vec<Vec<_>>) =
-            instr_tc_polys_tuples.into_iter().unzip();
-
-        let instruction_deselectors = InstructionDeselectors::new(factory);
-
-        let all_instruction_deselectors = all_instructions
-            .into_iter()
-            .map(|instr| instruction_deselectors.get(instr))
-            .collect_vec();
-
-        let max_number_of_constraints = all_tc_polys_for_all_instructions
-            .iter()
-            .map(|tc_polys_for_instr| tc_polys_for_instr.len())
-            .max()
-            .unwrap();
-
-        let zero_poly = factory.zero();
-        let all_tc_polys_for_all_instructions_transposed = (0..max_number_of_constraints)
-            .map(|idx| {
-                all_tc_polys_for_all_instructions
-                    .iter()
-                    .map(|tc_polys_for_instr| tc_polys_for_instr.get(idx).unwrap_or(&zero_poly))
-                    .collect_vec()
-            })
-            .collect_vec();
-
-        all_tc_polys_for_all_instructions_transposed
-            .into_iter()
-            .map(|row| {
-                all_instruction_deselectors
-                    .clone()
-                    .into_iter()
-                    .zip(row)
-                    .map(|(deselector, instruction_tc)| deselector * instruction_tc.to_owned())
-                    .sum()
-            })
-            .collect_vec()
-    }
-
-    fn combine_transition_constraints_with_padding_constraints(
-        factory: &DualRowConstraints,
-        instruction_transition_constraints: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let ip_remains = factory.ip_next() - factory.ip();
-        let ci_remains = factory.ci_next() - factory.ci();
-        let nia_remains = factory.nia_next() - factory.nia();
-        let padding_row_transition_constraints = [
-            vec![ip_remains, ci_remains, nia_remains],
-            factory.keep_jump_stack(),
-            factory.keep_stack(),
-            factory.keep_ram(),
-        ]
-        .concat();
-
-        let padding_row_deselector = factory.one() - factory.is_padding_next();
-        let padding_row_selector = factory.is_padding_next();
-
-        let max_number_of_constraints = max(
-            instruction_transition_constraints.len(),
-            padding_row_transition_constraints.len(),
-        );
-
-        (0..max_number_of_constraints)
-            .map(|idx| {
-                let instruction_constraint = instruction_transition_constraints
-                    .get(idx)
-                    .unwrap_or(&factory.zero())
-                    .clone();
-                let padding_constraint = padding_row_transition_constraints
-                    .get(idx)
-                    .unwrap_or(&factory.zero())
-                    .clone();
-
-                instruction_constraint * padding_row_deselector.clone()
-                    + padding_constraint * padding_row_selector.clone()
-            })
-            .collect_vec()
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ExtProcessorTable {}
 
 impl ExtProcessorTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let factory = SingleRowConstraints::default();
-        let constant = |c| factory.constant_from_i32(c);
-        let constant_x = |x| factory.constant_from_xfe(x);
-        let challenge = |c| factory.circuit_builder.challenge(c);
+    pub fn initial_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let x_constant = |x| circuit_builder.x_constant(x);
+        let challenge = |c| circuit_builder.challenge(c);
+        let base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
+        let ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(ExtRow(col.master_ext_table_index()))
+        };
 
-        let clk_is_0 = factory.clk();
-        let ip_is_0 = factory.ip();
-        let jsp_is_0 = factory.jsp();
-        let jso_is_0 = factory.jso();
-        let jsd_is_0 = factory.jsd();
-        let st0_is_0 = factory.st0();
-        let st1_is_0 = factory.st1();
-        let st2_is_0 = factory.st2();
-        let st3_is_0 = factory.st3();
-        let st4_is_0 = factory.st4();
-        let st5_is_0 = factory.st5();
-        let st6_is_0 = factory.st6();
-        let st7_is_0 = factory.st7();
-        let st8_is_0 = factory.st8();
-        let st9_is_0 = factory.st9();
-        let st10_is_0 = factory.st10();
-        let st11_is_0 = factory.st11();
-        let st12_is_0 = factory.st12();
-        let st13_is_0 = factory.st13();
-        let st14_is_0 = factory.st14();
-        let st15_is_0 = factory.st15();
-        let osp_is_16 = factory.osp() - constant(16);
-        let osv_is_0 = factory.osv();
-        let ramv_is_0 = factory.ramv();
-        let ramp_is_0 = factory.ramp();
-        let previous_instruction_is_0 = factory.previous_instruction();
+        let clk_is_0 = base_row(CLK);
+        let ip_is_0 = base_row(IP);
+        let jsp_is_0 = base_row(JSP);
+        let jso_is_0 = base_row(JSO);
+        let jsd_is_0 = base_row(JSD);
+        let st0_is_0 = base_row(ST0);
+        let st1_is_0 = base_row(ST1);
+        let st2_is_0 = base_row(ST2);
+        let st3_is_0 = base_row(ST3);
+        let st4_is_0 = base_row(ST4);
+        let st5_is_0 = base_row(ST5);
+        let st6_is_0 = base_row(ST6);
+        let st7_is_0 = base_row(ST7);
+        let st8_is_0 = base_row(ST8);
+        let st9_is_0 = base_row(ST9);
+        let st10_is_0 = base_row(ST10);
+        let st11_is_0 = base_row(ST11);
+        let st12_is_0 = base_row(ST12);
+        let st13_is_0 = base_row(ST13);
+        let st14_is_0 = base_row(ST14);
+        let st15_is_0 = base_row(ST15);
+        let osp_is_16 = base_row(OSP) - constant(16);
+        let osv_is_0 = base_row(OSV);
+        let ramv_is_0 = base_row(RAMV);
+        let ramp_is_0 = base_row(RAMP);
+        let previous_instruction_is_0 = base_row(PreviousInstruction);
 
         // Permutation and Evaluation Arguments with all tables the Processor Table relates to
 
         // standard input
         let running_evaluation_for_standard_input_is_initialized_correctly =
-            factory.running_evaluation_standard_input() - constant_x(EvalArg::default_initial());
+            ext_row(InputTableEvalArg) - x_constant(EvalArg::default_initial());
 
         // program table
         let instruction_lookup_indeterminate = challenge(InstructionLookupIndeterminate);
         let instruction_ci_weight = challenge(ProgramInstructionWeight);
         let instruction_nia_weight = challenge(ProgramNextInstructionWeight);
         let compressed_row_for_instruction_lookup =
-            instruction_ci_weight * factory.ci() + instruction_nia_weight * factory.nia();
-        let instruction_lookup_log_derivative_is_initialized_correctly = (factory
-            .instruction_lookup_log_derivative()
-            - constant_x(LookupArg::default_initial()))
-            * (instruction_lookup_indeterminate - compressed_row_for_instruction_lookup)
-            - factory.one();
+            instruction_ci_weight * base_row(CI) + instruction_nia_weight * base_row(NIA);
+        let instruction_lookup_log_derivative_is_initialized_correctly =
+            (ext_row(InstructionLookupClientLogDerivative)
+                - x_constant(LookupArg::default_initial()))
+                * (instruction_lookup_indeterminate - compressed_row_for_instruction_lookup)
+                - constant(1);
 
         // standard output
         let running_evaluation_for_standard_output_is_initialized_correctly =
-            factory.running_evaluation_standard_output() - constant_x(EvalArg::default_initial());
+            ext_row(OutputTableEvalArg) - x_constant(EvalArg::default_initial());
 
         // op-stack table
         let op_stack_indeterminate = challenge(OpStackIndeterminate);
@@ -555,68 +461,65 @@ impl ExtProcessorTable {
         let op_stack_osp_weight = challenge(OpStackOspWeight);
         // note: `clk` and `osv` are already constrained to be 0, `osp` to be 16
         let compressed_row_for_op_stack_table =
-            op_stack_ib1_weight * factory.ib1() + op_stack_osp_weight * constant(16);
-        let running_product_for_op_stack_table_is_initialized_correctly = factory
-            .running_product_op_stack_table()
-            - constant_x(PermArg::default_initial())
-                * (op_stack_indeterminate - compressed_row_for_op_stack_table);
+            op_stack_ib1_weight * base_row(IB1) + op_stack_osp_weight * constant(16);
+        let running_product_for_op_stack_table_is_initialized_correctly =
+            ext_row(OpStackTablePermArg)
+                - x_constant(PermArg::default_initial())
+                    * (op_stack_indeterminate - compressed_row_for_op_stack_table);
 
         // ram table
         let ram_indeterminate = challenge(RamIndeterminate);
         // note: `clk`, `ramp`, and `ramv` are already constrained to be 0.
         let compressed_row_for_ram_table = constant(0);
-        let running_product_for_ram_table_is_initialized_correctly = factory
-            .running_product_ram_table()
-            - constant_x(PermArg::default_initial())
+        let running_product_for_ram_table_is_initialized_correctly = ext_row(RamTablePermArg)
+            - x_constant(PermArg::default_initial())
                 * (ram_indeterminate - compressed_row_for_ram_table);
 
         // jump-stack table
         let jump_stack_indeterminate = challenge(JumpStackIndeterminate);
         let jump_stack_ci_weight = challenge(JumpStackCiWeight);
         // note: `clk`, `jsp`, `jso`, and `jsd` are already constrained to be 0.
-        let compressed_row_for_jump_stack_table = jump_stack_ci_weight * factory.ci();
-        let running_product_for_jump_stack_table_is_initialized_correctly = factory
-            .running_product_jump_stack_table()
-            - constant_x(PermArg::default_initial())
-                * (jump_stack_indeterminate - compressed_row_for_jump_stack_table);
+        let compressed_row_for_jump_stack_table = jump_stack_ci_weight * base_row(CI);
+        let running_product_for_jump_stack_table_is_initialized_correctly =
+            ext_row(JumpStackTablePermArg)
+                - x_constant(PermArg::default_initial())
+                    * (jump_stack_indeterminate - compressed_row_for_jump_stack_table);
 
         // clock jump difference lookup argument
         // A clock jump difference of 0 is illegal. Hence, the initial is recorded.
-        let clock_jump_diff_lookup_log_derivative_is_initialized_correctly = factory
-            .clock_jump_difference_lookup_server_log_derivative()
-            - constant_x(LookupArg::default_initial());
+        let clock_jump_diff_lookup_log_derivative_is_initialized_correctly =
+            ext_row(ClockJumpDifferenceLookupServerLogDerivative)
+                - x_constant(LookupArg::default_initial());
 
         // from processor to hash table
-        let hash_selector = factory.ci() - constant(Instruction::Hash.opcode() as i32);
+        let hash_selector = base_row(CI) - constant(Instruction::Hash.opcode());
         let hash_deselector =
-            InstructionDeselectors::instruction_deselector_single_row(&factory, Instruction::Hash);
+            Self::instruction_deselector_single_row(circuit_builder, Instruction::Hash);
         let hash_input_indeterminate = challenge(HashInputIndeterminate);
         // the opStack is guaranteed to be initialized to 0 by virtue of other initial constraints
         let compressed_row = constant(0);
-        let running_evaluation_hash_input_has_absorbed_first_row = factory
-            .running_evaluation_hash_input()
-            - hash_input_indeterminate * constant_x(EvalArg::default_initial())
+        let running_evaluation_hash_input_has_absorbed_first_row = ext_row(HashInputEvalArg)
+            - hash_input_indeterminate * x_constant(EvalArg::default_initial())
             - compressed_row;
         let running_evaluation_hash_input_is_default_initial =
-            factory.running_evaluation_hash_input() - constant_x(EvalArg::default_initial());
+            ext_row(HashInputEvalArg) - x_constant(EvalArg::default_initial());
         let running_evaluation_hash_input_is_initialized_correctly = hash_selector
             * running_evaluation_hash_input_is_default_initial
             + hash_deselector * running_evaluation_hash_input_has_absorbed_first_row;
 
         // from hash table to processor
         let running_evaluation_hash_digest_is_initialized_correctly =
-            factory.running_evaluation_hash_digest() - constant_x(EvalArg::default_initial());
+            ext_row(HashDigestEvalArg) - x_constant(EvalArg::default_initial());
 
         // Hash Table – Sponge
         let running_evaluation_sponge_absorb_is_initialized_correctly =
-            factory.running_evaluation_sponge() - constant_x(EvalArg::default_initial());
+            ext_row(SpongeEvalArg) - x_constant(EvalArg::default_initial());
 
         // u32 table
-        let running_sum_log_derivative_for_u32_table_is_initialized_correctly = factory
-            .u32_table_running_sum_log_derivative()
-            - constant_x(LookupArg::default_initial());
+        let running_sum_log_derivative_for_u32_table_is_initialized_correctly =
+            ext_row(U32LookupClientLogDerivative) - x_constant(LookupArg::default_initial());
 
-        let mut constraints = [
+        vec![
             clk_is_0,
             ip_is_0,
             jsp_is_0,
@@ -654,47 +557,47 @@ impl ExtProcessorTable {
             running_evaluation_hash_digest_is_initialized_correctly,
             running_evaluation_sponge_absorb_is_initialized_correctly,
             running_sum_log_derivative_for_u32_table_is_initialized_correctly,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let factory = SingleRowConstraints::default();
-        let one = factory.one();
-        let constant = |c| factory.constant_from_i32(c);
+    pub fn consistency_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
 
         // The composition of instruction buckets ib0-ib7 corresponds the current instruction ci.
-        let ib_composition = one.clone() * factory.ib0()
-            + constant(1 << 1) * factory.ib1()
-            + constant(1 << 2) * factory.ib2()
-            + constant(1 << 3) * factory.ib3()
-            + constant(1 << 4) * factory.ib4()
-            + constant(1 << 5) * factory.ib5()
-            + constant(1 << 6) * factory.ib6()
-            + constant(1 << 7) * factory.ib7();
-        let ci_corresponds_to_ib0_thru_ib7 = factory.ci() - ib_composition;
+        let ib_composition = base_row(IB0)
+            + constant(1 << 1) * base_row(IB1)
+            + constant(1 << 2) * base_row(IB2)
+            + constant(1 << 3) * base_row(IB3)
+            + constant(1 << 4) * base_row(IB4)
+            + constant(1 << 5) * base_row(IB5)
+            + constant(1 << 6) * base_row(IB6)
+            + constant(1 << 7) * base_row(IB7);
+        let ci_corresponds_to_ib0_thru_ib7 = base_row(CI) - ib_composition;
 
-        let ib0_is_bit = factory.ib0() * (factory.ib0() - one.clone());
-        let ib1_is_bit = factory.ib1() * (factory.ib1() - one.clone());
-        let ib2_is_bit = factory.ib2() * (factory.ib2() - one.clone());
-        let ib3_is_bit = factory.ib3() * (factory.ib3() - one.clone());
-        let ib4_is_bit = factory.ib4() * (factory.ib4() - one.clone());
-        let ib5_is_bit = factory.ib5() * (factory.ib5() - one.clone());
-        let ib6_is_bit = factory.ib6() * (factory.ib6() - one.clone());
-        let ib7_is_bit = factory.ib7() * (factory.ib7() - one.clone());
-        let is_padding_is_bit = factory.is_padding() * (factory.is_padding() - one);
+        let ib0_is_bit = base_row(IB0) * (base_row(IB0) - constant(1));
+        let ib1_is_bit = base_row(IB1) * (base_row(IB1) - constant(1));
+        let ib2_is_bit = base_row(IB2) * (base_row(IB2) - constant(1));
+        let ib3_is_bit = base_row(IB3) * (base_row(IB3) - constant(1));
+        let ib4_is_bit = base_row(IB4) * (base_row(IB4) - constant(1));
+        let ib5_is_bit = base_row(IB5) * (base_row(IB5) - constant(1));
+        let ib6_is_bit = base_row(IB6) * (base_row(IB6) - constant(1));
+        let ib7_is_bit = base_row(IB7) * (base_row(IB7) - constant(1));
+        let is_padding_is_bit = base_row(IsPadding) * (base_row(IsPadding) - constant(1));
 
         // In padding rows, the clock jump difference lookup multiplicity is 0. The one row
         // exempt from this rule is the row wth CLK == 1: since the memory-like tables don't have
         // an “awareness” of padding rows, they keep looking up clock jump differences of
         // magnitude 1.
-        let clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows = factory.is_padding()
-            * (factory.clk() - factory.one())
-            * factory.clock_jump_difference_lookup_multiplicity();
+        let clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows = base_row(IsPadding)
+            * (base_row(CLK) - constant(1))
+            * base_row(ClockJumpDifferenceLookupMultiplicity);
 
-        let mut constraints = [
+        vec![
             ib0_is_bit,
             ib1_is_bit,
             ib2_is_bit,
@@ -706,1605 +609,168 @@ impl ExtProcessorTable {
             is_padding_is_bit,
             ci_corresponds_to_ib0_thru_ib7,
             clock_jump_diff_lookup_multiplicity_is_0_in_padding_rows,
-        ];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let mut factory = DualRowConstraints::default();
-
-        // instruction-specific constraints
-        let all_instruction_transition_constraints: [_; Instruction::COUNT] = [
-            (Pop, factory.instruction_pop()),
-            (Push(Default::default()), factory.instruction_push()),
-            (Divine(Default::default()), factory.instruction_divine()),
-            (Dup(Default::default()), factory.instruction_dup()),
-            (Swap(Default::default()), factory.instruction_swap()),
-            (Nop, factory.instruction_nop()),
-            (Skiz, factory.instruction_skiz()),
-            (Call(Default::default()), factory.instruction_call()),
-            (Return, factory.instruction_return()),
-            (Recurse, factory.instruction_recurse()),
-            (Assert, factory.instruction_assert()),
-            (Halt, factory.instruction_halt()),
-            (ReadMem, factory.instruction_read_mem()),
-            (WriteMem, factory.instruction_write_mem()),
-            (Hash, factory.instruction_hash()),
-            (DivineSibling, factory.instruction_divine_sibling()),
-            (AssertVector, factory.instruction_assert_vector()),
-            (AbsorbInit, factory.instruction_absorb_init()),
-            (Absorb, factory.instruction_absorb()),
-            (Squeeze, factory.instruction_squeeze()),
-            (Add, factory.instruction_add()),
-            (Mul, factory.instruction_mul()),
-            (Invert, factory.instruction_invert()),
-            (Eq, factory.instruction_eq()),
-            (Split, factory.instruction_split()),
-            (Lt, factory.instruction_lt()),
-            (And, factory.instruction_and()),
-            (Xor, factory.instruction_xor()),
-            (Log2Floor, factory.instruction_log_2_floor()),
-            (Pow, factory.instruction_pow()),
-            (Div, factory.instruction_div()),
-            (PopCount, factory.instruction_pop_count()),
-            (XxAdd, factory.instruction_xxadd()),
-            (XxMul, factory.instruction_xxmul()),
-            (XInvert, factory.instruction_xinv()),
-            (XbMul, factory.instruction_xbmul()),
-            (ReadIo, factory.instruction_read_io()),
-            (WriteIo, factory.instruction_write_io()),
-        ];
-
-        let mut transition_constraints = Self::combine_instruction_constraints_with_deselectors(
-            &mut factory,
-            all_instruction_transition_constraints,
-        );
-
-        // if next row is padding row: disable transition constraints, enable padding constraints
-        transition_constraints = Self::combine_transition_constraints_with_padding_constraints(
-            &factory,
-            transition_constraints,
-        );
-
-        // constraints common to all instructions
-        transition_constraints.insert(0, factory.clk_always_increases_by_one());
-        transition_constraints.insert(1, factory.is_padding_is_zero_or_does_not_change());
-        transition_constraints.insert(2, factory.previous_instruction_is_copied_correctly());
-
-        // constraints related to clock jump difference Lookup Argument
-        let clock_jump_difference_lookup_indeterminate = factory
-            .circuit_builder
-            .challenge(ClockJumpDifferenceLookupIndeterminate);
-        let log_derivative_accumulates_clk_next = (factory
-            .clock_jump_difference_lookup_server_log_derivative_next()
-            - factory.clock_jump_difference_lookup_server_log_derivative())
-            * (clock_jump_difference_lookup_indeterminate - factory.clk_next())
-            - factory.clock_jump_difference_lookup_multiplicity_next();
-
-        transition_constraints.push(log_derivative_accumulates_clk_next);
-
-        // constraints related to evaluation and permutation arguments
-
-        transition_constraints
-            .push(factory.running_evaluation_for_standard_input_updates_correctly());
-        transition_constraints
-            .push(factory.log_derivative_for_instruction_lookup_updates_correctly());
-        transition_constraints
-            .push(factory.running_evaluation_for_standard_output_updates_correctly());
-        transition_constraints.push(factory.running_product_for_op_stack_table_updates_correctly());
-        transition_constraints.push(factory.running_product_for_ram_table_updates_correctly());
-        transition_constraints
-            .push(factory.running_product_for_jump_stack_table_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_hash_input_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_hash_digest_updates_correctly());
-        transition_constraints.push(factory.running_evaluation_sponge_updates_correctly());
-        transition_constraints.push(factory.log_derivative_with_u32_table_updates_correctly());
-
-        ConstraintCircuitMonad::constant_folding(&mut transition_constraints);
-        transition_constraints
-            .into_iter()
-            .map(|tc_ref| tc_ref.consume())
-            .collect_vec()
-    }
-
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let factory = SingleRowConstraints::default();
-
-        // In the last row, current instruction register ci is 0, corresponding to instruction halt.
-        let last_ci_is_halt = factory.ci();
-
-        let mut constraints = [last_ci_is_halt];
-
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SingleRowConstraints {
-    base_row_variables: [ConstraintCircuitMonad<SingleRowIndicator>; NUM_BASE_COLUMNS],
-    ext_row_variables: [ConstraintCircuitMonad<SingleRowIndicator>; NUM_EXT_COLUMNS],
-    circuit_builder: ConstraintCircuitBuilder<SingleRowIndicator>,
-    one: ConstraintCircuitMonad<SingleRowIndicator>,
-    two: ConstraintCircuitMonad<SingleRowIndicator>,
-}
-
-impl Default for SingleRowConstraints {
-    fn default() -> Self {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        let base_row_variables = (0..NUM_BASE_COLUMNS)
-            .map(|i| circuit_builder.input(SingleRowIndicator::BaseRow(i)))
-            .collect_vec()
-            .try_into()
-            .expect("Create variables for single base row constraints");
-        let ext_row_variables = (0..NUM_EXT_COLUMNS)
-            .map(|i| circuit_builder.input(SingleRowIndicator::ExtRow(i)))
-            .collect_vec()
-            .try_into()
-            .expect("Create variables for single ext row constraints");
-
-        let one = circuit_builder.b_constant(1u32.into());
-        let two = circuit_builder.b_constant(2u32.into());
-
-        Self {
-            base_row_variables,
-            ext_row_variables,
-            circuit_builder,
-            one,
-            two,
-        }
-    }
-}
-
-impl SingleRowConstraints {
-    pub fn constant_from_xfe(
-        &self,
-        constant: XFieldElement,
-    ) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.circuit_builder.x_constant(constant)
-    }
-    pub fn constant_from_i32(&self, constant: i32) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        let bfe = if constant < 0 {
-            BFieldElement::new(BFieldElement::P - ((-constant) as u64))
-        } else {
-            BFieldElement::new(constant as u64)
+    fn indicator_polynomial(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        i: usize,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let one = || circuit_builder.b_constant(1_u32.into());
+        let hv = |idx| match idx {
+            0 => circuit_builder.input(CurrentBaseRow(HV0.master_base_table_index())),
+            1 => circuit_builder.input(CurrentBaseRow(HV1.master_base_table_index())),
+            2 => circuit_builder.input(CurrentBaseRow(HV2.master_base_table_index())),
+            3 => circuit_builder.input(CurrentBaseRow(HV3.master_base_table_index())),
+            j => panic!("Index for helper variable must be in range 0..4, got {j}."),
         };
-        self.circuit_builder.b_constant(bfe)
-    }
-
-    pub fn one(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.one.clone()
-    }
-    pub fn two(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.two.clone()
-    }
-    pub fn clk(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[CLK.master_base_table_index()].clone()
-    }
-    pub fn is_padding(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IsPadding.master_base_table_index()].clone()
-    }
-    pub fn ip(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IP.master_base_table_index()].clone()
-    }
-    pub fn ci(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[CI.master_base_table_index()].clone()
-    }
-    pub fn nia(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[NIA.master_base_table_index()].clone()
-    }
-    pub fn ib0(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB0.master_base_table_index()].clone()
-    }
-    pub fn ib1(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB1.master_base_table_index()].clone()
-    }
-    pub fn ib2(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB2.master_base_table_index()].clone()
-    }
-    pub fn ib3(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB3.master_base_table_index()].clone()
-    }
-    pub fn ib4(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB4.master_base_table_index()].clone()
-    }
-    pub fn ib5(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB5.master_base_table_index()].clone()
-    }
-    pub fn ib6(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB6.master_base_table_index()].clone()
-    }
-    pub fn ib7(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[IB7.master_base_table_index()].clone()
-    }
-    pub fn jsp(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[JSP.master_base_table_index()].clone()
-    }
-    pub fn jsd(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[JSD.master_base_table_index()].clone()
-    }
-    pub fn jso(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[JSO.master_base_table_index()].clone()
-    }
-    pub fn st0(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST0.master_base_table_index()].clone()
-    }
-    pub fn st1(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST1.master_base_table_index()].clone()
-    }
-    pub fn st2(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST2.master_base_table_index()].clone()
-    }
-    pub fn st3(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST3.master_base_table_index()].clone()
-    }
-    pub fn st4(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST4.master_base_table_index()].clone()
-    }
-    pub fn st5(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST5.master_base_table_index()].clone()
-    }
-    pub fn st6(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST6.master_base_table_index()].clone()
-    }
-    pub fn st7(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST7.master_base_table_index()].clone()
-    }
-    pub fn st8(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST8.master_base_table_index()].clone()
-    }
-    pub fn st9(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST9.master_base_table_index()].clone()
-    }
-    pub fn st10(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST10.master_base_table_index()].clone()
-    }
-    pub fn st11(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST11.master_base_table_index()].clone()
-    }
-    pub fn st12(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST12.master_base_table_index()].clone()
-    }
-    pub fn st13(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST13.master_base_table_index()].clone()
-    }
-    pub fn st14(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST14.master_base_table_index()].clone()
-    }
-    pub fn st15(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ST15.master_base_table_index()].clone()
-    }
-    pub fn osp(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[OSP.master_base_table_index()].clone()
-    }
-    pub fn osv(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[OSV.master_base_table_index()].clone()
-    }
-    pub fn hv0(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[HV0.master_base_table_index()].clone()
-    }
-    pub fn hv1(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[HV1.master_base_table_index()].clone()
-    }
-    pub fn hv2(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[HV2.master_base_table_index()].clone()
-    }
-    pub fn hv3(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[HV3.master_base_table_index()].clone()
-    }
-    pub fn ramv(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[RAMV.master_base_table_index()].clone()
-    }
-    pub fn ramp(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[RAMP.master_base_table_index()].clone()
-    }
-    pub fn clock_jump_difference_lookup_multiplicity(
-        &self,
-    ) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[ClockJumpDifferenceLookupMultiplicity.master_base_table_index()]
-            .clone()
-    }
-    pub fn previous_instruction(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.base_row_variables[PreviousInstruction.master_base_table_index()].clone()
-    }
-
-    pub fn running_evaluation_standard_input(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[InputTableEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_standard_output(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn instruction_lookup_log_derivative(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[InstructionLookupClientLogDerivative.master_ext_table_index()]
-            .clone()
-    }
-    pub fn running_product_op_stack_table(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn running_product_ram_table(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn running_product_jump_stack_table(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn clock_jump_difference_lookup_server_log_derivative(
-        &self,
-    ) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()]
-        .clone()
-    }
-    pub fn running_evaluation_hash_input(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_hash_digest(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge(&self) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn u32_table_running_sum_log_derivative(
-        &self,
-    ) -> ConstraintCircuitMonad<SingleRowIndicator> {
-        self.ext_row_variables[U32LookupClientLogDerivative.master_ext_table_index()].clone()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct DualRowConstraints {
-    current_base_row_variables: [ConstraintCircuitMonad<DualRowIndicator>; NUM_BASE_COLUMNS],
-    current_ext_row_variables: [ConstraintCircuitMonad<DualRowIndicator>; NUM_EXT_COLUMNS],
-    next_base_row_variables: [ConstraintCircuitMonad<DualRowIndicator>; NUM_BASE_COLUMNS],
-    next_ext_row_variables: [ConstraintCircuitMonad<DualRowIndicator>; NUM_EXT_COLUMNS],
-    circuit_builder: ConstraintCircuitBuilder<DualRowIndicator>,
-    zero: ConstraintCircuitMonad<DualRowIndicator>,
-    one: ConstraintCircuitMonad<DualRowIndicator>,
-    two: ConstraintCircuitMonad<DualRowIndicator>,
-}
-
-impl Default for DualRowConstraints {
-    fn default() -> Self {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-        let current_base_row_variables = (0..NUM_BASE_COLUMNS)
-            .map(|i| circuit_builder.input(DualRowIndicator::CurrentBaseRow(i)))
-            .collect_vec()
-            .try_into()
-            .expect("Create variables for dual rows – current base row");
-        let current_ext_row_variables = (0..NUM_EXT_COLUMNS)
-            .map(|i| circuit_builder.input(DualRowIndicator::CurrentExtRow(i)))
-            .collect_vec()
-            .try_into()
-            .expect("Create variables for dual rows – current ext row");
-        let next_base_row_variables = (0..NUM_BASE_COLUMNS)
-            .map(|i| circuit_builder.input(DualRowIndicator::NextBaseRow(i)))
-            .collect_vec()
-            .try_into()
-            .expect("Create variables for dual rows – next base row");
-        let next_ext_row_variables = (0..NUM_EXT_COLUMNS)
-            .map(|i| circuit_builder.input(DualRowIndicator::NextExtRow(i)))
-            .collect_vec()
-            .try_into()
-            .expect("Create variables for dual rows – next ext row");
-
-        let zero = circuit_builder.b_constant(0u32.into());
-        let one = circuit_builder.b_constant(1u32.into());
-        let two = circuit_builder.b_constant(2u32.into());
-
-        Self {
-            current_base_row_variables,
-            current_ext_row_variables,
-            next_base_row_variables,
-            next_ext_row_variables,
-            circuit_builder,
-            zero,
-            one,
-            two,
-        }
-    }
-}
-
-impl DualRowConstraints {
-    /// ## The cycle counter (`clk`) always increases by one
-    ///
-    /// $$
-    /// p(..., clk, clk_next, ...) = clk_next - clk - 1
-    /// $$
-    ///
-    /// In general, for all $clk = a$, and $clk_next = a + 1$,
-    ///
-    /// $$
-    /// p(..., a, a+1, ...) = (a+1) - a - 1 = a + 1 - a - 1 = a - a + 1 - 1 = 0
-    /// $$
-    ///
-    /// So the `clk_increase_by_one` base transition constraint polynomial holds exactly
-    /// when every `clk` register $a$ is one less than `clk` register $a + 1$.
-    pub fn clk_always_increases_by_one(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let one = self.one();
-        let clk = self.clk();
-        let clk_next = self.clk_next();
-
-        clk_next - clk - one
-    }
-
-    pub fn is_padding_is_zero_or_does_not_change(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.is_padding() * (self.is_padding_next() - self.is_padding())
-    }
-
-    pub fn previous_instruction_is_copied_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        (self.previous_instruction_next() - self.ci()) * (self.one() - self.is_padding_next())
-    }
-
-    pub fn indicator_polynomial(&self, i: usize) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let hv0 = self.hv0();
-        let hv1 = self.hv1();
-        let hv2 = self.hv2();
-        let hv3 = self.hv3();
 
         match i {
-            0 => (self.one() - hv3) * (self.one() - hv2) * (self.one() - hv1) * (self.one() - hv0),
-            1 => (self.one() - hv3) * (self.one() - hv2) * (self.one() - hv1) * hv0,
-            2 => (self.one() - hv3) * (self.one() - hv2) * hv1 * (self.one() - hv0),
-            3 => (self.one() - hv3) * (self.one() - hv2) * hv1 * hv0,
-            4 => (self.one() - hv3) * hv2 * (self.one() - hv1) * (self.one() - hv0),
-            5 => (self.one() - hv3) * hv2 * (self.one() - hv1) * hv0,
-            6 => (self.one() - hv3) * hv2 * hv1 * (self.one() - hv0),
-            7 => (self.one() - hv3) * hv2 * hv1 * hv0,
-            8 => hv3 * (self.one() - hv2) * (self.one() - hv1) * (self.one() - hv0),
-            9 => hv3 * (self.one() - hv2) * (self.one() - hv1) * hv0,
-            10 => hv3 * (self.one() - hv2) * hv1 * (self.one() - hv0),
-            11 => hv3 * (self.one() - hv2) * hv1 * hv0,
-            12 => hv3 * hv2 * (self.one() - hv1) * (self.one() - hv0),
-            13 => hv3 * hv2 * (self.one() - hv1) * hv0,
-            14 => hv3 * hv2 * hv1 * (self.one() - hv0),
-            15 => hv3 * hv2 * hv1 * hv0,
+            0 => (one() - hv(3)) * (one() - hv(2)) * (one() - hv(1)) * (one() - hv(0)),
+            1 => (one() - hv(3)) * (one() - hv(2)) * (one() - hv(1)) * hv(0),
+            2 => (one() - hv(3)) * (one() - hv(2)) * hv(1) * (one() - hv(0)),
+            3 => (one() - hv(3)) * (one() - hv(2)) * hv(1) * hv(0),
+            4 => (one() - hv(3)) * hv(2) * (one() - hv(1)) * (one() - hv(0)),
+            5 => (one() - hv(3)) * hv(2) * (one() - hv(1)) * hv(0),
+            6 => (one() - hv(3)) * hv(2) * hv(1) * (one() - hv(0)),
+            7 => (one() - hv(3)) * hv(2) * hv(1) * hv(0),
+            8 => hv(3) * (one() - hv(2)) * (one() - hv(1)) * (one() - hv(0)),
+            9 => hv(3) * (one() - hv(2)) * (one() - hv(1)) * hv(0),
+            10 => hv(3) * (one() - hv(2)) * hv(1) * (one() - hv(0)),
+            11 => hv(3) * (one() - hv(2)) * hv(1) * hv(0),
+            12 => hv(3) * hv(2) * (one() - hv(1)) * (one() - hv(0)),
+            13 => hv(3) * hv(2) * (one() - hv(1)) * hv(0),
+            14 => hv(3) * hv(2) * hv(1) * (one() - hv(0)),
+            15 => hv(3) * hv(2) * hv(1) * hv(0),
             _ => panic!("No indicator polynomial with index {i} exists: there are only 16."),
         }
     }
 
-    pub fn instruction_pop(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
-    }
-
-    /// push'es argument should be on the stack after execution
-    /// $st0_next == nia  =>  st0_next - nia == 0$
-    pub fn instruction_push(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![self.st0_next() - self.nia()];
-        [
-            specific_constraints,
-            self.grow_stack(),
-            self.step_2(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_divine(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        [self.step_1(), self.grow_stack(), self.keep_ram()].concat()
-    }
-
-    pub fn instruction_dup(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![
-            self.indicator_polynomial(0) * (self.st0_next() - self.st0()),
-            self.indicator_polynomial(1) * (self.st0_next() - self.st1()),
-            self.indicator_polynomial(2) * (self.st0_next() - self.st2()),
-            self.indicator_polynomial(3) * (self.st0_next() - self.st3()),
-            self.indicator_polynomial(4) * (self.st0_next() - self.st4()),
-            self.indicator_polynomial(5) * (self.st0_next() - self.st5()),
-            self.indicator_polynomial(6) * (self.st0_next() - self.st6()),
-            self.indicator_polynomial(7) * (self.st0_next() - self.st7()),
-            self.indicator_polynomial(8) * (self.st0_next() - self.st8()),
-            self.indicator_polynomial(9) * (self.st0_next() - self.st9()),
-            self.indicator_polynomial(10) * (self.st0_next() - self.st10()),
-            self.indicator_polynomial(11) * (self.st0_next() - self.st11()),
-            self.indicator_polynomial(12) * (self.st0_next() - self.st12()),
-            self.indicator_polynomial(13) * (self.st0_next() - self.st13()),
-            self.indicator_polynomial(14) * (self.st0_next() - self.st14()),
-            self.indicator_polynomial(15) * (self.st0_next() - self.st15()),
-        ];
-        [
-            specific_constraints,
-            self.decompose_arg(),
-            self.step_2(),
-            self.grow_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_swap(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![
-            self.indicator_polynomial(0),
-            self.indicator_polynomial(1) * (self.st1_next() - self.st0()),
-            self.indicator_polynomial(2) * (self.st2_next() - self.st0()),
-            self.indicator_polynomial(3) * (self.st3_next() - self.st0()),
-            self.indicator_polynomial(4) * (self.st4_next() - self.st0()),
-            self.indicator_polynomial(5) * (self.st5_next() - self.st0()),
-            self.indicator_polynomial(6) * (self.st6_next() - self.st0()),
-            self.indicator_polynomial(7) * (self.st7_next() - self.st0()),
-            self.indicator_polynomial(8) * (self.st8_next() - self.st0()),
-            self.indicator_polynomial(9) * (self.st9_next() - self.st0()),
-            self.indicator_polynomial(10) * (self.st10_next() - self.st0()),
-            self.indicator_polynomial(11) * (self.st11_next() - self.st0()),
-            self.indicator_polynomial(12) * (self.st12_next() - self.st0()),
-            self.indicator_polynomial(13) * (self.st13_next() - self.st0()),
-            self.indicator_polynomial(14) * (self.st14_next() - self.st0()),
-            self.indicator_polynomial(15) * (self.st15_next() - self.st0()),
-            self.indicator_polynomial(1) * (self.st0_next() - self.st1()),
-            self.indicator_polynomial(2) * (self.st0_next() - self.st2()),
-            self.indicator_polynomial(3) * (self.st0_next() - self.st3()),
-            self.indicator_polynomial(4) * (self.st0_next() - self.st4()),
-            self.indicator_polynomial(5) * (self.st0_next() - self.st5()),
-            self.indicator_polynomial(6) * (self.st0_next() - self.st6()),
-            self.indicator_polynomial(7) * (self.st0_next() - self.st7()),
-            self.indicator_polynomial(8) * (self.st0_next() - self.st8()),
-            self.indicator_polynomial(9) * (self.st0_next() - self.st9()),
-            self.indicator_polynomial(10) * (self.st0_next() - self.st10()),
-            self.indicator_polynomial(11) * (self.st0_next() - self.st11()),
-            self.indicator_polynomial(12) * (self.st0_next() - self.st12()),
-            self.indicator_polynomial(13) * (self.st0_next() - self.st13()),
-            self.indicator_polynomial(14) * (self.st0_next() - self.st14()),
-            self.indicator_polynomial(15) * (self.st0_next() - self.st15()),
-            (self.one() - self.indicator_polynomial(1)) * (self.st1_next() - self.st1()),
-            (self.one() - self.indicator_polynomial(2)) * (self.st2_next() - self.st2()),
-            (self.one() - self.indicator_polynomial(3)) * (self.st3_next() - self.st3()),
-            (self.one() - self.indicator_polynomial(4)) * (self.st4_next() - self.st4()),
-            (self.one() - self.indicator_polynomial(5)) * (self.st5_next() - self.st5()),
-            (self.one() - self.indicator_polynomial(6)) * (self.st6_next() - self.st6()),
-            (self.one() - self.indicator_polynomial(7)) * (self.st7_next() - self.st7()),
-            (self.one() - self.indicator_polynomial(8)) * (self.st8_next() - self.st8()),
-            (self.one() - self.indicator_polynomial(9)) * (self.st9_next() - self.st9()),
-            (self.one() - self.indicator_polynomial(10)) * (self.st10_next() - self.st10()),
-            (self.one() - self.indicator_polynomial(11)) * (self.st11_next() - self.st11()),
-            (self.one() - self.indicator_polynomial(12)) * (self.st12_next() - self.st12()),
-            (self.one() - self.indicator_polynomial(13)) * (self.st13_next() - self.st13()),
-            (self.one() - self.indicator_polynomial(14)) * (self.st14_next() - self.st14()),
-            (self.one() - self.indicator_polynomial(15)) * (self.st15_next() - self.st15()),
-            self.osv_next() - self.osv(),
-            self.osp_next() - self.osp(),
-        ];
-        [
-            specific_constraints,
-            self.decompose_arg(),
-            self.step_2(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_nop(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        [self.step_1(), self.keep_stack(), self.keep_ram()].concat()
-    }
-
-    pub fn instruction_skiz(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The next instruction nia is decomposed into helper variables hv.
-        let nia_decomposes_to_hvs = self.nia() - (self.hv0() + self.two() * self.hv1());
-
-        // The relevant helper variable hv1 is either 0 or 1.
-        // Here, hv0 == 1 means that nia takes an argument.
-        let hv0_is_0_or_1 = self.hv0() * (self.hv0() - self.one());
-
-        // If `st0` is non-zero, register `ip` is incremented by 1.
-        // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
-        // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
-        //
-        // Written as Disjunctive Normal Form, the last constraint can be expressed as:
-        // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
-        // (`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
-        // (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
-        let ip_case_1 = (self.ip_next() - self.ip() - self.one()) * self.st0();
-        let ip_case_2 = (self.ip_next() - self.ip() - self.two())
-            * (self.st0() * self.hv2() - self.one())
-            * (self.hv0() - self.one());
-        let ip_case_3 = (self.ip_next() - self.ip() - self.constant(3))
-            * (self.st0() * self.hv2() - self.one())
-            * self.hv0();
-        let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
-
-        let specific_constraints =
-            vec![nia_decomposes_to_hvs, hv0_is_0_or_1, ip_incr_by_1_or_2_or_3];
-        [
-            specific_constraints,
-            self.keep_jump_stack(),
-            self.shrink_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_call(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The jump stack pointer jsp is incremented by 1.
-        let jsp_incr_1 = self.jsp_next() - (self.jsp() + self.one());
-
-        // The jump's origin jso is set to the current instruction pointer ip plus 2.
-        let jso_becomes_ip_plus_2 = self.jso_next() - self.ip() - self.two();
-
-        // The jump's destination jsd is set to the instruction's argument.
-        let jsd_becomes_nia = self.jsd_next() - self.nia();
-
-        // The instruction pointer ip is set to the instruction's argument.
-        let ip_becomes_nia = self.ip_next() - self.nia();
-
-        let specific_constraints = vec![
-            jsp_incr_1,
-            jso_becomes_ip_plus_2,
-            jsd_becomes_nia,
-            ip_becomes_nia,
-        ];
-        [specific_constraints, self.keep_stack(), self.keep_ram()].concat()
-    }
-
-    pub fn instruction_return(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The jump stack pointer jsp is decremented by 1.
-        let jsp_incr_1 = self.jsp_next() - (self.jsp() - self.one());
-
-        // The instruction pointer ip is set to the last call's origin jso.
-        let ip_becomes_jso = self.ip_next() - self.jso();
-
-        let specific_constraints = vec![jsp_incr_1, ip_becomes_jso];
-        [specific_constraints, self.keep_stack(), self.keep_ram()].concat()
-    }
-
-    pub fn instruction_recurse(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The instruction pointer ip is set to the last jump's destination jsd.
-        let ip_becomes_jsd = self.ip_next() - self.jsd();
-        let specific_constraints = vec![ip_becomes_jsd];
-        [
-            specific_constraints,
-            self.keep_jump_stack(),
-            self.keep_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_assert(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The current top of the stack st0 is 1.
-        let st_0_is_1 = self.st0() - self.one();
-
-        let specific_constraints = vec![st_0_is_1];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.shrink_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_halt(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The instruction executed in the following step is instruction halt.
-        let halt_is_followed_by_halt = self.ci_next() - self.ci();
-
-        let specific_constraints = vec![halt_is_followed_by_halt];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.keep_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_read_mem(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // the RAM pointer is overwritten with st0
-        let update_ramp = self.ramp_next() - self.st0();
-
-        // The top of the stack is overwritten with the RAM value.
-        let st0_becomes_ramv = self.st0_next() - self.ramv_next();
-
-        let specific_constraints = vec![update_ramp, st0_becomes_ramv];
-        [specific_constraints, self.step_1(), self.grow_stack()].concat()
-    }
-
-    pub fn instruction_write_mem(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // the RAM pointer is overwritten with st1
-        let update_ramp = self.ramp_next() - self.st1();
-
-        // The RAM value is overwritten with the top of the stack.
-        let ramv_becomes_st0 = self.ramv_next() - self.st0();
-
-        let specific_constraints = vec![update_ramp, ramv_becomes_st0];
-        [specific_constraints, self.step_1(), self.shrink_stack()].concat()
-    }
-
-    /// Two Evaluation Arguments with the Hash Table guarantee correct transition.
-    pub fn instruction_hash(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        [
-            self.step_1(),
-            self.stack_remains_and_top_ten_elements_unconstrained(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    /// Recall that in a Merkle tree, the indices of left (respectively right)
-    /// leafs have 0 (respectively 1) as their least significant bit. The first
-    /// two polynomials achieve that helper variable hv0 holds the result of
-    /// st10 mod 2. The second polynomial sets the new value of st10 to st10 div 2.
-    pub fn instruction_divine_sibling(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // Helper variable hv0 is either 0 or 1.
-        let hv0_is_0_or_1 = self.hv0() * (self.hv0() - self.one());
-
-        // The 11th stack register is shifted by 1 bit to the right.
-        let st10_is_shifted_1_bit_right = self.st10_next() * self.two() + self.hv0() - self.st10();
-
-        // The second pentuplet either stays where it is, or is moved to the top
-        let maybe_move_st5 = (self.one() - self.hv0()) * (self.st5() - self.st0_next())
-            + self.hv0() * (self.st5() - self.st5_next());
-        let maybe_move_st6 = (self.one() - self.hv0()) * (self.st6() - self.st1_next())
-            + self.hv0() * (self.st6() - self.st6_next());
-        let maybe_move_st7 = (self.one() - self.hv0()) * (self.st7() - self.st2_next())
-            + self.hv0() * (self.st7() - self.st7_next());
-        let maybe_move_st8 = (self.one() - self.hv0()) * (self.st8() - self.st3_next())
-            + self.hv0() * (self.st8() - self.st8_next());
-        let maybe_move_st9 = (self.one() - self.hv0()) * (self.st9() - self.st4_next())
-            + self.hv0() * (self.st9() - self.st9_next());
-
-        let specific_constraints = vec![
-            hv0_is_0_or_1,
-            st10_is_shifted_1_bit_right,
-            maybe_move_st5,
-            maybe_move_st6,
-            maybe_move_st7,
-            maybe_move_st8,
-            maybe_move_st9,
-        ];
-        [
-            specific_constraints,
-            self.stack_remains_and_top_eleven_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_assert_vector(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![
-            // Register st0 is equal to st5.
-            self.st5() - self.st0(),
-            // Register st1 is equal to st6.
-            self.st6() - self.st1(),
-            // and so on
-            self.st7() - self.st2(),
-            self.st8() - self.st3(),
-            self.st9() - self.st4(),
-        ];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.keep_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_absorb_init(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.keep_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_absorb(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.keep_stack(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_squeeze(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.stack_remains_and_top_ten_elements_unconstrained(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    /// The sum of the top two stack elements is moved into the top of the stack.
+    /// Instruction-specific transition constraints are combined with deselectors in such a way
+    /// that arbitrary sets of mutually exclusive combinations are summed, i.e.,
     ///
-    /// $st0' - (st0 + st1) = 0$
-    pub fn instruction_add(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![self.st0_next() - (self.st0() + self.st1())];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
+    /// ```py
+    /// [ deselector_pop * tc_pop_0 + deselector_push * tc_push_0 + ...,
+    ///   deselector_pop * tc_pop_1 + deselector_push * tc_push_1 + ...,
+    ///   ...,
+    ///   deselector_pop * tc_pop_i + deselector_push * tc_push_i + ...,
+    ///   deselector_pop * 0        + deselector_push * tc_push_{i+1} + ...,
+    ///   ...,
+    /// ]
+    /// ```
+    /// For instructions that have fewer transition constraints than the maximal number of
+    /// transition constraints among all instructions, the deselector is multiplied with a zero,
+    /// causing no additional terms in the final sets of combined transition constraint polynomials.
+    fn combine_instruction_constraints_with_deselectors(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        instr_tc_polys_tuples: [(Instruction, Vec<ConstraintCircuitMonad<DualRowIndicator>>);
+            Instruction::COUNT],
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let (all_instructions, all_tc_polys_for_all_instructions): (Vec<_>, Vec<_>) =
+            instr_tc_polys_tuples.into_iter().unzip();
+
+        let all_instruction_deselectors = all_instructions
+            .into_iter()
+            .map(|instr| Self::instruction_deselector_current_row(circuit_builder, instr))
+            .collect_vec();
+
+        let max_number_of_constraints = all_tc_polys_for_all_instructions
+            .iter()
+            .map(|tc_polys_for_instr| tc_polys_for_instr.len())
+            .max()
+            .unwrap();
+
+        let zero_poly = circuit_builder.b_constant(0_u32.into());
+        let all_tc_polys_for_all_instructions_transposed = (0..max_number_of_constraints)
+            .map(|idx| {
+                all_tc_polys_for_all_instructions
+                    .iter()
+                    .map(|tc_polys_for_instr| tc_polys_for_instr.get(idx).unwrap_or(&zero_poly))
+                    .collect_vec()
+            })
+            .collect_vec();
+
+        all_tc_polys_for_all_instructions_transposed
+            .into_iter()
+            .map(|row| {
+                all_instruction_deselectors
+                    .clone()
+                    .into_iter()
+                    .zip(row)
+                    .map(|(deselector, instruction_tc)| deselector * instruction_tc.to_owned())
+                    .sum()
+            })
+            .collect_vec()
     }
 
-    /// The product of the top two stack elements is moved into the top of the stack.
-    ///
-    /// $st0' - (st0 * st1) = 0$
-    pub fn instruction_mul(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![self.st0_next() - (self.st0() * self.st1())];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    /// The top of the stack's inverse is moved into the top of the stack.
-    ///
-    /// $st0'·st0 - 1 = 0$
-    pub fn instruction_invert(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![self.st0_next() * self.st0() - self.one()];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.unop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_eq(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // Helper variable hv0 is the inverse of the difference of the stack's two top-most elements or 0.
-        //
-        // $ hv0·(hv0·(st1 - st0) - 1) = 0 $
-        let hv0_is_inverse_of_diff_or_hv0_is_0 =
-            self.hv0() * (self.hv0() * (self.st1() - self.st0()) - self.one());
-
-        // Helper variable hv0 is the inverse of the difference of the stack's two top-most elements or the difference is 0.
-        //
-        // $ (st1 - st0)·(hv0·(st1 - st0) - 1) = 0 $
-        let hv0_is_inverse_of_diff_or_diff_is_0 =
-            (self.st1() - self.st0()) * (self.hv0() * (self.st1() - self.st0()) - self.one());
-
-        // The new top of the stack is 1 if the difference between the stack's two top-most elements is not invertible, 0 otherwise.
-        //
-        // $ st0' - (1 - hv0·(st1 - st0)) = 0 $
-        let st0_becomes_1_if_diff_is_not_invertible =
-            self.st0_next() - (self.one() - self.hv0() * (self.st1() - self.st0()));
-
-        let specific_constraints = vec![
-            hv0_is_inverse_of_diff_or_hv0_is_0,
-            hv0_is_inverse_of_diff_or_diff_is_0,
-            st0_becomes_1_if_diff_is_not_invertible,
-        ];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_split(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let two_pow_32 = self.constant_b(BFieldElement::new(1_u64 << 32));
-
-        // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements.
-        //
-        // $st0 - (2^32·st0' + st1') = 0$
-        let st0_decomposes_to_two_32_bit_chunks =
-            self.st0() - (two_pow_32.clone() * self.st1_next() + self.st0_next());
-
-        // Helper variable `hv0` = 0 if either
-        // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
-        // 1. the low 32 bits (`st1'`) are 0.
-        //
-        // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
-        //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
-        let hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0 = {
-            let hv0 = self.hv0();
-            let hi = self.st1_next();
-            let lo = self.st0_next();
-            let ffff_ffff = two_pow_32 - self.one();
-
-            lo * (hv0 * (hi - ffff_ffff) - self.one())
+    fn combine_transition_constraints_with_padding_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        instruction_transition_constraints: Vec<ConstraintCircuitMonad<DualRowIndicator>>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
         };
 
-        let specific_constraints = vec![
-            st0_decomposes_to_two_32_bit_chunks,
-            hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0,
-        ];
-        [
-            specific_constraints,
-            self.grow_stack_and_top_two_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
+        let padding_row_transition_constraints = [
+            vec![
+                next_base_row(IP) - curr_base_row(IP),
+                next_base_row(CI) - curr_base_row(CI),
+                next_base_row(NIA) - curr_base_row(NIA),
+            ],
+            Self::instruction_group_keep_jump_stack(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
         ]
-        .concat()
-    }
-
-    pub fn instruction_lt(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_and(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_xor(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_log_2_floor(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.unop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_pow(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.binop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_div(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // `n == d·q + r` means `st0 - st1·st1' - st0'`
-        let numerator_is_quotient_times_denominator_plus_remainder =
-            self.st0() - self.st1() * self.st1_next() - self.st0_next();
-
-        let st2_does_not_change = self.st2_next() - self.st2();
-
-        let specific_constraints = vec![
-            numerator_is_quotient_times_denominator_plus_remainder,
-            st2_does_not_change,
-        ];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.stack_remains_and_top_three_elements_unconstrained(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_pop_count(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // no further constraints
-        let specific_constraints = vec![];
-        [
-            specific_constraints,
-            self.step_1(),
-            self.unop(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_xxadd(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The result of adding st0 to st3 is moved into st0.
-        let st0_becomes_st0_plus_st3 = self.st0_next() - (self.st0() + self.st3());
-
-        // The result of adding st1 to st4 is moved into st1.
-        let st1_becomes_st1_plus_st4 = self.st1_next() - (self.st1() + self.st4());
-
-        // The result of adding st2 to st5 is moved into st2.
-        let st2_becomes_st2_plus_st5 = self.st2_next() - (self.st2() + self.st5());
-
-        let specific_constraints = vec![
-            st0_becomes_st0_plus_st3,
-            st1_becomes_st1_plus_st4,
-            st2_becomes_st2_plus_st5,
-        ];
-        [
-            specific_constraints,
-            self.stack_remains_and_top_three_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_xxmul(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The coefficient of x^0 of multiplying the two X-Field elements on the stack is moved into st0.
-        //
-        // $st0' - (st0·st3 - st2·st4 - st1·st5)$
-        let st0_becomes_coefficient_0 = self.st0_next()
-            - (self.st0() * self.st3() - self.st2() * self.st4() - self.st1() * self.st5());
-
-        // The coefficient of x^1 of multiplying the two X-Field elements on the stack is moved into st1.
-        //
-        // st1' - (st1·st3 + st0·st4 - st2·st5 + st2·st4 + st1·st5)
-        let st1_becomes_coefficient_1 = self.st1_next()
-            - (self.st1() * self.st3() + self.st0() * self.st4() - self.st2() * self.st5()
-                + self.st2() * self.st4()
-                + self.st1() * self.st5());
-
-        // The coefficient of x^2 of multiplying the two X-Field elements on the stack is moved into st2.
-        //
-        // st2' - (st2·st3 + st1·st4 + st0·st5 + st2·st5)
-        let st2_becomes_coefficient_2 = self.st2_next()
-            - (self.st2() * self.st3()
-                + self.st1() * self.st4()
-                + self.st0() * self.st5()
-                + self.st2() * self.st5());
-
-        let specific_constraints = vec![
-            st0_becomes_coefficient_0,
-            st1_becomes_coefficient_1,
-            st2_becomes_coefficient_2,
-        ];
-        [
-            specific_constraints,
-            self.stack_remains_and_top_three_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_xinv(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The coefficient of x^0 of multiplying X-Field element on top of the current stack and on top of the next stack is 1.
-        //
-        // $st0·st0' - st2·st1' - st1·st2' - 1 = 0$
-        let first_coefficient_of_product_of_element_and_inverse_is_1 = self.st0() * self.st0_next()
-            - self.st2() * self.st1_next()
-            - self.st1() * self.st2_next()
-            - self.one();
-
-        // The coefficient of x^1 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
-        //
-        // $st1·st0' + st0·st1' - st2·st2' + st2·st1' + st1·st2' = 0$
-        let second_coefficient_of_product_of_element_and_inverse_is_0 =
-            self.st1() * self.st0_next() + self.st0() * self.st1_next()
-                - self.st2() * self.st2_next()
-                + self.st2() * self.st1_next()
-                + self.st1() * self.st2_next();
-
-        // The coefficient of x^2 of multiplying X-Field element on top of the current stack and on top of the next stack is 0.
-        //
-        // $st2·st0' + st1·st1' + st0·st2' + st2·st2' = 0$
-        let third_coefficient_of_product_of_element_and_inverse_is_0 = self.st2() * self.st0_next()
-            + self.st1() * self.st1_next()
-            + self.st0() * self.st2_next()
-            + self.st2() * self.st2_next();
-
-        let specific_constraints = vec![
-            first_coefficient_of_product_of_element_and_inverse_is_1,
-            second_coefficient_of_product_of_element_and_inverse_is_0,
-            third_coefficient_of_product_of_element_and_inverse_is_0,
-        ];
-        [
-            specific_constraints,
-            self.stack_remains_and_top_three_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    pub fn instruction_xbmul(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        // The result of multiplying the top of the stack with the X-Field element's coefficient for x^0 is moved into st0.
-        //
-        // st0' - st0·st1
-        let first_coeff_scalar_multiplication = self.st0_next() - self.st0() * self.st1();
-
-        // The result of multiplying the top of the stack with the X-Field element's coefficient for x^1 is moved into st1.
-        //
-        // st1' - st0·st2
-        let secnd_coeff_scalar_multiplication = self.st1_next() - self.st0() * self.st2();
-
-        // The result of multiplying the top of the stack with the X-Field element's coefficient for x^2 is moved into st2.
-        //
-        // st2' - st0·st3
-        let third_coeff_scalar_multiplication = self.st2_next() - self.st0() * self.st3();
-
-        let specific_constraints = vec![
-            first_coeff_scalar_multiplication,
-            secnd_coeff_scalar_multiplication,
-            third_coeff_scalar_multiplication,
-        ];
-        [
-            specific_constraints,
-            self.stack_shrinks_and_top_three_elements_unconstrained(),
-            self.step_1(),
-            self.keep_ram(),
-        ]
-        .concat()
-    }
-
-    /// This instruction has no additional transition constraints.
-    ///
-    /// An Evaluation Argument with the list of input symbols guarantees correct transition.
-    pub fn instruction_read_io(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        [self.step_1(), self.grow_stack(), self.keep_ram()].concat()
-    }
-
-    /// This instruction has no additional transition constraints.
-    ///
-    /// An Evaluation Argument with the list of output symbols guarantees correct transition.
-    pub fn instruction_write_io(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        [self.step_1(), self.shrink_stack(), self.keep_ram()].concat()
-    }
-
-    pub fn zero(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.zero.clone()
-    }
-
-    pub fn one(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.one.clone()
-    }
-
-    pub fn two(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.two.clone()
-    }
-
-    pub fn constant(&self, constant: u32) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.circuit_builder.b_constant(constant.into())
-    }
-
-    pub fn constant_b(&self, constant: BFieldElement) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.circuit_builder.b_constant(constant)
-    }
-
-    pub fn clk(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[CLK.master_base_table_index()].clone()
-    }
-
-    pub fn ip(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IP.master_base_table_index()].clone()
-    }
-
-    pub fn ci(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[CI.master_base_table_index()].clone()
-    }
-
-    pub fn nia(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[NIA.master_base_table_index()].clone()
-    }
-
-    pub fn ib0(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB0.master_base_table_index()].clone()
-    }
-
-    pub fn ib1(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB1.master_base_table_index()].clone()
-    }
-
-    pub fn ib2(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB2.master_base_table_index()].clone()
-    }
-
-    pub fn ib3(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB3.master_base_table_index()].clone()
-    }
-
-    pub fn ib4(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB4.master_base_table_index()].clone()
-    }
-
-    pub fn ib5(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB5.master_base_table_index()].clone()
-    }
-
-    pub fn ib6(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB6.master_base_table_index()].clone()
-    }
-
-    pub fn ib7(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IB7.master_base_table_index()].clone()
-    }
-
-    pub fn jsp(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[JSP.master_base_table_index()].clone()
-    }
-
-    pub fn jsd(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[JSD.master_base_table_index()].clone()
-    }
-
-    pub fn jso(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[JSO.master_base_table_index()].clone()
-    }
-
-    pub fn st0(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST0.master_base_table_index()].clone()
-    }
-
-    pub fn st1(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST1.master_base_table_index()].clone()
-    }
-
-    pub fn st2(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST2.master_base_table_index()].clone()
-    }
-
-    pub fn st3(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST3.master_base_table_index()].clone()
-    }
-
-    pub fn st4(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST4.master_base_table_index()].clone()
-    }
-
-    pub fn st5(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST5.master_base_table_index()].clone()
-    }
-
-    pub fn st6(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST6.master_base_table_index()].clone()
-    }
-
-    pub fn st7(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST7.master_base_table_index()].clone()
-    }
-
-    pub fn st8(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST8.master_base_table_index()].clone()
-    }
-
-    pub fn st9(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST9.master_base_table_index()].clone()
-    }
-
-    pub fn st10(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST10.master_base_table_index()].clone()
-    }
-
-    pub fn st11(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST11.master_base_table_index()].clone()
-    }
-
-    pub fn st12(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST12.master_base_table_index()].clone()
-    }
-
-    pub fn st13(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST13.master_base_table_index()].clone()
-    }
-
-    pub fn st14(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST14.master_base_table_index()].clone()
-    }
-
-    pub fn st15(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[ST15.master_base_table_index()].clone()
-    }
-
-    pub fn osp(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[OSP.master_base_table_index()].clone()
-    }
-
-    pub fn osv(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[OSV.master_base_table_index()].clone()
-    }
-
-    pub fn hv0(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[HV0.master_base_table_index()].clone()
-    }
-
-    pub fn hv1(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[HV1.master_base_table_index()].clone()
-    }
-
-    pub fn hv2(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[HV2.master_base_table_index()].clone()
-    }
-
-    pub fn hv3(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[HV3.master_base_table_index()].clone()
-    }
-
-    pub fn ramp(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[RAMP.master_base_table_index()].clone()
-    }
-
-    pub fn previous_instruction(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[PreviousInstruction.master_base_table_index()].clone()
-    }
-
-    pub fn ramv(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[RAMV.master_base_table_index()].clone()
-    }
-
-    pub fn is_padding(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_base_row_variables[IsPadding.master_base_table_index()].clone()
-    }
-
-    pub fn running_evaluation_standard_input(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[InputTableEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_standard_output(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn instruction_lookup_log_derivative(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables
-            [InstructionLookupClientLogDerivative.master_ext_table_index()]
-        .clone()
-    }
-    pub fn running_product_op_stack_table(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn running_product_ram_table(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn running_product_jump_stack_table(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn clock_jump_difference_lookup_server_log_derivative(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()]
-        .clone()
-    }
-    pub fn running_evaluation_hash_input(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_hash_digest(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn u32_table_running_sum_log_derivative(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.current_ext_row_variables[U32LookupClientLogDerivative.master_ext_table_index()]
-            .clone()
-    }
-
-    // Property: All polynomial variables that contain '_next' have the same
-    // variable position / value as the one without '_next', +/- NUM_COLUMNS.
-    pub fn clk_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[CLK.master_base_table_index()].clone()
-    }
-
-    pub fn ip_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IP.master_base_table_index()].clone()
-    }
-
-    pub fn ci_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[CI.master_base_table_index()].clone()
-    }
-
-    pub fn nia_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[NIA.master_base_table_index()].clone()
-    }
-
-    pub fn ib0_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB0.master_base_table_index()].clone()
-    }
-    pub fn ib1_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB1.master_base_table_index()].clone()
-    }
-    pub fn ib2_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB2.master_base_table_index()].clone()
-    }
-    pub fn ib3_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB3.master_base_table_index()].clone()
-    }
-    pub fn ib4_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB4.master_base_table_index()].clone()
-    }
-    pub fn ib5_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB5.master_base_table_index()].clone()
-    }
-    pub fn ib6_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB6.master_base_table_index()].clone()
-    }
-    pub fn ib7_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IB7.master_base_table_index()].clone()
-    }
-
-    pub fn jsp_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[JSP.master_base_table_index()].clone()
-    }
-
-    pub fn jsd_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[JSD.master_base_table_index()].clone()
-    }
-
-    pub fn jso_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[JSO.master_base_table_index()].clone()
-    }
-
-    pub fn st0_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST0.master_base_table_index()].clone()
-    }
-
-    pub fn st1_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST1.master_base_table_index()].clone()
-    }
-
-    pub fn st2_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST2.master_base_table_index()].clone()
-    }
-
-    pub fn st3_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST3.master_base_table_index()].clone()
-    }
-
-    pub fn st4_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST4.master_base_table_index()].clone()
-    }
-
-    pub fn st5_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST5.master_base_table_index()].clone()
-    }
-
-    pub fn st6_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST6.master_base_table_index()].clone()
-    }
-
-    pub fn st7_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST7.master_base_table_index()].clone()
-    }
-
-    pub fn st8_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST8.master_base_table_index()].clone()
-    }
-
-    pub fn st9_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST9.master_base_table_index()].clone()
-    }
-
-    pub fn st10_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST10.master_base_table_index()].clone()
-    }
-
-    pub fn st11_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST11.master_base_table_index()].clone()
-    }
-
-    pub fn st12_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST12.master_base_table_index()].clone()
-    }
-
-    pub fn st13_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST13.master_base_table_index()].clone()
-    }
-
-    pub fn st14_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST14.master_base_table_index()].clone()
-    }
-
-    pub fn st15_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[ST15.master_base_table_index()].clone()
-    }
-
-    pub fn osp_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[OSP.master_base_table_index()].clone()
-    }
-
-    pub fn osv_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[OSV.master_base_table_index()].clone()
-    }
-
-    pub fn ramp_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[RAMP.master_base_table_index()].clone()
-    }
-
-    pub fn previous_instruction_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[PreviousInstruction.master_base_table_index()].clone()
-    }
-
-    pub fn ramv_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[RAMV.master_base_table_index()].clone()
-    }
-
-    pub fn clock_jump_difference_lookup_multiplicity_next(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables
-            [ClockJumpDifferenceLookupMultiplicity.master_base_table_index()]
-        .clone()
-    }
-
-    pub fn is_padding_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_base_row_variables[IsPadding.master_base_table_index()].clone()
-    }
-
-    pub fn running_evaluation_standard_input_next(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[InputTableEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_standard_output_next(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[OutputTableEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn instruction_lookup_log_derivative_next(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[InstructionLookupClientLogDerivative.master_ext_table_index()]
-            .clone()
-    }
-    pub fn running_product_op_stack_table_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[OpStackTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn running_product_ram_table_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[RamTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn running_product_jump_stack_table_next(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[JumpStackTablePermArg.master_ext_table_index()].clone()
-    }
-    pub fn clock_jump_difference_lookup_server_log_derivative_next(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables
-            [ClockJumpDifferenceLookupServerLogDerivative.master_ext_table_index()]
-        .clone()
-    }
-    pub fn running_evaluation_hash_input_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[HashInputEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_hash_digest_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[HashDigestEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn running_evaluation_sponge_next(&self) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[SpongeEvalArg.master_ext_table_index()].clone()
-    }
-    pub fn u32_table_running_sum_log_derivative_next(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.next_ext_row_variables[U32LookupClientLogDerivative.master_ext_table_index()].clone()
-    }
+        .concat();
+
+        let padding_row_deselector = constant(1) - next_base_row(IsPadding);
+        let padding_row_selector = next_base_row(IsPadding);
+
+        let max_number_of_constraints = max(
+            instruction_transition_constraints.len(),
+            padding_row_transition_constraints.len(),
+        );
+
+        (0..max_number_of_constraints)
+            .map(|idx| {
+                let instruction_constraint = instruction_transition_constraints
+                    .get(idx)
+                    .unwrap_or(&constant(0))
+                    .to_owned();
+                let padding_constraint = padding_row_transition_constraints
+                    .get(idx)
+                    .unwrap_or(&constant(0))
+                    .to_owned();
+
+                instruction_constraint * padding_row_deselector.clone()
+                    + padding_constraint * padding_row_selector.clone()
+            })
+            .collect_vec()
+    }
+
+    fn instruction_group_decompose_arg(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+
+        let hv0_is_a_bit = curr_base_row(HV0) * (curr_base_row(HV0) - constant(1));
+        let hv1_is_a_bit = curr_base_row(HV1) * (curr_base_row(HV1) - constant(1));
+        let hv2_is_a_bit = curr_base_row(HV2) * (curr_base_row(HV2) - constant(1));
+        let hv3_is_a_bit = curr_base_row(HV3) * (curr_base_row(HV3) - constant(1));
+
+        let helper_variables_are_binary_decomposition_of_nia = curr_base_row(NIA)
+            - constant(8) * curr_base_row(HV3)
+            - constant(4) * curr_base_row(HV2)
+            - constant(2) * curr_base_row(HV1)
+            - curr_base_row(HV0);
 
-    pub fn decompose_arg(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let hv0_is_a_bit = self.hv0() * (self.hv0() - self.one());
-        let hv1_is_a_bit = self.hv1() * (self.hv1() - self.one());
-        let hv2_is_a_bit = self.hv2() * (self.hv2() - self.one());
-        let hv3_is_a_bit = self.hv3() * (self.hv3() - self.one());
-        let helper_variables_are_binary_decomposition_of_nia = self.nia()
-            - self.constant(8) * self.hv3()
-            - self.constant(4) * self.hv2()
-            - self.constant(2) * self.hv1()
-            - self.hv0();
         vec![
             hv0_is_a_bit,
             hv1_is_a_bit,
@@ -2314,10 +780,271 @@ impl DualRowConstraints {
         ]
     }
 
-    pub fn keep_jump_stack(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let jsp_does_not_change = self.jsp_next() - self.jsp();
-        let jso_does_not_change = self.jso_next() - self.jso();
-        let jsd_does_not_change = self.jsd_next() - self.jsd();
+    fn instruction_group_keep_ram(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        vec![
+            next_base_row(RAMV) - curr_base_row(RAMV),
+            next_base_row(RAMP) - curr_base_row(RAMP),
+        ]
+    }
+
+    fn instruction_group_op_stack_remains_and_top_eleven_elements_unconstrained(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        vec![
+            next_base_row(ST11) - curr_base_row(ST11),
+            next_base_row(ST12) - curr_base_row(ST12),
+            next_base_row(ST13) - curr_base_row(ST13),
+            next_base_row(ST14) - curr_base_row(ST14),
+            next_base_row(ST15) - curr_base_row(ST15),
+            // The top of the OpStack underflow, i.e., osv, does not change.
+            next_base_row(OSV) - curr_base_row(OSV),
+            // The OpStack pointer, osp, does not change.
+            next_base_row(OSP) - curr_base_row(OSP),
+        ]
+    }
+
+    fn instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![next_base_row(ST10) - curr_base_row(ST10)];
+        let inherited_constraints =
+            Self::instruction_group_op_stack_remains_and_top_eleven_elements_unconstrained(
+                circuit_builder,
+            );
+
+        [specific_constraints, inherited_constraints].concat()
+    }
+
+    fn instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![
+            next_base_row(ST3) - curr_base_row(ST3),
+            next_base_row(ST4) - curr_base_row(ST4),
+            next_base_row(ST5) - curr_base_row(ST5),
+            next_base_row(ST6) - curr_base_row(ST6),
+            next_base_row(ST7) - curr_base_row(ST7),
+            next_base_row(ST8) - curr_base_row(ST8),
+            next_base_row(ST9) - curr_base_row(ST9),
+        ];
+        let inherited_constraints =
+            Self::instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
+                circuit_builder,
+            );
+
+        [specific_constraints, inherited_constraints].concat()
+    }
+
+    fn instruction_group_unop(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![
+            next_base_row(ST1) - curr_base_row(ST1),
+            next_base_row(ST2) - curr_base_row(ST2),
+        ];
+        let inherited_constraints =
+            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+                circuit_builder,
+            );
+
+        [specific_constraints, inherited_constraints].concat()
+    }
+
+    fn instruction_group_keep_op_stack(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![next_base_row(ST0) - curr_base_row(ST0)];
+        let inherited_constraints = Self::instruction_group_unop(circuit_builder);
+
+        [specific_constraints, inherited_constraints].concat()
+    }
+
+    fn instruction_group_grow_op_stack_and_top_two_elements_unconstrained(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        vec![
+            // The stack element in st1 is moved into st2.
+            next_base_row(ST2) - curr_base_row(ST1),
+            // And so on...
+            next_base_row(ST3) - curr_base_row(ST2),
+            next_base_row(ST4) - curr_base_row(ST3),
+            next_base_row(ST5) - curr_base_row(ST4),
+            next_base_row(ST6) - curr_base_row(ST5),
+            next_base_row(ST7) - curr_base_row(ST6),
+            next_base_row(ST8) - curr_base_row(ST7),
+            next_base_row(ST9) - curr_base_row(ST8),
+            next_base_row(ST10) - curr_base_row(ST9),
+            next_base_row(ST11) - curr_base_row(ST10),
+            next_base_row(ST12) - curr_base_row(ST11),
+            next_base_row(ST13) - curr_base_row(ST12),
+            next_base_row(ST14) - curr_base_row(ST13),
+            next_base_row(ST15) - curr_base_row(ST14),
+            // The stack element in st15 is moved to the top of OpStack underflow, i.e., osv.
+            next_base_row(OSV) - curr_base_row(ST15),
+            // The OpStack pointer is incremented by 1.
+            next_base_row(OSP) - (curr_base_row(OSP) + constant(1)),
+        ]
+    }
+
+    fn instruction_group_grow_op_stack(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![next_base_row(ST1) - curr_base_row(ST0)];
+        let inherited_constraints =
+            Self::instruction_group_grow_op_stack_and_top_two_elements_unconstrained(
+                circuit_builder,
+            );
+
+        [specific_constraints, inherited_constraints].concat()
+    }
+
+    fn instruction_group_op_stack_shrinks_and_top_three_elements_unconstrained(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        vec![
+            // The stack element in st4 is moved into st3.
+            next_base_row(ST3) - curr_base_row(ST4),
+            // The stack element in st5 is moved into st4.
+            next_base_row(ST4) - curr_base_row(ST5),
+            // And so on...
+            next_base_row(ST5) - curr_base_row(ST6),
+            next_base_row(ST6) - curr_base_row(ST7),
+            next_base_row(ST7) - curr_base_row(ST8),
+            next_base_row(ST8) - curr_base_row(ST9),
+            next_base_row(ST9) - curr_base_row(ST10),
+            next_base_row(ST10) - curr_base_row(ST11),
+            next_base_row(ST11) - curr_base_row(ST12),
+            next_base_row(ST12) - curr_base_row(ST13),
+            next_base_row(ST13) - curr_base_row(ST14),
+            next_base_row(ST14) - curr_base_row(ST15),
+            // The stack element at the top of OpStack underflow, i.e., osv, is moved into st15.
+            next_base_row(ST15) - curr_base_row(OSV),
+            // The OpStack pointer, osp, is decremented by 1.
+            next_base_row(OSP) - (curr_base_row(OSP) - constant(1)),
+            // The helper variable register hv3 holds the inverse of (osp - 16).
+            (curr_base_row(OSP) - constant(16)) * curr_base_row(HV3) - constant(1),
+        ]
+    }
+
+    fn instruction_group_binop(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![
+            next_base_row(ST1) - curr_base_row(ST2),
+            next_base_row(ST2) - curr_base_row(ST3),
+        ];
+        let inherited_constraints =
+            Self::instruction_group_op_stack_shrinks_and_top_three_elements_unconstrained(
+                circuit_builder,
+            );
+
+        [specific_constraints, inherited_constraints].concat()
+    }
+
+    fn instruction_group_shrink_op_stack(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![next_base_row(ST0) - curr_base_row(ST1)];
+        let inherited_constraints = Self::instruction_group_binop(circuit_builder);
+
+        [specific_constraints, inherited_constraints].concat()
+    }
+
+    fn instruction_group_keep_jump_stack(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let jsp_does_not_change = next_base_row(JSP) - curr_base_row(JSP);
+        let jso_does_not_change = next_base_row(JSO) - curr_base_row(JSO);
+        let jsd_does_not_change = next_base_row(JSD) - curr_base_row(JSD);
+
         vec![
             jsp_does_not_change,
             jso_does_not_change,
@@ -2325,562 +1052,54 @@ impl DualRowConstraints {
         ]
     }
 
-    pub fn step_1(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let instruction_pointer_increases_by_one = self.ip_next() - self.ip() - self.one();
-        let specific_constraints = vec![instruction_pointer_increases_by_one];
-        [specific_constraints, self.keep_jump_stack()].concat()
-    }
-
-    pub fn step_2(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let instruction_pointer_increases_by_two = self.ip_next() - self.ip() - self.two();
-        let specific_constraints = vec![instruction_pointer_increases_by_two];
-        [specific_constraints, self.keep_jump_stack()].concat()
-    }
-
-    pub fn grow_stack_and_top_two_elements_unconstrained(
-        &self,
+    fn instruction_group_step_1(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        vec![
-            // The stack element in st1 is moved into st2.
-            self.st2_next() - self.st1(),
-            // And so on...
-            self.st3_next() - self.st2(),
-            self.st4_next() - self.st3(),
-            self.st5_next() - self.st4(),
-            self.st6_next() - self.st5(),
-            self.st7_next() - self.st6(),
-            self.st8_next() - self.st7(),
-            self.st9_next() - self.st8(),
-            self.st10_next() - self.st9(),
-            self.st11_next() - self.st10(),
-            self.st12_next() - self.st11(),
-            self.st13_next() - self.st12(),
-            self.st14_next() - self.st13(),
-            self.st15_next() - self.st14(),
-            // The stack element in st15 is moved to the top of OpStack underflow, i.e., osv.
-            self.osv_next() - self.st15(),
-            // The OpStack pointer is incremented by 1.
-            self.osp_next() - (self.osp() + self.one()),
-        ]
-    }
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
 
-    pub fn grow_stack(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![
-            // The stack element in st0 is moved into st1.
-            self.st1_next() - self.st0(),
-        ];
+        let instruction_pointer_increases_by_one =
+            next_base_row(IP) - curr_base_row(IP) - constant(1);
         [
-            specific_constraints,
-            self.grow_stack_and_top_two_elements_unconstrained(),
+            Self::instruction_group_keep_jump_stack(circuit_builder),
+            vec![instruction_pointer_increases_by_one],
         ]
         .concat()
     }
 
-    pub fn stack_shrinks_and_top_three_elements_unconstrained(
-        &self,
+    fn instruction_group_step_2(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        vec![
-            // The stack element in st4 is moved into st3.
-            self.st3_next() - self.st4(),
-            // The stack element in st5 is moved into st4.
-            self.st4_next() - self.st5(),
-            // And so on...
-            self.st5_next() - self.st6(),
-            self.st6_next() - self.st7(),
-            self.st7_next() - self.st8(),
-            self.st8_next() - self.st9(),
-            self.st9_next() - self.st10(),
-            self.st10_next() - self.st11(),
-            self.st11_next() - self.st12(),
-            self.st12_next() - self.st13(),
-            self.st13_next() - self.st14(),
-            self.st14_next() - self.st15(),
-            // The stack element at the top of OpStack underflow, i.e., osv, is moved into st15.
-            self.st15_next() - self.osv(),
-            // The OpStack pointer, osp, is decremented by 1.
-            self.osp_next() - (self.osp() - self.one()),
-            // The helper variable register hv3 holds the inverse of (osp - 16).
-            (self.osp() - self.constant(16)) * self.hv3() - self.one(),
-        ]
-    }
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
 
-    pub fn binop(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![
-            // The stack element in st2 is moved into st1.
-            self.st1_next() - self.st2(),
-            // The stack element in st3 is moved into st2.
-            self.st2_next() - self.st3(),
-        ];
+        let instruction_pointer_increases_by_two =
+            next_base_row(IP) - curr_base_row(IP) - constant(2);
         [
-            specific_constraints,
-            self.stack_shrinks_and_top_three_elements_unconstrained(),
+            Self::instruction_group_keep_jump_stack(circuit_builder),
+            vec![instruction_pointer_increases_by_two],
         ]
         .concat()
     }
 
-    pub fn shrink_stack(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constrants = vec![self.st0_next() - self.st1()];
-        [specific_constrants, self.binop()].concat()
-    }
-
-    pub fn stack_remains_and_top_eleven_elements_unconstrained(
-        &self,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        vec![
-            self.st11_next() - self.st11(),
-            self.st12_next() - self.st12(),
-            self.st13_next() - self.st13(),
-            self.st14_next() - self.st14(),
-            self.st15_next() - self.st15(),
-            // The top of the OpStack underflow, i.e., osv, does not change.
-            self.osv_next() - self.osv(),
-            // The OpStack pointer, osp, does not change.
-            self.osp_next() - self.osp(),
-        ]
-    }
-
-    pub fn stack_remains_and_top_ten_elements_unconstrained(
-        &self,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![self.st10_next() - self.st10()];
-        [
-            specific_constraints,
-            self.stack_remains_and_top_eleven_elements_unconstrained(),
-        ]
-        .concat()
-    }
-
-    pub fn stack_remains_and_top_three_elements_unconstrained(
-        &self,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![
-            self.st3_next() - self.st3(),
-            self.st4_next() - self.st4(),
-            self.st5_next() - self.st5(),
-            self.st6_next() - self.st6(),
-            self.st7_next() - self.st7(),
-            self.st8_next() - self.st8(),
-            self.st9_next() - self.st9(),
-        ];
-        [
-            specific_constraints,
-            self.stack_remains_and_top_ten_elements_unconstrained(),
-        ]
-        .concat()
-    }
-
-    pub fn unop(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![
-            // The stack element in st1 does not change.
-            self.st1_next() - self.st1(),
-            // The stack element in st2 does not change.
-            self.st2_next() - self.st2(),
-        ];
-        [
-            specific_constraints,
-            self.stack_remains_and_top_three_elements_unconstrained(),
-        ]
-        .concat()
-    }
-
-    pub fn keep_stack(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let specific_constraints = vec![self.st0_next() - self.st0()];
-        [specific_constraints, self.unop()].concat()
-    }
-
-    pub fn keep_ram(&self) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        vec![
-            self.ramv_next() - self.ramv(),
-            self.ramp_next() - self.ramp(),
-        ]
-    }
-
-    pub fn running_evaluation_for_standard_input_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let indeterminate = self.circuit_builder.challenge(StandardInputIndeterminate);
-        let read_io_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::ReadIo);
-        let read_io_selector = self.ci() - self.constant_b(Instruction::ReadIo.opcode_b());
-        let input_symbol = self.st0_next();
-        let running_evaluation_updates = self.running_evaluation_standard_input_next()
-            - indeterminate * self.running_evaluation_standard_input()
-            - input_symbol;
-        let running_evaluation_remains = self.running_evaluation_standard_input_next()
-            - self.running_evaluation_standard_input();
-
-        read_io_selector * running_evaluation_remains
-            + read_io_deselector * running_evaluation_updates
-    }
-
-    pub fn log_derivative_for_instruction_lookup_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let indeterminate = self
-            .circuit_builder
-            .challenge(InstructionLookupIndeterminate);
-        let ip_weight = self.circuit_builder.challenge(ProgramAddressWeight);
-        let ci_weight = self.circuit_builder.challenge(ProgramInstructionWeight);
-        let nia_weight = self.circuit_builder.challenge(ProgramNextInstructionWeight);
-        let compressed_row =
-            ip_weight * self.ip_next() + ci_weight * self.ci_next() + nia_weight * self.nia_next();
-        let log_derivative_updates = (self.instruction_lookup_log_derivative_next()
-            - self.instruction_lookup_log_derivative())
-            * (indeterminate - compressed_row)
-            - self.one();
-        let log_derivative_remains = self.instruction_lookup_log_derivative_next()
-            - self.instruction_lookup_log_derivative();
-
-        (self.one() - self.is_padding_next()) * log_derivative_updates
-            + self.is_padding_next() * log_derivative_remains
-    }
-
-    pub fn running_evaluation_for_standard_output_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let indeterminate = self.circuit_builder.challenge(StandardOutputIndeterminate);
-        let write_io_deselector =
-            InstructionDeselectors::instruction_deselector_next(self, Instruction::WriteIo);
-        let write_io_selector = self.ci_next() - self.constant_b(Instruction::WriteIo.opcode_b());
-        let output_symbol = self.st0_next();
-        let running_evaluation_updates = self.running_evaluation_standard_output_next()
-            - indeterminate * self.running_evaluation_standard_output()
-            - output_symbol;
-        let running_evaluation_remains = self.running_evaluation_standard_output_next()
-            - self.running_evaluation_standard_output();
-
-        write_io_selector * running_evaluation_remains
-            + write_io_deselector * running_evaluation_updates
-    }
-
-    pub fn running_product_for_op_stack_table_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let indeterminate = self.circuit_builder.challenge(OpStackIndeterminate);
-        let clk_weight = self.circuit_builder.challenge(OpStackClkWeight);
-        let ib1_weight = self.circuit_builder.challenge(OpStackIb1Weight);
-        let osp_weight = self.circuit_builder.challenge(OpStackOspWeight);
-        let osv_weight = self.circuit_builder.challenge(OpStackOsvWeight);
-        let compressed_row = clk_weight * self.clk_next()
-            + ib1_weight * self.ib1_next()
-            + osp_weight * self.osp_next()
-            + osv_weight * self.osv_next();
-
-        self.running_product_op_stack_table_next()
-            - self.running_product_op_stack_table() * (indeterminate - compressed_row)
-    }
-
-    pub fn running_product_for_ram_table_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let indeterminate = self.circuit_builder.challenge(RamIndeterminate);
-        let clk_weight = self.circuit_builder.challenge(RamClkWeight);
-        let ramp_weight = self.circuit_builder.challenge(RamRampWeight);
-        let ramv_weight = self.circuit_builder.challenge(RamRamvWeight);
-        let previous_instruction_weight =
-            self.circuit_builder.challenge(RamPreviousInstructionWeight);
-        let compressed_row = clk_weight * self.clk_next()
-            + ramp_weight * self.ramp_next()
-            + ramv_weight * self.ramv_next()
-            + previous_instruction_weight * self.previous_instruction_next();
-
-        self.running_product_ram_table_next()
-            - self.running_product_ram_table() * (indeterminate - compressed_row)
-    }
-
-    pub fn running_product_for_jump_stack_table_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let indeterminate = self.circuit_builder.challenge(JumpStackIndeterminate);
-        let clk_weight = self.circuit_builder.challenge(JumpStackClkWeight);
-        let ci_weight = self.circuit_builder.challenge(JumpStackCiWeight);
-        let jsp_weight = self.circuit_builder.challenge(JumpStackJspWeight);
-        let jso_weight = self.circuit_builder.challenge(JumpStackJsoWeight);
-        let jsd_weight = self.circuit_builder.challenge(JumpStackJsdWeight);
-        let compressed_row = clk_weight * self.clk_next()
-            + ci_weight * self.ci_next()
-            + jsp_weight * self.jsp_next()
-            + jso_weight * self.jso_next()
-            + jsd_weight * self.jsd_next();
-
-        self.running_product_jump_stack_table_next()
-            - self.running_product_jump_stack_table() * (indeterminate - compressed_row)
-    }
-
-    pub fn running_evaluation_hash_input_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let hash_deselector =
-            InstructionDeselectors::instruction_deselector_next(self, Instruction::Hash);
-        let hash_selector = self.ci_next() - self.constant_b(Instruction::Hash.opcode_b());
-
-        let indeterminate = self.circuit_builder.challenge(HashInputIndeterminate);
-
-        let weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
-        ]
-        .map(|w| self.circuit_builder.challenge(w));
-        let state = [
-            self.st0_next(),
-            self.st1_next(),
-            self.st2_next(),
-            self.st3_next(),
-            self.st4_next(),
-            self.st5_next(),
-            self.st6_next(),
-            self.st7_next(),
-            self.st8_next(),
-            self.st9_next(),
-        ];
-        let compressed_row = weights
-            .into_iter()
-            .zip_eq(state.into_iter())
-            .map(|(weight, state)| weight * state)
-            .sum();
-        let running_evaluation_updates = self.running_evaluation_hash_input_next()
-            - indeterminate * self.running_evaluation_hash_input()
-            - compressed_row;
-        let running_evaluation_remains =
-            self.running_evaluation_hash_input_next() - self.running_evaluation_hash_input();
-
-        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
-    }
-
-    pub fn running_evaluation_hash_digest_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let hash_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::Hash);
-        let hash_selector = self.ci() - self.constant_b(Instruction::Hash.opcode_b());
-
-        let indeterminate = self.circuit_builder.challenge(HashDigestIndeterminate);
-
-        let weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-        ]
-        .map(|w| self.circuit_builder.challenge(w));
-        let state = [
-            self.st5_next(),
-            self.st6_next(),
-            self.st7_next(),
-            self.st8_next(),
-            self.st9_next(),
-        ];
-        let compressed_row = weights
-            .into_iter()
-            .zip_eq(state.into_iter())
-            .map(|(weight, state)| weight * state)
-            .sum();
-        let running_evaluation_updates = self.running_evaluation_hash_digest_next()
-            - indeterminate * self.running_evaluation_hash_digest()
-            - compressed_row;
-        let running_evaluation_remains =
-            self.running_evaluation_hash_digest_next() - self.running_evaluation_hash_digest();
-
-        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
-    }
-
-    pub fn running_evaluation_sponge_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let absorb_init_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::AbsorbInit);
-        let absorb_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::Absorb);
-        let squeeze_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::Squeeze);
-
-        let opcode_absorb_init = self.constant_b(Instruction::AbsorbInit.opcode_b());
-        let opcode_absorb = self.constant_b(Instruction::Absorb.opcode_b());
-        let opcode_squeeze = self.constant_b(Instruction::Squeeze.opcode_b());
-        let sponge_instruction_selector = (self.ci() - opcode_absorb_init)
-            * (self.ci() - opcode_absorb)
-            * (self.ci() - opcode_squeeze);
-
-        let weights = [
-            HashStateWeight0,
-            HashStateWeight1,
-            HashStateWeight2,
-            HashStateWeight3,
-            HashStateWeight4,
-            HashStateWeight5,
-            HashStateWeight6,
-            HashStateWeight7,
-            HashStateWeight8,
-            HashStateWeight9,
-        ]
-        .map(|w| self.circuit_builder.challenge(w));
-        let state_next = [
-            self.st0_next(),
-            self.st1_next(),
-            self.st2_next(),
-            self.st3_next(),
-            self.st4_next(),
-            self.st5_next(),
-            self.st6_next(),
-            self.st7_next(),
-            self.st8_next(),
-            self.st9_next(),
-        ];
-        let compressed_row_next = weights
-            .into_iter()
-            .zip_eq(state_next.into_iter())
-            .map(|(weight, st_next)| weight * st_next)
-            .sum();
-
-        let indeterminate = self.circuit_builder.challenge(SpongeIndeterminate);
-        let ci_weight = self.circuit_builder.challenge(HashCIWeight);
-        let running_evaluation_updates = self.running_evaluation_sponge_next()
-            - indeterminate * self.running_evaluation_sponge()
-            - ci_weight * self.ci()
-            - compressed_row_next;
-        let running_evaluation_remains =
-            self.running_evaluation_sponge_next() - self.running_evaluation_sponge();
-
-        sponge_instruction_selector * running_evaluation_remains
-            + absorb_init_deselector * running_evaluation_updates.clone()
-            + absorb_deselector * running_evaluation_updates.clone()
-            + squeeze_deselector * running_evaluation_updates
-    }
-
-    pub fn log_derivative_with_u32_table_updates_correctly(
-        &self,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let opcode_of_and = self.circuit_builder.b_constant(Instruction::And.opcode_b());
-        let two_inverse = self
-            .circuit_builder
-            .b_constant(BFieldElement::new(2).inverse());
-
-        let indeterminate = self.circuit_builder.challenge(U32Indeterminate);
-        let lhs_weight = self.circuit_builder.challenge(U32LhsWeight);
-        let rhs_weight = self.circuit_builder.challenge(U32RhsWeight);
-        let ci_weight = self.circuit_builder.challenge(U32CiWeight);
-        let result_weight = self.circuit_builder.challenge(U32ResultWeight);
-
-        let split_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::Split);
-        let lt_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Lt);
-        let and_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::And);
-        let xor_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Xor);
-        let pow_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Pow);
-        let log_2_floor_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::Log2Floor);
-        let div_deselector = InstructionDeselectors::instruction_deselector(self, Instruction::Div);
-        let pop_count_deselector =
-            InstructionDeselectors::instruction_deselector(self, Instruction::PopCount);
-
-        let running_sum = self.u32_table_running_sum_log_derivative();
-        let running_sum_next = self.u32_table_running_sum_log_derivative_next();
-
-        let split_factor = indeterminate.clone()
-            - lhs_weight.clone() * self.st0_next()
-            - rhs_weight.clone() * self.st1_next()
-            - ci_weight.clone() * self.ci();
-        let binop_factor = indeterminate.clone()
-            - lhs_weight.clone() * self.st0()
-            - rhs_weight.clone() * self.st1()
-            - ci_weight.clone() * self.ci()
-            - result_weight.clone() * self.st0_next();
-        let xor_factor = indeterminate.clone()
-            - lhs_weight.clone() * self.st0()
-            - rhs_weight.clone() * self.st1()
-            - ci_weight.clone() * opcode_of_and
-            - result_weight.clone() * (self.st0() + self.st1() - self.st0_next()) * two_inverse;
-        let unop_factor = indeterminate.clone()
-            - lhs_weight.clone() * self.st0()
-            - ci_weight.clone() * self.ci()
-            - result_weight.clone() * self.st0_next();
-        let div_factor_for_lt = indeterminate.clone()
-            - lhs_weight.clone() * self.st0_next()
-            - rhs_weight.clone() * self.st1()
-            - ci_weight.clone() * self.constant_b(Instruction::Lt.opcode_b())
-            - result_weight;
-        let div_factor_for_range_check = indeterminate
-            - lhs_weight * self.st0()
-            - rhs_weight * self.st1_next()
-            - ci_weight * self.constant_b(Instruction::Split.opcode_b());
-
-        let split_summand = split_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * split_factor - self.one());
-        let lt_summand = lt_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor.clone()
-                - self.one());
-        let and_summand = and_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor.clone()
-                - self.one());
-        let xor_summand = xor_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * xor_factor - self.one());
-        let pow_summand = pow_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * binop_factor - self.one());
-        let log_2_floor_summand = log_2_floor_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * unop_factor.clone() - self.one());
-        let div_summand = div_deselector
-            * ((running_sum_next.clone() - running_sum.clone())
-                * div_factor_for_lt.clone()
-                * div_factor_for_range_check.clone()
-                - div_factor_for_lt
-                - div_factor_for_range_check);
-        let pop_count_summand = pop_count_deselector
-            * ((running_sum_next.clone() - running_sum.clone()) * unop_factor - self.one());
-        let no_update_summand = (self.one() - self.ib2()) * (running_sum_next - running_sum);
-
-        split_summand
-            + lt_summand
-            + and_summand
-            + xor_summand
-            + pow_summand
-            + log_2_floor_summand
-            + div_summand
-            + pop_count_summand
-            + no_update_summand
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionDeselectors {
-    deselectors: HashMap<Instruction, ConstraintCircuitMonad<DualRowIndicator>>,
-}
-
-impl InstructionDeselectors {
-    fn new(factory: &mut DualRowConstraints) -> Self {
-        let deselectors = Self::create(factory);
-
-        Self { deselectors }
-    }
-
-    /// A polynomial that has solutions when `ci` is not `instruction`.
-    ///
-    /// This is naively achieved by constructing a polynomial that has
-    /// a solution when `ci` is any other instruction. This deselector
-    /// can be replaced with an efficient one based on `ib` registers.
-    pub fn get(&self, instruction: Instruction) -> ConstraintCircuitMonad<DualRowIndicator> {
-        self.deselectors
-            .get(&instruction)
-            .unwrap_or_else(|| panic!("The instruction {instruction} does not exist!"))
-            .clone()
-    }
-
-    /// internal helper function to de-duplicate functionality common between the similar (but
-    /// different on a type level) functions for construction deselectors
+    /// Internal helper function to de-duplicate functionality common between the similar (but
+    /// different on a type level) functions for construction deselectors.
     fn instruction_deselector_common_functionality<II: InputIndicator>(
         circuit_builder: &ConstraintCircuitBuilder<II>,
         instruction: Instruction,
         instruction_bucket_polynomials: [ConstraintCircuitMonad<II>; Ord8::COUNT],
     ) -> ConstraintCircuitMonad<II> {
-        let one = circuit_builder.b_constant(1u32.into());
+        let one = circuit_builder.b_constant(1_u32.into());
 
         let selector_bits: [_; Ord8::COUNT] = [
             instruction.ib(Ord8::IB0),
@@ -2902,82 +1121,1634 @@ impl InstructionDeselectors {
             .fold(one, ConstraintCircuitMonad::mul)
     }
 
-    /// A polynomial that has no solutions when ci is 'instruction'
-    pub fn instruction_deselector(
-        factory: &DualRowConstraints,
+    /// A polynomial that has no solutions when `ci` is `instruction`.
+    /// The number of variables in the polynomial corresponds to two rows.
+    fn instruction_deselector_current_row(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         instruction: Instruction,
     ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+
         let instruction_bucket_polynomials = [
-            factory.ib0(),
-            factory.ib1(),
-            factory.ib2(),
-            factory.ib3(),
-            factory.ib4(),
-            factory.ib5(),
-            factory.ib6(),
-            factory.ib7(),
+            curr_base_row(IB0),
+            curr_base_row(IB1),
+            curr_base_row(IB2),
+            curr_base_row(IB3),
+            curr_base_row(IB4),
+            curr_base_row(IB5),
+            curr_base_row(IB6),
+            curr_base_row(IB7),
         ];
 
         Self::instruction_deselector_common_functionality(
-            &factory.circuit_builder,
+            circuit_builder,
             instruction,
             instruction_bucket_polynomials,
         )
     }
 
-    /// A polynomial that has no solutions when ci is 'instruction'
-    pub fn instruction_deselector_single_row(
-        factory: &SingleRowConstraints,
+    /// A polynomial that has no solutions when `ci_next` is `instruction`.
+    /// The number of variables in the polynomial corresponds to two rows.
+    fn instruction_deselector_next_row(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+        instruction: Instruction,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let instruction_bucket_polynomials = [
+            next_base_row(IB0),
+            next_base_row(IB1),
+            next_base_row(IB2),
+            next_base_row(IB3),
+            next_base_row(IB4),
+            next_base_row(IB5),
+            next_base_row(IB6),
+            next_base_row(IB7),
+        ];
+
+        Self::instruction_deselector_common_functionality(
+            circuit_builder,
+            instruction,
+            instruction_bucket_polynomials,
+        )
+    }
+
+    /// A polynomial that has no solutions when `ci` is `instruction`.
+    /// The number of variables in the polynomial corresponds to a single row.
+    fn instruction_deselector_single_row(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
         instruction: Instruction,
     ) -> ConstraintCircuitMonad<SingleRowIndicator> {
+        let base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
+
         let instruction_bucket_polynomials = [
-            factory.ib0(),
-            factory.ib1(),
-            factory.ib2(),
-            factory.ib3(),
-            factory.ib4(),
-            factory.ib5(),
-            factory.ib6(),
-            factory.ib7(),
+            base_row(IB0),
+            base_row(IB1),
+            base_row(IB2),
+            base_row(IB3),
+            base_row(IB4),
+            base_row(IB5),
+            base_row(IB6),
+            base_row(IB7),
         ];
 
         Self::instruction_deselector_common_functionality(
-            &factory.circuit_builder,
+            circuit_builder,
             instruction,
             instruction_bucket_polynomials,
         )
     }
 
-    /// A polynomial that has no solutions when ci_next is 'instruction'
-    pub fn instruction_deselector_next(
-        factory: &DualRowConstraints,
+    fn instruction_pop(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_shrink_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_push(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![next_base_row(ST0) - curr_base_row(NIA)];
+        [
+            specific_constraints,
+            Self::instruction_group_grow_op_stack(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_divine(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_grow_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_dup(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let indicator_poly = |idx| Self::indicator_polynomial(circuit_builder, idx);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![
+            indicator_poly(0) * (next_base_row(ST0) - curr_base_row(ST0)),
+            indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1)),
+            indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2)),
+            indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3)),
+            indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4)),
+            indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5)),
+            indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6)),
+            indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7)),
+            indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8)),
+            indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9)),
+            indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10)),
+            indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11)),
+            indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12)),
+            indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13)),
+            indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14)),
+            indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_decompose_arg(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_grow_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_swap(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let one = || circuit_builder.b_constant(1_u32.into());
+        let indicator_poly = |idx| Self::indicator_polynomial(circuit_builder, idx);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![
+            indicator_poly(0),
+            indicator_poly(1) * (next_base_row(ST1) - curr_base_row(ST0)),
+            indicator_poly(2) * (next_base_row(ST2) - curr_base_row(ST0)),
+            indicator_poly(3) * (next_base_row(ST3) - curr_base_row(ST0)),
+            indicator_poly(4) * (next_base_row(ST4) - curr_base_row(ST0)),
+            indicator_poly(5) * (next_base_row(ST5) - curr_base_row(ST0)),
+            indicator_poly(6) * (next_base_row(ST6) - curr_base_row(ST0)),
+            indicator_poly(7) * (next_base_row(ST7) - curr_base_row(ST0)),
+            indicator_poly(8) * (next_base_row(ST8) - curr_base_row(ST0)),
+            indicator_poly(9) * (next_base_row(ST9) - curr_base_row(ST0)),
+            indicator_poly(10) * (next_base_row(ST10) - curr_base_row(ST0)),
+            indicator_poly(11) * (next_base_row(ST11) - curr_base_row(ST0)),
+            indicator_poly(12) * (next_base_row(ST12) - curr_base_row(ST0)),
+            indicator_poly(13) * (next_base_row(ST13) - curr_base_row(ST0)),
+            indicator_poly(14) * (next_base_row(ST14) - curr_base_row(ST0)),
+            indicator_poly(15) * (next_base_row(ST15) - curr_base_row(ST0)),
+            indicator_poly(1) * (next_base_row(ST0) - curr_base_row(ST1)),
+            indicator_poly(2) * (next_base_row(ST0) - curr_base_row(ST2)),
+            indicator_poly(3) * (next_base_row(ST0) - curr_base_row(ST3)),
+            indicator_poly(4) * (next_base_row(ST0) - curr_base_row(ST4)),
+            indicator_poly(5) * (next_base_row(ST0) - curr_base_row(ST5)),
+            indicator_poly(6) * (next_base_row(ST0) - curr_base_row(ST6)),
+            indicator_poly(7) * (next_base_row(ST0) - curr_base_row(ST7)),
+            indicator_poly(8) * (next_base_row(ST0) - curr_base_row(ST8)),
+            indicator_poly(9) * (next_base_row(ST0) - curr_base_row(ST9)),
+            indicator_poly(10) * (next_base_row(ST0) - curr_base_row(ST10)),
+            indicator_poly(11) * (next_base_row(ST0) - curr_base_row(ST11)),
+            indicator_poly(12) * (next_base_row(ST0) - curr_base_row(ST12)),
+            indicator_poly(13) * (next_base_row(ST0) - curr_base_row(ST13)),
+            indicator_poly(14) * (next_base_row(ST0) - curr_base_row(ST14)),
+            indicator_poly(15) * (next_base_row(ST0) - curr_base_row(ST15)),
+            (one() - indicator_poly(1)) * (next_base_row(ST1) - curr_base_row(ST1)),
+            (one() - indicator_poly(2)) * (next_base_row(ST2) - curr_base_row(ST2)),
+            (one() - indicator_poly(3)) * (next_base_row(ST3) - curr_base_row(ST3)),
+            (one() - indicator_poly(4)) * (next_base_row(ST4) - curr_base_row(ST4)),
+            (one() - indicator_poly(5)) * (next_base_row(ST5) - curr_base_row(ST5)),
+            (one() - indicator_poly(6)) * (next_base_row(ST6) - curr_base_row(ST6)),
+            (one() - indicator_poly(7)) * (next_base_row(ST7) - curr_base_row(ST7)),
+            (one() - indicator_poly(8)) * (next_base_row(ST8) - curr_base_row(ST8)),
+            (one() - indicator_poly(9)) * (next_base_row(ST9) - curr_base_row(ST9)),
+            (one() - indicator_poly(10)) * (next_base_row(ST10) - curr_base_row(ST10)),
+            (one() - indicator_poly(11)) * (next_base_row(ST11) - curr_base_row(ST11)),
+            (one() - indicator_poly(12)) * (next_base_row(ST12) - curr_base_row(ST12)),
+            (one() - indicator_poly(13)) * (next_base_row(ST13) - curr_base_row(ST13)),
+            (one() - indicator_poly(14)) * (next_base_row(ST14) - curr_base_row(ST14)),
+            (one() - indicator_poly(15)) * (next_base_row(ST15) - curr_base_row(ST15)),
+            next_base_row(OSV) - curr_base_row(OSV),
+            next_base_row(OSP) - curr_base_row(OSP),
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_decompose_arg(circuit_builder),
+            Self::instruction_group_step_2(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_nop(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_skiz(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let one = || constant(1);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // The next instruction nia is decomposed into helper variables hv.
+        let nia_decomposes_to_hvs =
+            curr_base_row(NIA) - (curr_base_row(HV0) + constant(2) * curr_base_row(HV1));
+
+        // The relevant helper variable hv1 is either 0 or 1.
+        // Here, hv0 == 1 means that nia takes an argument.
+        let hv0_is_0_or_1 = curr_base_row(HV0) * (curr_base_row(HV0) - one());
+
+        // If `st0` is non-zero, register `ip` is incremented by 1.
+        // If `st0` is 0 and `nia` takes no argument, register `ip` is incremented by 2.
+        // If `st0` is 0 and `nia` takes an argument, register `ip` is incremented by 3.
+        //
+        // Written as Disjunctive Normal Form, the last constraint can be expressed as:
+        // 6. (Register `st0` is 0 or `ip` is incremented by 1), and
+        // (`st0` has a multiplicative inverse or `hv` is 1 or `ip` is incremented by 2), and
+        // (`st0` has a multiplicative inverse or `hv0` is 0 or `ip` is incremented by 3).
+        let ip_case_1 = (next_base_row(IP) - curr_base_row(IP) - constant(1)) * curr_base_row(ST0);
+        let ip_case_2 = (next_base_row(IP) - curr_base_row(IP) - constant(2))
+            * (curr_base_row(ST0) * curr_base_row(HV2) - one())
+            * (curr_base_row(HV0) - one());
+        let ip_case_3 = (next_base_row(IP) - curr_base_row(IP) - constant(3))
+            * (curr_base_row(ST0) * curr_base_row(HV2) - one())
+            * curr_base_row(HV0);
+        let ip_incr_by_1_or_2_or_3 = ip_case_1 + ip_case_2 + ip_case_3;
+
+        let specific_constraints =
+            vec![nia_decomposes_to_hvs, hv0_is_0_or_1, ip_incr_by_1_or_2_or_3];
+        [
+            specific_constraints,
+            Self::instruction_group_keep_jump_stack(circuit_builder),
+            Self::instruction_group_shrink_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_call(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // The jump stack pointer jsp is incremented by 1.
+        let jsp_incr_1 = next_base_row(JSP) - curr_base_row(JSP) - constant(1);
+
+        // The jump's origin jso is set to the current instruction pointer ip plus 2.
+        let jso_becomes_ip_plus_2 = next_base_row(JSO) - curr_base_row(IP) - constant(2);
+
+        // The jump's destination jsd is set to the instruction's argument.
+        let jsd_becomes_nia = next_base_row(JSD) - curr_base_row(NIA);
+
+        // The instruction pointer ip is set to the instruction's argument.
+        let ip_becomes_nia = next_base_row(IP) - curr_base_row(NIA);
+
+        let specific_constraints = vec![
+            jsp_incr_1,
+            jso_becomes_ip_plus_2,
+            jsd_becomes_nia,
+            ip_becomes_nia,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_return(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // The jump stack pointer jsp is decremented by 1.
+        let jsp_incr_1 = next_base_row(JSP) - (curr_base_row(JSP) - constant(1));
+
+        // The instruction pointer ip is set to the last call's origin jso.
+        let ip_becomes_jso = next_base_row(IP) - curr_base_row(JSO);
+
+        let specific_constraints = vec![jsp_incr_1, ip_becomes_jso];
+        [
+            specific_constraints,
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_recurse(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // The instruction pointer ip is set to the last jump's destination jsd.
+        let ip_becomes_jsd = next_base_row(IP) - curr_base_row(JSD);
+        let specific_constraints = vec![ip_becomes_jsd];
+        [
+            specific_constraints,
+            Self::instruction_group_keep_jump_stack(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_assert(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+
+        // The current top of the stack st0 is 1.
+        let st_0_is_1 = curr_base_row(ST0) - constant(1);
+
+        let specific_constraints = vec![st_0_is_1];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_shrink_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_halt(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // The instruction executed in the following step is instruction halt.
+        let halt_is_followed_by_halt = next_base_row(CI) - curr_base_row(CI);
+
+        let specific_constraints = vec![halt_is_followed_by_halt];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_read_mem(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // the RAM pointer is overwritten with st0
+        let update_ramp = next_base_row(RAMP) - curr_base_row(ST0);
+
+        // The top of the stack is overwritten with the RAM value.
+        let st0_becomes_ramv = next_base_row(ST0) - next_base_row(RAMV);
+
+        let specific_constraints = vec![update_ramp, st0_becomes_ramv];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_grow_op_stack(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_write_mem(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // the RAM pointer is overwritten with st1
+        let update_ramp = next_base_row(RAMP) - curr_base_row(ST1);
+
+        // The RAM value is overwritten with the top of the stack.
+        let ramv_becomes_st0 = next_base_row(RAMV) - curr_base_row(ST0);
+
+        let specific_constraints = vec![update_ramp, ramv_becomes_st0];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_shrink_op_stack(circuit_builder),
+        ]
+        .concat()
+    }
+
+    /// Two Evaluation Arguments with the Hash Table guarantee correct transition.
+    fn instruction_hash(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    /// Recall that in a Merkle tree, the indices of left (respectively right)
+    /// leafs have 0 (respectively 1) as their least significant bit. The first
+    /// two polynomials achieve that helper variable hv0 holds the result of
+    /// st10 mod 2. The second polynomial sets the new value of st10 to st10 div 2.
+    fn instruction_divine_sibling(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let one = || constant(1);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // Helper variable hv0 is either 0 or 1.
+        let hv0_is_0_or_1 = curr_base_row(HV0) * (curr_base_row(HV0) - one());
+
+        // The 11th stack register is shifted by 1 bit to the right.
+        let st10_is_shifted_1_bit_right =
+            next_base_row(ST10) * constant(2) + curr_base_row(HV0) - curr_base_row(ST10);
+
+        // The second pentuplet either stays where it is, or is moved to the top
+        let maybe_move_st5 = (one() - curr_base_row(HV0))
+            * (curr_base_row(ST5) - next_base_row(ST0))
+            + curr_base_row(HV0) * (curr_base_row(ST5) - next_base_row(ST5));
+        let maybe_move_st6 = (one() - curr_base_row(HV0))
+            * (curr_base_row(ST6) - next_base_row(ST1))
+            + curr_base_row(HV0) * (curr_base_row(ST6) - next_base_row(ST6));
+        let maybe_move_st7 = (one() - curr_base_row(HV0))
+            * (curr_base_row(ST7) - next_base_row(ST2))
+            + curr_base_row(HV0) * (curr_base_row(ST7) - next_base_row(ST7));
+        let maybe_move_st8 = (one() - curr_base_row(HV0))
+            * (curr_base_row(ST8) - next_base_row(ST3))
+            + curr_base_row(HV0) * (curr_base_row(ST8) - next_base_row(ST8));
+        let maybe_move_st9 = (one() - curr_base_row(HV0))
+            * (curr_base_row(ST9) - next_base_row(ST4))
+            + curr_base_row(HV0) * (curr_base_row(ST9) - next_base_row(ST9));
+
+        let specific_constraints = vec![
+            hv0_is_0_or_1,
+            st10_is_shifted_1_bit_right,
+            maybe_move_st5,
+            maybe_move_st6,
+            maybe_move_st7,
+            maybe_move_st8,
+            maybe_move_st9,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_op_stack_remains_and_top_eleven_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_assert_vector(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![
+            curr_base_row(ST5) - curr_base_row(ST0),
+            curr_base_row(ST6) - curr_base_row(ST1),
+            curr_base_row(ST7) - curr_base_row(ST2),
+            curr_base_row(ST8) - curr_base_row(ST3),
+            curr_base_row(ST9) - curr_base_row(ST4),
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_absorb_init(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_absorb(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_squeeze(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_op_stack_remains_and_top_ten_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_add(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints =
+            vec![next_base_row(ST0) - curr_base_row(ST0) - curr_base_row(ST1)];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_binop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_mul(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints =
+            vec![next_base_row(ST0) - curr_base_row(ST0) * curr_base_row(ST1)];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_binop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_invert(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let one = || constant(1);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let specific_constraints = vec![next_base_row(ST0) * curr_base_row(ST0) - one()];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_unop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_eq(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let one = || constant(1);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two top-most
+        // elements: `hv0·(hv0·(st1 - st0) - 1)`
+        let hv0_is_inverse_of_diff_or_hv0_is_0 = curr_base_row(HV0)
+            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+
+        // Helper variable hv0 is the inverse-or-zero of the difference of the stack's two
+        // top-most elements: `(st1 - st0)·(hv0·(st1 - st0) - 1)`
+        let hv0_is_inverse_of_diff_or_diff_is_0 = (curr_base_row(ST1) - curr_base_row(ST0))
+            * (curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)) - one());
+
+        // The new top of the stack is 1 if the difference between the stack's two top-most
+        // elements is not invertible, 0 otherwise: `st0' - (1 - hv0·(st1 - st0))`
+        let st0_becomes_1_if_diff_is_not_invertible = next_base_row(ST0)
+            - (one() - curr_base_row(HV0) * (curr_base_row(ST1) - curr_base_row(ST0)));
+
+        let specific_constraints = vec![
+            hv0_is_inverse_of_diff_or_hv0_is_0,
+            hv0_is_inverse_of_diff_or_diff_is_0,
+            st0_becomes_1_if_diff_is_not_invertible,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_binop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_split(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let one = || constant(1);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // The top of the stack is decomposed as 32-bit chunks into the stack's top-most elements:
+        // st0 - (2^32·st0' + st1') = 0$
+        let st0_decomposes_to_two_32_bit_chunks =
+            curr_base_row(ST0) - (constant(1 << 32) * next_base_row(ST1) + next_base_row(ST0));
+
+        // Helper variable `hv0` = 0 if either
+        // 1. `hv0` is the difference between (2^32 - 1) and the high 32 bits (`st0'`), or
+        // 1. the low 32 bits (`st1'`) are 0.
+        //
+        // st1'·(hv0·(st0' - (2^32 - 1)) - 1)
+        //   lo·(hv0·(hi - 0xffff_ffff)) - 1)
+        let hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0 = {
+            let hv0 = curr_base_row(HV0);
+            let hi = next_base_row(ST1);
+            let lo = next_base_row(ST0);
+            let ffff_ffff = constant(0xffff_ffff);
+
+            lo * (hv0 * (hi - ffff_ffff) - one())
+        };
+
+        let specific_constraints = vec![
+            st0_decomposes_to_two_32_bit_chunks,
+            hv0_holds_inverse_of_chunk_difference_or_low_bits_are_0,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_grow_op_stack_and_top_two_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_lt(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_binop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_and(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_binop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_xor(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_binop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_log_2_floor(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_unop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_pow(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_binop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_div(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // `n == d·q + r` means `st0 - st1·st1' - st0'`
+        let numerator_is_quotient_times_denominator_plus_remainder =
+            curr_base_row(ST0) - curr_base_row(ST1) * next_base_row(ST1) - next_base_row(ST0);
+
+        let st2_does_not_change = next_base_row(ST2) - curr_base_row(ST2);
+
+        let specific_constraints = vec![
+            numerator_is_quotient_times_denominator_plus_remainder,
+            st2_does_not_change,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_pop_count(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_unop(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_xxadd(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let st0_becomes_st0_plus_st3 =
+            next_base_row(ST0) - (curr_base_row(ST0) + curr_base_row(ST3));
+        let st1_becomes_st1_plus_st4 =
+            next_base_row(ST1) - (curr_base_row(ST1) + curr_base_row(ST4));
+        let st2_becomes_st2_plus_st5 =
+            next_base_row(ST2) - (curr_base_row(ST2) + curr_base_row(ST5));
+
+        let specific_constraints = vec![
+            st0_becomes_st0_plus_st3,
+            st1_becomes_st1_plus_st4,
+            st2_becomes_st2_plus_st5,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_xxmul(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let st0_becomes_coefficient_0 = next_base_row(ST0)
+            - (curr_base_row(ST0) * curr_base_row(ST3)
+                - curr_base_row(ST2) * curr_base_row(ST4)
+                - curr_base_row(ST1) * curr_base_row(ST5));
+        let st1_becomes_coefficient_1 = next_base_row(ST1)
+            - (curr_base_row(ST1) * curr_base_row(ST3) + curr_base_row(ST0) * curr_base_row(ST4)
+                - curr_base_row(ST2) * curr_base_row(ST5)
+                + curr_base_row(ST2) * curr_base_row(ST4)
+                + curr_base_row(ST1) * curr_base_row(ST5));
+        let st2_becomes_coefficient_2 = next_base_row(ST2)
+            - (curr_base_row(ST2) * curr_base_row(ST3)
+                + curr_base_row(ST1) * curr_base_row(ST4)
+                + curr_base_row(ST0) * curr_base_row(ST5)
+                + curr_base_row(ST2) * curr_base_row(ST5));
+
+        let specific_constraints = vec![
+            st0_becomes_coefficient_0,
+            st1_becomes_coefficient_1,
+            st2_becomes_coefficient_2,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_xinv(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let first_coefficient_of_product_of_element_and_inverse_is_1 = curr_base_row(ST0)
+            * next_base_row(ST0)
+            - curr_base_row(ST2) * next_base_row(ST1)
+            - curr_base_row(ST1) * next_base_row(ST2)
+            - constant(1);
+
+        let second_coefficient_of_product_of_element_and_inverse_is_0 =
+            curr_base_row(ST1) * next_base_row(ST0) + curr_base_row(ST0) * next_base_row(ST1)
+                - curr_base_row(ST2) * next_base_row(ST2)
+                + curr_base_row(ST2) * next_base_row(ST1)
+                + curr_base_row(ST1) * next_base_row(ST2);
+
+        let third_coefficient_of_product_of_element_and_inverse_is_0 = curr_base_row(ST2)
+            * next_base_row(ST0)
+            + curr_base_row(ST1) * next_base_row(ST1)
+            + curr_base_row(ST0) * next_base_row(ST2)
+            + curr_base_row(ST2) * next_base_row(ST2);
+
+        let specific_constraints = vec![
+            first_coefficient_of_product_of_element_and_inverse_is_1,
+            second_coefficient_of_product_of_element_and_inverse_is_0,
+            third_coefficient_of_product_of_element_and_inverse_is_0,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_op_stack_remains_and_top_three_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_xbmul(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        let first_coeff_scalar_multiplication =
+            next_base_row(ST0) - curr_base_row(ST0) * curr_base_row(ST1);
+        let secnd_coeff_scalar_multiplication =
+            next_base_row(ST1) - curr_base_row(ST0) * curr_base_row(ST2);
+        let third_coeff_scalar_multiplication =
+            next_base_row(ST2) - curr_base_row(ST0) * curr_base_row(ST3);
+
+        let specific_constraints = vec![
+            first_coeff_scalar_multiplication,
+            secnd_coeff_scalar_multiplication,
+            third_coeff_scalar_multiplication,
+        ];
+        [
+            specific_constraints,
+            Self::instruction_group_op_stack_shrinks_and_top_three_elements_unconstrained(
+                circuit_builder,
+            ),
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_read_io(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_grow_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn instruction_write_io(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        [
+            Self::instruction_group_step_1(circuit_builder),
+            Self::instruction_group_shrink_op_stack(circuit_builder),
+            Self::instruction_group_keep_ram(circuit_builder),
+        ]
+        .concat()
+    }
+
+    fn get_transition_constraints_for_instruction(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
         instruction: Instruction,
-    ) -> ConstraintCircuitMonad<DualRowIndicator> {
-        let instruction_bucket_polynomials = [
-            factory.ib0_next(),
-            factory.ib1_next(),
-            factory.ib2_next(),
-            factory.ib3_next(),
-            factory.ib4_next(),
-            factory.ib5_next(),
-            factory.ib6_next(),
-            factory.ib7_next(),
-        ];
-
-        Self::instruction_deselector_common_functionality(
-            &factory.circuit_builder,
-            instruction,
-            instruction_bucket_polynomials,
-        )
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        match instruction {
+            Pop => ExtProcessorTable::instruction_pop(circuit_builder),
+            Push(_) => ExtProcessorTable::instruction_push(circuit_builder),
+            Divine(_) => ExtProcessorTable::instruction_divine(circuit_builder),
+            Dup(_) => ExtProcessorTable::instruction_dup(circuit_builder),
+            Swap(_) => ExtProcessorTable::instruction_swap(circuit_builder),
+            Nop => ExtProcessorTable::instruction_nop(circuit_builder),
+            Skiz => ExtProcessorTable::instruction_skiz(circuit_builder),
+            Call(_) => ExtProcessorTable::instruction_call(circuit_builder),
+            Return => ExtProcessorTable::instruction_return(circuit_builder),
+            Recurse => ExtProcessorTable::instruction_recurse(circuit_builder),
+            Assert => ExtProcessorTable::instruction_assert(circuit_builder),
+            Halt => ExtProcessorTable::instruction_halt(circuit_builder),
+            ReadMem => ExtProcessorTable::instruction_read_mem(circuit_builder),
+            WriteMem => ExtProcessorTable::instruction_write_mem(circuit_builder),
+            Hash => ExtProcessorTable::instruction_hash(circuit_builder),
+            DivineSibling => ExtProcessorTable::instruction_divine_sibling(circuit_builder),
+            AssertVector => ExtProcessorTable::instruction_assert_vector(circuit_builder),
+            AbsorbInit => ExtProcessorTable::instruction_absorb_init(circuit_builder),
+            Absorb => ExtProcessorTable::instruction_absorb(circuit_builder),
+            Squeeze => ExtProcessorTable::instruction_squeeze(circuit_builder),
+            Add => ExtProcessorTable::instruction_add(circuit_builder),
+            Mul => ExtProcessorTable::instruction_mul(circuit_builder),
+            Invert => ExtProcessorTable::instruction_invert(circuit_builder),
+            Eq => ExtProcessorTable::instruction_eq(circuit_builder),
+            Split => ExtProcessorTable::instruction_split(circuit_builder),
+            Lt => ExtProcessorTable::instruction_lt(circuit_builder),
+            And => ExtProcessorTable::instruction_and(circuit_builder),
+            Xor => ExtProcessorTable::instruction_xor(circuit_builder),
+            Log2Floor => ExtProcessorTable::instruction_log_2_floor(circuit_builder),
+            Pow => ExtProcessorTable::instruction_pow(circuit_builder),
+            Div => ExtProcessorTable::instruction_div(circuit_builder),
+            PopCount => ExtProcessorTable::instruction_pop_count(circuit_builder),
+            XxAdd => ExtProcessorTable::instruction_xxadd(circuit_builder),
+            XxMul => ExtProcessorTable::instruction_xxmul(circuit_builder),
+            XInvert => ExtProcessorTable::instruction_xinv(circuit_builder),
+            XbMul => ExtProcessorTable::instruction_xbmul(circuit_builder),
+            ReadIo => ExtProcessorTable::instruction_read_io(circuit_builder),
+            WriteIo => ExtProcessorTable::instruction_write_io(circuit_builder),
+        }
     }
 
-    pub fn create(
-        factory: &mut DualRowConstraints,
-    ) -> HashMap<Instruction, ConstraintCircuitMonad<DualRowIndicator>> {
-        ALL_INSTRUCTIONS
-            .iter()
-            .map(|&instr| (instr, Self::instruction_deselector(factory, instr)))
-            .collect()
+    fn log_derivative_accumulates_clk_next(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        (next_ext_row(ClockJumpDifferenceLookupServerLogDerivative)
+            - curr_ext_row(ClockJumpDifferenceLookupServerLogDerivative))
+            * (challenge(ClockJumpDifferenceLookupIndeterminate) - next_base_row(CLK))
+            - next_base_row(ClockJumpDifferenceLookupMultiplicity)
+    }
+
+    fn running_evaluation_for_standard_input_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let read_io_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::ReadIo);
+        let read_io_selector = curr_base_row(CI) - constant(Instruction::ReadIo.opcode());
+
+        let running_evaluation_updates = next_ext_row(InputTableEvalArg)
+            - challenge(StandardInputIndeterminate) * curr_ext_row(InputTableEvalArg)
+            - next_base_row(ST0);
+        let running_evaluation_remains =
+            next_ext_row(InputTableEvalArg) - curr_ext_row(InputTableEvalArg);
+
+        read_io_selector * running_evaluation_remains
+            + read_io_deselector * running_evaluation_updates
+    }
+
+    fn log_derivative_for_instruction_lookup_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let one = || circuit_builder.b_constant(1_u32.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let compressed_row = challenge(ProgramAddressWeight) * next_base_row(IP)
+            + challenge(ProgramInstructionWeight) * next_base_row(CI)
+            + challenge(ProgramNextInstructionWeight) * next_base_row(NIA);
+        let log_derivative_updates = (next_ext_row(InstructionLookupClientLogDerivative)
+            - curr_ext_row(InstructionLookupClientLogDerivative))
+            * (challenge(InstructionLookupIndeterminate) - compressed_row)
+            - one();
+        let log_derivative_remains = next_ext_row(InstructionLookupClientLogDerivative)
+            - curr_ext_row(InstructionLookupClientLogDerivative);
+
+        (one() - next_base_row(IsPadding)) * log_derivative_updates
+            + next_base_row(IsPadding) * log_derivative_remains
+    }
+
+    fn running_evaluation_for_standard_output_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let write_io_deselector =
+            Self::instruction_deselector_next_row(circuit_builder, Instruction::WriteIo);
+        let write_io_selector = next_base_row(CI) - constant(Instruction::WriteIo.opcode());
+
+        let running_evaluation_updates = next_ext_row(OutputTableEvalArg)
+            - challenge(StandardOutputIndeterminate) * curr_ext_row(OutputTableEvalArg)
+            - next_base_row(ST0);
+        let running_evaluation_remains =
+            next_ext_row(OutputTableEvalArg) - curr_ext_row(OutputTableEvalArg);
+
+        write_io_selector * running_evaluation_remains
+            + write_io_deselector * running_evaluation_updates
+    }
+
+    fn running_product_for_op_stack_table_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let compressed_row = challenge(OpStackClkWeight) * next_base_row(CLK)
+            + challenge(OpStackIb1Weight) * next_base_row(IB1)
+            + challenge(OpStackOspWeight) * next_base_row(OSP)
+            + challenge(OpStackOsvWeight) * next_base_row(OSV);
+
+        next_ext_row(OpStackTablePermArg)
+            - curr_ext_row(OpStackTablePermArg) * (challenge(OpStackIndeterminate) - compressed_row)
+    }
+
+    fn running_product_for_ram_table_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let compressed_row = challenge(RamClkWeight) * next_base_row(CLK)
+            + challenge(RamRampWeight) * next_base_row(RAMP)
+            + challenge(RamRamvWeight) * next_base_row(RAMV)
+            + challenge(RamPreviousInstructionWeight) * next_base_row(PreviousInstruction);
+
+        next_ext_row(RamTablePermArg)
+            - curr_ext_row(RamTablePermArg) * (challenge(RamIndeterminate) - compressed_row)
+    }
+
+    fn running_product_for_jump_stack_table_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let compressed_row = challenge(JumpStackClkWeight) * next_base_row(CLK)
+            + challenge(JumpStackCiWeight) * next_base_row(CI)
+            + challenge(JumpStackJspWeight) * next_base_row(JSP)
+            + challenge(JumpStackJsoWeight) * next_base_row(JSO)
+            + challenge(JumpStackJsdWeight) * next_base_row(JSD);
+
+        next_ext_row(JumpStackTablePermArg)
+            - curr_ext_row(JumpStackTablePermArg)
+                * (challenge(JumpStackIndeterminate) - compressed_row)
+    }
+
+    fn running_evaluation_hash_input_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let hash_deselector =
+            Self::instruction_deselector_next_row(circuit_builder, Instruction::Hash);
+        let hash_selector = next_base_row(CI) - constant(Instruction::Hash.opcode());
+
+        let weights = [
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+            HashStateWeight5,
+            HashStateWeight6,
+            HashStateWeight7,
+            HashStateWeight8,
+            HashStateWeight9,
+        ]
+        .map(challenge);
+        let state = [
+            next_base_row(ST0),
+            next_base_row(ST1),
+            next_base_row(ST2),
+            next_base_row(ST3),
+            next_base_row(ST4),
+            next_base_row(ST5),
+            next_base_row(ST6),
+            next_base_row(ST7),
+            next_base_row(ST8),
+            next_base_row(ST9),
+        ];
+        let compressed_row = weights
+            .into_iter()
+            .zip_eq(state.into_iter())
+            .map(|(weight, state)| weight * state)
+            .sum();
+
+        let running_evaluation_updates = next_ext_row(HashInputEvalArg)
+            - challenge(HashInputIndeterminate) * curr_ext_row(HashInputEvalArg)
+            - compressed_row;
+        let running_evaluation_remains =
+            next_ext_row(HashInputEvalArg) - curr_ext_row(HashInputEvalArg);
+
+        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+    }
+
+    fn running_evaluation_hash_digest_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let hash_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Hash);
+        let hash_selector = curr_base_row(CI) - constant(Instruction::Hash.opcode());
+
+        let weights = [
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+        ]
+        .map(challenge);
+        let state = [
+            next_base_row(ST5),
+            next_base_row(ST6),
+            next_base_row(ST7),
+            next_base_row(ST8),
+            next_base_row(ST9),
+        ];
+        let compressed_row = weights
+            .into_iter()
+            .zip_eq(state.into_iter())
+            .map(|(weight, state)| weight * state)
+            .sum();
+
+        let running_evaluation_updates = next_ext_row(HashDigestEvalArg)
+            - challenge(HashDigestIndeterminate) * curr_ext_row(HashDigestEvalArg)
+            - compressed_row;
+        let running_evaluation_remains =
+            next_ext_row(HashDigestEvalArg) - curr_ext_row(HashDigestEvalArg);
+
+        hash_selector * running_evaluation_remains + hash_deselector * running_evaluation_updates
+    }
+
+    fn running_evaluation_sponge_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let absorb_init_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::AbsorbInit);
+        let absorb_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Absorb);
+        let squeeze_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Squeeze);
+
+        let sponge_instruction_selector = (curr_base_row(CI)
+            - constant(Instruction::AbsorbInit.opcode()))
+            * (curr_base_row(CI) - constant(Instruction::Absorb.opcode()))
+            * (curr_base_row(CI) - constant(Instruction::Squeeze.opcode()));
+
+        let weights = [
+            HashStateWeight0,
+            HashStateWeight1,
+            HashStateWeight2,
+            HashStateWeight3,
+            HashStateWeight4,
+            HashStateWeight5,
+            HashStateWeight6,
+            HashStateWeight7,
+            HashStateWeight8,
+            HashStateWeight9,
+        ]
+        .map(challenge);
+        let state_next = [
+            next_base_row(ST0),
+            next_base_row(ST1),
+            next_base_row(ST2),
+            next_base_row(ST3),
+            next_base_row(ST4),
+            next_base_row(ST5),
+            next_base_row(ST6),
+            next_base_row(ST7),
+            next_base_row(ST8),
+            next_base_row(ST9),
+        ];
+        let compressed_row_next = weights
+            .into_iter()
+            .zip_eq(state_next.into_iter())
+            .map(|(weight, st_next)| weight * st_next)
+            .sum();
+
+        let running_evaluation_updates = next_ext_row(SpongeEvalArg)
+            - challenge(SpongeIndeterminate) * curr_ext_row(SpongeEvalArg)
+            - challenge(HashCIWeight) * curr_base_row(CI)
+            - compressed_row_next;
+        let running_evaluation_remains = next_ext_row(SpongeEvalArg) - curr_ext_row(SpongeEvalArg);
+
+        sponge_instruction_selector * running_evaluation_remains
+            + absorb_init_deselector * running_evaluation_updates.clone()
+            + absorb_deselector * running_evaluation_updates.clone()
+            + squeeze_deselector * running_evaluation_updates
+    }
+
+    fn log_derivative_with_u32_table_updates_correctly(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> ConstraintCircuitMonad<DualRowIndicator> {
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let one = || constant(1);
+        let two_inverse = circuit_builder.b_constant(BFieldElement::new(2).inverse());
+        let challenge = |c: ChallengeId| circuit_builder.challenge(c);
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let curr_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProcessorExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let split_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Split);
+        let lt_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Lt);
+        let and_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::And);
+        let xor_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Xor);
+        let pow_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Pow);
+        let log_2_floor_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Log2Floor);
+        let div_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::Div);
+        let pop_count_deselector =
+            Self::instruction_deselector_current_row(circuit_builder, Instruction::PopCount);
+
+        let running_sum = curr_ext_row(U32LookupClientLogDerivative);
+        let running_sum_next = next_ext_row(U32LookupClientLogDerivative);
+
+        let split_factor = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * next_base_row(ST0)
+            - challenge(U32RhsWeight) * next_base_row(ST1)
+            - challenge(U32CiWeight) * curr_base_row(CI);
+        let binop_factor = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * curr_base_row(ST0)
+            - challenge(U32RhsWeight) * curr_base_row(ST1)
+            - challenge(U32CiWeight) * curr_base_row(CI)
+            - challenge(U32ResultWeight) * next_base_row(ST0);
+        let xor_factor = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * curr_base_row(ST0)
+            - challenge(U32RhsWeight) * curr_base_row(ST1)
+            - challenge(U32CiWeight) * constant(Instruction::And.opcode())
+            - challenge(U32ResultWeight)
+                * (curr_base_row(ST0) + curr_base_row(ST1) - next_base_row(ST0))
+                * two_inverse;
+        let unop_factor = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * curr_base_row(ST0)
+            - challenge(U32CiWeight) * curr_base_row(CI)
+            - challenge(U32ResultWeight) * next_base_row(ST0);
+        let div_factor_for_lt = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * next_base_row(ST0)
+            - challenge(U32RhsWeight) * curr_base_row(ST1)
+            - challenge(U32CiWeight) * constant(Instruction::Lt.opcode())
+            - challenge(U32ResultWeight);
+        let div_factor_for_range_check = challenge(U32Indeterminate)
+            - challenge(U32LhsWeight) * curr_base_row(ST0)
+            - challenge(U32RhsWeight) * next_base_row(ST1)
+            - challenge(U32CiWeight) * constant(Instruction::Split.opcode());
+
+        let running_sum_absorbs_split_factor =
+            (running_sum_next.clone() - running_sum.clone()) * split_factor - one();
+        let running_sum_absorbs_binop_factor =
+            (running_sum_next.clone() - running_sum.clone()) * binop_factor - one();
+        let running_sum_absorb_xor_factor =
+            (running_sum_next.clone() - running_sum.clone()) * xor_factor - one();
+        let running_sum_absorbs_unop_factor =
+            (running_sum_next.clone() - running_sum.clone()) * unop_factor - one();
+
+        let split_summand = split_deselector * running_sum_absorbs_split_factor;
+        let lt_summand = lt_deselector * running_sum_absorbs_binop_factor.clone();
+        let and_summand = and_deselector * running_sum_absorbs_binop_factor.clone();
+        let xor_summand = xor_deselector * running_sum_absorb_xor_factor;
+        let pow_summand = pow_deselector * running_sum_absorbs_binop_factor;
+        let log_2_floor_summand = log_2_floor_deselector * running_sum_absorbs_unop_factor.clone();
+        let div_summand = div_deselector
+            * ((running_sum_next.clone() - running_sum.clone())
+                * div_factor_for_lt.clone()
+                * div_factor_for_range_check.clone()
+                - div_factor_for_lt
+                - div_factor_for_range_check);
+        let pop_count_summand = pop_count_deselector * running_sum_absorbs_unop_factor;
+        let no_update_summand = (one() - curr_base_row(IB2)) * (running_sum_next - running_sum);
+
+        split_summand
+            + lt_summand
+            + and_summand
+            + xor_summand
+            + pow_summand
+            + log_2_floor_summand
+            + div_summand
+            + pop_count_summand
+            + no_update_summand
+    }
+
+    pub fn transition_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let curr_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+
+        // constraints common to all instructions
+        let clk_increases_by_1 = next_base_row(CLK) - curr_base_row(CLK) - constant(1);
+        let is_padding_is_0_or_does_not_change =
+            curr_base_row(IsPadding) * (next_base_row(IsPadding) - curr_base_row(IsPadding));
+        let previous_instruction_is_copied_correctly = (next_base_row(PreviousInstruction)
+            - curr_base_row(CI))
+            * (constant(1) - next_base_row(IsPadding));
+
+        let instruction_independent_constraints = vec![
+            clk_increases_by_1,
+            is_padding_is_0_or_does_not_change,
+            previous_instruction_is_copied_correctly,
+        ];
+
+        // instruction-specific constraints
+        let all_transition_constraints_by_instruction = ALL_INSTRUCTIONS.map(|instruction| {
+            Self::get_transition_constraints_for_instruction(circuit_builder, instruction)
+        });
+        let all_instructions_and_their_transition_constraints = ALL_INSTRUCTIONS
+            .into_iter()
+            .zip_eq(all_transition_constraints_by_instruction.into_iter())
+            .collect_vec()
+            .try_into()
+            .unwrap();
+
+        let deselected_transition_constraints =
+            Self::combine_instruction_constraints_with_deselectors(
+                circuit_builder,
+                all_instructions_and_their_transition_constraints,
+            );
+
+        // if next row is padding row: disable transition constraints, enable padding constraints
+        let doubly_deselected_transition_constraints =
+            Self::combine_transition_constraints_with_padding_constraints(
+                circuit_builder,
+                deselected_transition_constraints,
+            );
+
+        let table_linking_constraints = vec![
+            Self::log_derivative_accumulates_clk_next(circuit_builder),
+            Self::running_evaluation_for_standard_input_updates_correctly(circuit_builder),
+            Self::log_derivative_for_instruction_lookup_updates_correctly(circuit_builder),
+            Self::running_evaluation_for_standard_output_updates_correctly(circuit_builder),
+            Self::running_product_for_op_stack_table_updates_correctly(circuit_builder),
+            Self::running_product_for_ram_table_updates_correctly(circuit_builder),
+            Self::running_product_for_jump_stack_table_updates_correctly(circuit_builder),
+            Self::running_evaluation_hash_input_updates_correctly(circuit_builder),
+            Self::running_evaluation_hash_digest_updates_correctly(circuit_builder),
+            Self::running_evaluation_sponge_updates_correctly(circuit_builder),
+            Self::log_derivative_with_u32_table_updates_correctly(circuit_builder),
+        ];
+
+        vec![
+            instruction_independent_constraints,
+            doubly_deselected_transition_constraints,
+            table_linking_constraints,
+        ]
+        .concat()
+    }
+
+    pub fn terminal_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
+        let base_row = |col: ProcessorBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
+        let constant = |c| circuit_builder.b_constant(c);
+
+        // In the last row, register “current instruction” `ci` corresponds to instruction `halt`.
+        let last_ci_is_halt = base_row(CI) - constant(Instruction::Halt.opcode_b());
+
+        vec![last_ci_is_halt]
     }
 }
 
@@ -3173,6 +2944,7 @@ impl<'a> Display for ExtProcessorTraceRow<'a> {
 #[cfg(test)]
 mod constraint_polynomial_tests {
     use ndarray::Array2;
+
     use triton_opcodes::ord_n::Ord16;
     use triton_opcodes::program::Program;
 
@@ -3181,6 +2953,8 @@ mod constraint_polynomial_tests {
     use crate::shared_tests::SourceCodeAndInput;
     use crate::stark::triton_stark_tests::parse_simulate_pad;
     use crate::table::master_table::MasterTable;
+    use crate::table::master_table::NUM_BASE_COLUMNS;
+    use crate::table::master_table::NUM_EXT_COLUMNS;
     use crate::table::processor_table::ProcessorTraceRow;
     use crate::vm::simulate;
 
@@ -3206,58 +2980,13 @@ mod constraint_polynomial_tests {
             .to_owned()
     }
 
-    fn get_transition_constraints_for_instruction(
-        instruction: Instruction,
-    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let tc = DualRowConstraints::default();
-        match instruction {
-            Pop => tc.instruction_pop(),
-            Push(_) => tc.instruction_push(),
-            Divine(_) => tc.instruction_divine(),
-            Dup(_) => tc.instruction_dup(),
-            Swap(_) => tc.instruction_swap(),
-            Nop => tc.instruction_nop(),
-            Skiz => tc.instruction_skiz(),
-            Call(_) => tc.instruction_call(),
-            Return => tc.instruction_return(),
-            Recurse => tc.instruction_recurse(),
-            Assert => tc.instruction_assert(),
-            Halt => tc.instruction_halt(),
-            ReadMem => tc.instruction_read_mem(),
-            WriteMem => tc.instruction_write_mem(),
-            Hash => tc.instruction_hash(),
-            DivineSibling => tc.instruction_divine_sibling(),
-            AssertVector => tc.instruction_assert_vector(),
-            AbsorbInit => tc.instruction_absorb_init(),
-            Absorb => tc.instruction_absorb(),
-            Squeeze => tc.instruction_squeeze(),
-            Add => tc.instruction_add(),
-            Mul => tc.instruction_mul(),
-            Invert => tc.instruction_invert(),
-            Eq => tc.instruction_eq(),
-            Split => tc.instruction_split(),
-            Lt => tc.instruction_lt(),
-            And => tc.instruction_and(),
-            Xor => tc.instruction_xor(),
-            Log2Floor => tc.instruction_log_2_floor(),
-            Pow => tc.instruction_pow(),
-            Div => tc.instruction_div(),
-            PopCount => tc.instruction_pop_count(),
-            XxAdd => tc.instruction_xxadd(),
-            XxMul => tc.instruction_xxmul(),
-            XInvert => tc.instruction_xinv(),
-            XbMul => tc.instruction_xbmul(),
-            ReadIo => tc.instruction_read_io(),
-            WriteIo => tc.instruction_write_io(),
-        }
-    }
-
     fn test_constraints_for_rows_with_debug_info(
         instruction: Instruction,
         master_base_tables: &[Array2<BFieldElement>],
         debug_cols_curr_row: &[ProcessorBaseTableColumn],
         debug_cols_next_row: &[ProcessorBaseTableColumn],
     ) {
+        let circuit_builder = ConstraintCircuitBuilder::new();
         let challenges = Challenges::placeholder(&[], &[]);
         let fake_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
         for (case_idx, test_rows) in master_base_tables.iter().enumerate() {
@@ -3282,9 +3011,12 @@ mod constraint_polynomial_tests {
                 "The test is trying to check the wrong transition constraint polynomials."
             );
             for (constraint_idx, constraint_circuit) in
-                get_transition_constraints_for_instruction(instruction)
-                    .into_iter()
-                    .enumerate()
+                ExtProcessorTable::get_transition_constraints_for_instruction(
+                    &circuit_builder,
+                    instruction,
+                )
+                .into_iter()
+                .enumerate()
             {
                 let evaluation_result = constraint_circuit.consume().evaluate(
                     test_rows.view(),
@@ -3641,8 +3373,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn instruction_deselector_gives_0_for_all_other_instructions_test() {
-        let mut factory = DualRowConstraints::default();
-        let deselectors = InstructionDeselectors::new(&mut factory);
+        let circuit_builder = ConstraintCircuitBuilder::new();
 
         let mut master_base_table = Array2::zeros([2, NUM_BASE_COLUMNS]);
         let master_ext_table = Array2::zeros([2, NUM_EXT_COLUMNS]);
@@ -3651,7 +3382,10 @@ mod constraint_polynomial_tests {
         let dummy_challenges = Challenges::placeholder(&[], &[]);
         for instruction in ALL_INSTRUCTIONS {
             use ProcessorBaseTableColumn::*;
-            let deselector = deselectors.get(instruction);
+            let deselector = ExtProcessorTable::instruction_deselector_current_row(
+                &circuit_builder,
+                instruction,
+            );
 
             println!("\n\nThe Deselector for instruction {instruction} is:\n{deselector}",);
 
@@ -3708,53 +3442,15 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn print_number_and_degrees_of_transition_constraints_for_all_instructions() {
-        let factory = DualRowConstraints::default();
-        let all_instructions_and_their_transition_constraints: [(Instruction, _);
-            Instruction::COUNT] = [
-            (Pop, factory.instruction_pop()),
-            (Push(Default::default()), factory.instruction_push()),
-            (Divine(Default::default()), factory.instruction_divine()),
-            (Dup(Default::default()), factory.instruction_dup()),
-            (Swap(Default::default()), factory.instruction_swap()),
-            (Nop, factory.instruction_nop()),
-            (Skiz, factory.instruction_skiz()),
-            (Call(Default::default()), factory.instruction_call()),
-            (Return, factory.instruction_return()),
-            (Recurse, factory.instruction_recurse()),
-            (Assert, factory.instruction_assert()),
-            (Halt, factory.instruction_halt()),
-            (ReadMem, factory.instruction_read_mem()),
-            (WriteMem, factory.instruction_write_mem()),
-            (Hash, factory.instruction_hash()),
-            (DivineSibling, factory.instruction_divine_sibling()),
-            (AssertVector, factory.instruction_assert_vector()),
-            (AbsorbInit, factory.instruction_absorb_init()),
-            (Absorb, factory.instruction_absorb()),
-            (Squeeze, factory.instruction_squeeze()),
-            (Add, factory.instruction_add()),
-            (Mul, factory.instruction_mul()),
-            (Invert, factory.instruction_invert()),
-            (Eq, factory.instruction_eq()),
-            (Split, factory.instruction_split()),
-            (Lt, factory.instruction_lt()),
-            (And, factory.instruction_and()),
-            (Xor, factory.instruction_xor()),
-            (Log2Floor, factory.instruction_log_2_floor()),
-            (Pow, factory.instruction_pow()),
-            (Div, factory.instruction_div()),
-            (PopCount, factory.instruction_pop_count()),
-            (XxAdd, factory.instruction_xxadd()),
-            (XxMul, factory.instruction_xxmul()),
-            (XInvert, factory.instruction_xinv()),
-            (XbMul, factory.instruction_xbmul()),
-            (ReadIo, factory.instruction_read_io()),
-            (WriteIo, factory.instruction_write_io()),
-        ];
-
         println!();
         println!("| Instruction     | #polys | max deg | Degrees");
         println!("|:----------------|-------:|--------:|:------------");
-        for (instruction, constraints) in all_instructions_and_their_transition_constraints {
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for instruction in ALL_INSTRUCTIONS {
+            let constraints = ExtProcessorTable::get_transition_constraints_for_instruction(
+                &circuit_builder,
+                instruction,
+            );
             let degrees = constraints
                 .iter()
                 .map(|circuit| circuit.clone().consume().degree())
@@ -3769,5 +3465,99 @@ mod constraint_polynomial_tests {
                 degrees_str,
             );
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    pub fn constraints_evaluate_to_zero(
+        master_base_trace_table: ArrayView2<BFieldElement>,
+        master_ext_trace_table: ArrayView2<XFieldElement>,
+        challenges: &Challenges,
+    ) -> bool {
+        let zero = XFieldElement::zero();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtProcessorTable::initial_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![..1, ..]),
+                master_ext_trace_table.slice(s![..1, ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Initial constraint {constraint_idx} failed."
+            );
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtProcessorTable::consistency_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Consistency constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtProcessorTable::transition_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Transition constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtProcessorTable::terminal_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed."
+            );
+        }
+
+        true
     }
 }

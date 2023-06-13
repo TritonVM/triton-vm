@@ -13,7 +13,6 @@ use twenty_first::shared_math::x_field_element::XFieldElement;
 use crate::table::challenges::ChallengeId;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
-use crate::table::constraint_circuit::ConstraintCircuit;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
 use crate::table::constraint_circuit::ConstraintCircuitMonad;
 use crate::table::constraint_circuit::DualRowIndicator;
@@ -122,9 +121,9 @@ impl LookupTable {
 }
 
 impl ExtLookupTable {
-    pub fn ext_initial_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
-
+    pub fn initial_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let base_row = |col_id: LookupBaseTableColumn| {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
         };
@@ -159,17 +158,16 @@ impl ExtLookupTable {
             - eval_argument_default_initial * public_indeterminate
             - lookup_output;
 
-        let mut constraints = [
+        vec![
             lookup_input_is_0,
             cascade_table_log_derivative_is_initialized_correctly,
             public_evaluation_argument_is_initialized_correctly,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_consistency_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn consistency_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let constant = |c: u64| circuit_builder.b_constant(c.into());
         let base_row = |col_id: LookupBaseTableColumn| {
             circuit_builder.input(BaseRow(col_id.master_base_table_index()))
@@ -177,13 +175,12 @@ impl ExtLookupTable {
 
         let padding_is_0_or_1 = base_row(IsPadding) * (constant(1) - base_row(IsPadding));
 
-        let mut constraints = [padding_is_0_or_1];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![padding_is_0_or_1]
     }
 
-    pub fn ext_transition_constraints_as_circuits() -> Vec<ConstraintCircuit<DualRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn transition_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
         let one = circuit_builder.b_constant(BFIELD_ONE);
 
         let current_base_row = |col_id: LookupBaseTableColumn| {
@@ -253,18 +250,17 @@ impl ExtLookupTable {
             (one - is_padding_next.clone()) * public_evaluation_argument_updates
                 + is_padding_next * public_evaluation_argument_remains;
 
-        let mut constraints = [
+        vec![
             if_current_row_is_padding_row_then_next_row_is_padding_row,
             lookup_input_increments_if_and_only_if_next_row_is_not_padding_row,
             cascade_table_log_derivative_updates_if_and_only_if_next_row_is_not_padding_row,
             public_evaluation_argument_updates_if_and_only_if_next_row_is_not_padding_row,
-        ];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        ]
     }
 
-    pub fn ext_terminal_constraints_as_circuits() -> Vec<ConstraintCircuit<SingleRowIndicator>> {
-        let circuit_builder = ConstraintCircuitBuilder::new();
+    pub fn terminal_constraints(
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+    ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
         let challenge = |challenge_id: ChallengeId| circuit_builder.challenge(challenge_id);
         let ext_row = |col_id: LookupExtTableColumn| {
             circuit_builder.input(ExtRow(col_id.master_ext_table_index()))
@@ -273,8 +269,99 @@ impl ExtLookupTable {
         let narrow_table_terminal_matches_user_supplied_terminal =
             ext_row(PublicEvaluationArgument) - challenge(LookupTablePublicTerminal);
 
-        let mut constraints = [narrow_table_terminal_matches_user_supplied_terminal];
-        ConstraintCircuitMonad::constant_folding(&mut constraints);
-        constraints.map(|circuit| circuit.consume()).to_vec()
+        vec![narrow_table_terminal_matches_user_supplied_terminal]
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use num_traits::Zero;
+
+    pub fn constraints_evaluate_to_zero(
+        master_base_trace_table: ArrayView2<BFieldElement>,
+        master_ext_trace_table: ArrayView2<XFieldElement>,
+        challenges: &Challenges,
+    ) -> bool {
+        let zero = XFieldElement::zero();
+        assert_eq!(
+            master_base_trace_table.nrows(),
+            master_ext_trace_table.nrows()
+        );
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtLookupTable::initial_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![..1, ..]),
+                master_ext_trace_table.slice(s![..1, ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Initial constraint {constraint_idx} failed."
+            );
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in
+            ExtLookupTable::consistency_constraints(&circuit_builder)
+                .into_iter()
+                .map(|constraint_monad| constraint_monad.consume())
+                .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 1, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Consistency constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtLookupTable::transition_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            for row_idx in 0..master_base_trace_table.nrows() - 1 {
+                let evaluated_constraint = constraint.evaluate(
+                    master_base_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    master_ext_trace_table.slice(s![row_idx..row_idx + 2, ..]),
+                    challenges,
+                );
+                assert_eq!(
+                    zero, evaluated_constraint,
+                    "Transition constraint {constraint_idx} failed on row {row_idx}."
+                );
+            }
+        }
+
+        let circuit_builder = ConstraintCircuitBuilder::new();
+        for (constraint_idx, constraint) in ExtLookupTable::terminal_constraints(&circuit_builder)
+            .into_iter()
+            .map(|constraint_monad| constraint_monad.consume())
+            .enumerate()
+        {
+            let evaluated_constraint = constraint.evaluate(
+                master_base_trace_table.slice(s![-1.., ..]),
+                master_ext_trace_table.slice(s![-1.., ..]),
+                challenges,
+            );
+            assert_eq!(
+                zero, evaluated_constraint,
+                "Terminal constraint {constraint_idx} failed."
+            );
+        }
+
+        true
     }
 }

@@ -1,8 +1,11 @@
 pub mod cascade_table;
 pub mod challenges;
 pub mod constraint_circuit;
+#[rustfmt::skip]
 pub mod constraints;
 pub mod cross_table_argument;
+#[rustfmt::skip]
+pub mod degree_lowering_table;
 pub mod extension_table;
 pub mod hash_table;
 pub mod jump_stack_table;
