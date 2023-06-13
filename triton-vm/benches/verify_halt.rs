@@ -26,7 +26,6 @@ fn verify_halt(criterion: &mut Criterion) {
         input: vec![],
         program_digest: Tip5::hash(&program),
         output: vec![],
-        padded_height: 256_u64.into(), // domain-specific knowledge
     };
 
     let filename = "halt.tsp";
@@ -57,12 +56,12 @@ fn verify_halt(criterion: &mut Criterion) {
 
     let mut profiler = profiler.unwrap();
     profiler.finish();
-    let max_degree =
-        Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+    let padded_height = proof.padded_height(&parameters);
+    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
     let report = profiler.report(
         maybe_cycle_count,
-        Some(claim.padded_height()),
+        Some(padded_height),
         Some(fri.domain.length),
     );
 

@@ -131,19 +131,14 @@ impl Stark {
         aet: &AlgebraicExecutionTrace,
         maybe_profiler: &mut Option<TritonProfiler>,
     ) -> Proof {
-        assert_eq!(
-            claim.padded_height(),
-            MasterBaseTable::padded_height(aet, parameters.num_trace_randomizers),
-            "The claimed padded height must match the actual padded height of the trace."
-        );
         prof_start!(maybe_profiler, "Fiat-Shamir: claim", "hash");
         let mut proof_stream = StarkProofStream::new();
         proof_stream.enqueue(&ProofItem::Claim(claim.clone()));
         prof_stop!(maybe_profiler, "Fiat-Shamir: claim");
 
         prof_start!(maybe_profiler, "derive additional parameters");
-        let max_degree =
-            Self::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+        let padded_height = MasterBaseTable::padded_height(aet, parameters.num_trace_randomizers);
+        let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
         prof_stop!(maybe_profiler, "derive additional parameters");
 
@@ -290,7 +285,7 @@ impl Stark {
         debug_assert_eq!(fri.domain.length, quot_merkle_tree.get_leaf_count());
 
         prof_start!(maybe_profiler, "out-of-domain rows");
-        let trace_domain_generator = derive_domain_generator(claim.padded_height() as u64);
+        let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
@@ -591,9 +586,8 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir: Claim");
 
         prof_start!(maybe_profiler, "derive additional parameters");
-        assert_eq!(claim.padded_height(), proof.padded_height(parameters));
-        let max_degree =
-            Self::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+        let padded_height = proof.padded_height(parameters);
+        let max_degree = Self::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Self::derive_fri(parameters, max_degree);
         let merkle_tree_height = fri.domain.length.ilog2() as usize;
         prof_stop!(maybe_profiler, "derive additional parameters");
@@ -612,7 +606,7 @@ impl Stark {
         prof_stop!(maybe_profiler, "Fiat-Shamir 1");
 
         prof_start!(maybe_profiler, "dequeue ood point and rows", "hash");
-        let trace_domain_generator = derive_domain_generator(claim.padded_height() as u64);
+        let trace_domain_generator = derive_domain_generator(padded_height as u64);
         let out_of_domain_point_curr_row = proof_stream.sample_scalars(1)[0];
         let out_of_domain_point_next_row = trace_domain_generator * out_of_domain_point_curr_row;
 
@@ -632,8 +626,7 @@ impl Stark {
         let one = BFieldElement::one();
         let initial_zerofier_inv = (out_of_domain_point_curr_row - one).inverse();
         let consistency_zerofier_inv =
-            (out_of_domain_point_curr_row.mod_pow_u32(claim.padded_height() as u32) - one)
-                .inverse();
+            (out_of_domain_point_curr_row.mod_pow_u32(padded_height as u32) - one).inverse();
         let except_last_row = out_of_domain_point_curr_row - trace_domain_generator.inverse();
         let transition_zerofier_inv = except_last_row * consistency_zerofier_inv;
         let terminal_zerofier_inv = except_last_row.inverse(); // i.e., only last row
@@ -988,16 +981,13 @@ pub(crate) mod triton_stark_tests {
         let security_level = 32;
         let parameters = StarkParameters::new(security_level, log_expansion_factor);
 
-        let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
-        let padded_height = BFieldElement::new(padded_height as u64);
         let claim = Claim {
             input: stdin,
             program_digest: Tip5::hash(&aet.program),
             output: stdout,
-            padded_height,
         };
-        let max_degree =
-            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+        let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
+        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
 
         let mut master_base_table =
@@ -1597,7 +1587,7 @@ pub(crate) mod triton_stark_tests {
     fn triton_prove_verify_halt_test() {
         let code_with_input = test_halt();
         let mut profiler = Some(TritonProfiler::new("Prove Halt"));
-        let (parameters, claim, proof) = parse_simulate_prove(
+        let (parameters, _, proof) = parse_simulate_prove(
             &code_with_input.source_code,
             code_with_input.public_input(),
             code_with_input.secret_input(),
@@ -1612,10 +1602,10 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let max_degree =
-            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+        let padded_height = proof.padded_height(&parameters);
+        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
-        let report = profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
+        let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
         println!("{report}");
     }
 
@@ -1675,7 +1665,7 @@ pub(crate) mod triton_stark_tests {
         let secret_in = vec![];
 
         let mut profiler = Some(TritonProfiler::new("Prove Fib 100"));
-        let (parameters, claim, proof) =
+        let (parameters, _, proof) =
             parse_simulate_prove(source_code, stdin, secret_in, &mut profiler);
         let mut profiler = profiler.unwrap();
         profiler.finish();
@@ -1688,10 +1678,10 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let max_degree =
-            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+        let padded_height = proof.padded_height(&parameters);
+        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
-        let report = profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
+        let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
         println!("{report}");
     }
 
@@ -1722,7 +1712,7 @@ pub(crate) mod triton_stark_tests {
     #[test]
     fn triton_prove_verify_many_u32_operations_test() {
         let mut profiler = Some(TritonProfiler::new("Prove Many U32 Ops"));
-        let (parameters, claim, proof) =
+        let (parameters, _, proof) =
             parse_simulate_prove(MANY_U32_INSTRUCTIONS, vec![], vec![], &mut profiler);
         let mut profiler = profiler.unwrap();
         profiler.finish();
@@ -1733,10 +1723,10 @@ pub(crate) mod triton_stark_tests {
         }
         assert!(result.unwrap());
 
-        let max_degree =
-            Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+        let padded_height = proof.padded_height(&parameters);
+        let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
         let fri = Stark::derive_fri(&parameters, max_degree);
-        let report = profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
+        let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
         println!("{report}");
     }
 
@@ -1749,16 +1739,16 @@ pub(crate) mod triton_stark_tests {
             let stdin = [fibonacci_number].map(BFieldElement::new).to_vec();
             let fib_test_name = format!("element #{fibonacci_number:>4} from Fibonacci sequence");
             let mut profiler = Some(TritonProfiler::new(&fib_test_name));
-            let (parameters, claim, _) =
+            let (parameters, _, proof) =
                 parse_simulate_prove(source_code, stdin, vec![], &mut profiler);
             let mut profiler = profiler.unwrap();
             profiler.finish();
 
+            let padded_height = proof.padded_height(&parameters);
             let max_degree =
-                Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+                Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
             let fri = Stark::derive_fri(&parameters, max_degree);
-            let report =
-                profiler.report(None, Some(claim.padded_height()), Some(fri.domain.length));
+            let report = profiler.report(None, Some(padded_height), Some(fri.domain.length));
             println!("{report}");
         }
     }

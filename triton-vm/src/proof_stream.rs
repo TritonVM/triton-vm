@@ -289,12 +289,10 @@ mod proof_stream_typed_tests {
         let program_digest = random_elements(rng.next_u64(), 1)[0];
         let input = random_elements(rng.next_u64(), 5);
         let output = random_elements(rng.next_u64(), 5);
-        let padded_height = random_elements(rng.next_u64(), 1)[0];
         let claim = Claim {
             program_digest,
             input,
             output,
-            padded_height,
         };
 
         let mut sponge_states = VecDeque::new();

@@ -2,17 +2,17 @@
 //! of programs written in Triton assembly. The proof system is a zk-STARK, which is a
 //! state-of-the-art ZKPS.
 
-use triton_opcodes::program::Program;
 pub use twenty_first::shared_math::b_field_element::BFieldElement;
 pub use twenty_first::shared_math::tip5::Digest;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
+use triton_opcodes::program::Program;
+
 pub use crate::proof::Claim;
-use crate::proof::Proof;
+pub use crate::proof::Proof;
 use crate::stark::Stark;
 pub use crate::stark::StarkParameters;
-use crate::table::master_table::MasterBaseTable;
 
 pub mod arithmetic_domain;
 pub mod error;
@@ -91,18 +91,12 @@ pub fn prove(
     // The default parameters give a (conjectured) security level of 160 bits.
     let parameters = StarkParameters::default();
 
-    // Compute the padded height of the AET. The padded height is the smallest power of two
-    // that is larger than or equal to the height of the largest table in the AET.
-    let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
-    let padded_height = BFieldElement::new(padded_height as u64);
-
     // Set up the claim that is to be proven. The claim contains all public information. The
     // proof is zero-knowledge with respect to everything else.
     let claim = Claim {
-        input: public_input,
         program_digest,
+        input: public_input,
         output: public_output,
-        padded_height,
     };
 
     // Generate the proof.

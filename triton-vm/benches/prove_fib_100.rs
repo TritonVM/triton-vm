@@ -14,7 +14,6 @@ use triton_profiler::triton_profiler::TritonProfiler;
 use triton_vm::proof::Claim;
 use triton_vm::shared_tests::FIBONACCI_SEQUENCE;
 use triton_vm::stark::Stark;
-use triton_vm::table::master_table::MasterBaseTable;
 use triton_vm::vm::simulate;
 use triton_vm::StarkParameters;
 
@@ -44,25 +43,22 @@ fn prove_fib_100(criterion: &mut Criterion) {
     }
 
     let parameters = StarkParameters::default();
-    let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
-    let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
         input: public_input,
         program_digest: Tip5::hash(&program),
         output,
-        padded_height,
     };
-    let _proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
+    let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
 
-    let max_degree =
-        Stark::derive_max_degree(claim.padded_height(), parameters.num_trace_randomizers);
+    let padded_height = proof.padded_height(&parameters);
+    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
 
     if let Some(profiler) = maybe_profiler.as_mut() {
         profiler.finish();
         report = profiler.report(
             Some(aet.processor_trace.nrows()),
-            Some(claim.padded_height()),
+            Some(padded_height),
             Some(fri.domain.length),
         );
     }

@@ -146,8 +146,11 @@ impl Proof {
     }
 }
 
-/// Contains all the public information of a verifiably correct computation.
+/// Contains the public information of a verifiably correct computation.
 /// A corresponding [`Proof`] is needed to verify the computation.
+/// One additional piece of public information not explicitly listed in the [`Claim`] is the
+/// `padded_height`, an upper bound on the length of the computation.
+/// It is derivable from a [`Proof`] by calling [`Proof::padded_height()`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, GetSize, BFieldCodec)]
 pub struct Claim {
     /// The hash digest of the program that was executed. The hash function in use is Tip5.
@@ -158,9 +161,6 @@ pub struct Claim {
 
     /// The public output of the computation.
     pub output: Vec<BFieldElement>,
-
-    /// An upper bound on the length of the computation.
-    pub padded_height: BFieldElement,
 }
 
 impl Claim {
@@ -175,12 +175,6 @@ impl Claim {
     pub fn public_output(&self) -> Vec<u64> {
         self.output.iter().map(|x| x.value()).collect()
     }
-
-    /// The padded height as `u64`.
-    /// If a `BFieldElement` is needed, use field `padded_height`.
-    pub fn padded_height(&self) -> usize {
-        self.padded_height.value() as usize
-    }
 }
 
 #[cfg(test)]
@@ -191,7 +185,6 @@ pub mod test_claim_proof {
     use twenty_first::shared_math::b_field_element::BFieldElement;
     use twenty_first::shared_math::bfield_codec::BFieldCodec;
     use twenty_first::shared_math::other::random_elements;
-    use twenty_first::shared_math::tip5::Digest;
 
     use crate::stark::Stark;
 
@@ -210,16 +203,10 @@ pub mod test_claim_proof {
 
     #[test]
     fn test_decode_claim() {
-        let program_digest: Digest = random();
-        let input: Vec<BFieldElement> = random_elements(346);
-        let output: Vec<BFieldElement> = random_elements(125);
-        let padded_height = 11_u64.into();
-
         let claim = Claim {
-            program_digest,
-            input,
-            output,
-            padded_height,
+            program_digest: random(),
+            input: random_elements(346),
+            output: random_elements(125),
         };
 
         let encoded = claim.encode();
@@ -228,7 +215,6 @@ pub mod test_claim_proof {
         assert_eq!(claim.program_digest, decoded.program_digest);
         assert_eq!(claim.input, decoded.input);
         assert_eq!(claim.output, decoded.output);
-        // padded height is ignored
     }
 
     #[test]

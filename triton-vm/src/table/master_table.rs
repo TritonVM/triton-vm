@@ -1035,6 +1035,7 @@ mod master_table_tests {
     use crate::table::table_column::U32BaseTableColumn;
     use crate::table::table_column::U32ExtTableColumn;
     use crate::table::u32_table;
+    use crate::StarkParameters;
 
     #[test]
     fn base_table_width_is_correct() {
@@ -1407,8 +1408,8 @@ mod master_table_tests {
     #[test]
     fn smallest_possible_padded_height_is_correct_test() {
         let (_, proof) = crate::prove("halt", &[], &[]);
-        let claim = proof.claim();
-        let smallest_padded_height_exp = claim.padded_height().ilog2();
+        let parameters = StarkParameters::default();
+        let smallest_padded_height_exp = proof.padded_height(&parameters).ilog2();
         let smallest_padded_height_exp: usize = smallest_padded_height_exp.try_into().unwrap();
         assert_eq!(smallest_padded_height_exp, LOG2_MIN_PADDED_HEIGHT);
     }

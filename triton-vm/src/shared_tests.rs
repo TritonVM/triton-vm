@@ -19,7 +19,6 @@ use crate::proof::Claim;
 use crate::proof::Proof;
 use crate::stark::Stark;
 use crate::stark::StarkParameters;
-use crate::table::master_table::MasterBaseTable;
 use crate::vm::simulate;
 use crate::vm::AlgebraicExecutionTrace;
 
@@ -55,13 +54,10 @@ pub fn parse_simulate_prove(
     let security_level = 32;
     let parameters = StarkParameters::new(security_level, log_expansion_factor);
 
-    let padded_height = MasterBaseTable::padded_height(&aet, parameters.num_trace_randomizers);
-    let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
         input: public_input,
         program_digest: Tip5::hash(&aet.program),
         output: public_output,
-        padded_height,
     };
 
     prof_start!(maybe_profiler, "prove");

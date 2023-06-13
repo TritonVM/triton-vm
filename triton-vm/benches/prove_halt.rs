@@ -1,11 +1,10 @@
 use criterion::criterion_group;
 use criterion::criterion_main;
 use criterion::Criterion;
-use triton_opcodes::program::Program;
-use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::tip5::Tip5;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
 
+use triton_opcodes::program::Program;
 use triton_profiler::prof_start;
 use triton_profiler::prof_stop;
 use triton_profiler::triton_profiler::Report;
@@ -14,7 +13,6 @@ use triton_vm::proof::Claim;
 use triton_vm::shared_tests::save_proof;
 use triton_vm::stark::Stark;
 use triton_vm::stark::StarkParameters;
-use triton_vm::table::master_table::MasterBaseTable;
 use triton_vm::vm::simulate;
 
 /// cargo criterion --bench prove_halt
@@ -40,25 +38,22 @@ fn prove_halt(_criterion: &mut Criterion) {
 
     let cycle_count = aet.processor_trace.nrows();
     let parameters = StarkParameters::default();
-    let num_trace_randomizers = parameters.num_trace_randomizers;
-    let padded_height = MasterBaseTable::padded_height(&aet, num_trace_randomizers);
-    let padded_height = BFieldElement::new(padded_height as u64);
     let claim = Claim {
         input: vec![],
         program_digest: Tip5::hash(&program),
         output,
-        padded_height,
     };
     let proof = Stark::prove(&parameters, &claim, &aet, &mut maybe_profiler);
 
-    let max_degree = Stark::derive_max_degree(claim.padded_height(), num_trace_randomizers);
+    let padded_height = proof.padded_height(&parameters);
+    let max_degree = Stark::derive_max_degree(padded_height, parameters.num_trace_randomizers);
     let fri = Stark::derive_fri(&parameters, max_degree);
 
     if let Some(profiler) = &mut maybe_profiler {
         profiler.finish();
         report = profiler.report(
             Some(cycle_count),
-            Some(claim.padded_height()),
+            Some(padded_height),
             Some(fri.domain.length),
         );
     };
