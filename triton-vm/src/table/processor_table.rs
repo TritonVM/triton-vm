@@ -2965,7 +2965,7 @@ mod constraint_polynomial_tests {
     fn print_simple_processor_table_row_test() {
         let code = "push 2 push -1 add assert halt";
         let program = Program::from_code(code).unwrap();
-        let (aet, _, _) = simulate(&program, vec![], vec![]);
+        let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
         println!();
         for row in aet.processor_trace.rows() {
             println!("{}", ProcessorTraceRow { row });
@@ -3291,7 +3291,7 @@ mod constraint_polynomial_tests {
 
     #[test]
     fn division_by_zero_is_impossible_test() {
-        let (_aet, _out, err) = SourceCodeAndInput::without_input("div").simulate();
+        let err = SourceCodeAndInput::without_input("div").simulate().err();
         let Some(err) = err else {
             panic!("Dividing by 0 must fail.");
         };

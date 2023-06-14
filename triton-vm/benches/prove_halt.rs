@@ -30,11 +30,8 @@ fn prove_halt(_criterion: &mut Criterion) {
 
     // witness
     prof_start!(maybe_profiler, "generate AET");
-    let (aet, output, err) = simulate(&program, vec![], vec![]);
+    let (aet, output) = simulate(&program, vec![], vec![]).unwrap();
     prof_stop!(maybe_profiler, "generate AET");
-    if let Some(error) = err {
-        panic!("The VM encountered the following problem: {error}");
-    }
 
     let cycle_count = aet.processor_trace.nrows();
     let parameters = StarkParameters::default();

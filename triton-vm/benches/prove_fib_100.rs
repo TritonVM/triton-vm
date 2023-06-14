@@ -36,11 +36,8 @@ fn prove_fib_100(criterion: &mut Criterion) {
     prof_stop!(maybe_profiler, "parse program");
     let public_input = [100].map(BFieldElement::new).to_vec();
     prof_start!(maybe_profiler, "generate AET");
-    let (aet, output, err) = simulate(&program, public_input.clone(), vec![]);
+    let (aet, output) = simulate(&program, public_input.clone(), vec![]).unwrap();
     prof_stop!(maybe_profiler, "generate AET");
-    if let Some(error) = err {
-        panic!("The VM encountered the following problem: {error}");
-    }
 
     let parameters = StarkParameters::default();
     let claim = Claim {

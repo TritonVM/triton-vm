@@ -36,10 +36,7 @@ fn verify_halt(criterion: &mut Criterion) {
             .map_err(|e| panic!("Could not load proof from disk: {e:?}"))
             .unwrap()
     } else {
-        let (aet, _, err) = simulate(&program, vec![], vec![]);
-        if let Some(error) = err {
-            panic!("The VM encountered the following problem: {error}");
-        }
+        let (aet, _) = simulate(&program, vec![], vec![]).unwrap();
         maybe_cycle_count = Some(aet.processor_trace.nrows());
         let proof = Stark::prove(&parameters, &claim, &aet, &mut None);
         save_proof(filename, proof.clone())

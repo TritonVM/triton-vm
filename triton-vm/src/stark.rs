@@ -957,17 +957,8 @@ pub(crate) mod triton_stark_tests {
         public_input: Vec<BFieldElement>,
         secret_input: Vec<BFieldElement>,
     ) -> (AlgebraicExecutionTrace, Vec<BFieldElement>) {
-        let program = Program::from_code(code);
-
-        assert!(program.is_ok(), "program parses correctly");
-        let program = program.unwrap();
-
-        let (aet, stdout, err) = simulate(&program, public_input, secret_input);
-        if let Some(error) = err {
-            panic!("The VM encountered the following problem: {error}");
-        }
-
-        (aet, stdout)
+        let program = Program::from_code(code).unwrap();
+        simulate(&program, public_input, secret_input).unwrap()
     }
 
     pub fn parse_simulate_pad(

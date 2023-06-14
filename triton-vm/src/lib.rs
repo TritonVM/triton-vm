@@ -46,18 +46,16 @@ pub fn prove_from_source(
     source_code: &str,
     public_input: &[u64],
     secret_input: &[u64],
-) -> (StarkParameters, Proof) {
+) -> Result<(StarkParameters, Proof)> {
     let canonical_representation_error =
         "input must contain only elements in canonical representation, i.e., \
         elements smaller than the prime field's modulus 2^64 - 2^32 + 1.";
-    assert!(
-        public_input.iter().all(|&e| e <= BFieldElement::MAX),
-        "Public {canonical_representation_error}"
-    );
-    assert!(
-        secret_input.iter().all(|&e| e <= BFieldElement::MAX),
-        "Secret {canonical_representation_error}"
-    );
+    if public_input.iter().any(|&e| e > BFieldElement::MAX) {
+        bail!("Public {canonical_representation_error})");
+    }
+    if secret_input.iter().any(|&e| e > BFieldElement::MAX) {
+        bail!("Secret {canonical_representation_error}");
+    }
 
     // Convert the public and secret inputs to BFieldElements.
     let public_input = public_input
@@ -70,22 +68,20 @@ pub fn prove_from_source(
         .collect::<Vec<_>>();
 
     // Parse the Triton assembly into a program.
-    let program = Program::from_code(source_code).unwrap();
+    let program = Program::from_code(source_code)?;
 
     // Generate
-    // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET),
-    // - the (public) output of the program, and
-    // - an error, if the program crashes.
-    let (aet, public_output, maybe_error) =
-        vm::simulate(&program, public_input.clone(), secret_input);
-
-    // Check for VM crashes, for example due to failing `assert` instructions or an out-of-bounds
-    // instruction pointer. Crashes can occur if any of the two inputs does not conform to the
-    // program, or because of a bug in the program, among other things.
+    // - the witness required for proof generation, i.e., the Algebraic Execution Trace (AET), and
+    // - the (public) output of the program.
+    //
+    // Crashes in the VM can occur for many reasons. For example:
+    // - due to failing `assert` instructions,
+    // - due to an out-of-bounds instruction pointer,
+    // - if the program does not terminate gracefully, _i.e._, with instruction `halt`,
+    // - if any of the two inputs does not conform to the program,
+    // - because of a bug in the program, among other things.
     // If the VM crashes, proof generation will fail.
-    if let Some(error) = maybe_error {
-        panic!("Execution error: {error}");
-    }
+    let (aet, public_output) = vm::simulate(&program, public_input.clone(), secret_input)?;
 
     // Hash the program to obtain its digest.
     let program_digest = Tip5::hash(&program);
@@ -104,7 +100,7 @@ pub fn prove_from_source(
     // Generate the proof.
     let proof = Stark::prove(&parameters, &claim, &aet, &mut None);
 
-    (parameters, proof)
+    Ok((parameters, proof))
 }
 
 /// A convenience function for proving a [`Claim`] and the program that claim corresponds to.
@@ -119,11 +115,7 @@ pub fn prove(
     if program_digest != claim.program_digest {
         bail!("Program digest must match claimed program digest.");
     }
-    let (aet, public_output, maybe_error) =
-        vm::simulate(program, claim.input.clone(), secret_input.to_vec());
-    if let Some(error) = maybe_error {
-        bail!("Execution error: {error}");
-    }
+    let (aet, public_output) = vm::simulate(program, claim.input.clone(), secret_input.to_vec())?;
     if public_output != claim.output {
         bail!("Program output must match claimed program output.");
     }
@@ -174,7 +166,8 @@ mod public_interface_tests {
             17174585125955027015,
         ];
 
-        let (parameters, proof) = prove_from_source(source_code, &public_input, &secret_input);
+        let (parameters, proof) =
+            prove_from_source(source_code, &public_input, &secret_input).unwrap();
         assert_eq!(
             StarkParameters::default(),
             parameters,

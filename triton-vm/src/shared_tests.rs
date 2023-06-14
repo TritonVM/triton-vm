@@ -32,10 +32,7 @@ pub fn parse_setup_simulate(
     let program = program.expect("Program must parse.");
 
     prof_start!(maybe_profiler, "simulate");
-    let (aet, stdout, err) = simulate(&program, public_input, secret_input);
-    if let Some(error) = err {
-        panic!("The VM encountered the following problem: {error}");
-    }
+    let (aet, stdout) = simulate(&program, public_input, secret_input).unwrap();
     prof_stop!(maybe_profiler, "simulate");
 
     (aet, stdout)
@@ -94,17 +91,7 @@ impl SourceCodeAndInput {
             .collect()
     }
 
-    #[deprecated(since = "0.19.0", note = "use `simulate` instead")]
-    pub fn run(&self) -> Vec<BFieldElement> {
-        let program = Program::from_code(&self.source_code).expect("Could not load source code");
-        let (_, output, err) = simulate(&program, self.public_input(), self.secret_input());
-        if let Some(e) = err {
-            panic!("Running the program failed: {e}")
-        }
-        output
-    }
-
-    pub fn simulate(&self) -> (AlgebraicExecutionTrace, Vec<BFieldElement>, Option<Error>) {
+    pub fn simulate(&self) -> Result<(AlgebraicExecutionTrace, Vec<BFieldElement>)> {
         let program = Program::from_code(&self.source_code).expect("Could not load source code.");
         simulate(&program, self.public_input(), self.secret_input())
     }

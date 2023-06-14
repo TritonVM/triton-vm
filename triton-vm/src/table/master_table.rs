@@ -1407,7 +1407,7 @@ mod master_table_tests {
 
     #[test]
     fn smallest_possible_padded_height_is_correct_test() {
-        let (_, proof) = crate::prove_from_source("halt", &[], &[]);
+        let (_, proof) = crate::prove_from_source("halt", &[], &[]).unwrap();
         let parameters = StarkParameters::default();
         let smallest_padded_height_exp = proof.padded_height(&parameters).ilog2();
         let smallest_padded_height_exp: usize = smallest_padded_height_exp.try_into().unwrap();
