@@ -1408,6 +1408,10 @@ pub mod triton_vm_tests {
         }
     }
 
+    pub fn test_program_0_lt_0() -> SourceCodeAndInput {
+        SourceCodeAndInput::without_input("push 0 push 0 lt halt")
+    }
+
     pub fn test_program_for_lt() -> SourceCodeAndInput {
         SourceCodeAndInput::without_input(
             "push 5 push 2 lt assert push 2 push 5 lt push 0 eq assert halt",
@@ -1796,6 +1800,7 @@ pub mod triton_vm_tests {
             test_program_for_eq(),
             test_program_for_lsb(),
             test_program_for_split(),
+            test_program_0_lt_0(),
             test_program_for_lt(),
             test_program_for_and(),
             test_program_for_xor(),

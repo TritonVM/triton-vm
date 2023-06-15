@@ -436,6 +436,7 @@ impl U32Table {
             .try_into()
             .expect("Unknown instruction");
 
+        // Is the last row in this section reached?
         if (section[[row_idx, LHS.base_table_index()]].is_zero()
             || current_instruction == Instruction::Pow)
             && section[[row_idx, RHS.base_table_index()]].is_zero()
@@ -449,8 +450,19 @@ impl U32Table {
                 Instruction::PopCount => zero,
                 _ => panic!("Must be u32 instruction, not {current_instruction}."),
             };
-            section[[row_idx, LhsInv.base_table_index()]] =
-                section[[row_idx, LHS.base_table_index()]].inverse_or_zero();
+
+            // If instruction `lt` is executed on operands 0 and 0, the result is known to be 0.
+            // The edge case can be reliably detected by checking whether column `Bits` is 0.
+            let both_operands_are_0 = section[[row_idx, Bits.base_table_index()]].is_zero();
+            if current_instruction == Instruction::Lt && both_operands_are_0 {
+                section[[row_idx, Result.base_table_index()]] = zero;
+            }
+
+            // The right hand side is guaranteed to be 0. However, if the current instruction is
+            // `pow`, then the left hand side might be non-zero.
+            let lhs_inv_or_0 = section[[row_idx, LHS.base_table_index()]].inverse_or_zero();
+            section[[row_idx, LhsInv.base_table_index()]] = lhs_inv_or_0;
+
             return section;
         }
 
@@ -534,6 +546,13 @@ impl U32Table {
             padding_row[[LHS.base_table_index()]] = last_row[LHS.base_table_index()];
             padding_row[[LhsInv.base_table_index()]] = last_row[LhsInv.base_table_index()];
             padding_row[[Result.base_table_index()]] = last_row[Result.base_table_index()];
+
+            // In the edge case that the last non-padding row comes from executing instruction
+            // `lt` on operands 0 and 0, the `Result` column is 0. For the padding section,
+            // where the `CopyFlag` is always 0, the `Result` needs to be set to 2 instead.
+            if padding_row[[CI.base_table_index()]] == Instruction::Lt.opcode_b() {
+                padding_row[[Result.base_table_index()]] = BFieldElement::new(2);
+            }
         }
 
         u32_table
