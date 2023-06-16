@@ -650,12 +650,12 @@ impl<'pgm> VMState<'pgm> {
             .copied()
     }
 
-    // Return the next instruction on the tape, skipping arguments
-    //
-    // Note that this is not necessarily the next instruction to execute,
-    // since the current instruction could be a jump, but it is either
-    // program[ip + 1] or program[ip + 2] depending on whether the current
-    // instruction takes an argument or not.
+    /// Return the next instruction on the tape, skipping arguments
+    ///
+    /// Note that this is not necessarily the next instruction to execute,
+    /// since the current instruction could be a jump, but it is either
+    /// program[ip + 1] or program[ip + 2] depending on whether the current
+    /// instruction takes an argument or not.
     pub fn next_instruction(&self) -> Result<Instruction> {
         let ci = self.current_instruction()?;
         let ci_size = ci.size();
@@ -663,15 +663,6 @@ impl<'pgm> VMState<'pgm> {
         self.program
             .get(ni_pointer)
             .ok_or_else(|| vm_fail(InstructionPointerOverflow(ni_pointer)))
-            .copied()
-    }
-
-    fn _next_next_instruction(&self) -> Result<Instruction> {
-        let cur_size = self.current_instruction()?.size();
-        let next_size = self.next_instruction()?.size();
-        self.program
-            .get(self.instruction_pointer + cur_size + next_size)
-            .ok_or_else(|| vm_fail(InstructionPointerOverflow(self.instruction_pointer)))
             .copied()
     }
 
@@ -708,15 +699,6 @@ impl<'pgm> VMState<'pgm> {
             }
         }
         true
-    }
-
-    pub fn read_word(&self) -> Result<Option<BFieldElement>> {
-        let current_instruction = self.current_instruction()?;
-        if matches!(current_instruction, ReadIo) {
-            Ok(Some(self.op_stack.safe_peek(ST0)))
-        } else {
-            Ok(None)
-        }
     }
 
     fn divine_sibling(&mut self, secret_in: &mut Vec<BFieldElement>) -> Result<()> {
