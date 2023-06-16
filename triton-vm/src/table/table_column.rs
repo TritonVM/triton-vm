@@ -35,10 +35,34 @@ use crate::table::master_table::U32_TABLE_START;
 #[repr(usize)]
 #[derive(Display, Debug, Clone, Copy, PartialEq, Eq, EnumIter, EnumCountMacro, Hash)]
 pub enum ProgramBaseTableColumn {
+    /// An instruction's address.
     Address,
+
+    /// The (opcode of the) instruction.
     Instruction,
+
+    /// How often an instruction has been executed.
     LookupMultiplicity,
-    IsPadding,
+
+    /// The index in the vector of length [`Rate`] that is to be absorbed in the Sponge
+    /// in order to compute the program's digest.
+    /// In other words:
+    /// [`Address`](ProgramBaseTableColumn::Address) modulo [`Rate`].
+    ///
+    /// [`Rate`]: twenty_first::shared_math::tip5::RATE
+    AbsorbCount,
+
+    /// The inverse-or-zero of [`AbsorbCount`](ProgramBaseTableColumn::AbsorbCount).
+    /// Helper variable guarantee [`AbsorbCount`]'s correct transition.
+    ///
+    /// [`AbsorbCount`]: ProgramBaseTableColumn::AbsorbCount
+    MaxMinusAbsorbCountInv,
+
+    /// Padding indicator for absorbing the program into the Sponge.
+    IsHashInputPadding,
+
+    /// Padding indicator for rows only required due to the dominating length of some other table.
+    IsTablePadding,
 }
 
 #[repr(usize)]

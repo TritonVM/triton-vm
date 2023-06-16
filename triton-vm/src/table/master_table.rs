@@ -27,6 +27,7 @@ use twenty_first::shared_math::traits::ModPowU32;
 use twenty_first::shared_math::traits::PrimitiveRootOfUnity;
 use twenty_first::shared_math::x_field_element::XFieldElement;
 use twenty_first::util_types::algebraic_hasher::AlgebraicHasher;
+use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 use twenty_first::util_types::merkle_tree::MerkleTree;
 use twenty_first::util_types::merkle_tree_maker::MerkleTreeMaker;
 
@@ -284,7 +285,7 @@ pub struct MasterBaseTable {
     pub padded_height: usize,
     pub num_trace_randomizers: usize,
 
-    pub program_len: usize,
+    pub program_table_len: usize,
     pub main_execution_len: usize,
     pub hash_coprocessor_execution_len: usize,
     pub cascade_table_len: usize,
@@ -400,9 +401,7 @@ impl MasterBaseTable {
         // the number of trace randomizers.
 
         let relevant_table_heights = [
-            // The Program Table's side of the instruction lookup argument requires at least one
-            // padding row to account for the processor's “next instruction or argument.”
-            Self::program_table_length(aet) + 1,
+            Self::program_table_length(aet),
             Self::processor_table_length(aet),
             Self::hash_table_length(aet),
             Self::cascade_table_length(aet),
@@ -417,7 +416,17 @@ impl MasterBaseTable {
     }
 
     pub fn program_table_length(aet: &AlgebraicExecutionTrace) -> usize {
-        aet.program.len_bwords()
+        // After adding one 1, the program table is padded to the next smallest multiple of the
+        // sponge's rate with 0s.
+        // Also note that the Program Table's side of the instruction lookup argument requires at
+        // least one padding row to account for the processor's “next instruction or argument.”
+        let min_padded_len = aet.program.len_bwords() + 1;
+        let remainder_len = min_padded_len % StarkHasher::RATE;
+        let num_zeros_to_add = match remainder_len {
+            0 => 0,
+            _ => StarkHasher::RATE - remainder_len,
+        };
+        min_padded_len + num_zeros_to_add
     }
 
     pub fn processor_table_length(aet: &AlgebraicExecutionTrace) -> usize {
@@ -470,7 +479,7 @@ impl MasterBaseTable {
         let mut master_base_table = Self {
             padded_height,
             num_trace_randomizers,
-            program_len: Self::program_table_length(aet),
+            program_table_len: Self::program_table_length(aet),
             main_execution_len: Self::processor_table_length(aet),
             hash_coprocessor_execution_len: Self::hash_table_length(aet),
             cascade_table_len: Self::cascade_table_length(aet),
@@ -519,14 +528,14 @@ impl MasterBaseTable {
     /// Concretely, the Number Theory Transform (NTT) performed by the prover is particularly
     /// efficient over the used base field when the number of rows is a power of two.
     pub fn pad(&mut self) {
-        let program_len = self.program_len;
+        let program_table_len = self.program_table_len;
         let main_execution_len = self.main_execution_len;
         let hash_coprocessor_execution_len = self.hash_coprocessor_execution_len;
         let cascade_table_len = self.cascade_table_len;
         let u32_table_len = self.u32_coprocesor_execution_len;
 
         let program_table = &mut self.table_mut(TableId::ProgramTable);
-        ProgramTable::pad_trace(program_table, program_len);
+        ProgramTable::pad_trace(program_table, program_table_len);
 
         let processor_table = &mut self.table_mut(TableId::ProcessorTable);
         ProcessorTable::pad_trace(processor_table, main_execution_len);

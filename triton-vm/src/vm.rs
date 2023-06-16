@@ -617,16 +617,25 @@ impl<'pgm> VMState<'pgm> {
         }
     }
 
+    /// The “next instruction or argument” (NIA) is
+    /// - the argument of the current instruction if it has one, or
+    /// - the opcode of the next instruction otherwise.
+    ///
+    /// If the current instruction has no argument and there is no next instruction, the NIA is 1
+    /// to account for the hash-input padding separator of the program.
+    ///
+    /// If the instruction pointer is out of bounds, the returned NIA is 0.
     fn nia(&self) -> BFieldElement {
-        self.current_instruction()
-            .map(|curr_instr| {
-                curr_instr.arg().unwrap_or_else(|| {
-                    self.next_instruction()
-                        .map(|next_instr| next_instr.opcode_b())
-                        .unwrap_or_else(|_| BFieldElement::zero())
-                })
-            })
-            .unwrap_or_else(|_| BFieldElement::zero())
+        let Ok(current_instruction) = self.current_instruction() else {
+            return BFieldElement::zero();
+        };
+        if let Some(argument) = current_instruction.arg() {
+            return argument;
+        }
+        match self.next_instruction() {
+            Ok(next_instruction) => next_instruction.opcode_b(),
+            Err(_) => BFieldElement::one(),
+        }
     }
 
     /// Jump-stack pointer

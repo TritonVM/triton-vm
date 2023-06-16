@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use ndarray::s;
 use ndarray::Array1;
 use ndarray::ArrayView2;
@@ -8,7 +10,9 @@ use strum::EnumCount;
 use twenty_first::shared_math::b_field_element::BFieldElement;
 use twenty_first::shared_math::traits::Inverse;
 use twenty_first::shared_math::x_field_element::XFieldElement;
+use twenty_first::util_types::algebraic_hasher::SpongeHasher;
 
+use crate::stark::StarkHasher;
 use crate::table::challenges::ChallengeId::*;
 use crate::table::challenges::Challenges;
 use crate::table::constraint_circuit::ConstraintCircuitBuilder;
@@ -18,6 +22,7 @@ use crate::table::constraint_circuit::SingleRowIndicator;
 use crate::table::constraint_circuit::SingleRowIndicator::*;
 use crate::table::cross_table_argument::CrossTableArg;
 use crate::table::cross_table_argument::LookupArg;
+use crate::table::master_table::MasterBaseTable;
 use crate::table::table_column::MasterBaseTableColumn;
 use crate::table::table_column::MasterExtTableColumn;
 use crate::table::table_column::ProgramBaseTableColumn;
@@ -42,12 +47,21 @@ impl ExtProgramTable {
     pub fn initial_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let address = circuit_builder.input(BaseRow(Address.master_base_table_index()));
-        let instruction_lookup_log_derivative = circuit_builder.input(ExtRow(
-            InstructionLookupServerLogDerivative.master_ext_table_index(),
-        ));
+        let base_row = |col: ProgramBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
+        let ext_row = |col: ProgramExtTableColumn| {
+            circuit_builder.input(ExtRow(col.master_ext_table_index()))
+        };
+
+        let address = base_row(Address);
+        let absorb_count = base_row(AbsorbCount);
+        let is_hash_input_padding = base_row(IsHashInputPadding);
+        let instruction_lookup_log_derivative = ext_row(InstructionLookupServerLogDerivative);
 
         let first_address_is_zero = address;
+        let absorb_count_is_zero = absorb_count;
+        let hash_input_padding_indicator_is_zero = is_hash_input_padding;
 
         let instruction_lookup_log_derivative_is_initialized_correctly =
             instruction_lookup_log_derivative
@@ -55,6 +69,8 @@ impl ExtProgramTable {
 
         vec![
             first_address_is_zero,
+            absorb_count_is_zero,
+            hash_input_padding_indicator_is_zero,
             instruction_lookup_log_derivative_is_initialized_correctly,
         ]
     }
@@ -62,66 +78,142 @@ impl ExtProgramTable {
     pub fn consistency_constraints(
         circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        let one = circuit_builder.b_constant(1_u32.into());
+        let constant = |c: u32| circuit_builder.b_constant(c.into());
+        let base_row = |col: ProgramBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
 
-        let is_padding = circuit_builder.input(BaseRow(IsPadding.master_base_table_index()));
-        let is_padding_is_bit = is_padding.clone() * (is_padding - one);
+        let one = constant(1);
+        let max_absorb_count = constant((StarkHasher::RATE - 1).try_into().unwrap());
 
-        vec![is_padding_is_bit]
+        let absorb_count = base_row(AbsorbCount);
+        let max_minus_absorb_count_inv = base_row(MaxMinusAbsorbCountInv);
+        let is_hash_input_padding = base_row(IsHashInputPadding);
+        let is_table_padding = base_row(IsTablePadding);
+
+        let max_minus_absorb_count = max_absorb_count - absorb_count;
+        let max_minus_absorb_count_inv_is_zero_or_the_inverse_of_max_minus_absorb_count =
+            (one.clone() - max_minus_absorb_count.clone() * max_minus_absorb_count_inv.clone())
+                * max_minus_absorb_count_inv.clone();
+        let max_minus_absorb_count_is_zero_or_the_inverse_of_max_minus_absorb_count_inv =
+            (one.clone() - max_minus_absorb_count.clone() * max_minus_absorb_count_inv)
+                * max_minus_absorb_count;
+
+        let is_hash_input_padding_is_bit =
+            is_hash_input_padding.clone() * (is_hash_input_padding - one.clone());
+        let is_table_padding_is_bit = is_table_padding.clone() * (is_table_padding - one);
+
+        vec![
+            max_minus_absorb_count_inv_is_zero_or_the_inverse_of_max_minus_absorb_count,
+            max_minus_absorb_count_is_zero_or_the_inverse_of_max_minus_absorb_count_inv,
+            is_hash_input_padding_is_bit,
+            is_table_padding_is_bit,
+        ]
     }
 
     pub fn transition_constraints(
         circuit_builder: &ConstraintCircuitBuilder<DualRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<DualRowIndicator>> {
-        let one = circuit_builder.b_constant(1u32.into());
-        let address = circuit_builder.input(CurrentBaseRow(Address.master_base_table_index()));
-        let instruction =
-            circuit_builder.input(CurrentBaseRow(Instruction.master_base_table_index()));
-        let lookup_multiplicity =
-            circuit_builder.input(CurrentBaseRow(LookupMultiplicity.master_base_table_index()));
-        let is_padding = circuit_builder.input(CurrentBaseRow(IsPadding.master_base_table_index()));
-        let log_derivative = circuit_builder.input(CurrentExtRow(
-            InstructionLookupServerLogDerivative.master_ext_table_index(),
-        ));
-        let address_next = circuit_builder.input(NextBaseRow(Address.master_base_table_index()));
-        let instruction_next =
-            circuit_builder.input(NextBaseRow(Instruction.master_base_table_index()));
-        let is_padding_next =
-            circuit_builder.input(NextBaseRow(IsPadding.master_base_table_index()));
-        let log_derivative_next = circuit_builder.input(NextExtRow(
-            InstructionLookupServerLogDerivative.master_ext_table_index(),
-        ));
+        let challenge = |c| circuit_builder.challenge(c);
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+
+        let current_base_row = |col: ProgramBaseTableColumn| {
+            circuit_builder.input(CurrentBaseRow(col.master_base_table_index()))
+        };
+        let next_base_row = |col: ProgramBaseTableColumn| {
+            circuit_builder.input(NextBaseRow(col.master_base_table_index()))
+        };
+        let current_ext_row = |col: ProgramExtTableColumn| {
+            circuit_builder.input(CurrentExtRow(col.master_ext_table_index()))
+        };
+        let next_ext_row = |col: ProgramExtTableColumn| {
+            circuit_builder.input(NextExtRow(col.master_ext_table_index()))
+        };
+
+        let one = constant(1);
+        let rate = constant(StarkHasher::RATE.try_into().unwrap());
+
+        let address = current_base_row(Address);
+        let instruction = current_base_row(Instruction);
+        let lookup_multiplicity = current_base_row(LookupMultiplicity);
+        let absorb_count = current_base_row(AbsorbCount);
+        let max_minus_absorb_count_inv = current_base_row(MaxMinusAbsorbCountInv);
+        let is_hash_input_padding = current_base_row(IsHashInputPadding);
+        let is_table_padding = current_base_row(IsTablePadding);
+        let log_derivative = current_ext_row(InstructionLookupServerLogDerivative);
+
+        let address_next = next_base_row(Address);
+        let instruction_next = next_base_row(Instruction);
+        let absorb_count_next = next_base_row(AbsorbCount);
+        let is_hash_input_padding_next = next_base_row(IsHashInputPadding);
+        let is_table_padding_next = next_base_row(IsTablePadding);
+        let log_derivative_next = next_ext_row(InstructionLookupServerLogDerivative);
 
         let address_increases_by_one = address_next - (address.clone() + one.clone());
-        let is_padding_is_0_or_remains_unchanged =
-            is_padding.clone() * (is_padding_next - is_padding.clone());
+        let is_table_padding_is_0_or_remains_unchanged =
+            is_table_padding.clone() * (is_table_padding_next.clone() - is_table_padding);
+
+        let absorb_count_cycles_correctly = (one.clone()
+            - max_minus_absorb_count_inv.clone()
+                * (rate.clone() - one.clone() - absorb_count.clone()))
+            * absorb_count_next.clone()
+            + max_minus_absorb_count_inv.clone()
+                * (absorb_count_next - absorb_count.clone() - one.clone());
+
+        let hash_input_indicator_is_0_or_remains_unchanged =
+            is_hash_input_padding.clone() * (is_hash_input_padding_next.clone() - one.clone());
+
+        let first_hash_input_padding_is_1 = (is_hash_input_padding.clone() - one.clone())
+            * is_hash_input_padding_next
+            * (instruction_next.clone() - one.clone());
+
+        let hash_input_padding_is_0_after_the_first_1 =
+            is_hash_input_padding.clone() * instruction_next.clone();
+
+        let table_padding_starts_when_hash_input_padding_is_active_and_absorb_count_is_zero =
+            is_hash_input_padding.clone()
+                * (one.clone() - max_minus_absorb_count_inv * (rate - one.clone() - absorb_count))
+                * (is_table_padding_next - one.clone());
 
         let log_derivative_remains = log_derivative_next.clone() - log_derivative.clone();
-        let compressed_row = circuit_builder.challenge(ProgramAddressWeight) * address
-            + circuit_builder.challenge(ProgramInstructionWeight) * instruction
-            + circuit_builder.challenge(ProgramNextInstructionWeight) * instruction_next;
+        let compressed_row = challenge(ProgramAddressWeight) * address
+            + challenge(ProgramInstructionWeight) * instruction
+            + challenge(ProgramNextInstructionWeight) * instruction_next;
 
-        let indeterminate = circuit_builder.challenge(InstructionLookupIndeterminate);
-
+        let indeterminate = challenge(InstructionLookupIndeterminate);
         let log_derivative_updates = (log_derivative_next - log_derivative)
             * (indeterminate - compressed_row)
             - lookup_multiplicity;
-        let log_derivative_updates_if_and_only_if_not_a_padding_row = (one - is_padding.clone())
-            * log_derivative_updates
-            + is_padding * log_derivative_remains;
+        let log_derivative_updates_if_and_only_if_not_a_padding_row =
+            (one - is_hash_input_padding.clone()) * log_derivative_updates
+                + is_hash_input_padding * log_derivative_remains;
 
         vec![
             address_increases_by_one,
-            is_padding_is_0_or_remains_unchanged,
+            is_table_padding_is_0_or_remains_unchanged,
+            absorb_count_cycles_correctly,
+            hash_input_indicator_is_0_or_remains_unchanged,
+            first_hash_input_padding_is_1,
+            hash_input_padding_is_0_after_the_first_1,
+            table_padding_starts_when_hash_input_padding_is_active_and_absorb_count_is_zero,
             log_derivative_updates_if_and_only_if_not_a_padding_row,
         ]
     }
 
     pub fn terminal_constraints(
-        _circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
+        circuit_builder: &ConstraintCircuitBuilder<SingleRowIndicator>,
     ) -> Vec<ConstraintCircuitMonad<SingleRowIndicator>> {
-        // no further constraints
-        vec![]
+        let constant = |c: u64| circuit_builder.b_constant(c.into());
+        let base_row = |col: ProgramBaseTableColumn| {
+            circuit_builder.input(BaseRow(col.master_base_table_index()))
+        };
+
+        let one = constant(1);
+        let is_hash_input_padding = base_row(IsHashInputPadding);
+
+        let hash_input_padding_is_one = is_hash_input_padding - one;
+
+        vec![hash_input_padding_is_one]
     }
 }
 
@@ -130,34 +222,80 @@ impl ProgramTable {
         program_table: &mut ArrayViewMut2<BFieldElement>,
         aet: &AlgebraicExecutionTrace,
     ) {
-        let program_len = aet.program.len_bwords();
-        let address_column = program_table.slice_mut(s![..program_len, Address.base_table_index()]);
-        let addresses = Array1::from_iter((0..program_len).map(|a| BFieldElement::new(a as u64)));
-        addresses.move_into(address_column);
+        let max_absorb_count = StarkHasher::RATE - 1;
+        let max_absorb_count = max_absorb_count.try_into().unwrap();
+        let max_absorb_count = BFieldElement::new(max_absorb_count);
 
-        let instructions = Array1::from(aet.program.to_bwords());
-        let instruction_column =
-            program_table.slice_mut(s![..program_len, Instruction.base_table_index()]);
-        instructions.move_into(instruction_column);
+        let instructions = aet.program.to_bwords();
+        let program_len = instructions.len();
+        let padded_program_len = MasterBaseTable::program_table_length(aet);
 
-        let multiplicities = Array1::from_iter(
-            aet.instruction_multiplicities
-                .iter()
-                .map(|&m| BFieldElement::new(m as u64)),
-        );
-        let multiplicities_column =
-            program_table.slice_mut(s![..program_len, LookupMultiplicity.base_table_index()]);
-        multiplicities.move_into(multiplicities_column);
+        let one_iter = [BFieldElement::one()].into_iter();
+        let zero_iter = [BFieldElement::zero()].into_iter();
+        let padding_iter = one_iter.chain(zero_iter.cycle());
+        let padded_instructions = instructions.into_iter().chain(padding_iter);
+        let padded_instructions = padded_instructions.take(padded_program_len);
+
+        for (row_idx, instruction) in padded_instructions.enumerate() {
+            let address = row_idx.try_into().unwrap();
+            let address = BFieldElement::new(address);
+
+            let lookup_multiplicity = match row_idx.cmp(&program_len) {
+                Ordering::Less => aet.instruction_multiplicities[row_idx],
+                _ => 0,
+            };
+            let lookup_multiplicity = BFieldElement::new(lookup_multiplicity.into());
+
+            let absorb_count = row_idx % StarkHasher::RATE;
+            let absorb_count = absorb_count.try_into().unwrap();
+            let absorb_count = BFieldElement::new(absorb_count);
+
+            let max_minus_absorb_count_inv = (max_absorb_count - absorb_count).inverse_or_zero();
+
+            let is_hash_input_padding = match row_idx.cmp(&program_len) {
+                Ordering::Less => BFieldElement::zero(),
+                _ => BFieldElement::one(),
+            };
+
+            let mut current_row = program_table.row_mut(row_idx);
+            current_row[Address.base_table_index()] = address;
+            current_row[Instruction.base_table_index()] = instruction;
+            current_row[LookupMultiplicity.base_table_index()] = lookup_multiplicity;
+            current_row[AbsorbCount.base_table_index()] = absorb_count;
+            current_row[MaxMinusAbsorbCountInv.base_table_index()] = max_minus_absorb_count_inv;
+            current_row[IsHashInputPadding.base_table_index()] = is_hash_input_padding;
+        }
     }
 
     pub fn pad_trace(program_table: &mut ArrayViewMut2<BFieldElement>, program_len: usize) {
-        let addresses = Array1::from_iter(
-            (program_len..program_table.nrows()).map(|a| BFieldElement::new(a as u64)),
-        );
-        addresses.move_into(program_table.slice_mut(s![program_len.., Address.base_table_index()]));
+        let addresses =
+            (program_len..program_table.nrows()).map(|a| BFieldElement::new(a.try_into().unwrap()));
+        let addresses = Array1::from_iter(addresses);
+        let address_column = program_table.slice_mut(s![program_len.., Address.base_table_index()]);
+        addresses.move_into(address_column);
+
+        let absorb_counts = (program_len..program_table.nrows())
+            .map(|idx| idx % StarkHasher::RATE)
+            .map(|ac| BFieldElement::new(ac.try_into().unwrap()));
+        let absorb_counts = Array1::from_iter(absorb_counts);
+        let absorb_count_column =
+            program_table.slice_mut(s![program_len.., AbsorbCount.base_table_index()]);
+        absorb_counts.move_into(absorb_count_column);
+
+        let max_minus_absorb_count_invs = (program_len..program_table.nrows())
+            .map(|idx| StarkHasher::RATE - 1 - (idx % StarkHasher::RATE))
+            .map(|ac| BFieldElement::new(ac.try_into().unwrap()))
+            .map(|bfe| bfe.inverse_or_zero());
+        let max_minus_absorb_count_invs = Array1::from_iter(max_minus_absorb_count_invs);
+        let max_minus_absorb_count_inv_column =
+            program_table.slice_mut(s![program_len.., MaxMinusAbsorbCountInv.base_table_index()]);
+        max_minus_absorb_count_invs.move_into(max_minus_absorb_count_inv_column);
 
         program_table
-            .slice_mut(s![program_len.., IsPadding.base_table_index()])
+            .slice_mut(s![program_len.., IsHashInputPadding.base_table_index()])
+            .fill(BFieldElement::one());
+        program_table
+            .slice_mut(s![program_len.., IsTablePadding.base_table_index()])
             .fill(BFieldElement::one());
     }
 
@@ -187,11 +325,12 @@ impl ProgramTable {
             // argument does record the initial in the first row, as an exception to all other
             // table-linking arguments.
             // The logarithmic derivative's final value, allowing for a meaningful cross-table
-            // argument, is recorded in the first padding row. This row is enforced to exist.
+            // argument, is recorded in the first padding row. This row is guaranteed to exist
+            // due to the hash-input padding mechanics.
             extension_row[InstructionLookupServerLogDerivative.ext_table_index()] =
                 instruction_lookup_log_derivative;
             // update the logarithmic derivative if not a padding row
-            if row[IsPadding.base_table_index()].is_zero() {
+            if row[IsHashInputPadding.base_table_index()].is_zero() {
                 let lookup_multiplicity = row[LookupMultiplicity.base_table_index()];
                 let address = row[Address.base_table_index()];
                 let instruction = row[Instruction.base_table_index()];
